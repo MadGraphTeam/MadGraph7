@@ -12,7 +12,7 @@ C
 C###############################################################################
       module ALOHA_OBJECT
          TYPE ALOHA 
-            double complex, allocatable ::W(:)
+            double complex::W(6)
             double precision :: P(0:3)
          END TYPE ALOHA
       end module ALOHA_OBJECT
@@ -47,12 +47,11 @@ c
       parameter( rZero = 0.0d0, rHalf = 0.5d0, rTwo = 2.0d0 )
 
 
-      allocate(fi % W(4))
 
-      fi % P(0)  = p(0)*nsf
-      fi % P(1)  = p(1)*nsf
-      fi % P(2)  = p(2)*nsf
-      fi % P(3)  = p(3)*nsf
+      fi % P(0)  = p(0)*nsf*-1
+      fi % P(1)  = p(1)*nsf*-1
+      fi % P(2)  = p(2)*nsf*-1
+      fi % P(3)  = p(3)*nsf*-1
 
 c#ifdef HELAS_CHECK
 c      double precision p2
@@ -193,7 +192,6 @@ c
       double precision rZero, rHalf, rTwo
       parameter( rZero = 0.0d0, rHalf = 0.5d0, rTwo = 2.0d0 )
 
-      allocate(fo % W(4))
 c#ifdef HELAS_CHECK
 c      double precision p2
 c      double precision epsi
@@ -338,7 +336,6 @@ c
       parameter( rZero = 0.0d0, rHalf = 0.5d0 )
       parameter( rOne = 1.0d0, rTwo = 2.0d0 )
 
-      allocate(tc % W(1))
       tc % W(1) = NHEL
       tc % P(0) = p(0)*nst
       tc % P(1) = p(1)*nst
@@ -370,7 +367,6 @@ c
       double precision rOne
       parameter( rOne = 1.0d0 )
 
-      allocate( sc % W(1) )
 c#ifdef HELAS_CHECK
 c      double precision p2
 c      double precision epsi
@@ -452,7 +448,6 @@ c
 
       ft(5,1) = dcmplx(p(0),p(3))*nst
       ft(6,1) = dcmplx(p(1),p(2))*nst
-      allocate( tc % W(16))
 
       tc % P(0) = p(0)*nst
       tc % P(1) = p(1)*nst

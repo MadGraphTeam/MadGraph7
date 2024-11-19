@@ -686,7 +686,7 @@ class FortranHelasCallWriter(HelasCallWriter):
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
                 call = call + "%s,NHEL(%d),"
-            call = call + "%+d*IC(%d),W(1,%d))"
+            call = call + "%+d*IC(%d),W(%d))"
             if argument.get('spin') == 1:
                 call_function = lambda wf: call % \
                                 (wf.get('number_external'),
@@ -746,7 +746,7 @@ class FortranHelasCallWriter(HelasCallWriter):
             # Fill out with X up to 6 positions
             call = call + 'X' * (11 - len(call)) + '('
             # Wavefunctions
-            call = call + "W(1,%d)," * len(argument.get('mothers'))
+            call = call + "W(%d)," * len(argument.get('mothers'))
             # Couplings
             call = call + "%s,"
 
@@ -768,7 +768,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                 # Mass and width
                 call = call + "%s,%s,"
                 # New wavefunction
-                call = call + "W(1,%d))"
+                call = call + "W(%d))"
             else:
                 # Extra dummy coupling for 4-particle vertices
                 # Need to replace later with the correct type
@@ -1019,7 +1019,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
     def __init__(self, argument={}, hel_sum = False, options={}):
         """Allow generating a HelasCallWriter from a Model.The hel_sum argument
         specifies if amplitude and wavefunctions must be stored specifying the
-        helicity, i.e. W(1,i) vs W(1,i,H).
+        helicity, i.e. W(i) vs W(i,H).
         """
         self.hel_sum = hel_sum
         super(FortranUFOHelasCallWriter, self).__init__(argument, options=options)
@@ -1141,7 +1141,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 # For non-scalars, need mass and helicity
                 call = call + "%(mass)s,NHEL(%(number_external)d),"
             call = call + "%(state_id)+d*IC(%(number_external)d),{0})".format(\
-                                    self.format_helas_object('W(1,','%(me_id)d'))
+                                    self.format_helas_object('W(','%(me_id)d'))
 
         call_function = lambda wf: call % wf.get_external_helas_call_dict()
         self.add_wavefunction(argument.get_call_key(), call_function)
@@ -1186,7 +1186,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                  and argument['type']=='loop')):
             base_wf = "W%(WF{0})s,"
         else:
-            base_wf = self.format_helas_object('W(1,','%({0})d')+','
+            base_wf = self.format_helas_object('W(','%({0})d')+','
         
         # compute the full list of wf
         wf = ''
@@ -1205,7 +1205,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 else:
                     arg['mass'] = "ML(%(out)d),ZERO,"
             else:
-                arg['out']=self.format_helas_object('W(1,','%(out)d')                   
+                arg['out']=self.format_helas_object('W(','%(out)d')                   
                 if aloha.complex_mass:
                     arg['mass'] = "DCMPLX(%(CM)s),"
                 else:
@@ -1533,7 +1533,7 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
                  and argument.get('is_loop')):
             base_wf = "%(WF{0})s,"
         else:
-            base_wf = self.format_helas_object('W(1,','%({0})d')+','
+            base_wf = self.format_helas_object('W(','%({0})d')+','
         
         # compute the full list of wf
         wf = ''
@@ -1548,7 +1548,7 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
             if argument['is_loop']:
                 arg['out'] = 'PL(0,%(out)d),COEFS'
             else:
-                arg['out']=self.format_helas_object('W(1,','%(out)d')                   
+                arg['out']=self.format_helas_object('W(','%(out)d')                   
             if aloha.complex_mass:
                 arg['mass'] = "DCMPLX(%(CM)s),"
             else:

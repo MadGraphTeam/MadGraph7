@@ -534,7 +534,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         """
         
         out = StringIO()
-        to_end = []
+        #to_end = []
         out.write('use aloha_object\n')
         out.write('implicit none\n')
         # Check if we are in formfactor mode
@@ -569,7 +569,7 @@ class ALOHAWriterForFortran(WriteALOHA):
                     out.write(' type(aloha) %s\n' % (name))
                     if name not in argument_var:
                         size=self.get_size(name, -2)
-                        to_end.append("allocate(%s %% W(%s))" % (name,size))
+                        #to_end.append("allocate(%s %% W(%s))" % (name,size))
                 else:
                     if name in argument_var:
                         size ='*'
@@ -618,8 +618,8 @@ class ALOHAWriterForFortran(WriteALOHA):
         for elem in self.routine.symmetries:
             new_name = self.name.rsplit('_',1)[0] + '_%s' % elem
             out.write('%s\n' % self.get_header_txt(new_name, couplings).replace('subroutine','entry'))
-        to_end.append('')            
-        out.write('\n'.join(to_end))
+        #to_end.append('')            
+        #out.write('\n'.join(to_end))
         return out.getvalue()
         
     def get_momenta_txt(self):

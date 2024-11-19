@@ -170,6 +170,7 @@ c for the point with external lines W(0:6,NEXTERNAL)
 C  
 %(process_lines)s
 C  
+      use aloha_object
       IMPLICIT NONE
 C  
 C CONSTANTS
@@ -196,7 +197,7 @@ C
       COMPLEX*16 ZTEMP
       REAL*8 CF(NCOLOR,NCOLOR)
       COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
-      COMPLEX*16 W(20,NWAVEFUNCS)
+      type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
 C  
