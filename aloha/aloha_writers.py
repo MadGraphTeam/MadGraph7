@@ -517,12 +517,25 @@ class ALOHAWriterForFortran(WriteALOHA):
         
         return out.getvalue() 
     
+    def get_size(self, name, shift=0):
+        """Get the size of the list"""
+        
+        if name[0] in self.type_to_size:
+            size = self.type_to_size[name[0]]+shift
+        else:
+            size = 0+shift
+        if aloha.unitary_gauge ==3 and name[0].startswith('S'):
+            size += 4
+        return size
+
     def get_declaration_txt(self):
         """ Prototype for how to write the declaration of variable
             Include the symmetry line (entry FFV_2)
         """
         
         out = StringIO()
+        to_end = []
+        out.write('use aloha_object\n')
         out.write('implicit none\n')
         # Check if we are in formfactor mode
         if self.has_model_parameter:
@@ -552,34 +565,39 @@ class ALOHAWriterForFortran(WriteALOHA):
             if type.startswith('list'):
                 type = type[5:]
                 #determine the size of the list
-                if name in argument_var:
-                    size ='*'
-                elif name.startswith('P'):
-                    size='0:3'
-                elif name[0] in ['F','V']:
-                    if aloha.loop_mode:
-                        size = 8
-                    elif aloha.unitary_gauge == 3 and name[0] in 'V':
-                        size = 7
-                    else:
-                        size = 6
-                elif name[0] == 'S':
-                    if aloha.loop_mode:
-                        size = 5
-                    elif aloha.unitary_gauge == 3: # FD gauge 
-                        # Need to fix since this need to be dependent if S is a goldstone or not
-                        size = 7
-                    else:
-                        size = 3
-                elif name[0] in ['R','T']: 
-                    if aloha.loop_mode:
-                        size = 20
-                    else:
-                        size = 18
+                if name[0] in ['F', 'V', 'S', 'T', 'R'] and not aloha.loop_mode:
+                    out.write(' type(aloha) %s\n' % (name))
+                    if name not in argument_var:
+                        size=self.get_size(name, -2)
+                        to_end.append("allocate(%s %% W(%s))" % (name,size))
                 else:
-                    size = '*'
-    
-                out.write(' %s %s(%s)\n' % (self.type2def[type], name, size))
+                    if name in argument_var:
+                        size ='*'
+                    elif name.startswith('P'):
+                        size='0:3'
+                    elif name[0] in ['F','V']:
+                        if aloha.loop_mode:
+                            size = 8
+                        elif aloha.unitary_gauge == 3 and name[0] in 'V':
+                            size = 7
+                        else:
+                            size = 6
+                    elif name[0] == 'S':
+                        if aloha.loop_mode:
+                            size = 5
+                        elif aloha.unitary_gauge == 3: # FD gauge 
+                            # Need to fix since this need to be dependent if S is a goldstone or not
+                            size = 7
+                        else:
+                            size = 3
+                    elif name[0] in ['R','T']: 
+                        if aloha.loop_mode:
+                            size = 20
+                        else:
+                            size = 18
+                    else:
+                        size = '*'
+                    out.write(' %s %s(%s)\n' % (self.type2def[type], name, size))
             elif type == 'fct':
                 if name.upper() in ['EXP','LOG','SIN','COS','ASIN','ACOS']:
                     continue
@@ -600,8 +618,8 @@ class ALOHAWriterForFortran(WriteALOHA):
         for elem in self.routine.symmetries:
             new_name = self.name.rsplit('_',1)[0] + '_%s' % elem
             out.write('%s\n' % self.get_header_txt(new_name, couplings).replace('subroutine','entry'))
-                    
-
+        to_end.append('')            
+        out.write('\n'.join(to_end))
         return out.getvalue()
         
     def get_momenta_txt(self):
@@ -626,7 +644,10 @@ class ALOHAWriterForFortran(WriteALOHA):
                 out_size = self.type_to_size[type] 
                 continue
             elif self.offshell:
-                p.append('{0}{1}{2}(%(i)s)'.format(signs[i],type,i+1,type))    
+                if not aloha.loop_mode:
+                    p.append('{0}{1}{2}%P(:)'.format(signs[i],type,i+1))
+                else:
+                    p.append('{0}{1}{2}(%(i)s)'.format(signs[i],type,i+1,type))    
                 
             if self.declaration.is_used('P%s' % (i+1)):
                 self.get_one_momenta_def(i+1, out)
@@ -642,10 +663,13 @@ class ALOHAWriterForFortran(WriteALOHA):
             energy_pos = out_size -2
             type = self.particles[self.outgoing-1]
             
-            for i in range(self.momentum_size):
-                dict_energy = {'i':1+i}
-                out.write('    %s%s(%s) = %s\n' % (type,self.outgoing, 1+i, 
-                                             ''.join(p) % dict_energy))
+            if not aloha.loop_mode:
+                #for i in range(self.momentum_size):
+                #   dict_energy = {'i':1+i}
+                out.write('    %s%s%%P(:) = %s\n' % (type,self.outgoing, 
+                                                ''.join(p)))
+            else:
+                out.write('    %s%s%%P(:) = %s\n' % (type,self.outgoing, ''.join(p)))
             if self.declaration.is_used('P%s' % self.outgoing):
                 self.get_one_momenta_def(self.outgoing, out)
 
@@ -687,11 +711,14 @@ class ALOHAWriterForFortran(WriteALOHA):
         
         if aloha.loop_mode:
             template ='P%(i)d(%(j)d) = %(sign)s%(type)s%(i)d(%(nb)d)\n'
+            nb_print = 4
         else:
-            template ='P%(i)d(%(j)d) = %(sign)s%(operator)s(%(type)s%(i)d(%(nb2)d))\n'
+            #template ='P%(i)d(%(j)d) = %(sign)s%(operator)s(%(type)s%(i)d(%(nb2)d))\n'
+            template = 'P%(i)d(:) = %(sign)s%(type)s%(i)d %% P (:)\n'
+            nb_print = 1
 
         nb2 = 1
-        for j in range(4):
+        for j in range(nb_print):
             if not aloha.loop_mode:
                 nb = j + 1
                 if j == 0: 
@@ -716,11 +743,14 @@ class ALOHAWriterForFortran(WriteALOHA):
         """shift the indices for non impulsion object"""
         if match.group('var').startswith('P'):
             shift = 0
+            return '%s(%s)' % (match.group('var'), int(match.group('num')) + shift)
+        elif not aloha.loop_mode:
+            return '%s %% W(%s)' % (match.group('var'), int(match.group('num')))        
         else:
             shift =  self.momentum_size 
             if aloha.unitary_gauge ==3 and match.group('var').startswith('S'):
                 shift += 4
-        return '%s(%s)' % (match.group('var'), int(match.group('num')) + shift)
+            return '%s(%s)' % (match.group('var'), int(match.group('num')) + shift)
               
     def change_var_format(self, name): 
         """Formatting the variable name to Fortran format"""
@@ -741,6 +771,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         else:
             self.declaration.add((name.type, name))
         name = re.sub(r'(?P<var>\w*)_(?P<num>\d+)$', self.shift_indices , name)
+
         return name
   
     def change_number_format(self, number):
@@ -889,7 +920,13 @@ class ALOHAWriterForFortran(WriteALOHA):
                 shift = 1
                 if aloha.unitary_gauge == 3 and self.outname[0] == "S":
                     shift = 5
-                to_order[self.pass_to_HELAS(ind)] = \
+                if not aloha.loop_mode:
+                    shift -= 2
+                    to_order[self.pass_to_HELAS(ind)] = \
+                        '    %s%%W(%d)= %s%s\n' % (self.outname, self.pass_to_HELAS(ind)+shift, 
+                        coeff, formatted)
+                else:
+                    to_order[self.pass_to_HELAS(ind)] = \
                         '    %s(%d)= %s%s\n' % (self.outname, self.pass_to_HELAS(ind)+shift, 
                         coeff, formatted)
             key = list(to_order.keys())
