@@ -252,6 +252,7 @@ c for the point with external lines W(0:6,NEXTERNAL)
 C  
 %(process_lines)s
 C  
+    use aloha_object
     IMPLICIT NONE
 C  
 C CONSTANTS
@@ -288,7 +289,7 @@ C
     COMPLEX*16 ZTEMP, TMP_JAMP(%(nb_temp_jamp)i)
     REAL*8 CF(NCOLOR,NCOLOR)
     COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
-    COMPLEX*16 W(%(wavefunctionsize)d,NWAVEFUNCS)
+    type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
     DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
