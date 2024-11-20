@@ -46,8 +46,6 @@ c
       double precision rZero, rHalf, rTwo
       parameter( rZero = 0.0d0, rHalf = 0.5d0, rTwo = 2.0d0 )
 
-
-
       fi % P(0)  = p(0)*nsf*-1
       fi % P(1)  = p(1)*nsf*-1
       fi % P(2)  = p(2)*nsf*-1
@@ -1838,35 +1836,37 @@ c spin-3/2 fermion wavefunction
 
       subroutine CombineAmp(nb, ihels, iwfcts, W1, Wall, Amp)
 
+      use aloha_object
       integer nb ! size of the vectors
       integer ihels(*), iwfcts(*)
-      double complex W1(6)
-      double complex Wall(6,*)
+      type(aloha) W1
+      type(aloha) Wall(*)
       double complex Amp(*)
 c     local variable
       integer i
 
       do i = 1, nb
-         Amp(ihels(i)) =  W1(3) * Wall(3,iwfcts(i)) +
-     &                    W1(4) * Wall(4,iwfcts(i))+
-     &                    W1(5) * Wall(5,iwfcts(i))+
-     &                    W1(6) * Wall(6,iwfcts(i))
+         Amp(ihels(i)) =  W1%W(1) * Wall(iwfcts(i))%W(1) +
+     &                    W1%W(2) * Wall(iwfcts(i))%W(2) +
+     &                    W1%W(3) * Wall(iwfcts(i))%W(3) +
+     &                    W1%W(4) * Wall(iwfcts(i))%W(4)
       enddo
       return
       end
      
       subroutine CombineAmpS(nb, ihels, iwfcts, W1, Wall, Amp)
-
+      use aloha_object
+      implicit none 
       integer nb ! size of the vectors
       integer ihels(*), iwfcts(*)
-      double complex W1(3)
-      double complex Wall(6,*)
+      type(aloha)  W1
+      type(aloha) Wall(*)
       double complex Amp(*)
 c     local variable
       integer i
 
       do i = 1, nb
-         Amp(ihels(i)) =  W1(3) * Wall(3,iwfcts(i))
+         Amp(ihels(i)) =  W1%W(1) * Wall(iwfcts(i))%W(1)
       enddo
       return
       end

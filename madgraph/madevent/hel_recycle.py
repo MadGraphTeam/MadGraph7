@@ -831,7 +831,6 @@ def split_amps(line, new_amps, gauge):
             args = amp.args[:]   
             # Remove wav and get its index
             wcontract = args.pop(to_remove)
-            misc.sprint(wcontract)
             windex = wcontract.split('(')[1].split(')')[0]
             windices.append(windex)
             amp_result,  args[-1]  =  args[-1], 'TMP(1)'
