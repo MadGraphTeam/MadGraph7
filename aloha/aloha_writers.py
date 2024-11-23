@@ -1040,8 +1040,8 @@ class ALOHAWriterForFortran(WriteALOHA):
                     routine.write( '    vertex = vertex + tmp\n')
                 else:
                     size = self.type_to_size[self.particles[self.outgoing -1]] -2
-                    routine.write(" do i = %s, %s\n" % (self.momentum_size+1, self.momentum_size+size))
-                    routine.write("        %(main)s(i) = %(main)s(i) + %(tmp)s(i)\n" %\
+                    routine.write(" do i = %s, %s\n" % (1, size))
+                    routine.write("        %(main)s %%W(i) = %(main)s%%W(i) + %(tmp)s%%W(i)\n" %\
                                {'main': main, 'tmp': data['out']})
                     routine.write(' enddo\n')
                     self.declaration.add(('int','i'))
