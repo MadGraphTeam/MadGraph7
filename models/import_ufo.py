@@ -414,10 +414,10 @@ def import_full_model(model_path, decay=False, prefix=''):
     if model_path[-1] == '/': model_path = model_path[:-1] #avoid empty name
     model.set('name', os.path.split(model_path)[-1])
 
+    misc.sprint(ufo2mg5_converter.additional_couplings)
     # Load the Parameter/Coupling in a convenient format.
     parameters, couplings = OrganizeModelExpression(ufo_model).main(\
-             additional_couplings =(ufo2mg5_converter.wavefunction_CT_couplings
-                           if ufo2mg5_converter.perturbation_couplings else []))
+             additional_couplings = ufo2mg5_converter.additional_couplings)
     
     model.set('parameters', parameters)
     model.set('couplings', couplings)
@@ -474,7 +474,7 @@ class UFOMG5Converter(object):
             else:
                 logger.info("\n"+header)
         else:
-            f =collections.defaultdict(lambda : 'n/a')
+            f = collections.defaultdict(lambda : 'n/a')
             for key in ['author', 'version', 'email', 'arxiv']:
                 if hasattr(model, '__%s__' % key):
                     val = getattr(model, '__%s__' % key)
@@ -494,6 +494,7 @@ class UFOMG5Converter(object):
         self.colored_scalar = False # in presence of color scalar particle the running of a_s is modified
                                     # This is not supported by madevent/systematics
         self.wavefunction_CT_couplings = []
+        self.additional_couplings = []
  
         # Check here if we can extract the couplings perturbed in this model
         # which indicate a loop model or if this model is only meant for 
@@ -523,6 +524,9 @@ class UFOMG5Converter(object):
         
         if auto:
             self.load_model()
+
+        self.additional_couplings += self.wavefunction_CT_couplings \
+                           if self.perturbation_couplings else []
 
     def load_model(self):
         """load the different of the model first particles then interactions"""
@@ -602,6 +606,7 @@ class UFOMG5Converter(object):
         for interaction_info in self.ufomodel.all_vertices:
             self.add_interaction(interaction_info, color_info)
 
+
         if aloha.unitary_gauge == 3:
             self.merge_all_goldstone_with_vector()
 
@@ -680,7 +685,14 @@ class UFOMG5Converter(object):
     
     def optimise_interaction(self, interaction):
         
-        
+        # Check if the interaction is a FFV interaction with two couplings
+        ffv_coeff = self.reshape_FFV_coeff(self.model, interaction)
+        if ffv_coeff:
+            self.optimise_FFV(interaction, ffv_coeff)
+
+        self.optimise_iden_coup(interaction)
+
+    def optimise_iden_coup(self, interaction):
         #  Check if two couplings have exactly the same definition. 
         #  If so replace one by the other
         if not hasattr(self, 'iden_couplings'):
@@ -766,8 +778,160 @@ class UFOMG5Converter(object):
             new_l = interaction.get('lorentz').index(new_name)
             # adding the new combination (color,lor) associate to this sum of structure
             interaction['couplings'][(color, new_l)] = coup  
-                
-    
+
+    def optimise_FFV(self, interaction, ffv_coeff):
+        """ handle the case where a FFV vertex has two couplings but not in the correct base
+            This routine will define the new coupling and potentially new lorentz structure
+            and return the new interaction. """
+        
+        def get_new_expr(expr1, coeff1, expr2, coeff2):
+            if coeff1 != 0 and coeff2 != 0:
+                if coeff1 == coeff2:
+                    return '%s*(%s+(%s))' %(coeff1, expr1, expr2)
+                elif coeff1 == - coeff2:
+                    return '%s*(%s-(%s))' %(coeff1, expr1, expr2)
+                else:
+                    return '%s*(%s) + (%s)*(%s)' %(coeff1, expr1 , coeff2,expr2)
+            elif coeff1 == 0:
+                return '%s*(%s)' %(coeff2,expr2)
+            else:
+                return '%s*(%s)' %(coeff1,expr1)
+
+        lorentz_structures = ['Gamma(3,2,-1)*ProjP(-1,1)','Gamma(3,2,-1)*ProjM(-1,1)']
+        proj = []
+        for structure in lorentz_structures:
+            lorentz = [l for l in self.model['lorentz'] if l.get('structure') == structure]
+            if lorentz:
+                proj.append(lorentz[0])
+            else:
+                proj.append(self.add_lorentz(None, structure, [2,2,3]))
+
+        #define the new couplings
+        #warning self.model['couplings'] is not yet filled need to use self.ufomodel.all_couplings
+        all_color = set([c for c, l in interaction.get('couplings')])
+        new_coups = {}
+        for col in all_color:
+            valid_coup = set([name for (c,l) , name in interaction.get('couplings').items() if c == col])
+            coup = [c for c in self.ufomodel.all_couplings if c.name in valid_coup]
+            assert(len(coup) == 2)
+            expr1 = coup[0].value
+            expr2 = coup[1].value
+            if coup[0].order != coup[1].order:
+                #not compatible for optimization
+                return
+            
+            new_expr1 = get_new_expr(expr1, ffv_coeff[0][0], expr2, ffv_coeff[1][0])
+            new_expr2 = get_new_expr(expr1, ffv_coeff[0][1], expr2, ffv_coeff[1][1])
+            if new_expr1 in [c.value for c in self.additional_couplings]:
+                new_coup1 = [c for c in self.additional_couplings if c.value == new_expr1][0]
+            else:
+                new_coup1 = self.add_coupling(new_expr1, coup[0].order, 'GC_FFV_%d' % len(self.additional_couplings))
+            if new_expr2 in [c.value for c in self.additional_couplings]:
+                new_coup2 = [c for c in self.additional_couplings if c.value == new_expr2][0]
+            else:
+                new_coup2 = self.add_coupling(new_expr2, coup[0].order, 'GC_FFV_%d' % len(self.additional_couplings))
+
+        for (color, lor) in interaction.get('couplings'):
+            new_coups[(col, 0)] = new_coup1.name 
+            new_coups[(col, 1)] = new_coup2.name  
+
+        # Initialize a new interaction but keep id tag
+        new_interaction = base_objects.Interaction({'id':interaction.get('id')})                
+        new_interaction.set('particles', interaction.get('particles'))              
+        #TODO
+        misc.spirnt(interaction.get('lorentz'))
+        misc.sprint([l.get('name') for l in proj])
+        misc.sprint(new_coups)
+        new_interaction.set('lorentz', [l.get('name') for l in proj])
+        new_interaction.set('couplings', new_coups)
+        new_interaction.set('orders', interaction.get('orders')) 
+        new_interaction.set('color', interaction.get('color'))
+        new_interaction.set('type', interaction.get('type'))
+        new_interaction.set('loop_particles', interaction.get('loop_particles'))
+        # remove old interactions
+        #self.interactions.remove(interaction)
+        # add to the interactions
+        if self.interactions[interaction.get('id')-1] is interaction:
+            index = interaction.get('id')-1
+        else:
+            index = self.interactions.index(interaction)
+        self.interactions[index] = new_interaction
+        misc.sprint(self.interactions[index])
+
+
+    def add_lorentz_create_name(self, structure, spins):
+        """same as add_lorentz but create a new name for the lorentz base on spins information"""
+
+        letter = {1: 'S', 2: 'F', 3: 'V', 4: 'R', 5: 'U'}
+        new_name = ''.join([letter[s] for s in spins])
+        labels = [l.get('name')[len(spins):] for l in self.model['lorentz'] if l.get('name').startswith(new_name) and l.get('name')[len(spins):]]
+        if labels:
+            flag = max([int(l) for l in labels]) + 1
+        else:
+            flag = 1
+        new_name += str(flag)
+
+        return self.add_lorentz(new_name, spins , structure)
+
+
+    @staticmethod       
+    def reshape_FFV_coeff(model, interaction):
+        """To allow multi-dimensional coupling to be efficient, it is important that all
+           the FFV interactions have the same lorentz structure. 
+           If you have two couplings, then this will be rehape to have one coupling for
+            (1+gamma5)/2 part  and one for (1-gamma5)/2 part.
+           This routines returns the linear combination of the coupling to go to that basis   
+        """
+
+        if len(interaction.get('couplings'))!=2:
+            return None
+        
+        lorentzs = [model.get_lorentz(l) for l in interaction.get('lorentz')]
+        
+        if lorentzs[0].get('spins') != [2,2,3]:
+            return None
+        
+        def projection(lor):
+            def get_coeff(lor):
+                try:
+                    return int(re.findall(r'([\+\-]?\s*\d+)\*Gamma\(3,2', lor)[0])
+                except:
+                    if re.search(r'-\s*Gamma\(3,2', lor):
+                        return -1
+                    else: 
+                        return 1
+            if " - " in lor:
+                p1, p2 = lor.split(" - ")
+                c1, c2 = projection(p1)
+                c3, c4 = projection(p2)
+                return c1-c3, c2-c4
+            elif " + " in lor:
+                p1, p2 = lor.split(" + ")
+                c1,c2 = projection(p1)
+                c3,c4 = projection(p2)
+                return c1+c3, c2+c4
+            elif "ProjP(-1,1)" in lor:
+                return get_coeff(lor), 0
+            elif "ProjM(-1,1)" in lor:
+                return 0, get_coeff(lor)
+            else:
+                misc.sprint(lor)
+                raise Exception("Not implemented")
+            
+        all_c = []
+        for lor in lorentzs:
+            c1, c2 = projection(lor.get('structure'))
+            all_c.append((c1,c2))
+        
+        #avoid useless trigger if already  in the right basis
+        if all_c in ([(0,1),(1,0)], [(1,0),(0,1)]):
+            return None
+        
+        return all_c
+
+
+
+
     def merge_all_goldstone_with_vector(self):
         """For Feynman Diagram gauge need to merge interaction of scalar/boson"""
 
@@ -1871,9 +2035,27 @@ class UFOMG5Converter(object):
                     
         return  '' if sign ==1 else '-'
 
+    def add_coupling(self, expr, order, name):
+        """Add a coupling definition to the model """
+
+        logger.debug('MG5 converter defines %s to %s', name, expr)
+        assert name not in [c.name for c in self.additional_couplings] + [c.name for c in self.ufomodel.all_couplings]
+        #avoid side effect that the instantiate a UFO class update the list of coupling in the model
+        with misc.TMP_variable(self.ufomodel.object_library, 'all_couplings', 
+                               self.additional_couplings):
+            new = self.ufomodel.all_couplings[0].__class__(name = name,
+                value = expr,
+                order = order)
+        #self.additional_couplings.append(new)
+        return new
+
+
     def add_lorentz(self, name, spins , expr, formfact=None):
         """ Add a Lorentz expression which is not present in the UFO """
 
+        if name is None:
+            assert formfact is None
+            return self.add_lorentz_create_name(spins, expr)
         logger.debug('MG5 converter defines %s to %s', name, expr)
         assert name not in [l.name for l in self.model['lorentz']]
         with misc.TMP_variable(self.ufomodel.object_library, 'all_lorentz', 
@@ -2176,6 +2358,7 @@ class OrganizeModelExpression:
 #                                 delattr(newCoupling,"CTparam_dependence")
                             couplings_list.append(newCoupling)
         else:
+            misc.sprint(self.model.all_couplings)
             couplings_list = self.model.all_couplings + additional_couplings
             couplings_list = [c for c in couplings_list if not isinstance(c.value, dict)] 
             

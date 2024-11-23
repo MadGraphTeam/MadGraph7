@@ -1587,6 +1587,7 @@ class misc(object):
     @staticmethod
     def sprint(*args, **opt):
         return sprint(*args, **opt)
+spirnt = sprint
 ################################################################################
 # function to check if two float are approximatively equal
 ################################################################################

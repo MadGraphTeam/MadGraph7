@@ -928,6 +928,7 @@ class Interaction(PhysicsObject):
             elif prop == 'couplings':
                 mystr += '    \'' + prop + '\': {' 
                 tmp = []
+                misc.sprint('couplings', self[prop])
                 for (c,l) in self[prop]:
                     lorname = self['lorentz'][l]
                     coupling = self[prop][(c,l)]
@@ -1378,6 +1379,25 @@ class Model(PhysicsObject):
         """Determine the coupling orders of the model"""
         return set(sum([list(i.get('orders').keys()) for i in \
                         self.get('interactions')], []))
+
+    def get_coupling(self, name):
+        """Return the coupling associated to the name NAME"""
+        
+        # If information is saved
+        if hasattr(self, 'coupling_dict') and self.coupling_dict:
+            try:
+                return self.coupling_dict[name]
+            except Exception:
+                # try to reload it before crashing 
+                pass
+            
+        # Else first build the dictionary
+        self.coupling_dict = {}
+        for data in self['couplings'].values():
+            [self.coupling_dict.__setitem__(p.name,p) for p in data]
+        
+        return self.coupling_dict[name]
+    
 
     def get_order_hierarchy(self):
         """Set a default order hierarchy for the model if not set by the UFO."""

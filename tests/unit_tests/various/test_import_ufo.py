@@ -113,6 +113,54 @@ class TestImportUFO(unittest.TestCase):
         output = fct(' 1', {0:1, 1:2, 2:0})
         self.assertEqual(output, ' 1') 
 
+    def test_reshape_FFV_coeff(self):
+        """ test the possiblity to reshape FFV vertex"""
+
+        import models as ufomodels
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        ufo2mg5_converter = import_ufo.UFOMG5Converter(ufo_model)    
+        model = ufo2mg5_converter.load_model()
+
+        fct = import_ufo.UFOMG5Converter.reshape_FFV_coeff
+
+        def find_interaction(model, l1, l2=None):
+            """find the interaction with the given lorentz structure"""   
+            for interaction in model.get('interaction_dict').values():
+                names = [l for l in interaction['lorentz']]
+                if l1 in names:
+                    if l2 is None and len(interaction['lorentz']) == 1:
+                        return interaction
+                    if l2 in names:
+                        return interaction
+            raise Exception('No interaction found')
+
+        # check that only FFV are reshaped
+        FFS = find_interaction(model, 'FFS4')
+        output = fct(model, FFS)
+        self.assertEqual(output, None)
+
+        # check that Gamma(3,2,1) are not reshaped
+        FFV1 = find_interaction(self.base_model, 'FFV1')
+        output = fct(model, FFV1)
+        self.assertEqual(output, None)
+
+        Zdd = find_interaction(self.base_model, 'FFV2', 'FFV3')
+        #assert Zdd['couplings'][(0,0)] == 'GC_40'
+        #assert Zdd['couplings'][(0,1)] == 'GC_53'
+        output = fct(model, Zdd)
+        self.assertEqual(output, [(0,1), (-2,1)])
+
+        Zuu = find_interaction(self.base_model, 'FFV2', 'FFV5')
+        output = fct(model, Zuu)
+        self.assertEqual(output, [(0,1), (4,1)]) 
+
+        Zee = find_interaction(self.base_model, 'FFV2', 'FFV4') 
+        output = fct(model, Zee)    
+        self.assertEqual(output, [(0,1), (2,1)])
+
+
+
+
 
 
 
