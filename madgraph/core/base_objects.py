@@ -928,10 +928,15 @@ class Interaction(PhysicsObject):
             elif prop == 'couplings':
                 mystr += '    \'' + prop + '\': {' 
                 tmp = []
-                misc.sprint('couplings', self[prop])
-                for (c,l) in self[prop]:
+                for key in self[prop]:
+                    if len(key) == 2:
+                        (c,l) = key
+                        f = ''
+                        coupling = self[prop][(c,l)]
+                    else:
+                        (c,l,f) = key
+                        coupling = self[prop][(c,l,f)]
                     lorname = self['lorentz'][l]
-                    coupling = self[prop][(c,l)]
                     if couplings:
                         for running in couplings:
                             for onecoup in couplings[running]:
@@ -943,7 +948,7 @@ class Interaction(PhysicsObject):
                             else: 
                                 continue
                             break    
-                    tmp.append('(c%s, %s): %s' %(c,lorname,coupling))
+                    tmp.append('(c%s, %s,%s): %s' %(c,lorname,f,coupling))
                 mystr += ',\n                  '.join(tmp) + '}\n'
             else:
                 mystr = mystr + '    \'' + prop + '\': ' + \
@@ -1322,6 +1327,161 @@ class Model(PhysicsObject):
                     return self.name2part[id]
                 except:
                     return None
+    
+    nb_merged = 0
+    def define_merge_particle_for(self, ids):
+        """ this is an helper function for the merge_flavor function. It will
+        return the particle,anti-particle that should be merged for the given list of ids."""
+        
+        Model.nb_merged +=1
+
+        particles = [p for p in self.get('particles') if abs(p.get('pdg_code')) in ids]
+        if len(particles) != len(ids):
+            raise Exception("Some particles are missing in the model")
+    
+        # create the new particle
+        new_part = Particle()
+        if 1 in ids:
+            name = '_quark'
+            pdg_code = 81
+        elif 11 in ids:
+            name = '_lepton'
+            pdg_code = 82
+        elif 12 in ids:
+            name = '_neutrino'
+            pdg_code = 83
+        else:
+            name = '_merged%d' %self.nb_merged
+            pdg_code = 90+self.nb_merged
+
+        new_part['name'] = name
+        new_part['pdg_code'] = pdg_code
+        new_part['charge'] = particles[0].get('charge') # might not be the same for all particles !
+        if any(p.get('charge') != particles[0].get('charge') for p in particles):
+            self['conserved_charge'].discard('charge')
+        # handle all parameter that have to be the same
+        iden_param = ['mass', 'spin', 'color', 'width', 'line', 'propagator', 'is_part', 'self_antipart','type', 'counterterm']
+        for param in iden_param:
+            new_part[param] = particles[0].get(param)
+            if any(p.get(param) != new_part.get(param) for p in particles):
+                raise Exception("all merged particles should have the same %s: %s" % (param, [p.get(param) for p in particles]))
+        if new_part.get('self_antipart'):
+            new_part['antiname'] = name
+            anti_part = Particle(new_part)
+        else:
+            new_part['antiname'] = '_anti'+name
+            anti_part = Particle(new_part)
+            anti_part['is_part'] = False
+
+        return new_part, anti_part
+
+    def get_get_merge_key(self, inter, ids, new_part):
+        """define a key for the merge interaction to see if we need to merge this interaction
+        into another one or to have a new one"""
+
+        # TODO: FOR CKM MATRIX/LEPTON and neutrino
+        # update delta to take into account top/neutrino/lepton not yet merged
+
+        inter_id = [p.get_pdg_code() for p in inter.get('particles')]
+        change = [abs(i) for i in inter_id if abs(i) in ids]
+        #if len(change) != 2:
+        #    misc.sprint(change, inter_id,[p.get('pdg_code') in ids for p in inter.get('particles')])
+        #    raise Exception("Problem with the interaction %s" % inter)
+        change.sort()
+        if len(change) == 2:
+            delta = change[1]-change[0]
+        else:
+            delta = 0
+        if not new_part.get('self_antipart'):
+            inter_id = [id if abs(id) not in ids else math.copysign(new_part.get('pdg_code'), id)  for id in inter_id]
+        else:
+            inter_id = [id if abs(id) not in ids else new_part.get('pdg_code') for id in inter_id]
+        key = tuple(inter_id), str(inter.get('orders')), delta
+        return key
+
+    def merge_flavor(self, ids):
+        """Merge leptons/or quarks into a single particle 
+        and assign one flavor index to the merged particle.
+        associated interaction will be merged and will have coupling with three indices
+        (lorentz, color, flavor).
+        The ids is the list of index of the particles to merge, 
+        the associated flavor index will start at one"""
+        
+        # get the particle to merge into
+        new_part, anti_part = self.define_merge_particle_for(ids)
+        # add the new particle to the model
+        self.get('particles').append(new_part)
+        self["particle_dict"][new_part.get('pdg_code')] = new_part
+        self["particle_dict"][anti_part.get_pdg_code()] = anti_part
+
+        particles = [p for p in self.get('particles') if abs(p.get('pdg_code')) in ids]
+
+        # loop over the interaction and replace the associated particles by the new one
+        # and replace the coupling key by a three index key with last index being (I,J,K)
+        # where 0 means no flavor index and 1,2,3,... are the flavor index for the associated particle
+        # need to track if such interaction already exist and update if it does
+        # Note that we need to support both the case where the interation did not had any flavor index before
+        # and the case where it had one from a previous merge (think lepto-quark)
+        new_interactions = {} #key is the tuple of the particle 
+        for inter in self.get('interactions')[:]:
+            if any(p.get('pdg_code') in ids for p in inter.get('particles')):
+                key = self.get_get_merge_key(inter, ids, new_part)
+                if key in new_interactions:
+                    self.update_interaction(inter, new_interactions[key], ids, new_part, anti_part)
+                else:
+                    new_interactions[key] = inter
+                    
+                    old_keys = list(inter.get('couplings').keys())
+                    values = list(inter.get('couplings').values())
+                    for key, value in zip(old_keys, values):
+                        if len(key) == 2:
+                            flav = [ids.index(abs(p.get_pdg_code()))+1 if p.get('pdg_code') in ids else 0 for p in inter.get('particles')]
+                            misc.sprint(flav, [p.get('pdg_code') for p in inter.get('particles')], ids)
+                            new_key = (key[0], key[1], tuple(flav))
+
+                        else:
+                            flav = key[2]
+                            for i, val in enumerate(flav):
+                                p = inter.get('particles')[i]
+                                if val != 0 and p.get('pdg_code') in ids:
+                                    flav[i] = ids.index(abs(p.get_pdg_code()))+1
+                            new_key = (key[0], key[1], tuple(flav))
+                            inter.get('couplings')[new_key] = value
+                            del inter.get('couplings')[key]            
+
+                    for i, p in enumerate(inter.get('particles')):
+                        if p in particles:
+                            inter.get('particles')[i] = new_part
+                        elif p.get_anti_pdg_code() in ids:
+                            inter.get('particles')[i] = anti_part  
+
+                    inter.get('couplings')[new_key] = value
+                    del inter.get('couplings')[key]            
+  
+                                    
+                                                         
+
+    def update_interaction(self, old, merged_inter, ids, new_part, anti_part):
+        """add a new coupling to the new merged interaction"""
+        #just remove it for the moment
+
+        old_keys = list(old.get('couplings').keys())
+        values = list(old.get('couplings').values())  
+        for key, value in zip(old_keys, values):
+            if len(key) == 2:
+                flav = [ids.index(abs(p.get_pdg_code()))+1 if p.get('pdg_code') in ids else 0 for p in old.get('particles')]
+                new_key = (key[0], key[1], tuple(flav))
+                merged_inter.get('couplings')[new_key] = value
+            else:
+                flav = key[2]
+                for i, val in enumerate(flav):
+                    p = old.get('particles')[i]
+                    if val != 0 and p.get('pdg_code') in ids:
+                        flav[i] = ids.index(abs(p.get_pdg_code()))+1
+                new_key = (key[0], key[1], tuple(flav))
+                merged_inter.get('couplings')[new_key] = value
+
+        self.get('interactions').remove(old) 
 
     def create_name2part(self):
         """create a dictionary name 2 part"""

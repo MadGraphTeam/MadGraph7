@@ -12,7 +12,7 @@ C
 C###############################################################################
       module ALOHA_OBJECT
          TYPE ALOHA 
-            double complex::W(6)
+            double complex::W(4)
             double precision :: P(0:3)
          END TYPE ALOHA
       end module ALOHA_OBJECT

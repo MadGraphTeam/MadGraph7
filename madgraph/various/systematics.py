@@ -164,7 +164,7 @@ class Systematics(object):
             isEVAxDIS=True
         # none, chff, edff
         if(self.banner.run_card['pdlabel'] in ['none','chff','edff']):
-            raise SystematicsError('Systematics not supported for pdlabel=none,chff,edff')
+            raise SystematicsError('Systematics not supported for pdlabel=%s' % self.banner.run_card['pdlabel'])
 
         self.orig_ion_pdf = False
         self.ion_scaling = ion_scaling

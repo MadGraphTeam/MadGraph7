@@ -322,7 +322,11 @@ def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
         else:
             # It might be that the default of the model (i.e. 'CMSParam') is CMS.
             model.change_mass_to_complex_scheme(toCMS=False, bypass_check=allow_qed)
-      
+
+    model.merge_flavor([1,2,3,4])
+    model.merge_flavor([11,13])
+    model.merge_flavor([12,14,16])
+
     return model
     
 
@@ -448,7 +452,9 @@ def import_full_model(model_path, decay=False, prefix=''):
     path = os.path.dirname(os.path.realpath(model_path))
     path = os.path.join(path, model.get('name'))
     model.set('version_tag', os.path.realpath(path) +'##'+ str(misc.get_pkg_info()))
-    
+
+
+
     # save in a pickle files to fasten future usage
     if ReadWrite and model['allow_pickle']:
         save_load_object.save_to_file(os.path.join(model_path, pickle_name),
