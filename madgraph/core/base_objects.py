@@ -1379,24 +1379,47 @@ class Model(PhysicsObject):
         """define a key for the merge interaction to see if we need to merge this interaction
         into another one or to have a new one"""
 
-        # TODO: FOR CKM MATRIX/LEPTON and neutrino
-        # update delta to take into account top/neutrino/lepton not yet merged
 
         inter_id = [p.get_pdg_code() for p in inter.get('particles')]
+        # need to check for non diagonal support (CKM, PMNS, ...) 
+        # create an entry delta in the key to avoid merging too much (important to have different amplitude)
         change = [abs(i) for i in inter_id if abs(i) in ids]
-        #if len(change) != 2:
-        #    misc.sprint(change, inter_id,[p.get('pdg_code') in ids for p in inter.get('particles')])
-        #    raise Exception("Problem with the interaction %s" % inter)
-        change.sort()
-        if len(change) == 2:
-            delta = change[1]-change[0]
+        if change:
+            # change should be by pair 
+            # special case for quark -> check with b/t
+            # special case for lepton -> check with neutrino
+            # special case for neutrino -> lepton already merged need to check with lepton within the coupling index
+            if len(change) == 2:
+                delta = (change[1]-change[0])%6
+            elif len(change) == 1:
+                # for quark -> check with b/t
+                # for lepton -> check with neutrino
+                change = [abs(i) for i in inter_id if abs(i) in ids + [1,2,3,4,5,6,11,12,13,14,15,16]]
+                if len(change) == 1:
+                    change = [(pos,abs(i)) for pos, i in enumerate(inter_id) if abs(i) in ids + list(range(81,100))]
+                    for i, (pos, id) in enumerate(change):
+                        if id in ids:
+                            change[i]= id
+                        else:
+                            assert(12 in ids)
+                            change[i] =  9 + 2 * next(iter(inter.get('couplings')))[2][pos]
+            delta = (change[1]-change[0]) % 6
+            # Here is the delta value for standard combination
+            #   u c t  #   e  mu tau #    82(1) 82(2) 82(3)
+            # d 1 3 5  #ve 5  1  3   # ve  5 .  1 .   3   #ve
+            # s 5 1 3  #vm 3  5  1   # vm  3    5     1   # vm
+            # b 3 5 1  #vt 1  3  5   # vm  1    3     5   # vt
         else:
             delta = 0
+
+        # rest is just new id of particles and the order of the interaction
         if not new_part.get('self_antipart'):
             inter_id = [id if abs(id) not in ids else math.copysign(new_part.get('pdg_code'), id)  for id in inter_id]
         else:
             inter_id = [id if abs(id) not in ids else new_part.get('pdg_code') for id in inter_id]
+        
         key = tuple(inter_id), str(inter.get('orders')), delta
+
         return key
 
     def merge_flavor(self, ids):
@@ -1434,11 +1457,11 @@ class Model(PhysicsObject):
                     old_keys = list(inter.get('couplings').keys())
                     values = list(inter.get('couplings').values())
                     for key, value in zip(old_keys, values):
+                        
                         if len(key) == 2:
                             flav = [ids.index(abs(p.get_pdg_code()))+1 if p.get('pdg_code') in ids else 0 for p in inter.get('particles')]
-                            misc.sprint(flav, [p.get('pdg_code') for p in inter.get('particles')], ids)
                             new_key = (key[0], key[1], tuple(flav))
-
+                            del inter.get('couplings')[key]
                         else:
                             flav = key[2]
                             for i, val in enumerate(flav):
@@ -1446,20 +1469,19 @@ class Model(PhysicsObject):
                                 if val != 0 and p.get('pdg_code') in ids:
                                     flav[i] = ids.index(abs(p.get_pdg_code()))+1
                             new_key = (key[0], key[1], tuple(flav))
-                            inter.get('couplings')[new_key] = value
-                            del inter.get('couplings')[key]            
-
+          
+                        inter.get('couplings')[new_key] = value
+                        
                     for i, p in enumerate(inter.get('particles')):
                         if p in particles:
                             inter.get('particles')[i] = new_part
                         elif p.get_anti_pdg_code() in ids:
                             inter.get('particles')[i] = anti_part  
 
-                    inter.get('couplings')[new_key] = value
-                    del inter.get('couplings')[key]            
+                    
+           
   
-                                    
-                                                         
+                                                                                   
 
     def update_interaction(self, old, merged_inter, ids, new_part, anti_part):
         """add a new coupling to the new merged interaction"""
