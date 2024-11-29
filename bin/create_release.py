@@ -120,10 +120,10 @@ auto_update = True
 # check that we are in the correct branch (note this file does not handle LTS)
 p = subprocess.Popen("git branch --show-current", stdout=subprocess.PIPE, shell=True)
 MG_branch = p.stdout.read().decode().strip()
-<<<<<<< HEAD
-if MG_branch not in  ['3.x']:
-    print("cannot create tarball with auto-update outside of the main branch, detected branch (%s)" % MG_branch)
-if MG_branch not in  ['3.x', 'LTS']:
+if MG_branch == 'LTS_2':
+    print("no auto-update as long as not the main version")
+    auto_update = False
+elif MG_branch not in  ['3.x', 'LTS']:
     print("cannot create tarball with auto-update outside of the main branch, detected branch (%s)" % MG_branch)
     answer = input('Do you want to continue anyway? (y/n)')
     if answer != 'y':
@@ -276,6 +276,8 @@ if rev_nb and auto_update:
         p = subprocess.call("git tag  'L%s' " % int(rev_nb), shell=True)
     elif MG_branch == '3.x':
         p = subprocess.call("git tag  'r%s' " % int(rev_nb), shell=True)
+
+if (rev_nb and auto_update) or MG_branch == "LTS_2":
     p = subprocess.call("git tag  'v%s' " % misc.get_pkg_info()['version'], shell=True)
     print('new tag added')
     answer = input('Do you want to push commit and tag? (y/n)')
