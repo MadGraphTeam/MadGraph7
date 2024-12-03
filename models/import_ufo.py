@@ -471,7 +471,7 @@ def import_full_model(model_path, decay=False, prefix=''):
 class UFOMG5Converter(object):
     """Convert a UFO model to the MG5 format"""
 
-    def __init__(self, model, auto=False):
+    def __init__(self, model, auto=False, FFV=True):
         """ initialize empty list for particles/interactions """
 
         if hasattr(model, '__header__'):
@@ -523,6 +523,7 @@ class UFOMG5Converter(object):
         self.model.set('interactions', self.interactions)
         self.conservecharge = set(['charge'])
         
+        self.FFV_optim = FFV
         self.ufomodel = model
         self.checked_lor = set()
 
@@ -693,9 +694,10 @@ class UFOMG5Converter(object):
     def optimise_interaction(self, interaction):
         
         # Check if the interaction is a FFV interaction with two couplings
-        ffv_coeff = self.reshape_FFV_coeff(self.model, interaction)
-        if ffv_coeff:
-            self.optimise_FFV(interaction, ffv_coeff)
+        if self.FFV_optim:
+            ffv_coeff = self.reshape_FFV_coeff(self.model, interaction)
+            if ffv_coeff:
+                self.optimise_FFV(interaction, ffv_coeff)
 
         self.optimise_iden_coup(interaction)
 
@@ -845,10 +847,6 @@ class UFOMG5Converter(object):
         # Initialize a new interaction but keep id tag
         new_interaction = base_objects.Interaction({'id':interaction.get('id')})                
         new_interaction.set('particles', interaction.get('particles'))              
-        #TODO
-        misc.spirnt(interaction.get('lorentz'))
-        misc.sprint([l.get('name') for l in proj])
-        misc.sprint(new_coups)
         new_interaction.set('lorentz', [l.get('name') for l in proj])
         new_interaction.set('couplings', new_coups)
         new_interaction.set('orders', interaction.get('orders')) 
@@ -863,7 +861,6 @@ class UFOMG5Converter(object):
         else:
             index = self.interactions.index(interaction)
         self.interactions[index] = new_interaction
-        misc.sprint(self.interactions[index])
 
 
     def add_lorentz_create_name(self, structure, spins):
@@ -1997,7 +1994,6 @@ class UFOMG5Converter(object):
             if abs(total) > 1e-12:
                 logger.info('The model has interaction violating the charge: %s' % charge)
                 self.conservecharge.discard(charge)
-
         
         
     def get_sign_flow(self, flow, nb_fermion):

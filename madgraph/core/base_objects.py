@@ -1107,6 +1107,7 @@ class Model(PhysicsObject):
         self['case_sensitive'] = True
         self['running_elements'] = []
         self['allow_pickle'] = True
+        self['merged_particles'] = {}
         self['limitations'] = [] # MLM means that the model can sometimes have issue with MLM/default scale. 
                                  # fix_scale means that the model should use fix_scale computation.
         # attribute which might be define if needed
@@ -1328,12 +1329,12 @@ class Model(PhysicsObject):
                 except:
                     return None
     
-    nb_merged = 0
+
     def define_merge_particle_for(self, ids):
         """ this is an helper function for the merge_flavor function. It will
         return the particle,anti-particle that should be merged for the given list of ids."""
         
-        Model.nb_merged +=1
+        nb_merged = 1 + len(self['merged_particles']) 
 
         particles = [p for p in self.get('particles') if abs(p.get('pdg_code')) in ids]
         if len(particles) != len(ids):
@@ -1351,8 +1352,8 @@ class Model(PhysicsObject):
             name = '_neutrino'
             pdg_code = 83
         else:
-            name = '_merged%d' %self.nb_merged
-            pdg_code = 90+self.nb_merged
+            name = '_merged%d' % nb_merged
+            pdg_code = 90 + nb_merged
 
         new_part['name'] = name
         new_part['pdg_code'] = pdg_code
@@ -1373,6 +1374,7 @@ class Model(PhysicsObject):
             anti_part = Particle(new_part)
             anti_part['is_part'] = False
 
+        self['merged_particles'][pdg_code] = ids
         return new_part, anti_part
 
     def get_get_merge_key(self, inter, ids, new_part):

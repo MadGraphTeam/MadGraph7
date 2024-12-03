@@ -118,14 +118,14 @@ class TestImportUFO(unittest.TestCase):
 
         import models as ufomodels
         ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
-        ufo2mg5_converter = import_ufo.UFOMG5Converter(ufo_model)    
+        ufo2mg5_converter = import_ufo.UFOMG5Converter(ufo_model, FFV=False)    
         model = ufo2mg5_converter.load_model()
 
         fct = import_ufo.UFOMG5Converter.reshape_FFV_coeff
 
         def find_interaction(model, l1, l2=None):
-            """find the interaction with the given lorentz structure"""   
-            for interaction in model.get('interaction_dict').values():
+            """find the interaction with the given lorentz structure""" 
+            for interaction in model.get('interactions'):
                 names = [l for l in interaction['lorentz']]
                 if l1 in names:
                     if l2 is None and len(interaction['lorentz']) == 1:
@@ -140,21 +140,21 @@ class TestImportUFO(unittest.TestCase):
         self.assertEqual(output, None)
 
         # check that Gamma(3,2,1) are not reshaped
-        FFV1 = find_interaction(self.base_model, 'FFV1')
+        FFV1 = find_interaction(model, 'FFV1')
         output = fct(model, FFV1)
         self.assertEqual(output, None)
 
-        Zdd = find_interaction(self.base_model, 'FFV2', 'FFV3')
+        Zdd = find_interaction(model, 'FFV2', 'FFV3')
         #assert Zdd['couplings'][(0,0)] == 'GC_40'
         #assert Zdd['couplings'][(0,1)] == 'GC_53'
         output = fct(model, Zdd)
         self.assertEqual(output, [(0,1), (-2,1)])
 
-        Zuu = find_interaction(self.base_model, 'FFV2', 'FFV5')
+        Zuu = find_interaction(model, 'FFV2', 'FFV5')
         output = fct(model, Zuu)
         self.assertEqual(output, [(0,1), (4,1)]) 
 
-        Zee = find_interaction(self.base_model, 'FFV2', 'FFV4') 
+        Zee = find_interaction(model, 'FFV2', 'FFV4') 
         output = fct(model, Zee)    
         self.assertEqual(output, [(0,1), (2,1)])
 

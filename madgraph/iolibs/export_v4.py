@@ -7841,7 +7841,11 @@ C
         nb_coup_indep_loop = 1 + len(self.coups_indep_loop) // nb_def_by_file
         nb_coup_dep = 1 + len(self.coups_dep) // nb_def_by_file 
         
-        for i in range(nb_coup_indep_noloop):
+        # For flavor merged couplings, (only dp so far) we need to add the new datastructure
+        # and initialise those correctly.
+        self.create_couplings_flavor_merged()
+
+        for i in range(nb_coup_indep_noloop):            
             ##### For the independent couplings, we compute the double and multiple
             ##### precision ones together
             # For the EW sudakov approximation, because of the numerical derivatives
@@ -7877,7 +7881,34 @@ C
                 self.create_couplings_part( i + 1 + nb_coup_indep , data, 
                                            dp=False, mp=True, vec=self.vector_size*self.nb_warp)
         
-        
+    
+    def create_couplings_flavor_merged(self):
+        """ create the flavor merged couplings """
+
+        template = """
+            module model_object
+            type coupling
+                integer :: partner(%(max_flavor)i)
+                double complex, allocatable :: val(%(max_flavor)i)
+            end type coupling
+            end module model_object
+            """
+
+        # max size needed for the couplings
+        max_flavor = max([len(ids) for ids in self.model['merged_particles'].values()])
+
+        #fsock = self.open('couplings_matrix.f', format='fortran') 
+        #fsock.writelines(template % {'max_flavor': max_flavor})
+        #fsock.close()
+
+        # get the list of matrix couplings
+        #for interactions in self.model['interactions']:
+            # is it too late?
+
+        fsock = self.open('couplings_matrix.inc', format='fortran')
+
+
+
     def create_couplings_main(self, nb_def_by_file=25):
         """ create couplings.f """
 
