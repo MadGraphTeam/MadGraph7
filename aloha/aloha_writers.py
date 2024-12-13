@@ -254,6 +254,7 @@ class WriteALOHA:
         out.write(self.get_header_txt(mode=self.mode))
         out.write(self.get_declaration_txt())
         out.write(self.get_momenta_txt())
+        out.write(self.get_coupling_def())
         out.write(core_text)
         out.write(self.get_foot_txt())
 
@@ -272,6 +273,10 @@ class WriteALOHA:
             writer.writelines(text)
             
         return text + '\n'
+
+    def get_coupling_def(self):
+        """Define the coupling constant"""
+        return '' 
 
     
     def write_indices_part(self, indices, obj): 
@@ -512,8 +517,13 @@ class ALOHAWriterForFortran(WriteALOHA):
                      'id': self.outgoing}
             self.declaration.add(('list_complex', output))
         
+        if 'M' in self.tag:
+            args = ', '.join(['M%s' % a  if a.startswith('COUP') else  a for a in arguments])
+        else:
+            args = ', '.join(arguments)
+        
         out.write('subroutine %(name)s(%(args)s,%(output)s)\n' % \
-                  {'output':output, 'name': name, 'args': ', '.join(arguments)})
+                  {'output':output, 'name': name, 'args': args})
         
         return out.getvalue() 
     
@@ -536,6 +546,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         out = StringIO()
         #to_end = []
         out.write('use aloha_object\n')
+        out.write('use model_object\n')
         out.write('implicit none\n')
         # Check if we are in formfactor mode
         if self.has_model_parameter:
@@ -603,6 +614,11 @@ class ALOHAWriterForFortran(WriteALOHA):
                     continue
                 out.write(' %s %s\n' % (self.type2def['complex'], name))
                 out.write(' external %s\n' % (name))
+            elif name.startswith('COUP') and 'M' in self.tag:
+                out.write(' type(flv_coupling) M%s\n' % (name))
+                out.write(' double complex %s\n' % (name))
+                if name in ['COUP', 'COUP1']:
+                    out.write(' integer flv_index, flv_index1, flv_index2\n')
             else:
                 out.write(' %s %s\n' % (self.type2def[type], name))
                 
@@ -704,6 +720,50 @@ class ALOHAWriterForFortran(WriteALOHA):
 
         # Returning result
         return out.getvalue()
+
+
+    def get_coupling_def(self):
+        """Define the coupling constant"""
+        
+        out = StringIO()
+        if 'M' not in self.tag:
+            return ''
+        
+        if self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
+            if not self.outgoing:
+                fail = "VERTEX = (0d0,0d0)"
+            else:
+                fail = '%s%d%%W(:) = (0d0,0d0)' % (self.particles[self.outgoing-1], self.outgoing)
+
+            out.write('   flv_index = F1 %flv_index\n')
+            out.write('   flv_index2 = F2 %flv_index\n')
+            out.write('   if(flv_index.eq.0.or.flv_index2.eq.0)then  \n %s\n  return\nendif\n' % fail)
+            out.write('   if(MCOUP %% PARTNER(flv_index).ne.flv_index2)then \n %s\n return\n endif\n' %fail)
+        else:
+            incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+            if incoming %2 == 1:
+                outgoing = self.outgoing
+                out.write('   flv_index = F%i %%flv_index\n' % incoming)
+                out.write('   if(flv_index.eq.0)then\n')
+                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+                out.write('   flv_index2 = MCOUP % PARTNER(FLV_INDEX)\n')
+                out.write('   if(flv_index2.eq.0)then\n')
+                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+                out.write('   F%i %% FLV_INDEX = FLV_INDEX2\n' % outgoing)
+            else:
+                outgoing = self.outgoing
+                out.write('   flv_index2 = F%i %%flv_index\n' % incoming)
+                out.write('   if(flv_index2.eq.0)then\n')
+                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+                out.write('   flv_index = MCOUP % PARTNER2(FLV_INDEX2)\n')
+                out.write('   if(flv_index.eq.0)then\n')
+                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+                out.write('   F%i %% FLV_INDEX = FLV_INDEX\n' % outgoing)                
+ 
+        for ftype, name in self.declaration:
+            if name.startswith('COUP'):
+                out.write(' %s = M%s %% VAL(flv_index) %% p \n' % (name, name))
+        return out.getvalue()     
 
     def get_one_momenta_def(self, i, strfile):
         
@@ -1008,7 +1068,7 @@ class ALOHAWriterForFortran(WriteALOHA):
 
         # how to call the routine
         argument = [name for format, name in self.define_argument_list(new_couplings)]
-        index= argument.index('COUP1')
+        index= argument.index(new_couplings[0])
         data['before_coup'] = ','.join(argument[:index])
         data['after_coup'] = ','.join(argument[index+len(lor_names)+1:])
         if data['after_coup']:
@@ -1020,7 +1080,11 @@ class ALOHAWriterForFortran(WriteALOHA):
                            'id': self.outgoing}
         for i, name in enumerate(lor_list):
             data['name'] = name
-            data['coup'] = 'COUP%d' % (i+1)
+            if 'M' in self.tag:
+                prefix = 'M'
+            else:   
+                prefix = ''
+            data['coup'] = '%sCOUP%d' % (prefix,i+1)
             if i == 0:
                 if  not offshell: 
                     data['out'] = 'vertex'
@@ -1314,7 +1378,10 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         out = StringIO()
         # define the type of function and argument
         
-        arguments = [arg for format, arg in self.define_argument_list(couplings)]
+        if 'M' in self.tag:
+            arguments = ['M%s' % arg for format, arg in self.define_argument_list(couplings)]
+        else:
+            arguments = [arg for format, arg in self.define_argument_list(couplings)]
         self.declaration.add(('list_complex', 'P%s'% self.outgoing))
         self.declaration.add(('list_complex', 'P%s'% self.l_helas_id))        
         self.declaration.add(('list_complex', 'coeff'))
@@ -1354,10 +1421,9 @@ def get_routine_name(name=None, outgoing=None, tag=None, abstract=None):
     
     if outgoing is None:
         outgoing = abstract.outgoing
-
     return '%s_%s' % (name, outgoing)
 
-def combine_name(name, other_names, outgoing, tag=None, unknown_propa=False):
+def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
     """ build the name for combined aloha function """
 
     def myHash(target_string):
@@ -1401,8 +1467,10 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_propa=False):
     if routine:
         if tag is not None:
             routine += ''.join(tag)
-        if unknown_propa and outgoing:
+        if unknown_tag and outgoing:
             routine += '%(propa)s'
+        elif unknown_tag:
+            routine += '%(tags)s'
         if outgoing is not None:
             return myHash(routine)+'_%s' % outgoing
 #            return routine +'_%s' % outgoing
@@ -1422,7 +1490,7 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_propa=False):
                 addon = ''
             else:
                 name = short_name
-    if unknown_propa:
+    if unknown_tag:
         addon += '%(propa)s'
 
 #    if outgoing is not None:

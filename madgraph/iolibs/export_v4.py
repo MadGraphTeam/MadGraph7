@@ -7012,6 +7012,8 @@ class UFO_model_to_mg4(object):
         self.coups_dep = []    # (name, expression, type)
         self.coups_indep_noloop = []  # (name, expression, type)
         self.coups_indep_loop = []  # (name, expression, type)
+        self.coups_flv_dep = []    # (name, object, [couplings])
+        self.coups_flv_indep = []  # (name, object, [couplings])  
         self.params_dep = []   # (name, expression, type)
         self.params_indep = [] # (name, expression, type)
         self.params_ext = []   # external parameter
@@ -7183,6 +7185,18 @@ class UFO_model_to_mg4(object):
             #self.model['parameters']['aS'] = base_objects.ParamCardVariable('aS', 0.138,'DUMMY',(1,))
             self.params_indep.append( base_objects. ModelVariable('aS', '0.138','real'))
             self.params_indep.append( base_objects. ModelVariable('G', '4.1643','real'))
+
+        # Handle flavor couplings
+        # strategy picke one of the actual coupling and check if this is a running one or not
+        flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
+        deps = [c.name for c in self.coups_dep]
+        for one_flv in flavor_couplings:
+            one_coupling = one_flv.get_one_coupling()
+            if one_coupling in deps:
+                self.coups_flv_dep.append( one_flv)
+            else:
+                self.coups_flv_indep.append(one_flv)
+
             
     def build(self, wanted_couplings = [], full=True):
         """modify the couplings to fit with MG4 convention and creates all the 
@@ -7236,6 +7250,7 @@ class UFO_model_to_mg4(object):
         self.create_ewa()
         
         # definition of the coupling.
+        self.create_couplings_flavor_merged()
         self.create_actualize_mp_ext_param_inc()
         self.create_coupl_inc()
         self.create_write_couplings()
@@ -7468,16 +7483,33 @@ C
         if self.coups_indep:
             c_list = [coupl.name for coupl in self.coups_indep_noloop + self.coups_indep_loop]  
             if c_list:
-                fsock.writelines('double complex '+', '.join(c_list)+'\n') 
+                fsock.writelines('double complex, target :: '+', '.join(c_list)+'\n') 
 
+        # Write the flavor couplings 
+        if self.coups_flv_indep:
+            c_list = [coupl.name for coupl in self.coups_flv_indep]
+            fsock.writelines('type(flv_coupling) '+', '.join(c_list)+'\n')
+
+        # Write the dependent couplings
         if self.vector_size:
             c_list = ['%s(%s)' %(coupl.name, "VECSIZE_MEMMAX") for coupl in self.coups_dep]
         else:
             c_list = [coupl.name for coupl in self.coups_dep] 
         
         if c_list:
-            fsock.writelines('double complex '+', '.join(c_list)+'\n')   
-        coupling_list = [coupl.name for coupl in self.coups_dep + self.coups_indep_noloop + self.coups_indep_loop]       
+            fsock.writelines('double complex, target :: '+', '.join(c_list)+'\n')  
+
+        # Write the flavor dependent couplings
+        if self.vector_size:
+            c_list = ['%s(%s)' %(coupl.name, "VECSIZE_MEMMAX") for coupl in self.coups_flv_dep]
+        else:
+            c_list = [coupl.name for coupl in self.coups_flv_dep] 
+        
+        if c_list:
+            fsock.writelines('type(flv_coupling) '+', '.join(c_list)+'\n')  
+
+
+        coupling_list = [coupl.name for coupl in self.coups_dep + self.coups_indep_noloop + self.coups_indep_loop + self.coups_flv_dep + self.coups_flv_indep]       
 
         fsock.writelines('common/couplings/ '+', '.join(coupling_list)+'\n')
         if self.opt['mp']:
@@ -7648,7 +7680,8 @@ C
                             set(itertools.chain.from_iterable(allCTparameters)))
 
         # All used CT couplings
-        w_coupls = [coupl.lower() for coupl in wanted_couplings]
+        w_coupls = [coupl.lower() for coupl in wanted_couplings if isinstance(coupl,str)]
+        logger.debug('wanted_couplings: CTparan not supporting merging -> will be problematic for NLO')
         allUsedCTCouplings = [coupl for coupl in 
               self.model.map_CTcoup_CTparam.keys() if coupl.lower() in w_coupls]
         
@@ -7886,26 +7919,64 @@ C
         """ create the flavor merged couplings """
 
         template = """
-            module model_object
-            type coupling
-                integer :: partner(%(max_flavor)i)
-                double complex, allocatable :: val(%(max_flavor)i)
-            end type coupling
-            end module model_object
+       MODULE MODEL_OBJECT
+       type coupptr ! needed to have an array of pointer
+           SEQUENCE
+           double complex, pointer :: p
+       end type coupptr
+
+       TYPE FLV_COUPLING
+         SEQUENCE
+         INTEGER :: PARTNER(%(max_flavor)i)
+         INTEGER :: PARTNER2(%(max_flavor)i)
+         TYPE(COUPPTR) :: VAL(%(max_flavor)i)
+         END TYPE FLV_COUPLING
+         END MODULE MODEL_OBJECT
+
+
+         subroutine init_flv_couplings()
+            use model_object
+            implicit none
+            %(include_vector)s
+            include 'coupl.inc'
+
+            %(def_flv)s            
+        end subroutine init_flv_couplings
             """
 
+        def_flv = []
+        for coupl in self.coups_flv_indep:
+
+            for key, c in coupl.flavors.items():
+                # get first/second index
+                k1, k2 = [i for i in key if i!=0]
+                def_flv.append('%(name)s %% PARTNER(%(in)i) = %(out)i' % {'name': coupl.name,'in': k1, 'out': k2})
+                def_flv.append('%(name)s %% PARTNER2(%(out)i) = %(in)i' % {'name': coupl.name,'in': k1, 'out': k2}) 
+                def_flv.append('%(name)s %% VAL(%(in)i) %%p  =>  %(coupl)s' % {'name': coupl.name,'in': k1, 'coupl': c})
+
+
+
+        
         # max size needed for the couplings
         max_flavor = max([len(ids) for ids in self.model['merged_particles'].values()])
 
-        #fsock = self.open('couplings_matrix.f', format='fortran') 
-        #fsock.writelines(template % {'max_flavor': max_flavor})
-        #fsock.close()
+        if self.vector_size:
+            include_vector = "include \'../vector.inc\'\n"
+        else:
+            include_vector = ''
+        replace = {'max_flavor': max_flavor,
+                   'include_vector': include_vector,
+                   'def_flv': '\n'.join(def_flv)}
+        fsock = self.open('flavor_couplings.f', format='fortran') 
+        fsock.writelines(template % replace)
+
+
+        fsock.close()
 
         # get the list of matrix couplings
         #for interactions in self.model['interactions']:
             # is it too late?
 
-        fsock = self.open('couplings_matrix.inc', format='fortran')
 
 
 
@@ -7915,7 +7986,7 @@ C
         fsock = self.open('couplings.f', format='fortran')
         
         fsock.writelines("""subroutine coup()
-
+                            use model_object
                             implicit none
                             double precision PI, ZERO
                             logical READLHA
@@ -7986,10 +8057,13 @@ C
 
             fsock.writelines('\nendif\n')
 
+        if self.coups_flv_dep or self.coups_flv_indep:
+            fsock.writelines('call init_flv_couplings()\n')
+
         fsock.writelines('''\n return \n end\n''')
 
         fsock.writelines("""subroutine update_as_param(%(args)s)
-
+                            use model_object
                             implicit none
                             %(args_dep)s
                             double precision PI, ZERO
@@ -8098,6 +8172,7 @@ C
 
         fsock.writelines("""subroutine update_as_param2(mu_r2,as2 %(args)s)
 
+                            use model_object
                             implicit none
                             
                             double precision PI
@@ -8560,7 +8635,7 @@ C
         fsock = self.open('%scouplings%s.f' %('mp_' if mp and not dp else '',
                                                      nb_file), format='fortran')
         fsock.writelines("""subroutine %(mp)scoup%(nb_file)s( %(args)s)
-          
+          use model_object
           implicit none
           %(def_args)s
           include \'model_functions.inc\'"""% {'mp': 'mp_' if mp and not dp else '',
@@ -9761,7 +9836,7 @@ c         segments from -DABS(tiny*Ga) to Ga
         """create makeinc.inc containing the file to compile """
         
         fsock = self.open('makeinc.inc', comment='#')
-        text = 'MODEL = couplings.o lha_read.o printout.o rw_para.o'
+        text = 'MODEL = flavor_couplings.o couplings.o lha_read.o printout.o rw_para.o'
         text += ' model_functions.o '
         
         if self.opt['export_format'].startswith('standalone'):

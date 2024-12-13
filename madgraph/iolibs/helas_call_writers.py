@@ -686,7 +686,10 @@ class FortranHelasCallWriter(HelasCallWriter):
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
                 call = call + "%s,NHEL(%d),"
-            call = call + "%+d*IC(%d),W(%d))"
+            if argument.get('spin') == 2:
+                call = call + "%+d,FLV(%d),W(%d))"
+            else:
+                call = call + "%+d*IC(%d),W(%d))"
             if argument.get('spin') == 1:
                 call_function = lambda wf: call % \
                                 (wf.get('number_external'),
@@ -1047,7 +1050,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             amplitude.set('coupling',amplitude.get_couplings())
         
         return super(FortranUFOHelasCallWriter, self).get_amplitude_call(
-                                                               amplitude,**opts)        
+                                                               amplitude,**opts)         
         
 
 
@@ -1140,7 +1143,12 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
                 call = call + "%(mass)s,NHEL(%(number_external)d),"
-            call = call + "%(state_id)+d*IC(%(number_external)d),{0})".format(\
+            if argument.get('spin') == 2:
+                call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
+                                    self.format_helas_object('W(','%(me_id)d'))
+            else:
+
+                call = call + "%(state_id)+d,{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
 
         call_function = lambda wf: call % wf.get_external_helas_call_dict()
@@ -1809,13 +1817,6 @@ class GPUFOHelasCallWriter(CPPUFOHelasCallWriter):
                                  wf.get('me_id')-1,
                                  wf.get('number_external')-1)
             elif argument.is_boson():
-                misc.sprint(call)
-                misc.sprint( (wf.get('mass'),
-                                 wf.get('number_external')-1,
-                                 # For boson, need initial/final here
-                                 (-1) ** (wf.get('state') == 'initial'),
-                                 wf.get('me_id')-1,
-                                 wf.get('number_external')-1))
                 return  self.format_coupling(call % \
                                 (wf.get('mass'),
                                  wf.get('number_external')-1,
@@ -1983,7 +1984,6 @@ class GPUFOHelasCallWriter(CPPUFOHelasCallWriter):
 
         matrix_element.reuse_outdated_wavefunctions(me)
 
-        misc.sprint(multi_channel_map)
 
         res = []
         # reset jamp:
@@ -1997,7 +1997,6 @@ class GPUFOHelasCallWriter(CPPUFOHelasCallWriter):
                                   sum([diagrams[idiag].get('amplitudes') for \
                                        idiag in multi_channel_map[config]], [])]
                 diag_to_config[amp[0]] = config
-        misc.sprint(diag_to_config)
         id_amp = 0
         for diagram in matrix_element.get('diagrams'):
              

@@ -4,6 +4,7 @@ C     THIS IS THE DRIVER FOR CHECKING THE STANDALONE MATRIX ELEMENT.
 C     IT USES A SIMPLE PHASE SPACE GENERATOR
 C     Fabio Maltoni - 3rd Febraury 2007
 C**************************************************************************
+          use model_object
       IMPLICIT NONE
 C     
 C     CONSTANTS  

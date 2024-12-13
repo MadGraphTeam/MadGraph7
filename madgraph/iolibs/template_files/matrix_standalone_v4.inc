@@ -74,7 +74,7 @@ C  put in common block to expose this variable to python interface
 C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       INTEGER BEAMS_HELAVGFACTOR(2)
 	  DATA (BEAMS_HELAVGFACTOR(I),I=1,2)/%(beamone_helavgfactor)d,%(beamtwo_helavgfactor)d/
-      INTEGER JC(NEXTERNAL)
+      INTEGER FLAVOR(NEXTERNAL)
       LOGICAL GOODHEL(NCOMB)
       DATA NTRY/0/
       DATA GOODHEL/NCOMB*.FALSE./
@@ -117,7 +117,7 @@ C BEGIN CODE
 C ----------
       IF(USERHEL.EQ.-1) NTRY=NTRY+1
       DO IHEL=1,NEXTERNAL
-         JC(IHEL) = +1
+         FLAVOR(IHEL) = +1
       ENDDO
 C     When spin-2 particles are involved, the Helicity filtering is dangerous for the 2->1 topology.
 C     This is because depending on the MC setup the initial PS points have back-to-back initial states
@@ -137,7 +137,7 @@ C     For this reason, we simply remove the filterin when there is only three ex
 				    IF(NTRY.GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
                     ENDIF
-                    T=%(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),JC(1))
+                    T=%(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),FLAVOR(1))
                     IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
                         ANS=ANS+T
                     ENDIF
@@ -161,7 +161,8 @@ C     For this reason, we simply remove the filterin when there is only three ex
 	  END
        
        
-      REAL*8 FUNCTION %(proc_prefix)sMATRIX(P,NHEL,IC)
+      REAL*8 FUNCTION %(proc_prefix)sMATRIX(P,NHEL,FLAVOR)
+      use model_object
 C  
 %(info_lines)s
 C
@@ -189,7 +190,8 @@ C
 C ARGUMENTS 
 C  
       REAL*8 P(0:3,NEXTERNAL)
-      INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      INTEGER FLAVOR(NEXTERNAL)
 C  
 C LOCAL VARIABLES 
 C  
@@ -227,6 +229,7 @@ C ----------
       END
 
       SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL ,ANS)
+      use model_object
       IMPLICIT NONE   
 C
 C CONSTANT

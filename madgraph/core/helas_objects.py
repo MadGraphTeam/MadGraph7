@@ -199,7 +199,7 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         else:
             inter = model.get_interaction(vertex.get('id'))
             coup_keys = sorted(inter.get('couplings').keys())
-            ret_list = tuple([(key, inter.get('couplings')[key]) for key in \
+            ret_list = tuple([(key, inter.get('couplings')[key] if isinstance(inter.get('couplings')[key],str) else inter.get('couplings')[key]['name']) for key in \
                           coup_keys] + \
                          [str(c) for c in inter.get('color')] + \
                          inter.get('lorentz')+sorted(inter.get('orders')))
@@ -767,8 +767,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
             if not isinstance(value, list):
                 raise self.PhysicsObjectError("%s is not a valid coupling string" % str(value))
             for name in value:
-                if not isinstance(name, str):
-                    raise self.PhysicsObjectError("%s doesn't contain only string" % str(value))
+                if not isinstance(name, (str, base_objects.FLV_Coupling)):
+                    raise self.PhysicsObjectError("%s doesn't contain only string/FLV_coupling (type=%s)" % (str(value),type(value)))
             if len(value) == 0:
                 raise self.PhysicsObjectError("%s should have at least one value" % str(value))
 
@@ -909,7 +909,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     if inter.get('lorentz'):
                         self.set('lorentz', [inter.get('lorentz')[0]])
                     if inter.get('couplings'):
-                        self.set('coupling', [list(inter.get('couplings').values())[0]])
+                        val = list(inter.get('couplings').values())[0]
+                        self.set('coupling', [val])
                         #self.set('coup_deps', [model.get('coupling_dep')[c[1:]] if c.startswith('-') else model.get('coupling_dep')[c] for c in self.get('coupling')])
                         #misc.sprint(self.get('coupling'), self.get('coup_deps'))
                         
@@ -1574,6 +1575,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     
         #fixed argument
         coupling_dep = self.model.get('coupling_dep')
+        flav_mode = False
         for i, coup in enumerate(self.get_with_flow('coupling')):
             # We do not include the - sign in front of the coupling of loop
             # wavefunctions (only the loop ones, the tree ones are treated normally)
@@ -1582,11 +1584,20 @@ class HelasWavefunction(base_objects.PhysicsObject):
             if not OptimizedOutput and self.get('is_loop'):
                 output['coup%d'%i] = coup[1:] if coup.startswith('-') else coup  
             else:
-                output['coup%d'%i] = coup
+                if isinstance(coup, str):
+                    output['coup%d'%i] = coup
+                else:
+                    flav_mode = True
+                    output['coup%d'%i] = coup.name
             c = output['coup%d'%i]
-            if c.startswith('-'):
+            if isinstance(c, str) and c.startswith('-'):
                 c = c[1:]
-            if c in coupling_dep and 'aS' in coupling_dep[c]:
+            if isinstance(c, str):
+                onec = c
+            else:
+                onec = next(iter(c['flavors'].values()))
+
+            if onec in coupling_dep and 'aS' in coupling_dep[onec]:
                 output['vec%d'%i] = "(ivec)"
             else:
                 output['vec%d'%i] = ""
@@ -1595,6 +1606,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         output['M'] = self.get('mass')
         output['W'] = self.get('width')
         output['propa'] = self.get('particle').get('propagator')
+
         if output['propa'] not in ['', None]:
             output['propa'] = 'P%s' % output['propa']
             if self.get('polarization'):
@@ -1623,6 +1635,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
             else:            
                 raise InvalidCmd( 'polarization not handle for decay particle')
             
+        if flav_mode:
+            output['propa'] = 'M%s' % output['propa']
+
         # optimization
         if aloha.complex_mass: 
             if (self.get('width') == 'ZERO' or self.get('mass') == 'ZERO'):
@@ -1849,6 +1864,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 tags.append('P1M')
             else:
                 raise InvalidCmd( 'polarization not handle for decay particle')
+            
+        if isinstance(self.get('coupling')[0], base_objects.FLV_Coupling):
+            tags.append('M')
 
         return (tuple(self.get('lorentz')),tuple(tags),self.find_outgoing_number())
 
@@ -2619,17 +2637,15 @@ class HelasAmplitude(base_objects.PhysicsObject):
             for name in value:
                 if not isinstance(name, str):
                     raise self.PhysicsObjectError("%s doesn't contain only string" % str(value))
-                        
-        if name == 'coupling':
+        elif name == 'coupling':
             #Should be a list of string
             if not isinstance(value, list):
-                raise self.PhysicsObjectError("%s is not a valid coupling (list of string)" % str(value))
-            
+                raise self.PhysicsObjectError("%s is not a valid coupling string" % str(value))
             for name in value:
-                if not isinstance(name, str):
-                    raise self.PhysicsObjectError("%s doesn't contain only string" % str(value))
-            if not len(value):
-                raise self.PhysicsObjectError('coupling should have at least one value')
+                if not isinstance(name, (str, base_objects.FLV_Coupling)):
+                    raise self.PhysicsObjectError("%s doesn't contain only string/FLV_coupling (type=%s)" % (str(value),type(value)))
+            if len(value) == 0:
+                raise self.PhysicsObjectError("%s should have at least one value" % str(value))                
 
         if name == 'color_key':
             if value and not isinstance(value, int):
@@ -3004,6 +3020,8 @@ class HelasAmplitude(base_objects.PhysicsObject):
             return None
 
         tags = ['C%i' % w for w in self.get_conjugate_index()]
+        if isinstance(self.get('coupling')[0], base_objects.FLV_Coupling):
+            tags.append('M')
 
         return (tuple(self.get('lorentz')),tuple(tags),self.find_outgoing_number())
 
@@ -3200,10 +3218,17 @@ class HelasAmplitude(base_objects.PhysicsObject):
                     output['WF%d' % i ] = '(1,WE(%d))'%nb                    
                 
         #fixed argument
+        output['tags'] = list()
         coupling_dep = self.model.get('coupling_dep')
         for i, coup in enumerate(self.get('coupling')):
-            output['coup%d'%i] = str(coup)
-            c = output['coup%d'%i]
+            if isinstance(coup, base_objects.FLV_Coupling):
+                output['coup%d'%i] = coup.name
+                c = next(iter(coup.get('flavors').values()))
+                if 'M' not in output['tags']: output['tags'].insert(0,'M')
+            else:
+                output['coup%d'%i] = str(coup)
+                c = str(coup)
+
             if c.startswith('-'):
                 c = c[1:]
 
@@ -3215,6 +3240,8 @@ class HelasAmplitude(base_objects.PhysicsObject):
 
         output['out'] = self.get('number') - flip
         output['propa'] = ''
+        output['tags'] =''.join(output['tags'])
+
         output.update(opt)
         return output
 
@@ -3649,7 +3676,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             wf.get('lorentz').append(inter.get('lorentz')[coupl_key[1]])
                             continue
                         wf = HelasWavefunction(last_leg, vertex.get('id'), model)
-                        wf.set('coupling', [inter.get('couplings')[coupl_key]])
+                        coups = [inter.get('couplings')[coupl_key]] 
+                        #coups = [c if isinstance(c, str) else c['name'] for c in coups]
+                        wf.set('coupling', coups)
                         if inter.get('color'):
                             wf.set('inter_color', inter.get('color')[coupl_key[0]])
                         done_color[color] = wf
@@ -5047,7 +5076,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         for wa in self.get_all_wavefunctions() + self.get_all_amplitudes():
             if wa.get('interaction_id') in [0,-1]:
                 continue
-            output.append(wa.get_aloha_info());
+            output.append(wa.get_aloha_info())
 
         return output
 
@@ -5059,10 +5088,25 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 self.get_all_wavefunctions() + self.get_all_amplitudes() \
                 if wa.get('interaction_id') not in [0,-1]]
         #some coupling have a minus one associated -> need to remove those
-        if output == str:
-            return [ [t] if not t.startswith('-') else [t[1:]] for t2 in tmp for t in t2]
-        elif output=="set":
-            return misc.make_unique(sum([ [t] if not t.startswith('-') else [t[1:]] for t2 in tmp for t in t2],[]))
+        #some coupling are object -> take the name attribute + content of such object
+
+        flav_coupling = sum(tmp, [])
+        other_coupling = [c for c in flav_coupling if isinstance(c, str)]
+        flav_coupling = [c for c in flav_coupling if not isinstance(c, str)]
+
+        if flav_coupling:
+            flav_name = [c for c in flav_coupling]
+            c_coupling =sum([list(c.get('flavors').values()) for c in flav_coupling],[])
+            other_coupling = [c if not c.startswith('-') else c[1:] for c in other_coupling] 
+            if output == str:
+                return [[x] for x in flav_name + other_coupling + c_coupling]
+            elif output == "set":
+                return misc.make_unique([[x] for x in flav_name + other_coupling + c_coupling])
+        else:
+            if output == str:
+                return [ [t] if not t.startswith('-') else [t[1:]] for t2 in tmp for t in t2]
+            elif output=="set":
+                return misc.make_unique(sum([ [t] if not t.startswith('-') else [t[1:]] for t2 in tmp for t in t2],[]))
 
 
     def get_mirror_processes(self):
@@ -5684,7 +5728,12 @@ class HelasMultiProcess(base_objects.PhysicsObject):
         for me in self.get('matrix_elements'):
             coupling_list.extend([c for l in me.get_used_couplings() for c in l])
         
-        return misc.make_unique(coupling_list)
+        def f(seq): # Order preserving
+            ''' Modified version of Dave Kirby solution '''
+            seen = set()
+            name = lambda x: x if isinstance(x,str) else x.get('name')
+            return [x for x in seq if name(x) not in seen and not seen.add(name(x))]
+        return f(coupling_list)
     
     def get_matrix_elements(self):
         """Extract the list of matrix elements"""

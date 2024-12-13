@@ -18,7 +18,7 @@ LIBDIR  = ../../lib/
 
 BASIC_OBJS = aloha_functions.o
 
-FFLAGS += $(ALOHA_FLAG)
+FFLAGS += $(ALOHA_FLAG) -I ../MODEL
 
 include ./aloha_file.inc
 

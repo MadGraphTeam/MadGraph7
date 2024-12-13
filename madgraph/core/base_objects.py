@@ -66,7 +66,14 @@ class PhysicsObject(dict):
 
         for item in init_dict.keys():
             self.set(item, init_dict[item])
-        
+
+    def __getattribute__(self, name):
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            if name in self:
+                return self[name]
+            raise
 
     def __getitem__(self, name):
         """ force the check that the property exist before returning the 
@@ -978,6 +985,83 @@ class Interaction(PhysicsObject):
         '%s_%s_%s'%(self['color'][k[0]],self['lorentz'][k[1]],self['couplings'][k]))
 
 
+    def pass_interaction_to_flavor_mode(self, ids_to_merge, merged, antimerged):
+        """ Pass the interaction to the flavor mode. This means that we will merge
+        the particles with the ids given in ids_to_merge. 
+        Coupling will be passed to FLV_coupling """
+
+        particles = [p for p in self.get('particles') if abs(p.get('pdg_code')) in ids_to_merge]
+        
+
+        # Update the coupling to FLV_coupling
+        for key, coup in list(self.get('couplings').items()):
+            if isinstance(coup, str):
+                flav = [ids_to_merge.index(abs(p.get_pdg_code()))+1 if p.get('pdg_code') in ids_to_merge else 0 for p in self.get('particles')]
+                assert isinstance(coup, str)
+                coupling = FLV_Coupling()
+                coupling.set('flavors', {tuple(flav): coup})
+                self.get('couplings')[key] = coupling
+            else:
+                # this happens for lepton neutrino W interaction 
+                # since lepton/neutrino are merged in two separate steps:
+                # need to update the flavor index of the secondly merged particle
+
+                for flavors in list(coup.get('flavors')):
+                    flav = list(flavors)
+                    for i, val in enumerate(flav):
+                        p = self.get('particles')[i]
+                        if val == 0 and p.get('pdg_code') in ids_to_merge:
+                            flav[i] = ids_to_merge.index(abs(p.get_pdg_code()))+1
+                    coup.get('flavors')[tuple(flav)] = coup.get('flavors').pop(flavors)
+
+        # Change the particles
+        for i, p in enumerate(self.get('particles')):
+            if p.get_pdg_code() in ids_to_merge:
+                self.get('particles')[i] = merged
+            elif p.get_anti_pdg_code() in ids_to_merge:
+                self.get('particles')[i] = antimerged 
+
+
+    def update_flavor(self, other_flavor, ids, new_part, anti_part):
+        """add a new coupling to the current merged flavor coupling
+           -> self coupling should be already of type FLV_Coupling
+           -> other_flavor can an interation without FLV_Coupling  (default case)
+               or with FLV_Coupling (if the other flavor has already been merged) 
+               like for lepton-neutrino W interaction 
+        """
+
+        assert isinstance(self.get('couplings')[(0,0)], FLV_Coupling)
+        #assert isinstance(other_flavor.get('couplings')[(0,0)], str)
+
+
+        flav = tuple([ids.index(abs(p.get_pdg_code()))+1 if p.get('pdg_code') 
+                      in ids else 0 for p in other_flavor.get('particles')]) 
+        if isinstance(other_flavor.get('couplings')[(0,0)], str):        
+            for color, lor in other_flavor.get('couplings'):
+                if (color, lor) in self.get('couplings'):
+                    # only need to update the flavor content of the existing Flavor coupling
+                    flav_dict = self.get('couplings')[color, lor].get('flavors')
+                    flav_dict[flav] = other_flavor.get('couplings')[color, lor]
+                else:
+                    # need to create a new flavor coupling
+                    coupling = FLV_Coupling()
+                    coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor]})
+                    self.get('couplings')[color, lor] = coupling
+        else:
+            for color, lor in other_flavor.get('couplings'):
+                if (color, lor) in self.get('couplings'):
+                    flav_dict = self.get('couplings')[color, lor].get('flavors')
+                    # only need to update the flavor content of the existing Flavor coupling
+                    other_flav_dict = other_flavor.get('couplings')[color, lor].get('flavors') 
+                    for base_flav in other_flav_dict:
+                        new_flav =  [base_flav[i] + flav[i] for i in range(len(flav))]
+                        flav_dict[tuple(new_flav)] = other_flav_dict[base_flav]
+                else:
+                    # need to create a new flavor coupling
+                    coupling = FLV_Coupling()
+                    coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor].get('flavors').values()[0]})
+                    self.get('couplings')[color, lor] = coupling
+
 
 #===============================================================================
 # InteractionList
@@ -1404,7 +1488,9 @@ class Model(PhysicsObject):
                             change[i]= id
                         else:
                             assert(12 in ids)
-                            change[i] =  9 + 2 * next(iter(inter.get('couplings')))[2][pos]
+                            c = next(iter(inter.get('couplings').values()))
+                            f = next(iter(c['flavors']))
+                            change[i] =  9 + 2 * f[pos]
             delta = (change[1]-change[0]) % 6
             # Here is the delta value for standard combination
             #   u c t  #   e  mu tau #    82(1) 82(2) 82(3)
@@ -1452,60 +1538,20 @@ class Model(PhysicsObject):
             if any(p.get('pdg_code') in ids for p in inter.get('particles')):
                 key = self.get_get_merge_key(inter, ids, new_part)
                 if key in new_interactions:
-                    self.update_interaction(inter, new_interactions[key], ids, new_part, anti_part)
+                    new_interactions[key].update_flavor(inter, ids, new_part, anti_part)
+                    self.get('interactions').remove(inter)
                 else:
+                    #inter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
                     new_interactions[key] = inter
-                    
-                    old_keys = list(inter.get('couplings').keys())
-                    values = list(inter.get('couplings').values())
-                    for key, value in zip(old_keys, values):
+                    inter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
+                
                         
-                        if len(key) == 2:
-                            flav = [ids.index(abs(p.get_pdg_code()))+1 if p.get('pdg_code') in ids else 0 for p in inter.get('particles')]
-                            new_key = (key[0], key[1], tuple(flav))
-                            del inter.get('couplings')[key]
-                        else:
-                            flav = key[2]
-                            for i, val in enumerate(flav):
-                                p = inter.get('particles')[i]
-                                if val != 0 and p.get('pdg_code') in ids:
-                                    flav[i] = ids.index(abs(p.get_pdg_code()))+1
-                            new_key = (key[0], key[1], tuple(flav))
-          
-                        inter.get('couplings')[new_key] = value
-                        
-                    for i, p in enumerate(inter.get('particles')):
-                        if p in particles:
-                            inter.get('particles')[i] = new_part
-                        elif p.get_anti_pdg_code() in ids:
-                            inter.get('particles')[i] = anti_part  
+ 
 
                     
            
-  
-                                                                                   
-
-    def update_interaction(self, old, merged_inter, ids, new_part, anti_part):
-        """add a new coupling to the new merged interaction"""
-        #just remove it for the moment
-
-        old_keys = list(old.get('couplings').keys())
-        values = list(old.get('couplings').values())  
-        for key, value in zip(old_keys, values):
-            if len(key) == 2:
-                flav = [ids.index(abs(p.get_pdg_code()))+1 if p.get('pdg_code') in ids else 0 for p in old.get('particles')]
-                new_key = (key[0], key[1], tuple(flav))
-                merged_inter.get('couplings')[new_key] = value
-            else:
-                flav = key[2]
-                for i, val in enumerate(flav):
-                    p = old.get('particles')[i]
-                    if val != 0 and p.get('pdg_code') in ids:
-                        flav[i] = ids.index(abs(p.get_pdg_code()))+1
-                new_key = (key[0], key[1], tuple(flav))
-                merged_inter.get('couplings')[new_key] = value
-
-        self.get('interactions').remove(old) 
+    
+                                                                
 
     def create_name2part(self):
         """create a dictionary name 2 part"""
@@ -2291,6 +2337,63 @@ class ParamCardVariable(ModelVariable):
 # Classes used in diagram generation and process definition:
 #    Leg, Vertex, Diagram, Process
 #===============================================================================
+
+#===============================================================================
+# Flavor Coupling
+#===============================================================================
+class FLV_Coupling(PhysicsObject):
+
+    nb = 0
+    sorted_keys = ['name', 'flavors']
+
+    def __init__(self, name=None, flavors=None):
+        """Default values for all properties"""
+        FLV_Coupling.nb += 1
+
+        # case for the initialization from another object
+        if isinstance(name, dict) and flavors is None:
+            return super().__init__(name)
+        else:
+            super().__init__()
+
+        if name is not None: 
+            self.set('name', name)
+        if flavors is not None:
+            self.set('flavors', flavors)
+
+        if not self.get('name'): 
+            self.set('name', 'FLV_%s' % FLV_Coupling.nb)
+
+    def default_setup(self):
+        """Default values for all properties"""
+        self['name'] = ''
+        self['flavors'] = {}
+    
+    def get_sorted_keys(self):
+        return self.sorted_keys
+    
+    def get_one_coupling(self):
+        """return one coupling"""
+        return next(iter(self['flavors']))
+    
+    def get_all_couplings(self):
+        """return all couplings"""
+        return misc.make_unique(list(self['flavors'].values()))
+
+    def __str__(self):
+
+        max_flav = max([max([i for i in k]) for k in  self['flavors']])
+        one_flav = next(iter(self['flavors']))
+        for i in range(len(one_flav)):
+            if one_flav[i] != 0:
+                index = i 
+        array = '['
+        for i in range(1, max_flav+1):
+            for keys in self['flavors']:
+                if keys[index] == i:
+                    array+= '%s,' % self['flavors'][keys]
+        array+=']' 
+        return '%(name)s: %(array)s' % {'name': self['name'], 'array': array}
 
 #===============================================================================
 # Leg

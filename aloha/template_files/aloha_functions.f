@@ -14,11 +14,12 @@ C###############################################################################
          TYPE ALOHA 
             double complex::W(4)
             double precision :: P(0:3)
+            integer :: flv_index 
          END TYPE ALOHA
       end module ALOHA_OBJECT
 
 
-      subroutine ixxxxx(p, fmass, nhel, nsf ,fi)
+      subroutine ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number.
@@ -35,8 +36,8 @@ c
       use ALOHA_OBJECT
       implicit none
       
-      type(aloha) fi
-
+          type(aloha) fi
+      integer flavor
       double complex chi(2)
 
       double precision p(0:3),sf(2),sfomeg(2),omega(2),fmass,
@@ -50,7 +51,7 @@ c
       fi % P(1)  = p(1)*nsf*-1
       fi % P(2)  = p(2)*nsf*-1
       fi % P(3)  = p(3)*nsf*-1
-
+      fi % flv_index = flavor
 c#ifdef HELAS_CHECK
 c      double precision p2
 c      double precision epsi
@@ -164,7 +165,7 @@ c
 
 
 
-      subroutine oxxxxx(p,fmass,nhel,nsf , fo)
+      subroutine oxxxxx(p,fmass,nhel,nsf , flavor, fo)
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number.
@@ -181,6 +182,7 @@ c
       use aloha_object
       implicit none
       type(aloha) fo
+      integer flavor
 
       double complex chi(2)
       double precision p(0:3),sf(2),sfomeg(2),omega(2),fmass,
@@ -231,7 +233,7 @@ c#endif
       fo % P(1)  = p(1)*nsf
       fo % P(2)  = p(2)*nsf
       fo % P(3)  = p(3)*nsf
-
+      fo % flv_index = flavor
       nh = nhel*nsf
 
       if ( fmass.ne.rZero ) then
