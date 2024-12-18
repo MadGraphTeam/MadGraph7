@@ -58,7 +58,7 @@ C
         REAL*8 T,MATRIX%(proc_id)s
         REAL*8 R,SUMHEL,TS(NCOMB)
         INTEGER I,IDEN
-        INTEGER JC(NEXTERNAL),II
+        INTEGER FLAVOR(NEXTERNAL),II
         REAL*8 HWGT, XTOT, XTRY, XREJ, XR, YFRAC(0:NCOMB)
         INTEGER NGOOD
         INTEGER J, JJ
@@ -115,7 +115,7 @@ C ----------
 
     NTRY(%(proc_id)s)=NTRY(%(proc_id)s)+1
     DO I=1,NEXTERNAL
-       JC(I) = +1
+       FLAVOR(I) = +1
     ENDDO
      
     IF (multi_channel) THEN
@@ -137,7 +137,7 @@ C ----------
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
       DO I=1,NCOMB
          IF (GOODHEL(I,%(proc_id)s) .OR. NTRY(%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),JC(1),I,AMP2, JAMP2, IVEC)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),FLAVOR(1),I,AMP2, JAMP2, IVEC)
             %(beam_polarization)s
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
 			  call DS_add_entry('Helicity',I,T)
@@ -184,7 +184,7 @@ C ----------
 C           The helicity configuration was chosen already by genps and put in a common block defined in genps.inc.
             I = HEL_PICKED
 
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),JC(1),I,AMP2, JAMP2, IVEC)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),FLAVOR(1),I,AMP2, JAMP2, IVEC)
 
             %(beam_polarization)s
 c           Always one helicity at a time
@@ -243,7 +243,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     END
 
 
-REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IC, IHEL,AMP2, JAMP2, IVEC)
+REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,FLAVOR, IHEL,AMP2, JAMP2, IVEC)
 C  
 %(info_lines)s
 C
@@ -279,7 +279,7 @@ C
 C ARGUMENTS 
 C  
     REAL*8 P(0:3,NEXTERNAL)
-    INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+    INTEGER NHEL(NEXTERNAL), FLAVOR(NEXTERNAL)
     INTEGER IHEL
     INTEGER IVEC
 C  

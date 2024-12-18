@@ -1,4 +1,4 @@
-      SUBROUTINE %(proc_prefix)sSMATRIXHEL(P,HEL,ANS)
+      SUBROUTINE %(proc_prefix)sSMATRIXHEL(P,HEL, FLAVOR, ANS)
       IMPLICIT NONE
 C
 C CONSTANT
@@ -10,12 +10,14 @@ C
 CF2PY INTENT(OUT) :: ANS                                                                                                                                                                                     
 CF2PY INTENT(IN) :: HEL                                                                                                                                                                                    
 CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)  
+CF2PY INTENT(IN) :: FLAVOR(NEXTERNAL)
 
 C  
 C ARGUMENTS 
 C  
       REAL*8 P(0:3,NEXTERNAL),ANS
 	  INTEGER HEL
+      INTEGER FLAVOR(NEXTERNAL)
 C
 C GLOBAL VARIABLES
 C
@@ -25,12 +27,12 @@ C ----------
 C BEGIN CODE
 C ----------
       USERHEL=HEL
-	  CALL %(proc_prefix)sSMATRIX(P,ANS)
+	  CALL %(proc_prefix)sSMATRIX(P,FLAVOR,ANS)
 	  USERHEL=-1
 
 	  END
 
-      SUBROUTINE %(proc_prefix)sSMATRIX(P,ANS)
+      SUBROUTINE %(proc_prefix)sSMATRIX(P, FLAVOR, ANS)
 C  
 %(info_lines)s
 C 
@@ -62,6 +64,7 @@ C
       REAL*8 P(0:3,NEXTERNAL),ANS
 CF2PY INTENT(OUT) :: ANS
 CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+CF2PY INTENT(IN) :: FLAVOR(NEXTERNAL)
 C  
 C LOCAL VARIABLES 
 C  
@@ -116,9 +119,6 @@ C ----------
 C BEGIN CODE
 C ----------
       IF(USERHEL.EQ.-1) NTRY=NTRY+1
-      DO IHEL=1,NEXTERNAL
-         FLAVOR(IHEL) = +1
-      ENDDO
 C     When spin-2 particles are involved, the Helicity filtering is dangerous for the 2->1 topology.
 C     This is because depending on the MC setup the initial PS points have back-to-back initial states
 C     for which some of the spin-2 helicity configurations are zero. But they are no longer zero
@@ -228,7 +228,7 @@ C ----------
 %(amp2_lines)s
       END
 
-      SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL ,ANS)
+      SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL, FLAVOR ,ANS)
       use model_object
       IMPLICIT NONE   
 C
@@ -243,10 +243,12 @@ C
       INTEGER NHEL
       DOUBLE PRECISION ALPHAS 
       real*8 pi     
+      INTEGER FLAVOR(NEXTERNAL)
 CF2PY INTENT(OUT) :: ANS  
 CF2PY INTENT(IN) :: NHEL   
 CF2PY INTENT(IN) :: P(0:3,NEXTERNAL) 
 CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: FLAVOR(NEXTERNAL)
 C     ROUTINE FOR F2PY to read the benchmark point.    
 C     the include file with the values of the parameters and masses 
       include "coupl.inc"
@@ -255,9 +257,9 @@ C     the include file with the values of the parameters and masses
       G = 2* DSQRT(ALPHAS*pi)
       call UPDATE_AS_PARAM()
       if (NHEL.ne.0) then
-        CALL %(proc_prefix)sSMATRIXHEL(P, NHEL, ANS)
+        CALL %(proc_prefix)sSMATRIXHEL(P, NHEL, FLAVOR, ANS)
       else
-        CALL %(proc_prefix)sSMATRIX(P, ANS)
+        CALL %(proc_prefix)sSMATRIX(P, FLAVOR, ANS)
       endif
       return 
       end

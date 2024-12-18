@@ -32,6 +32,9 @@ C
       REAL*8 SQRTS,MATELEM           ! sqrt(s)= center of mass energy 
       REAL*8 PIN(0:3), POUT(0:3)
       CHARACTER*120 BUFF(NEXTERNAL)
+      INTEGER MAXFLAVOR
+      PARAMETER (MAXFLAVOR=%(maxflavor)d)
+      INTEGER FLAVOR(NEXTERNAL, MAXFLAVOR)
 C     
 C     EXTERNAL
 C     
@@ -89,15 +92,17 @@ c
       enddo
       write (*,*) "-----------------------------------------------------------------------------"
 
+      %(flavor_def)s
 c     
 c     Now we can call the matrix element!
 c
-      CALL SMATRIX(P,MATELEM)
+      do I=1, MAXFLAVOR
+      CALL SMATRIX(P,FLAVOR(1,I), MATELEM)
 c
-
+      write(*,*) "flavor", FLAVOR(:,I)
       write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)	
       write (*,*) "-----------------------------------------------------------------------------"
-
+      enddo
 
 cc
 cc      Copy down here (or read in) the four momenta as a string. 

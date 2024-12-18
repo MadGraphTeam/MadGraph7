@@ -581,6 +581,8 @@ class ALOHAWriterForFortran(WriteALOHA):
                     if name not in argument_var:
                         size=self.get_size(name, -2)
                         #to_end.append("allocate(%s %% W(%s))" % (name,size))
+                    if name.startswith('F'):
+                        out.write(' integer flv_index%s \n' % name[1:])
                 else:
                     if name in argument_var:
                         size ='*'
@@ -618,7 +620,7 @@ class ALOHAWriterForFortran(WriteALOHA):
                 out.write(' type(flv_coupling) M%s\n' % (name))
                 out.write(' double complex %s\n' % (name))
                 if name in ['COUP', 'COUP1']:
-                    out.write(' integer flv_index, flv_index1, flv_index2\n')
+                    out.write(' integer flv_index\n')
             else:
                 out.write(' %s %s\n' % (self.type2def[type], name))
                 
@@ -727,7 +729,25 @@ class ALOHAWriterForFortran(WriteALOHA):
         
         out = StringIO()
         if 'M' not in self.tag:
-            return ''
+            if self.particles[0] != 'F':
+                return ''
+            # no matrix coupling, so a single coupling, so this is diagonal in flavor space
+            # but still need to check !
+            elif self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
+                if not self.outgoing:
+                    fail = "VERTEX = (0d0,0d0)"
+                else:
+                    fail = '%s%d%%W(:) = (0d0,0d0)' % (self.particles[self.outgoing-1], self.outgoing)
+
+                out.write('   flv_index1 = F1 %flv_index\n')
+                out.write('   flv_index2 = F2 %flv_index\n')
+                out.write('   if(flv_index1.ne.flv_index2.or.flv_index1.eq.0d0)then  \n %s\n  return\nendif\n' % fail)
+            else:
+                incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+                outgoing = self.outgoing
+                out.write('  F%i %% FLV_INDEX = F%i %% FLV_INDEX\n' % (outgoing, incoming))
+
+            return out.getvalue()    
         
         if self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
             if not self.outgoing:
@@ -735,34 +755,34 @@ class ALOHAWriterForFortran(WriteALOHA):
             else:
                 fail = '%s%d%%W(:) = (0d0,0d0)' % (self.particles[self.outgoing-1], self.outgoing)
 
-            out.write('   flv_index = F1 %flv_index\n')
+            out.write('   flv_index1 = F1 %flv_index\n')
             out.write('   flv_index2 = F2 %flv_index\n')
-            out.write('   if(flv_index.eq.0.or.flv_index2.eq.0)then  \n %s\n  return\nendif\n' % fail)
-            out.write('   if(MCOUP %% PARTNER(flv_index).ne.flv_index2)then \n %s\n return\n endif\n' %fail)
+            out.write('   if(flv_index1.eq.0.or.flv_index2.eq.0)then  \n %s\n  return\nendif\n' % fail)
+            out.write('   if(MCOUP %% PARTNER(flv_index1).ne.flv_index2)then \n %s\n return\n endif\n' %fail)
         else:
             incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
             if incoming %2 == 1:
                 outgoing = self.outgoing
-                out.write('   flv_index = F%i %%flv_index\n' % incoming)
-                out.write('   if(flv_index.eq.0)then\n')
+                out.write('   flv_index%i = F%i %%flv_index\n' % (incoming, incoming))
+                out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
                 out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   flv_index2 = MCOUP % PARTNER(FLV_INDEX)\n')
+                out.write('   flv_index2 = MCOUP %% PARTNER(FLV_INDEX%i)\n' %(incoming))
                 out.write('   if(flv_index2.eq.0)then\n')
                 out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
                 out.write('   F%i %% FLV_INDEX = FLV_INDEX2\n' % outgoing)
             else:
                 outgoing = self.outgoing
-                out.write('   flv_index2 = F%i %%flv_index\n' % incoming)
-                out.write('   if(flv_index2.eq.0)then\n')
+                out.write('   flv_index%i = F%i %%flv_index\n' % (incoming,incoming))
+                out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
                 out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   flv_index = MCOUP % PARTNER2(FLV_INDEX2)\n')
-                out.write('   if(flv_index.eq.0)then\n')
+                out.write('   flv_index1 = MCOUP %% PARTNER2(FLV_INDEX%i)\n' %(incoming))
+                out.write('   if(flv_index1.eq.0)then\n')
                 out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   F%i %% FLV_INDEX = FLV_INDEX\n' % outgoing)                
+                out.write('   F%i %% FLV_INDEX = FLV_INDEX1\n' % outgoing)                
  
         for ftype, name in self.declaration:
             if name.startswith('COUP'):
-                out.write(' %s = M%s %% VAL(flv_index) %% p \n' % (name, name))
+                out.write(' %s = M%s %% VAL(flv_index1) %% p \n' % (name, name))
         return out.getvalue()     
 
     def get_one_momenta_def(self, i, strfile):

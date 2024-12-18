@@ -1062,6 +1062,41 @@ class Interaction(PhysicsObject):
                     coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor].get('flavors').values()[0]})
                     self.get('couplings')[color, lor] = coupling
 
+    def check_flavor(self, map_flavor):
+        """map is "original_pdg (so the merged one) -> flavor index (1 if particle is not merged)
+           return True if map is valid, False otherwise
+           
+           WARNING: map_flavor is modified in the process!!
+           """
+        
+        pdgs = [p.get_pdg_code() for p in self.get('particles')]
+        flavor = [map_flavor[pdg].pop() if abs(pdg) in [81,82,83] else 0 for pdg in pdgs]
+
+        for coupling in self.get('couplings').values():
+            if isinstance(coupling, str):
+                # if no PDG in merge range -> return True
+                if any([pdg in [81,82,83] for pdg in pdgs]):
+                    positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in [81,82,83]]
+                    if len(positions) != 2:
+                        raise Exception
+                    elif flavor[positions[0]] == flavor[positions[1]]:
+                        return True
+                    # continue in case another coupling does define it
+                    #else:
+                    #    return False
+                elif flavor == [0]*len(pdgs):
+                    return True
+                else:
+                    raise Exception
+            else:
+                misc.sprint(flavor)
+                if tuple(flavor) in coupling.get('flavors'):
+                    return True
+                # continue in case another coupling does define it
+                #else:
+                #    return False            
+
+
 
 #===============================================================================
 # InteractionList
@@ -1546,12 +1581,19 @@ class Model(PhysicsObject):
                     inter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
                 
                         
- 
+        # for vertex which preserve flavor and has identical couplings. Move it back
+        # to previous mode
+        for inter in new_interactions.values():
+            coups = list(inter.get('couplings').values())
+            if all([len(set(fc.get('flavors').values()))==1 for fc in coups]):
+                for key in inter.get('couplings'):
+                    old_coup = inter.get('couplings')[key]
+                    if len(old_coup.get('flavors')) == len(ids):
+                        for fkey, new_coup in old_coup.get('flavors').items():
+                            if len([k for k in fkey if k]) == 2:
+                                inter.get('couplings')[key] = new_coup
+                            break
 
-                    
-           
-    
-                                                                
 
     def create_name2part(self):
         """create a dictionary name 2 part"""

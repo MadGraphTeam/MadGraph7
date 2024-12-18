@@ -3390,6 +3390,88 @@ class HelasDiagram(base_objects.PhysicsObject):
         
         return self['amplitudes']
 
+    def check_flavor(self, flavor_id, model):
+        """ check if the real_pdg is compatible with the diagram"""
+
+        #flavor_status = {}
+        #pdg_for_number = {}
+        for wfct in self['wavefunctions']:
+            misc.sprint(id(wfct))
+            if len(wfct.get('mothers'))==0:
+                i = wfct.get('number_external')
+                if abs(flavor_id[i-1]) == abs(wfct.get('pdg_code')) or flavor_id[i-1] == 1:
+                    wfct['flavor'] = 1
+                elif abs(wfct.get('pdg_code')) in [81,82,83]:
+                    wfct['flavor'] = flavor_id[i-1]
+                else:
+                    raise Exception('Not Implemented')
+            else:
+                # pdg and flavor from previous wfct
+                pdg_in = [w.get_pdg_code() for w in wfct.get('mothers')]
+                flav = [w['flavor'] for w in wfct.get('mothers')]
+                # info from the final state (flavor not set yet)
+                pdg_out = wfct.get('pdg_code')
+
+                if abs(pdg_out) in [81,82,83]:
+                    # we need to set the flavor of this wfct
+                    vertex = model.get('interaction_dict')[wfct.get('interaction_id')]
+                    coup = next(iter(vertex.get('couplings').values()))
+                    if isinstance(coup, str):
+                        # This means this is a delta in flavor
+                        #find the flavor of the incoming particles
+                        index = [i for i, pdg in enumerate(pdg_in) if abs(pdg) in [81,82,83]][0] 
+                        wfct['flavor'] = flav[index]
+                    else:
+                        index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_in) if abs(pdg) in [81,82,83]][0]
+                        merge_flavor = flav[index_merge]
+                        #merge_pdg = [pdg for pdg in pdg_in if abs(pdg) in [81,82,83]]
+                        pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')] 
+                        out_index = pdg_vertex.index(pdg_out)
+                        pos_merge = pdg_vertex.index(merge_pdg)
+                        for key in coup.get('flavors'):
+                            if key[pos_merge] == merge_flavor:
+                                wfct['flavor'] = key[out_index]
+                                break
+                        else:
+                            return False
+                else:
+                    wfct['flavor'] = 1
+                    # we need to check the flavor of the wfct is valid
+                    vertex = model.get('interaction_dict')[wfct.get('interaction_id')]
+                    map = {}
+                    for pdg, flavor in zip(pdg_in,flav):
+                        if pdg in map:
+                            map[pdg].append(flavor)
+                        else:
+                            map[pdg] = [flavor]
+                    map[pdg_out] = [1]
+                    #carefull check_flavor empty the list of the map!
+                    status = vertex.check_flavor(map)
+                    if not status:
+                        return False
+
+        for wfct in self['amplitudes']:  
+            # pdg and flavor from previous wfct
+            pdg_in = [w.get_pdg_code() for w in wfct.get('mothers')]
+            flav = [w['flavor'] for w in wfct.get('mothers')]
+
+            vertex = model.get('interaction_dict')[wfct.get('interaction_id')]
+            map= {}
+            for pdg, flavor in zip(pdg_in,flav):
+                    if pdg in map:
+                        map[pdg].append(flavor)
+                    else:
+                        map[pdg] = [flavor]
+            #carefull check_flavor empty the list of the map!
+            status = vertex.check_flavor(map)
+            if not status:
+                return False
+
+        return True
+
+
+
+
 #===============================================================================
 # HelasDiagramList
 #===============================================================================
@@ -4793,6 +4875,38 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 mass_list.append(wf.get('particle').get('mass'))
         
         return mass_list
+    
+    def get_external_flavors(self):
+
+        pdgs=[]
+        external_wfs = sorted([wf for wf in self.get_all_wavefunctions() if wf.get('leg_state') != \
+                              'intermediate'],\
+                              key=lambda w: w['number_external'])
+        external_number=1
+        for wf in external_wfs:
+            if wf.get('number_external')==external_number:
+                external_number=external_number+1
+                pdgs.append(wf.get('particle').get_pdg_code())
+        
+        to_map = collections.defaultdict(lambda:[1])
+        to_map[81] = [1,2,3,4]
+        to_map[82] = [1,2,3]
+        to_map[83] = [1,2,3]    
+
+        flavor_list = []
+        for one_flavor in itertools.product(*[to_map[abs(id)] for id in pdgs]):
+            if self.check_flavor(one_flavor, self.get('processes')[0].get('model')):
+                flavor_list.append(one_flavor)
+        
+        return flavor_list
+    
+    def check_flavor(self, real_pdgs, model):
+        """check if any feynman diagram is compatible with the pdg codes replaced by the real_pdgs"""
+
+        for diag in self.get('diagrams'):
+            if diag.check_flavor(real_pdgs, model):
+                return True
+        return False
         
     def get_helicity_combinations(self):
         """Gives the number of helicity combinations for external
@@ -5673,6 +5787,7 @@ class HelasMultiProcess(base_objects.PhysicsObject):
         """Return process property names as a nicely sorted list."""
 
         return ['matrix_elements']
+    
 
     def __init__(self, argument=None, combine_matrix_elements=True,
                  matrix_element_opts={}, compute_loop_nc = False):

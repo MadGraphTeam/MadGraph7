@@ -2524,9 +2524,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             shutil.copy(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'), 
                     pjoin(self.dir_path, 'SubProcesses', 'makefileP'))
         
-        if self.format == 'standalone':
-            shutil.copy(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'check_sa.f'), 
-                    pjoin(self.dir_path, 'SubProcesses', 'check_sa.f'))
+
                         
         # Add file in Source
         shutil.copy(pjoin(temp_dir, 'Source', 'make_opts'), 
@@ -2557,6 +2555,26 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 #"""
 #        writer.write(text)
 #        return
+
+
+    def write_check_sa(self, fsock, matrix_element, proc_prefix):
+
+        if self.format != 'standalone':
+            return
+    
+        template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'check_sa.f')).read()
+
+
+        all_flavors  = matrix_element.get_external_flavors()
+        maxflavor = len(all_flavors )
+        flavor_text = ['        FLAVOR(:,:) =1']
+        for i in range(1, maxflavor+1):
+            for j in range(1,1+len(all_flavors[i-1])):
+                if all_flavors[i-1][j-1] != 1:
+                    flavor_text.append('FLAVOR(%d,%d) = %d' % (j,i,all_flavors[i-1][j-1]))
+        flavor_text = '\n        '.join(flavor_text)
+        fsock.write(template % {'maxflavor':maxflavor, 'flavor_def': flavor_text})
+
 
     #===========================================================================
     # export model files
@@ -3090,6 +3108,10 @@ CF2PY integer, intent(in) :: new_value
         filename = pjoin(dirpath, 'ngraphs.inc')
         self.write_ngraphs_file(writers.FortranWriter(filename),
                            len(matrix_element.get_all_amplitudes()))
+        
+        if self.format == 'standalone':
+            filename = pjoin(dirpath, 'check_sa.f')
+            self.write_check_sa(writers.FortranWriter(filename), matrix_element, proc_prefix)
 
         # Generate diagrams
         if not 'noeps' in self.opt['output_options'] or self.opt['output_options']['noeps'] != 'True':
@@ -3105,6 +3127,8 @@ CF2PY integer, intent(in) :: new_value
             plot.draw()
 
         linkfiles = ['check_sa.f', 'coupl.inc']
+        if self.format == 'standalone':
+            linkfiles = ['coupl.inc']   
 
         if proc_prefix and os.path.exists(pjoin(dirpath, '..', 'check_sa.f')):
             text = open(pjoin(dirpath, '..', 'check_sa.f')).read()
@@ -4051,7 +4075,7 @@ c     channel position
 
         nexternal, ninitial = matrix_element.get_nexternal_ninitial()
 
-        if ninitial < 1 or ninitial > 2:
+        if ninitial not in [1,2]:
             raise writers.FortranWriter.FortranWriterError("""Need ninitial = 1 or 2 to write auto_dsig file""")
 
         replace_dict = {}
