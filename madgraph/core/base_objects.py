@@ -1062,21 +1062,21 @@ class Interaction(PhysicsObject):
                     coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor].get('flavors').values()[0]})
                     self.get('couplings')[color, lor] = coupling
 
-    def check_flavor(self, map_flavor):
+    def check_flavor(self, map_flavor, model):
         """map is "original_pdg (so the merged one) -> flavor index (1 if particle is not merged)
            return True if map is valid, False otherwise
            
-           WARNING: map_flavor is modified in the process!!
+           WARNING: map_flavor is modified/destroy in the process!!
            """
         
         pdgs = [p.get_pdg_code() for p in self.get('particles')]
-        flavor = [map_flavor[pdg].pop() if abs(pdg) in [81,82,83] else 0 for pdg in pdgs]
+        flavor = [map_flavor[pdg].pop() if abs(pdg) in model.get('merged_particles') else 0 for pdg in pdgs]
 
         for coupling in self.get('couplings').values():
             if isinstance(coupling, str):
                 # if no PDG in merge range -> return True
-                if any([pdg in [81,82,83] for pdg in pdgs]):
-                    positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in [81,82,83]]
+                if any([pdg in model['merged_particles'] for pdg in pdgs]):
+                    positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model['merged_particles']]
                     if len(positions) != 2:
                         raise Exception
                     elif flavor[positions[0]] == flavor[positions[1]]:
@@ -1089,7 +1089,6 @@ class Interaction(PhysicsObject):
                 else:
                     raise Exception
             else:
-                misc.sprint(flavor)
                 if tuple(flavor) in coupling.get('flavors'):
                     return True
                 # continue in case another coupling does define it
@@ -4163,6 +4162,7 @@ class ProcessList(PhysicsObjectList):
         mystr = "\n".join([p.nice_string(indent) for p in self])
 
         return mystr
+
 
 #===============================================================================
 # ProcessDefinition

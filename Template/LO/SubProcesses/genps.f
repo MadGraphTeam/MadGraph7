@@ -1799,6 +1799,7 @@ c     find the boost momenta --sum of particles--
       end
 
       double precision function get_channel_cut(p, config)
+      use model_object
       implicit none
 
       include 'maxconfigs.inc'

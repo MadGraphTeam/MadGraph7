@@ -3396,12 +3396,11 @@ class HelasDiagram(base_objects.PhysicsObject):
         #flavor_status = {}
         #pdg_for_number = {}
         for wfct in self['wavefunctions']:
-            misc.sprint(id(wfct))
             if len(wfct.get('mothers'))==0:
                 i = wfct.get('number_external')
                 if abs(flavor_id[i-1]) == abs(wfct.get('pdg_code')) or flavor_id[i-1] == 1:
                     wfct['flavor'] = 1
-                elif abs(wfct.get('pdg_code')) in [81,82,83]:
+                elif abs(wfct.get('pdg_code')) in model.get('merged_particles'):
                     wfct['flavor'] = flavor_id[i-1]
                 else:
                     raise Exception('Not Implemented')
@@ -3412,17 +3411,17 @@ class HelasDiagram(base_objects.PhysicsObject):
                 # info from the final state (flavor not set yet)
                 pdg_out = wfct.get('pdg_code')
 
-                if abs(pdg_out) in [81,82,83]:
+                if abs(pdg_out) in model.get('merged_particles'):
                     # we need to set the flavor of this wfct
                     vertex = model.get('interaction_dict')[wfct.get('interaction_id')]
                     coup = next(iter(vertex.get('couplings').values()))
                     if isinstance(coup, str):
                         # This means this is a delta in flavor
                         #find the flavor of the incoming particles
-                        index = [i for i, pdg in enumerate(pdg_in) if abs(pdg) in [81,82,83]][0] 
+                        index = [i for i, pdg in enumerate(pdg_in) if abs(pdg) in model.get('merged_particles')][0] 
                         wfct['flavor'] = flav[index]
                     else:
-                        index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_in) if abs(pdg) in [81,82,83]][0]
+                        index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_in) if abs(pdg) in model.get('merged_particles')][0]
                         merge_flavor = flav[index_merge]
                         #merge_pdg = [pdg for pdg in pdg_in if abs(pdg) in [81,82,83]]
                         pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')] 
@@ -3446,7 +3445,7 @@ class HelasDiagram(base_objects.PhysicsObject):
                             map[pdg] = [flavor]
                     map[pdg_out] = [1]
                     #carefull check_flavor empty the list of the map!
-                    status = vertex.check_flavor(map)
+                    status = vertex.check_flavor(map, model)
                     if not status:
                         return False
 
@@ -3463,11 +3462,23 @@ class HelasDiagram(base_objects.PhysicsObject):
                     else:
                         map[pdg] = [flavor]
             #carefull check_flavor empty the list of the map!
-            status = vertex.check_flavor(map)
+            status = vertex.check_flavor(map, model)
             if not status:
                 return False
 
         return True
+
+
+    def check_helicity(self, helicity):
+        """check if the helicity is compatible with the diagram
+           ONLY check performed so far is related to fermion chirality.
+           massless fermion are chiral and will be tag as left/right.
+           if no massles fermion -> return True
+           For massless fermion, check the impact of each operator to check the
+           implication on the chirality of the fermion and/or if the vertex is zero 
+           due to chirality (W couple only to left fermion, photon does not have axial
+           part,...)
+        """
 
 
 
@@ -3591,6 +3602,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 super(HelasMatrixElement, self).__init__(amplitude)
         else:
             super(HelasMatrixElement, self).__init__()
+        self['allowed_flavors'] = []
 
     # Comparison between different amplitudes, to allow check for
     # identical processes. Note that we are then not interested in
@@ -4144,6 +4156,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # this matrix element
         self.identical_decay_chain_factor(list(decay_dict.values()))
         
+    
+    def get_nb_flavors(self):
+        """Return the number of different flavors used in the matrix elements"""
+        
+        misc.sprint('pass here ...')
+        misc.sprint(len(self.get_external_flavors()))
+        misc.sprint(len(self.get('processes')))
+
+        return len(self.get_external_flavors())*len(self.get('processes'))
 
     def insert_decay(self, old_wfs, decay, numbers, got_majoranas):
         """Insert a decay chain matrix element into the matrix element.
@@ -4876,11 +4897,25 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         
         return mass_list
     
-    def get_external_flavors(self):
+    def get_external_nhel(self):
+        """Determine which list of helicity are not zero for the external particles"""
+        # NOT IMPLEMETED /WORKING /CALL
+        allowed_helicity = []
+        for nhel in self.get_helicity_matrix():
+            if self.check_helicity(nhel):
+                allowed_helicity.append(nhel)
 
+        misc.sprint(allowed_helicity)
+        return allowed_helicity
+
+
+    def get_external_flavors(self):
+        """If merged particles are used, determine the list of possible flavor that are not zero """
+
+        if self['allowed_flavors']:
+            return self['allowed_flavors']
         pdgs=[]
-        external_wfs = sorted([wf for wf in self.get_all_wavefunctions() if wf.get('leg_state') != \
-                              'intermediate'],\
+        external_wfs = sorted([wf for wf in self.get_all_wavefunctions() if len(wf.get('mothers')) == 0],
                               key=lambda w: w['number_external'])
         external_number=1
         for wf in external_wfs:
@@ -4898,6 +4933,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if self.check_flavor(one_flavor, self.get('processes')[0].get('model')):
                 flavor_list.append(one_flavor)
         
+        self['allowed_flavors'] = flavor_list
         return flavor_list
     
     def check_flavor(self, real_pdgs, model):
@@ -4907,7 +4943,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if diag.check_flavor(real_pdgs, model):
                 return True
         return False
-        
+    
+    def check_helicity(self, helicity):
+        """check if any feynman diagram is compatible with the given helicity"""
+
+        for diag in self.get('diagrams'):
+            if diag.check_helicity(helicity):
+                return True
+        return False
+
     def get_helicity_combinations(self):
         """Gives the number of helicity combinations for external
         wavefunctions"""
@@ -5442,6 +5486,7 @@ class HelasMatrixElementList(base_objects.PhysicsObjectList):
         for i in pos:
             del self[i]
             break
+
 
 #===============================================================================
 # HelasDecayChainProcess

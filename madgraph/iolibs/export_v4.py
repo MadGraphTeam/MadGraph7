@@ -796,7 +796,7 @@ C
         """Write the nexternal.inc file for MG4"""
 
         path = pjoin(_file_path,'iolibs','template_files','madevent_makefile_source')
-        set_of_lib = ' '.join(['$(LIBRARIES)']+self.get_source_libraries_list())
+        set_of_lib = ' '.join(self.get_source_libraries_list()+['$(LIBRARIES)'])
         if self.opt['model'] == 'mssm' or self.opt['model'].startswith('mssm-'):
             model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL; make
 MODEL/MG5_param.dat: ../Cards/param_card.dat\n\t../bin/madevent treatcards param
@@ -952,11 +952,31 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
 
         lines = []
+        real_iproc = -1
         for iproc, proc in enumerate(matrix_element.get('processes')):
+            real_iproc += 1
             legs = proc.get_legs_with_decays()
-            lines.append("DATA (IDUP(i,%d,%d),i=1,%d)/%s/" % \
-                         (iproc + 1, numproc+1, nexternal,
+            ids = [l.get('id') for l in legs]
+            if any([id in self.model['merged_particles'] for id in ids]):
+                allow_flavor = matrix_element.get_external_flavors()
+                misc.sprint(allow_flavor)
+                for flavor in allow_flavor:
+                    ids = [l.get('id') for l in legs]
+                    for i,id in enumerate(ids):
+                        if id in self.model['merged_particles']:
+                            ids[i] = self.model['merged_particles'][id][flavor[i]-1]
+                        if -id in self.model['merged_particles']:
+                           ids[i] = -self.model['merged_particles'][-id][flavor[i]-1] 
+                    misc.sprint(ids)
+                    lines.append("DATA (IDUP(i,%d,%d),i=1,%d)/%s/" % \
+                         (real_iproc + 1, numproc+1, nexternal,
+                          ",".join([str(id) for id in ids])))    
+                    real_iproc += 1                 
+            else:
+                lines.append("DATA (IDUP(i,%d,%d),i=1,%d)/%s/" % \
+                         (real_iproc + 1, numproc+1, nexternal,
                           ",".join([str(l.get('id')) for l in legs])))
+            
             if iproc == 0 and numproc == 0:
                 for i in [1, 2]:
                     lines.append("DATA (MOTHUP(%d,i),i=1,%2r)/%s/" % \
@@ -1136,6 +1156,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
     def get_helicity_lines(self, matrix_element,array_name='NHEL', add_nb_comb=False):
         """Return the Helicity matrix definition lines for this matrix element"""
+
+        #misc.sprint(matrix_element.get_external_nhel())
 
         helicity_line_list = []
         i = 0            
@@ -1850,6 +1872,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                               sorted(list(set([p.get_initial_pdg(2) for \
                                                p in processes])))]
 
+            for one_initial_state in initial_states:
+                for i,pdg in enumerate(list(one_initial_state)):
+                    misc.sprint(i, pdg, one_initial_state)
+                    if pdg in self.model['merged_particles']:
+                        one_initial_state.remove(pdg)
+                        one_initial_state += self.model['merged_particles'][pdg]
+                    elif -pdg in self.model['merged_particles']:
+                        one_initial_state.remove(pdg)
+                        one_initial_state += [-i for i in self.model['merged_particles'][-pdg]]
+
+
             if tuple(initial_states) in [([-11],[11]), ([11],[-11]), ([-13],[13]),([13],[-13])]:
                 dressed_lep = True
             else:
@@ -1862,6 +1895,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                               sum(initial_states,[])])
             for key,val in pdf_codes.items():
                 pdf_codes[key] = val.replace('~','x').replace('+','p').replace('-','m')
+            misc.sprint(pdf_codes)
 
             # Set conversion from PDG code to number used in PDF calls
             pdgtopdf = {21: 0, 22: 7}
@@ -2014,32 +2048,42 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
                 pdf_lines = pdf_lines + "PD(0) = 0d0\nIPROC = 0\n"
                 for proc in processes:
-                    process_line = proc.base_string()
-                    pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
-                    pdf_lines = pdf_lines + "\nPD(IPROC)="
-                    comp_list = []
-                    for ibeam in [1, 2]:
-                        initial_state = proc.get_initial_pdg(ibeam)
-                        if initial_state in list(pdf_codes.keys()):
-                            pdf_lines = pdf_lines + "%s%d*" % \
-                                        (pdf_codes[initial_state], ibeam)
-                            comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
-                        else:
-                            pdf_lines = pdf_lines + "1d0*"
-                            comp_list.append("DUMMY")
-                    # Remove last "*" from pdf_lines
-                    pdf_lines = pdf_lines[:-1] + "\n"
+                    for nb_flavor in range(matrix_element.get_nb_flavors()):
+                        misc.sprint(nb_flavor)
+                        misc.sprint(matrix_element.get_external_flavors())
+                        process_line = proc.base_string()
+                        pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
+                        pdf_lines = pdf_lines + "\nPD(IPROC)="
+                        comp_list = []
+                        for ibeam in [1, 2]:
+                            initial_state = proc.get_initial_pdg(ibeam)
+                            if abs(initial_state) in model.get('merged_particles'):
+                                misc.sprint(initial_state, model.get('merged_particles'))
+                                if initial_state>0:
+                                    initial_state = model.get('merged_particles')[initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+                                else:
+                                    initial_state = -model.get('merged_particles')[-initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+                            misc.sprint(initial_state)
+                            if initial_state in list(pdf_codes.keys()):
+                                pdf_lines = pdf_lines + "%s%d*" % \
+                                            (pdf_codes[initial_state], ibeam)
+                                comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
+                            else:
+                                pdf_lines = pdf_lines + "1d0*"
+                                comp_list.append("DUMMY")
+                        # Remove last "*" from pdf_lines
+                        pdf_lines = pdf_lines[:-1] + "\n"
 
-                    # this is for the lepton collisions with electron luminosity 
-                    # put here "%s%d_components(i_ee)*%s%d_components(i_ee)"
-                    if dressed_lep:
-                        pdf_lines += "if (pdlabel.eq.'dressed')" + \
-                             "PD(IPROC)=ee_comp_prod(%s_components,%s_components)\n" % \
-                             tuple(comp_list)
-                    pdf_lines = pdf_lines + "PD(0)=PD(0)+DABS(PD(IPROC))\n"
-                    
-                    if not dressed_lep:
-                        ee_pdf_definition_lines = ""
+                        # this is for the lepton collisions with electron luminosity 
+                        # put here "%s%d_components(i_ee)*%s%d_components(i_ee)"
+                        if dressed_lep:
+                            pdf_lines += "if (pdlabel.eq.'dressed')" + \
+                                "PD(IPROC)=ee_comp_prod(%s_components,%s_components)\n" % \
+                                tuple(comp_list)
+                        pdf_lines = pdf_lines + "PD(0)=PD(0)+DABS(PD(IPROC))\n"
+                        
+                        if not dressed_lep:
+                            ee_pdf_definition_lines = ""
             else:
                 # Add up PDFs for the different initial state particles
                 pdf_lines += "ENDDO ! IWARP LOOP\n"
@@ -2047,31 +2091,39 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 pdf_lines = pdf_lines + "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
                 comp_list = []
                 for proc in processes:
-                    process_line = proc.base_string()
-                    pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
-                    pdf_lines += '\n   DO IVEC=1, VECSIZE_USED'
-                    pdf_lines = pdf_lines + "\nALL_PD(IPROC,IVEC)="
-                    for ibeam in [1, 2]:
-                        initial_state = proc.get_initial_pdg(ibeam)
-                        if initial_state in list(pdf_codes.keys()):
-                            pdf_lines = pdf_lines + "%s%d(IVEC)*" % \
-                                        (pdf_codes[initial_state], ibeam)
-                            comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
-                        else:
-                            pdf_lines = pdf_lines + "1d0*"
-                            comp_list.append("DUMMY")
-                    # Remove last "*" from pdf_lines
-                    pdf_lines = pdf_lines[:-1] + "\n"
-                    # this is for the lepton collisions with electron luminosity 
-                    # put here "%s%d_components(i_ee)*%s%d_components(i_ee)"
-                    if dressed_lep:
-                        pdf_lines += "if (pdlabel.eq.'dressed')" + \
-                             "ALL_PD(IPROC,IVEC)=ee_comp_prod(%s_components(1,IVEC),%s_components(1,IVEC))\n" % \
-                             tuple(comp_list)
-                    pdf_lines = pdf_lines + "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
-                    pdf_lines += '\n    ENDDO\n'
-                    if not dressed_lep:
-                        ee_pdf_definition_lines = ""
+                    for nb_flavor in range(matrix_element.get_nb_flavors()):
+                        process_line = proc.base_string()
+                        pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
+                        pdf_lines += '\n   DO IVEC=1, VECSIZE_USED'
+                        pdf_lines = pdf_lines + "\nALL_PD(IPROC,IVEC)="
+                        for ibeam in [1, 2]:
+                            initial_state = proc.get_initial_pdg(ibeam)
+                            if abs(initial_state) in model.get('merged_particles'):
+                                misc.sprint(initial_state, model.get('merged_particles'))
+                                if initial_state>0:
+                                    initial_state = model.get('merged_particles')[initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+                                else:
+                                    initial_state = -model.get('merged_particles')[-initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+
+                            if initial_state in list(pdf_codes.keys()):
+                                pdf_lines = pdf_lines + "%s%d(IVEC)*" % \
+                                            (pdf_codes[initial_state], ibeam)
+                                comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
+                            else:
+                                pdf_lines = pdf_lines + "1d0*"
+                                comp_list.append("DUMMY")
+                        # Remove last "*" from pdf_lines
+                        pdf_lines = pdf_lines[:-1] + "\n"
+                        # this is for the lepton collisions with electron luminosity 
+                        # put here "%s%d_components(i_ee)*%s%d_components(i_ee)"
+                        if dressed_lep:
+                            pdf_lines += "if (pdlabel.eq.'dressed')" + \
+                                "ALL_PD(IPROC,IVEC)=ee_comp_prod(%s_components(1,IVEC),%s_components(1,IVEC))\n" % \
+                                tuple(comp_list)
+                        pdf_lines = pdf_lines + "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
+                        pdf_lines += '\n    ENDDO\n'
+                        if not dressed_lep:
+                            ee_pdf_definition_lines = ""
 
         # Remove last line break from the return variables                
         if vector:
@@ -2565,6 +2617,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'check_sa.f')).read()
 
 
+        misc.sprint(type(matrix_element))
         all_flavors  = matrix_element.get_external_flavors()
         maxflavor = len(all_flavors )
         flavor_text = ['        FLAVOR(:,:) =1']
@@ -3109,8 +3162,10 @@ CF2PY integer, intent(in) :: new_value
         self.write_ngraphs_file(writers.FortranWriter(filename),
                            len(matrix_element.get_all_amplitudes()))
         
+        misc.sprint(self.format)
         if self.format == 'standalone':
             filename = pjoin(dirpath, 'check_sa.f')
+            misc.sprint(filename)
             self.write_check_sa(writers.FortranWriter(filename), matrix_element, proc_prefix)
 
         # Generate diagrams
@@ -6555,7 +6610,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         self.write_maxamps_file(writers.FortranWriter(filename),
                            maxamps,
                            maxflows,
-                           max([len(me.get('processes')) for me in \
+                           max([me.get_nb_flavors() for me in \
                                 matrix_elements]),
                            len(matrix_elements))
 

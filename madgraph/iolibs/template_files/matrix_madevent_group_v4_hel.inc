@@ -11,6 +11,7 @@ c  potentially times multi-channel weight
 C  
 %(process_lines)s
 C 
+    use model_object
     IMPLICIT NONE
 C  
 C CONSTANTS
@@ -47,7 +48,7 @@ C
         REAL*8 T
         REAL*8 R,SUMHEL,TS(NCOMB)
         INTEGER I,IDEN
-        INTEGER JC(NEXTERNAL),II
+        INTEGER FLAVOR(NEXTERNAL),II
         REAL*8 XTOT
         INTEGER  J, JJ
       double precision get_channel_cut
@@ -86,7 +87,7 @@ C BEGIN CODE
 C ----------
 
     DO I=1,NEXTERNAL
-       JC(I) = +1
+       FLAVOR(I) = +1
     ENDDO
      
     IF (multi_channel) THEN
@@ -104,7 +105,7 @@ C ----------
 
     TS(:) = 0d0
 
-    call MATRIX%(proc_id)s(P ,JC(1), TS, AMP2, JAMP2, IVEC)
+    call MATRIX%(proc_id)s(P ,FLAVOR(1), TS, AMP2, JAMP2, IVEC)
     DO I=1,NCOMB     
        T=TS(I)  
        DO JJ=1,nincoming
@@ -160,7 +161,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     END
  
  
-Subroutine  MATRIX%(proc_id)s(P,IC, TS, AMP2, JAMP2, IVEC)
+Subroutine  MATRIX%(proc_id)s(P,FLAVOR, TS, AMP2, JAMP2, IVEC)
 C  
 %(info_lines)s
 C
@@ -170,6 +171,7 @@ C
 %(process_lines)s
 C  
     use aloha_object
+    use model_object
     IMPLICIT NONE
 C  
 C CONSTANTS
@@ -196,7 +198,7 @@ C
 C ARGUMENTS 
 C
     REAL*8 P(0:3,NEXTERNAL)
-    INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+    INTEGER FLAVOR(NEXTERNAL)
     REAL*8 TS(NCOMB)
     INTEGER IVEC
 C  

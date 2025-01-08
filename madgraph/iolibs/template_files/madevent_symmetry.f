@@ -4,6 +4,7 @@ c*****************************************************************************
 c     Given identical particles, and the configurations. This program identifies
 c     identical configurations and specifies which ones can be skipped
 c*****************************************************************************
+          use model_object
       implicit none
 c
 c     Constants
@@ -286,6 +287,7 @@ c     $        'Please check particle masses.'
 c***************************************************************************
 c     Determines which BW conflict
 c***************************************************************************
+          use model_object
       implicit none
 c
 c     Constants
@@ -419,6 +421,7 @@ c***************************************************************************
 c     Determines if the configuration allows integration based on
 c     mass relations
 c***************************************************************************
+          use model_object
       implicit none
 c
 c     Constants

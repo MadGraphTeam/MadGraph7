@@ -253,6 +253,7 @@ C
 %(process_lines)s
 C  
     use aloha_object
+    use model_object
     IMPLICIT NONE
 C  
 C CONSTANTS

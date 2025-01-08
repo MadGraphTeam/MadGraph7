@@ -371,6 +371,7 @@ C     Output:
 C             Amplitude squared and summed
 C ****************************************************
       use DiscreteSampler
+      use model_object
       IMPLICIT NONE
 C  
 C CONSTANTS
@@ -744,7 +745,8 @@ C     imode 0 run, 1 init, 2 reweight, 3 finalize
 C     Output:
 C     Amplitude squared and summed
 C     ****************************************************
-
+      
+      use model_object
       IMPLICIT NONE
       
       INCLUDE 'genps.inc'
@@ -879,6 +881,7 @@ C     Output:
 C     Amplitude squared and summed
 C     ****************************************************
 
+      use model_object
       IMPLICIT NONE
       
       INCLUDE 'genps.inc'
