@@ -1071,7 +1071,6 @@ class Interaction(PhysicsObject):
         
         pdgs = [p.get_pdg_code() for p in self.get('particles')]
         flavor = [map_flavor[pdg].pop() if abs(pdg) in model.get('merged_particles') else 0 for pdg in pdgs]
-
         for coupling in self.get('couplings').values():
             if isinstance(coupling, str):
                 # if no PDG in merge range -> return True
@@ -1093,7 +1092,8 @@ class Interaction(PhysicsObject):
                     return True
                 # continue in case another coupling does define it
                 #else:
-                #    return False            
+                #    return False  
+        return False       
 
 
 
@@ -2432,7 +2432,7 @@ class FLV_Coupling(PhysicsObject):
         for i in range(1, max_flav+1):
             for keys in self['flavors']:
                 if keys[index] == i:
-                    array+= '%s,' % self['flavors'][keys]
+                    array+= '%s:%s,' % (keys,self['flavors'][keys])
         array+=']' 
         return '%(name)s: %(array)s' % {'name': self['name'], 'array': array}
 

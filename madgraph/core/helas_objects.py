@@ -1475,6 +1475,19 @@ class HelasWavefunction(base_objects.PhysicsObject):
 
         return self.get('conjugate_indices') != ()
 
+    def nice_string(self, key=None):
+        """Return a nice string representation of the wavefunction"""
+        if not key or not hasattr(self, key):
+            value=''
+        else:
+            value = ', %s' % self.get(key)
+        if self.get('mothers'):
+            return "{%s[%s%s] < (%s)}" % (self.get('number_external'), self.get('pdg_code'),value,
+                                      ','.join([mother.nice_string(key=key) for mother in self.get('mothers')]))
+        else:
+           return "%s[%s%s]" % (self.get('number_external'), self.get('pdg_code'), value)
+
+
     def get_with_flow(self, name):
         """Generate the is_part and state needed for writing out
         wavefunctions, taking into account the fermion flow"""
@@ -1489,6 +1502,151 @@ class HelasWavefunction(base_objects.PhysicsObject):
         if name == 'state':
             return list([state for state in ['incoming', 'outgoing'] if state != self.get('state')])[0]
         return self.get(name)
+    
+
+    def tag_external_flavor(self, flavor_id, model, tag_name='flavor'):
+
+        # check special case for external wavefunction
+        assert(len(self.get('mothers'))==0)
+
+        i = self.get('number_external')
+        if abs(flavor_id[i-1]) == abs(self.get('pdg_code')) or flavor_id[i-1] == 1:
+            self[tag_name] = 1
+        elif abs(self.get('pdg_code')) in model.get('merged_particles'):
+            self[tag_name] = flavor_id[i-1]
+        else:
+            raise Exception('Not Implemented')
+
+    def propagate_flavor_tag(self, model, tag_name='flavor', fct=None, check_valid_input=True):
+        """Propagate the flavor tag from the mothers to the wavefunction.
+           if fct is None:
+               Return False if the flavor tag is not possible for this particle
+               If the current particle is not a flavor one always return True
+            fct should be a function with the following signature:
+                fct(wfct, def_output, model, tag_name)
+        """
+
+        prev_ans = []
+        def return_fct(wfct, def_output, model, tag_name):
+            if not fct:
+                return def_output
+            else:
+                ans = fct(wfct, def_output, model, tag_name)
+                if prev_ans:
+                    return (tuple(prev_ans), ans)
+                return ans
+
+        # check special case for external wavefunction
+        assert( len(self.get('mothers'))!=0)
+        try:
+            del self[tag_name]
+        except:
+            pass
+
+        # pdg and flavor from previous wfct
+        pdg_in = [w.get_pdg_code() for w in self.get('mothers')]
+        flav = [w[tag_name] if hasattr(w, tag_name) else None for w in self.get('mothers')]
+        if 0 in flav:
+            self[tag_name] = 0
+            return return_fct(self, False, model, tag_name)
+        if None in flav:
+            # this means not computed yet
+            for wf in self.get('mothers'):
+                if not hasattr(wf, tag_name):
+                    prev_ans.append(wf.propagate_flavor_tag(model, tag_name, fct))
+                    #return return_fct(self, False, model, tag_name)
+            flav = [w[tag_name] for w in self.get('mothers')]
+            
+        # info from the final state (flavor not set yet)
+        pdg_out = self.get('pdg_code')
+
+        if abs(pdg_out) in model.get('merged_particles'):
+            # we need to set the flavor
+            vertex = model.get('interaction_dict')[self.get('interaction_id')]
+            coup = next(iter(vertex.get('couplings').values()))
+            if isinstance(coup, str):
+                pdg_vertex = [abs(p.get_pdg_code()) for  p in vertex.get('particles')]
+                # This means this is a delta in flavor
+                #find the flavor of the incoming particles
+                index = [i for i, pdg in enumerate(pdg_in) if abs(pdg) in model.get('merged_particles')][0] 
+                self[tag_name] = flav[index]
+                return return_fct(self, True, model, tag_name)
+            else:
+                # need to set the flavor for a valid combination
+                pdg, flav_input = [(w.get('pdg_code'), w.get('flavor')) for i, w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')][0] 
+                pdg_order = [p.get_pdg_code() for  p in vertex.get('particles')]
+                pos_input = pdg_order.index(pdg)
+                pos_output = pdg_order.index(-pdg_out)
+                for key in coup.get('flavors'):
+                    if key[pos_input] == flav_input:
+                        self[tag_name] = key[pos_output]
+                        return return_fct(self, True, model, tag_name)
+                else:
+                    self[tag_name] = 0
+                    return return_fct(self, False, model, tag_name)
+        elif check_valid_input:
+            # this is a case where the current flavor is trivial (the pdg is not a merged one)
+            # but the combination of the input might just be impossible
+
+            vertex = model.get('interaction_dict')[self.get('interaction_id')]
+            map = {}
+            pdg_in = [w.get_pdg_code() for w in self.get('mothers')]
+            flav = [w['flavor'] for w in self.get('mothers')]
+
+            for pdg, flavor in zip(pdg_in,flav):
+                if pdg in map:
+                    map[pdg].append(flavor)
+                else:
+                    map[pdg] = [flavor]
+            map[pdg_out] = [1]
+
+            #carefull check_flavor empty the list of the map!
+            status = vertex.check_flavor(map, model)
+            if not status:
+                self[tag_name] = 0
+                return return_fct(self, False, model, tag_name)
+            else:
+                self[tag_name] = 1
+                return return_fct(self, True, model, tag_name)
+        else:
+            # no need to set the flavor for this case
+            # note thise might not be consistent but this is not checked here
+            # either this has been checked already (in the case of checking identical matrix-element
+            # or will be explicitely when checking if flavor contributes)
+            self[tag_name] = 1
+            return return_fct(self, True, model, tag_name)
+        
+        raise Exception
+        
+
+    def get_coupling_for_flavor(self, model, tag_name='flavor'):
+        """Return the coupling for the given flavor"""
+
+        vertex = model.get('interaction_dict')[self.get('interaction_id')]
+        coup = next(iter(vertex.get('couplings').values()))
+        if isinstance(coup, str):
+            return coup
+        
+        if not self['flavor']:
+            return None
+        
+        pdg_out = self.get('pdg_code')
+        if pdg_out in model.get('merged_particles'):
+            pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')]             
+            index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_vertex) if abs(pdg) in model.get('merged_particles')][0]
+            merge_flavor = self[tag_name]
+            pos_merge = pdg_vertex.index(merge_pdg)
+            for key in coup.get('flavors'):
+                if key[pos_merge] == merge_flavor:
+                    return coup.get('flavors')[key]
+        else:
+            pos_first, pdg, first_flavor = [(i, w.get_pdg_code(),w[tag_name]) for i,w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')][0]
+            for key in coup.get('flavors'):
+                if key[pos_first] == first_flavor:
+                    return coup.get('flavors')[key]
+        
+        # no valid coupling found
+        return None
     
     def get_external_helas_call_dict(self):
         """ Returns a dictionary for formatting this external wavefunction
@@ -2828,6 +2986,44 @@ class HelasAmplitude(base_objects.PhysicsObject):
                                    None,
                                    wf_number)
 
+    def propagate_flavor_tag(self, model, debug=False, fct=None):
+
+        # pdg and flavor from previous wfct
+        pdg_in = [w.get_pdg_code() for w in self.get('mothers')]
+        flav = [w['flavor'] if hasattr(w,'flavor') else None for w in self.get('mothers') ]
+        
+        if debug: misc.sprint(flav, [id(w) for w in self.get('mothers')])
+        if 0 in flav: # means one of them is tagged as not valid
+            return False
+        # this means that the flavor is not computed for those wavefunction 
+        # (not hit due to impossible configuration in previous diag)
+        if None in flav:
+            for wf in self.get('mothers'):
+                if not hasattr(wf, 'flavor'):
+                    wf.propagate_flavor_tag(model)
+            flav = [w['flavor'] for w in self.get('mothers') ]
+            if 0 in flav:
+                return False
+        if debug: 
+            for wf in self.get('mothers'):
+                misc.sprint(wf.nice_string('flavor'))
+
+        vertex = model.get('interaction_dict')[self.get('interaction_id')]
+        map= {}
+        for pdg, flavor in zip(pdg_in,flav):
+                if pdg in map:
+                    map[pdg].append(flavor)
+                else:
+                    map[pdg] = [flavor]
+        if debug: misc.sprint(map)
+        # carefull check_flavor empty the list of the map!
+        status = vertex.check_flavor(map, model)
+        if debug: misc.sprint(status)
+        if not status:
+            self['flavor'] = 0
+            return False
+        self['flavor'] = 1
+        return True
 
     def needs_hermitian_conjugate(self):
         """Returns true if any of the mothers have negative
@@ -3008,6 +3204,27 @@ class HelasAmplitude(base_objects.PhysicsObject):
                     nflips = nflips + 1
 
         return (-1) ** nflips
+        
+    def get_coupling_for_flavor(self, model, tag_name='flavor'):
+        """Return the coupling for the given flavor"""
+
+        valid = self.propagate_flavor_tag(model)
+        if not valid:
+            return None
+        vertex = model.get('interaction_dict')[self.get('interaction_id')]
+        coup = next(iter(vertex.get('couplings').values()))
+        if isinstance(coup, str):
+            return coup
+
+        
+        pos_first, pdg, first_flavor = [(i, w.get_pdg_code(),w[tag_name]) for i,w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')][0]
+        for key in coup.get('flavors'):
+            if key[pos_first] == first_flavor:
+                return coup.get('flavors')[key]
+
+        return 'ZERO'     
+        raise Exception
+
 
     def get_aloha_info(self, optimized_output=True):
         """Returns the tuple (lorentz_name, tag, outgoing_number) providing
@@ -3390,83 +3607,82 @@ class HelasDiagram(base_objects.PhysicsObject):
         
         return self['amplitudes']
 
-    def check_flavor(self, flavor_id, model):
+    def check_flavor(self, flavor_id, model, debug=False):
         """ check if the real_pdg is compatible with the diagram"""
 
         #flavor_status = {}
         #pdg_for_number = {}
-        for wfct in self['wavefunctions']:
-            if len(wfct.get('mothers'))==0:
-                i = wfct.get('number_external')
-                if abs(flavor_id[i-1]) == abs(wfct.get('pdg_code')) or flavor_id[i-1] == 1:
-                    wfct['flavor'] = 1
-                elif abs(wfct.get('pdg_code')) in model.get('merged_particles'):
-                    wfct['flavor'] = flavor_id[i-1]
-                else:
-                    raise Exception('Not Implemented')
-            else:
-                # pdg and flavor from previous wfct
-                pdg_in = [w.get_pdg_code() for w in wfct.get('mothers')]
-                flav = [w['flavor'] for w in wfct.get('mothers')]
-                # info from the final state (flavor not set yet)
-                pdg_out = wfct.get('pdg_code')
+        # remove the information from previous check
+        for wfct in self['wavefunctions'] + self['amplitudes']:
+            try:
+                del wfct['flavor']
+            except:
+                pass
 
-                if abs(pdg_out) in model.get('merged_particles'):
-                    # we need to set the flavor of this wfct
-                    vertex = model.get('interaction_dict')[wfct.get('interaction_id')]
-                    coup = next(iter(vertex.get('couplings').values()))
-                    if isinstance(coup, str):
-                        # This means this is a delta in flavor
-                        #find the flavor of the incoming particles
-                        index = [i for i, pdg in enumerate(pdg_in) if abs(pdg) in model.get('merged_particles')][0] 
-                        wfct['flavor'] = flav[index]
-                    else:
-                        index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_in) if abs(pdg) in model.get('merged_particles')][0]
-                        merge_flavor = flav[index_merge]
-                        #merge_pdg = [pdg for pdg in pdg_in if abs(pdg) in [81,82,83]]
-                        pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')] 
-                        out_index = pdg_vertex.index(pdg_out)
-                        pos_merge = pdg_vertex.index(merge_pdg)
-                        for key in coup.get('flavors'):
-                            if key[pos_merge] == merge_flavor:
-                                wfct['flavor'] = key[out_index]
-                                break
-                        else:
-                            return False
-                else:
-                    wfct['flavor'] = 1
-                    # we need to check the flavor of the wfct is valid
-                    vertex = model.get('interaction_dict')[wfct.get('interaction_id')]
-                    map = {}
-                    for pdg, flavor in zip(pdg_in,flav):
-                        if pdg in map:
-                            map[pdg].append(flavor)
-                        else:
-                            map[pdg] = [flavor]
-                    map[pdg_out] = [1]
-                    #carefull check_flavor empty the list of the map!
-                    status = vertex.check_flavor(map, model)
-                    if not status:
-                        return False
+        if debug:misc.sprint(len(self['wavefunctions']), len(self['amplitudes']), [id(w) for w in self['wavefunctions']], [id(w) for w in self['amplitudes']])
+        for wfct in self['wavefunctions']:
+            if debug: misc.sprint(wfct.nice_string('flavor'))
+            if len(wfct.get('mothers'))==0:
+                wfct.tag_external_flavor(flavor_id, model)
+            else:
+                valid = wfct.propagate_flavor_tag(model, check_valid_input=True)
+                if not valid:
+                    # question do we need to compute the flavor of the following wfct? or we do just have to trash the old assigned flavor?
+                    return valid
 
         for wfct in self['amplitudes']:  
-            # pdg and flavor from previous wfct
-            pdg_in = [w.get_pdg_code() for w in wfct.get('mothers')]
-            flav = [w['flavor'] for w in wfct.get('mothers')]
+            valid = wfct.propagate_flavor_tag(model)
+            if valid:
+                return True
+        else:
+            return False
 
-            vertex = model.get('interaction_dict')[wfct.get('interaction_id')]
-            map= {}
-            for pdg, flavor in zip(pdg_in,flav):
-                    if pdg in map:
-                        map[pdg].append(flavor)
-                    else:
-                        map[pdg] = [flavor]
-            #carefull check_flavor empty the list of the map!
-            status = vertex.check_flavor(map, model)
-            if not status:
+
+        return True
+    
+    def check_iden_flavors(self, flavor_id1, flavor_id2, model):
+        """ check if the real_pdg is compatible with the diagram"""
+
+        def get_coup(wfct, default, model, tag):
+            return wfct.get_coupling_for_flavor(model, tag)
+
+        # we do a dble tagging and check that at each stage the coupling are the same
+        for wfct in self['wavefunctions']:
+            if len(wfct.get('mothers'))==0:
+                wfct.tag_external_flavor(flavor_id1, model)
+                wfct.tag_external_flavor(flavor_id2, model, tag_name='flavor2')
+            else:
+                c1 = wfct.propagate_flavor_tag(model, fct=get_coup)
+                c2 = wfct.propagate_flavor_tag(model, tag_name='flavor2', fct=get_coup)
+                if c1 != c2:
+                    return False
+
+        for wfct in self['amplitudes']:  
+            c1 = wfct.get_coupling_for_flavor(model)
+            c2 = wfct.get_coupling_for_flavor(model, tag_name='flavor2')
+            if c1 != c2:
                 return False
 
         return True
+
+
+    def get_coupling_for_flv(self, flv, model): 
+        """get all the coupling for a given flavor"""
+
+        def get_coup(wfct, default, model, tag):
+            return wfct.get_coupling_for_flavor(model, tag)
+
+        coups = []
+        for wfct in self['wavefunctions']:
+            if len(wfct.get('mothers'))==0:
+                wfct.tag_external_flavor(flv, model)
+            else:
+                coups.append(wfct.propagate_flavor_tag(model, fct=get_coup))
+
+        for wfct in self['amplitudes']:  
+            coups.append(wfct.get_coupling_for_flavor(model))
+
+        return tuple(coups)
 
 
     def check_helicity(self, helicity):
@@ -3479,7 +3695,7 @@ class HelasDiagram(base_objects.PhysicsObject):
            due to chirality (W couple only to left fermion, photon does not have axial
            part,...)
         """
-
+        raise NotImplementedError
 
 
 
@@ -3534,6 +3750,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # has_mirror_process is True if the same process but with the
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
+        self['allowed_flavors'] = [] # list of all allowed flavors for the process
+        self['allowed_flavors_with_iden'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -3602,7 +3820,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 super(HelasMatrixElement, self).__init__(amplitude)
         else:
             super(HelasMatrixElement, self).__init__()
-        self['allowed_flavors'] = []
+        
 
     # Comparison between different amplitudes, to allow check for
     # identical processes. Note that we are then not interested in
@@ -4842,6 +5060,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return set([(d.get('mass'),d.get('width')) for d in self.get_all_wavefunctions()])
 
 
+    def get_coupling_for_flv(self, flv, model):
+        """Return the coupling constant for a specific flavor"""
+
+        return tuple(diag.get_coupling_for_flv(flv, model) for diag in self.get('diagrams'))
+
+
     def get_all_amplitudes(self):
         """Gives a list of all amplitudes for this ME"""
 
@@ -4905,7 +5129,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if self.check_helicity(nhel):
                 allowed_helicity.append(nhel)
 
-        misc.sprint(allowed_helicity)
         return allowed_helicity
 
 
@@ -4924,24 +5147,72 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 pdgs.append(wf.get('particle').get_pdg_code())
         
         to_map = collections.defaultdict(lambda:[1])
-        to_map[81] = [1,2,3,4]
-        to_map[82] = [1,2,3]
-        to_map[83] = [1,2,3]    
+        model = self.get('processes')[0].get('model')
+        to_map[81] = model.get('merged_particles')[81]
+        to_map[82] = model.get('merged_particles')[82]
+        to_map[83] = model.get('merged_particles')[83]    
 
         flavor_list = []
+    
+        # need to avoid to compute for the permutation(?)
+        checked = {}
+
+        misc.sprint('need to decide which permutation to keep --only one for the moment--')
         for one_flavor in itertools.product(*[to_map[abs(id)] for id in pdgs]):
+            # get the actual pdg code (with the sign)
+            pdg = [one_flavor[i] if id > 0 else -one_flavor[i] for i,id in enumerate(pdgs)]
+            # flip initial states
+            next, ninit = self.get_nexternal_ninitial()
+            for i in range(ninit):
+                pdg[i] = -pdg[i]
+            init, final = pdg[:ninit], pdg[ninit:]
+            init.sort()
+            final.sort()
+            pdg = tuple(init + final)
+            # check if we already computed this one
+            if pdg in checked:
+                #if checked[pdg]:
+                #   flavor_list.append(one_flavor)
+                continue 
+            
+            # do the computation
             if self.check_flavor(one_flavor, self.get('processes')[0].get('model')):
                 flavor_list.append(one_flavor)
+                #misc.sprint('checking flavor:', pdg, one_flavor, True)
+                checked[pdg] = True
+            else:
+                #misc.sprint('checking flavor:', pdg, one_flavor, False)
+                checked[pdg] = False
         
         self['allowed_flavors'] = flavor_list
         return flavor_list
     
-    def check_flavor(self, real_pdgs, model):
-        """check if any feynman diagram is compatible with the pdg codes replaced by the real_pdgs"""
+    def get_external_flavors_with_iden(self):
 
-        for diag in self.get('diagrams'):
-            if diag.check_flavor(real_pdgs, model):
+        if self['allowed_flavors_with_iden']:
+            return self['allowed_flavors_with_iden']
+
+        model = self.get('processes')[0].get('model')
+        all_flv = self.get_external_flavors()
+        map_all_flv = {}
+        for i, flv1 in  enumerate(all_flv):
+            coup = self.get_coupling_for_flv(flv1, model)
+            if coup in map_all_flv:
+                map_all_flv[coup].append(flv1)
+            else:
+                map_all_flv[coup] = [flv1]
+
+        self['allowed_flavors_with_iden'] = map_all_flv.values()
+        return self['allowed_flavors_with_iden']
+    
+    def check_flavor(self, real_pdgs, model, debug=False):
+        """check if any feynman diagram is compatible with the pdg codes replaced by the real_pdgs"""
+        HelasDiagram.done_flavor = []
+        for i, diag in enumerate(self.get('diagrams')):
+            if diag.check_flavor(real_pdgs, model, debug=debug):
+                if debug: misc.sprint('diag', i, 'is ok')
                 return True
+        if debug: misc.sprint('no diag for ', real_pdgs)
         return False
     
     def check_helicity(self, helicity):

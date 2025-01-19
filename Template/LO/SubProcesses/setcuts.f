@@ -223,6 +223,7 @@ c              write(*,*)'jet:ithe pdg is ',abs(idup(i,1,iproc)),' maxflavor=',m
 c              write(*,*)'bjet:the pdg is ',abs(idup(i,1,iproc)),' maxflavor=',maxjetflavor
          endif
 
+         if (abs(idup(i,1,iproc)).eq.81)  is_a_j(i)=.true. ! gluon is a jet
          if (abs(idup(i,1,iproc)).eq.21)  is_a_j(i)=.true. ! gluon is a jet
 c-charged-leptons
          if (abs(idup(i,1,iproc)).eq.11)  is_a_l(i)=.true. ! e+  e-

@@ -1,4 +1,4 @@
-SUBROUTINE SMATRIX%(proc_id)s(P, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
+SUBROUTINE SMATRIX%(proc_id)s(P, FLAVOR, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
 C 
 %(info_lines)s
 C 
@@ -86,9 +86,6 @@ C ----------
 C BEGIN CODE
 C ----------
 
-    DO I=1,NEXTERNAL
-       FLAVOR(I) = +1
-    ENDDO
      
     IF (multi_channel) THEN
         DO I=1,NDIAGS

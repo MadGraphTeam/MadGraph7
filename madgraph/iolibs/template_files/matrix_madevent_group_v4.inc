@@ -1,4 +1,4 @@
-SUBROUTINE SMATRIX%(proc_id)s(P, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
+SUBROUTINE SMATRIX%(proc_id)s(P, IFLAV, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
 C 
 %(info_lines)s
 C 
@@ -37,6 +37,7 @@ C
     double precision RCOL ! random number for selecting helicity
     integer channel ! channel to keep for the multi-channel
     integer ivec ! for using the correct coupling
+    integer iflav
 c
 c   output argument
 c
@@ -58,7 +59,8 @@ C
         REAL*8 T,MATRIX%(proc_id)s
         REAL*8 R,SUMHEL,TS(NCOMB)
         INTEGER I,IDEN
-        INTEGER FLAVOR(NEXTERNAL),II
+        INTEGER FLAVOR(NEXTERNAL,%(max_flavor)s),II
+        %(get_flavor_matrix)s
         REAL*8 HWGT, XTOT, XTRY, XREJ, XR, YFRAC(0:NCOMB)
         INTEGER NGOOD
         INTEGER J, JJ
@@ -114,9 +116,6 @@ C BEGIN CODE
 C ----------
 
     NTRY(%(proc_id)s)=NTRY(%(proc_id)s)+1
-    DO I=1,NEXTERNAL
-       FLAVOR(I) = +1
-    ENDDO
      
     IF (multi_channel) THEN
         DO I=1,NDIAGS
@@ -137,7 +136,7 @@ C ----------
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
       DO I=1,NCOMB
          IF (GOODHEL(I,%(proc_id)s) .OR. NTRY(%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),FLAVOR(1),I,AMP2, JAMP2, IVEC)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),FLAVOR(1,IFLAV),I,AMP2, JAMP2, IVEC)
             %(beam_polarization)s
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
 			  call DS_add_entry('Helicity',I,T)
@@ -184,7 +183,7 @@ C ----------
 C           The helicity configuration was chosen already by genps and put in a common block defined in genps.inc.
             I = HEL_PICKED
 
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),FLAVOR(1),I,AMP2, JAMP2, IVEC)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),FLAVOR(1,IFLAV),I,AMP2, JAMP2, IVEC)
 
             %(beam_polarization)s
 c           Always one helicity at a time
