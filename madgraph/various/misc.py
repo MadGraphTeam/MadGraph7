@@ -501,7 +501,7 @@ def get_scan_name(first, last):
     return name
 
 def copytree(*args, **opts):
-
+    raise Exception('this copytree is overwritten by another function')
     if 'copy_function' not in opts:
         opts['copy_function'] = shutil.copy
     return shutil.copytree(*args, **opts)

@@ -4378,9 +4378,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     def get_nb_flavors(self):
         """Return the number of different flavors used in the matrix elements"""
         
-        misc.sprint('pass here ...')
-        misc.sprint(len(self.get_external_flavors()))
-        misc.sprint(len(self.get('processes')))
 
         return len(self.get_external_flavors())*len(self.get('processes'))
 
@@ -5132,7 +5129,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return allowed_helicity
 
 
-    def get_external_flavors(self):
+    def get_external_flavors(self, all_perm=False):
         """If merged particles are used, determine the list of possible flavor that are not zero """
 
         if self['allowed_flavors']:
@@ -5148,10 +5145,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         
         to_map = collections.defaultdict(lambda:[1])
         model = self.get('processes')[0].get('model')
-        to_map[81] = model.get('merged_particles')[81]
-        to_map[82] = model.get('merged_particles')[82]
-        to_map[83] = model.get('merged_particles')[83]    
-
+        for key in model.get('merged_particles'):
+            to_map[key] = model.get('merged_particles')[key] 
+            
         flavor_list = []
     
         # need to avoid to compute for the permutation(?)
@@ -5172,7 +5168,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             # check if we already computed this one
             if pdg in checked:
                 #if checked[pdg]:
-                #   flavor_list.append(one_flavor)
+                if all_perm:
+                   flavor_list.append(one_flavor)
                 continue 
             
             # do the computation

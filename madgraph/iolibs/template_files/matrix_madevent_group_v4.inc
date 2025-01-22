@@ -110,7 +110,10 @@ c       common/TO_CHANNEL_STRAT/tmin_for_channel,	sde_strat
 C  To be able to control when the matrix<i> subroutine can add entries to the grid for the MC over helicity configuration
    LOGICAL ALLOW_HELICITY_GRID_ENTRIES
    COMMON/TO_ALLOW_HELICITY_GRID_ENTRIES/ALLOW_HELICITY_GRID_ENTRIES
-
+C
+C  FUNCTION
+C
+   INTEGER BROKEN_SYM%(proc_id)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -235,7 +238,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
 	    endif
         ENDIF
     ENDIF
-    ANS=ANS/DBLE(IDEN)
+    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR)
 
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol)
 
@@ -417,6 +420,49 @@ JAMP(:,:) = (0d0,0d0)
            enddo	
        endif
     enddo   
+
+    return
+    end
+    
+
+    INTEGER FUNCTION BROKEN_SYM%(proc_id)s(FLAV)
+       implicit none
+       include 'nexternal.inc'
+       INTEGER FLAV(NEXTERNAL)
+       INTEGER PID(NINCOMING+1:NEXTERNAL)
+       INTEGER I,J
+       INTEGER N_BROK, N_TOT
+       INTEGER OLD_FACTOR
+       %(get_pid)s
+
+c     get old symmetry factor
+       OLD_FACTOR = 1
+       do I=NINCOMING+1, NEXTERNAL
+          if (PID(I).eq.0) cycle
+          N_tot=1
+          do J = I+1,NEXTERNAL
+             if (PID(I).eq.PID(J))then
+               PID(J) = 0
+               N_TOT = N_TOT+1
+               OLD_FACTOR = OLD_FACTOR*N_TOT
+             endif
+          enddo
+       enddo
+
+            %(get_pid)s
+c     get new symmetry factor
+       do I=NINCOMING+1, NEXTERNAL
+          if (PID(I).eq.0) cycle
+          N_TOT=1
+          do J = I+1,NEXTERNAL
+             if (PID(I).eq.PID(J).and.FLAV(I).EQ.FLAV(J))then
+                PID(J) = 0
+                N_TOT = N_TOT + 1
+                OLD_FACTOR = OLD_FACTOR/N_TOT
+             endif
+         enddo
+     enddo
+    BROKEN_SYM%(proc_id)s = OLD_FACTOR
 
     return
     end

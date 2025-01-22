@@ -959,15 +959,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             ids = [l.get('id') for l in legs]
             if any([id in self.model['merged_particles'] for id in ids]):
                 allow_flavor = matrix_element.get_external_flavors_with_iden()
-                misc.sprint(allow_flavor)
                 for flavor in sum(allow_flavor,[]):
                     ids = [l.get('id') for l in legs]
                     for i,id in enumerate(ids):
                         if id in self.model['merged_particles']:
-                            ids[i] = self.model['merged_particles'][id][flavor[i]-1]
+                            ids[i] = flavor[i] #self.model['merged_particles'][id][flavor[i]-1]
                         if -id in self.model['merged_particles']:
-                           ids[i] = -self.model['merged_particles'][-id][flavor[i]-1] 
-                    misc.sprint(ids)
+                           ids[i] = -flavor[i] #self.model['merged_particles'][-id][flavor[i]-1] 
                     lines.append("DATA (IDUP(i,%d,%d),i=1,%d)/%s/" % \
                          (real_iproc + 1, numproc+1, nexternal,
                           ",".join([str(id) for id in ids])))    
@@ -1874,7 +1872,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
             for one_initial_state in initial_states:
                 for i,pdg in enumerate(list(one_initial_state)):
-                    misc.sprint(i, pdg, one_initial_state)
                     if pdg in self.model['merged_particles']:
                         one_initial_state.remove(pdg)
                         one_initial_state += self.model['merged_particles'][pdg]
@@ -1895,7 +1892,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                               sum(initial_states,[])])
             for key,val in pdf_codes.items():
                 pdf_codes[key] = val.replace('~','x').replace('+','p').replace('-','m')
-            misc.sprint(pdf_codes)
 
             # Set conversion from PDG code to number used in PDF calls
             pdgtopdf = {21: 0, 22: 7}
@@ -2049,10 +2045,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 pdf_lines = pdf_lines + "PD(0) = 0d0\nIPROC = 0\n"
                 for proc in processes:
                     all_flv = list(matrix_element.get_external_flavors_with_iden())
-                    misc.sprint(all_flv)
                     for nb_flavor in range(len(all_flv)):
-                        misc.sprint(nb_flavor)
-                        misc.sprint(all_flv[nb_flavor])
                         process_line = proc.base_string()
                         pdf_lines += 'if(iflav.eq.%d) then\n' % (nb_flavor+1)
                         for one_flv in all_flv[nb_flavor]:
@@ -2062,12 +2055,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             for ibeam in [1, 2]:
                                 initial_state = proc.get_initial_pdg(ibeam)
                                 if abs(initial_state) in model.get('merged_particles'):
-                                    misc.sprint(initial_state, model.get('merged_particles'))
                                     if initial_state>0:
                                         initial_state = model.get('merged_particles')[initial_state][one_flv[ibeam-1]-1]
                                     else:
                                         initial_state = -model.get('merged_particles')[-initial_state][one_flv[ibeam-1]-1]
-                                misc.sprint(initial_state)
                                 if initial_state in list(pdf_codes.keys()):
                                     pdf_lines = pdf_lines + "%s%d*" % \
                                                 (pdf_codes[initial_state], ibeam)
@@ -2622,7 +2613,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'check_sa.f')).read()
 
         
-        all_flavors  = matrix_element.get_external_flavors()
+        all_flavors  = matrix_element.get_external_flavors(all_perm=False)
         misc.sprint('found %d flavors, check for identical combination' % len(all_flavors))
         map_all_flv = {}
         for i, flv1 in  enumerate(all_flavors):
@@ -2633,7 +2624,6 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 map_all_flv[coup] = [flv1]
  
         all_flavors = [flv[0] for flv in map_all_flv.values()]
-        misc.sprint(len(all_flavors))
         maxflavor = len(all_flavors )
         flavor_text = ['        FLAVOR(:,:) =1']
         for i in range(1, maxflavor+1):
@@ -3177,10 +3167,8 @@ CF2PY integer, intent(in) :: new_value
         self.write_ngraphs_file(writers.FortranWriter(filename),
                            len(matrix_element.get_all_amplitudes()))
         
-        misc.sprint(self.format)
         if self.format == 'standalone':
             filename = pjoin(dirpath, 'check_sa.f')
-            misc.sprint(filename)
             self.write_check_sa(writers.FortranWriter(filename), matrix_element, proc_prefix)
 
         # Generate diagrams
@@ -3406,6 +3394,8 @@ CF2PY integer, intent(in) :: new_value
                 matrix_template = "matrix_standalone_matchbox_splitOrders_v4.inc"
             else:
                 matrix_template = "matrix_standalone_splitOrders_v4.inc"
+        data = matrix_element.get('processes')[0].get_final_ids_after_decay()
+        replace_dict['get_pid'] = ' PID = %s' % (data)
 
         replace_dict['template_file'] = pjoin(_file_path, 'iolibs', 'template_files', matrix_template)
         replace_dict['template_file2'] = pjoin(_file_path, \
@@ -4425,7 +4415,6 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         if opt and isinstance(opt['output_options'], dict) and \
                                        'vector_size' in opt['output_options']:
-            misc.sprint(opt['output_options']['vector_size'])
             self.opt['vector_size'] = banner_mod.ConfigFile.format_variable(
                   opt['output_options']['vector_size'], int, 'vector_size')
         else:
@@ -5188,6 +5177,10 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         replace_dict['get_flavor_matrix'] = '' 
         for i, flav in enumerate(all_flav):
             replace_dict['get_flavor_matrix'] += ' DATA (FLAVOR(i,  %d),i=  1, NEXTERNAL) /%s/\n' % (i+1, ', '.join([str(f) for f in flav[0]]))
+        
+        # information for computing the correct symmetry factor for each flavor
+        data = matrix_element.get('processes')[0].get_final_ids_after_decay()
+        replace_dict['get_pid'] = ' PID = %s' % (data)
 
 
 
@@ -5458,17 +5451,22 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         lines = """function get_color(ipdg)
         implicit none
         integer get_color, ipdg
-
-        if(ipdg.eq.%d)then
-        get_color=%d
-        return
-        """ % (particle_ids[0], model.get_particle(particle_ids[0]).get_color())
-
-        for part_id in particle_ids[1:]:
-            lines += """else if(ipdg.eq.%d)then
+        """ 
+        for i, part_id in enumerate(particle_ids[:]):
+            lines += """%s if(ipdg.eq.%d)then
             get_color=%d
             return
-            """ % (part_id, model.get_particle(part_id).get_color())
+            """ % ('else' if i else '', part_id, model.get_particle(part_id).get_color())
+            if abs(part_id) in model['merged_particles']:
+                for pdg in model['merged_particles'][abs(part_id)]:
+                   lines += """else if(ipdg.eq.%(sign)s%(pdg)d)then
+                        get_color=%(sign)s%(color)d
+                        return
+                        """ % {'sign': '-' if part_id < 0 else '',
+                               'pdg': pdg,
+                               'color': model.get_particle(part_id).get_color()}   
+                  
+
         # Dummy particle for multiparticle vertices with pdg given by
         # first code not in the model
         lines += """else if(ipdg.eq.%d)then
@@ -6850,17 +6848,22 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         matrix_elements = subproc_group.get('matrix_elements')
         for i, me in enumerate(matrix_elements):
             flavors = me.get_external_flavors_with_iden()
-            misc.sprint(flavors)
+            ids = me.get('processes')[0].get_initial_ids()
             if me.get('has_mirror_process'):
                 lines.append("DATA (MIRRORPROCS(%i,I),I=1,%d)/%s/" % \
                             (i+1, len(flavors),
                       ",".join(['.true.' for flv in flavors])))
-            else:
+            elif len(ids)==2 and ids[0] == ids[1]:
                 # if flavor of the two initial state are not the same, we need to set to False
                 lines.append("DATA (MIRRORPROCS(%i,I),I=1,%d)/%s/" % \
                             (i+1, len(flavors),
-                      ",".join([bool_dict[(flv[0][0] != flv[0][1])] for flv in flavors])))                              
-        
+                      ",".join([bool_dict[(flv[0][0] != flv[0][1])] for flv in flavors])))
+            else:
+                lines.append("DATA (MIRRORPROCS(%i,I),I=1,%d)/%s/" % \
+                        (i+1, len(flavors),
+                      ",".join(['.false.' for flv in flavors]))) 
+                
+
         lines.append("DATA NB_FLAV /%s/" % (
                       ",".join([str(len(me.get_external_flavors_with_iden())) for \
                                 me in matrix_elements]))) 

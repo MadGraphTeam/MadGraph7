@@ -103,7 +103,7 @@ C
 C     FUNCTIONS
 C
       LOGICAL %(proc_prefix)sIS_BORN_HEL_SELECTED
-
+      INTEGER BROKEN_SYM
 c----------
 c   Check if helreset mode is on
 c---------
@@ -147,7 +147,7 @@ C     For this reason, we simply remove the filterin when there is only three ex
                 ENDIF
 		     ENDIF
           ENDDO
-      ANS=ANS/DBLE(IDEN)
+      ANS=ANS/DBLE(IDEN)*BROKEN_SYM(FLAVOR)
 	  IF(USERHEL.NE.-1) THEN
           ANS=ANS*HELAVGFACTOR	  
 	  ELSE
@@ -327,3 +327,46 @@ C     ----------
 
       RETURN
       END
+
+
+      INTEGER FUNCTION BROKEN_SYM(FLAV)
+
+      include 'nexternal.inc'
+      INTEGER FLAV(NEXTERNAL)
+      INTEGER PID(NINCOMING+1:NEXTERNAL)
+      INTEGER I,J
+      INTEGER N_BROK, N_TOT
+      INTEGER OLD_FACTOR  
+      %(get_pid)s
+
+c     get old symmetry factor
+      OLD_FACTOR = 1
+      do I=NINCOMING+1, NEXTERNAL
+         if (PID(I).eq.0) cycle
+         N_tot=1
+         do J = I+1,NEXTERNAL
+            if (PID(I).eq.PID(J))then
+              PID(J) = 0
+              N_TOT = N_TOT+1
+              OLD_FACTOR = OLD_FACTOR*N_TOT
+            endif
+         enddo
+      enddo
+
+      %(get_pid)s
+c     get new symmetry factor      
+      do I=NINCOMING+1, NEXTERNAL
+         if (PID(I).eq.0) cycle
+         N_TOT=1
+         do J = I+1,NEXTERNAL
+            if (PID(I).eq.PID(J).and.FLAV(I).EQ.FLAV(J))then
+               PID(J) = 0
+               N_TOT = N_TOT + 1
+               OLD_FACTOR = OLD_FACTOR/N_TOT
+            endif
+        enddo
+    enddo
+   BROKEN_SYM = OLD_FACTOR   
+   return
+   end
+

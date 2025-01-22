@@ -655,7 +655,7 @@ C       Turn caching on in dsigproc to avoid too many calls to switchmom
         DO J=1,SYMCONF(0)
           DO I=1,MAXSPROC
             IF(init_mode.or.CONFSUB(I,SYMCONF(J)).NE.0) THEN
-              DO K = I, NB_FLAV(I)
+              DO K = 1, NB_FLAV(I)
                 DO L=1,2
                  IF(L.EQ.1.OR.MIRRORPROCS(I,K))THEN            
                   IPROC=I
