@@ -25,6 +25,7 @@ ANNOUNCEMENT:
             - SIMD support on cpu
           Those modes need to install the cudacpp plugin (can be done via the command "install cudacpp")
           This feature also add OpenMP support for LO process (deactivated by default and which does not need the plugin).
+      OM+JK+KM+KH+YJZ: implementation of the FD gauge via "set gauge FD" [2203.10440, 2405.01256]
 
 3.5.7 (29/11/24)
   OM: Include fix from LTS 2.9.22

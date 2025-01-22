@@ -1877,8 +1877,8 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
                 continue # no event to generate events
             self.gscalefact[tag] = max(1, 1/(goal_lum * C.get('axsec')/ self.ngran))
             #need to generate events
-            logger.debug('request events for ', C.get('name'), 'cross=',
-                  C.get('axsec'), 'needed events = ', goal_lum * C.get('axsec'))
+            logger.debug('request events for %s cross=%d needed events = %d',
+                         C.get('name'), C.get('axsec'), goal_lum * C.get('axsec'))
             to_refine.append(C) 
          
         logger.info('need to improve %s channels' % len(to_refine))    
