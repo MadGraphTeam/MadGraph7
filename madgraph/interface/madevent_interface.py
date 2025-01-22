@@ -1171,10 +1171,10 @@ class CheckValidForCmd(object):
                 for opt,value in self._survey_options.items():
                     if arg.startswith('--%s=' % opt):
                         exec('self.opts[\'%s\'] = %s(arg.split(\'=\')[-1])' % \
-                             (opt, value[0]))
+                                (opt, value[0]), globals(), {'self':self, 'arg':arg})
                         arg = ""
                 if arg != "": raise Exception
-            except Exception:
+            except Exception as error:
                 self.help_survey()
                 raise self.InvalidCmd('invalid %s argument'% arg)
 

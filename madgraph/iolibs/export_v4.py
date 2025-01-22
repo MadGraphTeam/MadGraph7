@@ -656,7 +656,9 @@ C
         ff = writers.FortranWriter(pjoin(self.dir_path, "Source", "PDF", "pdfwrap_lhapdf.f"))        
         #ff = open(pjoin(self.dir_path, "Source", "PDF", "pdfwrap_lhapdf.f"),"w")
         template = open(pjoin(MG5DIR, "madgraph", "iolibs", "template_files", "pdf_wrap_lhapdf.f"),"r").read()
-        ff.writelines(template % changer)
+    
+        NLO = isinstance(self, madgraph.iolibs.export_fks.ProcessExporterFortranFKS)
+        ff.writelines(template % changer, {'LO': not NLO})
 
         # this is for eMELA
         ff = writers.FortranWriter(pjoin(self.dir_path, "Source", "PDF", "pdfwrap_emela.f"))        
