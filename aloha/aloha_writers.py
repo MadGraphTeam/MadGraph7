@@ -206,13 +206,13 @@ class WriteALOHA:
             
             if index in conjugate:
                 index2, spin2 = index+1, self.particles[index+1]
-                call_arg.append(('list_complex','%s%d' % (spin2, index2 +1))) 
+                call_arg.append(('aloha%s' %spin ,'%s%d' % (spin2, index2 +1))) 
                 #call_arg.append('%s%d' % (spin, index +1)) 
             elif index-1 in conjugate:
                 index2, spin2 = index-1, self.particles[index-1]
-                call_arg.append(('list_complex','%s%d' % (spin2, index2 +1))) 
+                call_arg.append(('aloha%s' % spin,'%s%d' % (spin2, index2 +1))) 
             else:
-                call_arg.append(('list_complex','%s%d' % (spin, index +1)))
+                call_arg.append(('aloha%s' % spin,'%s%d' % (spin, index +1)))
         
         # couplings
         if  couplings is None:
@@ -1534,6 +1534,11 @@ class ALOHAWriterForCPP(WriteALOHA):
     type2def['int'] = 'int '
     type2def['double'] = 'double '
     type2def['complex'] = 'std::complex<double> '
+    type2def['alohaS'] = 'ALOHAOBJ '
+    type2def['alohaF'] = 'ALOHAOBJ '
+    type2def['alohaV'] = 'ALOHAOBJ '
+    type2def['alohaR'] = 'ALOHAOBJ ' 
+    type2def['alohaT'] = 'ALOHAOBJ '
     type2def['pointer_vertex'] = '&' # using complex<double> & vertex)
     type2def['pointer_coup'] = ''
     #variable overwritten by gpu
@@ -1581,9 +1586,10 @@ class ALOHAWriterForCPP(WriteALOHA):
         """shift the indices for non impulsion object"""
         if match.group('var').startswith('P'):
             shift = 0
+            return '%s.p[%s]' % (match.group('var'), int(match.group('num')) + shift) 
         else:
-            shift =  self.momentum_size - 1
-        return '%s[%s]' % (match.group('var'), int(match.group('num')) + shift)
+            shift =  0
+            return '%s.W[%s]' % (match.group('var'), int(match.group('num')) + shift)
               
     
     def change_var_format(self, name): 
@@ -1644,6 +1650,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         args = []
         for format, argname in self.define_argument_list(couplings):
             if format.startswith('list'):
+                misc.sprint(format, argname)
                 type = self.type2def[format[5:]]
                 list_arg = '[]'
             else:
@@ -1697,16 +1704,19 @@ class ALOHAWriterForCPP(WriteALOHA):
                     continue
                     #should be define in the header
                 elif name[0] in ['F','V']:
+                    type = 'aloha2'
                     if aloha.loop_mode:
                         size = 8
                     else:
                         size = 6
                 elif name[0] == 'S':
+                    type = 'aloha1'
                     if aloha.loop_mode:
                         size = 5
                     else:
                         size = 3
-                elif name[0] in ['R','T']: 
+                elif name[0] in ['R','T']:
+                    type = 'aloha3' 
                     if aloha.loop_mode:
                         size = 20
                     else:
@@ -1744,7 +1754,7 @@ class ALOHAWriterForCPP(WriteALOHA):
                 out_size = self.type_to_size[type] 
                 continue
             elif self.offshell:
-                p.append('{0}{1}{2}[%(i)s]'.format(signs[i],type,i+1,type))    
+                p.append('{0}{1}{2}.p[%(i)s]'.format(signs[i],type,i+1,type))    
                 
             if self.declaration.is_used('P%s' % (i+1)):
                 self.get_one_momenta_def(i+1, out)
@@ -1756,11 +1766,11 @@ class ALOHAWriterForCPP(WriteALOHA):
             if aloha.loop_mode:
                 size_p = 4
             else:
-                size_p = 2
+                size_p = 4
             
             for i in range(size_p):
                 dict_energy = {'i':i}
-                out.write('    %s%s[%s] = %s;\n' % (type,self.outgoing, i, 
+                out.write('    %s%s.p[%s] = %s;\n' % (type,self.outgoing, i, 
                                              ''.join(p) % dict_energy))
             if self.declaration.is_used('P%s' % self.outgoing):
                 self.get_one_momenta_def(self.outgoing, out)
@@ -1776,7 +1786,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         if aloha.loop_mode:
             template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d[%(nb)d];\n'
         else:
-            template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d[%(nb2)d]%(operator)s;\n'
+            template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d.p[%(nb2)d];\n'
 
         nb2 = 0
         for j in range(4):
