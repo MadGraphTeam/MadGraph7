@@ -238,7 +238,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
 	    endif
         ENDIF
     ENDIF
-    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR)
+    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR(1,IFLAV))
 
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol)
 

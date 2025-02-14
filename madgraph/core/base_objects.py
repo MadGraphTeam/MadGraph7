@@ -2648,6 +2648,17 @@ class LegList(PhysicsObjectList):
             del Opts['pert']
         return super(LegList,self).sort(*args, **Opts)
 
+    def nice_string(self):
+
+        out =[]
+        for leg in self:
+            if isinstance(leg, Leg):
+                out.append('(%s,%s)' % (leg['number'], leg['id']))
+            elif isinstance(leg, tuple):
+                for l in leg:
+                    out.append('(%s,%s)' % (l['number'], l['id']))
+        return '[%s]' %','.join(out)
+
 
 #===============================================================================
 # MultiLeg

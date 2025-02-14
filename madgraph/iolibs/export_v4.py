@@ -961,6 +961,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             ids = [l.get('id') for l in legs]
             if any([id in self.model['merged_particles'] for id in ids]):
                 allow_flavor = matrix_element.get_external_flavors_with_iden()
+                for flavor in allow_flavor:
+                    misc.sprint(len(flavor), flavor)
                 for flavor in sum(allow_flavor,[]):
                     ids = [l.get('id') for l in legs]
                     for i,id in enumerate(ids):
@@ -5357,7 +5359,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         ipsel = 0
         for i, flv in enumerate(all_flv):
             replace_dict['start_ipsel_for_IFLAV'] += ' %sIF (IFLAV.eq.%d) THEN\n' % ('ELSE' if i != 0 else '',i+1)
-            replace_dict['start_ipsel_for_IFLAV'] += '    ipsel = ipsel + %d\n' % ipsel
+            replace_dict['start_ipsel_for_IFLAV'] += '    ipsel_shift = %d\n' % ipsel
             ipsel += len(flv)
         replace_dict['start_ipsel_for_IFLAV'] += ' ENDIF\n'
 
@@ -6651,8 +6653,13 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
 
         filename = 'maxamps.inc'
         # get number of non identical flavor for each matrix element file
-        nb_flavor_per_proc = [len(me.get_external_flavors_with_iden()) for me in matrix_elements]
+        for me in matrix_elements:
+            misc.sprint(me.get_external_flavors_with_iden())
+            misc.sprint(me.get_nb_flavors())
+        misc.sprint([me.get_nb_flavors() for me in matrix_elements])
 
+        nb_flavor_per_proc = [me.get_nb_flavors() for me in matrix_elements]
+        misc.sprint(os.getcwd(), nb_flavor_per_proc)
         self.write_maxamps_file(writers.FortranWriter(filename),
                            maxamps,
                            maxflows,

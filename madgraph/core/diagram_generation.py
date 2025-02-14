@@ -815,6 +815,11 @@ class Amplitude(base_objects.PhysicsObject):
         if diagram_filter:
             res = self.apply_user_filter(res)
 
+        # 4 gluon specials
+        if True:
+            misc.sprint('apply 4 gluon specials')
+            res = self.apply_4gluon_specials(res)
+
         # Replace final id=0 vertex if necessary
         if not process.get('is_decay_chain'):
             for diagram in res:
@@ -926,7 +931,8 @@ class Amplitude(base_objects.PhysicsObject):
                 return False                
 
         res = diag_list.__class__()                
-        nb_removed = 0 
+        nb_removed = 0
+        misc.sprint('Diagram filter is ON', type(diag_list))
         model = self['process']['model'] 
         for diag in diag_list:
             if remove_diag(diag, model):
@@ -939,6 +945,27 @@ class Amplitude(base_objects.PhysicsObject):
             
         return res
 
+    def apply_4gluon_specials(self, diag_list):
+
+        res = diag_list.__class__()       
+        for diag in diag_list:
+            keep = True
+            for vertex in diag.get('vertices'):
+                if [21,21,21] == [abs(leg.get('id')) for leg in vertex.get('legs')]:
+                    misc.sprint([hasattr(leg, 'g3') for leg in vertex.get('legs')])
+                    if any([hasattr(leg, 'g3') for leg in vertex.get('legs')]):
+                        keep = False
+                        break
+                    else:
+                        vertex.get('legs')[-1].g3 = True
+                        misc.sprint([hasattr(leg, 'g3') for leg in vertex.get('legs')])
+                if [21,21] == [abs(leg.get('id')) for leg in vertex.get('legs')]:
+                    if all([hasattr(leg, 'g3') for leg in vertex.get('legs')]):
+                        keep = False
+                        break
+            if keep:
+                res.append(diag)
+        return res
 
 
     def create_diagram(self, vertexlist):
@@ -1263,6 +1290,7 @@ class Amplitude(base_objects.PhysicsObject):
                                     'from_group':True}),
                    vert_id)\
                   for leg_id, vert_id in leg_vert_ids]
+        
 
         return mylegs
                           

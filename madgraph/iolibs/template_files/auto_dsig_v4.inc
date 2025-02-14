@@ -39,7 +39,7 @@ C
       INTEGER I,ITYPE,LP,IPROC
       double precision Qscale
 %(pdf_vars)s      
-      DOUBLE PRECISION XPQ(-7:7),PD(0:MAXPROC)
+      DOUBLE PRECISION XPQ(-7:7),PD(0:MAXFLAVPERPROC)
       DOUBLE PRECISION DSIGUU,R,RCONF
       INTEGER FLAVOR(NEXTERNAL)
 
@@ -66,7 +66,7 @@ C
 C  
 C GLOBAL VARIABLES
 C  
-      INTEGER          IPSEL
+      INTEGER          IPSEL, IPSEL_SHIFT ! link between PD and IPSEL
       COMMON /SubProc/ IPSEL
 C     MINCFIG has this config number
       integer           mincfig, maxcfig
@@ -162,6 +162,7 @@ C     Select a flavor combination (need to do here for right sign)
          ENDDO
      
          %(start_ipsel_for_IFLAV)s
+         IPSEL = IPSEL + IPSEL_SHIFT
          DSIGUU=DSIGUU*REWGT(PP,1)
 
 C        Apply the bias weight specified in the run card (default is 1.0)
@@ -171,7 +172,7 @@ C        Apply the bias weight specified in the run card (default is 1.0)
 
          IF (DSIGUU.LT.1D199) THEN
 c           Set sign of dsig based on sign of PDF and matrix element
-            DSIG%(proc_id)s=DSIGN(%(conv)spd(0)*DSIGUU,DSIGUU*PD(IPSEL))
+            DSIG%(proc_id)s=DSIGN(%(conv)spd(0)*DSIGUU,DSIGUU*PD(IPSEL-IPSEL_SHIFT))
          ELSE
              write(*,*) "Error in matrix element"
              DSIGUU=0D0
