@@ -2,7 +2,7 @@
 #include <cmath> 
 #include "aloha_aux_functions.h"
 using namespace std;
-void ixxxxx(double p[4], double fmass, int nhel, int nsf, ALOHAOBJ fi)
+void ixxxxx(double p[4], double fmass, int nhel, int nsf, ALOHAOBJ &fi)
 {
   complex<double> chi[2];
   double sf[2], sfomega[2], omega[2], pp, pp3, sqp0p3, sqm[2];

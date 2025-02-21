@@ -138,24 +138,38 @@ c#endif
          if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
-            sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
+            sqp0p3 = dsqrt(max(dabs(p(0))+p(3),rZero))*nsf
          end if
          chi(1) = dcmplx( sqp0p3 )
          if ( sqp0p3.eq.rZero ) then
-            chi(2) = dcmplx(-nhel )*dsqrt(rTwo*p(0))
+            chi(2) = dcmplx(-nhel )*dsqrt(rTwo*dabs(p(0)))
          else
             chi(2) = dcmplx( nh*p(1), p(2) )/sqp0p3
          endif
          if ( nh.eq.1 ) then
-            fi % W(1) = dcmplx( rZero )
-            fi % W(2) = dcmplx( rZero )
-            fi % W(3) = chi(1)
-            fi % W(4) = chi(2)
+            if( p(0).gt.0d0) then
+                fi % W(1) = dcmplx( rZero )
+                fi % W(2) = dcmplx( rZero )
+                fi % W(3) = chi(1)
+                fi % W(4) = chi(2)
+            else
+                fi % W(1) = dcmplx(0,1) * chi(1)  
+                fi % W(2) = dcmplx(0,1) * chi(2)
+                fi % W(3) = dcmplx( rZero )
+                fi % W(4) = dcmplx( rZero )
          else
-            fi % W(1) = chi(2)
-            fi % W(2) = chi(1)
-            fi % W(3) = dcmplx( rZero )
-            fi % W(4) = dcmplx( rZero )
+             if (p(0).gt.0d0) then
+                fi % W(1) = chi(2)
+                fi % W(2) = chi(1)
+                fi % W(3) = dcmplx( rZero )
+                fi % W(4) = dcmplx( rZero )
+            else
+
+                fi % W(1) = dcmplx( rZero )
+                fi % W(2) = dcmplx( rZero )
+                fi % W(3) = dcmplx(0,1) * chi(2)
+                fi % W(4) = dcmplx(0,1) * chi(1)
+            endif
          endif
       endif
 c
@@ -281,24 +295,38 @@ c            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
          if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
-            sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
+            sqp0p3 = dsqrt(max(dabs(p(0))+p(3),rZero))*nsf
          end if
          chi(1) = dcmplx( sqp0p3 )
          if ( sqp0p3.eq.rZero ) then
-            chi(2) = dcmplx(-nhel )*dsqrt(rTwo*p(0))
+            chi(2) = dcmplx(-nhel )*dsqrt(rTwo*dabs(p(0)))
          else
             chi(2) = dcmplx( nh*p(1), -p(2) )/sqp0p3
          endif
          if ( nh.eq.1 ) then
-            fo % W(1)  = chi(1)
-            fo % W(2)  = chi(2)
-            fo % W(3)  = dcmplx( rZero )
-            fo % W(4)  = dcmplx( rZero )
+             if(p(0).gt.0d0)then
+                 fo % W(1)  = chi(1)
+                 fo % W(2)  = chi(2)
+                 fo % W(3)  = dcmplx( rZero )
+                 fo % W(4)  = dcmplx( rZero )
+             else
+                 fo % W(1)  = dcmplx( rZero ) 
+                 fo % W(2)  = dcmplx( rZero ) 
+                 fo % W(3)  = dcmplx(0,1) * chi(1)
+                 fo % W(4)  = dcmplx(0,1) * chi(2)
+             endif
          else
-            fo % W(1)  = dcmplx( rZero )
-            fo % W(2)  = dcmplx( rZero )
-            fo % W(3)  = chi(2)
-            fo % W(4)  = chi(1)
+             if(p(0).gt.0d0) then
+                fo % W(1)  = dcmplx( rZero )
+                fo % W(2)  = dcmplx( rZero )
+                fo % W(3)  = chi(2)
+                fo % W(4)  = chi(1)
+            else
+                 fo % W(1)  = dcmplx(0,1) * chi(2)
+                 fo % W(2)  = dcmplx(0,1) * chi(1)
+                 fo % W(3)  = dcmplx( rZero )
+                 fo % W(4)  = dcmplx( rZero )
+            endif
          endif
 
       endif
@@ -653,7 +681,7 @@ c#endif
       hel = dble(nhel)
       nsvahl = nsv*dabs(hel)
       pt2 = p(1)**2+p(2)**2
-      pp = min(p(0),dsqrt(pt2+p(3)**2))
+      pp = min(dbas(p(0)),dsqrt(pt2+p(3)**2))
       pt = min(pp,dsqrt(pt2))
 
       vc % P(0) = p(0)*nsv
@@ -709,7 +737,7 @@ c#endif
 
       else
 
-         pp = p(0)
+         pp = dabs(p(0))
          pt = sqrt(p(1)**2+p(2)**2)
          vc % W(1) = dcmplx( rZero )
          vc % W(4) = dcmplx( hel*pt/pp*sqh )

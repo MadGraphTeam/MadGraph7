@@ -3,7 +3,7 @@
 #include "aloha_aux_functions.h"
 using namespace std;
 
-void oxxxxx(double p[4], double fmass, int nhel, int nsf, ALOHAOBJ fo)
+void oxxxxx(double p[4], double fmass, int nhel, int nsf, ALOHAOBJ &fo)
 {
   complex<double> chi[2];
   double sf[2], sfomeg[2], omega[2], pp, pp3, sqp0p3, sqm[2];

@@ -1586,9 +1586,9 @@ class ALOHAWriterForCPP(WriteALOHA):
         """shift the indices for non impulsion object"""
         if match.group('var').startswith('P'):
             shift = 0
-            return '%s.p[%s]' % (match.group('var'), int(match.group('num')) + shift) 
+            return '%s[%s]' % (match.group('var'), int(match.group('num')) + shift) 
         else:
-            shift =  0
+            shift =  -1
             return '%s.W[%s]' % (match.group('var'), int(match.group('num')) + shift)
               
     
@@ -1668,11 +1668,13 @@ class ALOHAWriterForCPP(WriteALOHA):
                 'pointer_vertex': self.type2def['pointer_vertex']}
             #self.declaration.add(('complex','vertex'))
         else:
-            output = '%(doublec)s %(spin)s%(id)d[]' % {
-                     'doublec': self.type2def['complex'],
+            alohatype = 'aloha%s' % self.particles[self.outgoing -1]
+            output = '%(doublec)s %(pointer_vertex)s %(spin)s%(id)d' % {
+                     'doublec': self.type2def[alohatype],
                      'spin': self.particles[self.outgoing -1],
+                     'pointer_vertex': self.type2def['pointer_vertex'], 
                      'id': self.outgoing}
-            self.declaration.add(('list_complex', output))
+            #self.declaration.add((alohatype  , output))
         
         out.write('%(prefix)s void %(name)s(%(args)s,%(output)s)' % \
                   {'prefix': self.prefix,
@@ -1754,7 +1756,8 @@ class ALOHAWriterForCPP(WriteALOHA):
                 out_size = self.type_to_size[type] 
                 continue
             elif self.offshell:
-                p.append('{0}{1}{2}.p[%(i)s]'.format(signs[i],type,i+1,type))    
+                p.append('{0}{1}{2}.p[%(i)s]'.format(signs[i],type,i+1,type))
+                misc.sprint(p[-1])    
                 
             if self.declaration.is_used('P%s' % (i+1)):
                 self.get_one_momenta_def(i+1, out)
@@ -1786,7 +1789,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         if aloha.loop_mode:
             template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d[%(nb)d];\n'
         else:
-            template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d.p[%(nb2)d];\n'
+            template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d.p[%(j)d];\n'
 
         nb2 = 0
         for j in range(4):
@@ -1900,7 +1903,8 @@ class ALOHAWriterForCPP(WriteALOHA):
                 coeff = 'COUP'
                 
             for ind in numerator.listindices():
-                out.write('    %s[%d]= %s*%s;\n' % (self.outname, 
+                self.momentum_size = 0
+                out.write('    %s.W[%d]= %s*%s;\n' % (self.outname, 
                                         self.pass_to_HELAS(ind), coeff,
                                         self.write_obj(numerator.get_rep(ind))))
         return out.getvalue()
@@ -1996,8 +2000,8 @@ class ALOHAWriterForCPP(WriteALOHA):
                     routine.write( '    vertex = vertex + tmp;\n')
                 else:
                     size = self.type_to_size[self.particles[offshell -1]] -2
-                    routine.write(""" i= %s;\nwhile (i < %s)\n{\n""" % (self.momentum_size, self.momentum_size+size))
-                    routine.write(" %(main)s[i] = %(main)s[i] + %(tmp)s[i];\n i++;\n" %\
+                    routine.write(""" i= %s;\nwhile (i < %s)\n{\n""" % (0, size))
+                    routine.write(" %(main)s.W[i] = %(main)s.W[i] + %(tmp)s.W[i];\n i++;\n" %\
                                {'main': main, 'tmp': data['out']})
                     routine.write('}\n')
                     self.declaration.add(('int','i'))

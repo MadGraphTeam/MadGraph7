@@ -845,12 +845,13 @@ class OneProcessExporterCPP(object):
                           """// Calculate wavefunctions
                           void calculate_wavefunctions(const int perm[], const int hel[]);
                           static const int nwavefuncs = %(nwfct)d;
-                          std::complex<double> w[nwavefuncs][%(sizew)d];
+                          MG5_%(model_name)s::ALOHAOBJ w[nwavefuncs];
                           static const int namplitudes = %(namp)d;
                           std::complex<double> amp[namplitudes];""" % \
                           {'nwfct':len(self.wavefunctions),
                           'sizew': wfct_size,
-                          'namp':len(self.amplitudes.get_all_amplitudes())
+                          'namp':len(self.amplitudes.get_all_amplitudes()),
+                          'model_name': self.model_name
                           }
 
             replace_dict['all_matrix_definitions'] = \

@@ -818,7 +818,7 @@ class Amplitude(base_objects.PhysicsObject):
         # 4 gluon specials
         if True:
             misc.sprint('apply 4 gluon specials')
-            res = self.apply_4gluon_specials(res)
+            #res = self.apply_4gluon_specials(res)
 
         # Replace final id=0 vertex if necessary
         if not process.get('is_decay_chain'):
