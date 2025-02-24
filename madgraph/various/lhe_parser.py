@@ -2666,47 +2666,72 @@ class Event(list):
         
         return re.sub('[\n]+', '\n', out)
 
-    def get_momenta(self, get_order, allow_reversed=True):
+    def get_momenta(self, get_order, allow_reversed=True, allow_crossing=True):
         """return the momenta vector in the order asked for"""
         
         #avoid to modify the input
         order = [list(get_order[0]), list(get_order[1])] 
         out = [''] *(len(order[0])+len(order[1]))
         for i, part in enumerate(self):
+            flip = False
             if part.status == 1: #final
                 try:
                     ind = order[1].index(part.pid)
                 except ValueError as error:
-                    if not allow_reversed:
+                    ind=None
+                    if allow_crossing:
+                        if -part.pid in order[0]:
+                            ind = order[0].index(-part.pid)
+                            flip = True
+                        else: 
+                            ind = order[0].index(part.pid)
+                            flip = True
+                    if ind is None and not allow_reversed:
                         raise error
                     else:
                         order = [[-i for i in get_order[0]],[-i for i in get_order[1]]]
                         try:
-                            return self.get_momenta_str(order, False)
+                            return self.get_momenta_str(order, False, allow_crossing)
                         except ValueError:
-                            raise error     
-                position = len(order[0]) + ind
-                order[1][ind] = 0   
+                            raise error
+                if not flip:     
+                    position = len(order[0]) + ind
+                    order[1][ind] = 0
+                else:
+                    position = ind
+                    order[0][ind] = 0   
             elif part.status == -1:
                 try:
                     ind = order[0].index(part.pid)
                 except ValueError as error:
+                    if allow_crossing:
+                        if -part.pid in order[1]:
+                            ind = order[1].index(-part.pid)
+                            flip = True
+                        else: 
+                            ind = order[1].index(part.pid)
+                            flip = True 
                     if not allow_reversed:
                         raise error
                     else:
                         order = [[-i for i in get_order[0]],[-i for i in get_order[1]]]
                         try:
-                            return self.get_momenta_str(order, False)
+                            return self.get_momenta_str(order, False, allow_crossing)
                         except ValueError:
                             raise error
-                 
-                position =  ind
-                order[0][ind] = 0
+                if not flip:
+                    position =  ind
+                    order[0][ind] = 0
+                else:
+                    position = len(order[0]) +ind
+                    order[1][ind] = 0
             else: #intermediate
                 continue
-
-            out[position] = (part.E, part.px, part.py, part.pz)
-            
+            if flip:
+                out[position] = (-part.E, -part.px, -part.py, -part.pz)
+            else:
+                out[position] = (part.E, part.px, part.py, part.pz)
+        
         return out
 
 

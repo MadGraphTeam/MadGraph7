@@ -97,7 +97,7 @@ c
 c     Now we can call the matrix element!
 c
       do I=1, MAXFLAVOR
-      CALL SMATRIX(P,FLAVOR(1,I), MATELEM)
+      CALL %(proc_prefix)sSMATRIX(P,FLAVOR(1,I), MATELEM)
 c
       write(*,*) "flavor", FLAVOR(:,I)
       write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)	

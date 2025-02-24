@@ -2157,6 +2157,12 @@ class CompleteForCmd(cmd.CompleteCmd):
                             (not '[' in line or ('[' in line and ']' in line))):
             return
 
+        if text.startswith('--'):
+            return self.list_completion(text, ['--no_crossing', 
+                                               '--no_warning=duplicate',
+                                               '--diagram_filter',
+                                               '--standalone']) 
+
         try:
             return self.model_completion(text, ' '.join(args[1:]),line, formatting)
         except Exception as error:
@@ -3167,7 +3173,13 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         standalone_only = False
         if '--standalone' in args:
             standalone_only = True
+            merge_crossing = True
             args.remove('--standalone')            
+
+        merge_crossing = False
+        if '--no_crossing' in args:
+            merge_crossing = True
+            args.remove('--no_crossing') 
 
         # Check the validity of the arguments
         self.check_add(args)
@@ -3284,7 +3296,8 @@ This implies that with decay chains:
                 myproc = diagram_generation.MultiProcess(myprocdef,
                                          collect_mirror_procs = collect_mirror_procs,
                                          ignore_six_quark_processes = ignore_six_quark_processes,
-                                         optimize=optimize, diagram_filter=diagram_filter)
+                                         optimize=optimize, diagram_filter=diagram_filter,
+                                         merge_crossing=merge_crossing)
     
     
                 for amp in myproc.get('amplitudes'):

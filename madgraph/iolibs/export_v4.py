@@ -2635,7 +2635,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 if all_flavors[i-1][j-1] != 1:
                     flavor_text.append('FLAVOR(%d,%d) = %d' % (j,i,all_flavors[i-1][j-1]))
         flavor_text = '\n        '.join(flavor_text)
-        fsock.write(template % {'maxflavor':maxflavor, 'flavor_def': flavor_text})
+        fsock.write(template % {'maxflavor':maxflavor, 'flavor_def': flavor_text,
+                                'proc_prefix':proc_prefix})
 
 
     #===========================================================================
@@ -2766,6 +2767,7 @@ CF2PY double precision, intent(in) :: SCALE2
   integer npdg, nhel, procid
   double precision p(*)
   double precision ANS, ALPHAS, PI,SCALE2
+  integer flavor(%(maxpart)i)
   include 'coupl.inc'
   
   
@@ -2777,6 +2779,8 @@ CF2PY double precision, intent(in) :: SCALE2
        CALL UPDATE_AS_PARAM2(scale2, ALPHAS)
   endif
 
+%(flavormapping)s
+  
 %(smatrixhel)s
 
       return
@@ -2945,6 +2949,19 @@ CF2PY integer, intent(in) :: new_value
         for (key, pid), (prefix, tag) in self.prefix_info.items():
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
             
+        flavor_text= "  flavor(:) = 0"
+        flavor_text += " do i =1, npdg"
+        nb = 0
+        for pdg, pids in self.model['merged_particles'].items():
+            for pid in pids:
+                if nb ==0:
+                    flavor_text += ' else'
+                else:
+                    flavor_text += ' '
+                flavor_text += 'if (abs(pdgs(i)).eq.%i)then flavor(i) = abs(%i)\n pdgs(i) = Sign(pdgs(i), %i)' % (pid, pid, pdg)
+        if nb>0:
+            flavor_text += 'endif'
+        flavor_text += " enddo"
 
         text = []
         for n_ext in range(min_nexternal, max_nexternal+1):
@@ -2957,6 +2974,7 @@ CF2PY integer, intent(in) :: new_value
                     text.append('       if (npdg.eq.%i)then' % n_ext)
                 else:
                     text.append('       else if (npdg.eq.%i)then' % n_ext)
+
             for ii,pdgs in enumerate(current_id):
                 pid = current_pid[ii]
                 condition = '.and.'.join(['%i.eq.pdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
@@ -2964,7 +2982,7 @@ CF2PY integer, intent(in) :: new_value
                     text.append( ' if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition, pid, ii))
                 else:
                     text.append( ' else if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition,pid,ii))
-                text.append(' call %ssmatrixhel(p, nhel, ans)' % self.prefix_info[(pdgs,pid)][0])
+                text.append(' call %ssmatrixhel(p, nhel, flavor, ans)' % self.prefix_info[(pdgs,pid)][0])
             text.append(' endif')
         #close the function
         if min_nexternal != max_nexternal:
@@ -2995,6 +3013,7 @@ CF2PY integer, intent(in) :: new_value
                           'parameter_setup': '\n'.join(parameter_setup),
                           'helreset_def' : '\n'.join(helreset_def),
                           'helreset_setup' : '\n'.join(helreset_setup),
+                          'flavormapping': flavor_text,
                           }
         formatting['lenprefix'] = len(formatting['prefix'])
         text = template % formatting

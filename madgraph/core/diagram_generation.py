@@ -1609,7 +1609,7 @@ class MultiProcess(base_objects.PhysicsObject):
         
     def __init__(self, argument=None, collect_mirror_procs = False,
                  ignore_six_quark_processes = [], optimize=False,
-                 loop_filter=None, diagram_filter=None):
+                 loop_filter=None, diagram_filter=None, merge_crossing=False):
         """Allow initialization with ProcessDefinition or
         ProcessDefinitionList
         optimize allows to use param_card information. (usefull for 1-.N)"""
@@ -1632,6 +1632,7 @@ class MultiProcess(base_objects.PhysicsObject):
         self['use_numerical'] = optimize
         self['loop_filter'] = loop_filter
         self['diagram_filter'] = diagram_filter # only True/False so far
+        self['merge_crossing'] = merge_crossing
         
         if isinstance(argument, base_objects.ProcessDefinition) or \
                isinstance(argument, base_objects.ProcessDefinitionList):
@@ -1680,7 +1681,8 @@ class MultiProcess(base_objects.PhysicsObject):
                                        self.get('ignore_six_quark_processes'),
                                        self['use_numerical'],
                                        loop_filter=self['loop_filter'],
-                                       diagram_filter=self['diagram_filter']))
+                                       diagram_filter=self['diagram_filter'],
+                                       merge_crossing=self['merge_crossing']))
 
         return MultiProcess.__bases__[0].get(self, name) # call the mother routine
 
@@ -1699,7 +1701,8 @@ class MultiProcess(base_objects.PhysicsObject):
                                   ignore_six_quark_processes = [],
                                   use_numerical=False,
                                   loop_filter=None,
-                                  diagram_filter=False):
+                                  diagram_filter=False,
+                                  merge_crossing=False):
         """Generate amplitudes in a semi-efficient way.
         Make use of crossing symmetry for processes that fail diagram
         generation, but not for processes that succeed diagram
@@ -1890,18 +1893,22 @@ class MultiProcess(base_objects.PhysicsObject):
                         # No crossing found, just continue
                         pass
                     else:
-                        # Found crossing - reuse amplitude
-                        amplitude = MultiProcess.cross_amplitude(\
-                            amplitudes[crossed_index],
-                            process,
-                            permutations[crossed_index],
-                            permutation)
-                        amplitudes.append(amplitude)
-                        success_procs.append(sorted_legs)
-                        permutations.append(permutation)
-                        non_permuted_procs.append(fast_proc)
-                        logger.info("Crossed process found for %s, reuse diagrams." % \
-                                    process.base_string())
+                        if not merge_crossing:
+                            # Found crossing - reuse amplitude
+                            amplitude = MultiProcess.cross_amplitude(\
+                                amplitudes[crossed_index],
+                                process,
+                                permutations[crossed_index],
+                                permutation)
+                            amplitudes.append(amplitude)
+                            success_procs.append(sorted_legs)
+                            permutations.append(permutation)
+                            non_permuted_procs.append(fast_proc)
+                            logger.info("Crossed process found for %s, reuse diagrams." % \
+                                        process.base_string())
+                        else:
+                            logger.info("Crossed process found for %s, do not generate diagrams." % \
+                                        process.base_string())
                         continue
                     
                 # Create new amplitude

@@ -157,6 +157,7 @@ c#endif
                 fi % W(2) = dcmplx(0,1) * chi(2)
                 fi % W(3) = dcmplx( rZero )
                 fi % W(4) = dcmplx( rZero )
+            endif   
          else
              if (p(0).gt.0d0) then
                 fi % W(1) = chi(2)
@@ -681,7 +682,7 @@ c#endif
       hel = dble(nhel)
       nsvahl = nsv*dabs(hel)
       pt2 = p(1)**2+p(2)**2
-      pp = min(dbas(p(0)),dsqrt(pt2+p(3)**2))
+      pp = min(dabs(p(0)),dsqrt(pt2+p(3)**2))
       pt = min(pp,dsqrt(pt2))
 
       vc % P(0) = p(0)*nsv

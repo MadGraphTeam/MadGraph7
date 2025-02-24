@@ -1555,12 +1555,19 @@ class ReweightInterface(extended_cmd.Cmd):
         #    base = "rw_me"
 
         if (not self.second_model and not self.second_process and not self.dedicated_path) or hypp_id==0:
-            orig_order, Pdir, hel_dict = self.id_to_path[tag]
+            if tag in self.id_to_path: 
+                orig_order, Pdir, hel_dict = self.id_to_path[tag]
+            else:
+                cross_tag = self.get_crossing_tag(tag)
+                orig_order, Pdir, hel_dict = self.id_to_path[cross_tag] 
         else:
             try:
                 orig_order, Pdir, hel_dict = self.id_to_path_second[tag]
             except KeyError:
-                if self.options['allow_missing_finalstate']:
+                cross_tag = self.get_crossing_tag(tag)
+                if cross_tag:
+                    orig_order, Pdir, hel_dict = self.id_to_path[cross_tag] 
+                elif self.options['allow_missing_finalstate']:
                     return 0.0
                 else:
                     logger.critical('The following initial/final state %s can not be found in the new model/process. If you want to set the weights of such events to zero use "change allow_missing_finalstate False"', tag)
@@ -1675,6 +1682,27 @@ class ReweightInterface(extended_cmd.Cmd):
             return me_value / len(all_p)        
         else:
             return me_value
+        
+
+    def get_crossing_tag(self,tag):
+        """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
+
+        # get list of possible crossing tag
+        crossing_tag = [tuple((list(t[0])+list(t[1]))).sort()) for t in self.id_to_path.keys()]
+
+        mytag = list(tag[0])+list(tag[1])
+        mytag.sort()
+        mytag=tuple(mytag)
+        nb_found = crossing_tag.count(mytag)
+        if nb_found == 0 :
+            return None
+        elif nb_found > 1:
+            raise Exception('more than one cross-matrix element found')
+        else:
+            index = crossing_tag.index(mytag)
+        return list(self.id_to_path.keys())[index]
+
+
 
     def terminate_fortran_executables(self, new_card_only=False):
         """routine to terminate all fortran executables"""
@@ -1760,7 +1788,9 @@ class ReweightInterface(extended_cmd.Cmd):
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
                     commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
-        
+
+        if not self.keep_ordering:
+            commandline = commandline.replace('add process', 'add process --no_crossing') 
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
         try:
@@ -1998,7 +2028,12 @@ class ReweightInterface(extended_cmd.Cmd):
             #object_collector
             #self.id_to_path_second = {}   
             #data['id2path'] = self.id_to_path_second 
-        
+
+        if not self.keep_ordering:
+            for i,line in enumerate(data['processes']):
+                data['processes'][i] = '%s --no_crossing' % line
+            
+
         # 0. clean previous run ------------------------------------------------
         if not self.rwgt_dir:
             path_me = self.me_dir
