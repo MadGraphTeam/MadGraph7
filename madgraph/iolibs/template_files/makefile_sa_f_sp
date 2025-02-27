@@ -16,7 +16,8 @@ $(PROG_SPLITORDERS): $(PROCESS) $(CHECK_SA_SPLITORDERS) makefile $(LIBS)
 	$(FC) $(FFLAGS) -o $(PROG) $(PROCESS) $(CHECK_SA_SPLITORDERS) $(LINKLIBS)
 
 driver.f: nexternal.inc pmass.inc ngraphs.inc coupl.inc
-FFLAGS += -I ../../Source/DHELAS -I ../../Source/MODEL
+F_INCLUDE = -I../../Source/DHELAS -I../../Source/MODEL
+FFLAGS += $(F_INCLUDE)
 
 $(LIBDIR)libdhelas.$(libext):
 	cd ../../Source/DHELAS;make
@@ -31,4 +32,4 @@ endif
 
 matrix$(MENUM)py.so: matrix.f makefile $(LIBS)
 	touch __init__.py
-	$(F2PY) $(LINKLIBS) -c  matrix.f -m matrix$(MENUM)py --f77exec=$(FC)
+	$(F2PY) $(LINKLIBS) $(F_INCLUDE) -c  matrix.f -m matrix$(MENUM)py --f77exec=$(FC) 
