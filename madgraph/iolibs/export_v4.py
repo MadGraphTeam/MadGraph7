@@ -2763,7 +2763,7 @@ CF2PY integer, intent(in) :: npdg
 CF2PY double precision, intent(out) :: ANS
 CF2PY double precision, intent(in) :: ALPHAS
 CF2PY double precision, intent(in) :: SCALE2
-  integer pdgs(*)
+  integer pdgs(*),I
   integer npdg, nhel, procid
   double precision p(*)
   double precision ANS, ALPHAS, PI,SCALE2
@@ -2949,19 +2949,20 @@ CF2PY integer, intent(in) :: new_value
         for (key, pid), (prefix, tag) in self.prefix_info.items():
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
             
-        flavor_text= "  flavor(:) = 0"
-        flavor_text += " do i =1, npdg"
+        flavor_text= "  flavor(:) = 0\n"
+        flavor_text += " do i =1, npdg\n"
         nb = 0
         for pdg, pids in self.model['merged_particles'].items():
             for pid in pids:
-                if nb ==0:
+                if nb !=0:
                     flavor_text += ' else'
                 else:
                     flavor_text += ' '
-                flavor_text += 'if (abs(pdgs(i)).eq.%i)then flavor(i) = abs(%i)\n pdgs(i) = Sign(pdgs(i), %i)' % (pid, pid, pdg)
+                nb += 1
+                flavor_text += 'if (abs(pdgs(i)).eq.%i)then\n flavor(i) = abs(%i)\n pdgs(i) = Sign(pdgs(i), %i)\n' % (pid, pid, pdg)
         if nb>0:
-            flavor_text += 'endif'
-        flavor_text += " enddo"
+            flavor_text += 'endif\n'
+        flavor_text += " enddo\n"
 
         text = []
         for n_ext in range(min_nexternal, max_nexternal+1):
