@@ -10,7 +10,7 @@ void ixxxxx(double p[4], double fmass, int nhel, int nsf, ALOHAOBJ &fi)
 
 
   for (int i =0; i<4;i++){
-    fi.p[i] = p[i]*nsf;
+    fi.p[i] = -p[i]*nsf;
   }
   //fi[0] = complex<double> (-p[0] * nsf, -p[3] * nsf);
   //fi[1] = complex<double> (-p[1] * nsf, -p[2] * nsf);
