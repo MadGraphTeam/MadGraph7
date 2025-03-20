@@ -676,6 +676,8 @@ class UFOMG5Converter(object):
         #clean memory
         del self.checked_lor
 
+        self.check_model_all()
+
         return self.model
     
     def optimise_interaction(self, interaction):
@@ -871,6 +873,30 @@ class UFOMG5Converter(object):
             return vertex
         else:
             return vertex
+
+    def check_model_all(self):
+        """check that the model is consistent"""
+
+        #check that aS parameters is assigned to sminputs#3
+        self.check_model_aS()
+
+
+    def check_model_aS(self):
+        """check that aS parameters is assigned to sminputs#3"""
+
+        for param in self.ufomodel.all_parameters:
+            if param.name == 'aS':
+                if param.lhablock.upper() != 'SMINPUTS':
+                    raise UFOImportError("aS parameter should be assigned to SMINPUTS#3")
+                if param.lhacode != [3]:
+                    misc.sprint(param.lhacode)
+                    raise UFOImportError("aS parameter should be assigned to SMINPUTS#3")
+                    #logger.warning("aS parameter should be assigned to SMINPUTS#3")
+            elif param.nature == "external" and param.lhablock.upper() == 'SMINPUTS'\
+                  and param.lhacode == [3] \
+                  and param.name.upper() not in ['AS', 'ALPHAS']:
+                raise UFOImportError("SMINPUTS#3 parameter should be aS")
+                #logger.warning("aS parameter should be named aS")
 
     def reorder_vertex(self, vertex, mapping):
         """change the order of the particle within a given interaction"""
