@@ -7188,7 +7188,8 @@ class UFO_model_to_mg4(object):
     
     def __init__(self, model, output_path, opt=None):
         """ initialization of the objects """
-        
+
+        misc.sprint("pass here") 
         self.model = model
         self.model_name = model['name']
         self.dir_path = output_path

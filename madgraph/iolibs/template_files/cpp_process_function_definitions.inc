@@ -19,7 +19,7 @@ void CPPProcess::initProc(string param_card_name) {
 //--------------------------------------------------------------------------
 // Evaluate |M|^2, part independent of incoming flavour. 
 
-void CPPProcess::sigmaKin() { 
+void CPPProcess::sigmaKin( int* flavor) { 
     // Set the parameters which change event by event
     pars->setDependentParameters();
     pars->setDependentCouplings();

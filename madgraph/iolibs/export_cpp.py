@@ -76,7 +76,8 @@ class UFOModelConverterCPP(object):
 
     # Dictionary from Python type to C++ type
     type_dict = {"real": "double",
-                 "complex": "std::complex<double>"}
+                 "complex": "std::complex<double>",
+                 "FLV_COUPLING": "FLV_COUPLING"}
 
     # Regular expressions for cleaning of lines from Aloha files
     compiler_option_re = re.compile('^#\w')
@@ -99,7 +100,7 @@ class UFOModelConverterCPP(object):
     def __init__(self, model, output_path, wanted_lorentz = [],
                  wanted_couplings = [], replace_dict={}):
         """ initialization of the objects """
-
+        misc.sprint('Exporting model to C++ standalone format')
         self.model = model
         self.model_name = ProcessExporterCPP.get_model_name(model['name'])
 
@@ -115,6 +116,8 @@ class UFOModelConverterCPP(object):
         self.coups_indep = []  # base_objects.ModelVariable
         self.params_dep = []   # base_objects.ModelVariable
         self.params_indep = [] # base_objects.ModelVariable
+        self.coups_flv_dep = []    # (name, object, [couplings])
+        self.coups_flv_indep = []  # (name, object, [couplings]) 
         self.p_to_cpp = parsers.UFOExpressionParserCPP()
 
         # Prepare parameters and couplings for writeout in C++
@@ -207,9 +210,22 @@ class UFOModelConverterCPP(object):
                                                                    c.type,
                                                                    c.depend))
 
+        # Handle flavor couplings
+        # strategy picke one of the actual coupling and check if this is a running one or not
+        flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
+        misc.sprint(self.coups_dep)
+        deps = [c.name for c in self.coups_dep.values()]
+        for one_flv in flavor_couplings:
+            one_coupling = one_flv.get_one_coupling()
+            if one_coupling in deps:
+                self.coups_flv_dep.append( one_flv)
+            else:
+                self.coups_flv_indep.append(one_flv)
+
         # Convert coupling expressions from Python to C++
         for coup in list(self.coups_dep.values()) + self.coups_indep:
             coup.expr = coup.name + " = " + self.p_to_cpp.parse(coup.expr) + ";"
+
 
     # Routines for writing the parameter files
 
@@ -274,6 +290,12 @@ class UFOModelConverterCPP(object):
                                    "// Model couplings dependent on aS\n" + \
                                    self.write_parameters(list(self.coups_dep.values()))
 
+        replace_dict['flavor_independent_couplings'] = \
+                                    "// Model flavor couplings independent of aS\n" + \
+                                    self.write_parameters([c for c in self.coups_flv_indep])
+        replace_dict['flavor_dependent_couplings'] = \
+                                    "// Model flavor couplings dependent of aS\n" + \
+                                    self.write_parameters([c for c in self.coups_flv_dep])                                    
         replace_dict['set_independent_parameters'] = \
                                self.write_set_parameters(self.params_indep)
         replace_dict['set_independent_couplings'] = \
@@ -282,6 +304,8 @@ class UFOModelConverterCPP(object):
                                self.write_set_parameters(self.params_dep)
         replace_dict['set_dependent_couplings'] = \
                                self.write_set_parameters(list(self.coups_dep.values()))
+        replace_dict['set_flv_couplings'] = \
+                                self.write_flv_couplings(self.coups_flv_dep+self.coups_flv_indep)    
 
         replace_dict['print_independent_parameters'] = \
                                self.write_print_parameters(self.params_indep)
@@ -310,11 +334,16 @@ class UFOModelConverterCPP(object):
         type_param_dict = {}
 
         for param in params:
-            type_param_dict[param.type] = \
-                  type_param_dict.setdefault(param.type, []) + [param.name]
+            if hasattr(param, 'type'):
+                type_param_dict[param.type] = \
+                    type_param_dict.setdefault(param.type, []) + [param.name]
+            elif isinstance(param, base_objects.FLV_Coupling):
+                type_param_dict['FLV_COUPLING'] = \
+                    type_param_dict.setdefault('FLV_COUPLING', []) + [param.name]
 
         # For each parameter type, write out the definition string
         # type parameters;
+        misc.sprint(type_param_dict)
         res_strings = []
         for key in type_param_dict:
             res_strings.append("%s %s;" % (self.type_dict[key],
@@ -341,6 +370,22 @@ class UFOModelConverterCPP(object):
                                    {"width": particle.get('width')})
 
         return "\n".join(res_strings)
+
+    def write_flv_couplings(self, params):
+        """Write out the lines of independent parameters"""
+
+        def_flv = []
+        # For each parameter, write name = expr;
+        for coupl in params:
+            for key, c in coupl.flavors.items():
+                # get first/second index
+                k1, k2 = [i for i in key if i!=0]
+                def_flv.append('%(name)s.partner[%(in)i] = %(out)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
+                def_flv.append('%(name)s.partner2[%(out)i] = %(in)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1}) 
+                def_flv.append('%(name)s.val[%(in)i]  =  &%(coupl)s;' % {'name': coupl.name,'in': k1-1, 'coupl': c})
+
+        return "\n".join(def_flv)
+
 
     def write_print_parameters(self, params):
         """Write out the lines of independent parameters"""
@@ -843,7 +888,7 @@ class OneProcessExporterCPP(object):
             
             replace_dict['all_sigma_kin_definitions'] = \
                           """// Calculate wavefunctions
-                          void calculate_wavefunctions(const int perm[], const int hel[]);
+                          void calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]);
                           static const int nwavefuncs = %(nwfct)d;
                           MG5_%(model_name)s::ALOHAOBJ w[nwavefuncs];
                           static const int namplitudes = %(namp)d;
@@ -862,7 +907,7 @@ class OneProcessExporterCPP(object):
 
         else:
             replace_dict['all_sigma_kin_definitions'] = \
-                          "\n".join(["void sigmaKin_%s();" % \
+                          "\n".join(["void sigmaKin_%s(int* flavor );" % \
                                      me.get('processes')[0].shell_string().\
                                      replace("0_", "") \
                                      for me in self.matrix_elements])
@@ -1069,11 +1114,16 @@ class OneProcessExporterCPP(object):
 """             // Mirror initial state momenta for mirror process
                 perm[0]=1;
                 perm[1]=0;
+                int flv_tmp = flavor[0];
+                flavor[0] = flavor[1];  
+                flavor[1] = flv_tmp;
                 // Calculate wavefunctions
-                calculate_wavefunctions(perm, helicities[ihel]);
+                calculate_wavefunctions(perm, helicities[ihel], flavor);
                 // Mirror back
                 perm[0]=0;
                 perm[1]=1;
+                flavor[0] = flavor[1];
+                flavor[1] = flv_tmp;
                 // Calculate matrix elements
                 """
                 
@@ -1116,7 +1166,7 @@ class OneProcessExporterCPP(object):
         ret_lines = []
         if self.single_helicities:
             ret_lines.append(\
-                "void %s::calculate_wavefunctions(const int perm[], const int hel[]){" % \
+                "void %s::calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]){" % \
                 class_name)
             ret_lines.append("// Calculate wavefunctions for all processes")
             ret_lines.append(self.get_calculate_wavefunctions(\
@@ -2886,7 +2936,7 @@ class ProcessExporterGPU(ProcessExporterCPP):
     def compile_model(self):
         return 
 
-class UFOModelConverterCPP(object):
+class UFOModelConverterCPP_TOREMOVE(object):
     """ A converter of the UFO-MG5 Model to the C++ format """
 
     # Static variables (for inheritance)
@@ -2919,6 +2969,7 @@ class UFOModelConverterCPP(object):
                  wanted_couplings = [], replace_dict={}):
         """ initialization of the objects """
 
+        misc.sprint('UFOModelConverterCPP')
         self.model = model
         self.model_name = ProcessExporterCPP.get_model_name(model['name'])
 
@@ -2934,6 +2985,8 @@ class UFOModelConverterCPP(object):
         self.coups_indep = []  # base_objects.ModelVariable
         self.params_dep = []   # base_objects.ModelVariable
         self.params_indep = [] # base_objects.ModelVariable
+        self.coups_flv_dep = [] # (name, object, [couplings]) 
+        self.coups_flv_indep = [] # (name, object, [couplings])
         self.p_to_cpp = parsers.UFOExpressionParserCPP()
 
         # Prepare parameters and couplings for writeout in C++
@@ -3005,6 +3058,7 @@ class UFOModelConverterCPP(object):
         """Extract the couplings from the model, and store them in
         the two lists coups_indep and coups_dep"""
 
+        misc.sprint(wanted_couplings)
         # Keep only dependences on alphaS, to save time in execution
         keys = list(self.model['couplings'].keys())
         keys.sort(key=len)
@@ -3029,6 +3083,19 @@ class UFOModelConverterCPP(object):
         # Convert coupling expressions from Python to C++
         for coup in list(self.coups_dep.values()) + self.coups_indep:
             coup.expr = coup.name + " = " + self.p_to_cpp.parse(coup.expr) + ";"
+
+        # Handle flavor couplings
+        # strategy picke one of the actual coupling and check if this is a running one or not
+        flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
+        deps = [c.name for c in self.coups_dep]
+        for one_flv in flavor_couplings:
+            one_coupling = one_flv.get_one_coupling()
+            if one_coupling in deps:
+                self.coups_flv_dep.append( one_flv)
+            else:
+                self.coups_flv_indep.append(one_flv)
+
+
 
     # Routines for writing the parameter files
 

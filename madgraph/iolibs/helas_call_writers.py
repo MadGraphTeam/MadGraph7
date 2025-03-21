@@ -1656,7 +1656,10 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
                 call = call + "mME[%d],hel[%d],"
-            call = call + "%+d,w[%d]);"
+            if argument.get('spin') == 2:
+                call = call + "%+d, flavor[%i],w[%d]);"
+            else:
+                call = call + "%+d,w[%d]);"
             if argument.get('spin') == 1:
                 call_function = lambda wf: call % \
                                 (wf.get('number_external')-1,
@@ -1670,6 +1673,15 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
                                  wf.get('number_external')-1,
                                  # For boson, need initial/final here
                                  (-1) ** (wf.get('state') == 'initial'),
+                                 wf.get('me_id')-1)
+            elif argument.get('spin') == 2:
+                call_function = lambda wf: call % \
+                                (wf.get('number_external')-1,
+                                 wf.get('number_external')-1,
+                                 wf.get('number_external')-1,
+                                 # For fermions, need particle/antiparticle
+                                 - (-1) ** wf.get_with_flow('is_part'),
+                                 wf.get('number_external')-1, 
                                  wf.get('me_id')-1)
             else:
                 call_function = lambda wf: call % \

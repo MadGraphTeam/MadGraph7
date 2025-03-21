@@ -1646,8 +1646,12 @@ class ALOHAWriterForCPP(WriteALOHA):
         out = StringIO()
         # define the type of function and argument
         if not 'no_include' in mode:
+            out.write('#include \"Parameters_%s.h\"\n' % self.model_name)
             out.write('#include \"%s.h\"\n\n' % self.name)
+            #out.write('#include \"Parameters_%s.h\"\n' % self.model_name)
         args = []
+        misc.sprint(couplings, self.tag)
+        tmp = [ ]
         for format, argname in self.define_argument_list(couplings):
             if format.startswith('list'):
                 misc.sprint(format, argname)
@@ -1656,8 +1660,13 @@ class ALOHAWriterForCPP(WriteALOHA):
             else:
                 type = self.type2def[format]
                 list_arg = ''
+            misc.sprint(argname)
             if argname.startswith('COUP'):
                 point = self.type2def['pointer_coup']
+                tmp.append('%s%s%s%s'% (type,point, argname, list_arg))
+                if 'M' in self.tag:
+                    type = 'FLV_COUPLING '
+                argname = argname.replace('COUP','MCOUP')
                 args.append('%s%s%s%s'% (type,point, argname, list_arg))
             else:
                 args.append('%s%s%s'% (type, argname, list_arg))
@@ -1683,7 +1692,8 @@ class ALOHAWriterForCPP(WriteALOHA):
             out.write(';\n')
         else:
             out.write('\n{\n')
-
+            if tmp:
+                out.write('    %s;\n' % ';\n '.join(tmp))
         return out.getvalue() 
 
     def get_declaration_txt(self, add_i=True):
@@ -1813,7 +1823,101 @@ class ALOHAWriterForCPP(WriteALOHA):
                         'nb': nb, 'nb2': nb2, 'operator':operator,
                         'sign': self.get_P_sign(i)})
 
-            
+
+
+
+    def get_coupling_def(self):
+        """Define the coupling constant"""
+        
+        nb_coupling = 0 
+        for ftype, name in self.declaration:
+            if name.startswith('COUP'):
+                nb_coupling += 1
+
+
+        out = StringIO()
+        if 'M' not in self.tag:
+            if self.particles[0] != 'F':
+                return ''
+            # no matrix coupling, so a single coupling, so this is diagonal in flavor space
+            # but still need to check !
+            elif self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
+                if not self.outgoing:
+                    fail = "vertex = std::complex(0,0);"
+                else:
+                    fail = 'for(int i=0; i<4; i++){%s%d.W[i] = std::complex<double>(0.,0.);}' % (self.particles[self.outgoing-1], self.outgoing)
+
+                out.write('   int flv_index1 = F1.flv_index;\n')
+                out.write('   int flv_index2 = F2.flv_index;\n')
+                out.write('   if(flv_index1 != flv_index2 || flv_index1 == 0d0){  \n %s\n  return;\n}\n' % fail)
+            else:
+                incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+                outgoing = self.outgoing
+                out.write('  F%i.flv_index = F%i.flv_indexi;\n' % (outgoing, incoming))
+
+            return out.getvalue()    
+        
+        if self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
+            if not self.outgoing:
+                fail = "vertex = std::complex<double>(0.,0.);"
+            else:
+                fail = 'for(int i=0; i<4; i++){%s%d.W[i] = std::complex<double>(0.,0.);}' % (self.particles[self.outgoing-1], self.outgoing)
+
+            out.write('   int flv_index1 = F1.flv_index;\n')
+            out.write('   int flv_index2 = F2.flv_index;\n')
+            if nb_coupling >1:
+                for i in range(1,nb_coupling+1):
+                    out.write(' int zero_coup%i = 0;\n' % i)
+            out.write('   if(flv_index1 == -1 || flv_index2 == -1){  \n %s\n  return;\n}\n' % fail)
+            if nb_coupling == 1:
+                out.write('   if(MCOUP.partner[flv_index1] != flv_index2){ \n %s\n return;\n}\n' %fail)
+            else:
+                for i in range(1,nb_coupling+1):
+                    out.write('   if(MCOUP%i.partner[flv_index1] != flv_index2 || MCOUP%i.partner2[flv_index1] != flv_index2){ \n zero_coup%i = 1;\n COUP%i = std::complex<double>(0.,0.); \n}\n' %(i,i,i,i))
+            if nb_coupling ==1:
+                out.write('   COUP = *MCOUP.val[flv_index1];\n')
+            else:
+                for i in range(1,nb_coupling+1):
+                    out.write(' if(zero_coup%i ==0){COUP%i = *MCOUP%i.val[flv_index1];}\n' % (i,i,i))
+        else:
+            incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+            if incoming %2 == 1:
+                outgoing = self.outgoing
+                out.write('   int flv_index%i = F%i.flv_index;\n' % (incoming, incoming))
+                out.write('   if(flv_index%i.eq.-1){\n' %(incoming))
+                out.write('        for(int i=0; i<4; i++){F%i %% W(i) = std::complex<double>(0.,0.);}\n F%i.flv_index = -1 \n return;\n}\n' %(outgoing, outgoing))
+                if nb_coupling == 1:
+                    out.write('   int flv_index2 = MCOUP.partner[flv_index%i];\n' %(incoming))
+                else:
+                    out.write('   int flv_index2 = MCOUP1.partner[flv_index%i];\n' %(incoming))
+                    for i in range(2,nb_coupling+1):
+                        out.write('        if(flv_index2 == -1){flv_index2 = MCOUP%i.partner[flv_index%i]}' %(i, incoming)) 
+                out.write('   if(flv_index2 == -1){\n')
+                out.write('        for(int i=0; i<4; i++){F%i.W(i) = std::complex<double>(0,0)\n F%i.flv_index = -1 \n return;\n }\n' %(outgoing, outgoing))
+                out.write('   F%i.flv_index = flv_index2\n' % outgoing)
+            else:
+                outgoing = self.outgoing
+                out.write('   int flv_index%i = F%i.flv_index;\n' % (incoming,incoming))
+                out.write('   if(flv_index%i == -1){\n' %(incoming))
+                out.write('        for(int i=0; i<4; i++){F%i.W(i) = std::complex<double>(0.,0.);}\n F%i.flv_index = -1; \n return;\n } \n' %(outgoing, outgoing))
+                if nb_coupling == 1:
+                    out.write('   int flv_index1 = MCOUP.partner2[flv_index%i];\n' %(incoming))
+                else:
+                    out.write('   int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
+                    for i in range(2,nb_coupling+1):
+                        out.write('        if(flv_index1 == -1){flv_index1 = MCOUP%i.partner2[flv_index%i]}' %(i, incoming))  
+                out.write('   if(flv_index1 == -1){\n')
+                out.write('        for(int i=0; i<4; i++)F%i.W(i) = std::complex<double>(0.,0.);}\n F%i.flv_index = 0; \n return;\n }\n' %(outgoing, outgoing))
+                out.write('   F%i.flv_index = flv_index1;\n' % outgoing)                
+ 
+            for ftype, name in self.declaration:
+                if name.startswith('COUP'):
+                    out.write(' %s = *M%s.val[flv_index1]; \n' % (name, name))
+        return out.getvalue()   
+
+
+
+
     def define_expression(self):
         """Write the helicity amplitude in C++ format"""
         

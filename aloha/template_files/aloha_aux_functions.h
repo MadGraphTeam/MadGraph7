@@ -6,7 +6,7 @@ double Sgn(double e,double f);
 struct ALOHAOBJ{
      double p[4];
      std::complex<double> W[4];
-     int flav;
+     int flv_index =1;
 
      public:
         //ALOHAOBJ(double p[4], std::complex<double> W[4], int flav):p(p), W(W), flav(flav){};

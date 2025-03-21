@@ -21,9 +21,12 @@ int main(int argc, char** argv){
 
   // Set momenta for this event
   process.setMomenta(p);
+  int flavor[process.nexternal];
+  for (int i=0;i<process.nexternal; i++){ flavor[i]=0;}
+
 
   // Evaluate matrix element
-  process.sigmaKin();
+  process.sigmaKin(flavor);
 
   const double* matrix_elements = process.getMatrixElements();
 

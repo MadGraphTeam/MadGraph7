@@ -14,7 +14,7 @@ public:
   virtual void initProc(string param_card_name); 
 
   // Calculate flavour-independent parts of cross section.
-  virtual void sigmaKin();
+  virtual void sigmaKin(int* flv);
 
   // Evaluate sigmaHat(sHat). 
   virtual double sigmaHat();
