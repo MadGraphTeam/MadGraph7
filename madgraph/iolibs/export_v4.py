@@ -3419,6 +3419,12 @@ CF2PY integer, intent(in) :: new_value
                 matrix_template = "matrix_standalone_splitOrders_v4.inc"
         data = matrix_element.get('processes')[0].get_final_ids_after_decay()
         replace_dict['get_pid'] = ' PID = %s' % (data)
+        replace_dict['get_old_symmmetry_value'] = 1
+        done = []
+        for value in data:
+            if value not in done:
+                done.append(value)
+                replace_dict['get_old_symmmetry_value'] *= math.factorial(data.count(value)) 
 
         replace_dict['template_file'] = pjoin(_file_path, 'iolibs', 'template_files', matrix_template)
         replace_dict['template_file2'] = pjoin(_file_path, \
