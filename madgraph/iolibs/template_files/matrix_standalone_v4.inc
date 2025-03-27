@@ -229,6 +229,8 @@ C ----------
       END
 
       SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL, FLAVOR ,ANS)
+C     This routine is the f2py interface for GET_value_internal which can not be in the interface
+C     due to f2py not knowing how to handle the couplings common block
       use model_object
       IMPLICIT NONE   
 C
@@ -249,6 +251,31 @@ CF2PY INTENT(IN) :: NHEL
 CF2PY INTENT(IN) :: P(0:3,NEXTERNAL) 
 CF2PY INTENT(IN) :: ALPHAS
 CF2PY INTENT(IN) :: FLAVOR(NEXTERNAL)
+C     ROUTINE FOR F2PY to read the benchmark point.    
+
+      CALL  %(proc_prefix)sGET_value_internal(P, ALPHAS, NHEL, FLAVOR ,ANS)
+      RETURN
+      END
+
+
+      SUBROUTINE %(proc_prefix)sGET_value_internal(P, ALPHAS, NHEL, FLAVOR ,ANS)
+C     This routine is the real value but can not be in the interface
+C     due to f2py not knowing how to handle the couplings common block
+      use model_object
+      IMPLICIT NONE   
+C
+C CONSTANT
+C
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+C  
+C ARGUMENTS 
+C  
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS 
+      real*8 pi     
+      INTEGER FLAVOR(NEXTERNAL)
 C     ROUTINE FOR F2PY to read the benchmark point.    
 C     the include file with the values of the parameters and masses 
       include "coupl.inc"

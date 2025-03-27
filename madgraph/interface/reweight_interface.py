@@ -1688,7 +1688,7 @@ class ReweightInterface(extended_cmd.Cmd):
         """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
 
         # get list of possible crossing tag
-        crossing_tag = [tuple((list(t[0])+list(t[1]))).sort()) for t in self.id_to_path.keys()]
+        crossing_tag = [tuple((list(t[0])+list(t[1]))).sort() for t in self.id_to_path.keys()]
 
         mytag = list(tag[0])+list(tag[1])
         mytag.sort()

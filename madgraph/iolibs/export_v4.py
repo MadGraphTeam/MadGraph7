@@ -2558,9 +2558,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 "5." + MG5_version['version'])
         
         
-        # Add file in SubProcesses
-        shutil.copy(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'), 
-                    pjoin(self.dir_path, 'SubProcesses', 'makefileP'))
+       
 
         if model['running_elements']:
             fsock = open( pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'), 'r')
@@ -2753,6 +2751,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         template = """
 %(python_information)s
   subroutine smatrixhel(pdgs, procid, npdg, p, ALPHAS, SCALE2, nhel, ANS)
+  use model_object
   IMPLICIT NONE
 C ALPHAS is given at scale2 (SHOULD be different of 0 for loop induced, ignore for LO)  
 
@@ -2792,11 +2791,13 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
       CALL SETPARA(PATH)  !first call to setup the paramaters
+      %(setpara_for_each_matrix)s
       RETURN
       END
       
       
       subroutine CHANGE_PARA(name, value)
+      use model_object
       implicit none
 CF2PY intent(in) :: name
 CF2PY intent(in) :: value
@@ -2989,6 +2990,12 @@ CF2PY integer, intent(in) :: new_value
         if min_nexternal != max_nexternal:
             text.append('endif')
 
+        all_prefix = set([k[0] for k in self.prefix_info.values()])
+        setpara_for_each_matrix = ''
+        for prefix in all_prefix:
+            setpara_for_each_matrix += " CALL %sINITIALISEMODEL(PATH)\n" % prefix
+
+
         params = self.get_model_parameter(self.model)
         parameter_setup =[]
         for key, var in params.items():
@@ -3015,7 +3022,10 @@ CF2PY integer, intent(in) :: new_value
                           'helreset_def' : '\n'.join(helreset_def),
                           'helreset_setup' : '\n'.join(helreset_setup),
                           'flavormapping': flavor_text,
+                          'setpara_for_each_matrix':setpara_for_each_matrix,
                           }
+        
+
         formatting['lenprefix'] = len(formatting['prefix'])
         text = template % formatting
         fsock = writers.FortranWriter(pjoin(self.dir_path, 'SubProcesses', 'all_matrix.f'),'w')
@@ -3151,7 +3161,15 @@ CF2PY integer, intent(in) :: new_value
             for proc in matrix_element.get('processes'):
                 ids = [l.get('id') for l in proc.get('legs_with_decays')]
                 self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix, proc.get_tag()] 
-                
+        
+        template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'),'r')
+        text = template.read()
+        template.close()
+        fsock = open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'),'w')
+        fsock.write(text % {'proc_prefix':proc_prefix.lower()})   
+        fsock.close()
+
+
         calls = self.write_matrix_element_v4(
             writers.FortranWriter(filename),
             matrix_element,

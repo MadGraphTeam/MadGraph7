@@ -36,4 +36,4 @@ endif
 
 matrix$(MENUM)py.so: matrix.f makefile $(LIBS) 
 	touch __init__.py
-	$(F2PY) $(LINKLIBS) $(F_INCLUDE) -c  matrix.f -m matrix$(MENUM)py --f77exec=$(FC) 
+	$(F2PY) $(LINKLIBS) $(F_INCLUDE) -c  matrix.f -m matrix$(MENUM)py --f77exec=$(FC) skip: %(proc_prefix)sget_value_internal %(proc_prefix)smatrix : 
