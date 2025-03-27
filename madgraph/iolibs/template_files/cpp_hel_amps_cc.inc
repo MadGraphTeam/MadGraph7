@@ -5,6 +5,7 @@
 
 #include "Parameters_%(model_name)s.h"
 #include "HelAmps_%(model_name)s.h"
+#include "Parameters_%(model_name)s.h"
 #include <complex>
 #include <cmath>
 #include <iostream>

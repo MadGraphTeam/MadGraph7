@@ -232,7 +232,8 @@ C LOCAL VARIABLES
 C  
     INTEGER I,J,M,N
     COMPLEX*16 ZTEMP, TMP_JAMP(%(nb_temp_jamp)i)
-    REAL*8 CF(NCOLOR,NCOLOR)
+    INTEGER CF(NCOLOR*(NCOLOR+1))
+    INTEGER CF_INDEX,DENOM
     COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
     COMPLEX*16 W(18,NWAVEFUNCS)
 C   Needed for v4 models
@@ -273,10 +274,12 @@ endif
 
     MATRIX%(proc_id)s = 0.D0 
 	DO M = 1, NAMPSO
+      CF_INDEX = 0
       DO I = 1, NCOLOR
         ZTEMP = (0.D0,0.D0)
-        DO J = 1, NCOLOR
-          ZTEMP = ZTEMP + CF(J,I)*JAMP(J,M)
+        DO J = I, NCOLOR
+          CF_INDEX = CF_INDEX +1
+          ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
         ENDDO
 		DO N = 1, NAMPSO
           IF (CHOSEN_SO_CONFIGS(SQSOINDEX%(proc_id)s(M,N))) THEN
@@ -285,6 +288,7 @@ endif
 		ENDDO
       ENDDO
 	ENDDO
+     MATRIX%(proc_id)s = MATRIX%(proc_id)s / DENOM
 
 %(amp2_lines)s
     Do I = 1, NCOLOR

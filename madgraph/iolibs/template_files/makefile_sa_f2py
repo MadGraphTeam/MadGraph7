@@ -27,7 +27,6 @@ $(LIBDIR)libmodel.$(libext):
 
 all_matrix$(MENUM)py.so: $(LIBDIR)/$(LIBRARY) all_matrix.f allmatrix$(MENUM)py.py
 	$(F2PY) --f77exec=$(FC) $(F_INCLUDE) $(LINKLIBS_ALL) -c all_matrix.f -m all_matrix$(MENUM)py
-
     
 allmatrix$(MENUM)py.py: $(patsubst %/matrix.f,%$(MENUM)py.so,$(wildcard */matrix.f))
 	rm -f allmatrix$(MENUM)py.py
