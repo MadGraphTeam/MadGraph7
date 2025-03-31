@@ -117,6 +117,9 @@
 # cluster_queue = madgraph
 # cluster_size = 150 
 # cluster_walltime =  # time in minute for slurm and second for condor (not supported for other scheduller)
+# checkpointing = True # enable checkpointing
+# cluster_requirement = x86_64-v4 # selected microarchitecture for checkpointing consistency
+# cluster_vacatetime = 120 # time in seconds for checkpoint creation before the job eviction
 
 #! Path to a node directory to avoid direct writing on the central disk
 #!  Note that condor clusters avoid direct writing by default (therefore this

@@ -964,6 +964,9 @@ def check_system_error(value=1):
                     # raise a more meaningfull error message
                     raise Exception('%s fails with no such file or directory' \
                                                                            % arg)            
+                # Checkpoint, requeued automatically
+                elif error.errno == 85:
+                    logger.info('%s created a checkpoint' % arg)
                 else:
                     raise
         return deco_f

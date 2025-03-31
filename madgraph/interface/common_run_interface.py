@@ -672,6 +672,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'cpp_compiler': None,
                        'auto_update':7,
                        'cluster_type': 'condor',
+                       'cluster_vacatetime': '120',
                        'cluster_status_update': (600, 30),
                        'cluster_nb_retry':1,
                        'cluster_local_path': None,
@@ -3562,7 +3563,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 raise self.InvalidCmd('run_mode should be 0, 1 or 2.')
             self.cluster_mode = int(args[1])
             self.options['run_mode'] =  self.cluster_mode
-        elif args[0] in  ['cluster_type', 'cluster_queue', 'cluster_temp_path']:
+        elif args[0] in  ['cluster_type', 'cluster_queue', 'cluster_temp_path', 'cluster_vacatetime']:
             if args[1] == 'None':
                 args[1] = None
             self.options[args[0]] = args[1]

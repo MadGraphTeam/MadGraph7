@@ -2653,7 +2653,8 @@ class CompleteForCmd(cmd.CompleteCmd):
                 return self.list_completion(text, [str(i) for i in range(3)] + ['default'])
             elif args[1] == 'cluster_type':
                 return self.list_completion(text, list(cluster.from_name.keys()) + ['default'])
-            elif args[1] in ['cluster_queue', 'cluster_walltime']:
+            elif args[1] in ['cluster_queue', 'cluster_walltime',\
+                             'cluster_requirement', 'cluster_vacatetime']:
                 return []
             elif args[1] == 'automatic_html_opening':
                 return self.list_completion(text, ['False', 'True', 'default'])
@@ -3005,6 +3006,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'cluster_queue': None,
                        'cluster_status_update': (600, 30),
                        'cluster_walltime': None,
+                       'checkpointing': False,
+                       'cluster_requirement': None,
+                       'cluster_vacatetime': '120',
                        'fastjet':'fastjet-config',
                        'eMELA':'eMELA-config',
                        'golem':'auto',
@@ -7762,7 +7766,9 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                             if '_path' in key and os.path.basename(self.options[key]) == 'None':
                                 continue
                             to_define[key] = self.options[key]
-                        elif key in ['cluster_queue', 'cluster_walltime'] and self.options[key] is None:
+                        elif key in ['cluster_queue', 'cluster_walltime',\
+                                     'cluster_requirement', 'cluster_vacatetime']\
+                                     and self.options[key] is None:
                             to_define[key] = self.options[key]
     
                 if '--all' in args:
@@ -8168,7 +8174,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             self.options[args[0]] = tmp
         elif args[0] in ['zerowidth_tchannel']:
             self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
-        elif args[0] in ['cluster_queue', 'cluster_walltime']:
+        elif args[0] in ['cluster_queue', 'cluster_walltime', 'checkpointing',\
+                         'cluster_requirement', 'cluster_vacatetime']:
             self.options[args[0]] = args[1].strip()
         elif args[0] in ['low_mem_multicore_nlo_generation']:	    
             if six.PY3 and self.options['OLP'] != 'MadLoop':

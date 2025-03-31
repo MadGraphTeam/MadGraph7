@@ -116,6 +116,9 @@ class Cluster(object):
             self.temp_dir = opts['cluster_temp_path']
         else:
             self.temp_dir = None
+        self.checkpointing = False
+        if 'checkpointing' in opts:
+            self.checkpointing = opts['checkpointing']
         self.options = {'cluster_status_update': (600, 30)}
         for key,value in opts.items():
             self.options[key] = value
@@ -1724,12 +1727,35 @@ class SLURMCluster(Cluster):
         if log is None:
             log = '/dev/null'
 
-        
-        command = ['sbatch', '-o', stdout,
-                   '-J', me_dir, 
-                   '-e', stderr, prog] + argument
 
+        if self.checkpointing:
 
+            if MADEVENT:
+                wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_driver.sh')
+            else:
+                wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_driver.sh')
+            argument_dmtcp = [prog] + argument
+
+            command = ['sbatch',
+                       '-J', me_dir, wrapper] + argument_dmtcp
+
+            command.insert(1, '--open-mode')
+            command.insert(2, 'append')
+
+            if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
+                and self.options['cluster_requirement'] != 'None':
+                command.insert(1, '-C')
+                command.insert(2, self.options['cluster_requirement'])
+
+            if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
+                and self.options['cluster_vacatetime'] != 'None':
+                command.insert(1, '--signal')
+                command.insert(2, 'B:USR1@'+self.options['cluster_vacatetime'])
+
+        else:
+            command = ['sbatch', '-o', stdout,
+                       '-J', me_dir,
+                       '-e', stderr, prog] + argument
 
         if self.cluster_queue and self.cluster_queue != 'None':
                 command.insert(1, '-p')
