@@ -2557,8 +2557,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             open(pjoin(self.dir_path, 'MGMEVersion.txt'), 'w').write( \
                 "5." + MG5_version['version'])
         
-        
-        # Add file in SubProcesses
+
         shutil.copy(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'), 
                     pjoin(self.dir_path, 'SubProcesses', 'makefileP'))
 
@@ -3130,6 +3129,9 @@ CF2PY integer, intent(in) :: new_value
 
         logger.info('Creating files in directory %s' % dirpath)
 
+
+
+
         # Extract number of external particles
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
 
@@ -3151,6 +3153,14 @@ CF2PY integer, intent(in) :: new_value
                 ids = [l.get('id') for l in proc.get('legs_with_decays')]
                 self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix, proc.get_tag()] 
                 
+        # Add file in SubProcesses
+        template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'),'r')
+        text = template.read()
+        template.close()
+        fsock = open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'),'w')
+        fsock.write(text % {'proc_prefix': proc_prefix})
+
+        
         calls = self.write_matrix_element_v4(
             writers.FortranWriter(filename),
             matrix_element,
