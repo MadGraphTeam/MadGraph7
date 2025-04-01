@@ -1892,30 +1892,30 @@ class ALOHAWriterForCPP(WriteALOHA):
             if incoming %2 == 1:
                 outgoing = self.outgoing
                 out.write('   int flv_index%i = F%i.flv_index;\n' % (incoming, incoming))
-                out.write('   if(flv_index%i.eq.-1){\n' %(incoming))
-                out.write('        for(int i=0; i<4; i++){F%i %% W(i) = std::complex<double>(0.,0.);}\n F%i.flv_index = -1 \n return;\n}\n' %(outgoing, outgoing))
+                out.write('   if(flv_index%i == -1){\n' %(incoming))
+                out.write('        for(int i=0; i<4; i++){F%i.W[i] = std::complex<double>(0.,0.);}\n F%i.flv_index = -1; \n return;\n}\n' %(outgoing, outgoing))
                 if nb_coupling == 1:
                     out.write('   int flv_index2 = MCOUP.partner[flv_index%i];\n' %(incoming))
                 else:
                     out.write('   int flv_index2 = MCOUP1.partner[flv_index%i];\n' %(incoming))
                     for i in range(2,nb_coupling+1):
-                        out.write('        if(flv_index2 == -1){flv_index2 = MCOUP%i.partner[flv_index%i]}' %(i, incoming)) 
+                        out.write('        if(flv_index2 == -1){flv_index2 = MCOUP%i.partner[flv_index%i];}' %(i, incoming)) 
                 out.write('   if(flv_index2 == -1){\n')
-                out.write('        for(int i=0; i<4; i++){F%i.W(i) = std::complex<double>(0,0)\n F%i.flv_index = -1 \n return;\n }\n' %(outgoing, outgoing))
-                out.write('   F%i.flv_index = flv_index2\n' % outgoing)
+                out.write('        for(int i=0; i<4; i++){F%i.W[i] = std::complex<double>(0,0);}\n F%i.flv_index = -1; \n return;\n }\n' %(outgoing, outgoing))
+                out.write('   F%i.flv_index = flv_index2;\n' % outgoing)
             else:
                 outgoing = self.outgoing
                 out.write('   int flv_index%i = F%i.flv_index;\n' % (incoming,incoming))
                 out.write('   if(flv_index%i == -1){\n' %(incoming))
-                out.write('        for(int i=0; i<4; i++){F%i.W(i) = std::complex<double>(0.,0.);}\n F%i.flv_index = -1; \n return;\n } \n' %(outgoing, outgoing))
+                out.write('        for(int i=0; i<4; i++){F%i.W[i] = std::complex<double>(0.,0.);}\n F%i.flv_index = -1; \n return;\n } \n' %(outgoing, outgoing))
                 if nb_coupling == 1:
                     out.write('   int flv_index1 = MCOUP.partner2[flv_index%i];\n' %(incoming))
                 else:
                     out.write('   int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
                     for i in range(2,nb_coupling+1):
-                        out.write('        if(flv_index1 == -1){flv_index1 = MCOUP%i.partner2[flv_index%i]}' %(i, incoming))  
+                        out.write('        if(flv_index1 == -1){flv_index1 = MCOUP%i.partner2[flv_index%i];}' %(i, incoming))  
                 out.write('   if(flv_index1 == -1){\n')
-                out.write('        for(int i=0; i<4; i++)F%i.W(i) = std::complex<double>(0.,0.);}\n F%i.flv_index = 0; \n return;\n }\n' %(outgoing, outgoing))
+                out.write('        for(int i=0; i<4; i++){F%i.W[i] = std::complex<double>(0.,0.);}\n F%i.flv_index = -1; \n return;\n }\n' %(outgoing, outgoing))
                 out.write('   F%i.flv_index = flv_index1;\n' % outgoing)                
  
             for ftype, name in self.declaration:
