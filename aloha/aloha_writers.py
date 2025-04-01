@@ -1857,11 +1857,11 @@ class ALOHAWriterForCPP(WriteALOHA):
 
                 out.write('   int flv_index1 = F1.flv_index;\n')
                 out.write('   int flv_index2 = F2.flv_index;\n')
-                out.write('   if(flv_index1 != flv_index2 || flv_index1 == 0d0){  \n %s\n  return;\n}\n' % fail)
+                out.write('   if(flv_index1 != flv_index2 || flv_index1 == 0.){  \n %s\n  return;\n}\n' % fail)
             else:
                 incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
                 outgoing = self.outgoing
-                out.write('  F%i.flv_index = F%i.flv_indexi;\n' % (outgoing, incoming))
+                out.write('  F%i.flv_index = F%i.flv_index;\n' % (outgoing, incoming))
 
             return out.getvalue()    
         
