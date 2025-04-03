@@ -3,9 +3,12 @@
 module load releases/2023b # Probably shouldn't be hardcoded
 module load DMTCP/3.0.0-GCCcore-13.2.0
 
-dmtcp_coordinator -i 300 --daemon --exit-on-last -p 0 --port-file dmtcp.port 1>/dev/null 2>&1
+export DMTCP_CHECKPOINT_DIR=$RUN_DIR/dmtcp_$SLURM_JOB_ID
+mkdir $DMTCP_CHECKPOINT_DIR
+
+dmtcp_coordinator -i 300 --daemon --exit-on-last -p 0 --port-file $DMTCP_CHECKPOINT_DIR/dmtcp.port 1>/dev/null 2>&1
 export DMTCP_COORD_HOST=$(hostname)
-export DMTCP_COORD_PORT=$(cat dmtcp.port)
+export DMTCP_COORD_PORT=$(cat $DMTCP_CHECKPOINT_DIR/dmtcp.port)
 
 timeout() {
     echo "Approaching walltime. Creating checkpoint..."
@@ -22,9 +25,9 @@ timeout() {
 # Trap signals
 trap 'timeout' USR1
 
-if [[ -e dmtcp_restart_script.sh && "${SLURM_RESTART_COUNT}" != "" ]]; then
+if [[ -e $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh && "${SLURM_RESTART_COUNT}" != "" ]]; then
     echo "$(date) - Resuming from checkpoint. Restart: ${SLURM_RESTART_COUNT}"
-    srun /bin/bash ./dmtcp_restart_script.sh -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
+    srun /bin/bash $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
 else
     srun dmtcp_launch --allow-file-overwrite $@ &
 fi

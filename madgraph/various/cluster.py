@@ -1776,10 +1776,13 @@ class SLURMCluster(Cluster):
                 command.insert(2, self.options['cluster_walltime'])            
             
 
+        jobenv = os.environ.copy()
+        if MADEVENT: jobenv['RUN_DIR'] = LOCALDIR
+        else: jobenv['RUN_DIR'] = MG5DIR
 
         a = misc.Popen(command, stdout=subprocess.PIPE, 
                                       stderr=subprocess.STDOUT,
-                                      stdin=subprocess.PIPE, cwd=cwd)
+                                      stdin=subprocess.PIPE, cwd=cwd, env=jobenv)
 
         output = a.communicate()
         output_arr = output[0].decode(errors='ignore').split(' ')
