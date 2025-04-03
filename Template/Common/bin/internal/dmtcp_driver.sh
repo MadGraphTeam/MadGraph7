@@ -6,7 +6,7 @@ module load DMTCP/3.0.0-GCCcore-13.2.0
 export DMTCP_CHECKPOINT_DIR=$RUN_DIR/dmtcp_$SLURM_JOB_ID
 mkdir $DMTCP_CHECKPOINT_DIR
 
-dmtcp_coordinator -i 300 --daemon --exit-on-last -p 0 --port-file $DMTCP_CHECKPOINT_DIR/dmtcp.port 1>/dev/null 2>&1
+dmtcp_coordinator -i 86400 --daemon --exit-on-last -p 0 --port-file $DMTCP_CHECKPOINT_DIR/dmtcp.port 1>/dev/null 2>&1
 export DMTCP_COORD_HOST=$(hostname)
 export DMTCP_COORD_PORT=$(cat $DMTCP_CHECKPOINT_DIR/dmtcp.port)
 
