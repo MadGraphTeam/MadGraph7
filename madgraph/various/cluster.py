@@ -313,6 +313,8 @@ class Cluster(object):
         if self.options['cluster_type'] == 'htcaas2':
             me_dir = self.metasubmit(self)
 
+        old_idle = -1
+
         while 1: 
             old_mode = mode
             nb_iter += 1
@@ -321,8 +323,15 @@ class Cluster(object):
                 if  idle + run + finish + fail != nb_job:
                     nb_job = idle + run + finish + fail
                     nb_iter = 1 # since some packet finish prevent to pass in long waiting mode
+                    old_idle = -1
             else:
                 nb_job = idle + run + finish + fail
+
+            if old_idle == -1: old_idle = nb_job
+            if self.checkpointing and old_idle < idle:
+                nb_iter = 1 # reset iterator when the job is requeued
+            old_idle = idle
+
             if fail:
                 raise ClusterManagmentError('Some Jobs are in a Hold/... state. Please try to investigate or contact the IT team')
             if idle + run == 0:
