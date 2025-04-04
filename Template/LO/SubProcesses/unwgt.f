@@ -484,6 +484,7 @@ c
       integer ip, np, ic, nc
       integer ida(2),ito(-nexternal+3:nexternal),ns,nres,ires,icloop
       integer iseed
+      double precision beam_mass
       double precision pboost(0:3)
       double precision beta, get_betaz
       double precision ebi(0:3), ebo(0:3)
@@ -622,25 +623,35 @@ c
          if (xbk(1) .gt. 0d0 .and. xbk(1) .le. 1d0 .and.
      $       xbk(2) .gt. 0d0 .and. xbk(2) .le. 1d0) then
             if(lpp(2).ne.0.and.(xbk(1).eq.1d0.or.pmass(1).eq.0d0)) then
+                if((abs(lpp(1)).gt.2.and.abs(lpp(1)).ne.9).or.xbk(1).eq.1d0)then
+                    beam_mass = pmass(1)
+                else
+                    beam_mass = m1
+                endif   
                ! construct the beam momenta in each frame and compute the related (z)boost
                ebi(0) = p(0,1)/xbk(1) ! this assumes that particle 1 is massless or mass equal to beam
                ebi(1) = 0
                ebi(2) = 0
-               ebi(3) = DSQRT(ebi(0)**2-m1**2)
+               ebi(3) = DSQRT(ebi(0)**2-beam_mass**2)
                ebo(0) = ebeam(1)
                ebo(1) = 0
                ebo(2) = 0
-               ebo(3) = DSQRT(ebo(0)**2-m1**2)
+               ebo(3) = DSQRT(ebo(0)**2-beam_mass**2)
                beta = get_betaz(ebi, ebo)
             else
+                if((abs(lpp(2)).gt.2.and.abs(lpp(2)).ne.9).or.xbk(2).eq.1d0)then
+                    beam_mass = pmass(2)
+                else
+                    beam_mass = m2
+                endif   
                ebi(0) = p(0,2)/xbk(2) ! this assumes that particle 2 is massless or mass equal to beam
                ebi(1) = 0
                ebi(2) = 0
-               ebi(3) = -1d0*DSQRT(ebi(0)**2-m2**2)
+               ebi(3) = -1d0*DSQRT(ebi(0)**2-beam_mass**2)
                ebo(0) = ebeam(2)
                ebo(1) = 0
                ebo(2) = 0
-               ebo(3) = -1d0*DSQRT(ebo(0)**2-m2**2)
+               ebo(3) = -1d0*DSQRT(ebo(0)**2-beam_mass**2)
                beta = get_betaz(ebi, ebo)
                ! wrong boost if both parton are massive!
             endif
@@ -659,6 +670,8 @@ c
             pb(4,isym(j,jsym))=pmass(j)
          enddo
       endif
+
+
 
       if (IMIRROR.eq.2.and.pmass(1).ne.pmass(2)) then
 c        Note that in this context isym(1,jsym) should never be "2" since the mass differ 
