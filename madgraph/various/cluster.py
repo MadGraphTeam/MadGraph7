@@ -328,7 +328,7 @@ class Cluster(object):
                 nb_job = idle + run + finish + fail
 
             if old_idle == -1: old_idle = nb_job
-            if self.checkpointing and old_idle < idle:
+            if self.checkpointing and old_idle < idle and not nb_short:
                 nb_iter = 1 # reset iterator when the job is requeued
             old_idle = idle
 
