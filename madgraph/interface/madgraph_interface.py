@@ -1682,7 +1682,7 @@ This will take effect only in a NEW terminal
             # Check for special directory treatment
             if path == 'auto' and self._export_format in \
                      ['madevent', 'standalone', 'standalone_cpp', 'matchbox_cpp', 'madweight',
-                      'matchbox', 'plugin', 'standalone_gpu']:
+                      'matchbox', 'plugin', 'standalone_gpu', 'me7']:
                 self.get_default_path()
                 if '-noclean' not in args and os.path.exists(self._export_dir):
                     args.append('-noclean')
@@ -2944,7 +2944,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'matrix', 'standalone_rw', 'madweight'] 
     _export_formats = _v4_export_formats + ['standalone_cpp', 'pythia8', 'aloha',
                                             'matchbox_cpp', 'matchbox',
-                                            'standalone_gpu']
+                                            'standalone_gpu', 'mg7']
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -3061,7 +3061,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     def preloop(self):
         """Initializing before starting the main loop"""
 
-        self.prompt = 'MG5_aMC>'
+        #self.prompt = 'MG5_aMC>'
+        self.prompt = " 🚀 "
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 
@@ -3131,7 +3132,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
         self._v4_export_formats = ['madevent', 'standalone','standalone_msP','standalone_msF',
                                    'matrix', 'standalone_rw']
-        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'pythia8', 'standalone_gpu']
+        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'pythia8', 'standalone_gpu', 'mg7']
         self._nlo_modes_for_completion = ['all','virt','real']
 
     def do_quit(self, line):
@@ -8313,6 +8314,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         config['matchbox_cpp'] =   {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['matchbox'] =       {'check': True, 'exporter': 'v4',  'output': 'Template'}
         config['madweight'] =      {'check': True, 'exporter': 'v4',  'output':'Template'}
+        config['mg7'] =            {'check': False, 'exporter': 'cpp', 'output': 'Template'}
 
         if self._export_format == 'plugin':
             options = {'check': self._export_plugin.check, 'exporter':self._export_plugin.exporter, 'output':self._export_plugin.output}
@@ -8874,7 +8876,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                                     flaglist,
                                     **add_options)
 
-        if self._export_format in ['madevent', 'standalone', 'standalone_cpp','madweight', 'matchbox']:
+        if self._export_format in ['madevent', 'standalone', 'standalone_cpp','madweight', 'matchbox', 'mg7']:
             logger.info('Output to directory ' + self._export_dir + ' done.')
 
         if self._export_format in ['madevent', 'NLO']:

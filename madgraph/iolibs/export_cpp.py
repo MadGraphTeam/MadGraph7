@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import subprocess
+import json
 
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
@@ -35,6 +36,7 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
+from madgraph.iolibs.export_mg7 import get_subprocess_info
 import madgraph.various.banner as banner_mod
 from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 from madgraph.iolibs.files import cp, ln, mv
@@ -2716,8 +2718,9 @@ class ProcessExporterCPP(VirtualExporter):
 
         
         # Create the directory PN_xx_xxxxx in the specified path
-        dirpath = pjoin(self.dir_path, 'SubProcesses', "P%d_%s" % (process_exporter_cpp.process_number, 
-                                             process_exporter_cpp.process_name))
+        proc_dir_name = "P%d_%s" % (process_exporter_cpp.process_number, 
+                                    process_exporter_cpp.process_name)
+        dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
         try:
             os.mkdir(dirpath)
         except os.error as error:
@@ -2730,7 +2733,7 @@ class ProcessExporterCPP(VirtualExporter):
             process_exporter_cpp.generate_process_files()
             for file in self.to_link_in_P:
                 ln('../%s' % file) 
-        return
+        return proc_dir_name
 
     @staticmethod
     def get_model_name(name):
@@ -3536,6 +3539,29 @@ class UFOModelConverterPythia8(UFOModelConverterCPP):
          
         return OneProcessExporterPythia8.read_template_file(*args, **opts)
 
+
+class ProcessExporterMG7(ProcessExporterCPP):
+    """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.process_info = []
+
+    def generate_subprocess_directory(
+        self, matrix_element, cpp_helas_call_writer, proc_number=None
+    ):
+        proc_dir_name = super().generate_subprocess_directory(
+            matrix_element, cpp_helas_call_writer, proc_number=None
+        )
+        self.process_info.append(get_subprocess_info(matrix_element, proc_dir_name))
+
+    def finalize(self, *args, **kwargs):
+        file_name = os.path.normpath(os.path.join(self.dir_path, "process.json"))
+        with open(file_name, 'w') as f:
+            json.dump(self.process_info, f)
+        super().finalize()
+
+
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     """ Determine which Export class is required. cmd is the command 
         interface containing all potential usefull information.
@@ -3553,6 +3579,8 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
         return  ProcessExporterGPU(cmd._export_dir, opt)
     elif cformat == 'matchbox_cpp':
         return  ProcessExporterMatchbox(cmd._export_dir, opt)
+    elif cformat == 'mg7':
+        return ProcessExporterMG7(cmd._export_dir, opt)
     else:
         return cmd._export_plugin(cmd._export_dir, opt)
 
