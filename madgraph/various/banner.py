@@ -4546,7 +4546,6 @@ class RunCardLO(RunCard):
                 self['fixed_fac_scale1'] = True
                 self['nhel']    = 1
                 for i in beam_id_split[1]:
-                    exit
                     if abs(i) == 11:
                         self['lpp1']    = -math.copysign(3,i)
                         self['lpp2']    =  math.copysign(3,i)
