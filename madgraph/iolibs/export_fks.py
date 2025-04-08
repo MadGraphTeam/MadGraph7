@@ -2476,7 +2476,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
         filename = "loop_matrix.ps"
         plot = draw.MultiEpsDiagramDrawer(base_objects.DiagramList(
-              matrix_element.get('base_amplitude').get('loop_diagrams')[:1000]),
+              matrix_element.get('base_amplitude').get('loop_diagrams')),
               filename,
               model=matrix_element.get('processes')[0].get('model'),
               amplitude='')
@@ -4937,9 +4937,9 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                            len(matrix_element.get_all_amplitudes()))
 
         filename = "loop_matrix.ps"
-        writers.FortranWriter(filename).writelines("""C Post-helas generation loop-drawing is not ready yet.""")
+        #writers.FortranWriter(filename).writelines("""C Post-helas generation loop-drawing is not ready yet.""")
         plot = draw.MultiEpsDiagramDrawer(base_objects.DiagramList(
-              matrix_element.get('base_amplitude').get('loop_diagrams')[:1000]),
+              matrix_element.get('base_amplitude').get('loop_diagrams')),
               filename,
               model=matrix_element.get('processes')[0].get('model'),
               amplitude='')
