@@ -1038,11 +1038,11 @@ class MultiEventFile(EventFile):
                     if len(splitline)==4:
                         cross, error, _, group = splitline
                         if int(group) in grouped_cross:
-                            grouped_cross[group] += float(cross)
-                            grouped_error[group] += float(error)**2                        
+                            grouped_cross[int(group)] += float(cross)
+                            grouped_error[int(group)] += float(error)**2                        
                         else:
-                            grouped_cross[group] = float(cross)
-                            grouped_error[group] = float(error)**2                             
+                            grouped_cross[int(group)] = float(cross)
+                            grouped_error[int(group)] = float(error)**2                             
         nb_group = len(grouped_cross)
         
         # compute the information for the first line 
