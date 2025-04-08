@@ -494,7 +494,7 @@ c
       integer idup(nexternal,maxproc,maxsproc)
       integer mothup(2,nexternal)
       integer icolup(2,nexternal,maxflow,maxsproc)
-
+      double precision eta
       integer nsym
 
       integer ievent
@@ -663,6 +663,18 @@ c
             call zboost_with_beta(p(0,j),beta,pb(0,isym(j,jsym)))
             pb(4,isym(j,jsym))=pmass(j)
          enddo
+
+         ! check for numerical_accuracy
+         if (pb(0,1).gt.ebeam(1).or.pb(0,2).gt.ebeam(2))then
+            ! go back to old method --more accurate when boosting with xbk close  to one-- 
+            eta = sqrt(xbk(1)*ebeam(1)/(xbk(2)*ebeam(2)))
+            pboost(0)=p(0,1)*(eta + 1d0/eta)
+            pboost(3)=p(0,1)*(eta - 1d0/eta)
+            do j=1,nexternal
+               call boostx(p(0,j),pboost,pb(0,isym(j,jsym)))
+            enddo
+          endif
+         
       else
          do j=1,nexternal
             call boostx(p(0,j),pboost,pb(0,isym(j,jsym)))

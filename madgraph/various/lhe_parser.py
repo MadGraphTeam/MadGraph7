@@ -1888,10 +1888,13 @@ class Event(list):
             abspz += abs(particle.pz)
             # check mass
             fourmass = FourMomentum(particle).mass
-            
-            if particle.mass and (abs(particle.mass) - fourmass)/ abs(particle.mass) > threshold:
-                raise Exception( "Do not have correct mass lhe: %s momentum: %s (error at %s" % (particle.mass, fourmass, (abs(particle.mass) - fourmass)/ abs(particle.mass)))
-                
+            if particle.mass:
+                expected = (particle.E - math.sqrt(particle.E**2 -particle.mass**2))/particle.E
+                if expected > 1e-8:
+                    mass_threshold = particle.E**2 - (particle.E-threshold)**2
+                    if  (abs(particle.mass) - fourmass)/ mass_threshold > 5:
+                        raise Exception( "Do not have correct mass lhe: %s momentum: %s (error at %s" % (particle.mass, fourmass, (abs(particle.mass) - fourmass)/ abs(particle.mass)))
+                    
 
         if E/absE > threshold:
             logger.critical(self)
