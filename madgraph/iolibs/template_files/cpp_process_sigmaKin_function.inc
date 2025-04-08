@@ -64,6 +64,6 @@ else
 }
 
 for (int i=0;i < nprocesses; i++)
-    matrix_element[i] /= denominators[i];
+    matrix_element[i] /= (denominators[i] * broken_sym(flavor));
 
 

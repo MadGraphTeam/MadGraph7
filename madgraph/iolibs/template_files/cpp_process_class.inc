@@ -62,4 +62,7 @@ private:
   // Initial particle ids
   int id1, id2;
 
+  // function to compute missing symmetry factors after flavor consolidation
+  int broken_sym(int* flavor);
+
 };

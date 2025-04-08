@@ -49,3 +49,29 @@ double CPPProcess::sigmaHat() {
 // Evaluate |M|^2 for each subprocess
 
 %(all_sigmaKin)s
+
+//--------------------------------------------------------------------------
+// Evaluate |M|^2 for each subprocess
+
+int CPPProcess::broken_sym(int* flavor)
+{
+    int old_factor = %(get_old_symmmetry_value)s;
+    %(get_pid)s
+    int nincoming = %(nincoming)d;
+    for (int i = 0; i < (nexternal - nincoming - 1); i++)
+    {
+        if(pid[i] == 0)
+            continue;
+        int n_tot = 1;
+        for (int j = i + 1; j < (nexternal - nincoming - 1); j++)
+        {
+            if((pid[i] == pid[j]) && (flavor[i] == flavor[j]))
+            {
+                pid[j] = 0;
+                n_tot = n_tot + 1;
+                old_factor = old_factor / n_tot;
+            }
+        }
+    }
+    return old_factor;
+}
