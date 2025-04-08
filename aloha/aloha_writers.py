@@ -1851,13 +1851,13 @@ class ALOHAWriterForCPP(WriteALOHA):
             # but still need to check !
             elif self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
                 if not self.outgoing:
-                    fail = "vertex = std::complex(0,0);"
+                    fail = "vertex = std::complex<double>(0,0);"
                 else:
                     fail = 'for(int i=0; i<4; i++){%s%d.W[i] = std::complex<double>(0.,0.);}' % (self.particles[self.outgoing-1], self.outgoing)
 
                 out.write('   int flv_index1 = F1.flv_index;\n')
                 out.write('   int flv_index2 = F2.flv_index;\n')
-                out.write('   if(flv_index1 != flv_index2 || flv_index1 == 0.){  \n %s\n  return;\n}\n' % fail)
+                out.write('   if(flv_index1 != flv_index2 || flv_index1 == -1){  \n %s\n  return;\n}\n' % fail)
             else:
                 incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
                 outgoing = self.outgoing
@@ -1913,7 +1913,7 @@ class ALOHAWriterForCPP(WriteALOHA):
                 else:
                     out.write('   int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
                     for i in range(2,nb_coupling+1):
-                        out.write('        if(flv_index1 == -1){flv_index1 = MCOUP%i.partner2[flv_index%i];}' %(i, incoming))  
+                        out.write('        if(flv_index1 == -1){flv_index1 = MCOUP%i.partner2[flv_index%i]}' %(i, incoming))  
                 out.write('   if(flv_index1 == -1){\n')
                 out.write('        for(int i=0; i<4; i++){F%i.W[i] = std::complex<double>(0.,0.);}\n F%i.flv_index = -1; \n return;\n }\n' %(outgoing, outgoing))
                 out.write('   F%i.flv_index = flv_index1;\n' % outgoing)                

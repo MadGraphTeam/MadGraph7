@@ -4998,6 +4998,7 @@ This implies that with decay chains:
 
             mylegids = []
             polarization = []
+            flavor = []
             if '{' in part_name:
                 part_name, pol = part_name.split('{',1)
                 pol, rest = pol.split('}',1)
@@ -5081,6 +5082,7 @@ This implies that with decay chains:
                         polarization.append(p)
                     else:
                         raise self.InvalidCmd('Invalid Polarization')
+                    
 
             duplicate =1
             if part_name in self._multiparticles:
@@ -5092,7 +5094,16 @@ This implies that with decay chains:
                           " which can be used only for required s-channels")
                 mylegids.extend(self._multiparticles[part_name])
             elif part_name.isdigit() or part_name.startswith('-') and part_name[1:].isdigit():
-                if int(part_name) in self._curr_model.get('particle_dict'):
+                if abs(int(part_name)) in sum(self._curr_model.merged_particles.values(),[]):
+                   for pdg in self._curr_model.merged_particles: 
+                        if abs(int(part_name)) in self._curr_model.merged_particles[pdg]:
+                            if int(part_name) > 0:
+                                mylegids.append(pdg)
+                            else:
+                                mylegids.append(-pdg)
+                            flavor.append(self._curr_model.merged_particles[pdg].index(abs(int(part_name))))
+                            break 
+                elif int(part_name) in self._curr_model.get('particle_dict'):
                     mylegids.append(int(part_name))
                 else:
                     raise self.InvalidCmd("No pdg_code %s in model" % part_name)
@@ -5100,7 +5111,18 @@ This implies that with decay chains:
                 mypart = self._curr_model['particles'].get_copy(part_name)
                 
                 if mypart:
-                    mylegids.append(mypart.get_pdg_code())
+                    pdg = mypart.get_pdg_code()
+                    if abs(pdg) in sum(self._curr_model.merged_particles.values(),[]):
+                        for mpdg in self._curr_model.merged_particles: 
+                            if abs(pdg) in self._curr_model.merged_particles[mpdg]:
+                                if pdg > 0:
+                                    mylegids.append(mpdg)
+                                else:
+                                    mylegids.append(-mpdg)
+                                flavor.append(self._curr_model.merged_particles[mpdg].index(abs(pdg)))
+                            break
+                    else:  
+                        mylegids.append(pdg)
                 else:
                     # check for duplication flag!
                     if part_name[0].isdigit():
@@ -5122,7 +5144,8 @@ This implies that with decay chains:
                         if is_tagged:
                             raise self.InvalidCmd(
                                 "%s mode does not handle tagged particles" % LoopOption)
-
+                        if flavor:
+                            logger.critical("convert process to multi-flavor equivalent (flavor selection is not yet supported)")
                         myleglist.append(base_objects.MultiLeg({'ids':mylegids,
                                                             'state':state,
                                                             'polarization': polarization}))
