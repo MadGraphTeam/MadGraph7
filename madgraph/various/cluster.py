@@ -108,6 +108,11 @@ class Cluster(object):
         self.submitted_exes = [] #HTCaaS
         self.submitted_args = [] #HTCaaS
 
+        if MADEVENT:
+            self.run_dir = LOCALDIR
+        else:
+            self.run_dir = MG5DIR
+
         if 'cluster_queue' in opts:
             self.cluster_queue = opts['cluster_queue']
         else:
@@ -413,6 +418,45 @@ Press ctrl-C to force the update.''' % self.options['cluster_status_update'][0])
         else:
             time_check = 0
 
+        # resubmit if checkpoint dir is present
+        if self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_fail'):
+            if self.nb_retry < 0:
+                logger.critical('''Fail to run correctly job %s.
+                with option: %s
+                failed checkpointing''' % (job_id, args))
+                input('press enter to continue.')
+                return 'done'
+            elif self.nb_retry == 0:
+                logger.critical('''Fail to run correctly job %s.
+                with option: %s
+                failed checkpointing
+                Stopping all runs.''' % (job_id, args))
+                self.remove()
+                return 'done'
+            elif args['nb_submit'] >= self.nb_retry:
+                logger.critical('''Fail to run correctly job %s.
+                with option: %s
+                failed checkpointing
+                Fails %s times
+                No resubmition. ''' % (job_id, args, args['nb_submit']))
+                self.remove()
+                return 'done'
+            else:
+                args['nb_submit'] += 1            
+                logger.warning('resubmit job (for the %s times)' % args['nb_submit'])
+                del self.retry_args[job_id]
+                self.submitted_ids.remove(job_id)
+                if 'time_check' in args: 
+                    del args['time_check']
+                if job_id in self.id_to_packet:
+                    self.id_to_packet[job_id].remove_one()
+                    args['packet_member'] = self.id_to_packet[job_id]
+                    del self.id_to_packet[job_id]            
+                    self.cluster_submit(**args)
+                else:
+                    self.submit2(**args)
+                return 'resubmit'
+
         for path in args['required_output']:
             if args['cwd']:
                 path = pjoin(args['cwd'], path)
@@ -570,6 +614,16 @@ Press ctrl-C to force the update.''' % self.options['cluster_status_update'][0])
            """
         #run_card = run_interface.run_card
         return 
+
+    def rename_ckpt_dir(self, old_dir, new_dir):
+        ckpt_script = f'{self.run_dir}/{old_dir}/dmtcp_restart_script.sh'
+        if os.path.exists(ckpt_script):
+            with open(ckpt_script, 'r') as file:
+                content = file.read()
+            content = content.replace(old_dir, new_dir)
+            with open(ckpt_script, 'w') as file:
+                file.write(content)
+        os.rename(f'{self.run_dir}/{old_dir}', f'{self.run_dir}/{new_dir}')
 
 class Packet(object):
     """ an object for handling packet of job, it is designed to be thread safe
@@ -1789,6 +1843,9 @@ class SLURMCluster(Cluster):
         output_arr = output[0].decode(errors='ignore').split(' ')
         id = output_arr[3].rstrip()
 
+        if self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_fail'):
+            self.rename_ckpt_dir('dmtcp_fail', f'dmtcp_{id}')
+
         if not id.isdigit():
             id = re.findall(r'Submitted batch job ([\d\.]+)', ' '.join(output_arr))
             
@@ -1849,11 +1906,16 @@ class SLURMCluster(Cluster):
                 elif status in self.running_tag:
                     run += 1
                 elif status in self.complete_tag:
+                    if self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_{id}'):
+                        self.rename_ckpt_dir(f'dmtcp_{id}', 'dmtcp_fail')
                     status = self.check_termination(id)
                     if status == 'wait':
                         run += 1
                     elif status == 'resubmit':
                         idle += 1                    
+                    elif self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_fail'):
+                        self.rename_ckpt_dir('dmtcp_fail', f'dmtcp_fail_{id}')
+                        logger.info(f'Checkpoints stored at {self.run_dir}/dmtcp_fail_{id}')
                 else:
                     self.badstatus = status
                     fail += 1
@@ -1861,11 +1923,16 @@ class SLURMCluster(Cluster):
         #control other finished job
         for id in list(self.submitted_ids):
             if id not in ongoing:
+                if self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_{id}'):
+                    self.rename_ckpt_dir(f'dmtcp_{id}', 'dmtcp_fail')
                 status = self.check_termination(id)
                 if status == 'wait':
                     run += 1
                 elif status == 'resubmit':
                     idle += 1
+                elif self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_fail'):
+                    self.rename_ckpt_dir('dmtcp_fail', f'dmtcp_fail_{id}')
+                    logger.info(f'Checkpoints stored at {self.run_dir}/dmtcp_fail_{id}')
                     
         
         return idle, run, self.submitted - (idle+run+fail), fail

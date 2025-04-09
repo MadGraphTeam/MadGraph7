@@ -3,12 +3,17 @@
 module load releases/2023b # Probably shouldn't be hardcoded
 module load DMTCP/3.0.0-GCCcore-13.2.0
 
-export DMTCP_CHECKPOINT_DIR=$RUN_DIR/dmtcp_$SLURM_JOB_ID
-mkdir $DMTCP_CHECKPOINT_DIR
+while [ -d "$RUN_DIR/dmtcp_fail" ]; do
+    echo "Waiting for $RUN_DIR/dmtcp_fail to disappear..."
+    sleep 1
+done
 
-dmtcp_coordinator -i 86400 --daemon --exit-on-last -p 0 --port-file $DMTCP_CHECKPOINT_DIR/dmtcp.port 1>/dev/null 2>&1
+export DMTCP_CHECKPOINT_DIR="$RUN_DIR/dmtcp_$SLURM_JOB_ID"
+mkdir -p "$DMTCP_CHECKPOINT_DIR"
+
+dmtcp_coordinator -i 86400 --daemon --exit-on-last -p 0 --port-file "$DMTCP_CHECKPOINT_DIR/dmtcp.port" 1>/dev/null 2>&1
 export DMTCP_COORD_HOST=$(hostname)
-export DMTCP_COORD_PORT=$(cat $DMTCP_CHECKPOINT_DIR/dmtcp.port)
+export DMTCP_COORD_PORT=$(cat "$DMTCP_CHECKPOINT_DIR/dmtcp.port")
 
 timeout() {
     echo "Approaching walltime. Creating checkpoint..."
@@ -23,13 +28,14 @@ timeout() {
 }
 
 # Trap signals
-trap 'timeout' USR1
+trap "timeout" USR1
 
-if [[ -e $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh && "${SLURM_RESTART_COUNT}" != "" ]]; then
+if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
     echo "$(date) - Resuming from checkpoint. Restart: ${SLURM_RESTART_COUNT}"
-    srun /bin/bash $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
+    srun /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
 else
     srun dmtcp_launch --allow-file-overwrite $@ &
 fi
 wait
+rm -r "$DMTCP_CHECKPOINT_DIR"
 exit 0
