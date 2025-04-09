@@ -5,14 +5,13 @@
 //--------------------------------------------------------------------------
 // Initialize process. 
   
-void CPPProcess::initProc(string param_card_name) {
+CPPProcess::CPPProcess(string param_card_name) :
+    goodhel(), ntry(0), sum_hel(0), ngood(0), igood(), jhel(0)
+{
 // Instantiate the model class and set parameters that stay fixed during run
-    pars = Parameters_%(model_name)s::getInstance();
     SLHAReader slha(param_card_name);
-    pars->setIndependentParameters(slha);
-    pars->setIndependentCouplings();
-    pars->printIndependentParameters();
-    pars->printIndependentCouplings();
+    pars.setIndependentParameters(slha);
+    pars.setIndependentCouplings();
     %(initProc_lines)s
 } 
 
@@ -21,14 +20,8 @@ void CPPProcess::initProc(string param_card_name) {
 
 void CPPProcess::sigmaKin( int* flavor) { 
     // Set the parameters which change event by event
-    pars->setDependentParameters();
-    pars->setDependentCouplings();
-    static bool firsttime = true;
-    if (firsttime){
-	pars->printDependentParameters();
-	pars->printDependentCouplings();
-	firsttime = false;
-    }
+    pars.setDependentParameters();
+    pars.setDependentCouplings();
 
     // Reset color flows
     %(reset_jamp_lines)s

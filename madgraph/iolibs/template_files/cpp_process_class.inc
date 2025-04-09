@@ -8,10 +8,7 @@ class CPPProcess
 public:
 
   // Constructor.
-  CPPProcess() {}
-
-  // Initialize process. 
-  virtual void initProc(string param_card_name); 
+  CPPProcess(string param_card_name);
 
   // Calculate flavour-independent parts of cross section.
   virtual void sigmaKin(int* flv);
@@ -52,7 +49,7 @@ private:
   double* jamp2[nprocesses];
 
   // Pointer to the model parameters
-  Parameters_%(model_name)s* pars;
+  Parameters_%(model_name)s pars;
 
   // vector with external particle masses
   vector<double> mME;
@@ -62,4 +59,9 @@ private:
   // Initial particle ids
   int id1, id2;
 
+  static const int ncomb = %(ncomb)d;
+  bool goodhel[ncomb];
+  int ntry, sum_hel, ngood;
+  int igood[ncomb];
+  int jhel;
 };

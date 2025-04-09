@@ -907,6 +907,9 @@ class OneProcessExporterCPP(object):
                                       replace("0_", "") \
                                       for me in self.matrix_elements])
 
+            replace_dict['ncomb'] = \
+                            self.matrix_elements[0].get_helicity_combinations()
+
         else:
             replace_dict['all_sigma_kin_definitions'] = \
                           "\n".join(["void sigmaKin_%s(int* flavor );" % \
@@ -1019,7 +1022,7 @@ class OneProcessExporterCPP(object):
         initProc_lines.append("// Set external particle masses for this matrix element")
 
         for part in matrix_element.get_external_wavefunctions():
-            initProc_lines.append("mME.push_back(pars->%s);" % part.get('mass'))
+            initProc_lines.append("mME.push_back(pars.%s);" % part.get('mass'))
         for i, colamp in enumerate(color_amplitudes):
             initProc_lines.append("jamp2[%d] = new double[%d];" % \
                                   (i, len(colamp)))
@@ -1538,7 +1541,7 @@ class OneProcessExporterGPU(OneProcessExporterCPP):
         initProc_lines.append("// Set external particle masses for this matrix element")
 
         for part in matrix_element.get_external_wavefunctions():
-            initProc_lines.append("mME.push_back(pars->%s);" % part.get('mass'))
+            initProc_lines.append("mME.push_back(pars.%s);" % part.get('mass'))
         #for i, colamp in enumerate(color_amplitudes):
         #    initProc_lines.append("jamp2[%d] = new double[%d];" % \
         #                          (i, len(colamp)))
@@ -1632,12 +1635,12 @@ class OneProcessExporterGPU(OneProcessExporterCPP):
         params = [''] * len(self.params2order)
         for coup, pos in self.couplings2order.items():
             coupling[pos] = coup
-        coup_str = "static cxtype tIPC[%s] = {pars->%s};\n"\
-            %(len(self.couplings2order), ',pars->'.join(coupling))
+        coup_str = "static cxtype tIPC[%s] = {pars.%s};\n"\
+            %(len(self.couplings2order), ',pars.'.join(coupling))
         for para, pos in self.params2order.items():
             params[pos] = para            
-        param_str = "static double tIPD[%s] = {pars->%s};\n"\
-            %(len(self.params2order), ',pars->'.join(params))            
+        param_str = "static double tIPD[%s] = {pars.%s};\n"\
+            %(len(self.params2order), ',pars.'.join(params))            
         
         
         replace_dict['assign_coupling'] = coup_str + param_str
@@ -1884,7 +1887,7 @@ class OneProcessExporterMatchbox(OneProcessExporterCPP):
         initProc_lines.append("// Set external particle masses for this matrix element")
 
         for part in matrix_element.get_external_wavefunctions():
-            initProc_lines.append("mME.push_back(pars->%s);" % part.get('mass'))
+            initProc_lines.append("mME.push_back(pars.%s);" % part.get('mass'))
         return "\n".join(initProc_lines)
 
 
@@ -3556,7 +3559,9 @@ class ProcessExporterMG7(ProcessExporterCPP):
         self.process_info.append(get_subprocess_info(matrix_element, proc_dir_name))
 
     def finalize(self, *args, **kwargs):
-        file_name = os.path.normpath(os.path.join(self.dir_path, "process.json"))
+        file_name = os.path.normpath(os.path.join(
+            self.dir_path, "SubProcesses", "subprocesses.json"
+        ))
         with open(file_name, 'w') as f:
             json.dump(self.process_info, f)
         super().finalize()

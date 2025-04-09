@@ -3,9 +3,9 @@ import os
 
 from madgraph.various.diagram_symmetry import find_symmetry
 
-def get_subprocess_info(matrix_elements, proc_dir_name):
-    model = matrix_elements.get("processes")[0].get("model")
-    amplitude = matrix_elements.get("base_amplitude")
+def get_subprocess_info(matrix_element, proc_dir_name):
+    model = matrix_element.get("processes")[0].get("model")
+    amplitude = matrix_element.get("base_amplitude")
 
     process = amplitude.get("process")
     edge_names = {}
@@ -21,7 +21,7 @@ def get_subprocess_info(matrix_elements, proc_dir_name):
             edge_names[number] = f"i{number - 1}"
             incoming[number - 1] = leg.get("id")
 
-    sym_indices, sym_perms, _ = find_symmetry(matrix_elements)
+    sym_indices, sym_perms, _ = find_symmetry(matrix_element)
     print(sym_indices, sym_perms)
     diagrams = amplitude.get("diagrams")
 
@@ -80,7 +80,7 @@ def get_subprocess_info(matrix_elements, proc_dir_name):
             }],
         })
 
-    helicity_count = len([x for x in matrix_elements.get_helicity_matrix()])
+    helicity_count = len([x for x in matrix_element.get_helicity_matrix()])
     flavor_count = 1 #TODO: determine flavor count
 
     return {
@@ -88,6 +88,6 @@ def get_subprocess_info(matrix_elements, proc_dir_name):
         "path": os.path.join("SubProcesses", proc_dir_name, "api.so"),
         "flavor_count": flavor_count,
         "helicity_count": helicity_count,
-        "has_mirror_process": matrix_elements.get("has_mirror_process"),
+        "has_mirror_process": matrix_element.get("has_mirror_process"),
         "crossing": False, #TODO: hardcoded to false for now
     }
