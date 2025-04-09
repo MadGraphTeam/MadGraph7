@@ -333,7 +333,7 @@ class Cluster(object):
             old_idle = idle
 
             if fail:
-                raise ClusterManagmentError('Some Jobs are in a Hold/... state. Please try to investigate or contact the IT team')
+                raise ClusterManagmentError(f'Some Jobs are in a {self.badstatus} state. Please try to investigate or contact the IT team')
             if idle + run == 0:
                 #time.sleep(20) #security to ensure that the file are really written on the disk
                 logger.info('All jobs finished')
@@ -1709,6 +1709,7 @@ class SLURMCluster(Cluster):
     idle_tag = ['Q','PD','S','CF']
     running_tag = ['R', 'CG']
     complete_tag = ['C']
+    badstatus = ''
     identifier_length = 8
 
     @multiple_try()
@@ -1854,6 +1855,7 @@ class SLURMCluster(Cluster):
                     elif status == 'resubmit':
                         idle += 1                    
                 else:
+                    self.badstatus = status
                     fail += 1
         
         #control other finished job
