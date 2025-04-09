@@ -11,6 +11,9 @@ std::complex<double> jamp[ncolor];
 // Calculate color flows
 %(jamp_lines)s
 
+// Calculate channel weights
+%(amp2_lines)s
+
 // Sum and square the color flows to get the matrix element
 double matrix = 0;
 int cf_index = 0;

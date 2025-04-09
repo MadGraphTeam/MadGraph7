@@ -23,6 +23,10 @@ void CPPProcess::sigmaKin( int* flavor) {
     pars.setDependentParameters();
     pars.setDependentCouplings();
 
+    for (int i = 0; i < ndiagrams; ++i) {
+        amp2[i] = 0;
+    }
+
     // Reset color flows
     %(reset_jamp_lines)s
     %(sigmaKin_lines)s

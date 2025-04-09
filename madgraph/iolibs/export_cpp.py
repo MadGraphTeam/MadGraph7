@@ -894,10 +894,13 @@ class OneProcessExporterCPP(object):
                           static const int nwavefuncs = %(nwfct)d;
                           MG5_%(model_name)s::ALOHAOBJ w[nwavefuncs];
                           static const int namplitudes = %(namp)d;
-                          std::complex<double> amp[namplitudes];""" % \
+                          static const int ndiagrams = %(ndiag)d;
+                          std::complex<double> amp[namplitudes];
+                          double amp2[ndiagrams];""" % \
                           {'nwfct':len(self.wavefunctions),
                           'sizew': wfct_size,
                           'namp':len(self.amplitudes.get_all_amplitudes()),
+                          'ndiag':len(self.matrix_elements[0].get("diagrams")),
                           'model_name': self.model_name
                           }
 
@@ -1266,6 +1269,7 @@ class OneProcessExporterCPP(object):
                                      
         replace_dict['jamp_lines'] = self.get_jamp_lines(color_amplitudes)
 
+        replace_dict['amp2_lines'] = self.get_amp2_lines(matrix_element)
 
         #specific exporter hack
         replace_dict =  self.get_class_specific_definition_matrix(replace_dict, matrix_element)
@@ -1458,6 +1462,32 @@ class OneProcessExporterCPP(object):
             res_list.append(res)
 
         return "\n".join(res_list)
+
+    def get_amp2_lines(self, matrix_element):
+        """Return the amp2(i) = sum(amp for diag(i))^2 lines"""
+
+        ret_lines = []
+        # Get minimum legs in a vertex
+        
+        #vert_list = [max(diag.get_vertex_leg_numbers()) for diag in \
+           #matrix_element.get('diagrams') if diag.get_vertex_leg_numbers()!=[]]
+        #minvert = min(vert_list) if vert_list!=[] else 0
+
+        for idiag, diag in enumerate(matrix_element.get('diagrams')):
+            # Ignore any diagrams with 4-particle vertices.
+            #if diag.get_vertex_leg_numbers()!=[] and \
+                               #max(diag.get_vertex_leg_numbers()) > minvert:
+                #continue
+            # Now write out the expression for AMP2, meaning the sum of
+            # squared amplitudes belonging to the same diagram
+            line = "amp2[%d] += " % (idiag)
+            line += "+".join(["norm(amp[%(num)d])" % \
+                              {"num": a.get('number')-1} for a in \
+                              diag.get('amplitudes')])
+            line += ";"
+            ret_lines.append(line)
+
+        return "\n".join(ret_lines)
     
 coeff = OneProcessExporterCPP.coeff
 
