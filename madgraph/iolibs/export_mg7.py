@@ -22,23 +22,29 @@ def get_subprocess_info(matrix_element, proc_dir_name):
             incoming[number - 1] = leg.get("id")
 
     sym_indices, sym_perms, _ = find_symmetry(matrix_element)
-    print(sym_indices, sym_perms)
     diagrams = amplitude.get("diagrams")
-
-    #TODO: when is the matrix element index not zero?
-    me_index = 0
+    helas_diagrams = matrix_element.get("diagrams")
+    flavors = list(matrix_element.get_external_flavors_with_iden())
 
     channels = []
     channel_indices = []
     for diagram_index, (sym_index, sym_perm) in enumerate(zip(sym_indices, sym_perms)):
         if sym_index == 0:
+            channel_indices.append(-1)
             continue
+
+        helas_diagram = helas_diagrams[diagram_index]
+        active_flavors = [
+            i
+            for i, all_flavors in enumerate(flavors)
+            if helas_diagram.check_flavor(all_flavors[0], model)
+        ]
+
         if sym_index < 0:
-            print(len(channels), sym_index)
             channels[channel_indices[-sym_index - 1]]["diagrams"].append({
-                "matrix_element": me_index,
                 "diagram": diagram_index,
                 "permutation": sym_perm,
+                "active_flavors": active_flavors,
             })
             channel_indices.append(-1)
             continue
@@ -63,30 +69,25 @@ def get_subprocess_info(matrix_element, proc_dir_name):
                 propagators.append(final_part.get_pdg_code())
             vertices.append(vertex_props)
 
-        #TODO: determine active flavors
-
-        #TODO: do we ever have cases where incoming and outgoing are not the same for
-        #      all channels? if not, we could move these one level up
         channel_indices.append(len(channels))
         channels.append({
-            "incoming": incoming,
-            "outgoing": outgoing,
             "propagators": propagators,
             "vertices": vertices,
             "diagrams": [{
-                "matrix_element": me_index,
                 "diagram": diagram_index + 1,
                 "permutation": sym_perm,
+                "active_flavors": active_flavors,
             }],
         })
 
     helicity_count = len([x for x in matrix_element.get_helicity_matrix()])
-    flavor_count = 1 #TODO: determine flavor count
 
     return {
+        "incoming": incoming,
+        "outgoing": outgoing,
         "channels": channels,
         "path": os.path.join("SubProcesses", proc_dir_name, "api.so"),
-        "flavor_count": flavor_count,
+        "flavors": flavors,
         "helicity_count": helicity_count,
         "has_mirror_process": matrix_element.get("has_mirror_process"),
         "crossing": False, #TODO: hardcoded to false for now
