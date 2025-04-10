@@ -893,14 +893,9 @@ class OneProcessExporterCPP(object):
                           void calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]);
                           static const int nwavefuncs = %(nwfct)d;
                           MG5_%(model_name)s::ALOHAOBJ w[nwavefuncs];
-                          static const int namplitudes = %(namp)d;
-                          static const int ndiagrams = %(ndiag)d;
-                          std::complex<double> amp[namplitudes];
-                          double amp2[ndiagrams];""" % \
+                          """ % \
                           {'nwfct':len(self.wavefunctions),
                           'sizew': wfct_size,
-                          'namp':len(self.amplitudes.get_all_amplitudes()),
-                          'ndiag':len(self.matrix_elements[0].get("diagrams")),
                           'model_name': self.model_name
                           }
 
@@ -910,8 +905,15 @@ class OneProcessExporterCPP(object):
                                       replace("0_", "") \
                                       for me in self.matrix_elements])
 
-            replace_dict['ncomb'] = \
-                            self.matrix_elements[0].get_helicity_combinations()
+            replace_dict['ncomb'] = (
+                self.matrix_elements[0].get_helicity_combinations()
+            )
+            replace_dict['namp'] = len(
+                self.amplitudes.get_all_amplitudes()
+            )
+            replace_dict['ndiag'] = len(
+                self.matrix_elements[0].get("diagrams")
+            )
 
         else:
             replace_dict['all_sigma_kin_definitions'] = \
@@ -1026,9 +1028,10 @@ class OneProcessExporterCPP(object):
 
         for part in matrix_element.get_external_wavefunctions():
             initProc_lines.append("mME.push_back(pars.%s);" % part.get('mass'))
-        for i, colamp in enumerate(color_amplitudes):
-            initProc_lines.append("jamp2[%d] = new double[%d];" % \
-                                  (i, len(colamp)))
+        #for i, colamp in enumerate(color_amplitudes):
+        #    initProc_lines.append("jamp2 = new double[%d];" % \
+        #                          (i, len(colamp)))
+        initProc_lines.append("jamp2 = new double[%d];" % len(color_amplitudes[0]))
 
         return "\n".join(initProc_lines)
 
@@ -1036,9 +1039,13 @@ class OneProcessExporterCPP(object):
         """Get lines to reset jamps"""
 
         ret_lines = ""
+        #for icol, col_amp in enumerate(color_amplitudes):
+        #    ret_lines+= """for(int i=0;i < %(ncolor)d; i++)
+        #    jamp2[%(proc_number)d][i]=0.;\n""" % \
+        #    {"ncolor": len(col_amp), "proc_number": icol}
         for icol, col_amp in enumerate(color_amplitudes):
             ret_lines+= """for(int i=0;i < %(ncolor)d; i++)
-            jamp2[%(proc_number)d][i]=0.;\n""" % \
+            jamp2[i]=0.;\n""" % \
             {"ncolor": len(col_amp), "proc_number": icol}
         return ret_lines
         
@@ -1079,6 +1086,7 @@ class OneProcessExporterCPP(object):
         
         if self.single_helicities:
             replace_dict = {}
+            assert len(self.matrix_elements) == 1
 
             # Number of helicity combinations
             replace_dict['ncomb'] = \
@@ -1095,14 +1103,16 @@ class OneProcessExporterCPP(object):
             replace_dict['helicity_matrix'] = \
                             self.get_helicity_matrix(self.matrix_elements[0])
 
+            replace_dict['flavor_table'] = self.get_flavor_table(self.matrix_elements[0])
+
             # Extract denominator
             den_factors = [str(me.get_denominator_factor()) for me in \
                                self.matrix_elements]
-            if self.nprocesses != len(self.matrix_elements):
-                den_factors.extend(den_factors)
+            #if self.nprocesses != len(self.matrix_elements):
+            #    den_factors.extend(den_factors)
             replace_dict['den_factors'] = ",".join(den_factors)
             replace_dict['get_matrix_t_lines'] = "\n".join(
-                     ["t[%(iproc)d]=matrix_%(proc_name)s();" % \
+                     ["double t = matrix_%(proc_name)s();" % \
                      {"iproc": i, "proc_name": \
                       me.get('processes')[0].shell_string().replace("0_", "")} \
                      for i, me in enumerate(self.matrix_elements)])
@@ -1167,6 +1177,36 @@ class OneProcessExporterCPP(object):
             else:
                 replace_dict['get_mirror_matrix_lines'] = ret_lines
                 return replace_dict
+
+    def get_flavor_table(self, matrix_element):
+        flavors = list(matrix_element.get_external_flavors_with_iden())
+        flavor_multipliers = "{" + ",".join(str(len(f)) for f in flavors) + "}"
+
+        flavor_dict = {
+            1: 0, 2: 1, 3: 2, 4: 3, # quarks
+            11: 0, 13: 1, 15: 2,    # charged leptons
+            12: 0, 14: 1, 16: 2,    # neutrinos
+        }
+        flavor_table = []
+        flavor_mirror_table = []
+        for flavor in flavors:
+            aloha_flavor = [flavor_dict.get(f, 0) for f in flavor[0]]
+            aloha_flavor_mirror = [aloha_flavor[1], aloha_flavor[0], *aloha_flavor[2:]]
+            flavor_table.append(",".join(str(f) for f in aloha_flavor))
+            flavor_mirror_table.append(",".join(str(f) for f in aloha_flavor_mirror))
+        full_flavor_table = (
+            "{{{" +
+            "}, {".join(flavor_table) +
+            "}}, {{" + 
+            "}, {".join(flavor_mirror_table) +
+            "}}}"
+        )
+        flavor_count = len(flavor_table)
+        ext_count = len(flavors[0][0])
+        return f"""
+        static const int flavor_table[2][{flavor_count}][{ext_count}] = {full_flavor_table};
+        static const int flavor_multipliers[{flavor_count}] = {flavor_multipliers};
+        """
               
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
         """Get sigmaKin_process for all subprocesses for Pythia 8 .cc file"""
@@ -2641,9 +2681,9 @@ class ProcessExporterCPP(VirtualExporter):
     
     oneprocessclass = OneProcessExporterCPP
     s= _file_path + 'iolibs/template_files/'
-    from_template = {'src': [s+'rambo.h', s+'rambo.cc', s+'read_slha.h', s+'read_slha.cc'],
-                     'SubProcesses': [s+'check_sa.cpp']}
-    to_link_in_P = ['check_sa.cpp', 'Makefile']
+    from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
+                     'SubProcesses': [s+'mg7/api.cpp']}
+    to_link_in_P = ['api.cpp', 'Makefile']
     template_src_make = pjoin(_file_path, 'iolibs', 'template_files','Makefile_sa_cpp_src')
     template_Sub_make = pjoin(_file_path, 'iolibs', 'template_files','Makefile_sa_cpp_sp') 
     create_model_class =  UFOModelConverterCPP

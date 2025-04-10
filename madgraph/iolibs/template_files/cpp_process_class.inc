@@ -7,34 +7,35 @@ class CPPProcess
 {
 public:
 
+  // Constants for array limits
+  static const int ninitial = %(ninitial)d;
+  static const int nexternal = %(nexternal)d;
+  static const int nprocesses = %(nprocesses)d;
+  static const int ncomb = %(ncomb)d;
+  static const int ndiagrams = %(ndiag)d;
+  static const int namplitudes = %(namp)d;
+
   // Constructor.
   CPPProcess(string param_card_name);
 
   // Calculate flavour-independent parts of cross section.
-  virtual void sigmaKin(int* flv);
-
-  // Evaluate sigmaHat(sHat). 
-  virtual double sigmaHat();
+  double sigmaKin(int flavor_id, bool mirror);
 
   // Info on the subprocess.
-  virtual string name()    const {return "%(process_definition)s";}
+  string name()    const {return "%(process_definition)s";}
 
-  virtual int    code()    const {return %(process_code)s;}
+  int    code()    const {return %(process_code)s;}
 
   const vector<double>& getMasses() const {return mME;}
+
+  const double* getAmp2() const { return amp2; }
+
+  const Parameters_%(model_name)s& getParameters() { return pars; }
 
   // Get and set momenta for matrix element evaluation
   vector<double*> getMomenta(){return p;}
   void setMomenta(vector<double*>& momenta){p = momenta;}
   void setInitial(int inid1, int inid2){id1 = inid1; id2 = inid2;}
-
-  // Get matrix element vector
-  const double* getMatrixElements() const {return matrix_element;}
-
-  // Constants for array limits
-  static const int ninitial = %(ninitial)d;
-  static const int nexternal = %(nexternal)d;
-  static const int nprocesses = %(nprocesses)d;
 
 private:
 
@@ -42,11 +43,11 @@ private:
   %(all_sigma_kin_definitions)s
   %(all_matrix_definitions)s
 
-  // Store the matrix element value from sigmaKin
-  double matrix_element[nprocesses];
+  std::complex<double> amp[namplitudes];
+  double amp2[ndiagrams];
 
   // Color flows, used when selecting color
-  double* jamp2[nprocesses];
+  double* jamp2;
 
   // Pointer to the model parameters
   Parameters_%(model_name)s pars;
@@ -59,9 +60,8 @@ private:
   // Initial particle ids
   int id1, id2;
 
-  static const int ncomb = %(ncomb)d;
-  bool goodhel[ncomb];
-  int ntry, sum_hel, ngood;
-  int igood[ncomb];
-  int jhel;
+  bool goodhel[2 * ncomb];
+  int ntry[2], sum_hel[2], ngood[2];
+  int igood[2 * ncomb];
+  int jhel[2];
 };

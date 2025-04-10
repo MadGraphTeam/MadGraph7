@@ -16,11 +16,11 @@ const SubProcessInfo* subprocess_info() {
     return &info;
 }
 
-void* init_subprocess(uint64_t matrix_element_index, const char* param_card_path, double alpha_s) {
-    CPPProcess* process = new CPPProcess();
-    process->initProc(param_card_path);
+void* init_subprocess(uint64_t matrix_element_index, const char* param_card_path) {
+    CPPProcess* process = new CPPProcess(param_card_path);
     process->curr_process = matrix_element_index;
-    process->pars->aS = alpha_s;
+    std::vector<double*>& momenta = process.getMomenta();
+    for (int i = 0; i < CPPProcess::nexternal; ++i) momenta.push_back(new double[4]());
     return process;
 }
 
@@ -33,10 +33,11 @@ void compute_matrix_element(
 ) {
     CPPProcess* process = reinterpret_cast<CPPProcess*>(subprocess);
 
+    std::vector<double*>& process_momenta = process.getMomenta();
     for (uint64_t i_batch = 0; i_batch < count; ++i_batch) {
         for (uint64_t i_part = 0; i_part < CPPProcess::nexternal; ++i_part) {
             for(uint64_t i_mom = 0; i_mom < 4; ++i_mom) {
-                process->p[i_part][i_mom] =
+                process_momenta[i_part][i_mom] =
                     momenta_in[stride * (CPPProcess::nexternal * i_mom + i_part) + i_batch];
             }
         }
@@ -57,25 +58,28 @@ void compute_matrix_element_multichannel(
 ) {
     CPPProcess* process = reinterpret_cast<CPPProcess*>(subprocess);
 
+    std::vector<double*>& process_momenta = process.getMomenta();
     for (uint64_t i_batch = 0; i_batch < count; ++i_batch) {
         for (uint64_t i_part = 0; i_part < CPPProcess::nexternal; ++i_part) {
             for(uint64_t i_mom = 0; i_mom < 4; ++i_mom) {
-                process->p[i_part][i_mom] =
+                process_momenta[i_part][i_mom] =
                     momenta_in[stride * (CPPProcess::nexternal * i_mom + i_part) + i_batch];
             }
         }
+        process->getParameters().aS = alpha_s;
         process->sigmaKin();
         m2_out[i_batch] = process->matrix_element[process->curr_process];
         for(uint64_t i_chan = 0; i_chan < channel_count; ++i_chan) {
             channel_weights_out[i_chan * stride + i_batch] = 0;
         }
         double chan_total = 0.;
+        const double* amp2 = process.getAmp2();
         for(uint64_t i_amp = 0; i_amp < CPPProcess::ndiagrams; ++i_amp) {
-            double amp2 = process->amp2[i_amp];
+            double amp2_item = amp2[i_amp];
             int64_t target_chan = amp2_remap_in[i_amp];
             if (target_chan == -1) continue;
-            channel_weights_out[target_chan * stride + i_batch] += amp2;
-            chan_total += amp2;
+            channel_weights_out[target_chan * stride + i_batch] += amp2_item;
+            chan_total += amp2_item;
         }
         for(uint64_t i_chan = 0; i_chan < channel_count; ++i_chan) {
             channel_weights_out[i_chan * stride + i_batch] /= chan_total;
@@ -85,6 +89,8 @@ void compute_matrix_element_multichannel(
 
 void free_subprocess(void* subprocess) {
     CPPProcess* process = reinterpret_cast<CPPProcess*>(subprocess);
+    std::vector<double*>& momenta = process.getMomenta();
+    for (int i = 0; i < CPPProcess::nexternal; ++i) delete[] momenta[i];
     delete process;
 }
 

@@ -1,11 +1,11 @@
 LIBDIR=../lib
-CXXFLAGS= -Ofast -I.
+CXXFLAGS= -O3 -I.
 CXX=%(cpp_compiler)s
 target=$(LIBDIR)/libmodel_%(model)s.a
 
 all: $(target)
 
-objects=HelAmps_%(model)s.o Parameters_%(model)s.o rambo.o read_slha.o
+objects=HelAmps_%(model)s.o Parameters_%(model)s.o read_slha.o
 
 $(target): $(objects)
 	$(AR) cru $@ $(objects)

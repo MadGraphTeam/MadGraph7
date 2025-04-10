@@ -6,7 +6,7 @@
 // Initialize process. 
   
 CPPProcess::CPPProcess(string param_card_name) :
-    goodhel(), ntry(0), sum_hel(0), ngood(0), igood(), jhel(0)
+    goodhel(), ntry(), sum_hel(), ngood(), igood(), jhel()
 {
 // Instantiate the model class and set parameters that stay fixed during run
     SLHAReader slha(param_card_name);
@@ -18,7 +18,7 @@ CPPProcess::CPPProcess(string param_card_name) :
 //--------------------------------------------------------------------------
 // Evaluate |M|^2, part independent of incoming flavour. 
 
-void CPPProcess::sigmaKin( int* flavor) { 
+double CPPProcess::sigmaKin(int flavor_id, bool mirror) { 
     // Set the parameters which change event by event
     pars.setDependentParameters();
     pars.setDependentCouplings();
@@ -30,13 +30,6 @@ void CPPProcess::sigmaKin( int* flavor) {
     // Reset color flows
     %(reset_jamp_lines)s
     %(sigmaKin_lines)s
-}
-
-//--------------------------------------------------------------------------
-// Evaluate |M|^2, including incoming flavour dependence. 
-
-double CPPProcess::sigmaHat() {  
-    %(sigmaHat_lines)s
 }
 
 //==========================================================================
