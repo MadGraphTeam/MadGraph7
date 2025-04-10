@@ -30,10 +30,10 @@ public:
 
   const double* getAmp2() const { return amp2; }
 
-  const Parameters_%(model_name)s& getParameters() { return pars; }
+  Parameters_%(model_name)s& getParameters() { return pars; }
 
   // Get and set momenta for matrix element evaluation
-  vector<double*> getMomenta(){return p;}
+  vector<double*>& getMomenta(){return p;}
   void setMomenta(vector<double*>& momenta){p = momenta;}
   void setInitial(int inid1, int inid2){id1 = inid1; id2 = inid2;}
 
