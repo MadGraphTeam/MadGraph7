@@ -36,6 +36,17 @@ if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
 else
     srun dmtcp_launch --allow-file-overwrite $@ &
 fi
+
 wait
-rm -r "$DMTCP_CHECKPOINT_DIR"
+
+# Calculation finished, cleanup
+link="$DMTCP_CHECKPOINT_DIR"
+
+while [ -L "$link" ]; do
+    next=$(readlink "$link")
+    rm "$link"
+    link="$next"
+done
+
+rm -r "$link"
 exit 0

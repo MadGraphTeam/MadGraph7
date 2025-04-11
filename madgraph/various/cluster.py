@@ -615,16 +615,6 @@ Press ctrl-C to force the update.''' % self.options['cluster_status_update'][0])
         #run_card = run_interface.run_card
         return 
 
-    def rename_ckpt_dir(self, old_dir, new_dir):
-        ckpt_script = f'{self.run_dir}/{old_dir}/dmtcp_restart_script.sh'
-        if os.path.exists(ckpt_script):
-            with open(ckpt_script, 'r') as file:
-                content = file.read()
-            content = content.replace(old_dir, new_dir)
-            with open(ckpt_script, 'w') as file:
-                file.write(content)
-        os.rename(f'{self.run_dir}/{old_dir}', f'{self.run_dir}/{new_dir}')
-
 class Packet(object):
     """ an object for handling packet of job, it is designed to be thread safe
     """
@@ -1844,7 +1834,9 @@ class SLURMCluster(Cluster):
         id = output_arr[3].rstrip()
 
         if self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_fail'):
-            self.rename_ckpt_dir('dmtcp_fail', f'dmtcp_{id}')
+            target = os.readlink(f'{self.run_dir}/dmtcp_fail')
+            os.unlink(f'{self.run_dir}/dmtcp_fail')
+            os.symlink(target, f'{self.run_dir}/dmtcp_{id}')
 
         if not id.isdigit():
             id = re.findall(r'Submitted batch job ([\d\.]+)', ' '.join(output_arr))
@@ -1907,15 +1899,17 @@ class SLURMCluster(Cluster):
                     run += 1
                 elif status in self.complete_tag:
                     if self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_{id}'):
-                        self.rename_ckpt_dir(f'dmtcp_{id}', 'dmtcp_fail')
+                        os.symlink(f'{self.run_dir}/dmtcp_{id}', f'{self.run_dir}/dmtcp_fail')
                     status = self.check_termination(id)
                     if status == 'wait':
                         run += 1
                     elif status == 'resubmit':
                         idle += 1                    
                     elif self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_fail'):
-                        self.rename_ckpt_dir('dmtcp_fail', f'dmtcp_fail_{id}')
-                        logger.info(f'Checkpoints stored at {self.run_dir}/dmtcp_fail_{id}')
+                        target = os.readlink(f'{self.run_dir}/dmtcp_fail')
+                        os.unlink(f'{self.run_dir}/dmtcp_fail')
+                        os.symlink(target, f'{self.run_dir}/dmtcp_{id}_fail')
+                        logger.info(f'Checkpoints stored at {self.run_dir}/dmtcp_{id}_fail')
                 else:
                     self.badstatus = status
                     fail += 1
@@ -1924,15 +1918,17 @@ class SLURMCluster(Cluster):
         for id in list(self.submitted_ids):
             if id not in ongoing:
                 if self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_{id}'):
-                    self.rename_ckpt_dir(f'dmtcp_{id}', 'dmtcp_fail')
+                    os.symlink(f'{self.run_dir}/dmtcp_{id}', f'{self.run_dir}/dmtcp_fail')
                 status = self.check_termination(id)
                 if status == 'wait':
                     run += 1
                 elif status == 'resubmit':
                     idle += 1
                 elif self.checkpointing and os.path.exists(f'{self.run_dir}/dmtcp_fail'):
-                    self.rename_ckpt_dir('dmtcp_fail', f'dmtcp_fail_{id}')
-                    logger.info(f'Checkpoints stored at {self.run_dir}/dmtcp_fail_{id}')
+                    target = os.readlink(f'{self.run_dir}/dmtcp_fail')
+                    os.unlink(f'{self.run_dir}/dmtcp_fail')
+                    os.symlink(target, f'{self.run_dir}/dmtcp_{id}_fail')
+                    logger.info(f'Checkpoints stored at {self.run_dir}/dmtcp_{id}_fail')
                     
         
         return idle, run, self.submitted - (idle+run+fail), fail
