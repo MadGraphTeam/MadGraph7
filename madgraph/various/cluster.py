@@ -21,6 +21,7 @@ import glob
 import inspect
 import sys
 import six
+import tempfile
 from six.moves import range
 from six.moves import input
 
@@ -992,9 +993,55 @@ class CondorCluster(Cluster):
                 'stderr': stderr,'log': log,'argument': argument,
                 'requirement': requirement}
 
+        if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
+              and self.options['cluster_walltime'] != 'None':
+                text += 'allowed_job_duration = %(walltime)s'
+                dico['walltime'] = self.options['cluster_walltime']
+
+        if self.checkpointing:
+
+            if MADEVENT:
+                wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_driver.sh')
+            else:
+                wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_driver.sh')
+            argument_dmtcp = prog + ' ' + argument
+
+            dico['prog'] = wrapper
+            dico['argument'] = argument_dmtcp
+
+            if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
+                and self.options['cluster_requirement'] != 'None':
+                text += '\nrequirements = TARGET.Microarch==\"%(requirement)s\"'
+                dico['requirement'] = self.options['cluster_requirement']
+
+            if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
+                and self.options['cluster_vacatetime'] != 'None':
+                text += '\n+JobMaxVacateTime = %(vacatetime)s'
+                dico['vacatetime'] = self.options['cluster_vacatetime']
+
+            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as submit_file:
+                submit_file.write((text % dico))
+                submit_filename = submit_file.name
+
+            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\n'
+
+            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as dag_file:
+                dag_file.write((text % dico))
+                dag_filename = dag_file.name
+
+            command = f'condor_submit_dag {dag_filename}'
+            text = """"""
+
+        else:
+            command = 'condor_submit'
+
+        jobenv = os.environ.copy()
+        if MADEVENT: jobenv['RUN_DIR'] = LOCALDIR
+        else: jobenv['RUN_DIR'] = MG5DIR
+
         #open('submit_condor','w').write(text % dico)
-        a = misc.Popen(['condor_submit'], stdout=subprocess.PIPE,
-                       stdin=subprocess.PIPE)
+        a = misc.Popen([command], stdout=subprocess.PIPE,
+                       stdin=subprocess.PIPE, env=jobenv)
         output, _ = a.communicate((text % dico).encode())
         #output = a.stdout.read()
         #Submitting job(s).
@@ -1080,9 +1127,55 @@ class CondorCluster(Cluster):
                 'requirement': requirement, 'input_files':input_files, 
                 'output_files':output_files}
 
+        if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
+              and self.options['cluster_walltime'] != 'None':
+                text += 'allowed_job_duration = %(walltime)s'
+                dico['walltime'] = self.options['cluster_walltime']
+
+        if self.checkpointing:
+
+            if MADEVENT:
+                wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_driver.sh')
+            else:
+                wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_driver.sh')
+            argument_dmtcp = prog + ' ' + argument
+
+            dico['prog'] = wrapper
+            dico['argument'] = argument_dmtcp
+
+            if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
+                and self.options['cluster_requirement'] != 'None':
+                text += '\nrequirements = TARGET.Microarch==\"%(requirement)s\"'
+                dico['requirement'] = self.options['cluster_requirement']
+
+            if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
+                and self.options['cluster_vacatetime'] != 'None':
+                text += '\n+JobMaxVacateTime = %(vacatetime)s'
+                dico['vacatetime'] = self.options['cluster_vacatetime']
+
+            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as submit_file:
+                submit_file.write((text % dico))
+                submit_filename = submit_file.name
+
+            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\n'
+
+            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as dag_file:
+                dag_file.write((text % dico))
+                dag_filename = dag_file.name
+
+            command = f'condor_submit_dag {dag_filename}'
+            text = """"""
+
+        else:
+            command = 'condor_submit'
+
+        jobenv = os.environ.copy()
+        if MADEVENT: jobenv['RUN_DIR'] = LOCALDIR
+        else: jobenv['RUN_DIR'] = MG5DIR
+
         #open('submit_condor','w').write(text % dico)
-        a = subprocess.Popen(['condor_submit'], stdout=subprocess.PIPE,
-                             stdin=subprocess.PIPE)
+        a = subprocess.Popen([command], stdout=subprocess.PIPE,
+                             stdin=subprocess.PIPE, env=jobenv)
         output, _ = a.communicate((text % dico).encode())
         #output = a.stdout.read()
         #Submitting job(s).
@@ -1785,9 +1878,9 @@ class SLURMCluster(Cluster):
         if self.checkpointing:
 
             if MADEVENT:
-                wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_driver.sh')
+                wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_slurm_driver.sh')
             else:
-                wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_driver.sh')
+                wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_slurm_driver.sh')
             argument_dmtcp = [prog] + argument
 
             command = ['sbatch',
