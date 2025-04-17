@@ -5,6 +5,8 @@ ANNOUNCEMENT:
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
 
+3.6.3:
+     OM: Fix conversion model for the FD gauge
 3.6.2
       RF: Implemented flavour_bias parameter in the NLO run-card to allow for biassed event generation
           based on the flavours of the external particles, as used in 2403.14419.
