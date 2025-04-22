@@ -98,6 +98,7 @@ class Cluster(object):
     """Basic Class for all cluster type submission"""
     name = 'mother class'
     identifier_length = 14
+    badstatus = ''
 
     def __init__(self,*args, **opts):
         """Init the cluster"""
@@ -258,6 +259,7 @@ class Cluster(object):
                 self.submitted_ids.remove(pid)
             else:
                 fail += 1
+                self.badstatus = status
 
         return idle, run, self.finish, fail
 
@@ -1252,6 +1254,7 @@ class CondorCluster(Cluster):
                     run += 1
                 elif status != 'C':
                     fail += 1
+                    self.badstatus = status
 
         for id in list(self.submitted_ids):
             if id not in ongoing:
@@ -1395,6 +1398,7 @@ class PBSCluster(Cluster):
                         idle += 1
                 else:
                     fail += 1
+                    self.badstatus = status2
 
         if status.returncode != 0 and status.returncode is not None:
             raise ClusterManagmentError('server fails in someway (errorcode %s)' % status.returncode)
@@ -1554,6 +1558,7 @@ class SGECluster(Cluster):
                     logger.debug(line)
                     fail += 1
                     finished.remove(id)
+                    self.badstatus = status
 
         for id in finished:
             self.check_termination(id)
@@ -1810,6 +1815,7 @@ class GECluster(Cluster):
                         run += 1
                     if statusflag == 'sh':
                         fail += 1
+                        self.badstatus = statusflag
         for id in list(self.submitted_ids):
             if id not in ongoing:
                 self.check_termination(id)
@@ -2004,8 +2010,8 @@ class SLURMCluster(Cluster):
                         os.symlink(target, f'{self.run_dir}/dmtcp_{id}_fail')
                         logger.info(f'Checkpoints stored at {self.run_dir}/dmtcp_{id}_fail')
                 else:
-                    self.badstatus = status
                     fail += 1
+                    self.badstatus = status
         
         #control other finished job
         for id in list(self.submitted_ids):
@@ -2186,6 +2192,7 @@ class HTCaaSCluster(Cluster):
                     idle +=1
             else:
                 fail += 1 
+                self.badstatus = status2
 
         return idle, run, self.submitted - (idle+run+fail), fail
 
@@ -2404,6 +2411,7 @@ class HTCaaS2Cluster(Cluster):
                     idle +=1
             else:
                 fail += 1
+                self.badstatus = status2
 
         return idle, run, self.submitted - (idle+run+fail), fail
 
