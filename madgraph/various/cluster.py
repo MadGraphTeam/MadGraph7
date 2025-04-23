@@ -957,34 +957,49 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(Cluster).$(Process)
-                  Universe = vanilla
+                  environment = CONDOR_ID=$(Cluster).$(Process); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
                   notification = Error
                   Initialdir = %(cwd)s
                   %(requirement)s
+                  %(walltime)s
+                  %(vacatetime)s
                   getenv=True
                   queue 1
                """
         
+        requirement = []
+
         if self.cluster_queue not in ['None', None]:
-            requirement = 'Requirements = %s=?=True' % self.cluster_queue
+            requirement.append('%s=?=True' % self.cluster_queue)
+
+        if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
+            and self.options['cluster_requirement'] != 'None':
+            microarch = self.options['cluster_requirement']
+            requirement.append(f'TARGET.Microarch==\"{microarch}\"')
+
+        if requirement:
+            requirement = 'Requirements = ' + ' && '.join(requirement)
         else:
             requirement = ''
 
         if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
               and self.options['cluster_walltime'] != 'None':
-            requirement+='\n MaxRuntime =  %s' % self.options['cluster_walltime'] 
+            walltime = '+MaxRuntime =  %s' % self.options['cluster_walltime']
+        else:
+            walltime = ''
 
         if cwd is None:
             cwd = os.getcwd()
         if stdout is None:
-            stdout = '/dev/null'
+            stdout = 'condor_$(Cluster).out'
         if stderr is None:
-            stderr = '/dev/null'
+            stderr = 'condor_$(Cluster).err'
         if log is None:
-            log = '/dev/null'
+            log = 'condor_$(Cluster).log'
         if not os.path.exists(prog):
             prog = os.path.join(cwd, prog)
+        if self.checkpointing:
+            argument = [prog] + argument
         if argument:
             argument = 'Arguments = %s' % ' '.join(argument)
         else:
@@ -993,12 +1008,7 @@ class CondorCluster(Cluster):
 
         dico = {'prog': prog, 'cwd': cwd, 'stdout': stdout, 
                 'stderr': stderr,'log': log,'argument': argument,
-                'requirement': requirement}
-
-        if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
-              and self.options['cluster_walltime'] != 'None':
-                text += 'allowed_job_duration = %(walltime)s'
-                dico['walltime'] = self.options['cluster_walltime']
+                'requirement': requirement, 'walltime': walltime, 'vacatetime': ''}
 
         if self.checkpointing:
 
@@ -1006,43 +1016,35 @@ class CondorCluster(Cluster):
                 wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_driver.sh')
             else:
                 wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_driver.sh')
-            argument_dmtcp = prog + ' ' + argument
 
             dico['prog'] = wrapper
-            dico['argument'] = argument_dmtcp
+            dico['argument'] = argument
+            dico['output_files'] += ',dmtcp_$(Cluster).$(Process)'
 
-            if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
-                and self.options['cluster_requirement'] != 'None':
-                text += '\nrequirements = TARGET.Microarch==\"%(requirement)s\"'
-                dico['requirement'] = self.options['cluster_requirement']
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
                 and self.options['cluster_vacatetime'] != 'None':
-                text += '\n+JobMaxVacateTime = %(vacatetime)s'
-                dico['vacatetime'] = self.options['cluster_vacatetime']
+                vacatetime = self.options['cluster_vacatetime']
+                dico['vacatetime'] = f'+JobMaxVacateTime = {vacatetime}'
 
             with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as submit_file:
                 submit_file.write((text % dico))
                 submit_filename = submit_file.name
 
-            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\n'
+            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\nVARS job retry_count="$(RETRY)"\n'
 
             with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as dag_file:
                 dag_file.write((text % dico))
                 dag_filename = dag_file.name
 
-            command = f'condor_submit_dag {dag_filename}'
+            command = ['condor_submit_dag', dag_filename]
             text = """"""
 
         else:
-            command = 'condor_submit'
-
-        jobenv = os.environ.copy()
-        if MADEVENT: jobenv['RUN_DIR'] = LOCALDIR
-        else: jobenv['RUN_DIR'] = MG5DIR
+            command = ['condor_submit']
 
         #open('submit_condor','w').write(text % dico)
-        a = misc.Popen([command], stdout=subprocess.PIPE,
+        a = misc.Popen(command, stdout=subprocess.PIPE,
                        stdin=subprocess.PIPE, env=jobenv)
         output, _ = a.communicate((text % dico).encode())
         #output = a.stdout.read()
@@ -1081,33 +1083,53 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
+                  environment = CONDOR_ID=$(Cluster).$(Process); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
                   should_transfer_files = YES
                   when_to_transfer_output = ON_EXIT
                   transfer_input_files = %(input_files)s
                   %(output_files)s
-                  Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
                   %(requirement)s
+                  %(walltime)s
+                  %(vacatetime)s
                   getenv=True
                   queue 1
                """
         
+        requirement = []
+
         if self.cluster_queue not in ['None', None]:
-            requirement = 'Requirements = %s=?=True' % self.cluster_queue
+            requirement.append('%s=?=True' % self.cluster_queue)
+
+        if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
+            and self.options['cluster_requirement'] != 'None':
+            microarch = self.options['cluster_requirement']
+            requirement.append(f'TARGET.Microarch==\"{microarch}\"')
+
+        if requirement:
+            requirement = 'Requirements = ' + ' && '.join(requirement)
         else:
             requirement = ''
+
+        if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
+              and self.options['cluster_walltime'] != 'None':
+            walltime = '+MaxRuntime =  %s' % self.options['cluster_walltime']
+        else:
+            walltime = ''
 
         if cwd is None:
             cwd = os.getcwd()
         if stdout is None:
-            stdout = '/dev/null'
+            stdout = 'condor_$(Cluster).out'
         if stderr is None:
-            stderr = '/dev/null'
+            stderr = 'condor_$(Cluster).err'
         if log is None:
-            log = '/dev/null'
+            log = 'condor_$(Cluster).log'
         if not os.path.exists(prog):
             prog = os.path.join(cwd, prog)
+        if self.checkpointing:
+            argument = [prog] + argument
         if argument:
             argument = 'Arguments = %s' % ' '.join([str(a) for a in argument])
         else:
@@ -1127,12 +1149,7 @@ class CondorCluster(Cluster):
         dico = {'prog': prog, 'cwd': cwd, 'stdout': stdout, 
                 'stderr': stderr,'log': log,'argument': argument,
                 'requirement': requirement, 'input_files':input_files, 
-                'output_files':output_files}
-
-        if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
-              and self.options['cluster_walltime'] != 'None':
-                text += 'allowed_job_duration = %(walltime)s'
-                dico['walltime'] = self.options['cluster_walltime']
+                'output_files':output_files, 'walltime': walltime, 'vacatetime': ''}
 
         if self.checkpointing:
 
@@ -1140,44 +1157,35 @@ class CondorCluster(Cluster):
                 wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_driver.sh')
             else:
                 wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_driver.sh')
-            argument_dmtcp = prog + ' ' + argument
 
             dico['prog'] = wrapper
-            dico['argument'] = argument_dmtcp
-
-            if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
-                and self.options['cluster_requirement'] != 'None':
-                text += '\nrequirements = TARGET.Microarch==\"%(requirement)s\"'
-                dico['requirement'] = self.options['cluster_requirement']
+            dico['argument'] = argument
+            dico['output_files'] += ',dmtcp_$(Cluster).$(Process)'
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
                 and self.options['cluster_vacatetime'] != 'None':
-                text += '\n+JobMaxVacateTime = %(vacatetime)s'
-                dico['vacatetime'] = self.options['cluster_vacatetime']
+                vacatetime = self.options['cluster_vacatetime']
+                dico['vacatetime'] = f'+JobMaxVacateTime = {vacatetime}'
 
             with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as submit_file:
                 submit_file.write((text % dico))
                 submit_filename = submit_file.name
 
-            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\n'
+            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\nVARS job retry_count="$(RETRY)"\n'
 
             with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as dag_file:
                 dag_file.write((text % dico))
                 dag_filename = dag_file.name
 
-            command = f'condor_submit_dag {dag_filename}'
+            command = ['condor_submit_dag', dag_filename]
             text = """"""
 
         else:
-            command = 'condor_submit'
-
-        jobenv = os.environ.copy()
-        if MADEVENT: jobenv['RUN_DIR'] = LOCALDIR
-        else: jobenv['RUN_DIR'] = MG5DIR
+            command = ['condor_submit']
 
         #open('submit_condor','w').write(text % dico)
-        a = subprocess.Popen([command], stdout=subprocess.PIPE,
-                             stdin=subprocess.PIPE, env=jobenv)
+        a = subprocess.Popen(command, stdout=subprocess.PIPE,
+                             stdin=subprocess.PIPE)
         output, _ = a.communicate((text % dico).encode())
         #output = a.stdout.read()
         #Submitting job(s).
@@ -1852,7 +1860,6 @@ class SLURMCluster(Cluster):
     idle_tag = ['Q','PD','S','CF']
     running_tag = ['R', 'CG', 'SI']
     complete_tag = ['C']
-    badstatus = ''
     identifier_length = 8
 
     @multiple_try()

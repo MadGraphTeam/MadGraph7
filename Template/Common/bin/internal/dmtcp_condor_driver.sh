@@ -3,12 +3,7 @@
 export PATH="$HOME/dmtcp/bin:$PATH"
 export LD_LIBRARY_PATH="$HOME/dmtcp/lib:$LD_LIBRARY_PATH"
 
-while [ -d "$RUN_DIR/dmtcp_fail" ]; do
-    echo "Waiting for $RUN_DIR/dmtcp_fail to disappear..."
-    sleep 1
-done
-
-export DMTCP_CHECKPOINT_DIR="$RUN_DIR/dmtcp_$CONDOR_ID"
+export DMTCP_CHECKPOINT_DIR="$INITIAL_DIR/dmtcp_$CONDOR_ID"
 mkdir -p "$DMTCP_CHECKPOINT_DIR"
 
 dmtcp_coordinator -i 86400 --daemon --exit-on-last -p 0 --port-file "$DMTCP_CHECKPOINT_DIR/dmtcp.port" 1>/dev/null 2>&1
@@ -26,13 +21,13 @@ timeout() {
 }
 
 # Trap signals
-trap "timeout" USR1
+trap "timeout" SIGTERM
 
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
-    echo "$(date) - Resuming from checkpoint. Restart: ${SLURM_RESTART_COUNT}"
+    echo "$(date) - Resuming from checkpoint. Restart: ${CONDOR_RESTART_COUNT}"
     /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
 else
-    dmtcp_launch --allow-file-overwrite $@ &
+    dmtcp_launch --allow-file-overwrite $@ 2>&1 &
 fi
 
 wait
