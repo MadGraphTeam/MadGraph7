@@ -1149,11 +1149,8 @@ class HwU(Histogram):
             boundaries = [0.0,0.0]
             for j, weight in \
                       enumerate(HwU.histo_bin_weight_re.finditer(line_bin)):
-                if (j == len(weight_header)):
-                    continue
-                if j == len(all_weight_header):
-                    raise HwU.ParseError("There is more bin weights"+\
-                              " specified than expected (%i)"%len(weight_header))
+                #if (j == len(weight_header)):
+                #    continue
                 if selected_central_weight == all_weight_header[j]:
                     bin_weights['central'] = float(weight.group('weight'))
                 if all_weight_header[j] == 'boundary_xmin':
