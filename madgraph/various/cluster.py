@@ -957,7 +957,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(Cluster).$(Process); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
+                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
                   notification = Error
                   Initialdir = %(cwd)s
                   %(requirement)s
@@ -1019,7 +1019,7 @@ class CondorCluster(Cluster):
 
             dico['prog'] = wrapper
             dico['argument'] = argument
-            dico['output_files'] += ',dmtcp_$(Cluster).$(Process)'
+            dico['output_files'] += ',dmtcp_$(DAGManJobId)'
 
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
@@ -1083,7 +1083,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(Cluster).$(Process); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
+                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
                   should_transfer_files = YES
                   when_to_transfer_output = ON_EXIT
                   transfer_input_files = %(input_files)s
@@ -1160,7 +1160,7 @@ class CondorCluster(Cluster):
 
             dico['prog'] = wrapper
             dico['argument'] = argument
-            dico['output_files'] += ',dmtcp_$(Cluster).$(Process)'
+            dico['output_files'] += ',dmtcp_$(DAGManJobId)'
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
                 and self.options['cluster_vacatetime'] != 'None':
