@@ -1025,12 +1025,12 @@ class MultiEventFile(EventFile):
                 from_init = True
 
             if not from_init:
-                if group in grouped_cross:
-                    grouped_cross[group] += self.allcross[i]
-                    grouped_error[group] += self.error[i]**2 
+                if int(group) in grouped_cross:
+                    grouped_cross[int(group)] += self.allcross[i]
+                    grouped_error[int(group)] += self.error[i]**2 
                 else:
-                    grouped_cross[group] = self.allcross[i]
-                    grouped_error[group] = self.error[i]**2
+                    grouped_cross[int(group)] = self.allcross[i]
+                    grouped_error[int(group)] = self.error[i]**2
             else:
                 ban = banner_mod.Banner(ff.banner)
                 for line in  ban['init'].split('\n'):
