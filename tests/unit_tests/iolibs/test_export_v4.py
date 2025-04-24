@@ -108,8 +108,8 @@ class IOExportV4IOTest(IOTests.IOTestManager,
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -253,8 +253,8 @@ class IOExportV4IOTest(IOTests.IOTestManager,
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -598,8 +598,8 @@ class IOExportV4IOTest(IOTests.IOTestManager,
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -866,8 +866,8 @@ class ExportV4IOTest(unittest.TestCase,
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -1565,8 +1565,8 @@ mirror  d~ d > d d~ g d d~ g"""
                       'color':1,
                       'mass':'MN1',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':1000022,
@@ -2463,7 +2463,7 @@ class FullHelasOutputIOTest(IOTests.IOTestManager,
 
     @IOTests.createIOTest(groupName='SquaredOrder_IOTest')
     def testIO_sqso_uux_uuxuuxx(self):
-        """ target: [matrix(.*)\.f]
+        r""" target: [matrix(.*)\.f]
         """
     
         myleglist = base_objects.LegList()
@@ -2840,7 +2840,7 @@ CALL IOVXXX(W(1,14),W(1,2),W(1,12),GG,AMP(42))""".split('\n'))
                      [3,    9,    9,   27,    3,    9],
                      [3,    9,    9,    3,   27,    9],
                      [9,    3,    3,    9,    9,   27]]
-        denom = [1]*6
+        denom = 1
 
         i = 0
         for data in exporter.get_color_data_lines(\
@@ -2848,10 +2848,16 @@ CALL IOVXXX(W(1,14),W(1,2),W(1,12),GG,AMP(42))""".split('\n'))
             #misc.sprint(data)
             if 'DATA' not in data:
                 continue
-            _, data, _ = data.split('/') 
-            number = [float(n.replace('d','e')) for n in data.split(',') ]
+            if 'denom' in data.lower():
+                _, data, _ = data.split('/')
+                self.assertEqual(int(data), denom) 
+                continue 
+            else:   
+                _, data, _ = data.split('/') 
+                number = [int(n) for n in data.split(',') ]
             for j,val in enumerate(number):
-                self.assertAlmostEqual((1.*numerator[i][j])/denom[i], val)
+                coeff = 1 if j ==0 else 2 # symmetry factor
+                self.assertAlmostEqual((coeff*numerator[i][i+j]), val)
             i+=1 
 
 
@@ -3765,19 +3771,28 @@ CALL VVVXXX(W(1,2),W(1,3),W(1,5),GG,AMP(6))""")
                      [-2,    4,   -2,   19,   -2,   -2],
                      [-2,   -2,    4,   -2,   19,   -2],
                      [4,   -2,   -2,   -2,   -2,   19]]
-        denom = [6,6,6,6,6,6]
+        denom = 6
 
         i = 0
         for data in exporter.get_color_data_lines(\
                          matrix_element):
-            #misc.sprint(data)
+
             if 'DATA' not in data:
                 continue
-            _, data, _ = data.split('/') 
-            number = [float(n.replace('d','e')) for n in data.split(',') ]
-            for j,val in enumerate(number):
-                self.assertAlmostEqual((1.*numerator[i][j])/denom[i], val)
-            i+=1 
+            if 'denom' in data.lower():
+                _, data, _ = data.split('/') 
+                self.assertEqual(int(data), denom) 
+                continue
+            else:
+                _, data, _ = data.split('/') 
+                number = [int(n) for n in data.split(',') ]
+                for j,val in enumerate(number):
+                    if j ==0: 
+                        self.assertEqual((numerator[i][i+j]), val)
+                    else:
+                       # factor 2 due to symmetry
+                       self.assertEqual((2*numerator[i][i+j]), val) 
+                i+=1 
 
         # Test JAMP (color amplitude) output
         out, nb = exporter.get_JAMP_lines(matrix_element)
@@ -4290,8 +4305,8 @@ CALL IOSXXX(W(1,6),W(1,3),W(1,9),GT1GOP,AMP(6))""".split('\n'))
                       'color':1,
                       'mass':'Mneu1',
                       'width':'Wneu1',
-                      'texname':'\chi_0^1',
-                      'antitexname':'\chi_0^1',
+                      'texname':r'\chi_0^1',
+                      'antitexname':r'\chi_0^1',
                       'line':'straight',
                       'charge':0.,
                       'pdg_code':1000022,
@@ -4640,8 +4655,8 @@ CALL IOVXXX(W(1,4),W(1,3),W(1,5),MGVX27,AMP(1))""")
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -4785,8 +4800,8 @@ CALL VVVXXX(W(1,2),W(1,4),W(1,5),MGVX5,AMP(5))""")
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -4961,8 +4976,8 @@ CALL VVVXXX(W(1,5),W(1,2),W(1,3),MGVX5,AMP(3))""")
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -6503,8 +6518,8 @@ CALL FFS3_4C1_0(W(1,2),W(1,1),W(1,5),GC_108,GC_111,AMP(1))""".split('\n')
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\mu^+',
-                      'antitexname':'\mu^-',
+                      'texname':r'\mu^+',
+                      'antitexname':r'\mu^-',
                       'line':'straight',
                       'charge':-1.,
                       'pdg_code':13,
@@ -6522,8 +6537,8 @@ CALL FFS3_4C1_0(W(1,2),W(1,1),W(1,5),GC_108,GC_111,AMP(1))""".split('\n')
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -7201,8 +7216,8 @@ CALL VVVXXX(W(1,2),W(1,17),W(1,14),GG,AMP(216))""".split('\n'))
                       'color':1,
                       'mass':'MN1',
                       'width':'WN1',
-                      'texname':'\chi_0^2',
-                      'antitexname':'\chi_0^2',
+                      'texname':r'\chi_0^2',
+                      'antitexname':r'\chi_0^2',
                       'line':'straight',
                       'charge':0.,
                       'pdg_code':1000022,
@@ -7363,8 +7378,8 @@ CALL IOVXXX(W(1,3),W(1,5),W(1,2),GWX1N1,AMP(2))""")
                       'color':1,
                       'mass':'Mneu1',
                       'width':'Wneu1',
-                      'texname':'\chi_0^1',
-                      'antitexname':'\chi_0^1',
+                      'texname':r'\chi_0^1',
+                      'antitexname':r'\chi_0^1',
                       'line':'straight',
                       'charge':0.,
                       'pdg_code':1000022,
@@ -7380,8 +7395,8 @@ CALL IOVXXX(W(1,3),W(1,5),W(1,2),GWX1N1,AMP(2))""")
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
@@ -8216,8 +8231,8 @@ CALL IOSXXX(W(1,3),W(1,2),W(1,6),MGVX350,AMP(2))""".split('\n'))
                       'color':1,
                       'mass':'mn1',
                       'width':'zero',
-                      'texname':'\chi_0^1',
-                      'antitexname':'\chi_0^1',
+                      'texname':r'\chi_0^1',
+                      'antitexname':r'\chi_0^1',
                       'line':'straight',
                       'charge':0.,
                       'pdg_code':1000022,
@@ -8232,8 +8247,8 @@ CALL IOSXXX(W(1,3),W(1,2),W(1,6),MGVX350,AMP(2))""".split('\n'))
                       'color':1,
                       'mass':'mn2',
                       'width':'wn2',
-                      'texname':'\chi_0^2',
-                      'antitexname':'\chi_0^2',
+                      'texname':r'\chi_0^2',
+                      'antitexname':r'\chi_0^2',
                       'line':'straight',
                       'charge':0.,
                       'pdg_code':1000023,
@@ -8249,8 +8264,8 @@ CALL IOSXXX(W(1,3),W(1,2),W(1,6),MGVX350,AMP(2))""".split('\n'))
                       'color':1,
                       'mass':'zmass',
                       'width':'zwidth',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':23,
@@ -8479,8 +8494,8 @@ CALL IOSXXX(W(1,4),W(1,2),W(1,8),GELN2P,AMP(9))""".split('\n')
                       'spin':3,
                       'mass':'zmass',
                       'width':'zwidth',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':23,
@@ -8802,8 +8817,8 @@ CALL FFV1_0(W(1,3),W(1,5),W(1,2),GGI,AMP(3))""".split('\n')
                       'color':1,
                       'mass':'mn1',
                       'width':'zero',
-                      'texname':'\chi_0^1',
-                      'antitexname':'\chi_0^1',
+                      'texname':r'\chi_0^1',
+                      'antitexname':r'\chi_0^1',
                       'line':'straight',
                       'charge':0.,
                       'pdg_code':1000022,
@@ -8818,8 +8833,8 @@ CALL FFV1_0(W(1,3),W(1,5),W(1,2),GGI,AMP(3))""".split('\n')
                       'color':1,
                       'mass':'mn2',
                       'width':'wn2',
-                      'texname':'\chi_0^2',
-                      'antitexname':'\chi_0^2',
+                      'texname':r'\chi_0^2',
+                      'antitexname':r'\chi_0^2',
                       'line':'straight',
                       'charge':0.,
                       'pdg_code':1000023,
@@ -8835,8 +8850,8 @@ CALL FFV1_0(W(1,3),W(1,5),W(1,2),GGI,AMP(3))""".split('\n')
                       'color':1,
                       'mass':'zmass',
                       'width':'zwidth',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':23,
@@ -9035,8 +9050,8 @@ CALL FFS1C1_0(W(1,2),W(1,9),W(1,4),GELN1P,AMP(12))""".split('\n')
                       'spin':3,
                       'mass':'zmass',
                       'width':'zwidth',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':23,
@@ -9554,8 +9569,8 @@ C     Number of configs
                       'spin':3,
                       'mass':'wmass',
                       'width':'wwidth',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':1.,
                       'pdg_code':24,
@@ -9849,8 +9864,8 @@ C     Number of configs
                       'color':1,
                       'mass':'zero',
                       'width':'zero',
-                      'texname':'\gamma',
-                      'antitexname':'\gamma',
+                      'texname':r'\gamma',
+                      'antitexname':r'\gamma',
                       'line':'wavy',
                       'charge':0.,
                       'pdg_code':22,
