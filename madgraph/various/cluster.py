@@ -991,11 +991,11 @@ class CondorCluster(Cluster):
         if cwd is None:
             cwd = os.getcwd()
         if stdout is None:
-            stdout = 'condor_$(Cluster).out'
+            stdout = 'condor_$(DAGManJobId).out'
         if stderr is None:
-            stderr = 'condor_$(Cluster).err'
+            stderr = 'condor_$(DAGManJobId).err'
         if log is None:
-            log = 'condor_$(Cluster).log'
+            log = 'condor_$(DAGManJobId).log'
         if not os.path.exists(prog):
             prog = os.path.join(cwd, prog)
         if self.checkpointing:
@@ -1121,11 +1121,11 @@ class CondorCluster(Cluster):
         if cwd is None:
             cwd = os.getcwd()
         if stdout is None:
-            stdout = 'condor_$(Cluster).out'
+            stdout = 'condor_$(DAGManJobId).out'
         if stderr is None:
-            stderr = 'condor_$(Cluster).err'
+            stderr = 'condor_$(DAGManJobId).err'
         if log is None:
-            log = 'condor_$(Cluster).log'
+            log = 'condor_$(DAGManJobId).log'
         if not os.path.exists(prog):
             prog = os.path.join(cwd, prog)
         if self.checkpointing:
@@ -1160,7 +1160,6 @@ class CondorCluster(Cluster):
 
             dico['prog'] = wrapper
             dico['argument'] = argument
-            dico['output_files'] += ',dmtcp_$(DAGManJobId)'
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
                 and self.options['cluster_vacatetime'] != 'None':

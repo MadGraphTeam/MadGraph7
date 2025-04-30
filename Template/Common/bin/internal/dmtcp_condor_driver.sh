@@ -13,7 +13,7 @@ export DMTCP_COORD_PORT=$(cat "$DMTCP_CHECKPOINT_DIR/dmtcp.port")
 timeout() {
     echo "Approaching walltime. Creating checkpoint..."
     dmtcp_command -bcheckpoint
-    sleep 2
+    sleep 20
     echo "Checkpoint created. Requeuing..."
     dmtcp_command --quit
     sleep 10
@@ -23,6 +23,7 @@ timeout() {
 # Trap signals
 trap "timeout" SIGTERM
 
+cd "$INITIAL_DIR"
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
     echo "$(date) - Resuming from checkpoint. Restart: ${CONDOR_RESTART_COUNT}"
     /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
