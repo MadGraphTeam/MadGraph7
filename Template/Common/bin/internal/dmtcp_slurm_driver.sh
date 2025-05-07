@@ -17,9 +17,23 @@ export DMTCP_COORD_PORT=$(cat "$DMTCP_CHECKPOINT_DIR/dmtcp.port")
 
 timeout() {
     echo "Approaching walltime. Creating checkpoint..."
+    if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
+        mv $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
+    fi
     dmtcp_command -bcheckpoint
-    sleep 2
-    echo "Checkpoint created. Requeuing..."
+    count=0
+    while [ ! -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ] && [ $count -lt 10 ]; do
+        echo "Incomplete checkpoint. Waiting..."
+        sleep 20
+        ((count++))
+    done
+    if [ $count -eq 10 ]; then
+        mv $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh
+        echo "Checkpoint creation failed. Requeuing..."
+    else
+        rm $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
+        echo "Checkpoint created. Requeuing..."
+    fi
     dmtcp_command --quit
     sleep 2
     scontrol requeue $SLURM_JOB_ID
