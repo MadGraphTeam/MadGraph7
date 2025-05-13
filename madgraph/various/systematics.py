@@ -494,12 +494,12 @@ class Systematics(object):
             else:
                 to_print[4] = to_print[4].lhapdfID
 
-            #try: # tmp / to be removed
-            to_print.append(all_cross[i])
-            #except: # tmp / to be removed
-                #self.log("to_print.append(all_cross[i]) failed to execute. should not be here since PDF variation not available for EVA. appending all_cross with 0") # tmp / to be removed
-                #all_cross.append(0) # tmp / to be removed
-                #to_print.append(all_cross[i]) # tmp / to be removed
+            try: # tmp / to be removed
+                to_print.append(all_cross[i])
+            except: # tmp / to be removed
+                self.log("to_print.append(all_cross[i]) failed to execute. should not be here since PDF variation not available for EVA. appending all_cross with 0") # tmp / to be removed
+                all_cross.append(0) # tmp / to be removed
+                to_print.append(all_cross[i]) # tmp / to be removed
 
             to_report = []  
             stdout.write('%s\t\t%s\t\t%s\t\t%s\t\t%s\t\t%s\n' % tuple(to_print)) 
@@ -532,7 +532,7 @@ class Systematics(object):
                 else:
                     dyns[dyn]['central'] = all_cross[i]          
                 
-            if alps==1 and mur==1 and muf==1 and (dyn==self.orig_dyn or dyn==-1) and (self.banner.run_card['pdlabel'] !='eva'):
+            if alps==1 and mur==1 and muf==1 and (dyn==self.orig_dyn or dyn==-1) and (self.banner.run_card['pdlabel']!='eva'):
                 pdfset = pdf.set()
                 if pdfset.lhapdfID in self.pdfsets:
                     if pdfset.lhapdfID not in pdfs :
@@ -642,7 +642,7 @@ class Systematics(object):
                 text += "</weightgroup> # ALPS\n"
                 in_alps=False
             
-            if mur == muf == 1 and dyn==-1 and alps ==1 and  (self.banner.run_card['pdlabel']!='eva'):
+            if mur == muf == 1 and dyn==-1 and alps ==1 and  self.banner.run_card['pdlabel']!='eva':
                 if pdf.lhapdfID in self.pdfsets:
                     if in_pdf:
                         text += "</weightgroup> # PDFSET to PDFSET\n"
@@ -829,7 +829,7 @@ class Systematics(object):
         self.args = [default] + [arg for arg in all_args if arg!= default]
 
         # add the default before the pdf scan to have a full grouping
-        if self.banner.run_card['pdlabel'] !='eva': 
+        if self.banner.run_card['pdlabel']!='eva': 
             pdfplusone = [pdf for pdf in self.pdf if pdf.lhapdfID == self.orig_pdf.lhapdfID+1]
             if pdfplusone:
                 pdfplusone = default[:-1] + [pdfplusone[0]] 
