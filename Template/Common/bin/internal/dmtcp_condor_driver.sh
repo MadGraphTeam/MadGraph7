@@ -11,23 +11,23 @@ export DMTCP_COORD_HOST=$(hostname)
 export DMTCP_COORD_PORT=$(cat "$DMTCP_CHECKPOINT_DIR/dmtcp.port")
 
 timeout() {
-    echo "$(date) - Approaching walltime. Creating checkpoint..."
+    echo "$(date) - Approaching walltime. Creating checkpoint..." >> "$INITIAL_DIR/condor_$CONDOR_ID.out"
     if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
         mv $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
     fi
     dmtcp_command -bcheckpoint
     count=0
     while [ ! -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ] && [ $count -lt 10 ]; do
-        echo "$(date) - Waiting for checkpoint..."
+        echo "$(date) - Waiting for checkpoint..." >> "$INITIAL_DIR/condor_$CONDOR_ID.out"
         sleep 20
         ((count++))
     done
     if [ $count -eq 10 ]; then
         mv $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh
-        echo "$(date) - Checkpoint creation failed. Requeuing..."
+        echo "$(date) - Checkpoint creation failed. Requeuing..." >> "$INITIAL_DIR/condor_$CONDOR_ID.out"
     else
         rm $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
-        echo "$(date) - Checkpoint created. Requeuing..."
+        echo "$(date) - Checkpoint created. Requeuing..." >> "$INITIAL_DIR/condor_$CONDOR_ID.out"
     fi
     dmtcp_command --quit
     sleep 10
@@ -39,13 +39,13 @@ trap "timeout" SIGTERM
 
 cd "$INITIAL_DIR"
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
-    echo "$(date) - Resuming from checkpoint"
-    /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
+    echo "$(date) - Resuming from checkpoint" >> "$INITIAL_DIR/condor_$CONDOR_ID.out"
+    /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT >> "$INITIAL_DIR/condor_$CONDOR_ID.out" &
 else
-    dmtcp_launch --allow-file-overwrite $@ 2>&1 &
+    dmtcp_launch --allow-file-overwrite $@ >> "$INITIAL_DIR/condor_$CONDOR_ID.out" 2>&1 &
 fi
 
 wait
 
-echo "$(date) - Exit"
+echo "$(date) - Exit" >> "$INITIAL_DIR/condor_$CONDOR_ID.out"
 exit 0

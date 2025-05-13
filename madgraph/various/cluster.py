@@ -992,7 +992,7 @@ class CondorCluster(Cluster):
         if cwd is None:
             cwd = os.getcwd()
         if stdout is None:
-            stdout = 'condor_$(DAGManJobId).out'
+            stdout = '/dev/null'
         if stderr is None:
             stderr = 'condor_$(DAGManJobId).err'
         if log is None:
