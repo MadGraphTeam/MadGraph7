@@ -147,7 +147,7 @@ class Systematics(object):
             isEVA=True
             pdf='0'
         # eva-on-DIS(lhapdf)
-        elif self.banner.run_card.LO and (self.banner.run_card['pdlabel1']=='eva') and (self.banner.run_card['pdlabel2']=='lhapdf'):
+        elif self.banner.run_card.LO and (self.banner.run_card['pdlabel1']=='eva' and self.banner.run_card['pdlabel2']=='lhapdf'):
             if abs(beam1) == 11 or abs(beam1) == 13:
                 self.b1 = beam1
             else:
@@ -155,7 +155,7 @@ class Systematics(object):
             #self.b2 = beam2//2212
             isEVAxDIS=True
         # DIS(lhapdf)-on-eva
-        elif self.banner.run_card.LO and (self.banner.run_card['pdlabel1']=='lhapdf') and (self.banner.run_card['pdlabel2']=='eva'):
+        elif self.banner.run_card.LO and (self.banner.run_card['pdlabel1']=='lhapdf' and self.banner.run_card['pdlabel2']=='eva'):
             if abs(beam2) == 11 or abs(beam2) == 13:
                 self.b2 = beam2
             else:
@@ -489,7 +489,7 @@ class Systematics(object):
         for i,arg in enumerate(self.args):
             
             to_print = list(arg)
-            if self.banner.run_card['pdlabel']==:
+            if self.banner.run_card['pdlabel']=='eva':
                 to_print[4] = 0
             else:
                 to_print[4] = to_print[4].lhapdfID
@@ -532,7 +532,7 @@ class Systematics(object):
                 else:
                     dyns[dyn]['central'] = all_cross[i]          
                 
-            if alps==1 and mur==1 and muf==1 and (dyn==self.orig_dyn or dyn==-1) and (self.banner.run_card['pdlabel'] not=='eva'):
+            if alps==1 and mur==1 and muf==1 and (dyn==self.orig_dyn or dyn==-1) and (self.banner.run_card['pdlabel'] !='eva'):
                 pdfset = pdf.set()
                 if pdfset.lhapdfID in self.pdfsets:
                     if pdfset.lhapdfID not in pdfs :
@@ -829,7 +829,7 @@ class Systematics(object):
         self.args = [default] + [arg for arg in all_args if arg!= default]
 
         # add the default before the pdf scan to have a full grouping
-        if self.banner.run_card['pdlabel'] not=='eva': 
+        if self.banner.run_card['pdlabel'] !='eva': 
             pdfplusone = [pdf for pdf in self.pdf if pdf.lhapdfID == self.orig_pdf.lhapdfID+1]
             if pdfplusone:
                 pdfplusone = default[:-1] + [pdfplusone[0]] 
