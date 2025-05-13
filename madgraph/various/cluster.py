@@ -958,6 +958,7 @@ class CondorCluster(Cluster):
                   log = %(log)s
                   %(argument)s
                   environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
+                  Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
                   %(requirement)s
@@ -1019,7 +1020,6 @@ class CondorCluster(Cluster):
 
             dico['prog'] = wrapper
             dico['argument'] = argument
-            dico['output_files'] += ',dmtcp_$(DAGManJobId)'
 
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
@@ -1074,7 +1074,7 @@ class CondorCluster(Cluster):
         if not required_output and output_files:
             required_output = output_files
         
-        if (input_files == [] == output_files):
+        if (input_files == [] == output_files) or self.checkpointing:
             return self.submit(prog, argument, cwd, stdout, stderr, log, 
                                required_output=required_output, nb_submit=nb_submit)
         
@@ -1083,11 +1083,11 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
                   should_transfer_files = YES
                   when_to_transfer_output = ON_EXIT
                   transfer_input_files = %(input_files)s
                   %(output_files)s
+                  Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
                   %(requirement)s
@@ -1121,15 +1121,13 @@ class CondorCluster(Cluster):
         if cwd is None:
             cwd = os.getcwd()
         if stdout is None:
-            stdout = 'condor_$(DAGManJobId).out'
+            stdout = '/dev/null'
         if stderr is None:
-            stderr = 'condor_$(DAGManJobId).err'
+            stderr = '/dev/null'
         if log is None:
-            log = 'condor_$(DAGManJobId).log'
+            log = '/dev/null'
         if not os.path.exists(prog):
             prog = os.path.join(cwd, prog)
-        if self.checkpointing:
-            argument = [prog] + argument
         if argument:
             argument = 'Arguments = %s' % ' '.join([str(a) for a in argument])
         else:
@@ -1151,39 +1149,8 @@ class CondorCluster(Cluster):
                 'requirement': requirement, 'input_files':input_files, 
                 'output_files':output_files, 'walltime': walltime, 'vacatetime': ''}
 
-        if self.checkpointing:
-
-            if MADEVENT:
-                wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_driver.sh')
-            else:
-                wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_driver.sh')
-
-            dico['prog'] = wrapper
-            dico['argument'] = argument
-
-            if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
-                and self.options['cluster_vacatetime'] != 'None':
-                vacatetime = self.options['cluster_vacatetime']
-                dico['vacatetime'] = f'+JobMaxVacateTime = {vacatetime}'
-
-            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as submit_file:
-                submit_file.write((text % dico))
-                submit_filename = submit_file.name
-
-            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\nVARS job retry_count="$(RETRY)"\n'
-
-            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as dag_file:
-                dag_file.write((text % dico))
-                dag_filename = dag_file.name
-
-            command = ['condor_submit_dag', dag_filename]
-            text = """"""
-
-        else:
-            command = ['condor_submit']
-
         #open('submit_condor','w').write(text % dico)
-        a = subprocess.Popen(command, stdout=subprocess.PIPE,
+        a = subprocess.Popen(['condor_submit'], stdout=subprocess.PIPE,
                              stdin=subprocess.PIPE)
         output, _ = a.communicate((text % dico).encode())
         #output = a.stdout.read()
