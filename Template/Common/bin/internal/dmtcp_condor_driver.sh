@@ -47,14 +47,4 @@ fi
 
 wait
 
-# Calculation finished, cleanup
-link="$DMTCP_CHECKPOINT_DIR"
-
-while [ -L "$link" ]; do
-    next=$(readlink "$link")
-    rm "$link"
-    link="$next"
-done
-
-rm -r "$link"
 exit 0
