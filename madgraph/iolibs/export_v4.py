@@ -1257,7 +1257,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         ret_list = []
         my_cs = color.ColorString()
-        denominator = min(matrix_element.get('color_matrix').get_line_denominators())
+        denominator = max(matrix_element.get('color_matrix').get_line_denominators())
         ret_list.append("DATA Denom/%i/" % denominator)
 
         cf_index = 0
