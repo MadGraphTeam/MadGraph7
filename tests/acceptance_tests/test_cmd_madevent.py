@@ -529,6 +529,8 @@ class TestMECmdShell(unittest.TestCase):
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
         
+        # Note(RR:2025 0513): target value changed from 0.02174605 pb 
+        # due to z > MV/EV cut; see 2502.07878 for details.
         target = 0.01118182
         self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
