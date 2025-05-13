@@ -39,7 +39,7 @@ trap "timeout" SIGTERM
 
 cd "$INITIAL_DIR"
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
-    echo "$(date) - Resuming from checkpoint. Restart: ${CONDOR_RESTART_COUNT}"
+    echo "$(date) - Resuming from checkpoint"
     /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
 else
     dmtcp_launch --allow-file-overwrite $@ 2>&1 &

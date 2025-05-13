@@ -957,7 +957,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(restart_count); INITIAL_DIR=%(cwd)s
+                  environment = CONDOR_ID=$(DAGManJobId); INITIAL_DIR=%(cwd)s
                   Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
@@ -1027,13 +1027,13 @@ class CondorCluster(Cluster):
                 vacatetime = self.options['cluster_vacatetime']
                 dico['vacatetime'] = f'+JobMaxVacateTime = {vacatetime}'
 
-            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as submit_file:
+            with tempfile.NamedTemporaryFile(mode='w', dir=cwd, delete=False) as submit_file:
                 submit_file.write((text % dico))
                 submit_filename = submit_file.name
 
-            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\nVARS job retry_count="$(RETRY)"\n'
+            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\n'
 
-            with tempfile.NamedTemporaryFile(mode="w", dir=self.run_dir, delete=False) as dag_file:
+            with tempfile.NamedTemporaryFile(mode='w', dir=cwd, delete=False) as dag_file:
                 dag_file.write((text % dico))
                 dag_filename = dag_file.name
 
