@@ -494,12 +494,12 @@ class Systematics(object):
             else:
                 to_print[4] = to_print[4].lhapdfID
 
-            try: # tmp / to be removed
-                to_print.append(all_cross[i])
-            except: # tmp / to be removed
-                self.log("to_print.append(all_cross[i]) failed to execute. should not be here since PDF variation not available for EVA. appending all_cross with 0") # tmp / to be removed
-                all_cross.append(0) # tmp / to be removed
-                to_print.append(all_cross[i]) # tmp / to be removed
+            #try: # tmp / to be removed
+            to_print.append(all_cross[i])
+            #except: # tmp / to be removed
+            #    self.log("to_print.append(all_cross[i]) failed to execute. should not be here since PDF variation not available for EVA. appending all_cross with 0") # tmp / to be removed
+            #    all_cross.append(0) # tmp / to be removed
+            #    to_print.append(all_cross[i]) # tmp / to be removed
 
             to_report = []  
             stdout.write('%s\t\t%s\t\t%s\t\t%s\t\t%s\t\t%s\n' % tuple(to_print)) 
@@ -532,7 +532,7 @@ class Systematics(object):
                 else:
                     dyns[dyn]['central'] = all_cross[i]          
                 
-            if alps==1 and mur==1 and muf==1 and (dyn==self.orig_dyn or dyn==-1) and (self.banner.run_card['pdlabel']!='eva'):
+            if alps==1 and mur==1 and muf==1 and (dyn==self.orig_dyn or dyn==-1) and self.banner.run_card['pdlabel']!='eva':
                 pdfset = pdf.set()
                 if pdfset.lhapdfID in self.pdfsets:
                     if pdfset.lhapdfID not in pdfs :
@@ -836,9 +836,9 @@ class Systematics(object):
                 index = self.args.index(pdfplusone)
                 self.args.insert(index, default)
 
-            self.log( "# Will compute %s weights per event." % (len(self.args)-1))
-        else:
-            self.log( "# Running EVA: will not compute PDF weights per event.")
+        self.log( "# Will compute %s weights per event." % (len(self.args)-1))
+        #else:
+        #    self.log( "# Running EVA: will not compute PDF weights per event.")
         return
     
     def new_event(self):
@@ -983,7 +983,7 @@ class Systematics(object):
                 loinfo['pdf_q2'] = loinfo['pdf_q2'] [:-1] + [mur]                
 
         # MUR part
-        if self.b1 == 0 == self.b2 or (self.banner.run_card['pdlabel']=='eva'):
+        if self.b1 == 0 == self.b2 or self.banner.run_card['pdlabel']=='eva':
             if loinfo['n_qcd'] != 0:
                 wgt = self.alpsrunner(Dmur*mur)**loinfo['n_qcd']
             else:
@@ -993,8 +993,8 @@ class Systematics(object):
 
         # MUF/PDF part
         if self.b1 and muf1 :
-            if (self.banner.run_card['pdlabel'] =='eva') or \
-               (self.banner.run_card['pdlabel1']=='eva'):
+            if self.banner.run_card['pdlabel']=='eva' or \
+               self.banner.run_card['pdlabel1']=='eva':
                 vPol = event[0].helicity
                 vPID = event[0].pid
                 ievo = self.banner.run_card['ievo_eva']
@@ -1008,8 +1008,8 @@ class Systematics(object):
             else:
                 wgt *= self.get_pdfQ(pdf, self.b1*loinfo['pdf_pdg_code1'][-1], loinfo['pdf_x1'][-1], Dmuf*muf1, beam=1)
         if self.b2 and muf2: 
-            if (self.banner.run_card['pdlabel'] =='eva') or \
-               (self.banner.run_card['pdlabel2']=='eva'):
+            if self.banner.run_card['pdlabel']=='eva' or \
+               self.banner.run_card['pdlabel2']=='eva':
                 vPol = event[1].helicity
                 vPID = event[1].pid
                 ievo = self.banner.run_card['ievo_eva']
