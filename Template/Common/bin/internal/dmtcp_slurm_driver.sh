@@ -3,9 +3,11 @@
 module load releases/2023b # Probably shouldn't be hardcoded
 module load DMTCP/3.0.0-GCCcore-13.2.0
 
-while [ -d "$RUN_DIR/dmtcp_fail" ]; do
+count=0
+while [ -d "$RUN_DIR/dmtcp_fail" ] && [ $count -lt 10 ]; do
     echo "Waiting for $RUN_DIR/dmtcp_fail to disappear..."
-    sleep 1
+    sleep 20
+    ((count++))
 done
 
 export DMTCP_CHECKPOINT_DIR="$RUN_DIR/dmtcp_$SLURM_JOB_ID"
