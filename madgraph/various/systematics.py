@@ -1024,7 +1024,7 @@ class Systematics(object):
                 wgt *= self.get_pdfQ(pdf, self.b2*loinfo['pdf_pdg_code2'][-1], loinfo['pdf_x2'][-1], Dmuf*muf2, beam=2) 
 
         for scale in loinfo['asrwt']:
-            if self.b1 == 0 == self.b2 or (self.banner.run_card['pdlabel']=='eva'):
+            if self.b1 == 0 == self.b2 or (self.banner.run_card['pdlabel']=='eva':
                 wgt = self.alpsrunner(Dalps*scale)
             else:
                 wgt *= pdf.alphasQ(Dalps*scale)
