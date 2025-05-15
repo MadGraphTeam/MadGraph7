@@ -4,6 +4,10 @@ ANNOUNCEMENT:
    2.9.X version as a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
+3.5.9:
+  OM: Fixed an issue in fixed_fact_scale when set to T where sometimes some beam where kept on False (in assymetric beam context)
+  OM: Fixed a wrong scale assignment when beam#2 was dynamic but beam#1 was static (at LO)
+
 3.5.8:
   OM: Fix a quite serious bug introduced in 3.2.0:
       The scale choice can in some cases be assigned in a assymetric way in precessence of mirror process

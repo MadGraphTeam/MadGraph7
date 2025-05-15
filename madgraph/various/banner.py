@@ -3859,8 +3859,8 @@ class FixedfacscaleBlock(RunBlock):
         if 'fixed_fac_scale2' in card.user_set:
             card.user_set.remove('fixed_fac_scale2')
 
-        # #card['pdlabel1'] = value
-        # #card['pdlabel2'] = value
+        dict.__setitem__(card, 'fixed_fac_scale1', card['fixed_fac_scale'])
+        dict.__setitem__(card, 'fixed_fac_scale2', card['fixed_fac_scale'])
 
     @staticmethod
     def post_set(card, value, change_userdefine, raiseerror, name='unknown', **opt):
