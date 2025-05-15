@@ -1211,8 +1211,7 @@ class Systematics(object):
             mu2 = muf*muf
             mv2 = (self.get_eva_mv_by_PID(vPID))**2
             # evolution by q (ievo=0) or pT (ievo=1)
-            #mu2Min = mv2 if (ievo==0) else (1.0-xx)*mv2
-            mu2Min = mv2 
+            mu2Min = mv2 if (ievo==0) else (1.0-xx)*mv2
             # prefactor - none
             # O(1) term - none
             # log term
