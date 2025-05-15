@@ -4432,20 +4432,12 @@ class RunCardLO(RunCard):
         if self['use_syst']:
             if (self['pdlabel1'] in ['eva']) and \
                (self['pdlabel2'] in ['eva']):
+                # update for EVAxEVA (no pdf replicas available for EVA)
                 opts = self['systematics_arguments']
-                print(f"before: {opts=}")
-                
-                pdf = [a[6:] for a in opts if a.startswith('--pdf=')]
-                print(f"{pdf=}")
+                pdf = [a[6:] for a in opts if a.startswith('--pdf=')]                
                 if pdf==['errorset']:
                     self['systematics_arguments'].remove('--pdf=errorset')
                     self['systematics_arguments'].append('--pdf=central')
-                    
-
-                
-                opts = self['systematics_arguments']
-                print(f"after: {opts=}")
-
         #    if self['scalefact'] != 1.0:
         #        logger.warning('Since use_syst=T, changing the value of \'scalefact\' to 1')
         #        self['scalefact'] = 1.0
