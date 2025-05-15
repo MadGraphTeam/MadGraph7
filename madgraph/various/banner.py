@@ -4436,6 +4436,7 @@ class RunCardLO(RunCard):
                 opts = self['systematics_arguments']
                 pdf = [a[6:] for a in opts if a.startswith('--pdf=')]                
                 if pdf==['errorset']:
+                    logger.warning('systematics.py with --pdf=errorset not supported for EVAxEVA; updating to --pdf=central')
                     self['systematics_arguments'].remove('--pdf=errorset')
                     self['systematics_arguments'].append('--pdf=central')
         #    if self['scalefact'] != 1.0:
