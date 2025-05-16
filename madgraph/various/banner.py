@@ -4468,11 +4468,11 @@ class RunCardLO(RunCard):
                 time.sleep(5)
             if self['drjj'] != 0:
                 if 'drjj' in self.user_set:
-                    logger.warning('Since icckw>0, changing the value of \'drjj\' to 0')
+                    logger.warning('Since ickkw>0, changing the value of \'drjj\' to 0')
                 self['drjj'] = 0
             if self['drjl'] != 0:
                 if 'drjl' in self.user_set:
-                    logger.warning('Since icckw>0, changing the value of \'drjl\' to 0')
+                    logger.warning('Since ickkw>0, changing the value of \'drjl\' to 0')
                 self['drjl'] = 0    
             if not self['auto_ptj_mjj']:         
                 if self['mmjj'] > self['xqcut']:

@@ -554,7 +554,7 @@ ANNOUNCEMENT:
       OM: Change user interface related to FxFx mode
           - If you have multiple multiplicities at NLO,
 	    - the default run_card is modified accordingly
-	        - has icckw=3 and follow the official FxFx recomendation (i.e. for
+	        - has ickkw=3 and follow the official FxFx recomendation (i.e. for
 		  scale and jet algo)
             - the shower card has two parameter that are dynamically set 
                 - njmax (default: -1) is automatically set depending of the process definition
