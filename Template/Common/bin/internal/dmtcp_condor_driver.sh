@@ -1,7 +1,7 @@
 #!/bin/bash
 
-export PATH="$HOME/dmtcp/bin:$PATH"
-export LD_LIBRARY_PATH="$HOME/dmtcp/lib:$LD_LIBRARY_PATH"
+export PATH="$MG5DIR/HEPTools/DMTCP/bin:$PATH"
+export LD_LIBRARY_PATH="$MG5DIR/HEPTools/DMTCP/lib:$LD_LIBRARY_PATH"
 
 export DMTCP_CHECKPOINT_DIR="$INITIAL_DIR/dmtcp_$CONDOR_ID"
 mkdir -p "$DMTCP_CHECKPOINT_DIR"

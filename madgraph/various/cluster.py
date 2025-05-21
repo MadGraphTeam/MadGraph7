@@ -957,7 +957,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); INITIAL_DIR=%(cwd)s
+                  environment = CONDOR_ID=$(DAGManJobId); INITIAL_DIR=%(cwd)s; MG5DIR=%(mg5dir)s
                   Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
@@ -1020,7 +1020,7 @@ class CondorCluster(Cluster):
 
             dico['prog'] = wrapper
             dico['argument'] = argument
-
+            dico['mg5dir'] = MG5DIR
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
                 and self.options['cluster_vacatetime'] != 'None':
@@ -1896,6 +1896,7 @@ class SLURMCluster(Cluster):
         jobenv = os.environ.copy()
         if MADEVENT: jobenv['RUN_DIR'] = LOCALDIR
         else: jobenv['RUN_DIR'] = MG5DIR
+        jobenv['MG5DIR'] = MG5DIR
 
         a = misc.Popen(command, stdout=subprocess.PIPE, 
                                       stderr=subprocess.STDOUT,

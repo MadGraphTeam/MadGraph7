@@ -1,7 +1,7 @@
 #!/bin/bash
 
-module load releases/2023b # Probably shouldn't be hardcoded
-module load DMTCP/3.0.0-GCCcore-13.2.0
+export PATH="$MG5DIR/HEPTools/DMTCP/bin:$PATH"
+export LD_LIBRARY_PATH="$MG5DIR/HEPTools/DMTCP/lib:$LD_LIBRARY_PATH"
 
 count=0
 while [ -d "$RUN_DIR/dmtcp_fail" ] && [ $count -lt 10 ]; do
