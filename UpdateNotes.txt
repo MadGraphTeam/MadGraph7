@@ -4,6 +4,9 @@ ANNOUNCMENT:
    2.9.X version has a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
+2.9.24 (21/05/25)
+    OM: Fix Some compilation issue with GCC15 compiler
+
 2.9.23 (14/03/25)
     MZ:fix in pseudorapidity function in lhe_parser FourMomentum class (super minor issue) 
 
