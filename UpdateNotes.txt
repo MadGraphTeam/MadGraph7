@@ -6,6 +6,8 @@ ANNOUNCMENT:
 
 2.9.24 (21/05/25)
     OM: Fix Some compilation issue with GCC15 compiler
+    OM: Fix a serious bug in MadSpin where the benchmark use to generate the sample was ignored by MadSpin and it was using the default of the benchmark instead. This was clearly indicated by warning stating the fact that the default benchmark was used.
+        This bug is more compiler specific than madgraph specific, so this bug is likely present since MG5aMC v2.0.0 if you use a recent version of GCC (like GCC13 or GCC14)
 
 2.9.23 (14/03/25)
     MZ:fix in pseudorapidity function in lhe_parser FourMomentum class (super minor issue) 
