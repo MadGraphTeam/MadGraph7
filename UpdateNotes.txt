@@ -4,6 +4,12 @@ ANNOUNCMENT:
    2.9.X version has a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
+2.9.25 ():
+  OM: (thanks to SungBeom Cho) crash when running  multi_run during the merging of multiple lhe file if 
+      MadSpin was activated (if the BR was different of one). If the BR=1, the merging was going trough but 
+      the merged sample will contains both decay and undecay sample making that file pointless.
+      (fixed first in 3.5.9)
+
 2.9.24 (23/05/25)
     OM: Fix Some compilation issue with GCC15 compiler
     OM: Fix a serious bug in MadSpin where the benchmark use to generate the sample was ignored by MadSpin and it was using the default of the benchmark instead. This was clearly indicated by warning stating the fact that the default benchmark was used.
