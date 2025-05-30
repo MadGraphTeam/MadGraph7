@@ -3050,6 +3050,7 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
         crossoversig = 0
         inv_sq_err = 0
         nb_event = 0
+        madspin = False
         for i in range(nb_run):
             self.nb_refine = 0
             self.exec_cmd('generate_events %s_%s -f' % (main_name, i), postcmd=False)
@@ -3062,6 +3063,8 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
             inv_sq_err+=1.0/error**2
             self.results[main_name][-1]['cross'] = crossoversig/inv_sq_err
             self.results[main_name][-1]['error'] = math.sqrt(1.0/inv_sq_err)
+            if 'decayed' in self.run_name:
+                madspin = True
         self.results.def_current(main_name)
         self.run_name = main_name
         self.update_status("Merging LHE files", level='parton')
@@ -3069,9 +3072,12 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
             os.mkdir(pjoin(self.me_dir,'Events', self.run_name))
         except Exception:
             pass
-        os.system('%(bin)s/merge.pl %(event)s/%(name)s_*/unweighted_events.lhe.gz %(event)s/%(name)s/unweighted_events.lhe.gz %(event)s/%(name)s_banner.txt' 
+
+        os.system('%(bin)s/merge.pl %(event)s/%(name)s_*%(madspin)s/unweighted_events.lhe.gz %(event)s/%(name)s/unweighted_events.lhe.gz %(event)s/%(name)s_banner.txt' 
                   % {'bin': self.dirbin, 'event': pjoin(self.me_dir,'Events'),
-                     'name': self.run_name})
+                     'name': self.run_name,
+                     'madspin': '_decayed_*' if madspin else ''
+                     })
 
         eradir = self.options['exrootanalysis_path']
         if eradir and misc.is_executable(pjoin(eradir,'ExRootLHEFConverter')):
