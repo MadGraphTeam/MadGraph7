@@ -1855,6 +1855,8 @@ class HwUList(histograms_PhysicsObjectList):
         # If merging cut is negative, then pick only the one of the central scale
         # If not specified, then take them all but use the PDF and scale weight
         # of the central merging_scale for the variation.
+        if not all_weights:
+            raise MadGraph5Error('No weights were found in the HwU XML source.')
         if merging_scale is None or merging_scale < 0.0:
             merging_scale_chosen = all_weights[2]['MERGING']
         else:
