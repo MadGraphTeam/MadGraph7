@@ -4,7 +4,7 @@ ANNOUNCEMENT:
    2.9.X version as a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
-3.5.9 (23/05/25):
+3.5.9 (4/6/25):
   OM: Fixed an issue in fixed_fact_scale when set to T where sometimes some beam where kept on False (in assymetric beam context)
   OM: Fixed a wrong scale assignment when beam#2 was dynamic but beam#1 was static (at LO)
   ALL: Include fix from 2.9.24 (including support to GCC15 + bug in madspin with GCC13) 
