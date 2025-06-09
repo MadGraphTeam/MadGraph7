@@ -3878,20 +3878,14 @@ frame_block = RunBlock('frame', template_on=template_on, template_off=template_o
 
 # EVA PDF PRECISION ------------------------------------------------------------------------------------
 template_on = \
-"""  %(evaorder)s  = evaorder         ! 0=EVA, 1=iEVA, 2=iEVA@nlp [24xx.yyyyy]
+"""     %(evaorder)s = evaorder         ! 0=EVA@LLA, 1=full LP, 2=NLP [2502.07878]
+     %(eva_xcut)s = eva_xcut         ! =1 [default] for restricting xi > MV/Ebeam
+                          ! =0 for no restriction [results of 2111.02442]
+     %(ievo_eva)s = ievo_eva         ! scale evolution for EW pdfs (eva) in LLA
+                          ! =0 for evo by q^2; =1 for evo by pT^2
 """
 template_off = ""
 eva_pdf_block = RunBlock('eva_pdf', template_on=template_on, template_off=template_off)
-
-# EVA SCALE EVOLUTION ------------------------------------------------------------------------------------
-template_on = \
-"""  %(ievo_eva)s  = ievo_eva           ! scale evolution for EW pdfs (eva):
-                    ! 0 for evo by q^2; 1 for evo by pT^2
-"""
-template_off = ""
-eva_scale_block = RunBlock('eva_scale', template_on=template_on, template_off=template_off)
-
-
 
 # MLM Merging ------------------------------------------------------------------------------------
 template_on = \
@@ -4103,7 +4097,7 @@ class RunCardLO(RunCard):
     """an object to handle in a nice way the run_card information"""
     
     blocks = [heavy_ion_block, beam_pol_block, syscalc_block, ecut_block,
-             frame_block, eva_scale_block, eva_pdf_block, mlm_block, ckkw_block, psoptim_block,
+             frame_block, eva_pdf_block, mlm_block, ckkw_block, psoptim_block,
               pdlabel_block, fixedfacscale, running_block]
 
     dummy_fct_file = {"dummy_cuts": pjoin("SubProcesses","dummy_fct.f"),
@@ -4177,6 +4171,8 @@ class RunCardLO(RunCard):
                         comment='eva: 0 for EW pdf muf evolution by q^2; 1 for evo by pT^2')
         self.add_param("evaorder",0,hidden=True, allowed=[0,1,2],fortran_name="evaorder",
                         comment='eva order: 0=EVA, 1=iEVA, 2=iEVA@nlp')
+        self.add_param("eva_xcut",1,hidden=True, allowed=[0,1],fortran_name="eva_xcut",
+                        comment='eva_xcut: 1 = impose x > MV/Ebeam restriction; set to 1 (0) to recover results of [2502.07878 (2111.02442)]')
         
         # Bias module options
         self.add_param("bias_module", 'None', include=False, hidden=True)
@@ -4799,7 +4795,6 @@ class RunCardLO(RunCard):
 
             if any(i in beam_id for i in [22,23,24,-24,12,-12,14,-14]):
                 self.display_block.append('eva_pdf')
-                self.display_block.append('eva_scale')
 
             # automatic polarisation of the beam if neutrino beam  
             if any(id  in beam_id for id in [12,-12,14,-14,16,-16]):

@@ -110,11 +110,6 @@ c     full LP / NLP terms
       tmpXLP2 = tmpXLP1
       tmpNLP1 = (2.d0-x)*mvOev
       tmpNLP2 = tmpNLP1 + (2.d0-x)*muO2ev
-c     check that EV > MV (already done in EWFluxDriver)
-      if(mvOev.gt.1d0) then
-            eva_fL_to_vp = 0d0
-            return 
-      endif      
 c     set PDF according to order
       select case (evaorder)
       case (2) ! NLP
@@ -160,11 +155,6 @@ c     full LP / NLP terms
       tmpXLP2 = tmpXLP1
       tmpNLP1 = (2.d0-x)*mvOev
       tmpNLP2 = tmpNLP1 + (2.d0-x)*muO2ev
-c     check that EV > MV (already done in EWFluxDriver)
-      if(mvOev.gt.1d0) then
-            eva_fL_to_vm = 0d0
-            return 
-      endif
 c     set PDF according to order
       select case (evaorder)
       case (2) ! NLP
@@ -203,11 +193,6 @@ c     needed for full LP / NLP
       mvOev   = mv2 / ev2     ! -> 0 as ev->inf
       mvOmu   = mv2 / mu2     ! -> 0 as muf->inf, O(1) otherwise
       muOmumv = 1.0d0 / (1.0d0 + mvOmu) ! = mu2/(mu2+mv2) ! -> 1 as muf->inf 
-c     check that EV > MV (already done in EWFluxDriver)
-      if(mvOev.gt.1d0) then
-            eva_fL_to_v0 = 0d0
-            return 
-      endif
 c     set PDF according to order
       select case (evaorder)
       case (2) ! NLP

@@ -989,14 +989,14 @@ class Systematics(object):
                (self.banner.run_card['pdlabel1'] in ['eva']):
                 vPol = event[0].helicity
                 vPID = event[0].pid
-                ievo = self.banner.run_card['ievo_eva']
+                ievo_eva = self.banner.run_card['ievo_eva']
                 evaorder = self.banner.run_card['evaorder']
-                if ievo != 0 and len(loinfo['pdf_x1']) != 1:
+                if ievo_eva != 0 and len(loinfo['pdf_x1']) != 1:
                     raise SystematicsError('Cannot evaluate systematic errors: too many x1 in pdfrwt in .lhe for EVA.')
-                xx = loinfo['pdf_x1'][-1] # ignored if ievo=0
+                xx = loinfo['pdf_x1'][-1] # ignored if ievo_eva=0
                 if abs(vPID) in [7,22,23,24]:
                     ebeam1 = self.banner.run_card['ebeam1']
-                    wgt *= self.get_eva_scale_wgt_by_vx(Dmuf*muf1,vPID,self.b1,vPol,xx,ebeam1,ievo,evaorder)
+                    wgt *= self.get_eva_scale_wgt_by_vx(Dmuf*muf1,vPID,self.b1,vPol,xx,ebeam1,ievo_eva,evaorder)
             else:
                 wgt *= self.get_pdfQ(pdf, self.b1*loinfo['pdf_pdg_code1'][-1], loinfo['pdf_x1'][-1], Dmuf*muf1, beam=1)
         if self.b2 and muf2: 
@@ -1004,14 +1004,14 @@ class Systematics(object):
                (self.banner.run_card['pdlabel2'] in ['eva']):
                 vPol = event[1].helicity
                 vPID = event[1].pid
-                ievo = self.banner.run_card['ievo_eva']
+                ievo_eva = self.banner.run_card['ievo_eva']
                 evaorder = self.banner.run_card['evaorder']
-                if ievo != 0 and len(loinfo['pdf_x2']) != 1:
+                if ievo_eva != 0 and len(loinfo['pdf_x2']) != 1:
                     raise SystematicsError('Cannot evaluate systematic errors: too many x2 in pdfrwt in .lhe for EVA.')
-                xx = loinfo['pdf_x2'][-1] # ignored if ievo=0
+                xx = loinfo['pdf_x2'][-1] # ignored if ievo_eva=0
                 if abs(vPID) in [7,22,23,24]:
                     ebeam2 = self.banner.run_card['ebeam2']
-                    wgt *= self.get_eva_scale_wgt_by_vx(Dmuf*muf2,vPID,self.b2,vPol,xx,ebeam2,ievo,evaorder)
+                    wgt *= self.get_eva_scale_wgt_by_vx(Dmuf*muf2,vPID,self.b2,vPol,xx,ebeam2,ievo_eva,evaorder)
             else:
                 wgt *= self.get_pdfQ(pdf, self.b2*loinfo['pdf_pdg_code2'][-1], loinfo['pdf_x2'][-1], Dmuf*muf2, beam=2) 
 
@@ -1105,67 +1105,53 @@ class Systematics(object):
         return wgt
 
 
-    def get_eva_scale_wgt_by_vx(self, muf, vPID, fPID, vPol, xx, beam, ievo=0, evaorder=0):
+    def get_eva_scale_wgt_by_vx(self, muf, vPID, fPID, vPol, xx, beam, ievo_eva=0, evaorder=0):
         if(vPol==0):
-            return self.get_eva_stripped_pdf_v0(muf,vPID,fPID,xx,beam,ievo,evaorder)
+            assert (abs(vPID) not in [7,22]), "Invalid photon polarization: vPol=%i but vPID=%i (should never be here!)" % (vPol,vPID)
+            return self.get_eva_stripped_pdf_v0(muf,vPID,fPID,xx,beam,ievo_eva,evaorder)
         elif(vPol==+1):
-            return self.get_eva_stripped_pdf_vp(muf,vPID,fPID,xx,beam,ievo,evaorder)
+            return self.get_eva_stripped_pdf_vp(muf,vPID,fPID,xx,beam,ievo_eva,evaorder)
         elif(vPol==-1):
-            return self.get_eva_stripped_pdf_vm(muf,vPID,fPID,xx,beam,ievo,evaorder)
+            return self.get_eva_stripped_pdf_vm(muf,vPID,fPID,xx,beam,ievo_eva,evaorder)
         else:
             raise SystematicsError("unknow EVA vPol: %s " % vPol)
-
-    # KEEP THIS FOR NOW FOR ievo=1 ROUTINE
-    # TO DELETE
-    def call_eva_get_vT_scaleLog(self, muf, vPID, fPID, xx, ievo=0):
-        mufMin = self.get_eva_mufMin_byPID(vPID,fPID)
-        if ievo != 0:
-            mufMin = math.sqrt(1.e0-xx)*mufMin # evolution by pT
-        if(mufMin<0):
-            raise SystematicsError("Check PIDs! Unknown min muf for EVA %s" % mufMin)
-        elif(muf < mufMin*1.001):
-            return 0e0
-        else:
-            return math.log(muf/mufMin) 
         
     # scale dependence of f_V+ according to EVA accuracy
-    def get_eva_stripped_pdf_vp(self, muf, vPID, fPID, xx, ebeam, ievo=0, evaorder=0):
-        mufMin = self.get_eva_mufMin_byPID(vPID,fPID)
-        if(evaorder < 0): 
-            raise SystematicsError("Invalid evaorder! evaorder = %s" % evaorder)
-        elif(evaorder==2):  # next-to-leading power
-            return self.calc_eva_stripped_pdf_vm_nlp(muf, vPID, xx, ebeam, ievo)
+    def get_eva_stripped_pdf_vp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0, evaorder=0):
+        assert (evaorder in [0,1,2]), "Invalid evaorder: evaorder = %i (should never be here!)" % evaorder
+        if(vPID==22):       # only LLA supported for photon
+            return self.calc_eva_stripped_pdf_vt_lla(muf, vPID, fPID, xx, ebeam, ievo_eva)
+        if(evaorder==2):    # next-to-leading power
+            return self.calc_eva_stripped_pdf_vm_nlp(muf, vPID, fPID, xx, ebeam, ievo_eva)
         elif(evaorder==1):  # full leading power
-            return self.calc_eva_stripped_pdf_vt_xlp(muf, vPID, xx, ebeam, ievo)
+            return self.calc_eva_stripped_pdf_vt_xlp(muf, vPID, fPID, xx, ebeam, ievo_eva)
         else:               # leading log approximation (default)
-            return self.calc_eva_stripped_pdf_vt_lla(muf, vPID, xx, ebeam, ievo)
+            return self.calc_eva_stripped_pdf_vt_lla(muf, vPID, fPID, xx, ebeam, ievo_eva)
     
     # scale dependence of f_V- according to EVA accuracy
-    def get_eva_stripped_pdf_vm(self, muf, vPID, fPID, xx, ebeam, ievo=0, evaorder=0):
-        mufMin = self.get_eva_mufMin_byPID(vPID,fPID)
-        if(evaorder < 0): 
-            raise SystematicsError("Invalid evaorder! evaorder = %s" % evaorder)
-        elif(evaorder==2):  # next-to-leading power
-            return self.calc_eva_stripped_pdf_vp_nlp(muf, vPID, xx, ebeam, ievo)
+    def get_eva_stripped_pdf_vm(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0, evaorder=0):
+        assert (evaorder in [0,1,2]), "Invalid evaorder: evaorder = %i (should never be here!)" % evaorder
+        if(vPID==22):       # only LLA supported for photon
+            return self.calc_eva_stripped_pdf_vt_lla(muf, vPID, fPID, xx, ebeam, ievo_eva)
+        if(evaorder==2):    # next-to-leading power
+            return self.calc_eva_stripped_pdf_vp_nlp(muf, vPID, fPID, xx, ebeam, ievo_eva)
         elif(evaorder==1):  # full leading power
-            return self.calc_eva_stripped_pdf_vt_xlp(muf, vPID, xx, ebeam, ievo)
+            return self.calc_eva_stripped_pdf_vt_xlp(muf, vPID, fPID, xx, ebeam, ievo_eva)
         else:               # leading log approximation (default)
-            return self.calc_eva_stripped_pdf_vt_lla(muf, vPID, xx, ebeam, ievo)
+            return self.calc_eva_stripped_pdf_vt_lla(muf, vPID, fPID, xx, ebeam, ievo_eva)
     
     # scale dependence of f_V0 according to EVA accuracy
-    def get_eva_stripped_pdf_v0(self, muf, vPID, fPID, xx, ebeam, ievo=0, evaorder=0):
-        mufMin = self.get_eva_mufMin_byPID(vPID,fPID)
-        if(evaorder < 0): 
-            raise SystematicsError("Invalid evaorder! evaorder = %s" % evaorder)
-        elif(evaorder==2):  # next-to-leading power
-            return self.calc_eva_stripped_pdf_v0_nlp(muf, vPID, xx, ebeam, ievo)
+    def get_eva_stripped_pdf_v0(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0, evaorder=0):
+        assert (evaorder in [0,1,2]), "Invalid evaorder: evaorder = %i (should never be here!)" % evaorder
+        if(evaorder==2):    # next-to-leading power
+            return self.calc_eva_stripped_pdf_v0_nlp(muf, vPID, fPID, xx, ebeam, ievo_eva)
         elif(evaorder==1):  # full leading power
-            return self.calc_eva_stripped_pdf_v0_xlp(muf, vPID, xx, ebeam, ievo)
+            return self.calc_eva_stripped_pdf_v0_xlp(muf, vPID, fPID, xx, ebeam, ievo_eva)
         else:               # leading log approximation (default)
-            return self.calc_eva_stripped_pdf_v0_lla(muf, vPID, xx, ebeam, ievo)
+            return self.calc_eva_stripped_pdf_v0_lla(muf, vPID, fPID, xx, ebeam, ievo_eva)
         
     # scale dependence of f_V0 at LLA
-    def calc_eva_stripped_pdf_v0_lla(self, muf, vPID, xx, ebeam, ievo=0):
+    def calc_eva_stripped_pdf_v0_lla(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0):
             # = fV0^LLA * [4pi^2 z / g^2 gL^2 (1-z)]
             # prefactor - none
             # O(1) term - none
@@ -1174,7 +1160,7 @@ class Systematics(object):
             return tmpOut
     
     # scale dependence of f_V0 at full LP
-    def calc_eva_stripped_pdf_v0_xlp(self, muf, vPID, xx, ebeam, ievo=0):
+    def calc_eva_stripped_pdf_v0_xlp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0):
             # = fV0^LP * [4pi^2 z / g^2 gL^2] * 1/(1-z)
             mu2 = muf*muf
             mv2 = (self.get_eva_mv_by_PID(vPID))**2
@@ -1187,7 +1173,7 @@ class Systematics(object):
             return tmpOut
     
     # scale dependence of f_V0 at full NLP
-    def calc_eva_stripped_pdf_v0_nlp(self, muf, vPID, xx, ebeam, ievo=0):
+    def calc_eva_stripped_pdf_v0_nlp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0):
             # = fV0^NLP * [4pi^2 z / g^2 gL^2] * 1/(1-z)
             mu2 = muf*muf
             mv2 = (self.get_eva_mv_by_PID(vPID))**2
@@ -1205,24 +1191,32 @@ class Systematics(object):
             return tmpOut
         
     # scale dependence of f_V+ and f_V- at LLA
-    def calc_eva_stripped_pdf_vt_lla(self, muf, vPID, xx, ebeam, ievo=0):
+    def calc_eva_stripped_pdf_vt_lla(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0):
             # = fV+^LLA * (4pi^2 z / g^2 gL^2) * 2/(1-z)^2
             # = fV-^LLA * (4pi^2 z / g^2 gL^2) * 2
             mu2 = muf*muf
+            mu2Min = self.get_eva_mufMin_byPID(vPID, fPID)**2
             mv2 = (self.get_eva_mv_by_PID(vPID))**2
-            # evolution by q (ievo=0) or pT (ievo=1)
-            mu2Min = mv2 if (ievo==0) else (1.0-xx)*mv2
+            # evolution by q (ievo_eva=0) or pT (ievo_eva=1)
+            mu2Min = self.get_eva_mufMin_byPID(vPID,fPID)
+            mu2Min = mu2Min**2 if (ievo_eva==0) else (1.0-xx)*mu2Min**2
             # prefactor - none
             # O(1) term - none
             # log term
-            muOmv = mu2/mu2Min
+            try:
+                muOmv = mu2/mu2Min
+            except:
+                print('muf, vPID, xx, ebeam, ievo_eva',muf, vPID, xx, ebeam, ievo_eva)
+                print()
+
+                exit()
             # return
             tmpOut = math.log(muOmv)
             return tmpOut
     
 
     # scale dependence of f_V+ and f_V- at full LP
-    def calc_eva_stripped_pdf_vt_xlp(self, muf, vPID, xx, ebeam, ievo=0):
+    def calc_eva_stripped_pdf_vt_xlp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0):
             # = fV+^LP * (4pi^2 z / g^2 gL^2) * 2/(1-z)^2
             # = fV-^LP * (4pi^2 z / g^2 gL^2) * 2
             mu2 = muf*muf
@@ -1237,7 +1231,7 @@ class Systematics(object):
 
 
     # scale dependence of f_V+ at full NLP
-    def calc_eva_stripped_pdf_vp_nlp(self, muf, vPID, xx, ebeam, ievo=0):
+    def calc_eva_stripped_pdf_vp_nlp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0):
             # = fV+^NLP * [4pi^2 z / g^2 gL^2] * 2/(1-z)
             mu2 = muf*muf
             mv2 = (self.get_eva_mv_by_PID(vPID))**2
@@ -1259,7 +1253,7 @@ class Systematics(object):
             return tmpOut
     
     # scale dependence of f_V- at full NLP
-    def calc_eva_stripped_pdf_vm_nlp(self, muf, vPID, xx, ebeam, ievo=0):
+    def calc_eva_stripped_pdf_vm_nlp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0):
             # = fV-^NLP * [4pi^2 z / g^2 gL^2] * 2
             mu2 = muf*muf
             mv2 = (self.get_eva_mv_by_PID(vPID))**2
