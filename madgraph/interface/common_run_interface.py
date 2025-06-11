@@ -658,6 +658,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'syscalc_path': './SysCalc',
                        'rivet_path': None,
                        'yoda_path': None,
+                       'dmtcp': None,
                        'lhapdf': 'lhapdf-config',
                        'lhapdf_py2': None,
                        'lhapdf_py3': None,
@@ -750,6 +751,11 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             self.ninitial = int(found.group(1))
         else:
             self.ninitial = self.proc_characteristics['ninitial']
+
+        if self.options['checkpointing'] and\
+         ('dmtcp' not in self.options or not self.options['dmtcp']):
+            from madgraph import MG5DIR
+            self.options['dmtcp'] = pjoin(MG5DIR, 'HEPTools', 'DMTCP')
 
     def make_make_all_html_results(self, folder_names = [], jobs=[], get_attr=None):
         return sum_html.make_all_html_results(self, folder_names, jobs, get_attr)

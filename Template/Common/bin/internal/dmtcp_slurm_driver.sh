@@ -1,7 +1,7 @@
 #!/bin/bash
 
-export PATH="$MG5DIR/HEPTools/DMTCP/bin:$PATH"
-export LD_LIBRARY_PATH="$MG5DIR/HEPTools/DMTCP/lib:$LD_LIBRARY_PATH"
+export PATH="$DMTCP_PATH/bin:$PATH"
+export LD_LIBRARY_PATH="$DMTCP_PATH/lib:$LD_LIBRARY_PATH"
 
 count=0
 while [ -d "$RUN_DIR/dmtcp_fail" ] && [ $count -lt 10 ]; do

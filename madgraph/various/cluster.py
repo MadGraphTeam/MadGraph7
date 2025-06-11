@@ -957,7 +957,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); INITIAL_DIR=%(cwd)s; MG5DIR=%(mg5dir)s
+                  environment = CONDOR_ID=$(DAGManJobId); INITIAL_DIR=%(cwd)s; DMTCP_PATH=%(dmtcp_path)s
                   Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
@@ -1020,7 +1020,17 @@ class CondorCluster(Cluster):
 
             dico['prog'] = wrapper
             dico['argument'] = argument
-            dico['mg5dir'] = MG5DIR
+
+            if not 'dmtcp' in self.options or not self.options['dmtcp']\
+                or self.options['cluster_vacatetime'] == 'None':
+                raise ClusterManagmentError('checkpointing selected, but DMTCP path not set')
+
+            if os.path.exists(pjoin(self.options['dmtcp'], 'bin'))\
+                and os.path.exists(pjoin(self.options['dmtcp'], 'lib')):
+                dico['dmtcp_path'] = self.options['dmtcp']
+            else:
+                raise ClusterManagmentError(f'DMTCP path {self.options["dmtcp"]} \
+                    does not exist or DMTCP not istalled.')
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
                 and self.options['cluster_vacatetime'] != 'None':
@@ -1868,6 +1878,15 @@ class SLURMCluster(Cluster):
             command.insert(1, '--open-mode')
             command.insert(2, 'append')
 
+            if not 'dmtcp' in self.options or not self.options['dmtcp']\
+                or self.options['cluster_vacatetime'] == 'None':
+                raise ClusterManagmentError('checkpointing selected, but DMTCP path not set')
+
+            if not os.path.exists(pjoin(self.options['dmtcp'], 'bin'))\
+                or not os.path.exists(pjoin(self.options['dmtcp'], 'lib')):
+                raise ClusterManagmentError(f'DMTCP path {self.options["dmtcp"]} \
+                    does not exist or DMTCP not istalled.')
+
             if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
                 and self.options['cluster_requirement'] != 'None':
                 command.insert(1, '-C')
@@ -1896,7 +1915,7 @@ class SLURMCluster(Cluster):
         jobenv = os.environ.copy()
         if MADEVENT: jobenv['RUN_DIR'] = LOCALDIR
         else: jobenv['RUN_DIR'] = MG5DIR
-        jobenv['MG5DIR'] = MG5DIR
+        if self.checkpointing: jobenv['DMTCP_PATH'] = self.options['dmtcp']
 
         a = misc.Popen(command, stdout=subprocess.PIPE, 
                                       stderr=subprocess.STDOUT,
