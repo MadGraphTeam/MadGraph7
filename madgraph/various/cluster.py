@@ -1022,15 +1022,14 @@ class CondorCluster(Cluster):
             dico['argument'] = argument
 
             if not 'dmtcp' in self.options or not self.options['dmtcp']\
-                or self.options['cluster_vacatetime'] == 'None':
+                or self.options['dmtcp'] == 'None':
                 raise ClusterManagmentError('checkpointing selected, but DMTCP path not set')
 
             if os.path.exists(pjoin(self.options['dmtcp'], 'bin'))\
                 and os.path.exists(pjoin(self.options['dmtcp'], 'lib')):
                 dico['dmtcp_path'] = self.options['dmtcp']
             else:
-                raise ClusterManagmentError(f'DMTCP path {self.options["dmtcp"]} \
-                    does not exist or DMTCP not istalled.')
+                raise ClusterManagmentError(f'DMTCP path {self.options["dmtcp"]} does not exist or DMTCP not istalled.')
 
             if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
                 and self.options['cluster_vacatetime'] != 'None':
@@ -1879,13 +1878,12 @@ class SLURMCluster(Cluster):
             command.insert(2, 'append')
 
             if not 'dmtcp' in self.options or not self.options['dmtcp']\
-                or self.options['cluster_vacatetime'] == 'None':
+                or self.options['dmtcp'] == 'None':
                 raise ClusterManagmentError('checkpointing selected, but DMTCP path not set')
 
             if not os.path.exists(pjoin(self.options['dmtcp'], 'bin'))\
                 or not os.path.exists(pjoin(self.options['dmtcp'], 'lib')):
-                raise ClusterManagmentError(f'DMTCP path {self.options["dmtcp"]} \
-                    does not exist or DMTCP not istalled.')
+                raise ClusterManagmentError(f'DMTCP path {self.options["dmtcp"]} does not exist or DMTCP not istalled.')
 
             if 'cluster_requirement' in self.options and self.options['cluster_requirement']\
                 and self.options['cluster_requirement'] != 'None':

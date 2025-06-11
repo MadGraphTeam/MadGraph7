@@ -672,6 +672,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'fortran_compiler':None,
                        'cpp_compiler': None,
                        'auto_update':7,
+                       'checkpointing': False,
                        'cluster_type': 'condor',
                        'cluster_vacatetime': '120',
                        'cluster_status_update': (600, 30),
@@ -752,10 +753,13 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         else:
             self.ninitial = self.proc_characteristics['ninitial']
 
-        if self.options['checkpointing'] and\
+        if self.options['checkpointing'] and \
          ('dmtcp' not in self.options or not self.options['dmtcp']):
-            from madgraph import MG5DIR
-            self.options['dmtcp'] = pjoin(MG5DIR, 'HEPTools', 'DMTCP')
+            if MADEVENT and 'mg5_path' in self.options and self.options['mg5_path']:
+                self.options['dmtcp'] = pjoin(self.options['mg5_path'], 'HEPTools', 'DMTCP')
+            else:
+                from madgraph import MG5DIR
+                self.options['dmtcp'] = pjoin(MG5DIR, 'HEPTools', 'DMTCP')
 
     def make_make_all_html_results(self, folder_names = [], jobs=[], get_attr=None):
         return sum_html.make_all_html_results(self, folder_names, jobs, get_attr)
