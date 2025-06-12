@@ -3055,6 +3055,7 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
         crossoversig = 0
         inv_sq_err = 0
         nb_event = 0
+        madspin = False
         for i in range(nb_run):
             self.nb_refine = 0
             self.exec_cmd('generate_events %s_%s -f' % (main_name, i), postcmd=False)
@@ -3067,6 +3068,8 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
             inv_sq_err+=1.0/error**2
             self.results[main_name][-1]['cross'] = crossoversig/inv_sq_err
             self.results[main_name][-1]['error'] = math.sqrt(1.0/inv_sq_err)
+            if 'decayed' in self.run_name:
+                madspin = True
         self.results.def_current(main_name)
         self.run_name = main_name
         self.update_status("Merging LHE files", level='parton')
@@ -3074,9 +3077,12 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
             os.mkdir(pjoin(self.me_dir,'Events', self.run_name))
         except Exception:
             pass
-        os.system('%(bin)s/merge.pl %(event)s/%(name)s_*/unweighted_events.lhe.gz %(event)s/%(name)s/unweighted_events.lhe.gz %(event)s/%(name)s_banner.txt' 
+
+        os.system('%(bin)s/merge.pl %(event)s/%(name)s_*%(madspin)s/unweighted_events.lhe.gz %(event)s/%(name)s/unweighted_events.lhe.gz %(event)s/%(name)s_banner.txt' 
                   % {'bin': self.dirbin, 'event': pjoin(self.me_dir,'Events'),
-                     'name': self.run_name})
+                     'name': self.run_name,
+                     'madspin': '_decayed_*' if madspin else ''
+                     })
 
         eradir = self.options['exrootanalysis_path']
         if eradir and misc.is_executable(pjoin(eradir,'ExRootLHEFConverter')):
@@ -3759,6 +3765,8 @@ Beware that this can be dangerous for local multicore runs.""")
             k, m = divmod(len(a), n)
             return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
 
+        Gdirs = self.remove_empty_events(Gdirs)
+        
         partials_info = [] 
         if len(Gdirs) >= max_G:
             start_unweight= time.perf_counter()
@@ -6163,7 +6171,102 @@ tar -czf split_$1.tar.gz split_$1
                     mfactors[pjoin(P, "G%s" % tag)] = mfactor
         self.Gdirs = (Gdirs, mfactors)
         return self.get_Gdir(Pdir, symfact=symfact)
-         
+
+    ############################################################################
+    def remove_empty_events(self, Gdir):
+        """return Gdir strip from the one providing empty events.lhe files."""
+
+        reasons = collections.defaultdict(list)
+        Gdirs = Gdir[:]
+        for G in Gdirs[:]:
+            try:
+                size = os.path.getsize(pjoin(G, 'events.lhe'))
+            except Exception as error:
+                size = 0 
+            if size <10:
+                Gdirs.remove(G)
+                try:
+                    log = misc.BackRead(pjoin(G, 'log.txt'))
+                except Exception as error:
+                    log = misc.BackRead(pjoin(G, 'run1_app.log'))
+                
+                found = -1
+                for line in log:
+                    if 'Deleting file events.lhe' in line:
+                        found = 0
+                    elif "Impossible BW configuration" in line:
+                        reasons['bwconfig'].append(G)
+                        break
+                    elif found < -150:
+                        reasons['not found'].append(G)
+                        Gdirs.append(G)
+                        break
+                    elif found < 0:
+                        found -= 1
+                    elif 'Loosen cuts or increase max_events' in line:
+                        reasons['cuts'].append(G)
+                        break
+                    elif 'all returned zero' in line:
+                        reasons['zero'].append(G)
+                        break
+                    elif found > 5:
+                        reasons['unknown'].append(G)
+                        break
+                    else:
+                        found += 1
+        
+        if len(reasons):
+            logger.debug('Reasons for empty events.lhe:')
+            if len(reasons['unknown']):
+                logger.debug('  - unknown: %s' % len(reasons['unknown']))
+                logger.log(10,  '    DETAIL:' + ','.join(['/'.join(G.rsplit(os.sep)[-2:]) for G in reasons['unknown'][:10]]))
+            if len(reasons['not found']):
+                logger.debug('  - not found in log: %s' % len(reasons['not found']))
+                logger.log(10,  '    DETAIL:' + ','.join(['/'.join(G.rsplit(os.sep)[-2:]) for G in reasons['not found'][:10]]))
+            if len(reasons['zero']):
+                logger.debug('  - zero amplitudes: %s' % len(reasons['zero']))
+                logger.log(10,  '    DETAIL:' + ','.join(['/'.join(G.rsplit( os.sep)[-2:]) for G in reasons['zero'][:10]]))
+            if len(reasons['bwconfig']):
+                critical_bwconfig = set()
+                for G in reasons['bwconfig']:                    
+                    base = G.rsplit('.',1)[0]
+                    if any(G2.startswith(base) for G2 in Gdirs):
+                        continue
+                    else:
+                        critical_bwconfig.add(os.sep.join(base.rsplit(os.sep)[-2:]))
+                for G in critical_bwconfig:
+                    logger.warning('Gdirectory %s has no events.lhe file. (no BW config found %s times)' % G) 
+
+                logger.debug('  - impossible BW configuration: %s' % len(reasons['bwconfig']))
+                logger.debug('  - channel with no possible BW configuration: %s' %  len(critical_bwconfig))
+
+            if len(reasons['cuts']):
+                critical_nb_cuts = collections.defaultdict(int)
+                for G in reasons['cuts']:
+                    if '.' in os.path.basename(G):
+                        base = G.rsplit('.',1)[0]
+                        if any(G2.startswith(base) for G2 in Gdirs):
+                            continue
+                        else:
+                            critical_nb_cuts[os.sep.join(base.rsplit(os.sep)[-2:])] += 1
+                    else:
+                        critical_nb_cuts[''] += 1
+                        logger.warning('Gdirectory %s has no events.lhe file. (no points passed cuts found)' % G)
+                for G, nb in critical_nb_cuts.items():
+                    if not G:
+                        continue
+                    else:
+                        logger.warning('%s  channel %s.XXX has no events.lhe file. (no points passed cuts). No %s with events detected' % (nb, G, G))
+                logger.debug('  - no points passed cuts: %s' % len(reasons['cuts']))
+                logger.log(10, '    DETAIL:' + ','.join(['/'.join(G.rsplit(os.sep)[-2:]) for G in reasons['cuts'][:10]]))
+                logger.debug('    - without any BW handling (critical): %s' % critical_nb_cuts[''])
+                logger.debug('    - with BW but all zero (critical): %s' % sum([nb for v, nb in critical_nb_cuts.items() if v!=''], 0))
+                #logger.debug('  - cuts (with BW conflict where other channel contributes): %s' % (len(reasons['cuts'])- critical_nb_cuts))
+
+
+        return Gdirs
+
+
     ############################################################################
     def set_run_name(self, name, tag=None, level='parton', reload_card=False,
                      allow_new_tag=True):

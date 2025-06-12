@@ -2818,8 +2818,8 @@ RESTART = %(mint_mode)s
             err+= math.pow(job['error'],2)*job['wgt_frac']
         if jobs:
             content.append('\nTotal ABS and \nTotal: \n                      %10.8e +- %6.4e  (%6.4e%%)\n                      %10.8e +- %6.4e  (%6.4e%%) \n' %\
-                           (totABS, math.sqrt(errABS), math.sqrt(errABS)/totABS *100.,\
-                            tot, math.sqrt(err), math.sqrt(err)/tot *100.))
+                           (totABS, math.sqrt(errABS), math.sqrt(errABS)/totABS *100.  if totABS !=0. else 100.,\
+                            tot, math.sqrt(err), math.sqrt(err)/tot *100. if tot !=0. else 100.))
         with open(pjoin(self.me_dir,'SubProcesses','res_%s.txt' % integration_step),'w') as res_file:
             res_file.write('\n'.join(content))
         randinit=self.get_randinit_seed()
