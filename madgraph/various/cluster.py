@@ -623,23 +623,39 @@ class MultiCore(Cluster):
         self.done_pid_queue = six.moves.queue.Queue()
         self.fail_msg = None
 
+        mg5_gpu_env_str = 'MG5_GPU_VISIBLE_DEVICES'
+        gpu_variables = [['NVIDIA_VISIBLE_DEVICES', 'CUDA_VISIBLE_DEVICES'],
+                         ['ROCR_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES'],]
+        if mg5_gpu_env_str in os.environ: gpu_variables.insert(0, os.environ[mg5_gpu_env_str].split(',')) 
 
+        for get_var,set_var in gpu_variables:
+            if get_var in os.environ:
+                self.gpus_list = os.environ.get(get_var).split(',')
+                self.gpu_set_var = set_var
+                self.gpus_count = len(self.gpus_list)
+                logger.info('Found %s GPUs: %s' % (self.gpus_count, self.gpus_list))
         
     def start_demon(self):
+        env2 = None
+        if len(self.gpus_list):
+            env2 = os.environ.copy()
+            this_gpu_idx = len(self.demons) % self.gpus_count
+            env2[self.gpu_set_var] = self.gpus_list[this_gpu_idx]
         import threading
-        t = threading.Thread(target=self.worker)
+        t = threading.Thread(target=self.worker, kwargs={'env2': env2})
         t.daemon = True
         t.start()
         self.demons.append(t)
 
 
-    def worker(self):
+    def worker(self, env2=None):
         import six.moves.queue
         import six.moves._thread
         while not self.stoprequest.isSet():
             try:
                 args = self.queue.get(timeout=10)
                 tag, exe, arg, opt = args
+                opt['env'] = env2
                 try:
                     # check for executable case
                     if isinstance(exe,str):
