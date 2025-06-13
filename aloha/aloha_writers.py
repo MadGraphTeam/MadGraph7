@@ -1077,6 +1077,31 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         else:
             coup = False
 
+        def sort_fct(a, b):
+            if len(a) < len(b):
+                return -1
+            elif len(a) > len(b):
+                return 1
+            elif a < b:
+                return -1
+            else:
+                return +1
+            
+        keys = list(self.routine.fct.keys())        
+        keys.sort(key=misc.cmp_to_key(sort_fct))
+        for name in keys:
+            fct, objs = self.routine.fct[name]
+            format = ' %s = %s\n' % (name, self.get_fct_format(fct))
+            try:
+                text = format % ','.join([self.write_obj(obj) for obj in objs])
+            except TypeError:
+                text = format % tuple([self.write_obj(obj) for obj in objs])
+            finally:
+                out.write(text)
+
+
+
+        
         rank = self.routine.expr.get_max_rank()
         poly_object = q_polynomial.Polynomial(rank)
         nb_coeff = q_polynomial.get_number_of_coefs_for_rank(rank)
@@ -1103,7 +1128,6 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
                         out.write('    COEFF(%s,%s,%s)= %s\n' % ( 
                                     self.pass_to_HELAS(ind)+1-self.momentum_size,
                                     J, K+1, self.write_obj(data)))
-
 
         return out.getvalue()
     
