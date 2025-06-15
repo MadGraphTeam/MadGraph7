@@ -32,6 +32,13 @@ def get_subprocess_info(matrix_element, proc_dir_name):
         if sym_index == 0:
             channel_indices.append(-1)
             continue
+        if sym_index < 0:
+            channels[channel_indices[-sym_index - 1]]["diagrams"].append({
+                "diagram": diagram_index,
+                "permutation": sym_perm,
+            })
+            channel_indices.append(-1)
+            continue
 
         helas_diagram = helas_diagrams[diagram_index]
         active_flavors = [
@@ -39,15 +46,6 @@ def get_subprocess_info(matrix_element, proc_dir_name):
             for i, all_flavors in enumerate(flavors)
             if helas_diagram.check_flavor(all_flavors[0], model)
         ]
-
-        if sym_index < 0:
-            channels[channel_indices[-sym_index - 1]]["diagrams"].append({
-                "diagram": diagram_index,
-                "permutation": sym_perm,
-                "active_flavors": active_flavors,
-            })
-            channel_indices.append(-1)
-            continue
 
         diagram = diagrams[diagram_index]
         vertices = []
@@ -73,10 +71,10 @@ def get_subprocess_info(matrix_element, proc_dir_name):
         channels.append({
             "propagators": propagators,
             "vertices": vertices,
+            "active_flavors": active_flavors,
             "diagrams": [{
-                "diagram": diagram_index + 1,
+                "diagram": diagram_index,
                 "permutation": sym_perm,
-                "active_flavors": active_flavors,
             }],
         })
 
@@ -88,6 +86,7 @@ def get_subprocess_info(matrix_element, proc_dir_name):
         "channels": channels,
         "path": os.path.join("SubProcesses", proc_dir_name, "api.so"),
         "flavors": flavors,
+        "diagram_count": len(diagrams),
         "helicity_count": helicity_count,
         "has_mirror_process": matrix_element.get("has_mirror_process"),
         "crossing": False, #TODO: hardcoded to false for now

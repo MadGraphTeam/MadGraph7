@@ -2681,6 +2681,7 @@ class ProcessExporterCPP(VirtualExporter):
     
     oneprocessclass = OneProcessExporterCPP
     s= _file_path + 'iolibs/template_files/'
+    dirs_to_create = ['src', 'lib', 'Cards', 'SubProcesses']
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp']}
     to_link_in_P = ['api.cpp', 'Makefile']
@@ -2717,7 +2718,7 @@ class ProcessExporterCPP(VirtualExporter):
         with misc.chdir(self.dir_path):
             logger.info('Creating subdirectories in directory %s' % self.dir_path)
 
-            for d in ['src', 'lib', 'Cards', 'SubProcesses']:
+            for d in self.dirs_to_create:
                 try:
                     os.mkdir(d)
                 except os.error as error:
@@ -3616,8 +3617,25 @@ class UFOModelConverterPythia8(UFOModelConverterCPP):
 class ProcessExporterMG7(ProcessExporterCPP):
     """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
 
+    s= _file_path + 'iolibs/template_files/'
+    dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses']
+    from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
+                     'SubProcesses': [s+'mg7/api.cpp'],
+                     'Cards': [s+'mg7/run_card.toml']}
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        output_options = args[1]["output_options"]
+        simd_opt = output_options.get("simd")
+        gpu_opt = output_options.get("gpu")
+        if simd_opt is not None:
+            self.matrix_element_path = simd_opt
+            self.matrix_element_gpu = False
+        elif gpu_opt is not None:
+            self.matrix_element_path = gpu_opt
+            self.matrix_element_gpu = True
+        else:
+            self.matrix_element_path = None
         self.process_info = []
 
     def generate_subprocess_directory(
@@ -3627,6 +3645,32 @@ class ProcessExporterMG7(ProcessExporterCPP):
             matrix_element, cpp_helas_call_writer, proc_number=None
         )
         self.process_info.append(get_subprocess_info(matrix_element, proc_dir_name))
+
+        if self.matrix_element_path is not None:
+            me_path = os.path.join(self.dir_path, "matrix_element")
+            shutil.copytree(self.matrix_element_path, me_path)
+
+    def copy_template(self, model):
+        super().copy_template(model)
+
+        # TODO: for now, we import the files from madgraph. eventually, we should copy
+        # the files instead to allow for modification
+        with misc.chdir(self.dir_path):
+            madnis_bin = os.path.join("bin", "generate_events")
+            with open(madnis_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys, os\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.madevent import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
+                    "    try:\n"
+                    "        main()\n"
+                    "    except KeyboardInterrupt:\n"
+                    "        pass\n"
+                )
+            os.chmod(madnis_bin, 0o755)
 
     def finalize(self, *args, **kwargs):
         file_name = os.path.normpath(os.path.join(

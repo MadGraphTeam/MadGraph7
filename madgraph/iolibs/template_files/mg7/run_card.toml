@@ -1,0 +1,89 @@
+[beam]
+e_cm = 13000.0
+pdf = "NNPDF23_lo_as_0130_qed"
+scale = 91.188
+
+[generation]
+events = 10000
+max_overweight_fraction = 0.01
+max_overweight_truncation = 0.01
+start_batch_size = 1000
+max_batch_size = 64000
+survey_min_iters = 3
+survey_max_iters = 4
+survey_target_precision = 0.1
+
+[vegas]
+bins = 64
+damping = 0.2
+optimization_patience = 3
+optimization_threshold = 0.99
+
+[phasespace]
+mode = "multichannel" #options: "multichannel", "flat", "both"
+decays = "all" # options: "all", "massive", "none"
+t_channel = "propagator" # options: "propagator", "rambo", "chili"
+nu = 0.8
+
+[cuts]
+# possible groups: jet, bottom, lepton, missing, photon
+# possible observables: pt, eta, dR, mass, sqrt_s
+#     (mass is for pairs of particles from the same group, sqrt_s is for all outgoing particles)
+# for all cuts, min or max can be specified
+jet.pt.min = 20.0
+jet.eta.max = 5.0
+jet.dR.min = 0.4
+sqrt_s.min = 0.0
+
+[madnis]
+device = "cpu" # options: "cpu", "gpu", "auto"
+int_samples = 1000000
+out_file = ""
+
+# normalizing flow parameters
+units = 32
+layers = 3
+spline_bins = 10
+blocks = 6
+permutations = "log" # options: "log", "random", "exchange"
+loss = "stratified_variance" # options: "stratified_variance", "kl_divergence", "rkl_divergence"
+
+# discrete dimensions
+discrete_position = "first" # options: "first", "last"
+discrete_layers = 3
+discrete_nodes_per_feature = 8
+
+# channel weight network
+mcw_units = 64
+mcw_layers = 3
+
+# training parameters
+train_batches = 1250
+log_interval = 100
+batch_size_offset = 512
+batch_size_per_channel = 128
+lr = 1e-3
+lr_decay = 0.01
+lr_max = 3e-3
+lr_scheduler = "cosine" # options: "exponential", "inverse", "onecycle", "cosine", "none"
+train_mcw = true
+buffer_capacity = 0
+minimum_buffer_size = 50000
+buffered_steps = 0
+uniform_channel_ratio = 0.1
+integration_history_length = 1000
+max_stored_channel_weights = 100
+channel_dropping_threshold = 0.001
+channel_dropping_interval = 300
+drop_zero_integrands = true
+batch_size_threshold = 0.5
+channel_grouping_mode = "uniform" # options: "none", "uniform", "learned"
+fixed_cwnet_fraction = 0.33
+
+# VEGAS parameters
+vegas = false
+vegas_pretrain = true
+vegas_bins = 64
+vegas_iters = 7
+vegas_samples = 20000
+vegas_damping = 0.7

@@ -1408,6 +1408,8 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('%s : Not a valid directory' % path)
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
+        elif os.path.isfile(pjoin(card_path, 'run_card.toml')):
+            return 'mg7'
         elif os.path.isdir(src_path):
             if any(p.endswith('.cu') for p in os.listdir(src_path)):
                 return 'standalone_gpu'
@@ -7558,6 +7560,16 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             ext_program = launch_ext.MWLauncher( self, args[1],
                                                  shell = isinstance(self, cmd.CmdShell),
                                                  options=self.options,**options)            
+        elif args[0] == 'mg7':
+            class ext_program:
+                @staticmethod
+                def run():
+                    os.chdir(args[1])
+                    try:
+                        subprocess.run(os.path.join("bin", "generate_events"))
+                    except KeyboardInterrupt:
+                        pass
+
         else:
             os.chdir(start_cwd) #ensure to go to the initial path
             raise self.InvalidCmd('%s cannot be run from MG5 interface' % args[0])

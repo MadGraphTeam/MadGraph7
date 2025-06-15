@@ -15,9 +15,6 @@ struct SubProcessInfo {
     /** number of diagrams */
     uint64_t diagram_count;
 
-    /** number of amplitudes */
-    uint64_t amplitude_count;
-
     /** number of helicity configurations */
     uint64_t helicity_count;
 };
@@ -30,10 +27,9 @@ struct SubProcessInfo {
 const SubProcessInfo* subprocess_info();
 
 /** 
- * Initializes a subprocess object 
+ * Initializes a subprocess object. Each subprocess object is independent, so thread safety can be
+ * achieved by creating a separate instance for every thread.
  *
- * @param matrix_element_index
- *     index of the matrix element, between 0 and matrix_element_count
  * @param param_card_path
  *     path to the parameter file
  * @return 
@@ -87,8 +83,6 @@ void compute_matrix_element(
  *     size of the batch
  * @param stride
  *     step size between events in memory. Can be larger than count.
- * @param channel_count
- *     number of channels
  * @param momenta_in
  *     pointer to a batch of four-momenta of the incoming and outgoing particles.
  *     The i-th component of the j-th particle of the k-th event is accessed as
@@ -106,8 +100,6 @@ void compute_matrix_element(
  *     pointer to a batch of flavor configuration indices
  * @param mirror_in
  *     pointer to a batch of integers indicating whether to flip the initial state momenta (0 or 1)
- * @param amp2_remap_in
- *     defines the mapping from squared amplitudes to channel weights
  * @param m2_out
  *     pointer to the batch of the computed squared matrix elements
  * @param channel_weights_out
@@ -127,17 +119,16 @@ void compute_matrix_element_multichannel(
     void* subprocess,
     uint64_t count,
     uint64_t stride,
-    uint64_t channel_count,
     const double* momenta_in,
     const double* alpha_s_in,
     const double* random_in,
     const int64_t* flavor_in,
     const int64_t* mirror_in,
-    const int64_t* amp2_remap_in,
     double* m2_out,
-    double* channel_weights_out,
+    double* amp2_out,
+    int64_t* diagram_out,
     int64_t* color_out,
-    int64_t* diagram_out
+    int64_t* helicity_out
 );
 
 /**

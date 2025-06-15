@@ -9,7 +9,6 @@ const SubProcessInfo* subprocess_info() {
         /* on_gpu          = */ false,
         /* particle_count  = */ CPPProcess::nexternal,
         /* diagram_count   = */ CPPProcess::ndiagrams,
-        /* amplitude_count = */ CPPProcess::namplitudes,
         /* helicity_count  = */ CPPProcess::ncomb
     };
     return &info;
@@ -35,10 +34,10 @@ void compute_matrix_element(
 
     std::vector<double*>& process_momenta = process->getMomenta();
     for (uint64_t i_batch = 0; i_batch < count; ++i_batch) {
-        for (uint64_t i_part = 0; i_part < CPPProcess::nexternal; ++i_part) {
+        for (uint64_t i_part = 0; i_part < CPPProcess::npar; ++i_part) {
             for(uint64_t i_mom = 0; i_mom < 4; ++i_mom) {
                 process_momenta[i_part][i_mom] =
-                    momenta_in[stride * (CPPProcess::nexternal * i_mom + i_part) + i_batch];
+                    momenta_in[stride * (CPPProcess::npar * i_mom + i_part) + i_batch];
             }
         }
         m2_out[i_batch] = process->sigmaKin(flavor_in[i_batch], mirror_in[i_batch]);

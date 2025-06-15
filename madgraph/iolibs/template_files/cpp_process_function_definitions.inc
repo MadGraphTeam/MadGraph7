@@ -9,7 +9,7 @@ CPPProcess::CPPProcess(string param_card_name) :
     goodhel(), ntry(), sum_hel(), ngood(), igood(), jhel()
 {
 // Instantiate the model class and set parameters that stay fixed during run
-    SLHAReader slha(param_card_name);
+    SLHAReader slha(param_card_name, false);
     pars.setIndependentParameters(slha);
     pars.setIndependentCouplings();
     %(initProc_lines)s
