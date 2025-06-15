@@ -64,4 +64,8 @@ private:
   int ntry[2], sum_hel[2], ngood[2];
   int igood[2 * ncomb];
   int jhel[2];
+
+  // function to compute missing symmetry factors after flavor consolidation
+  int broken_sym(int* flavor);
+
 };

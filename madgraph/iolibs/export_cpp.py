@@ -20,7 +20,7 @@ import fractions
 import glob
 import itertools
 import logging
-from math import fmod
+from math import fmod, factorial
 import os
 import re
 import shutil
@@ -968,6 +968,17 @@ class OneProcessExporterCPP(object):
                                                               'CPPProcess')
         
         replace_dict['nexternal'] = len(self.matrix_elements[0].get('processes')[0].get('legs'))
+        data = self.matrix_elements[0].get('processes')[0].get_final_ids_after_decay()
+        pids = str(data).replace('[', '{').replace(']', '}')
+        replace_dict['get_pid'] = ' int pid[] = %s;' % (pids)
+        replace_dict['get_old_symmmetry_value'] = 1
+        done = []
+        for value in data:
+            if value not in done:
+                done.append(value)
+                replace_dict['get_old_symmmetry_value'] *= factorial(data.count(value)) 
+        _, nincoming = self.matrix_elements[0].get_nexternal_ninitial()
+        replace_dict['nincoming'] = nincoming
     
         if write:
             file = self.read_template_file(self.process_definition_template) %\
