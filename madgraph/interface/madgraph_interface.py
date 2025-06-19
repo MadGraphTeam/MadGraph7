@@ -3002,13 +3002,14 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'f2py_compiler_py2':None,
                        'f2py_compiler_py3':None,
                        'cpp_compiler':None,
+                       'checkpointing': False,
                        'cluster_type': 'condor',
                        'cluster_queue': None,
                        'cluster_status_update': (600, 30),
                        'cluster_walltime': None,
-                       'checkpointing': False,
                        'cluster_requirement': None,
                        'cluster_vacatetime': '120',
+                       'enforce_shared_disk': False,
                        'fastjet':'fastjet-config',
                        'eMELA':'eMELA-config',
                        'golem':'auto',
@@ -8175,7 +8176,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         elif args[0] in ['zerowidth_tchannel']:
             self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
         elif args[0] in ['cluster_queue', 'cluster_walltime', 'checkpointing',\
-                         'cluster_requirement', 'cluster_vacatetime']:
+                         'cluster_requirement', 'cluster_vacatetime', 'enforce_shared_disk']:
             self.options[args[0]] = args[1].strip()
         elif args[0] in ['low_mem_multicore_nlo_generation']:	    
             if six.PY3 and self.options['OLP'] != 'MadLoop':

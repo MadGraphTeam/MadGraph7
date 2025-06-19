@@ -957,7 +957,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); INITIAL_DIR=%(cwd)s; DMTCP_PATH=%(dmtcp_path)s
+                  environment = CONDOR_ID=$(DAGManJobId); SHARED_DIR=%(cwd)s; DMTCP_PATH=%(dmtcp_path)s
                   Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
@@ -1082,8 +1082,13 @@ class CondorCluster(Cluster):
         
         if not required_output and output_files:
             required_output = output_files
-        
-        if (input_files == [] == output_files) or self.checkpointing:
+
+        enforce_shared_disk = False
+        if 'enforce_shared_disk' in self.options and self.options['enforce_shared_disk']\
+            and self.options['enforce_shared_disk'] != 'None':
+            enforce_shared_disk = True
+
+        if (input_files == [] == output_files) or enforce_shared_disk:
             return self.submit(prog, argument, cwd, stdout, stderr, log, 
                                required_output=required_output, nb_submit=nb_submit)
         
@@ -1092,6 +1097,8 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
+                  environment = CONDOR_ID=$(DAGManJobId); DMTCP_PATH=%(dmtcp_path)s; INITIAL_DIR=%(cwd)s
+                  %(spool_on_evict)s
                   should_transfer_files = YES
                   when_to_transfer_output = ON_EXIT
                   transfer_input_files = %(input_files)s
@@ -1130,13 +1137,15 @@ class CondorCluster(Cluster):
         if cwd is None:
             cwd = os.getcwd()
         if stdout is None:
-            stdout = '/dev/null'
+            stdout = 'condor_$(DAGManJobId)_$(restart_count).out'
         if stderr is None:
-            stderr = '/dev/null'
+            stderr = 'condor_$(DAGManJobId).err'
         if log is None:
-            log = '/dev/null'
+            log = 'condor_$(DAGManJobId).log'
         if not os.path.exists(prog):
             prog = os.path.join(cwd, prog)
+        if self.checkpointing:
+            argument = [prog] + argument
         if argument:
             argument = 'Arguments = %s' % ' '.join([str(a) for a in argument])
         else:
@@ -1156,10 +1165,54 @@ class CondorCluster(Cluster):
         dico = {'prog': prog, 'cwd': cwd, 'stdout': stdout, 
                 'stderr': stderr,'log': log,'argument': argument,
                 'requirement': requirement, 'input_files':input_files, 
-                'output_files':output_files, 'walltime': walltime, 'vacatetime': ''}
+                'output_files':output_files, 'walltime': walltime, 'vacatetime': '',
+                'spool_on_evict': ''}
+
+        if self.checkpointing:
+
+            if MADEVENT:
+                wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_driver.sh')
+            else:
+                wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_driver.sh')
+
+            dico['prog'] = wrapper
+            dico['argument'] = argument
+            dico['output_files'] += ',dmtcp_$(DAGManJobId)'
+            dico['spool_on_evict'] = '+SpoolOnEvict = False'
+
+            if not 'dmtcp' in self.options or not self.options['dmtcp']\
+                or self.options['dmtcp'] == 'None':
+                raise ClusterManagmentError('checkpointing selected, but DMTCP path not set')
+
+            if os.path.exists(pjoin(self.options['dmtcp'], 'bin'))\
+                and os.path.exists(pjoin(self.options['dmtcp'], 'lib')):
+                dico['dmtcp_path'] = self.options['dmtcp']
+            else:
+                raise ClusterManagmentError(f'DMTCP path {self.options["dmtcp"]} does not exist or DMTCP not istalled.')
+
+            if 'cluster_vacatetime' in self.options and self.options['cluster_vacatetime']\
+                and self.options['cluster_vacatetime'] != 'None':
+                vacatetime = self.options['cluster_vacatetime']
+                dico['vacatetime'] = f'+JobMaxVacateTime = {vacatetime}'
+
+            with tempfile.NamedTemporaryFile(mode="w", dir=cwd, delete=False) as submit_file:
+                submit_file.write((text % dico))
+                submit_filename = submit_file.name
+
+            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\nVARS job restart_count="$(RETRY)"\n'
+
+            with tempfile.NamedTemporaryFile(mode="w", dir=cwd, delete=False) as dag_file:
+                dag_file.write((text % dico))
+                dag_filename = dag_file.name
+
+            command = ['condor_submit_dag', dag_filename]
+            text = """"""
+
+        else:
+            command = ['condor_submit']
 
         #open('submit_condor','w').write(text % dico)
-        a = subprocess.Popen(['condor_submit'], stdout=subprocess.PIPE,
+        a = subprocess.Popen(command, stdout=subprocess.PIPE,
                              stdin=subprocess.PIPE)
         output, _ = a.communicate((text % dico).encode())
         #output = a.stdout.read()
@@ -1255,9 +1308,11 @@ class CondorCluster(Cluster):
         
         if not self.submitted_ids:
             return
-        cmd = "condor_rm %s" % ' '.join(self.submitted_ids)
-        
-        status = misc.Popen([cmd], shell=True, stdout=open(os.devnull,'w'))
+        for i in range(0, len(self.submitted_ids), 100):
+            cmd = "condor_rm %s" % ' '.join(self.submitted_ids[i:i+100])
+            status = misc.Popen([cmd], shell=True, stdout=open(os.devnull,'w'))
+            time.sleep(5)
+
         self.submitted_ids = []
         
 class PBSCluster(Cluster):
