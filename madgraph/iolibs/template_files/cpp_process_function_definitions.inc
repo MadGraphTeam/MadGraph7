@@ -43,7 +43,7 @@ double CPPProcess::sigmaKin(int flavor_id, bool mirror) {
 //--------------------------------------------------------------------------
 // Evaluate |M|^2 for each subprocess
 
-int CPPProcess::broken_sym(int* flavor)
+int CPPProcess::broken_sym(const int* flavor)
 {
     int old_factor = %(get_old_symmmetry_value)s;
     %(get_pid)s

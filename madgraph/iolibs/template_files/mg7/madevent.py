@@ -1,24 +1,34 @@
 import os
 import time
-import argparse
 from datetime import timedelta
-from types import SimpleNamespace
 import glob
 import json
 import subprocess
 import logging
-from collections import defaultdict
 from dataclasses import dataclass
+from typing import Literal
 try:
     import tomllib
 except ModuleNotFoundError:
     # for versions before 3.11
     import pip._vendor.tomli as tomllib
 
+if "LHAPDF_DATA_PATH" in os.environ:
+    PDF_PATH = os.environ["LHAPDF_DATA_PATH"]
+else:
+    try:
+        import lhapdf
+        lhapdf.setVerbosity(0)
+        PDF_PATH = lhapdf.paths()[0]
+    except ImportError:
+        raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
+
 import madevent7 as me
 from models.check_param_card import ParamCard
+#from madgraph.interface.common_run_interface import CommonRunCmd, AskforEditCard
+#from madgraph.interface.extended_cmd import Cmd
 
-logger = logging.getLogger('madgraph.madnis')
+logger = logging.getLogger("madevent7")
 
 
 def get_start_time():
@@ -39,28 +49,53 @@ def print_run_time(start):
 class Channel:
     phasespace_mapping: me.PhaseSpaceMapping
     adaptive_mapping: me.Flow | me.VegasMapping
-    integrand: me.Integrand
-    amp2_remap: list[int] | None
-    active_flavors: list[int]
+    discrete_before: me.DiscreteSampler | me.DiscreteFlow | None
+    discrete_after: me.DiscreteSampler | me.DiscreteFlow | None
     channel_weight_indices: list[int] | None
+
+
+@dataclass
+class PhaseSpace:
+    mode: Literal["multichannel", "flat", "both"]
+    channels: list[Channel]
+    symfact: list[int | None]
+    amp2_remap: list[int]
 
 
 class MadgraphProcess:
     def __init__(self):
-        with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
-            self.run_card = tomllib.load(f)
-        self.param_card = ParamCard(os.path.join("Cards", "param_card.dat"))
-        with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
-            subprocess_data = json.load(f)
-
+        self.load_cards()
+        self.init_event_dir()
+        self.init_context()
         self.init_cuts()
         self.init_generator_config()
-        self.subprocesses = [
-            MadgraphSubprocess(self, meta, subproc_id)
-            for subproc_id, meta in enumerate(subprocess_data)
-        ]
+        self.init_beam()
+        self.init_subprocesses()
 
-    def init_cuts(self):
+    def load_cards(self) -> None:
+        with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
+            self.run_card = tomllib.load(f)
+        self.param_card_path = os.path.join("Cards", "param_card.dat")
+        self.param_card = ParamCard(self.param_card_path)
+        with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
+            self.subprocess_data = json.load(f)
+
+    def init_event_dir(self) -> None:
+        run_name = self.run_card["run"]["run_name"]
+        os.makedirs("Events", exist_ok=True)
+        existing_run_dirs = glob.glob(f"Events/{run_name}_*")
+        run_index = 1
+        while f"Events/{run_name}_{run_index:02d}" in existing_run_dirs:
+            run_index += 1
+        while True:
+            try:
+                self.run_path = f"Events/{run_name}_{run_index:02d}"
+                os.mkdir(self.run_path)
+                break
+            except FileExistsError:
+                run_index += 1
+
+    def init_cuts(self) -> None:
         observables = {
             "pt": me.Cuts.obs_pt,
             "eta": me.Cuts.obs_eta,
@@ -103,7 +138,38 @@ class MadgraphProcess:
                     me.CutItem(me.Cuts.obs_sqrt_s, me.Cuts.max, sqs_args["max"], [])
                 )
 
-    def init_generator_config(self):
+    def init_beam(self) -> None:
+        beam_args = self.run_card["beam"]
+
+        self.e_cm2 = beam_args["e_cm"]**2
+
+        dynamical_scales = {
+            "transverse_energy": me.EnergyScale.transverse_energy,
+            "transverse_mass": me.EnergyScale.transverse_mass,
+            "half_transverse_mass": me.EnergyScale.half_transverse_mass,
+            "partonic_energy": me.EnergyScale.partonic_energy,
+        }
+        if beam_args["dynamical_scale_choice"] in dynamical_scales:
+            dynamical_scale_type = dynamical_scales[beam_args["dynamical_scale_choice"]]
+        else:
+            raise ValueError("Unknown dynamical scale choice")
+        self.scale_kwargs = dict(
+            dynamical_scale_type=dynamical_scale_type,
+            ren_scale_fixed=beam_args["fixed_ren_scale"],
+            fact_scale_fixed=beam_args["fixed_fact_scale"],
+            ren_scale=beam_args["ren_scale"],
+            fact_scale1=beam_args["fact_scale1"],
+            fact_scale2=beam_args["fact_scale2"],
+        )
+
+        pdf_set = beam_args["pdf"]
+        self.pdf_grid = me.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
+        self.pdf_grid.initialize_globals(self.context)
+        self.alphas_grid = me.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
+        self.alphas_grid.initialize_globals(self.context)
+        self.running_coupling = me.RunningCoupling(self.alphas_grid)
+
+    def init_generator_config(self) -> None:
         gen_args = self.run_card["generation"]
         vegas_args = self.run_card["vegas"]
         cfg = me.EventGeneratorConfig()
@@ -120,32 +186,63 @@ class MadgraphProcess:
         cfg.optimization_threshold = vegas_args["optimization_threshold"]
         self.event_generator_config = cfg
 
-    def run_survey(self):
+    def init_context(self) -> None:
+        device_name = self.run_card["run"]["device"]
+        if device_name == "cpu":
+            device = me.cpu_device()
+        elif device_name == "gpu":
+            device = me.gpu_device()
+        else:
+            raise ValueError("Unknown device")
+        self.context = me.Context()
+
+    def init_subprocesses(self) -> None:
+        self.subprocesses = []
+        for subproc_id, meta in enumerate(self.subprocess_data):
+            self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+
+    def survey(self) -> None:
         phasespace_mode = self.run_card["phasespace"]["mode"]
         if phasespace_mode == "multichannel":
-            channels = [
-                channel
+            phasespaces = [
+                subproc.build_multichannel_phasespace(build_flow=False)
                 for subproc in self.subprocesses
-                for channel in subproc.build_multichannel_phasespace(build_flow=False)
             ]
         elif phasespace_mode == "flat":
-            channels = [
-                channel
+            phasespaces = [
+                subproc.build_flat_phasespace(build_flow=False)
                 for subproc in self.subprocesses
-                for channel in subproc.build_flat_phasespace(build_flow=False)
             ]
         else:
             raise ValueError("Unknown phasespace mode")
 
-        event_generator = MadgraphEventGenerator(args, process, phasespace)
+        integrands = []
+        for subproc, phasespace in zip(self.subprocesses, phasespaces):
+            integrands.extend(subproc.build_integrands(phasespace))
+        print(integrands[0].function())
+
+        self.event_generator = me.EventGenerator(
+            self.context,
+            integrands,
+            os.path.join(self.run_path, "events.npy"),
+            self.event_generator_config,
+        )
 
         print()
         print("Running survey")
         start_time = get_start_time()
-        event_generator.survey()
+        self.event_generator.survey()
         print_run_time(start_time)
 
-        return event_generator
+    def train_madnis(self) -> None:
+        madnis_args = self.run_card["madnis"]
+        if not madnis_args["enable"]:
+            return
+        for subproc in self.subprocesses:
+            subproc.train_madnis()
+
+    def generate_events(self) -> None:
+        self.event_generator.generate()
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)
@@ -154,7 +251,7 @@ class MadgraphProcess:
         return self.param_card.get_value("width", pid)
 
 
-def clean_pids(pids: list[int])  -> list[int]:
+def clean_pids(pids: list[int]) -> list[int]:
     pids_out = []
     for pid in pids:
         pid = abs(pid)
@@ -170,9 +267,10 @@ class MadgraphSubprocess:
         self.meta = meta
         self.subproc_id = subproc_id
 
-        if not os.path.isfile(self.meta["path"]):
+        api_path = self.meta["path"]
+        if not os.path.isfile(api_path):
             cwd = os.getcwd()
-            api_dir = os.path.dirname(self.meta["path"])
+            api_dir = os.path.dirname(api_path)
             logger.info(f"Compiling subprocess {api_dir}")
             os.chdir(api_dir)
             subprocess.run(["make"])
@@ -185,17 +283,22 @@ class MadgraphSubprocess:
             self.process.get_mass(pid) for pid in clean_pids(self.meta["outgoing"])
         ]
         self.cuts = me.Cuts(clean_pids(self.meta["outgoing"]), self.process.cut_data)
-        self.differential_xs = me.Integrand(
 
+        self.scale = me.EnergyScale(
+            particle_count=len(self.incoming_masses) + len(self.outgoing_masses),
+            **self.process.scale_kwargs
         )
 
-    def build_multichannel_phasespace(
-        self, build_flow: bool
-    ) -> tuple[list[Channel], list[int]]:
+        self.me_index = self.process.context.load_matrix_element(
+            api_path, self.process.param_card_path
+        )
+
+    def build_multichannel_phasespace(self, build_flow: bool) -> PhaseSpace:
         t_channel_mode = self.t_channel_mode(
             self.process.run_card["phasespace"]["t_channel"]
         )
-        amp2_remap = [-1] * self.meta["diagram_count"]
+        diagram_count = self.meta["diagram_count"]
+        amp2_remap = [diagram_count] * diagram_count
         symfact = []
         channels = []
 
@@ -208,9 +311,7 @@ class MadgraphSubprocess:
             ]
             vertices = channel["vertices"]
             diagrams = channel["diagrams"]
-            permutations = [
-                [p - 2 for p in d["permutation"][2:]] for d in diagrams 
-            ] #TODO: full perm here in the future
+            permutations = [d["permutation"] for d in diagrams]
             channel_index = len(symfact)
             amp2_remap[diagrams[0]["diagram"]] = channel_index
             symfact.append(None)
@@ -221,63 +322,85 @@ class MadgraphSubprocess:
             diag = me.Diagram(
                 self.incoming_masses, self.outgoing_masses, propagators, vertices
             )
-            topology = me.Topology(diag, me.Topology.all_decays)
+            topology = me.Topology(diag)
             mapping = me.PhaseSpaceMapping(
                 topology,
                 self.process.e_cm2,
                 t_channel_mode=t_channel_mode,
                 cuts=self.cuts,
                 nu=self.process.run_card["phasespace"]["nu"],
-                permutations=permutations[1:], #TODO: probably wrong
+                permutations=permutations,
             )
-            prefix = f"subproc{self.subproc_id}_channel{channel_id}_"
+            prefix = f"subproc{self.subproc_id}.channel{channel_id}"
             channels.append(
                 Channel(
                     phasespace_mapping = mapping,
-                    adaptive_mapping = self.build_adaptive_mapping(mapping, prefix, build_flow),
-                    integrand = None,
-                    amp2_remap = amp2_remap,
-                    active_flavors = channel["active_flavors"],
+                    adaptive_mapping = self.build_adaptive_mapping(
+                        mapping, prefix, build_flow
+                    ),
+                    discrete_before = None,
+                    discrete_after = None,
                     channel_weight_indices = list(
                         range(channel_index, channel_index + len(permutations))
                     ),
                 )
             )
-        return channels, symfact
+        return PhaseSpace(
+            mode="multichannel",
+            channels=channels,
+            amp2_remap=amp2_remap,
+            symfact=symfact,
+        )
 
-    def build_flat_phasespace(self, build_flow: bool = False) -> Channel:
+    def build_flat_phasespace(self, build_flow: bool = False) -> PhaseSpace:
         mapping = me.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
             self.process.e_cm2,
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
-            cuts=self.cuts
+            cuts=self.cuts,
         )
-        prefix = f"subproc{self.subproc_id}_flat_"
-        return Channel(
+        prefix = f"subproc{self.subproc_id}.flat"
+        channel = Channel(
             phasespace_mapping = mapping,
             adaptive_mapping = self.build_adaptive_mapping(mapping, prefix, build_flow),
-            integrand = None,
-            amp2_remap = [0] * self.meta["diagram_count"],
-            active_flavors = list(range(len(self.meta["flavors"]))),
+            discrete_before = None,
+            discrete_after = None,
             channel_weight_indices = [0],
         )
+        return PhaseSpace(
+            mode="flat",
+            channels=[channel],
+            amp2_remap=[0] * self.meta["diagram_count"],
+            symfact=[0],
+        )
+
+    def build_vegas(self, random_dim: int, prefix: str) -> me.VegasMapping:
+        vegas = me.VegasMapping(
+            random_dim,
+            self.process.run_card["vegas"]["bins"],
+            prefix,
+        )
+        vegas.initialize_global(self.process.context)
+        return vegas
+
+    def build_flow(self, random_dim: int, prefix: str) -> me.Flow:
+        madnis_args = self.meta["madnis"]
+        flow = me.Flow(
+            random_dim,
+            condition_dim=0,
+            #TODO: flow args
+        )
+        flow.initialize_globals(self.process.context)
+        return flow
 
     def build_adaptive_mapping(
         self, mapping: me.PhaseSpaceMapping, prefix: str, build_flow: bool
     ) -> me.Flow | me.VegasMapping:
+        random_dim = mapping.random_dim()
         if build_flow:
-            madnis_args = self.meta["madnis"]
-            return me.Flow(
-                input_dim=mapping.random_dim(),
-                condition_dim=0,
-
-            )
+            return self.build_flow(random_dim, prefix)
         else:
-            return me.VegasMapping(
-                mapping.random_dim(),
-                self.process.run_card["vegas"]["bins"],
-                prefix,
-            )
+            return self.build_vegas(random_dim, prefix)
 
     def t_channel_mode(self, name: str) -> me.PhaseSpaceMapping.TChannelMode:
         modes = {
@@ -290,98 +413,65 @@ class MadgraphSubprocess:
         else:
             raise ValueError(f"Invalid t-channel mode '{name}'")
 
-
-class MadgraphEventGenerator:
-    def __init__(
-        self,
-        args: dict,
-        process: MadgraphProcess,
-        phasespace: Channel
-    ):
-        self.process = process
-        self.phasespace = phasespace
-        #self.n_channels = len(phasespace.mappings)
-        self.n_channels = sum(len(gids) for gids in phasespace.group_indices)
-        self.context = me.Context()
-
-        self.context.load_pdf(self.process.pdf_name, 0)
-        me_id = self.context.load_matrix_element(
-            self.process.api_path,
-            "Cards/param_card.dat",
-            0,
-            self.context.pdf_set().alpha_s(self.process.pdf_scale)
-        )
-        dxs = me.DifferentialCrossSection( #TODO: single process hardcoded for now
-            [(process.all_pid_options[0]["options"][0][0], me_id)],
+    def build_integrands(self, phasespace: PhaseSpace) -> list[me.Integrand]:
+        cross_section = me.DifferentialCrossSection(
+            self.meta["flavors"],
+            self.me_index,
+            self.process.running_coupling,
+            self.process.pdf_grid,
             self.process.e_cm2,
-            self.process.pdf_scale,
-            self.n_channels,
-            [] if self.n_channels == 1 else self.phasespace.amp2_remap,
+            self.scale,
+            False,
+            self.meta["diagram_count"],
+            phasespace.amp2_remap,
         )
         integrands = []
-        for i, (mapping, group_indices) in enumerate(zip(
-            self.phasespace.mappings, self.phasespace.group_indices
-        )):
-            vegas = me.VegasMapping(
-                mapping.random_dim(), args["vegas"]["bins"], f"channel_{i}"
-            )
-            vegas.initialize_global(self.context)
-            integrands.append(
-                me.Integrand(
-                    mapping,
-                    dxs,
-                    vegas,
-                    me.EventGenerator.integrand_flags,
-                    group_indices,
-                )
-            )
-        #print(integrands[0].function())
-        #print(integrands[1].function())
+        for channel in phasespace.channels:
+            integrands.append(me.Integrand(
+                channel.phasespace_mapping,
+                cross_section,
+                channel.adaptive_mapping,
+                channel.discrete_before,
+                channel.discrete_after,
+                self.process.pdf_grid,
+                self.scale,
+                None, #TODO: propagator channel weights
+                None, #TODO: cwnet
+                me.EventGenerator.integrand_flags,
+                channel.channel_weight_indices,
+            ))
+        return integrands
 
-        os.makedirs("Events", exist_ok=True)
-        existing_run_dirs = glob.glob("Events/run_*")
-        run_index = 1
-        while f"Events/run_{run_index:02d}" in existing_run_dirs:
-            run_index += 1
-        while True:
-            try:
-                run_path = f"Events/run_{run_index:02d}"
-                os.mkdir(run_path)
-                break
-            except FileExistsError:
-                run_index += 1
-
-        gen_args = args["generation"]
-        vegas_args = args["vegas"]
-        cfg = me.EventGeneratorConfig()
-        cfg.target_count = gen_args["events"]
-        cfg.vegas_damping = vegas_args["damping"]
-        cfg.max_overweight_fraction = gen_args["max_overweight_fraction"]
-        cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
-        cfg.start_batch_size = gen_args["start_batch_size"]
-        cfg.max_batch_size = gen_args["max_batch_size"]
-        cfg.survey_min_iters = gen_args["survey_min_iters"]
-        cfg.survey_max_iters = gen_args["survey_max_iters"]
-        cfg.survey_target_precision = gen_args["survey_target_precision"]
-        cfg.optimization_patience = vegas_args["optimization_patience"]
-        cfg.optimization_threshold = vegas_args["optimization_threshold"]
-        self.event_generator = me.EventGenerator(
-            self.context, integrands, os.path.join(run_path, "events.npy"), cfg
-        )
-
-    def survey(self):
-        self.event_generator.survey()
-
-    def generate(self):
-        self.event_generator.generate()
+    def train_madnis(self) -> None:
+        raise NotImplementedError()
 
 
+#TODO: some rather disgusting monkey-patching to make editing cards work
+#class MG7Cmd(Cmd):
+#    def __init__(self):
+#        super().__init__(".", {})
+#        self.proc_characteristics = None
+#    def do_open(self, line):
+#        CommonRunCmd.do_open(self, line)
+#    def check_open(self, args):
+#        CommonRunCmd.check_open(self, args)
+#old_define_paths = AskforEditCard.define_paths
+#def define_paths(self, **opt):
+#    old_define_paths(self, **opt)
+#    self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+#    self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+#AskforEditCard.define_paths = define_paths
+#AskforEditCard.reload_card = lambda self, path: None
 
-def main():
+def main() -> None:
+    #cmd = MG7Cmd()
+    #CommonRunCmd.ask_edit_card_static(
+    #    ["param_card.dat", "run_card.toml"],
+    #    pwd=".",
+    #    ask=cmd.ask,
+    #    plot=False
+    #)
     process = MadgraphProcess()
-    process.run_survey()
-    #event_generator = run_survey(args)
-    #start_time = get_start_time()
-    #event_generator.generate()
-    #print_run_time(start_time)
-
+    process.survey()
+    process.train_madnis()
+    process.generate_events()

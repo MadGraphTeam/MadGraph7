@@ -66,6 +66,6 @@ private:
   int jhel[2];
 
   // function to compute missing symmetry factors after flavor consolidation
-  int broken_sym(int* flavor);
+  int broken_sym(const int* flavor);
 
 };
