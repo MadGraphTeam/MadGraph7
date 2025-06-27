@@ -4075,7 +4075,7 @@ c     channel position
                     width = 'zero'
                     pow_part = 0
                 else:
-                    if (last_leg.get('id')!=7):
+                    if (last_leg.get('id')!=self.model.get_first_non_pdg()):
                       particle = particle_dict[last_leg.get('id')]
                       # Get mass
                       mass = particle.get('mass')
@@ -5490,6 +5490,9 @@ c           This is dummy particle used in multiparticle vertices
         # Write out number of configs
         lines.append("# Number of configs")
         lines.append("data mapconfig(0)/%d/" % nconfigs)
+
+        lines.append("#used fake id")
+        lines.append("data fake_id/%d/" %new_pdg)
 
         # Write the file
         writer.writelines(lines)
