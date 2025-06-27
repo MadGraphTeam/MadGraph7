@@ -361,8 +361,8 @@ c          print *,'colors: ',((icolmp(j,k),j=1,2),k=1,ncolmp)
           endif
          endif !end of check on LC
 
-c       Just zero helicity info for intermediate states
-          jpart(7,i) = 0
+c       Just No helicity info for intermediate states
+          jpart(7,i) = 9
         enddo                   ! do i
  100    continue
         if (is_LC) call check_pure_internal_flow(icolalt,jpart, maxcolor)
