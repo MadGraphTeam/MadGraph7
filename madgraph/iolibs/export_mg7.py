@@ -1,7 +1,7 @@
 import json
 import os
 
-from madgraph.various.diagram_symmetry import find_symmetry
+from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 
 def get_subprocess_info(matrix_element, proc_dir_name):
     model = matrix_element.get("processes")[0].get("model")
@@ -21,7 +21,9 @@ def get_subprocess_info(matrix_element, proc_dir_name):
             edge_names[number] = f"i{number - 1}"
             incoming[number - 1] = leg.get("id")
 
-    sym_indices, sym_perms, _ = find_symmetry(matrix_element)
+    sym_indices, sym_perms, _ = find_symmetry(
+        matrix_element, lambda diag: IdentifySGConfigTag(diag, model)
+    )
     diagrams = amplitude.get("diagrams")
     helas_diagrams = matrix_element.get("diagrams")
     #flavors, pdgs = matrix_element.get_external_flavors(return_pdgs=True)

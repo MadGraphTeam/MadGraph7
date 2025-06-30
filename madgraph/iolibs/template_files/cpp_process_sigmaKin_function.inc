@@ -55,4 +55,4 @@ if (sum_hel[mirror] == 0 || ntry[mirror] < 10){
     }
 }
 
-return multiplier * matrix_element / denominator * broken_sym(flavor);
+return multiplier * matrix_element / denominator; // * broken_sym(flavor);

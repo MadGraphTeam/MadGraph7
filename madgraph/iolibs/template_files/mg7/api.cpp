@@ -78,7 +78,7 @@ void compute_matrix_element_multichannel(
         const double* amp2 = process->getAmp2();
         for(uint64_t i_amp = 0; i_amp < CPPProcess::ndiagrams; ++i_amp) {
             double amp2_item = amp2[i_amp];
-            amp2_out[i_amp * stride + i_batch] += amp2_item;
+            amp2_out[i_amp * stride + i_batch] = amp2_item;
             chan_total += amp2_item;
         }
         for(uint64_t i_amp = 0; i_amp < CPPProcess::ndiagrams; ++i_amp) {

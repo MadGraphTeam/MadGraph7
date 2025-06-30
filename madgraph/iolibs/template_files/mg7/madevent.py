@@ -1,3 +1,4 @@
+import argparse
 import os
 import time
 from datetime import timedelta
@@ -25,8 +26,6 @@ else:
 
 import madevent7 as me
 from models.check_param_card import ParamCard
-#from madgraph.interface.common_run_interface import CommonRunCmd, AskforEditCard
-#from madgraph.interface.extended_cmd import Cmd
 
 logger = logging.getLogger("madevent7")
 
@@ -201,6 +200,33 @@ class MadgraphProcess:
         for subproc_id, meta in enumerate(self.subprocess_data):
             self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
 
+    def survey_phasespaces(
+        self, phasespaces: list[PhaseSpace], mode: str | None = None
+    ) -> me.EventGenerator:
+        integrands = []
+        for subproc, phasespace in zip(self.subprocesses, phasespaces):
+            integrands.extend(subproc.build_integrands(phasespace))
+
+        event_generator = me.EventGenerator(
+            self.context,
+            integrands,
+            os.path.join(
+                self.run_path,
+                "events.npy" if mode is None else f"events_{mode}.npy",
+            ),
+            self.event_generator_config,
+        )
+
+        print()
+        if mode is None:
+            print("Running survey")
+        else:
+            print(f"Running survey for {mode} phasespace")
+        start_time = get_start_time()
+        event_generator.survey()
+        print_run_time(start_time)
+        return event_generator
+
     def survey(self) -> None:
         phasespace_mode = self.run_card["phasespace"]["mode"]
         if phasespace_mode == "multichannel":
@@ -208,31 +234,56 @@ class MadgraphProcess:
                 subproc.build_multichannel_phasespace(build_flow=False)
                 for subproc in self.subprocesses
             ]
+            self.event_generator = self.survey_phasespaces(phasespaces)
         elif phasespace_mode == "flat":
             phasespaces = [
                 subproc.build_flat_phasespace(build_flow=False)
                 for subproc in self.subprocesses
             ]
+            self.event_generator = self.survey_phasespaces(phasespaces)
+        elif phasespace_mode == "both":
+            phasespaces_multi = [
+                subproc.build_multichannel_phasespace(build_flow=False)
+                for subproc in self.subprocesses
+            ]
+            evgen_multi = self.survey_phasespaces(phasespaces_multi, "multichannel")
+
+            phasespaces_flat = [
+                subproc.build_flat_phasespace(build_flow=False)
+                for subproc in self.subprocesses
+            ]
+            evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
+
+            channel_status = evgen_multi.channel_status()
+            cross_sections = []
+            index = 0
+            for phasespace in phasespaces_multi:
+                channel_count = len(phasespace.channels)
+                cross_sections.append([
+                    status.mean
+                    for status in channel_status[index:index + channel_count]
+                ])
+                index += channel_count
+
+            phasespaces = [
+                subproc.simplify_phasespace(ps_multi, ps_flat, cross_secs)
+                for subproc, ps_multi, ps_flat, cross_secs in zip(
+                    self.subprocesses, phasespaces_multi, phasespaces_flat, cross_sections
+                )
+            ]
+            integrands = []
+            for subproc, phasespace in zip(self.subprocesses, phasespaces):
+                integrands.extend(subproc.build_integrands(phasespace))
+
+            self.event_generator = me.EventGenerator(
+                self.context,
+                integrands,
+                os.path.join(self.run_path, "events.npy"),
+                self.event_generator_config,
+            )
+            self.event_generator.survey()
         else:
             raise ValueError("Unknown phasespace mode")
-
-        integrands = []
-        for subproc, phasespace in zip(self.subprocesses, phasespaces):
-            integrands.extend(subproc.build_integrands(phasespace))
-        print(integrands[0].function())
-
-        self.event_generator = me.EventGenerator(
-            self.context,
-            integrands,
-            os.path.join(self.run_path, "events.npy"),
-            self.event_generator_config,
-        )
-
-        print()
-        print("Running survey")
-        start_time = get_start_time()
-        self.event_generator.survey()
-        print_run_time(start_time)
 
     def train_madnis(self) -> None:
         madnis_args = self.run_card["madnis"]
@@ -242,7 +293,9 @@ class MadgraphProcess:
             subproc.train_madnis()
 
     def generate_events(self) -> None:
+        start_time = get_start_time()
         self.event_generator.generate()
+        print_run_time(start_time)
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)
@@ -298,7 +351,8 @@ class MadgraphSubprocess:
             self.process.run_card["phasespace"]["t_channel"]
         )
         diagram_count = self.meta["diagram_count"]
-        amp2_remap = [diagram_count] * diagram_count
+
+        amp2_remap = [-1] * diagram_count
         symfact = []
         channels = []
 
@@ -332,19 +386,22 @@ class MadgraphSubprocess:
                 permutations=permutations,
             )
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
-            channels.append(
-                Channel(
-                    phasespace_mapping = mapping,
-                    adaptive_mapping = self.build_adaptive_mapping(
-                        mapping, prefix, build_flow
-                    ),
-                    discrete_before = None,
-                    discrete_after = None,
-                    channel_weight_indices = list(
-                        range(channel_index, channel_index + len(permutations))
-                    ),
-                )
-            )
+            channels.append(Channel(
+                phasespace_mapping = mapping,
+                adaptive_mapping = self.build_adaptive_mapping(
+                    mapping, prefix, build_flow
+                ),
+                discrete_before = None,
+                discrete_after = None,
+                channel_weight_indices = list(
+                    range(channel_index, channel_index + len(permutations))
+                ),
+            ))
+        diags_before_symmetries = len(symfact)
+        amp2_remap = [
+            diags_before_symmetries if remap == -1 else remap
+            for remap in amp2_remap
+        ]
         return PhaseSpace(
             mode="multichannel",
             channels=channels,
@@ -374,6 +431,73 @@ class MadgraphSubprocess:
             symfact=[0],
         )
 
+    def simplify_phasespace(
+        self,
+        multi_phasespace: PhaseSpace,
+        flat_phasespace: PhaseSpace | None,
+        cross_sections: list[float]
+    ) -> PhaseSpace:
+        assert multi_phasespace.mode == "multichannel"
+
+        kept_count = self.process.run_card["phasespace"]["simplified_channel_count"]
+        if len(multi_phasespace.channels) <= kept_count:
+            return multi_phasespace
+
+        assert flat_phasespace is not None and flat_phasespace.mode == "flat"
+        #TODO: need to be careful here in the case of flavor sampling
+        #TODO: come up with some smarter heuristic than just channel cross section
+        kept_channels = [
+            index
+            for index, cs in sorted(
+                enumerate(cross_sections), key=lambda pair: pair[1], reverse=True
+            )
+        ][:kept_count]
+
+        channels = []
+        channel_map = {}
+        symfact = []
+        for old_chan_index in kept_channels:
+            channel = multi_phasespace.channels[old_chan_index]
+            perm_count = max(1, channel.phasespace_mapping.channel_count())
+            channel_index = len(symfact)
+            symfact.append(None)
+            symfact.extend([channel_index] * (perm_count - 1))
+            channel_map.update({
+                old_index: new_index
+                for new_index, old_index in enumerate(
+                    channel.channel_weight_indices, start=channel_index
+                )
+            })
+            channels.append(Channel(
+                phasespace_mapping = channel.phasespace_mapping,
+                adaptive_mapping = channel.adaptive_mapping,
+                discrete_before = channel.discrete_before,
+                discrete_after = channel.discrete_after,
+                channel_weight_indices = list(range(
+                    channel_index, channel_index + perm_count
+                )),
+            ))
+
+        flat_channel = flat_phasespace.channels[0]
+        channels.append(Channel(
+            phasespace_mapping = flat_channel.phasespace_mapping,
+            adaptive_mapping = flat_channel.adaptive_mapping,
+            discrete_before = flat_channel.discrete_before,
+            discrete_after = flat_channel.discrete_after,
+            channel_weight_indices = [len(symfact)],
+        ))
+        flat_index = len(symfact)
+        symfact.append(None)
+        channel_map[len(multi_phasespace.symfact)] = len(symfact)
+        amp2_remap = [
+            channel_map.get(remap, flat_index)
+            for remap in multi_phasespace.amp2_remap
+        ]
+
+        return PhaseSpace(
+            mode="both", channels=channels, amp2_remap=amp2_remap, symfact=symfact
+        )
+
     def build_vegas(self, random_dim: int, prefix: str) -> me.VegasMapping:
         vegas = me.VegasMapping(
             random_dim,
@@ -386,9 +510,14 @@ class MadgraphSubprocess:
     def build_flow(self, random_dim: int, prefix: str) -> me.Flow:
         madnis_args = self.meta["madnis"]
         flow = me.Flow(
-            random_dim,
+            input_dim=random_dim,
             condition_dim=0,
-            #TODO: flow args
+            prefix=prefix,
+            bin_count=madnis_args["flow_spline_bins"],
+            subnet_hidden_dim=madnis_args["flow_hidden_dim"],
+            subnet_layers=madnis_args["flow_layers"],
+            subnet_activation=self.activation(madnis_args["flow_activation"]),
+            invert_spline=madnis_args["flow_invert_spline"],
         )
         flow.initialize_globals(self.process.context)
         return flow
@@ -402,6 +531,17 @@ class MadgraphSubprocess:
         else:
             return self.build_vegas(random_dim, prefix)
 
+    def build_cwnet(self) -> me.ChannelWeightNetwork:
+        madnis_args = self.meta["madnis"]
+        #return me.ChannelWeightNetwork(
+        #    channel_count=
+        #    particle_count=
+        #    hidden_dim=madnis_args["cwnet_hidden_dim"]
+        #    layers=madnis_args["cwnet_layers"]
+        #    activation=self.activation(madnis_args["cwnet_activation"]),
+        #    prefix=
+        #)
+
     def t_channel_mode(self, name: str) -> me.PhaseSpaceMapping.TChannelMode:
         modes = {
             "propagator": me.PhaseSpaceMapping.propagator,
@@ -413,6 +553,15 @@ class MadgraphSubprocess:
         else:
             raise ValueError(f"Invalid t-channel mode '{name}'")
 
+    def activation(self, name: str) -> me.MLP.Activation:
+        activations = {
+            "leaky_relu": me.MLP.leaky_relu,
+        }
+        if name in activations:
+            return activations[name]
+        else:
+            raise ValueError(f"Invalid activation function '{name}'")
+
     def build_integrands(self, phasespace: PhaseSpace) -> list[me.Integrand]:
         cross_section = me.DifferentialCrossSection(
             self.meta["flavors"],
@@ -422,7 +571,7 @@ class MadgraphSubprocess:
             self.process.e_cm2,
             self.scale,
             False,
-            self.meta["diagram_count"],
+            len(phasespace.symfact),
             phasespace.amp2_remap,
         )
         integrands = []
@@ -446,31 +595,43 @@ class MadgraphSubprocess:
         raise NotImplementedError()
 
 
-#TODO: some rather disgusting monkey-patching to make editing cards work
-#class MG7Cmd(Cmd):
-#    def __init__(self):
-#        super().__init__(".", {})
-#        self.proc_characteristics = None
-#    def do_open(self, line):
-#        CommonRunCmd.do_open(self, line)
-#    def check_open(self, args):
-#        CommonRunCmd.check_open(self, args)
-#old_define_paths = AskforEditCard.define_paths
-#def define_paths(self, **opt):
-#    old_define_paths(self, **opt)
-#    self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
-#    self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
-#AskforEditCard.define_paths = define_paths
-#AskforEditCard.reload_card = lambda self, path: None
+def ask_edit_cards() -> None:
+    #TODO: these imports break when trying to generate flame graphs, so do them locally for now
+    from madgraph.interface.common_run_interface import CommonRunCmd, AskforEditCard
+    from madgraph.interface.extended_cmd import Cmd
+
+    #TODO: some rather disgusting monkey-patching to make editing cards work
+    class MG7Cmd(Cmd):
+        def __init__(self):
+            super().__init__(".", {})
+            self.proc_characteristics = None
+        def do_open(self, line):
+            CommonRunCmd.do_open(self, line)
+        def check_open(self, args):
+            CommonRunCmd.check_open(self, args)
+    old_define_paths = AskforEditCard.define_paths
+    def define_paths(self, **opt):
+        old_define_paths(self, **opt)
+        self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+        self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+    AskforEditCard.define_paths = define_paths
+    AskforEditCard.reload_card = lambda self, path: None
+
+    cmd = MG7Cmd()
+    CommonRunCmd.ask_edit_card_static(
+        ["param_card.dat", "run_card.toml"],
+        pwd=".",
+        ask=cmd.ask,
+        plot=False
+    )
 
 def main() -> None:
-    #cmd = MG7Cmd()
-    #CommonRunCmd.ask_edit_card_static(
-    #    ["param_card.dat", "run_card.toml"],
-    #    pwd=".",
-    #    ask=cmd.ask,
-    #    plot=False
-    #)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
+    args = parser.parse_args()
+    if args.ask_edit_cards:
+        ask_edit_cards()
+
     process = MadgraphProcess()
     process.survey()
     process.train_madnis()

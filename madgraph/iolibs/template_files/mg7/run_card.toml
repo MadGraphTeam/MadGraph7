@@ -15,19 +15,19 @@ dynamical_scale_choice = "half_transverse_mass"
 
 [generation]
 events = 10000
-max_overweight_fraction = 0.1
-max_overweight_truncation = 0.1
+max_overweight_fraction = 0.01
+max_overweight_truncation = 0.01
 start_batch_size = 1000
-max_batch_size = 64000
+max_batch_size = 16000
 survey_min_iters = 3
 survey_max_iters = 3
 survey_target_precision = 0.1
 
 [vegas]
 bins = 64
-damping = 0.2
-optimization_patience = 3
-optimization_threshold = 0.99
+damping = 0.4
+optimization_patience = 5
+optimization_threshold = 0.95
 
 [phasespace]
 mode = "multichannel" #options: multichannel, flat, both
@@ -35,7 +35,8 @@ sde_strategy = "diagrams" #options: diagrams, denominators
 decays = "all" # options: all, massive, none
 t_channel = "propagator" # options: propagator, rambo, chili
 flat_mode = "rambo" # options: propagator, rambo, chili
-nu = 0.8
+simplified_channel_count = 10
+nu = 0.7
 
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon
@@ -51,23 +52,24 @@ sqrt_s.min = 0.0
 enable = false
 
 # normalizing flow parameters
-units = 32
-layers = 3
-spline_bins = 10
-blocks = 6
-permutations = "log" # options: "log", "random", "exchange"
-loss = "stratified_variance" # options: "stratified_variance", "kl_divergence", "rkl_divergence"
+flow_hidden_dim = 32
+flow_layers = 3
+flow_spline_bins = 10
+flow_activation = "leaky_relu" # options: leaky_relu
+flow_invert_spline = false
 
 # discrete dimensions
-discrete_position = "first" # options: "first", "last"
+discrete_hidden_dim = 64
 discrete_layers = 3
-discrete_nodes_per_feature = 8
+discrete_activation = "leaky_relu"
 
 # channel weight network
-mcw_units = 64
-mcw_layers = 3
+cwnet_hidden_dim = 64
+cwnet_layers = 3
+cwnet_activation = "leaky_relu"
 
 # training parameters
+loss = "stratified_variance" # options: stratified_variance, kl_divergence, rkl_divergence
 train_batches = 1250
 log_interval = 100
 batch_size_offset = 512
@@ -75,7 +77,7 @@ batch_size_per_channel = 128
 lr = 1e-3
 lr_decay = 0.01
 lr_max = 3e-3
-lr_scheduler = "cosine" # options: "exponential", "inverse", "onecycle", "cosine", "none"
+lr_scheduler = "cosine" # options: exponential, inverse, onecycle, cosine, none
 train_mcw = true
 buffer_capacity = 0
 minimum_buffer_size = 50000
@@ -87,5 +89,5 @@ channel_dropping_threshold = 0.001
 channel_dropping_interval = 300
 drop_zero_integrands = true
 batch_size_threshold = 0.5
-channel_grouping_mode = "uniform" # options: "none", "uniform", "learned"
+channel_grouping_mode = "uniform" # options: none, uniform, learned
 fixed_cwnet_fraction = 0.33
