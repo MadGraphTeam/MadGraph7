@@ -276,15 +276,15 @@ c***************************************************************************
       do i=1,mapconfig(0)
          if (use_config(i) .gt. 0) then
             if (mapconfig(i) .lt. 10) then
-               write(26,'(i1$)') mapconfig(i)
+               write(26,'(i1,$)') mapconfig(i)
             elseif (mapconfig(i) .lt. 100) then
-               write(26,'(i2$)') mapconfig(i)
+               write(26,'(i2,$)') mapconfig(i)
             elseif (mapconfig(i) .lt. 1000) then
-               write(26,'(i3$)') mapconfig(i)
+               write(26,'(i3,$)') mapconfig(i)
             elseif (mapconfig(i) .lt. 10000) then
-               write(26,'(i4$)') mapconfig(i)
+               write(26,'(i4,$)') mapconfig(i)
             endif
-            write(26,'(a$)') ' '
+            write(26,'(a,$)') ' '
          endif
       enddo
       close(26)
