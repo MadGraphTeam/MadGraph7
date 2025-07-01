@@ -255,6 +255,11 @@ ANNOUNCEMENT:
             - EW<=X / EW^2<=X is equivalent to QED<=X / QED^2<=X
 
                         ** Long Term Stable Update **
+2.9.25 ():
+  OM: (thanks to SungBeom Cho) crash when running  multi_run during the merging of multiple lhe file if 
+      MadSpin was activated (if the BR was different of one). If the BR=1, the merging was going trough but 
+      the merged sample will contains both decay and undecay sample making that file pointless.
+      (fixed first in 3.5.9)
 
 2.9.24 (23/05/25)
     OM: Fix Some compilation issue with GCC15 compiler

@@ -2563,6 +2563,12 @@ class decay_all_events(object):
                 part_for_curr_evt=event_map[part-1]+1 # index for curr event
                 pid=self.curr_event.particle[part_for_curr_evt]['pid']
                 self.curr_event.particle[part_for_curr_evt]['helicity']=helicities[part-1]
+        for index in self.curr_event.resonance:
+            #part=self.curr_event.event2mg[index]       # index for production ME
+            #part_for_curr_evt=event_map[part-1]+1 # index for curr event
+            self.curr_event.resonance[index]['helicity']=9 
+            #part['helicity'] = 9    
+
 
     def get_mom(self,momenta):
         """ input: list of momenta in a string format 
