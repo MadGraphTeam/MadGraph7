@@ -3728,7 +3728,6 @@ class decay_all_events(object):
                 else:
                     # now we need to write the decay products in the event
                     # follow the decay chain order, so that we can easily keep track of the mother index
-                       
                     map_to_part_number={}
                     for res in range(-1,-len(list(decay_struct[part]["tree"].keys()))-1,-1):
                         index_res_for_mom=decay_struct[part]['mg_tree'][-res-1][0]
@@ -3744,7 +3743,7 @@ class decay_all_events(object):
                             decay_struct[part]["tree"][res]["colup1"]=colup1
                             decay_struct[part]["tree"][res]["colup2"]=colup2
                             mass=mom.m
-                            helicity=0.
+                            helicity=9.
                             decayed_event.particle[part_number]={"pid":pid,\
                                 "istup":istup,"mothup1":mothup1,"mothup2":mothup2,\
                                 "colup1":colup1,"colup2":colup2,"momentum":mom,\
