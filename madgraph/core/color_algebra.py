@@ -355,6 +355,11 @@ class d(f):
 class Epsilon(ColorObject):
     """Epsilon_ijk color object for three triplets"""
 
+    # flag to deactiate some analytical rule, used for testing/debugging
+    rule_eps_T = True
+    rule_eps_aeps_sum = True
+    rule_eps_aeps_nosum = True
+    
     def __init__(self, *args):
         """Ensure e_ijk objects have strictly 3 indices"""
 
@@ -396,7 +401,25 @@ class Epsilon(ColorObject):
 
     def pair_simplify(self, col_obj):
         """Implement e_ijk ae_ilm = T(j,l)T(k,m) - T(j,m)T(k,l) and
-        e_ijk T(l,k) = e_ikl"""
+        e_ijk T(l,k) = e_ikl
+        epsilon(i,j,k) * epsilon_bar(l,m,n) =
+    +  delta(i,l) * delta(j,m) * delta(k,n)
+    +  delta(i,m) * delta(j,n) * delta(k,l)
+    +  delta(i,n) * delta(j,l) * delta(k,m)
+    -  delta(i,n) * delta(j,m) * delta(k,l)
+    -  delta(i,m) * delta(j,l) * delta(k,n)
+    -  delta(i,l) * delta(j,n) * delta(k,m)
+        
+        """
+
+        # e_ijk T(l,k) = e_ikl
+        if self.rule_eps_T and isinstance(col_obj, T) and len(col_obj) == 2 and col_obj[1] in self:
+
+            com_index = self.index(col_obj[1])
+            new_self = copy.copy(self)
+            new_self[com_index] = col_obj[0]
+
+            return ColorFactor([ColorString([new_self])])
 
         # e_ijk ae_ilm = T(j,l)T(k,m) - T(j,m)T(k,l)
         if isinstance(col_obj, EpsilonBar):
@@ -410,26 +433,76 @@ class Epsilon(ColorObject):
                     com_index_eps = self.index(i)
                     com_index_aeps = col_obj.index(i)
 
-            if incommon:
+            if self.rule_eps_aeps_sum and incommon:
                 eps_indices = self[com_index_eps:] + self[:com_index_eps]
                 aeps_indices = col_obj[com_index_aeps:] + col_obj[:com_index_aeps]
                 col_str1 = ColorString([T(eps_indices[1], aeps_indices[1]),
                                        T(eps_indices[2], aeps_indices[2])])
+                col_str1.coeff = fractions.Fraction(1, 1)
                 col_str2 = ColorString([T(eps_indices[1], aeps_indices[2]),
                                        T(eps_indices[2], aeps_indices[1])])
 
-                col_str2.coeff = fractions.Fraction(-1, 1)
+                col_str2.coeff = fractions.Fraction(-1, 1 )
 
                 return ColorFactor([col_str1, col_str2])
+            elif self.rule_eps_aeps_nosum:
+                #epsilon(i,j,k) * epsilon_bar(l,m,n) = + delta(i,l) * delta(j,m) * delta(k,n)
+                #                                       + delta(i,m) * delta(j,n) * delta(k,l)
+                #                                       + delta(i,n) * delta(j,l) * delta(k,m)
+                #                                       - delta(i,n) * delta(j,m) * delta(k,l)
+                #                                       - delta(i,m) * delta(j,l) * delta(k,n)
+                #                                       - delta(i,l) * delta(j,n) * delta(k,m)
 
-        # e_ijk T(l,k) = e_ikl
-        if isinstance(col_obj, T) and len(col_obj) == 2 and col_obj[1] in self:
+                i , j, k =self[:]
+                l, m, n = col_obj[:]
+                delta = lambda x, y: T(x, y)
+                out = ColorFactor([
+                    ColorString([delta(i, l), delta(j, m), delta(k, n)]), # N_c
+                    ColorString([delta(i, m), delta(j, n), delta(k, l)]), # N_c
+                    ColorString([delta(i, n), delta(j, l), delta(k, m)]), # N_c
+                    ColorString([delta(i, n), delta(j, m), delta(k, l)]), # N_c#.set_coeff(-1),
+                    ColorString([delta(i, m), delta(j, l), delta(k, n)]), # N_c#.set_coeff(-1),
+                    ColorString([delta(i, l), delta(j, n), delta(k, m)]), # N_c#.set_coeff(-1)                   
+                ])
+                
+                out[3].coeff = fractions.Fraction(-1, 1)
+                out[4].coeff = fractions.Fraction(-1, 1)
+                out[5].coeff = fractions.Fraction(-1, 1)
+           
 
-            com_index = self.index(col_obj[1])
-            new_self = copy.copy(self)
-            new_self[com_index] = col_obj[0]
+                
+                return out
 
-            return ColorFactor([ColorString([new_self])])
+                col_str1 = ColorString([T(eps_indices[0], aeps_indices[0]),
+                                        T(eps_indices[1], aeps_indices[1]),
+                                        T(eps_indices[2], aeps_indices[2])])
+                col_str2 = ColorString([T(eps_indices[0], aeps_indices[1]),
+                                        T(eps_indices[1], aeps_indices[2]),
+                                        T(eps_indices[2], aeps_indices[0])])
+                col_str3 = ColorString([T(eps_indices[0], aeps_indices[2]),
+                                        T(eps_indices[1], aeps_indices[0]),
+                                        T(eps_indices[2], aeps_indices[1])])
+                col_str4 = ColorString([T(eps_indices[0], aeps_indices[2]),
+                                        T(eps_indices[1], aeps_indices[1]),
+                                        T(eps_indices[2], aeps_indices[0])])
+                col_str5 = ColorString([T(eps_indices[0], aeps_indices[1]),
+                                        T(eps_indices[1], aeps_indices[0]),
+                                        T(eps_indices[2], aeps_indices[2])])
+                col_str6 = ColorString([T(eps_indices[0], aeps_indices[0]),
+                                        T(eps_indices[1], aeps_indices[2]),
+                                        T(eps_indices[2], aeps_indices[1])])
+                col_str1.coeff = fractions.Fraction(1, 1)
+                col_str2.coeff = fractions.Fraction(1, 1)
+                col_str3.coeff = fractions.Fraction(1, 1)
+                col_str4.coeff = fractions.Fraction(-1, 1)
+                col_str5.coeff = fractions.Fraction(-1, 1)
+                col_str6.coeff = fractions.Fraction(-1, 1)
+                return ColorFactor([col_str1, col_str2, col_str3,
+                                    col_str4, col_str5, col_str6])
+
+
+
+
 
 
     def complex_conjugate(self):
@@ -442,6 +515,8 @@ class Epsilon(ColorObject):
 class EpsilonBar(ColorObject):
     """Epsilon_ijk color object for three antitriplets"""
 
+    rule_aeps_T = True
+
     def __init__(self, *args):
         """Ensure e_ijk objects have strictly 3 indices"""
 
@@ -452,13 +527,14 @@ class EpsilonBar(ColorObject):
         """Implement ebar_ijk T(k,l) = e_ikl"""
 
         # ebar_ijk T(k,l) = ebar_ijl
-        if isinstance(col_obj, T) and len(col_obj) == 2 and col_obj[0] in self:
+        if EpsilonBar.rule_aeps_T and isinstance(col_obj, T) and len(col_obj) == 2 and col_obj[0] in self:
 
             com_index = self.index(col_obj[0])
             new_self = copy.copy(self)
             new_self[com_index] = col_obj[1]
 
             return ColorFactor([ColorString([new_self])])
+        
 
     def simplify(self):
         """Implement epsilon(i,k,j) = -epsilon(i,j,k) i<j<k"""
@@ -483,6 +559,7 @@ class EpsilonBar(ColorObject):
 # Color sextet objects: K6, K6Bar, T6
 #                       Note that delta3 = T, delta6 = T6, delta8 = 2 Tr
 # This 2 Tr is weird and should be check why it is not the expected 1/2.
+# . -> follow convention of 0909.2666 where T_f = 1/2
 #===============================================================================
 
 class K6(ColorObject):
@@ -494,6 +571,16 @@ class K6(ColorObject):
 
         super(K6, self).__init__()
         assert len(args) == 3, "sextet color objects must have three indices!"
+
+    def simplify(self):
+        """Implement that K6(m,i,j) = K6(m,j,i) if j<i"""
+        if self[2] > self[1]:
+            new = self[:]
+            new[1], new[2] = new[2], new[1]
+            return ColorFactor([ColorString([K6(*new)])])
+
+
+
 
     def pair_simplify(self, col_obj):
         """Implement the replacement rules
@@ -559,6 +646,13 @@ class K6Bar(ColorObject):
         super(K6Bar, self).__init__()
         assert len(args) == 3, "sextet color objects must have three indices!"
 
+    def simplify(self):
+        """Implement that K6bar(m,i,j) = K6Bar(m,j,i) if j<i"""
+        if self[2] > self[1]:
+            new = self[:]
+            new[1], new[2] = new[2], new[1]
+            return ColorFactor([ColorString([K6Bar(*new)])])
+
     def pair_simplify(self, col_obj):
         """Implement the replacement rules
         delta3(i,j)K6Bar(m,j,k) = K6Bar(m,i,k)
@@ -576,13 +670,15 @@ class K6Bar(ColorObject):
     def complex_conjugate(self):
         """Complex conjugation. By default, the ordering of color index is
         reversed. Can be overwritten for specific color objects like T,..."""
-
-        return K6(*self)
+        raise Exception("Complex conjugation of K6Bar is not implemented. ")
+        l1 = self[:]
+        l1[1],l1[2] = l1[2], l1[1]
+        return K6(l1)
 
 class T6(ColorObject):
     """The T6 sextet trace color object."""
 
-    new_index = 10000
+    new_index = -100
 
     def __init__(self, *args):
         """Check for exactly three indices"""
@@ -610,9 +706,9 @@ class T6(ColorObject):
 
         # Set new indices according to the Mathematica template
         ii = T6.new_index
-        jj = ii + 1
-        kk = jj + 1
-        T6.new_index += 3
+        jj = ii - 1
+        kk = jj - 1
+        T6.new_index -= 3
         # Create the resulting color objects
         col_string = ColorString([K6(self[1], ii, jj),
                                   T(self[0], jj, kk),
@@ -628,6 +724,7 @@ class T6(ColorObject):
 
         if len(self) == 3:
             return
+        # From here this means self has two args -> delta6
 
         if isinstance(col_obj, T6) and len(col_obj) == 2:
             #delta6(i,j)delta6(j,k) = delta6(i,k)
@@ -753,6 +850,9 @@ class ColorString(list):
                 if not res:
                     res = col_obj2.pair_simplify(col_obj1)
                 if res:
+                    #misc.sprint("Pair simplification found for %s and %s: %s" % \
+                    #            (col_obj1, col_obj2, res))
+                    ColorFactor.nb_try +=1
                     res_col_factor = ColorFactor()
                     for second_col_str in res:
                         first_col_str = copy.copy(self)
@@ -761,6 +861,7 @@ class ColorString(list):
                         first_col_str.product(second_col_str)
                         first_col_str.sort()
                         res_col_factor.append(first_col_str)
+                    #misc.sprint("Pair simplification result: %s" % res_col_factor)
                     return res_col_factor
 
         return None
@@ -886,18 +987,18 @@ class ColorString(list):
 #       STEP 2: rename the summation indices so that they are increasing (starting from 10000)
 #               from left to right
         replaced_indices = {}
-        curr_ind = 10000
+        curr_ind = -10000
         return_list = []
 
         for elem in immutable_order2:
             can_elem = [elem[0], []]
             for index in elem[1]:
-              if index>9999:  # consider only summation indices
+              if index<-9999:  # consider only summation indices
                 try:
                     new_index = replaced_indices[index]
                 except KeyError:
                     new_index = curr_ind
-                    curr_ind += 1
+                    curr_ind -= 1
                     replaced_indices[index] = new_index
               else: new_index=index
               can_elem[1].append(new_index)
@@ -1040,9 +1141,14 @@ class ColorFactor(list):
         """Simplify the current color factor until the result is stable"""
 
         result = copy.copy(self)
+        ColorFactor.nb_try=0
         while(True):
             ref = copy.copy(result)
             result = result.simplify()
+            if ColorFactor.nb_try >=2000:
+                misc.sprint("ColorFactor full_simplify: %s" % result)
+                misc.sprint("nb", ColorFactor.nb_try)
+                return result
             if result == ref:
                 return result
 

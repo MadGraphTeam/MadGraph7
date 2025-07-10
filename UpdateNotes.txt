@@ -9,6 +9,8 @@ ANNOUNCMENT:
       MadSpin was activated (if the BR was different of one). If the BR=1, the merging was going trough but 
       the merged sample will contains both decay and undecay sample making that file pointless.
       (fixed first in 3.5.9)
+  OM (thanks to Julien for the help) fixing wrong color computation in presence of sextet where the color matrix
+     was wrong starting at 2>4
 
 2.9.24 (23/05/25)
     OM: Fix Some compilation issue with GCC15 compiler

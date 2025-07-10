@@ -18,6 +18,7 @@ for a diagram and build a color basis, and to square a QCD color string for
 squared diagrams and interference terms."""
 
 from __future__ import absolute_import
+import collections
 import copy
 import fractions
 import operator
@@ -641,6 +642,16 @@ class ColorMatrix(dict):
 
         # Complex conjugate the second one and multiply the two
         col_str.product(col_str2.complex_conjugate())
+        if __debug__:
+            #check that no index is repeating more than twice
+            nb_indices = collections.defaultdict(int)
+            for col_obj in col_str:
+                for index in col_obj[:]:
+                    nb_indices[index] += 1
+            assert all([nb <= 2 for nb in nb_indices.values()]), \
+                        "Color string %s has indices appearing more than twice: %s" % \
+                        (str(col_str), nb_indices)
+
 
         # Create a color factor to store the result and simplify it
         # taking into account the limit on Nc
