@@ -210,9 +210,13 @@ class TestMadSpin(unittest.TestCase):
             muon_in = 0
             self.assertEqual(event.nexternal, len(event))
             for particle in event:
+                if particle.status == 2:
+                    self.assertEqual(particle.helicity, 9)
+                    nb_dec +=1
+                    continue
                 if particle.pdg == 23:
                     if particle.status == 1:
-                        nb_notdec += 1
+                        nb_notdec += 1    
                     else: 
                         nb_dec += 1
                 if particle.pdg == 13:
