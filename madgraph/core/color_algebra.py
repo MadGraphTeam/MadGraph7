@@ -358,8 +358,7 @@ class Epsilon(ColorObject):
     # flag to deactiate some analytical rule, used for testing/debugging
     rule_eps_T = True
     rule_eps_aeps_sum = True
-    rule_eps_aeps_nosum = False # this set to True (temporarely) only when no other simplifications 
-                                # are possible in full_simplity 
+    rule_eps_aeps_nosum = True  
     
     def __init__(self, *args):
         """Ensure e_ijk objects have strictly 3 indices"""
@@ -1145,10 +1144,7 @@ class ColorFactor(list):
             ref = copy.copy(result)
             result = result.simplify()
             if result == ref:
-                with misc.TMP_variable(Epsilon, 'rule_eps_aeps_nosum',True):
-                    result = result.simplify()
-                    if result == ref:
-                        return result
+                return result
 
     def set_Nc(self, Nc=3):
         """Returns a tuple containing real and imaginary parts of the current
