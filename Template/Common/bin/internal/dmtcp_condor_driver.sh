@@ -13,7 +13,6 @@ if [ -z "${SHARED_DIR+x}" ]; then
     if [ -d "$src" ]; then
         echo "$(date) - Transferring checkpoint files from $src..." | tee -a $out
         cp -r "$src" .
-        sed -i -E "s|/sandbox|$DMTCP_CHECKPOINT_DIR|g" $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh
     fi
 else
     if [ -d "$SHARED_DIR" ]; then
@@ -49,9 +48,6 @@ timeout() {
         echo "$(date) - Checkpoint creation failed. Requeuing..." | tee -a $out
     else
         rm $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
-        if [ -z "${SHARED_DIR+x}" ]; then
-            sed -i -E "s|$DMTCP_CHECKPOINT_DIR|/sandbox|g" $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh
-        fi
         echo "$(date) - Checkpoint created. Requeuing..." | tee -a $out
     fi
     script -qfc "dmtcp_command --quit" | tee -a $out 2>&1
@@ -64,7 +60,8 @@ trap "timeout" SIGTERM
 
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
     echo "$(date) - Resuming from checkpoint" | tee -a $out
-    script -qfc "/bin/bash $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT" | tee -a $out 2>&1 &
+    script -qfc "/bin/bash $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh \
+        -d $DMTCP_CHECKPOINT_DIR -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT" | tee -a $out 2>&1 &
 else
     export EXECUTE="dmtcp_launch --allow-file-overwrite $@"
     script -qfc "$EXECUTE" | tee -a $out 2>&1 &
