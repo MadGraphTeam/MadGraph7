@@ -957,7 +957,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); SHARED_DIR=%(cwd)s; DMTCP_PATH=%(dmtcp_path)s
+                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(RETRY); SHARED_DIR=%(cwd)s; DMTCP_PATH=%(dmtcp_path)s
                   Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
@@ -1097,7 +1097,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); DMTCP_PATH=%(dmtcp_path)s; INITIAL_DIR=%(cwd)s
+                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(RETRY); DMTCP_PATH=%(dmtcp_path)s; INITIAL_DIR=%(cwd)s
                   %(spool_on_evict)s
                   should_transfer_files = YES
                   when_to_transfer_output = ON_EXIT

@@ -59,7 +59,7 @@ timeout() {
 trap "timeout" SIGTERM
 
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
-    echo "$(date) - Resuming from checkpoint" | tee -a $out
+    echo "$(date) - Resuming from checkpoint. Restart: ${CONDOR_RESTART_COUNT}" | tee -a $out
     script -qfc "/bin/bash $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh \
         -d $DMTCP_CHECKPOINT_DIR -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT" | tee -a $out 2>&1 &
 else
