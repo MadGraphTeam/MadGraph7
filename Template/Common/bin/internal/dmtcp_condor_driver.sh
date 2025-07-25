@@ -37,7 +37,7 @@ timeout() {
     if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
         mv $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
     fi
-    dmtcp_command -bcheckpoint
+    script -qfc "dmtcp_command -bcheckpoint" | tee -a $out 2>&1
     count=0
     while [ ! -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ] && [ $count -lt 10 ]; do
         echo "$(date) - Waiting for checkpoint..." | tee -a $out
@@ -54,7 +54,7 @@ timeout() {
         fi
         echo "$(date) - Checkpoint created. Requeuing..." | tee -a $out
     fi
-    dmtcp_command --quit
+    script -qfc "dmtcp_command --quit" | tee -a $out 2>&1
     sleep 10
     exit 85
 }
@@ -64,9 +64,10 @@ trap "timeout" SIGTERM
 
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
     echo "$(date) - Resuming from checkpoint" | tee -a $out
-    /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT | tee -a $out &
+    script -qfc "/bin/bash $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT" | tee -a $out 2>&1 &
 else
-    dmtcp_launch --allow-file-overwrite $@ | tee -a $out 2>&1 &
+    export EXECUTE="dmtcp_launch --allow-file-overwrite $@"
+    script -qfc "$EXECUTE" | tee -a $out 2>&1 &
 fi
 
 wait

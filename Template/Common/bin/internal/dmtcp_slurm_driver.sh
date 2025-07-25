@@ -22,7 +22,7 @@ timeout() {
     if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
         mv $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
     fi
-    dmtcp_command -bcheckpoint
+    script -qfc "dmtcp_command -bcheckpoint"
     count=0
     while [ ! -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ] && [ $count -lt 10 ]; do
         echo "$(date) - Waiting for checkpoint..."
@@ -36,7 +36,7 @@ timeout() {
         rm $DMTCP_CHECKPOINT_DIR/dmtcp_restart_script_prev.sh
         echo "$(date) - Checkpoint created. Requeuing..."
     fi
-    dmtcp_command --quit
+    script -qfc "dmtcp_command --quit"
     sleep 2
     scontrol requeue $SLURM_JOB_ID
     sleep 10
@@ -48,9 +48,10 @@ trap "timeout" USR1
 
 if [[ -e "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" ]]; then
     echo "$(date) - Resuming from checkpoint. Restart: ${SLURM_RESTART_COUNT}"
-    srun /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT &
+    script -qfc "srun /bin/bash "$DMTCP_CHECKPOINT_DIR/dmtcp_restart_script.sh" -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT" &
 else
-    srun dmtcp_launch --allow-file-overwrite $@ &
+    export EXECUTE="srun dmtcp_launch --allow-file-overwrite $@"
+    script -qfc "$EXECUTE" &
 fi
 
 wait
