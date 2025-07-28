@@ -1103,6 +1103,7 @@ class CondorCluster(Cluster):
                   when_to_transfer_output = ON_EXIT
                   transfer_input_files = %(input_files)s
                   %(output_files)s
+                  max_transfer_output_mb = -1
                   Universe = vanilla
                   notification = Error
                   Initialdir = %(cwd)s
