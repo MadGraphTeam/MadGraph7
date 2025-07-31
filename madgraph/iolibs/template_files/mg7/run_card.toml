@@ -55,18 +55,18 @@ enable = false
 flow_hidden_dim = 32
 flow_layers = 3
 flow_spline_bins = 10
-flow_activation = "leaky_relu" # options: leaky_relu
+flow_activation = "leaky_relu" # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
 flow_invert_spline = false
 
 # discrete dimensions
 discrete_hidden_dim = 64
 discrete_layers = 3
-discrete_activation = "leaky_relu"
+discrete_activation = "leaky_relu" # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
 
 # channel weight network
 cwnet_hidden_dim = 64
 cwnet_layers = 3
-cwnet_activation = "leaky_relu"
+cwnet_activation = "leaky_relu" # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
 
 # training parameters
 loss = "stratified_variance" # options: stratified_variance, kl_divergence, rkl_divergence

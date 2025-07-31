@@ -59,6 +59,7 @@ class PhaseSpace:
     channels: list[Channel]
     symfact: list[int | None]
     amp2_remap: list[int]
+    cwnet: me.ChannelWeightNetwork | None = None
 
 
 class MadgraphProcess:
@@ -184,6 +185,7 @@ class MadgraphProcess:
         cfg.optimization_patience = vegas_args["optimization_patience"]
         cfg.optimization_threshold = vegas_args["optimization_threshold"]
         self.event_generator_config = cfg
+        self.event_generator = None
 
     def init_context(self) -> None:
         device_name = self.run_card["run"]["device"]
@@ -200,21 +202,24 @@ class MadgraphProcess:
         for subproc_id, meta in enumerate(self.subprocess_data):
             self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
 
-    def survey_phasespaces(
-        self, phasespaces: list[PhaseSpace], mode: str | None = None
+    def build_event_generator(
+        self, phasespaces: list[PhaseSpace], file: str
     ) -> me.EventGenerator:
         integrands = []
         for subproc, phasespace in zip(self.subprocesses, phasespaces):
             integrands.extend(subproc.build_integrands(phasespace))
-
-        event_generator = me.EventGenerator(
+        return me.EventGenerator(
             self.context,
             integrands,
-            os.path.join(
-                self.run_path,
-                "events.npy" if mode is None else f"events_{mode}.npy",
-            ),
+            os.path.join(self.run_path, file),
             self.event_generator_config,
+        )
+
+    def survey_phasespaces(
+        self, phasespaces: list[PhaseSpace], mode: str | None = None
+    ) -> me.EventGenerator:
+        event_generator = self.build_event_generator(
+            phasespaces, "events.npy" if mode is None else f"events_{mode}.npy"
         )
 
         print()
@@ -230,26 +235,26 @@ class MadgraphProcess:
     def survey(self) -> None:
         phasespace_mode = self.run_card["phasespace"]["mode"]
         if phasespace_mode == "multichannel":
-            phasespaces = [
-                subproc.build_multichannel_phasespace(build_flow=False)
+            self.phasespaces = [
+                subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces)
         elif phasespace_mode == "flat":
-            phasespaces = [
-                subproc.build_flat_phasespace(build_flow=False)
+            self.phasespaces = [
+                subproc.build_flat_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces)
         elif phasespace_mode == "both":
             phasespaces_multi = [
-                subproc.build_multichannel_phasespace(build_flow=False)
+                subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
             evgen_multi = self.survey_phasespaces(phasespaces_multi, "multichannel")
 
             phasespaces_flat = [
-                subproc.build_flat_phasespace(build_flow=False)
+                subproc.build_flat_phasespace()
                 for subproc in self.subprocesses
             ]
             evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
@@ -265,23 +270,17 @@ class MadgraphProcess:
                 ])
                 index += channel_count
 
-            phasespaces = [
+            self.phasespaces = [
                 subproc.simplify_phasespace(ps_multi, ps_flat, cross_secs)
                 for subproc, ps_multi, ps_flat, cross_secs in zip(
                     self.subprocesses, phasespaces_multi, phasespaces_flat, cross_sections
                 )
             ]
-            integrands = []
-            for subproc, phasespace in zip(self.subprocesses, phasespaces):
-                integrands.extend(subproc.build_integrands(phasespace))
 
-            self.event_generator = me.EventGenerator(
-                self.context,
-                integrands,
-                os.path.join(self.run_path, "events.npy"),
-                self.event_generator_config,
-            )
-            self.event_generator.survey()
+            if not self.run_card["madnis"]["enable"]:
+                self.event_generator = self.build_event_generator(self.phasespaces, "events.npy")
+                #TODO: avoid to run survey again
+                self.event_generator.survey()
         else:
             raise ValueError("Unknown phasespace mode")
 
@@ -289,8 +288,15 @@ class MadgraphProcess:
         madnis_args = self.run_card["madnis"]
         if not madnis_args["enable"]:
             return
-        for subproc in self.subprocesses:
-            subproc.train_madnis()
+
+        madnis_phasespaces = []
+        for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            phasespace = subproc.build_madnis(phasespace)
+            subproc.train_madnis(phasespace)
+            madnis_phasespaces.append(phasespace)
+        self.phasespaces = madnis_phasespaces
+        self.event_generator = self.build_event_generator(madnis_phasespaces, "events.npy")
+        self.event_generator.survey() #TODO: avoid
 
     def generate_events(self) -> None:
         start_time = get_start_time()
@@ -335,18 +341,18 @@ class MadgraphSubprocess:
         self.outgoing_masses = [
             self.process.get_mass(pid) for pid in clean_pids(self.meta["outgoing"])
         ]
+        self.particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         self.cuts = me.Cuts(clean_pids(self.meta["outgoing"]), self.process.cut_data)
 
         self.scale = me.EnergyScale(
-            particle_count=len(self.incoming_masses) + len(self.outgoing_masses),
-            **self.process.scale_kwargs
+            particle_count=self.particle_count, **self.process.scale_kwargs
         )
 
         self.me_index = self.process.context.load_matrix_element(
             api_path, self.process.param_card_path
         )
 
-    def build_multichannel_phasespace(self, build_flow: bool) -> PhaseSpace:
+    def build_multichannel_phasespace(self) -> PhaseSpace:
         t_channel_mode = self.t_channel_mode(
             self.process.run_card["phasespace"]["t_channel"]
         )
@@ -388,9 +394,7 @@ class MadgraphSubprocess:
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
             channels.append(Channel(
                 phasespace_mapping = mapping,
-                adaptive_mapping = self.build_adaptive_mapping(
-                    mapping, prefix, build_flow
-                ),
+                adaptive_mapping = self.build_vegas(mapping, prefix),
                 discrete_before = None,
                 discrete_after = None,
                 channel_weight_indices = list(
@@ -419,7 +423,7 @@ class MadgraphSubprocess:
         prefix = f"subproc{self.subproc_id}.flat"
         channel = Channel(
             phasespace_mapping = mapping,
-            adaptive_mapping = self.build_adaptive_mapping(mapping, prefix, build_flow),
+            adaptive_mapping = self.build_vegas(mapping, prefix),
             discrete_before = None,
             discrete_after = None,
             channel_weight_indices = [0],
@@ -428,7 +432,7 @@ class MadgraphSubprocess:
             mode="flat",
             channels=[channel],
             amp2_remap=[0] * self.meta["diagram_count"],
-            symfact=[0],
+            symfact=[None],
         )
 
     def simplify_phasespace(
@@ -446,6 +450,7 @@ class MadgraphSubprocess:
         assert flat_phasespace is not None and flat_phasespace.mode == "flat"
         #TODO: need to be careful here in the case of flavor sampling
         #TODO: come up with some smarter heuristic than just channel cross section
+        #TODO: deal with resonances in a smart way
         kept_channels = [
             index
             for index, cs in sorted(
@@ -498,49 +503,60 @@ class MadgraphSubprocess:
             mode="both", channels=channels, amp2_remap=amp2_remap, symfact=symfact
         )
 
-    def build_vegas(self, random_dim: int, prefix: str) -> me.VegasMapping:
+    def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
+        madnis_args = self.process.run_card["madnis"]
+        channels = []
+        for channel_id, channel in enumerate(phasespace.channels):
+            flow = me.Flow(
+                input_dim=channel.phasespace_mapping.random_dim(),
+                condition_dim=0,
+                prefix=f"subproc{self.subproc_id}.channel{channel_id}",
+                bin_count=madnis_args["flow_spline_bins"],
+                subnet_hidden_dim=madnis_args["flow_hidden_dim"],
+                subnet_layers=madnis_args["flow_layers"],
+                subnet_activation=self.activation(madnis_args["flow_activation"]),
+                invert_spline=madnis_args["flow_invert_spline"],
+            )
+            flow.initialize_from_vegas(
+                self.process.context, channel.adaptive_mapping.grid_name()
+            )
+            channels.append(Channel(
+                phasespace_mapping = channel.phasespace_mapping,
+                adaptive_mapping = flow,
+                discrete_before = channel.discrete_before, #TODO: build discrete flows
+                discrete_after = channel.discrete_after,
+                channel_weight_indices = channel.channel_weight_indices,
+            ))
+
+        return PhaseSpace(
+            mode="both",
+            channels=channels,
+            amp2_remap=phasespace.amp2_remap,
+            symfact=phasespace.symfact,
+            cwnet=self.build_cwnet(len(phasespace.symfact)),
+        )
+
+    def build_vegas(self, mapping: me.PhaseSpaceMapping, prefix: str) -> me.VegasMapping:
         vegas = me.VegasMapping(
-            random_dim,
+            mapping.random_dim(),
             self.process.run_card["vegas"]["bins"],
             prefix,
         )
         vegas.initialize_global(self.process.context)
         return vegas
 
-    def build_flow(self, random_dim: int, prefix: str) -> me.Flow:
-        madnis_args = self.meta["madnis"]
-        flow = me.Flow(
-            input_dim=random_dim,
-            condition_dim=0,
-            prefix=prefix,
-            bin_count=madnis_args["flow_spline_bins"],
-            subnet_hidden_dim=madnis_args["flow_hidden_dim"],
-            subnet_layers=madnis_args["flow_layers"],
-            subnet_activation=self.activation(madnis_args["flow_activation"]),
-            invert_spline=madnis_args["flow_invert_spline"],
+    def build_cwnet(self, channel_count: int) -> me.ChannelWeightNetwork:
+        madnis_args = self.process.run_card["madnis"]
+        cwnet = me.ChannelWeightNetwork(
+            channel_count=channel_count,
+            particle_count=self.particle_count,
+            hidden_dim=madnis_args["cwnet_hidden_dim"],
+            layers=madnis_args["cwnet_layers"],
+            activation=self.activation(madnis_args["cwnet_activation"]),
+            prefix=f"subproc{self.subproc_id}.cwnet",
         )
-        flow.initialize_globals(self.process.context)
-        return flow
-
-    def build_adaptive_mapping(
-        self, mapping: me.PhaseSpaceMapping, prefix: str, build_flow: bool
-    ) -> me.Flow | me.VegasMapping:
-        random_dim = mapping.random_dim()
-        if build_flow:
-            return self.build_flow(random_dim, prefix)
-        else:
-            return self.build_vegas(random_dim, prefix)
-
-    def build_cwnet(self) -> me.ChannelWeightNetwork:
-        madnis_args = self.meta["madnis"]
-        #return me.ChannelWeightNetwork(
-        #    channel_count=
-        #    particle_count=
-        #    hidden_dim=madnis_args["cwnet_hidden_dim"]
-        #    layers=madnis_args["cwnet_layers"]
-        #    activation=self.activation(madnis_args["cwnet_activation"]),
-        #    prefix=
-        #)
+        cwnet.initialize_globals(self.process.context)
+        return cwnet
 
     def t_channel_mode(self, name: str) -> me.PhaseSpaceMapping.TChannelMode:
         modes = {
@@ -555,14 +571,23 @@ class MadgraphSubprocess:
 
     def activation(self, name: str) -> me.MLP.Activation:
         activations = {
+            "relu": me.MLP.relu,
             "leaky_relu": me.MLP.leaky_relu,
+            "elu": me.MLP.elu,
+            "gelu": me.MLP.gelu,
+            "sigmoid": me.MLP.sigmoid,
+            "softplus": me.MLP.softplus,
         }
         if name in activations:
             return activations[name]
         else:
             raise ValueError(f"Invalid activation function '{name}'")
 
-    def build_integrands(self, phasespace: PhaseSpace) -> list[me.Integrand]:
+    def build_integrands(
+        self,
+        phasespace: PhaseSpace,
+        flags: int = me.EventGenerator.integrand_flags
+    ) -> list[me.Integrand]:
         cross_section = me.DifferentialCrossSection(
             self.meta["flavors"],
             self.me_index,
@@ -585,14 +610,118 @@ class MadgraphSubprocess:
                 self.process.pdf_grid,
                 self.scale,
                 None, #TODO: propagator channel weights
-                None, #TODO: cwnet
-                me.EventGenerator.integrand_flags,
+                phasespace.cwnet,
+                flags,
                 channel.channel_weight_indices,
             ))
         return integrands
 
-    def train_madnis(self) -> None:
-        raise NotImplementedError()
+    def train_madnis(self, phasespace: PhaseSpace) -> None:
+        #TODO: split up into multiple functions and move to separate file
+        print("Training MadNIS")
+
+        import torch
+        import numpy as np
+        from madnis.integrator import (
+            ChannelGrouping, Integrator, stratified_variance, kl_divergence, rkl_divergence
+        )
+        from madevent7.madnis import build_madnis_integrand, MADNIS_INTEGRAND_FLAGS
+
+        madnis_args = self.process.run_card["madnis"]
+        integrands = self.build_integrands(phasespace, MADNIS_INTEGRAND_FLAGS)
+        channel_grouping = (
+            None if phasespace.symfact is None else ChannelGrouping(phasespace.symfact)
+        )
+        madnis_integrand, flow, cwnet = build_madnis_integrand(
+            integrands, phasespace.cwnet, channel_grouping, self.process.context
+        )
+        
+        loss = {
+            "stratified_variance": stratified_variance,
+            "kl_divergence": kl_divergence,
+            "rkl_divergence": rkl_divergence,
+        }[madnis_args["loss"]]
+
+        def build_scheduler(optimizer):
+            if madnis_args["lr_scheduler"] == "exponential":
+                decay_rate = madnis_args["lr_decay"] ** (1 / max(madnis_args["train_batches"], 1))
+                return torch.optim.lr_scheduler.ExponentialLR(
+                    optimizer, gamma=decay_rate
+                )
+            elif madnis_args["lr_scheduler"] == "onecycle":
+                return torch.optim.lr_scheduler.OneCycleLR(
+                    optimizer,
+                    max_lr=madnis_args["lr_max"],
+                    total_steps=madnis_args["train_batches"],
+                )
+            elif madnis_args["lr_scheduler"] == "cosine":
+                return torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer, T_max=madnis_args["train_batches"]
+                )
+            else:
+                return None
+
+        integrator = Integrator(
+            integrand=madnis_integrand,
+            flow=flow,
+            train_channel_weights=cwnet is not None,
+            cwnet=cwnet,
+            loss=loss,
+            batch_size=madnis_args["batch_size_offset"],
+            batch_size_per_channel=madnis_args["batch_size_per_channel"],
+            learning_rate=madnis_args["lr"],
+            scheduler=build_scheduler,
+            uniform_channel_ratio=madnis_args["uniform_channel_ratio"],
+            integration_history_length=madnis_args["integration_history_length"],
+            drop_zero_integrands=madnis_args["drop_zero_integrands"],
+            batch_size_threshold=madnis_args["batch_size_threshold"],
+            buffer_capacity=madnis_args["buffer_capacity"],
+            minimum_buffer_size=madnis_args["minimum_buffer_size"],
+            buffered_steps=madnis_args["buffered_steps"],
+            max_stored_channel_weights=madnis_args["max_stored_channel_weights"],
+            channel_dropping_threshold=madnis_args["channel_dropping_threshold"],
+            channel_dropping_interval=madnis_args["channel_dropping_interval"],
+            channel_grouping_mode="uniform",
+            freeze_cwnet_iteration=int(
+                madnis_args["train_batches"] * (1 - madnis_args["fixed_cwnet_fraction"])
+            ),
+            device=torch.device("cpu"),
+            dtype=torch.float64,
+        )
+
+        online_losses = []
+        buffered_losses = []
+        train_results = []
+        log_interval = madnis_args["log_interval"]
+        def callback(status):
+            if status.buffered:
+                buffered_losses.append(status.loss)
+            else:
+                online_losses.append(status.loss)
+            batch = status.step + 1
+            if batch % log_interval != 0:
+                return
+            online_loss = np.mean(online_losses)
+            info = [f"Batch {batch:6d}: loss={online_loss:.6f}"]
+            batch_results = {"batch": batch, "online_loss": online_loss}
+            if len(buffered_losses) > 0:
+                buffered_loss = np.mean(buffered_losses)
+                info.append(f"buf={buffered_loss:.6f}")
+                batch_results["buffered_loss"] = buffered_loss
+            if status.learning_rate is not None:
+                info.append(f"lr={status.learning_rate:.4e}")
+                batch_results["learning_rate"] = status.learning_rate
+            if status.dropped_channels > 0:
+                info.append(f"drop={status.dropped_channels}")
+                batch_results["dropped_channels"] = status.dropped_channels
+            train_results.append(batch_results)
+            print(", ".join(info))
+            online_losses.clear()
+            buffered_losses.clear()
+
+        start_time = get_start_time()
+        integrator.train(madnis_args["train_batches"], callback)
+        print_run_time(start_time)
 
 
 def ask_edit_cards() -> None:
