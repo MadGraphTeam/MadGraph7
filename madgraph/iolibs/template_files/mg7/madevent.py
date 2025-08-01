@@ -635,7 +635,7 @@ class MadgraphSubprocess:
         madnis_integrand, flow, cwnet = build_madnis_integrand(
             integrands, phasespace.cwnet, channel_grouping, self.process.context
         )
-        
+
         loss = {
             "stratified_variance": stratified_variance,
             "kl_divergence": kl_divergence,
@@ -644,7 +644,9 @@ class MadgraphSubprocess:
 
         def build_scheduler(optimizer):
             if madnis_args["lr_scheduler"] == "exponential":
-                decay_rate = madnis_args["lr_decay"] ** (1 / max(madnis_args["train_batches"], 1))
+                decay_rate = madnis_args["lr_decay"] ** (
+                    1 / max(madnis_args["train_batches"], 1)
+                )
                 return torch.optim.lr_scheduler.ExponentialLR(
                     optimizer, gamma=decay_rate
                 )
@@ -691,7 +693,6 @@ class MadgraphSubprocess:
 
         online_losses = []
         buffered_losses = []
-        train_results = []
         log_interval = madnis_args["log_interval"]
         def callback(status):
             if status.buffered:
@@ -703,18 +704,14 @@ class MadgraphSubprocess:
                 return
             online_loss = np.mean(online_losses)
             info = [f"Batch {batch:6d}: loss={online_loss:.6f}"]
-            batch_results = {"batch": batch, "online_loss": online_loss}
             if len(buffered_losses) > 0:
                 buffered_loss = np.mean(buffered_losses)
                 info.append(f"buf={buffered_loss:.6f}")
-                batch_results["buffered_loss"] = buffered_loss
             if status.learning_rate is not None:
                 info.append(f"lr={status.learning_rate:.4e}")
-                batch_results["learning_rate"] = status.learning_rate
             if status.dropped_channels > 0:
                 info.append(f"drop={status.dropped_channels}")
-                batch_results["dropped_channels"] = status.dropped_channels
-            train_results.append(batch_results)
+
             print(", ".join(info))
             online_losses.clear()
             buffered_losses.clear()
@@ -722,6 +719,14 @@ class MadgraphSubprocess:
         start_time = get_start_time()
         integrator.train(madnis_args["train_batches"], callback)
         print_run_time(start_time)
+
+        phasespace.channels = [
+            channel
+            for channel, active in zip(
+                phasespace.channels, integrator.active_channels_mask
+            )
+            if active
+        ]
 
 
 def ask_edit_cards() -> None:
