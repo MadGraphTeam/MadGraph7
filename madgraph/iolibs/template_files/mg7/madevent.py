@@ -141,7 +141,7 @@ class MadgraphProcess:
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
 
-        self.e_cm2 = beam_args["e_cm"]**2
+        self.e_cm = beam_args["e_cm"]
 
         dynamical_scales = {
             "transverse_energy": me.EnergyScale.transverse_energy,
@@ -385,10 +385,10 @@ class MadgraphSubprocess:
             topology = me.Topology(diag)
             mapping = me.PhaseSpaceMapping(
                 topology,
-                self.process.e_cm2,
+                self.process.e_cm,
                 t_channel_mode=t_channel_mode,
                 cuts=self.cuts,
-                nu=self.process.run_card["phasespace"]["nu"],
+                invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                 permutations=permutations,
             )
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -416,7 +416,7 @@ class MadgraphSubprocess:
     def build_flat_phasespace(self, build_flow: bool = False) -> PhaseSpace:
         mapping = me.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
-            self.process.e_cm2,
+            self.process.e_cm,
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
         )
@@ -542,7 +542,7 @@ class MadgraphSubprocess:
             self.process.run_card["vegas"]["bins"],
             prefix,
         )
-        vegas.initialize_global(self.process.context)
+        vegas.initialize_globals(self.process.context)
         return vegas
 
     def build_cwnet(self, channel_count: int) -> me.ChannelWeightNetwork:
@@ -593,7 +593,7 @@ class MadgraphSubprocess:
             self.me_index,
             self.process.running_coupling,
             self.process.pdf_grid,
-            self.process.e_cm2,
+            self.process.e_cm,
             self.scale,
             False,
             len(phasespace.symfact),

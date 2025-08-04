@@ -15,7 +15,7 @@ dynamical_scale_choice = "half_transverse_mass"
 
 [generation]
 events = 10000
-max_overweight_fraction = 0.01
+max_overweight_fraction = 1.0
 max_overweight_truncation = 0.01
 start_batch_size = 1000
 max_batch_size = 16000
@@ -27,16 +27,16 @@ survey_target_precision = 0.1
 bins = 64
 damping = 0.4
 optimization_patience = 5
-optimization_threshold = 0.95
+optimization_threshold = 0.9
 
 [phasespace]
-mode = "multichannel" #options: multichannel, flat, both
+mode = "both" #options: multichannel, flat, both
 sde_strategy = "diagrams" #options: diagrams, denominators
 decays = "all" # options: all, massive, none
 t_channel = "propagator" # options: propagator, rambo, chili
 flat_mode = "rambo" # options: propagator, rambo, chili
 simplified_channel_count = 10
-nu = 0.7
+invariant_power = 0.7
 
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon
@@ -49,10 +49,10 @@ jet.dR.min = 0.4
 sqrt_s.min = 0.0
 
 [madnis]
-enable = false
+enable = true
 
 # normalizing flow parameters
-flow_hidden_dim = 32
+flow_hidden_dim = 64
 flow_layers = 3
 flow_spline_bins = 10
 flow_activation = "leaky_relu" # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
@@ -70,7 +70,7 @@ cwnet_activation = "leaky_relu" # options: relu, leaky_relu, elu, gelu, sigmoid,
 
 # training parameters
 loss = "stratified_variance" # options: stratified_variance, kl_divergence, rkl_divergence
-train_batches = 1250
+train_batches = 1000
 log_interval = 100
 batch_size_offset = 512
 batch_size_per_channel = 128
