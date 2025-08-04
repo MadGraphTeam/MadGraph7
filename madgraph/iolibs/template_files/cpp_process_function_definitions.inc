@@ -48,12 +48,12 @@ int CPPProcess::broken_sym(const int* flavor)
     int old_factor = %(get_old_symmmetry_value)s;
     %(get_pid)s
     int nincoming = %(nincoming)d;
-    for (int i = 0; i < (nexternal - nincoming - 1); i++)
+    for (int i = 0; i < (nexternal - nincoming); i++)
     {
         if(pid[i] == 0)
             continue;
         int n_tot = 1;
-        for (int j = i + 1; j < (nexternal - nincoming - 1); j++)
+        for (int j = i + 1; j < (nexternal - nincoming); j++)
         {
             if((pid[i] == pid[j]) && (flavor[i] == flavor[j]))
             {
