@@ -19,7 +19,7 @@ public:
   CPPProcess(string param_card_name);
 
   // Calculate flavour-independent parts of cross section.
-  double sigmaKin(int flavor_id, bool mirror);
+  double sigmaKin(int flavor_id);
 
   // Info on the subprocess.
   string name()    const {return "%(process_definition)s";}
@@ -60,10 +60,10 @@ private:
   // Initial particle ids
   int id1, id2;
 
-  bool goodhel[2 * ncomb];
-  int ntry[2], sum_hel[2], ngood[2];
-  int igood[2 * ncomb];
-  int jhel[2];
+  bool goodhel[ncomb];
+  int ntry, sum_hel, ngood;
+  int igood[ncomb];
+  int jhel;
 
   // function to compute missing symmetry factors after flavor consolidation
   int broken_sym(const int* flavor);

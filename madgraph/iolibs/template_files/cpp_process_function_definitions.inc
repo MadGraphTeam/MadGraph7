@@ -18,7 +18,7 @@ CPPProcess::CPPProcess(string param_card_name) :
 //--------------------------------------------------------------------------
 // Evaluate |M|^2, part independent of incoming flavour. 
 
-double CPPProcess::sigmaKin(int flavor_id, bool mirror) { 
+double CPPProcess::sigmaKin(int flavor_id) { 
     // Set the parameters which change event by event
     pars.setDependentParameters();
     pars.setDependentCouplings();

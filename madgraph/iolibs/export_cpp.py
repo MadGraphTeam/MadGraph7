@@ -1190,7 +1190,7 @@ class OneProcessExporterCPP(object):
                 return replace_dict
 
     def get_flavor_table(self, matrix_element):
-        flavors = list(matrix_element.get_external_flavors_with_iden())
+        flavors = matrix_element.get_external_flavors_unique()
         flavor_multipliers = "{" + ",".join(str(len(f)) for f in flavors) + "}"
 
         flavor_dict = {
@@ -1201,21 +1201,13 @@ class OneProcessExporterCPP(object):
         flavor_table = []
         flavor_mirror_table = []
         for flavor in flavors:
-            aloha_flavor = [flavor_dict.get(f, 0) for f in flavor[0]]
-            aloha_flavor_mirror = [aloha_flavor[1], aloha_flavor[0], *aloha_flavor[2:]]
+            aloha_flavor = [flavor_dict.get(abs(f), 0) for f in flavor[0]]
             flavor_table.append(",".join(str(f) for f in aloha_flavor))
-            flavor_mirror_table.append(",".join(str(f) for f in aloha_flavor_mirror))
-        full_flavor_table = (
-            "{{{" +
-            "}, {".join(flavor_table) +
-            "}}, {{" + 
-            "}, {".join(flavor_mirror_table) +
-            "}}}"
-        )
+        full_flavor_table = "{{" + "}, {".join(flavor_table) + "}}"
         flavor_count = len(flavor_table)
         ext_count = len(flavors[0][0])
         return f"""
-        static const int flavor_table[2][{flavor_count}][{ext_count}] = {full_flavor_table};
+        static const int flavor_table[{flavor_count}][{ext_count}] = {full_flavor_table};
         static const int flavor_multipliers[{flavor_count}] = {flavor_multipliers};
         """
               

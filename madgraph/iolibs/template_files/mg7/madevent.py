@@ -588,11 +588,12 @@ class MadgraphSubprocess:
         phasespace: PhaseSpace,
         flags: int = me.EventGenerator.integrand_flags
     ) -> list[me.Integrand]:
+        flavors = [flav[0] for flav in self.meta["flavors"]]
         cross_section = me.DifferentialCrossSection(
-            self.meta["flavors"],
+            flavors,
             self.me_index,
             self.process.running_coupling,
-            self.process.pdf_grid,
+            None if len(flavors) > 1 else self.process.pdf_grid,
             self.process.e_cm,
             self.scale,
             False,

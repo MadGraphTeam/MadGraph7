@@ -3752,6 +3752,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         self['has_mirror_process'] = False
         self['allowed_flavors'] = [] # list of all allowed flavors for the process
         self['allowed_flavors_with_iden'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
+        self['allowed_flavors_unique'] = []
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -5129,12 +5130,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return allowed_helicity
 
 
-    def get_external_flavors(self, all_perm=False, return_pdgs=False):
+    def get_external_flavors(self, all_perm=False, preserve_sign=False):
         """If merged particles are used, determine the list of possible flavor that are not zero """
 
         if self['allowed_flavors']:
-            if return_pdgs:
-                return self['allowed_flavors'], self['allowed_pdgs']
+            if preserve_sign:
+                return self['allowed_flavors_sign']
             else:
                 return self['allowed_flavors']
         pdgs=[]
@@ -5143,8 +5144,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         external_number=1
         for wf in external_wfs:
             if wf.get('number_external')==external_number:
+                pdgs.append(
+                    wf.get('particle').get_pdg_code()
+                    if external_number > 2
+                    else wf.get('particle').get_anti_pdg_code()
+                )
                 external_number=external_number+1
-                pdgs.append(wf.get('particle').get_pdg_code())
         
         to_map = {}
         model = self.get('processes')[0].get('model')
@@ -5158,7 +5163,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         checked = {}
 
         misc.sprint('need to decide which permutation to keep --only one for the moment--')
-        for one_flavor in itertools.product(*[to_map.get(abs(id), [id]) for id in pdgs]):
+        for one_flavor in itertools.product(*[to_map.get(abs(id), [abs(id)]) for id in pdgs]):
             # get the actual pdg code (with the sign)
             pdg = [one_flavor[i] if id > 0 else -one_flavor[i] for i,id in enumerate(pdgs)]
             # flip initial states
@@ -5179,7 +5184,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             # do the computation
             if self.check_flavor(one_flavor, self.get('processes')[0].get('model')):
                 flavor_list.append(one_flavor)
-                pdg_list.append([one_flavor[i] if id > 0 else -one_flavor[i] for i,id in enumerate(pdgs)])
+                pdg_list.append([
+                    one_flavor[i] * (1 if id > 0 else -1) for i, id in enumerate(pdgs)
+                ])
                 #misc.sprint('checking flavor:', pdg, one_flavor, True)
                 checked[pdg] = True
             else:
@@ -5187,36 +5194,43 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 checked[pdg] = False
         
         self['allowed_flavors'] = flavor_list
-        self['allowed_pdgs'] = pdg_list
-        return (flavor_list, pdg_list) if return_pdgs else flavor_list
+        self['allowed_flavors_sign'] = pdg_list
+        return pdg_list if preserve_sign else flavor_list
     
     def get_external_flavors_with_iden(self, return_pdgs=False):
-
         if self['allowed_flavors_with_iden']:
-            if return_pdgs:
-                return self['allowed_flavors_with_iden'], self['allowed_pdgs_with_iden']
-            else:
-                return self['allowed_flavors_with_iden']
+            return self['allowed_flavors_with_iden']
 
         model = self.get('processes')[0].get('model')
-        all_flv, all_pdg = self.get_external_flavors(return_pdgs=True)
+        all_flv = self.get_external_flavors()
         map_all_flv = {}
-        map_all_pdg = {}
-        for i, (flv1, pdg1) in  enumerate(zip(all_flv, all_pdg)):
+        for i, flv1 in  enumerate(all_flv):
             coup = self.get_coupling_for_flv(flv1, model)
             if coup in map_all_flv:
                 map_all_flv[coup].append(flv1)
-                map_all_pdg[coup].append(pdg1)
             else:
                 map_all_flv[coup] = [flv1]
-                map_all_pdg[coup] = [pdg1]
 
         self['allowed_flavors_with_iden'] = map_all_flv.values()
-        self['allowed_pdgs_with_iden'] = map_all_pdg.values()
-        if return_pdgs:
-            return self['allowed_flavors_with_iden'], self['allowed_pdgs_with_iden']
-        else:
-            return self['allowed_flavors_with_iden']
+        return self['allowed_flavors_with_iden']
+
+    def get_external_flavors_unique(self):
+        if self['allowed_flavors_unique']:
+            return self['allowed_flavors_unique']
+
+        model = self.get('processes')[0].get('model')
+        all_flv = self.get_external_flavors(preserve_sign=True)
+        map_all_flv = {}
+        for i, flv1 in  enumerate(all_flv):
+            coup = self.get_coupling_for_flv(flv1, model)
+            key = (coup, flv1[0], flv1[1])
+            if key in map_all_flv:
+                map_all_flv[key].append(flv1)
+            else:
+                map_all_flv[key] = [flv1]
+
+        self['allowed_flavors_unique'] = list(map_all_flv.values())
+        return self['allowed_flavors_unique']
     
     def check_flavor(self, real_pdgs, model, debug=False):
         """check if any feynman diagram is compatible with the pdg codes replaced by the real_pdgs"""

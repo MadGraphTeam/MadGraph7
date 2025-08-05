@@ -40,7 +40,7 @@ void compute_matrix_element(
                     momenta_in[stride * (CPPProcess::nexternal * i_mom + i_part) + i_batch];
             }
         }
-        m2_out[i_batch] = process->sigmaKin(flavor_in[i_batch], mirror_in[i_batch]);
+        m2_out[i_batch] = process->sigmaKin(flavor_in[i_batch]);
     }
 }
 
@@ -70,7 +70,7 @@ void compute_matrix_element_multichannel(
             }
         }
         process->getParameters().aS = alpha_s_in[i_batch];
-        m2_out[i_batch] = process->sigmaKin(flavor_in[i_batch], mirror_in[i_batch]);
+        m2_out[i_batch] = process->sigmaKin(flavor_in[i_batch]);
         color_out[i_batch] = 0;
         diagram_out[i_batch] = 0;
         helicity_out[i_batch] = 0;
