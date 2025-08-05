@@ -4372,13 +4372,16 @@ RESTART = %(mint_mode)s
                 self.run_tag = tag
                 self.results.add_run(self.run_name, self.run_card)
             else:
-                for tag in upgrade_tag[level]:
-                    if getattr(self.results[self.run_name][-1], tag):
-                        tag = self.get_available_tag()
-                        self.run_card['run_tag'] = tag
-                        self.run_tag = tag
-                        self.results.add_run(self.run_name, self.run_card)                        
-                        break
+                try:
+                    for tag in upgrade_tag[level]:
+                        if getattr(self.results[self.run_name][-1], tag):
+                            tag = self.get_available_tag()
+                            self.run_card['run_tag'] = tag
+                            self.run_tag = tag
+                            self.results.add_run(self.run_name, self.run_card)                        
+                            break
+                except:
+                    return
             return # Nothing to do anymore
         
         # save/clean previous run
