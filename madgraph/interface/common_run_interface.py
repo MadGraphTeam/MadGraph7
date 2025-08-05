@@ -3839,11 +3839,27 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         raise Exception('fail to find a way to handle Auto width')
         
         
-    def store_scan_result(self):
+    def store_scan_result(self,extraMUX=[],extraPDF=[]):
         """return the information that need to be kept for the scan summary.
         Auto-width are automatically added."""
         
-        return {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+        base_result = {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+
+        # add scale variation if available
+        if len(extraMUX)==2:
+            mux_result = {'scale_hi_percent' : extraMUX[0], 'scale_lo_percent' : extraMUX[1]}
+        else:
+            mux_result = {}
+        base_result.update(mux_result)
+
+        # add pdf variation if available
+        if len(extraPDF)==2:
+            pdf_result = {'pdf_hi_percent' : extraPDF[0], 'pdf_lo_percent' : extraPDF[1]}
+        else:
+            pdf_result = {}
+        base_result.update(pdf_result)
+
+        return base_result
 
 
     def add_error_log_in_html(self, errortype=None):
@@ -7916,7 +7932,38 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     set_run_name(obj)(next_name)
                     # run for the first time
                     original_fct(obj, *args, **opts)
-                    param_card_iterator.store_entry(next_name, store_for_scan(obj)(), param_card_path=card_path)
+                    # try retrieving sys info for scan
+                    try:
+                        sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"parton_systematics.log")
+                        #sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"summary.txt")
+                        sys_out = open(sys_log,'r')
+                        mux_log = []
+                        pdf_log = []
+                        for sysLine in sys_out.readlines():
+                            if(sysLine.startswith("#     scale variation")):
+                                # does not work for full integers
+                                # e.g., # PDF variation: + 2% - 2%
+                                #varHi=sysLine.split(" ")[-2].replace("%","")
+                                #varLo=sysLine.split(" ")[-1].replace("%","")
+                                varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                mux_log = [varHi,varLo]
+                                continue
+                            if(sysLine.startswith("# PDF variation")):
+                                varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                pdf_log = [varHi,varLo]
+                                continue
+                        sys_out.close()
+                        gotFirstScaleVar=True
+                        logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
+                    except:
+                        logger.info("Failed to collect scale/PDF variation for scan summary from %s (first run). Dropping all variations from scan summary." % next_name)
+                        gotFirstScaleVar=False
+                        mux_log = []
+                        pdf_log = []
+                    # store xsec and unc
+                    param_card_iterator.store_entry(next_name, obj.store_scan_result(extraMUX=mux_log,extraPDF=pdf_log), param_card_path=card_path)
                     for card in param_card_iterator:
                         card.write(card_path)
                         # still have to check for the auto-wdith
@@ -7928,7 +7975,38 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                         except ignoreerror as error:
                             param_card_iterator.store_entry(next_name, {'exception': error})
                         else:
-                            param_card_iterator.store_entry(next_name, store_for_scan(obj)(), param_card_path=card_path)
+                            # try retrieving sys info for scan
+                            try:
+                                assert gotFirstScaleVar # skip altogether if missing first entry
+                                sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"parton_systematics.log")
+                                sys_out = open(sys_log,'r')
+                                mux_log = []
+                                pdf_log = []
+                                for sysLine in sys_out.readlines():
+                                    if(sysLine.startswith("#     scale variation")):
+                                        # does not work for full integers
+                                        # e.g., # PDF variation: + 2% - 2%
+                                        #varHi=sysLine.split(" ")[-2].replace("%","")
+                                        #varLo=sysLine.split(" ")[-1].replace("%","")
+                                        varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                        varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                        mux_log = [varHi,varLo]
+                                        continue
+                                    if(sysLine.startswith("# PDF variation")):
+                                        varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                        varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                        pdf_log = [varHi,varLo]
+                                        continue
+                                sys_out.close()
+                                logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
+                            except AssertionError:
+                                logger.info("Not collecting scale/PDF variation for scan summary")
+                            except:
+                                logger.info("Failed to collect scale/PDF variation for scan summary from %s. Setting individual variations to zero." % next_name)
+                                mux_log = []
+                                pdf_log = []
+                            # store xsec and unc
+                            param_card_iterator.store_entry(next_name, obj.store_scan_result(extraMUX=mux_log, extraPDF=pdf_log),param_card_path=card_path)
                             
                 #param_card_iterator.write(card_path) #-> this is done by the with statement
                 name = misc.get_scan_name(orig_name, next_name)
