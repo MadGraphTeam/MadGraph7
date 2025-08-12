@@ -28,6 +28,7 @@ bins = 64
 damping = 0.4
 optimization_patience = 5
 optimization_threshold = 0.9
+discrete_damping = 0.8
 
 [phasespace]
 mode = "both" #options: multichannel, flat, both
@@ -49,7 +50,7 @@ jet.dR.min = 0.4
 sqrt_s.min = 0.0
 
 [madnis]
-enable = true
+enable = false
 
 # normalizing flow parameters
 flow_hidden_dim = 64

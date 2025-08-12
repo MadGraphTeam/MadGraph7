@@ -914,6 +914,9 @@ class OneProcessExporterCPP(object):
             replace_dict['ndiag'] = len(
                 self.matrix_elements[0].get("diagrams")
             )
+            replace_dict['nflav'] = len(
+                self.matrix_elements[0].get_external_flavors_unique()
+            )
 
         else:
             replace_dict['all_sigma_kin_definitions'] = \

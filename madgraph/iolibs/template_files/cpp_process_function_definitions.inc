@@ -55,7 +55,7 @@ int CPPProcess::broken_sym(const int* flavor)
         int n_tot = 1;
         for (int j = i + 1; j < (nexternal - nincoming); j++)
         {
-            if((pid[i] == pid[j]) && (flavor[i] == flavor[j]))
+            if((pid[i] == pid[j]) && (flavor[nincoming + i] == flavor[nincoming + j]))
             {
                 pid[j] = 0;
                 n_tot = n_tot + 1;

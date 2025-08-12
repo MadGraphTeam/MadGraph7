@@ -184,6 +184,7 @@ class MadgraphProcess:
         cfg.survey_target_precision = gen_args["survey_target_precision"]
         cfg.optimization_patience = vegas_args["optimization_patience"]
         cfg.optimization_threshold = vegas_args["optimization_threshold"]
+        cfg.discrete_damping = vegas_args["discrete_damping"]
         self.event_generator_config = cfg
         self.event_generator = None
 
@@ -392,11 +393,14 @@ class MadgraphSubprocess:
                 permutations=permutations,
             )
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
+            discrete_before, discrete_after = self.build_discrete(
+                len(permutations), len(self.meta["flavors"]), prefix
+            )
             channels.append(Channel(
                 phasespace_mapping = mapping,
                 adaptive_mapping = self.build_vegas(mapping, prefix),
-                discrete_before = None,
-                discrete_after = None,
+                discrete_before = discrete_before,
+                discrete_after = discrete_after,
                 channel_weight_indices = list(
                     range(channel_index, channel_index + len(permutations))
                 ),
@@ -413,7 +417,7 @@ class MadgraphSubprocess:
             symfact=symfact,
         )
 
-    def build_flat_phasespace(self, build_flow: bool = False) -> PhaseSpace:
+    def build_flat_phasespace(self) -> PhaseSpace:
         mapping = me.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
             self.process.e_cm,
@@ -421,11 +425,14 @@ class MadgraphSubprocess:
             cuts=self.cuts,
         )
         prefix = f"subproc{self.subproc_id}.flat"
+        discrete_before, discrete_after = self.build_discrete(
+            1, len(self.meta["flavors"]), prefix
+        )
         channel = Channel(
             phasespace_mapping = mapping,
             adaptive_mapping = self.build_vegas(mapping, prefix),
-            discrete_before = None,
-            discrete_after = None,
+            discrete_before = discrete_before,
+            discrete_after = discrete_after,
             channel_weight_indices = [0],
         )
         return PhaseSpace(
@@ -507,10 +514,19 @@ class MadgraphSubprocess:
         madnis_args = self.process.run_card["madnis"]
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
+            discrete_before = channel.discrete_before
+            if discrete_before is not None:
+                #TODO: build discrete flows
+                pass
+
+            perm_count = channel.phasespace_mapping.channel_count()
+            #cond_dim = perm_count if perm_count > 1 else 0
+            flow_dim = channel.phasespace_mapping.random_dim()
+            prefix = f"subproc{self.subproc_id}.channel{channel_id}"
             flow = me.Flow(
-                input_dim=channel.phasespace_mapping.random_dim(),
+                input_dim=flow_dim,
                 condition_dim=0,
-                prefix=f"subproc{self.subproc_id}.channel{channel_id}",
+                prefix=prefix,
                 bin_count=madnis_args["flow_spline_bins"],
                 subnet_hidden_dim=madnis_args["flow_hidden_dim"],
                 subnet_layers=madnis_args["flow_layers"],
@@ -520,11 +536,26 @@ class MadgraphSubprocess:
             flow.initialize_from_vegas(
                 self.process.context, channel.adaptive_mapping.grid_name()
             )
+            #cond_dim += flow_dim
+
+            discrete_after = channel.discrete_after
+            if discrete_after is not None:
+                discrete_after = me.DiscreteFlow(
+                    option_counts=[len(self.meta["flavors"])],
+                    prefix=f"{prefix}.discrete_after",
+                    dims_with_prior=[0],
+                    condition_dim=flow_dim,
+                    subnet_hidden_dim=madnis_args["discrete_hidden_dim"],
+                    subnet_layers=madnis_args["discrete_layers"],
+                    subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                )
+                discrete_after.initialize_globals(self.process.context)
+
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
                 adaptive_mapping = flow,
-                discrete_before = channel.discrete_before, #TODO: build discrete flows
-                discrete_after = channel.discrete_after,
+                discrete_before = discrete_before,
+                discrete_after = discrete_after,
                 channel_weight_indices = channel.channel_weight_indices,
             ))
 
@@ -544,6 +575,29 @@ class MadgraphSubprocess:
         )
         vegas.initialize_globals(self.process.context)
         return vegas
+
+    def build_discrete(
+        self, permutation_count: int, flavor_count: int, prefix: str
+    ) -> tuple[me.DiscreteSampler | None, me.DiscreteSampler | None]:
+        #return None, None
+        discrete_before = None
+        #if permutation_count > 1:
+        #    discrete_before = me.DiscreteSampler(
+        #        [permutation_count], f"{prefix}.discrete_before"
+        #    )
+        #    discrete_before.initialize_globals(self.process.context)
+        #else:
+        #    discrete_before = None
+
+        if flavor_count > 1:
+            discrete_after = me.DiscreteSampler(
+                [flavor_count], f"{prefix}.discrete_after", [0]
+            )
+            discrete_after.initialize_globals(self.process.context)
+        else:
+            discrete_after = None
+
+        return discrete_before, discrete_after
 
     def build_cwnet(self, channel_count: int) -> me.ChannelWeightNetwork:
         madnis_args = self.process.run_card["madnis"]
@@ -599,6 +653,7 @@ class MadgraphSubprocess:
             False,
             len(phasespace.symfact),
             phasespace.amp2_remap,
+            self.meta["has_mirror_process"],
         )
         integrands = []
         for channel in phasespace.channels:
@@ -615,6 +670,7 @@ class MadgraphSubprocess:
                 flags,
                 channel.channel_weight_indices,
             ))
+        print(integrands[0].function())
         return integrands
 
     def train_madnis(self, phasespace: PhaseSpace) -> None:

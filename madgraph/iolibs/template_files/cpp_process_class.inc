@@ -14,6 +14,7 @@ public:
   static const int ncomb = %(ncomb)d;
   static const int ndiagrams = %(ndiag)d;
   static const int namplitudes = %(namp)d;
+  static const int nflavors = %(nflav)d;
 
   // Constructor.
   CPPProcess(string param_card_name);
@@ -60,10 +61,10 @@ private:
   // Initial particle ids
   int id1, id2;
 
-  bool goodhel[ncomb];
-  int ntry, sum_hel, ngood;
-  int igood[ncomb];
-  int jhel;
+  bool goodhel[nflavors][ncomb];
+  int ntry[nflavors], sum_hel[nflavors], ngood[nflavors];
+  int igood[nflavors][ncomb];
+  int jhel[nflavors];
 
   // function to compute missing symmetry factors after flavor consolidation
   int broken_sym(const int* flavor);

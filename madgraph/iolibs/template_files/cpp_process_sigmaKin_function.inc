@@ -10,7 +10,7 @@ const int denominator = %(den_factors)s;
 const int* flavor = &flavor_table[flavor_id][0];
 int multiplier = flavor_multipliers[flavor_id];
 
-ntry++;
+ntry[flavor_id]++;
 
 // Define permutation
 int perm[nexternal];
@@ -20,30 +20,30 @@ for(int i = 0; i < nexternal; i++){
 
 double matrix_element = 0.;
 
-if (sum_hel == 0 || ntry < 10){
+if (sum_hel[flavor_id] == 0 || ntry[flavor_id] < 10){
     // Calculate the matrix element for all helicities
     for(int ihel = 0; ihel < ncomb; ihel ++){
-        if (goodhel[ihel] || ntry < 2){
+        if (goodhel[flavor_id][ihel] || ntry[flavor_id] < 2){
             calculate_wavefunctions(perm, helicities[ihel], flavor);
             %(get_matrix_t_lines)s
             matrix_element += t;
             // Store which helicities give non-zero result
-            if (t != 0. && !goodhel[ihel]){
-                goodhel[ihel]=true;
-                ngood ++;
-                igood[ngood] = ihel;
+            if (t != 0. && !goodhel[flavor_id][ihel]){
+                goodhel[flavor_id][ihel]=true;
+                ngood[flavor_id] ++;
+                igood[flavor_id][ngood[flavor_id]] = ihel;
             }
         }
     }
-    jhel = 0;
-    sum_hel=min(sum_hel, ngood);
+    jhel[flavor_id] = 0;
+    sum_hel[flavor_id]=min(sum_hel[flavor_id], ngood[flavor_id]);
 } else {
     // Only use the "good" helicities
-    for(int j=0; j < sum_hel; j++){
-        jhel++;
-        if (jhel >= ngood) jhel=0;
-        double hwgt = double(ngood)/double(sum_hel);
-        int ihel = igood[jhel];
+    for(int j=0; j < sum_hel[flavor_id]; j++){
+        jhel[flavor_id]++;
+        if (jhel[flavor_id] >= ngood[flavor_id]) jhel[flavor_id]=0;
+        double hwgt = double(ngood[flavor_id])/double(sum_hel[flavor_id]);
+        int ihel = igood[flavor_id][jhel[flavor_id]];
         calculate_wavefunctions(perm, helicities[ihel], flavor);
         %(get_matrix_t_lines)s
         matrix_element += t*hwgt;
