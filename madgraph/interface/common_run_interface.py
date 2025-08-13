@@ -7918,7 +7918,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     #first run of the function
                     original_fct(obj, *args, **opts)
                     return
-            
+
             with restore_iterator(param_card_iterator, card_path):
                 # this with statement ensure that the original card is restore
                 # whatever happens inside those block
@@ -7933,27 +7933,50 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     # run for the first time
                     original_fct(obj, *args, **opts)
                     # try retrieving sys info for scan
+                    run_card_iterator = run_card_iteratorclass(card_path)
+                    #print(f"{dir(run_card_iterator.run_card)=}")
+                    #print(f"{run_card_iterator.run_card=}")
+                    #sys.exit()
+                    ismg5amc= not run_card_iterator.run_card.LO
+                    mux_log = []
+                    pdf_log = []
                     try:
-                        sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"parton_systematics.log")
-                        #sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"summary.txt")
-                        sys_out = open(sys_log,'r')
-                        mux_log = []
-                        pdf_log = []
-                        for sysLine in sys_out.readlines():
-                            if(sysLine.startswith("#     scale variation")):
-                                # does not work for full integers
-                                # e.g., # PDF variation: + 2% - 2%
-                                #varHi=sysLine.split(" ")[-2].replace("%","")
-                                #varLo=sysLine.split(" ")[-1].replace("%","")
-                                varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
-                                varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
-                                mux_log = [varHi,varLo]
-                                continue
-                            if(sysLine.startswith("# PDF variation")):
-                                varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
-                                varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
-                                pdf_log = [varHi,varLo]
-                                continue
+                        if(ismg5amc): # running as mg5amc
+                            sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"summary.txt")
+                            sys_out = open(sys_log,'r')
+                            sys_lst = list(sys_out.readlines())
+                            for kk, line in enumerate(sys_lst):
+                                tmpLine=line.replace(" ","")
+                                if(tmpLine.startswith("Scalevariation")):
+                                    sysLine = sys_lst[kk+2]
+                                    varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                                    varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                                    mux_log = [varHi,varLo]
+                                    continue
+                                if(tmpLine.startswith("PDFvariation")):
+                                    sysLine = sys_lst[kk+2]
+                                    varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                                    varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                                    pdf_log = [varHi,varLo]
+                                    continue
+                        else: # running as madgraph
+                            sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"parton_systematics.log")
+                            sys_out = open(sys_log,'r')
+                            for sysLine in sys_out.readlines():
+                                if(sysLine.startswith("#     scale variation")):
+                                    # does not work for full integers
+                                    # e.g., # PDF variation: + 2% - 2%
+                                    #varHi=sysLine.split(" ")[-2].replace("%","")
+                                    #varLo=sysLine.split(" ")[-1].replace("%","")
+                                    varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                    varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                    mux_log = [varHi,varLo]
+                                    continue
+                                if(sysLine.startswith("# PDF variation")):
+                                    varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                    varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                    pdf_log = [varHi,varLo]
+                                    continue
                         sys_out.close()
                         gotFirstScaleVar=True
                         logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
@@ -7978,25 +8001,44 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                             # try retrieving sys info for scan
                             try:
                                 assert gotFirstScaleVar # skip altogether if missing first entry
-                                sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"parton_systematics.log")
-                                sys_out = open(sys_log,'r')
-                                mux_log = []
-                                pdf_log = []
-                                for sysLine in sys_out.readlines():
-                                    if(sysLine.startswith("#     scale variation")):
-                                        # does not work for full integers
-                                        # e.g., # PDF variation: + 2% - 2%
-                                        #varHi=sysLine.split(" ")[-2].replace("%","")
-                                        #varLo=sysLine.split(" ")[-1].replace("%","")
-                                        varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
-                                        varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
-                                        mux_log = [varHi,varLo]
-                                        continue
-                                    if(sysLine.startswith("# PDF variation")):
-                                        varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
-                                        varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
-                                        pdf_log = [varHi,varLo]
-                                        continue
+                                if(ismg5amc): # running as mg5amc
+                                    sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"summary.txt")
+                                    sys_out = open(sys_log,'r')
+                                    sys_lst = list(sys_out.readlines())
+                                    for kk, line in enumerate(sys_lst):
+                                        tmpLine=line.replace(" ","")
+                                        if(tmpLine.startswith("Scalevariation")):
+                                            sysLine = sys_lst[kk+2]
+                                            varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                                            varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                                            mux_log = [varHi,varLo]
+                                            continue
+                                        if(tmpLine.startswith("PDFvariation")):
+                                            sysLine = sys_lst[kk+2]
+                                            varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                                            varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                                            pdf_log = [varHi,varLo]
+                                            continue
+                                else: # running as madgraph
+                                    sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"parton_systematics.log")
+                                    sys_out = open(sys_log,'r')
+                                    mux_log = []
+                                    pdf_log = []
+                                    for sysLine in sys_out.readlines():
+                                        if(sysLine.startswith("#     scale variation")):
+                                            # does not work for full integers
+                                            # e.g., # PDF variation: + 2% - 2%
+                                            #varHi=sysLine.split(" ")[-2].replace("%","")
+                                            #varLo=sysLine.split(" ")[-1].replace("%","")
+                                            varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                            varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                            mux_log = [varHi,varLo]
+                                            continue
+                                        if(sysLine.startswith("# PDF variation")):
+                                            varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
+                                            varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
+                                            pdf_log = [varHi,varLo]
+                                            continue
                                 sys_out.close()
                                 logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
                             except AssertionError:
