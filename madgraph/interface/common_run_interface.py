@@ -7932,14 +7932,16 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     set_run_name(obj)(next_name)
                     # run for the first time
                     original_fct(obj, *args, **opts)
-                    # try retrieving sys info for scan
-                    run_card_iterator = run_card_iteratorclass(card_path)
-                    #print(f"{dir(run_card_iterator.run_card)=}")
-                    #print(f"{run_card_iterator.run_card=}")
-                    #sys.exit()
+                    # check whether mg5/MadEvent or mg5amc/MC@NLO type event
+                    if isinstance(input_path, str):
+                        run_path = run_card_input
+                    else:
+                        run_path = run_card_input(obj)
+                    run_card_iterator = run_card_iteratorclass(run_path)
                     ismg5amc= not run_card_iterator.run_card.LO
                     mux_log = []
                     pdf_log = []
+                    # try retrieving sys info for scan
                     try:
                         if(ismg5amc): # running as mg5amc
                             sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"summary.txt")
