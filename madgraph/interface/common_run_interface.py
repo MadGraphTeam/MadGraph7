@@ -2011,7 +2011,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                         )
 
             sys_obj.print_cross_sections(all_cross, nb_event, result_file)
-            result_file.close()
+            if result_file is not sys.stdout:
+                result_file.close()
 
             #concatenate the output file
             subprocess.call(['cat']+\
