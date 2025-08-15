@@ -7946,7 +7946,6 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     set_run_name(obj)(next_name)
                     # run for the first time
                     original_fct(obj, *args, **opts)
-                    # try retrieving sys info for scan
                     # store xsec and unc
                     param_card_iterator.store_entry(next_name, store_for_scan(obj)(), param_card_path=card_path)
                     for card in param_card_iterator:
