@@ -3840,10 +3840,24 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         raise Exception('fail to find a way to handle Auto width')
         
         
-    def store_scan_result(self,extraMUX=None,extraPDF=None):
+    def store_scan_result(self):
         """return the information that need to be kept for the scan summary.
         Auto-width are automatically added."""
         
+        # try retrieving sys info for scan
+        try:
+            extraMUX, extraPDF = self.getSysSummaryFromLog(kpath=pjoin(self.me_dir, 'Cards', 'param_card.dat'),knext_name=self.run_name)                   
+            logger.info("Storing scale/PDF variation for scan summary %s" % self.run_name)
+        except AssertionError as err:
+            logger.debug(str(err))
+            logger.info("Not collecting scale/PDF variation for scan summary")
+            extraMUX, extraPDF = [], []
+        except Exception as err:
+            logger.debug(str(err))
+            logger.info("Failed to collect scale/PDF variation for scan summary from %s. Setting individual variations to zero." % self.run_name)
+            extraMUX, extraPDF = [], []
+
+
         base_result = {'cross': self.results.current['cross'], 'error': self.results.current['error']}
 
         # add scale variation if available
@@ -7887,103 +7901,6 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
             order = summaryorder(obj)()
             run_card_iterator.write_summary(path, order=order) 
 
-    def getSysSummaryFromLog_MadEvt(kpath=None,knext_name=None):
-        '''extracts and returns MUF and PDF scale uncertainties as lists [Hi,Lo]
-              from  summary.txt log files for MadEvent type events'''
-        # parton_systematics.log files have the following format:
-        #
-        # original cross-section: 574.4537157252221
-        #     scale variation: +29.6% -21.5%
-        #     central scheme variation: + 0% -25.9%
-        # PDF variation: + 2% - 2%
-        #
-        # dynamical scheme # 1 : 537.679 +29% -21.3% # \sum ET
-        # dynamical scheme # 2 : 450.797 +27.4% -20.4% # \sum\sqrt{m^2+pt^2}
-        # dynamical scheme # 3 : 574.454 +29.6% -21.5% # 0.5 \sum\sqrt{m^2+pt^2}
-        # dynamical scheme # 4 : 425.471 +26.8% -20.1% # \sqrt{\hat s}
-        # note possible space between sign and number
-        # define output
-        tmpMUX = []
-        tmpPDF = []
-
-        # open, read, and implicitly close it
-        sys_log = pjoin(kpath.rsplit("/", 2)[0],"Events",knext_name,"parton_systematics.log")
-        with open(sys_log,'r') as sys_out:
-
-            # parse the list for...
-            for sysLine in sys_out.readlines():
-
-                # scale variation
-                if(sysLine.startswith("#     scale variation")):
-                    # does not work for full integers
-                    # e.g., # PDF variation: + 2% - 2%
-                    #varHi=sysLine.split(" ")[-2].replace("%","")
-                    #varLo=sysLine.split(" ")[-1].replace("%","")
-                    varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
-                    varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
-                    tmpMUX = [varHi,varLo]
-                    continue
-
-                # PDF variation
-                if(sysLine.startswith("# PDF variation")):
-                    varHi=sysLine.split(":")[1].split("%")[0].replace(" ","")
-                    varLo=sysLine.split(":")[1].split("%")[1].replace(" ","")
-                    tmpPDF = [varHi,varLo]
-                    continue
-
-        # done!
-        return tmpMUX, tmpPDF
-
-    def getSysSummaryFromLog_aMCnlo(kpath=None,knext_name=None):
-        '''extracts and returns MUF and PDF scale uncertainties as lists [Hi,Lo]
-              from  summary.txt log files for MC@NLO type events'''
-        # summary.txt files have the following format:
-        #--------------------------------------------------------------
-        #Summary:
-        #Process p p > t t~ QCD=2 QED=0 [QCD]
-        #Run at p-p collider (6500.0 + 6500.0 GeV)
-        #Number of events generated: 10000
-        #Total cross section: 4.580e+02 +- 2.2e+00 pb
-        #--------------------------------------------------------------
-        #  Scale variation (computed from LHE events):
-        #      Dynamical_scale_choice -1 (envelope of 9 values):
-        #          4.578e+02 pb  +28.9% -20.9%
-        #  PDF variation (computed from LHE events):
-        #      NNPDF23_nlo_as_0118_qed (101 members; using replicas method):
-        #          4.578e+02 pb  + 1.8% -1.8%
-        # note possible space between sign and number
-        # define output
-        tmpMUX = []
-        tmpPDF = []
-
-        # open, read, and implicitly close it
-        sys_log = pjoin(kpath.rsplit("/", 2)[0],"Events",knext_name,"summary.txt")
-        with open(sys_log,'r') as sys_out:
-            sys_lst = list(sys_out.readlines())
-
-        # parse the list for...
-        for kk, line in enumerate(sys_lst):
-            tmpLine=line.replace(" ","")
-
-            # 'Scale variation'
-            if(tmpLine.startswith("Scalevariation")):
-                sysLine = sys_lst[kk+2]
-                varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
-                varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
-                tmpMUX = [varHi,varLo]
-                continue
-
-            # 'PDF variation'
-            if(tmpLine.startswith("PDFvariation")):
-                sysLine = sys_lst[kk+2]
-                varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
-                varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
-                tmpPDF = [varHi,varLo]
-                continue
-
-        # done!
-        return tmpMUX, tmpPDF
-
     def decorator(original_fct):        
         def new_fct(obj, *args, **opts):
             
@@ -8029,29 +7946,9 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     set_run_name(obj)(next_name)
                     # run for the first time
                     original_fct(obj, *args, **opts)
-                    # check whether mg5/MadEvent or mg5amc/MC@NLO type event
-                    if isinstance(input_path, str):
-                        run_path = run_card_input
-                    else:
-                        run_path = run_card_input(obj)
-                    run_card_iterator = run_card_iteratorclass(run_path)
-                    isMadEvt= run_card_iterator.run_card.LO
                     # try retrieving sys info for scan
-                    try:
-                        mux_log, pdf_log = [], []
-                        if(isMadEvt): # running as madgraph
-                            mux_log, pdf_log = getSysSummaryFromLog_MadEvt(kpath=card_path,knext_name=next_name)
-                        else: # running as mg5amc
-                            mux_log, pdf_log = getSysSummaryFromLog_aMCnlo(kpath=card_path,knext_name=next_name)
-                        gotFirstScaleVar=True
-                        logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
-                    except Exception as err:
-                        logger.debug(str(err))
-                        logger.info("Failed to collect scale/PDF variation for scan summary from %s (first run). Dropping all variations from scan summary." % next_name)
-                        gotFirstScaleVar=False
-                        mux_log, pdf_log = [], []
                     # store xsec and unc
-                    param_card_iterator.store_entry(next_name, obj.store_scan_result(extraMUX=mux_log,extraPDF=pdf_log), param_card_path=card_path)
+                    param_card_iterator.store_entry(next_name, store_for_scan(obj)(), param_card_path=card_path)
                     for card in param_card_iterator:
                         card.write(card_path)
                         # still have to check for the auto-wdith
@@ -8063,24 +7960,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                         except ignoreerror as error:
                             param_card_iterator.store_entry(next_name, {'exception': error})
                         else:
-                            # try retrieving sys info for scan
-                            try:
-                                assert gotFirstScaleVar # skip altogether if missing first entry
-                                if(isMadEvt): # running as madgraph
-                                    mux_log, pdf_log = getSysSummaryFromLog_MadEvt(kpath=card_path,knext_name=next_name)
-                                else: # running as mg5amc
-                                    mux_log, pdf_log = getSysSummaryFromLog_aMCnlo(kpath=card_path,knext_name=next_name)
-                                logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
-                            except AssertionError as err:
-                                logger.debug(str(err))
-                                logger.info("Not collecting scale/PDF variation for scan summary")
-                                mux_log, pdf_log = [], []
-                            except Exception as err:
-                                logger.debug(str(err))
-                                logger.info("Failed to collect scale/PDF variation for scan summary from %s. Setting individual variations to zero." % next_name)
-                                mux_log, pdf_log = [], []
-                            # store xsec and unc
-                            param_card_iterator.store_entry(next_name, obj.store_scan_result(extraMUX=mux_log, extraPDF=pdf_log),param_card_path=card_path)
+                            param_card_iterator.store_entry(next_name, store_for_scan(obj)(), param_card_path=card_path)
                             
                 #param_card_iterator.write(card_path) #-> this is done by the with statement
                 name = misc.get_scan_name(orig_name, next_name)

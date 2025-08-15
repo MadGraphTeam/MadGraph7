@@ -2770,6 +2770,55 @@ RESTART = %(mint_mode)s
                                 '\n'.join(error_log)+'\n')
 
 
+    def getSysSummaryFromLog(self, kpath=None,knext_name=None):
+        '''extracts and returns MUF and PDF scale uncertainties as lists [Hi,Lo]
+              from  summary.txt log files for MC@NLO type events'''
+        # summary.txt files have the following format:
+        #--------------------------------------------------------------
+        #Summary:
+        #Process p p > t t~ QCD=2 QED=0 [QCD]
+        #Run at p-p collider (6500.0 + 6500.0 GeV)
+        #Number of events generated: 10000
+        #Total cross section: 4.580e+02 +- 2.2e+00 pb
+        #--------------------------------------------------------------
+        #  Scale variation (computed from LHE events):
+        #      Dynamical_scale_choice -1 (envelope of 9 values):
+        #          4.578e+02 pb  +28.9% -20.9%
+        #  PDF variation (computed from LHE events):
+        #      NNPDF23_nlo_as_0118_qed (101 members; using replicas method):
+        #          4.578e+02 pb  + 1.8% -1.8%
+        # note possible space between sign and number
+        # define output
+        tmpMUX = []
+        tmpPDF = []
+
+        # open, read, and implicitly close it
+        sys_log = pjoin(kpath.rsplit("/", 2)[0],"Events",knext_name,"summary.txt")
+        with open(sys_log,'r') as sys_out:
+            sys_lst = list(sys_out.readlines())
+
+        # parse the list for...
+        for kk, line in enumerate(sys_lst):
+            tmpLine=line.replace(" ","")
+
+            # 'Scale variation'
+            if(tmpLine.startswith("Scalevariation")):
+                sysLine = sys_lst[kk+2]
+                varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                tmpMUX = [varHi,varLo]
+                continue
+
+            # 'PDF variation'
+            if(tmpLine.startswith("PDFvariation")):
+                sysLine = sys_lst[kk+2]
+                varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                tmpPDF = [varHi,varLo]
+                continue
+
+        # done!
+        return tmpMUX, tmpPDF
 
     def write_res_txt_file(self,jobs,integration_step):
         """writes the res.txt files in the SubProcess dir"""
