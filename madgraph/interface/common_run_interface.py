@@ -3840,7 +3840,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         raise Exception('fail to find a way to handle Auto width')
         
         
-    def store_scan_result(self,extraMUX=[],extraPDF=[]):
+    def store_scan_result(self,extraMUX=None,extraPDF=None):
         """return the information that need to be kept for the scan summary.
         Auto-width are automatically added."""
         
@@ -7887,6 +7887,49 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
             order = summaryorder(obj)()
             run_card_iterator.write_summary(path, order=order) 
 
+    def getSysSummaryFromLog_MadEvt():
+        '''extracts and returns MUF and PDF scale uncertainties as lists [Hi,Lo]
+              from  summary.txt log files for MadEvent type events'''
+        # define output
+        tmpMUX = []
+        tmpPDF = []
+
+        return tmpMUX, tmpPDF
+
+    def getSysSummaryFromLog_aMCnlo(self,kpath=None,knext_name=None):
+        '''extracts and returns MUF and PDF scale uncertainties as lists [Hi,Lo]
+              from  summary.txt log files for MC@NLO type events'''
+        # define output
+        tmpMUX = []
+        tmpPDF = []
+
+        # open, read, and implicitly close it
+        sys_log = pjoin(kpath.rsplit("/", 2)[0],"Events",knext_name,"summary.txt")
+        with open(sys_log,'r') as sys_out:
+            sys_lst = list(sys_out.readlines())
+
+        # parse the list for...
+        for kk, line in enumerate(sys_lst):
+            tmpLine=line.replace(" ","")
+
+            # 'Scale variation'
+            if(tmpLine.startswith("Scalevariation")):
+                sysLine = sys_lst[kk+2]
+                varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                tmpMUX = [varHi,varLo]
+                continue
+
+            # 'PDF variation'
+            if(tmpLine.startswith("PDFvariation")):
+                sysLine = sys_lst[kk+2]
+                varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
+                varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
+                tmpPDF = [varHi,varLo]
+                continue
+
+        # done!
+        return tmpMUX, tmpPDF
 
     def decorator(original_fct):        
         def new_fct(obj, *args, **opts):
@@ -7945,23 +7988,8 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     # try retrieving sys info for scan
                     try:
                         if(ismg5amc): # running as mg5amc
-                            sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"summary.txt")
-                            sys_out = open(sys_log,'r')
-                            sys_lst = list(sys_out.readlines())
-                            for kk, line in enumerate(sys_lst):
-                                tmpLine=line.replace(" ","")
-                                if(tmpLine.startswith("Scalevariation")):
-                                    sysLine = sys_lst[kk+2]
-                                    varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
-                                    varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
-                                    mux_log = [varHi,varLo]
-                                    continue
-                                if(tmpLine.startswith("PDFvariation")):
-                                    sysLine = sys_lst[kk+2]
-                                    varHi=sysLine.split("pb")[1].split("%")[0].replace(" ","")
-                                    varLo=sysLine.split("pb")[1].split("%")[1].replace(" ","")
-                                    pdf_log = [varHi,varLo]
-                                    continue
+                            mux_log, pdf_log = [], [] #getSysSummaryFromLog_aMCnlo(kpath=card_path,knext_name=next_name)
+
                         else: # running as madgraph
                             sys_log = pjoin(card_path.rsplit("/", 2)[0],"Events",next_name,"parton_systematics.log")
                             sys_out = open(sys_log,'r')
