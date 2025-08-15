@@ -8045,7 +8045,8 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                             mux_log, pdf_log = getSysSummaryFromLog_aMCnlo(kpath=card_path,knext_name=next_name)
                         gotFirstScaleVar=True
                         logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
-                    except:
+                    except Exception as err:
+                        logger.debug(str(err))
                         logger.info("Failed to collect scale/PDF variation for scan summary from %s (first run). Dropping all variations from scan summary." % next_name)
                         gotFirstScaleVar=False
                         mux_log, pdf_log = [], []
@@ -8070,10 +8071,12 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                                 else: # running as mg5amc
                                     mux_log, pdf_log = getSysSummaryFromLog_aMCnlo(kpath=card_path,knext_name=next_name)
                                 logger.info("Storing scale/PDF variation for scan summary %s" % next_name)
-                            except AssertionError:
+                            except AssertionError as err:
+                                logger.debug(str(err))
                                 logger.info("Not collecting scale/PDF variation for scan summary")
                                 mux_log, pdf_log = [], []
-                            except:
+                            except Exception as err:
+                                logger.debug(str(err))
                                 logger.info("Failed to collect scale/PDF variation for scan summary from %s. Setting individual variations to zero." % next_name)
                                 mux_log, pdf_log = [], []
                             # store xsec and unc
