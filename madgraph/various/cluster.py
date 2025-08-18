@@ -602,6 +602,7 @@ class MultiCore(Cluster):
         self.submitted = six.moves.queue.Queue() # one entry by job submitted
         self.stoprequest = threading.Event() #flag to ensure everything to close
         self.demons = []
+        self.gpus_list = []
         self.nb_done =0
         if 'nb_core' in opt:
             self.nb_core = opt['nb_core']
@@ -636,13 +637,15 @@ class MultiCore(Cluster):
                 logger.info('Found %s GPUs: %s' % (self.gpus_count, self.gpus_list))
         
     def start_demon(self):
+        import threading
         env2 = None
         if len(self.gpus_list):
             env2 = os.environ.copy()
             this_gpu_idx = len(self.demons) % self.gpus_count
             env2[self.gpu_set_var] = self.gpus_list[this_gpu_idx]
-        import threading
-        t = threading.Thread(target=self.worker, kwargs={'env2': env2})
+            t = threading.Thread(target=self.worker, kwargs={'env2': env2})
+        else:
+            t = threading.Thread(target=self.worker)
         t.daemon = True
         t.start()
         self.demons.append(t)
