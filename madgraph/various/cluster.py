@@ -627,7 +627,12 @@ class MultiCore(Cluster):
         mg5_gpu_env_str = 'MG5_GPU_VISIBLE_DEVICES'
         gpu_variables = [['NVIDIA_VISIBLE_DEVICES', 'CUDA_VISIBLE_DEVICES'],
                          ['ROCR_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES'],]
-        if mg5_gpu_env_str in os.environ: gpu_variables.insert(0, os.environ[mg5_gpu_env_str].split(',')) 
+        if mg5_gpu_env_str in os.environ:
+            new_var = os.environ[mg5_gpu_env_str].split(',')
+            if len(new_var) == 2:
+                gpu_variables.insert(0, new_var)
+            else:
+                self.logger.error('Invalid format for %s=%s, it should be a comma-separated list of two elements' % (mg5_gpu_env_str, os.environ[mg5_gpu_env_str]))
 
         for get_var,set_var in gpu_variables:
             if get_var in os.environ:
