@@ -632,7 +632,7 @@ class MultiCore(Cluster):
             if len(new_var) == 2:
                 gpu_variables.insert(0, new_var)
             else:
-                self.logger.error('Invalid format for %s=%s, it should be a comma-separated list of two elements' % (mg5_gpu_env_str, os.environ[mg5_gpu_env_str]))
+                logger.error('Invalid format for %s=%s, it should be a comma-separated list of two elements' % (mg5_gpu_env_str, os.environ[mg5_gpu_env_str]))
 
         for get_var,set_var in gpu_variables:
             if get_var in os.environ:
