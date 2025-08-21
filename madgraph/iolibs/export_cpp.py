@@ -1022,8 +1022,8 @@ class OneProcessExporterCPP(object):
         if proc_number != 0:
             process_string = "%d_%s" % (proc_number, process_string)
 
-        process_string = "Sigma_%s_%s" % (self.model_name,
-                                          process_string)
+        #process_string = "Sigma_%s_%s" % (self.model_name,
+                                          #process_string)
         return process_string
 
     def get_process_info_lines(self, matrix_element):
@@ -3628,6 +3628,13 @@ class ProcessExporterMG7(ProcessExporterCPP):
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp'],
                      'Cards': [s+'mg7/run_card.toml']}
+    from_template_simd = [
+        s+"mg7/api.h",
+        s+"mg7/simd/api_simd.cpp",
+        s+"mg7/simd/cudacpp.mk",
+        s+"mg7/simd/Makefile",
+    ]
+    to_link_simd = ["api.h", "api_simd.cpp", "cudacpp.mk", "Makefile"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3635,10 +3642,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
         simd_opt = output_options.get("simd")
         gpu_opt = output_options.get("gpu")
         if simd_opt is not None:
-            self.matrix_element_path = simd_opt
+            self.matrix_element_path = os.path.abspath(simd_opt)
             self.matrix_element_gpu = False
         elif gpu_opt is not None:
-            self.matrix_element_path = gpu_opt
+            self.matrix_element_path = os.path.abspath(gpu_opt)
             self.matrix_element_gpu = True
         else:
             self.matrix_element_path = None
@@ -3647,17 +3654,64 @@ class ProcessExporterMG7(ProcessExporterCPP):
     def generate_subprocess_directory(
         self, matrix_element, cpp_helas_call_writer, proc_number=None
     ):
-        proc_dir_name = super().generate_subprocess_directory(
-            matrix_element, cpp_helas_call_writer, proc_number=None
-        )
+        if self.matrix_element_path is not None:
+            process_exporter_cpp = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
+            proc_dir_name = "P%d_%s" % (process_exporter_cpp.process_number, 
+                                        process_exporter_cpp.process_name)
+            dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
+            os.mkdir(dirpath)
+
+            with misc.chdir(dirpath):
+                logger.info('Creating files in directory %s' % dirpath)
+
+                with open("config.mk", "w") as f:
+                    f.write(
+                        f"PROC_PATH={self.matrix_element_path}\n"
+                        f"SUBPROC_NUMBER={process_exporter_cpp.process_number}\n"
+                        f"SUBPROC_NAME={process_exporter_cpp.process_name}\n"
+                    )
+
+                for file in self.to_link_simd:
+                    ln('../%s' % file) 
+
+        else:
+            proc_dir_name = super().generate_subprocess_directory(
+                matrix_element, cpp_helas_call_writer, proc_number=None
+            )
         self.process_info.append(get_subprocess_info(matrix_element, proc_dir_name))
 
-        if self.matrix_element_path is not None:
-            me_path = os.path.join(self.dir_path, "matrix_element")
-            shutil.copytree(self.matrix_element_path, me_path)
+    def copy_template_simd(self, model):
+        try:
+            os.mkdir(self.dir_path)
+        except os.error as error:
+            logger.warning(error.strerror + " " + self.dir_path)
+        
+        with misc.chdir(self.dir_path):
+            logger.info('Creating subdirectories in directory %s' % self.dir_path)
+
+            for d in self.dirs_to_create:
+                try:
+                    os.mkdir(d)
+                except os.error as error:
+                    logger.warning(error.strerror + " " + self.dir_path)
+    
+            # Write param_card
+            with open(os.path.join("Cards","param_card.dat"), "w") as f:
+                f.write(model.write_param_card())
+
+            # Copy the needed src files
+            from_template = {
+                **self.from_template, "SubProcesses": self.from_template_simd
+            }
+            for key, files in from_template.items():
+                for f in files:
+                    cp(f, key)
 
     def copy_template(self, model):
-        super().copy_template(model)
+        if self.matrix_element_path is None:
+            super().copy_template(model)
+        else:
+            self.copy_template_simd(model)
 
         # TODO: for now, we import the files from madgraph. eventually, we should copy
         # the files instead to allow for modification
@@ -3684,7 +3738,9 @@ class ProcessExporterMG7(ProcessExporterCPP):
         ))
         with open(file_name, 'w') as f:
             json.dump(self.process_info, f)
-        super().finalize()
+
+        if self.matrix_element_path is None:
+            super().finalize()
 
 
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):

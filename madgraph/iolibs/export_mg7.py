@@ -28,7 +28,6 @@ def get_subprocess_info(matrix_element, proc_dir_name):
     diagrams = amplitude.get("diagrams")
     helas_diagrams = matrix_element.get("diagrams")
     all_flavors = matrix_element.get_external_flavors_unique()
-    print(all_flavors)
 
     channels = []
     channel_indices = []
@@ -93,5 +92,4 @@ def get_subprocess_info(matrix_element, proc_dir_name):
         "diagram_count": len(diagrams),
         "helicity_count": helicity_count,
         "has_mirror_process": matrix_element.get("has_mirror_process"),
-        "crossing": False, #TODO: hardcoded to false for now
     }

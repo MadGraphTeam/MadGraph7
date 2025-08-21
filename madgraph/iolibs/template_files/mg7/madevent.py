@@ -25,6 +25,7 @@ else:
         raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
 
 import madevent7 as me
+#me.set_thread_count(1)
 from models.check_param_card import ParamCard
 
 logger = logging.getLogger("madevent7")
@@ -185,6 +186,7 @@ class MadgraphProcess:
         cfg.optimization_patience = vegas_args["optimization_patience"]
         cfg.optimization_threshold = vegas_args["optimization_threshold"]
         cfg.discrete_damping = vegas_args["discrete_damping"]
+        cfg.batch_size = gen_args["batch_size"]
         self.event_generator_config = cfg
         self.event_generator = None
 
@@ -670,120 +672,20 @@ class MadgraphSubprocess:
                 flags,
                 channel.channel_weight_indices,
             ))
-        print(integrands[0].function())
         return integrands
 
     def train_madnis(self, phasespace: PhaseSpace) -> None:
-        #TODO: split up into multiple functions and move to separate file
         print("Training MadNIS")
-
-        import torch
-        import numpy as np
-        from madnis.integrator import (
-            ChannelGrouping, Integrator, stratified_variance, kl_divergence, rkl_divergence
-        )
-        from madevent7.madnis import build_madnis_integrand, MADNIS_INTEGRAND_FLAGS
-
-        madnis_args = self.process.run_card["madnis"]
-        integrands = self.build_integrands(phasespace, MADNIS_INTEGRAND_FLAGS)
-        channel_grouping = (
-            None if phasespace.symfact is None else ChannelGrouping(phasespace.symfact)
-        )
-        madnis_integrand, flow, cwnet = build_madnis_integrand(
-            integrands, phasespace.cwnet, channel_grouping, self.process.context
-        )
-
-        loss = {
-            "stratified_variance": stratified_variance,
-            "kl_divergence": kl_divergence,
-            "rkl_divergence": rkl_divergence,
-        }[madnis_args["loss"]]
-
-        def build_scheduler(optimizer):
-            if madnis_args["lr_scheduler"] == "exponential":
-                decay_rate = madnis_args["lr_decay"] ** (
-                    1 / max(madnis_args["train_batches"], 1)
-                )
-                return torch.optim.lr_scheduler.ExponentialLR(
-                    optimizer, gamma=decay_rate
-                )
-            elif madnis_args["lr_scheduler"] == "onecycle":
-                return torch.optim.lr_scheduler.OneCycleLR(
-                    optimizer,
-                    max_lr=madnis_args["lr_max"],
-                    total_steps=madnis_args["train_batches"],
-                )
-            elif madnis_args["lr_scheduler"] == "cosine":
-                return torch.optim.lr_scheduler.CosineAnnealingLR(
-                    optimizer, T_max=madnis_args["train_batches"]
-                )
-            else:
-                return None
-
-        integrator = Integrator(
-            integrand=madnis_integrand,
-            flow=flow,
-            train_channel_weights=cwnet is not None,
-            cwnet=cwnet,
-            loss=loss,
-            batch_size=madnis_args["batch_size_offset"],
-            batch_size_per_channel=madnis_args["batch_size_per_channel"],
-            learning_rate=madnis_args["lr"],
-            scheduler=build_scheduler,
-            uniform_channel_ratio=madnis_args["uniform_channel_ratio"],
-            integration_history_length=madnis_args["integration_history_length"],
-            drop_zero_integrands=madnis_args["drop_zero_integrands"],
-            batch_size_threshold=madnis_args["batch_size_threshold"],
-            buffer_capacity=madnis_args["buffer_capacity"],
-            minimum_buffer_size=madnis_args["minimum_buffer_size"],
-            buffered_steps=madnis_args["buffered_steps"],
-            max_stored_channel_weights=madnis_args["max_stored_channel_weights"],
-            channel_dropping_threshold=madnis_args["channel_dropping_threshold"],
-            channel_dropping_interval=madnis_args["channel_dropping_interval"],
-            channel_grouping_mode="uniform",
-            freeze_cwnet_iteration=int(
-                madnis_args["train_batches"] * (1 - madnis_args["fixed_cwnet_fraction"])
-            ),
-            device=torch.device("cpu"),
-            dtype=torch.float64,
-        )
-
-        online_losses = []
-        buffered_losses = []
-        log_interval = madnis_args["log_interval"]
-        def callback(status):
-            if status.buffered:
-                buffered_losses.append(status.loss)
-            else:
-                online_losses.append(status.loss)
-            batch = status.step + 1
-            if batch % log_interval != 0:
-                return
-            online_loss = np.mean(online_losses)
-            info = [f"Batch {batch:6d}: loss={online_loss:.6f}"]
-            if len(buffered_losses) > 0:
-                buffered_loss = np.mean(buffered_losses)
-                info.append(f"buf={buffered_loss:.6f}")
-            if status.learning_rate is not None:
-                info.append(f"lr={status.learning_rate:.4e}")
-            if status.dropped_channels > 0:
-                info.append(f"drop={status.dropped_channels}")
-
-            print(", ".join(info))
-            online_losses.clear()
-            buffered_losses.clear()
-
+        # do import here to make pytorch and MadNIS optional dependencies
+        from .train_madnis import train_madnis, MADNIS_INTEGRAND_FLAGS
         start_time = get_start_time()
-        integrator.train(madnis_args["train_batches"], callback)
+        train_madnis(
+            self.build_integrands(phasespace, MADNIS_INTEGRAND_FLAGS),
+            phasespace,
+            self.process.run_card["madnis"],
+            self.process.context
+        )
         print_run_time(start_time)
-
-        phasespace.channels = [
-            channel
-            for channel, active in zip(
-                phasespace.channels, integrator.active_channels_mask
-            )
-            if active
-        ]
 
 
 def ask_edit_cards() -> None:
