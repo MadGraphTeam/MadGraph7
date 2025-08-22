@@ -82,11 +82,10 @@ void* init_subprocess(const char* param_card_path) {
 
 void compute_matrix_element(
     void* subprocess,
-    uint64_t count,
-    uint64_t stride,
+    size_t count,
+    size_t stride,
     const double* momenta_in,
-    const int64_t* flavor_in,
-    const int64_t* mirror_in,
+    const int* flavor_in,
     double* m2_out
 ) {
     // need to round to round to double page size for some reason
@@ -158,18 +157,17 @@ void compute_matrix_element(
 
 void compute_matrix_element_multichannel(
     void* subprocess,
-    uint64_t count,
-    uint64_t stride,
+    size_t count,
+    size_t stride,
     const double* momenta_in,
     const double* alpha_s_in,
     const double* random_in,
-    const int64_t* flavor_in,
-    const int64_t* mirror_in,
+    const int* flavor_in,
     double* m2_out,
     double* amp2_out,
-    int64_t* diagram_out,
-    int64_t* color_out,
-    int64_t* helicity_out
+    int* diagram_out,
+    int* color_out,
+    int* helicity_out
 ) {
     // need to round to round to double page size for some reason
     std::size_t page_size2 = 2 * MemoryAccessMomentaBase::neppM;

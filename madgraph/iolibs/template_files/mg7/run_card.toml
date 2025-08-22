@@ -15,11 +15,9 @@ dynamical_scale_choice = "half_transverse_mass"
 
 [generation]
 events = 10000
-max_overweight_fraction = 1.0
 max_overweight_truncation = 0.01
+freeze_max_weight_after = 10000
 batch_size = 1000
-start_batch_size = 1000
-max_batch_size = 32000
 survey_min_iters = 3
 survey_max_iters = 3
 survey_target_precision = 0.1
@@ -29,7 +27,8 @@ bins = 64
 damping = 0.4
 optimization_patience = 5
 optimization_threshold = 0.9
-discrete_damping = 0.8
+start_batch_size = 1000
+max_batch_size = 32000
 
 [phasespace]
 mode = "both" #options: multichannel, flat, both

@@ -1,4 +1,5 @@
-#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -7,16 +8,16 @@ extern "C" {
 /** Contains information on the matrix elements contained in this subprocess */
 struct SubProcessInfo {
     /** boolean indicating whether this code runs on the GPU */
-    uint8_t on_gpu;
+    bool on_gpu;
 
     /** number of particles (incoming and outgoing) */
-    uint64_t particle_count;
+    size_t particle_count;
 
     /** number of diagrams */
-    uint64_t diagram_count;
+    size_t diagram_count;
 
     /** number of helicity configurations */
-    uint64_t helicity_count;
+    size_t helicity_count;
 };
 
 /**
@@ -57,18 +58,15 @@ void* init_subprocess(const char* param_card_path);
  *     `k` between `0` and `count - 1`
  * @param flavor_in
  *     pointer to a batch of flavor configuration indices
- * @param mirror_in
- *     pointer to a batch of integers indicating whether to flip the initial state momenta (0 or 1)
  * @param m2_out
  *     pointer to the batch of the computed squared matrix elements
  */
 void compute_matrix_element(
     void* subprocess,
-    uint64_t count,
-    uint64_t stride,
+    size_t count,
+    size_t stride,
     const double* momenta_in,
-    const int64_t* flavor_in,
-    const int64_t* mirror_in,
+    const int* flavor_in,
     double* m2_out
 );
 
@@ -98,8 +96,6 @@ void compute_matrix_element(
  *     with `k` between `0` and `count - 1`
  * @param flavor_in
  *     pointer to a batch of flavor configuration indices
- * @param mirror_in
- *     pointer to a batch of integers indicating whether to flip the initial state momenta (0 or 1)
  * @param m2_out
  *     pointer to the batch of the computed squared matrix elements
  * @param channel_weights_out
@@ -117,18 +113,17 @@ void compute_matrix_element(
  */
 void compute_matrix_element_multichannel(
     void* subprocess,
-    uint64_t count,
-    uint64_t stride,
+    size_t count,
+    size_t stride,
     const double* momenta_in,
     const double* alpha_s_in,
     const double* random_in,
-    const int64_t* flavor_in,
-    const int64_t* mirror_in,
+    const int* flavor_in,
     double* m2_out,
     double* amp2_out,
-    int64_t* diagram_out,
-    int64_t* color_out,
-    int64_t* helicity_out
+    int* diagram_out,
+    int* color_out,
+    int* helicity_out
 );
 
 /**

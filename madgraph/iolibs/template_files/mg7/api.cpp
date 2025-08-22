@@ -23,19 +23,18 @@ void* init_subprocess(const char* param_card_path) {
 
 void compute_matrix_element(
     void* subprocess,
-    uint64_t count,
-    uint64_t stride,
+    size_t count,
+    size_t stride,
     const double* momenta_in,
-    const int64_t* flavor_in,
-    const int64_t* mirror_in,
+    const int* flavor_in,
     double* m2_out
 ) {
     CPPProcess* process = static_cast<CPPProcess*>(subprocess);
 
     std::vector<double*>& process_momenta = process->getMomenta();
-    for (uint64_t i_batch = 0; i_batch < count; ++i_batch) {
-        for (uint64_t i_part = 0; i_part < CPPProcess::nexternal; ++i_part) {
-            for(uint64_t i_mom = 0; i_mom < 4; ++i_mom) {
+    for (size_t i_batch = 0; i_batch < count; ++i_batch) {
+        for (size_t i_part = 0; i_part < CPPProcess::nexternal; ++i_part) {
+            for(size_t i_mom = 0; i_mom < 4; ++i_mom) {
                 process_momenta[i_part][i_mom] =
                     momenta_in[stride * (CPPProcess::nexternal * i_mom + i_part) + i_batch];
             }
@@ -46,25 +45,24 @@ void compute_matrix_element(
 
 void compute_matrix_element_multichannel(
     void* subprocess,
-    uint64_t count,
-    uint64_t stride,
+    size_t count,
+    size_t stride,
     const double* momenta_in,
     const double* alpha_s_in,
     const double* random_in,
-    const int64_t* flavor_in,
-    const int64_t* mirror_in,
+    const int* flavor_in,
     double* m2_out,
     double* amp2_out,
-    int64_t* diagram_out,
-    int64_t* color_out,
-    int64_t* helicity_out
+    int* diagram_out,
+    int* color_out,
+    int* helicity_out
 ) {
     CPPProcess* process = static_cast<CPPProcess*>(subprocess);
 
     std::vector<double*>& process_momenta = process->getMomenta();
-    for (uint64_t i_batch = 0; i_batch < count; ++i_batch) {
-        for (uint64_t i_part = 0; i_part < CPPProcess::nexternal; ++i_part) {
-            for(uint64_t i_mom = 0; i_mom < 4; ++i_mom) {
+    for (size_t i_batch = 0; i_batch < count; ++i_batch) {
+        for (size_t i_part = 0; i_part < CPPProcess::nexternal; ++i_part) {
+            for(size_t i_mom = 0; i_mom < 4; ++i_mom) {
                 process_momenta[i_part][i_mom] =
                     momenta_in[stride * (CPPProcess::nexternal * i_mom + i_part) + i_batch];
             }
@@ -76,12 +74,12 @@ void compute_matrix_element_multichannel(
         helicity_out[i_batch] = 0;
         double chan_total = 0.;
         const double* amp2 = process->getAmp2();
-        for(uint64_t i_amp = 0; i_amp < CPPProcess::ndiagrams; ++i_amp) {
+        for(size_t i_amp = 0; i_amp < CPPProcess::ndiagrams; ++i_amp) {
             double amp2_item = amp2[i_amp];
             amp2_out[i_amp * stride + i_batch] = amp2_item;
             chan_total += amp2_item;
         }
-        for(uint64_t i_amp = 0; i_amp < CPPProcess::ndiagrams; ++i_amp) {
+        for(size_t i_amp = 0; i_amp < CPPProcess::ndiagrams; ++i_amp) {
             amp2_out[i_amp * stride + i_batch] /= chan_total;
         }
     }
