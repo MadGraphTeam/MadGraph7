@@ -66,6 +66,7 @@ class PhaseSpace:
 class MadgraphProcess:
     def __init__(self):
         self.load_cards()
+        self.init_backend()
         self.init_event_dir()
         self.init_context()
         self.init_cuts()
@@ -80,6 +81,10 @@ class MadgraphProcess:
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
+
+    def init_backend(self) -> None:
+        me.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+        me.set_thread_count(self.run_card["run"]["thread_pool_size"])
 
     def init_event_dir(self) -> None:
         run_name = self.run_card["run"]["run_name"]

@@ -1,6 +1,12 @@
 [run]
 run_name = "run"
 device = "cpu" # options: cpu, gpu
+# options:
+#   -1 to choose automatically
+#   on x86: 1, 4, 8
+#   on Apple silicon: 1, 2
+simd_vector_size = -1
+thread_pool_size = -1 # -1 sets count automatically based on number of CPUs
 
 [beam]
 e_cm = 13000.0
