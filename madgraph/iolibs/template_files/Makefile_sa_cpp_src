@@ -1,5 +1,5 @@
 LIBDIR=../lib
-CXXFLAGS= -O3 -I.
+CXXFLAGS= -O3 -I. -fPIC
 CXX=%(cpp_compiler)s
 target=$(LIBDIR)/libmodel_%(model)s.a
 

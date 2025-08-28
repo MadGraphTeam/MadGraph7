@@ -25,7 +25,6 @@ else:
         raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
 
 import madevent7 as me
-#me.set_thread_count(1)
 from models.check_param_card import ParamCard
 
 logger = logging.getLogger("madevent7")
