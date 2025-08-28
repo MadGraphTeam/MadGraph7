@@ -539,9 +539,12 @@ class MadgraphSubprocess:
                 subnet_activation=self.activation(madnis_args["flow_activation"]),
                 invert_spline=madnis_args["flow_invert_spline"],
             )
-            flow.initialize_from_vegas(
-                self.process.context, channel.adaptive_mapping.grid_name()
-            )
+            if channel.adaptive_mapping is None:
+                flow.initialize_globals(self.process.context)
+            else:
+                flow.initialize_from_vegas(
+                    self.process.context, channel.adaptive_mapping.grid_name()
+                )
             #cond_dim += flow_dim
 
             discrete_after = channel.discrete_after
@@ -574,6 +577,9 @@ class MadgraphSubprocess:
         )
 
     def build_vegas(self, mapping: me.PhaseSpaceMapping, prefix: str) -> me.VegasMapping:
+        if not self.process.run_card["vegas"]["enable"]:
+            return None
+
         vegas = me.VegasMapping(
             mapping.random_dim(),
             self.process.run_card["vegas"]["bins"],

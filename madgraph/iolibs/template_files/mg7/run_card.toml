@@ -29,6 +29,7 @@ survey_max_iters = 3
 survey_target_precision = 0.1
 
 [vegas]
+enable = true
 bins = 64
 damping = 0.4
 optimization_patience = 5
