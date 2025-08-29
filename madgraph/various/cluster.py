@@ -1097,7 +1097,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(RETRY); DMTCP_PATH=%(dmtcp_path)s; INITIAL_DIR=%(cwd)s
+                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(RETRY); DMTCP_PATH=%(dmtcp_path)s
                   %(spool_on_evict)s
                   should_transfer_files = YES
                   when_to_transfer_output = ON_EXIT
@@ -1172,12 +1172,15 @@ class CondorCluster(Cluster):
         if self.checkpointing:
 
             if MADEVENT:
+                preexec = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_preexec.sh')
                 wrapper = pjoin(LOCALDIR,'bin','internal','dmtcp_condor_driver.sh')
             else:
+                preexec = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_preexec.sh')
                 wrapper = pjoin(MG5DIR,'Template','Common','bin','internal','dmtcp_condor_driver.sh')
 
             dico['prog'] = wrapper
             dico['argument'] = argument
+            dico['input_files'] += ',dmtcp_$(DAGManJobId)'
             dico['output_files'] += ',dmtcp_$(DAGManJobId)'
             dico['spool_on_evict'] = '+SpoolOnEvict = False'
 
@@ -1200,9 +1203,12 @@ class CondorCluster(Cluster):
                 submit_file.write((text % dico))
                 submit_filename = submit_file.name
 
-            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\nVARS job restart_count="$(RETRY)"\n'
-
             with tempfile.NamedTemporaryFile(mode="w", dir=cwd, delete=False) as dag_file:
+                text = f'JOB job {submit_filename}\n'
+                text += f'SCRIPT PRE job /bin/bash {preexec} {cwd} {dag_file.name}\n'
+                text += 'RETRY job 100 UNLESS-EXIT 0\n'
+                text += 'VARS job restart_count="$(RETRY)"\n'
+
                 dag_file.write((text % dico))
                 dag_filename = dag_file.name
 

@@ -8,11 +8,6 @@ if [ -z "${SHARED_DIR+x}" ]; then
     out="/dev/null"
     echo "$(date) - Shared disk disabled" | tee -a $out
     export DMTCP_CHECKPOINT_DIR="$PWD/dmtcp_$CONDOR_ID"
-    src="$INITIAL_DIR/dmtcp_$CONDOR_ID"
-    if [ -d "$src" ]; then
-        echo "$(date) - Transferring checkpoint files from $src..." | tee -a $out
-        cp -r "$src" .
-    fi
 else
     if [ -d "$SHARED_DIR" ]; then
         out="$SHARED_DIR/condor_$CONDOR_ID.out"
