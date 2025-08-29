@@ -1040,10 +1040,11 @@ class CondorCluster(Cluster):
                 submit_file.write((text % dico))
                 submit_filename = submit_file.name
 
-            text = f'JOB job {submit_filename}\nRETRY job 100 UNLESS-EXIT 0\n'
-
             with tempfile.NamedTemporaryFile(mode='w', dir=cwd, delete=False) as dag_file:
-                dag_file.write((text % dico))
+                dag_text = f'JOB job {submit_filename}\n'
+                dag_text += 'RETRY job 100 UNLESS-EXIT 0\n'
+
+                dag_file.write(dag_text)
                 dag_filename = dag_file.name
 
             command = ['condor_submit_dag', dag_filename]
@@ -1204,12 +1205,12 @@ class CondorCluster(Cluster):
                 submit_filename = submit_file.name
 
             with tempfile.NamedTemporaryFile(mode="w", dir=cwd, delete=False) as dag_file:
-                text = f'JOB job {submit_filename}\n'
-                text += f'SCRIPT PRE job /bin/bash {preexec} {cwd} {dag_file.name}\n'
-                text += 'RETRY job 100 UNLESS-EXIT 0\n'
-                text += 'VARS job restart_count="$(RETRY)"\n'
+                dag_text = f'JOB job {submit_filename}\n'
+                dag_text += f'SCRIPT PRE job /bin/bash {preexec} {cwd} {dag_file.name}\n'
+                dag_text += 'RETRY job 100 UNLESS-EXIT 0\n'
+                dag_text += 'VARS job restart_count="$(RETRY)"\n'
 
-                dag_file.write((text % dico))
+                dag_file.write(dag_text)
                 dag_filename = dag_file.name
 
             command = ['condor_submit_dag', dag_filename]
