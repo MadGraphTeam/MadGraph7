@@ -90,10 +90,10 @@ class AbstractRoutine(object):
         
         if lor_list not in self.combined:
             self.combined.append(lor_list)
-        
-    def write(self, output_dir, language='Fortran', mode='self', combine=True,**opt):
+
+    def write(self, output_dir, language='Fortran', mode='self', combine=True, options=None, **opt):
         """ write the content of the object """
-        writer = aloha_writers.WriterFactory(self, language, output_dir, self.tag)
+        writer = aloha_writers.WriterFactory(self, language, output_dir, self.tag, options)
         text = writer.write(mode=mode, **opt)
         if combine:
             for grouped in self.combined:
@@ -167,6 +167,7 @@ class AbstractRoutineBuilder(object):
             if mode == 0:
                 assert not any(t.startswith('L') for t in tag)
         self.expr = self.compute_aloha_high_kernel(mode, factorize)
+
         return self.define_simple_output()
     
     def define_all_conjugate_builder(self, pair_list):
@@ -823,7 +824,7 @@ class AbstractALOHAModel(dict):
             elif not init:
                 # need to create the aloha object
                 lorentz = eval('self.model.lorentz.%s' % lorentzname)
-                abstract = AbstractRoutineBuilder(lorentz, model=self.model)
+                abstract = AbstractRoutineBuilder(lorentz)
                 routine = abstract.compute_routine(outgoing, tag, factorize=False)                
                 init = True
 
@@ -1039,7 +1040,7 @@ class AbstractALOHAModel(dict):
                 l_lorentz = []
                 for l_name in list_l_name: 
                     l_lorentz.append(eval('self.model.lorentz.%s' % l_name))
-                builder = CombineRoutineBuilder(l_lorentz, model=self.model)
+                builder = CombineRoutineBuilder(l_lorentz)
                                
                 for conjg in request[list_l_name[0]]:
                     #ensure that routines are in rising order (for symetries)
@@ -1108,12 +1109,17 @@ class AbstractALOHAModel(dict):
             self.set(name, outgoing, wavefunction)
 
 
-    def write(self, output_dir, language):
+    def write(self, output_dir, language, options=None):
         """ write the full set of Helicity Routine in output_dir"""
+
+        if options is None:
+            self.options = {'vector.inc':False}
+        else:
+            self.options = options
 
         for abstract_routine in self.values():
             #misc.sprint(abstract_routine.name, abstract_routine.outgoing, abstract_routine.spins, abstract_routine.expr)
-            abstract_routine.write(output_dir, language)
+            abstract_routine.write(output_dir, language, options=self.options)
 
         for routine in self.external_routines:
             self.locate_external(routine, language, output_dir)

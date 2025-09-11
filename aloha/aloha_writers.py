@@ -37,7 +37,7 @@ class WriteALOHA:
 
 
             
-    def __init__(self, abstract_routine, dirpath):
+    def __init__(self, abstract_routine, dirpath, options=None):
         if aloha.loop_mode:
             self.momentum_size = 4
         else:
@@ -76,6 +76,7 @@ class WriteALOHA:
                                                                self.outgoing)
         #initialize global helper routine
         self.declaration = Declaration_list()
+        self.options = options if options else {}
                                    
                                        
     def pass_to_HELAS(self, indices, start=0):
@@ -526,7 +527,8 @@ class ALOHAWriterForFortran(WriteALOHA):
         out.write('implicit none\n')
         # Check if we are in formfactor mode
         if self.has_model_parameter:
-            out.write(' include "../vector.inc"\n') 
+            if self.options.get('vector.inc', False):
+                out.write(' include "../vector.inc"\n') 
             out.write(' include "../MODEL/input.inc"\n')
             out.write(' include "../MODEL/coupl.inc"\n')
         argument_var = [name for type,name in self.call_arg]
@@ -1045,17 +1047,16 @@ class QP(object):
     
 class ALOHAWriterForFortranQP(QP, ALOHAWriterForFortran):
     
-    def __init__(self, *arg):
-        return ALOHAWriterForFortran.__init__(self, *arg)
+    def __init__(self, *arg, **opt):
+        return ALOHAWriterForFortran.__init__(self, *arg, **opt)
     
-class ALOHAWriterForFortranLoop(ALOHAWriterForFortran): 
+class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
     """routines for writing out Fortran"""
 
-    def __init__(self, abstract_routine, dirpath):
-        
-        ALOHAWriterForFortran.__init__(self, abstract_routine, dirpath)
-        # position of the outgoing in particle list        
-        self.l_id = [int(c[1:]) for c in abstract_routine.tag if c[0] == 'L'][0] 
+    def __init__(self, abstract_routine, dirpath, options=None):
+        ALOHAWriterForFortran.__init__(self, abstract_routine, dirpath, options=options)
+        # position of the outgoing in particle list
+        self.l_id = [int(c[1:]) for c in abstract_routine.tag if c[0] == 'L'][0]
         self.l_helas_id = self.l_id   # expected position for the argument list
         if 'C%s' %((self.l_id + 1) // 2) in abstract_routine.tag:
             #flip the outgoing tag if in conjugate
@@ -1313,10 +1314,10 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         return out.getvalue() 
 
 class ALOHAWriterForFortranLoopQP(QP, ALOHAWriterForFortranLoop): 
-    """routines for writing out Fortran"""     
-    
-    def __init__(self, *arg):
-        return ALOHAWriterForFortranLoop.__init__(self, *arg)   
+    """routines for writing out Fortran"""
+
+    def __init__(self, *arg, options=None):
+        return ALOHAWriterForFortranLoop.__init__(self, *arg, options=options)
 
 def get_routine_name(name=None, outgoing=None, tag=None, abstract=None):
     """ build the name of the aloha function """
@@ -2550,8 +2551,8 @@ class Declaration_list(set):
         
 
 class WriterFactory(object):
-    
-    def __new__(cls, data, language, outputdir, tags):
+
+    def __new__(cls, data, language, outputdir, tags, options=None):
         try:
             language = language.lower()
         except AttributeError:
@@ -2560,22 +2561,22 @@ class WriterFactory(object):
         if isinstance(data.expr, aloha_lib.SplitCoefficient):
             assert language == 'fortran'
             if 'MP' in tags:
-                return ALOHAWriterForFortranLoopQP(data, outputdir)
+                return ALOHAWriterForFortranLoopQP(data, outputdir, options=options)
             else:
-                return ALOHAWriterForFortranLoop(data, outputdir)
+                return ALOHAWriterForFortranLoop(data, outputdir, options=options)
         if language == 'fortran':
             if 'MP' in tags:
-                return ALOHAWriterForFortranQP(data, outputdir)
+                return ALOHAWriterForFortranQP(data, outputdir, options=options)
             else:
-                return ALOHAWriterForFortran(data, outputdir)
+                return ALOHAWriterForFortran(data, outputdir, options=options)
         elif language == 'python':
-            return ALOHAWriterForPython(data, outputdir)
+            return ALOHAWriterForPython(data, outputdir, options=options)
         elif language == 'cpp':
-            return ALOHAWriterForCPP(data, outputdir)
+            return ALOHAWriterForCPP(data, outputdir, options=options)
         elif language in ['gpu','cudac']:
-            return ALOHAWriterForGPU(data, outputdir)
+            return ALOHAWriterForGPU(data, outputdir, options=options)
         elif issubclass(language, WriteALOHA):
-            return language(data, outputdir)
+            return language(data, outputdir, options=options)
         else:
             raise Exception('Unknown output format')
 

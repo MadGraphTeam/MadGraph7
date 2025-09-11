@@ -1069,7 +1069,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         # Write them out
         write_dir=pjoin(self.dir_path, 'Source', 'DHELAS')
-        aloha_model.write(write_dir, 'Fortran')
+        options= {}
+        options['vector.inc'] = True if self.opt['export_format']=='madevent' else False
+        aloha_model.write(write_dir, 'Fortran', options=options)
 
         # Revert the original aloha loop mode
         aloha.loop_mode = old_loop_mode
