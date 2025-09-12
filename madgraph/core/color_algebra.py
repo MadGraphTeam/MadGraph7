@@ -358,7 +358,7 @@ class Epsilon(ColorObject):
     # flag to deactiate some analytical rule, used for testing/debugging
     rule_eps_T = True
     rule_eps_aeps_sum = True
-    rule_eps_aeps_nosum = True  
+    rule_eps_aeps_nosum = True # This is not compatible with LC rules.
     
     def __init__(self, *args):
         """Ensure e_ijk objects have strictly 3 indices"""
@@ -566,6 +566,8 @@ class K6(ColorObject):
     """K6, the symmetry clebsch coefficient, mapping into the symmetric
     tensor."""
 
+    use_symmetry = False
+
     def __init__(self, *args):
         """Ensure sextet color objects have strictly 3 indices"""
 
@@ -574,7 +576,7 @@ class K6(ColorObject):
 
     def simplify(self):
         """Implement that K6(m,i,j) = K6(m,j,i) if j<i"""
-        if self[2] > self[1]:
+        if self.use_symmetry and self[2] > self[1]:
             new = self[:]
             new[1], new[2] = new[2], new[1]
             return ColorFactor([ColorString([K6(*new)])])
@@ -640,6 +642,8 @@ class K6Bar(ColorObject):
     """K6Bar, the barred symmetry clebsch coefficient, mapping into the symmetric
     tensor."""
 
+    use_symmetry = False
+
     def __init__(self, *args):
         """Ensure sextet color objects have strictly 3 indices"""
 
@@ -648,7 +652,7 @@ class K6Bar(ColorObject):
 
     def simplify(self):
         """Implement that K6bar(m,i,j) = K6Bar(m,j,i) if j<i"""
-        if self[2] > self[1]:
+        if self.use_symmetry and self[2] > self[1]:
             new = self[:]
             new[1], new[2] = new[2], new[1]
             return ColorFactor([ColorString([K6Bar(*new)])])
@@ -670,15 +674,13 @@ class K6Bar(ColorObject):
     def complex_conjugate(self):
         """Complex conjugation. By default, the ordering of color index is
         reversed. Can be overwritten for specific color objects like T,..."""
-        raise Exception("Complex conjugation of K6Bar is not implemented. ")
-        l1 = self[:]
-        l1[1],l1[2] = l1[2], l1[1]
-        return K6(l1)
+        
+        return K6(*self)
 
 class T6(ColorObject):
     """The T6 sextet trace color object."""
 
-    new_index = -100
+    new_index = -10000
 
     def __init__(self, *args):
         """Check for exactly three indices"""
@@ -705,6 +707,7 @@ class T6(ColorObject):
             return
 
         # Set new indices according to the Mathematica template
+        # need them to be negative to ensure that they are consider as summed
         ii = T6.new_index
         jj = ii - 1
         kk = jj - 1
@@ -992,7 +995,7 @@ class ColorString(list):
         for elem in immutable_order2:
             can_elem = [elem[0], []]
             for index in elem[1]:
-              if index<-9999:  # consider only summation indices
+              if index<=-10000:  # consider only summation indices
                 try:
                     new_index = replaced_indices[index]
                 except KeyError:

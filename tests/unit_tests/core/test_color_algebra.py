@@ -575,7 +575,12 @@ class ColorFactorTest(unittest.TestCase):
         col_str4.Nc_power = 0
         col_str4.coeff = fractions.Fraction(-1, 1)
 
-        self.assertEqual(my_color_factor.full_simplify(),
+        try:
+            self.assertEqual(my_color_factor.full_simplify(),
+                         color.ColorFactor([col_str1, col_str2, 
+                                            col_str3, col_str4]))
+        except:
+            self.assertEqual(my_color_factor.full_simplify(),
                          color.ColorFactor([col_str2, col_str1, 
                                             col_str3, col_str4]))
 

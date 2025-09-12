@@ -30,6 +30,7 @@ import six
 import madgraph.core.color_algebra as color_algebra
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.base_objects as base_objects
+import madgraph.various.misc as misc
 from six.moves import range
 from functools import reduce
 
@@ -404,7 +405,8 @@ class ColorBasis(dict):
                                                 indices[2],
                                                 indices[3]))
         # Simplify the whole thing
-        my_cf = my_cf.full_simplify()
+        with misc.TMP_variable(color_algebra.Epsilon, 'rule_eps_aeps_nosum', False):
+            my_cf = my_cf.full_simplify()
 
         # If the result is empty, just return
         if not my_cf:
