@@ -45,6 +45,7 @@ t_channel = "propagator" # options: propagator, rambo, chili
 flat_mode = "rambo" # options: propagator, rambo, chili
 simplified_channel_count = 10
 invariant_power = 0.7
+bw_cutoff = 15
 
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon

@@ -364,18 +364,30 @@ class MadgraphSubprocess:
             self.process.run_card["phasespace"]["t_channel"]
         )
         diagram_count = self.meta["diagram_count"]
+        bw_cutoff = self.process.run_card["phasespace"]["bw_cutoff"]
 
         amp2_remap = [-1] * diagram_count
         symfact = []
         channels = []
 
         for channel_id, channel in enumerate(self.meta["channels"]):
-            propagators = [
-                me.Propagator(
-                    self.process.get_mass(pid), self.process.get_width(pid)
-                )
-                for pid in clean_pids(channel["propagators"])
-            ]
+            propagators = []
+            for i, pid in enumerate(clean_pids(channel["propagators"])):
+                mass = self.process.get_mass(pid)
+                width = self.process.get_width(pid)
+                if i in channel["on_shell_propagators"]:
+                    e_min = mass - bw_cutoff * width
+                    e_max = mass + bw_cutoff * width
+                else:
+                    e_min = 0
+                    e_max = 0
+                propagators.append(me.Propagator(
+                    mass=mass,
+                    width=width,
+                    integration_order=0,
+                    e_min=e_min,
+                    e_max=e_max,
+                ))
             vertices = channel["vertices"]
             diagrams = channel["diagrams"]
             permutations = [d["permutation"] for d in diagrams]
@@ -682,6 +694,7 @@ class MadgraphSubprocess:
                 flags,
                 channel.channel_weight_indices,
             ))
+        #print(integrands[0].function())
         return integrands
 
     def train_madnis(self, phasespace: PhaseSpace) -> None:

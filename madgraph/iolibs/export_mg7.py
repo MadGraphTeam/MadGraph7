@@ -10,7 +10,7 @@ def get_subprocess_info(matrix_element, proc_dir_name):
 
     process = amplitude.get("process")
     edge_names = {}
-    legs = process.get("legs")
+    legs = process.get("legs_with_decays")
     incoming = [None] * 2
     outgoing = [None] * (len(legs) - 2)
     for leg in legs:
@@ -53,6 +53,7 @@ def get_subprocess_info(matrix_element, proc_dir_name):
         diagram = diagrams[diagram_index]
         vertices = []
         propagators = []
+        on_shell_propagators = []
         diagram_edge_names = dict(edge_names)
         diag_vertices = diagram.get("vertices")
         for i_vert, vertex in enumerate(diag_vertices):
@@ -64,16 +65,20 @@ def get_subprocess_info(matrix_element, proc_dir_name):
             if i_vert == len(diag_vertices) - 1:
                 vertex_props.append(diagram_edge_names[legs[-1].get("number")])
             else:
-                prop_name = f"p{len(propagators)}"
+                prop_index = len(propagators)
+                prop_name = f"p{prop_index}"
                 diagram_edge_names[legs[-1].get("number")] = prop_name
                 vertex_props.append(prop_name)
                 propagators.append(final_part.get_pdg_code())
+                if legs[-1].get("onshell"):
+                    on_shell_propagators.append(prop_index)
             vertices.append(vertex_props)
 
         channel_indices.append(len(channels))
         channels.append({
             "propagators": propagators,
             "vertices": vertices,
+            "on_shell_propagators": on_shell_propagators,
             "active_flavors": active_flavors,
             "diagrams": [{
                 "diagram": diagram_index,
