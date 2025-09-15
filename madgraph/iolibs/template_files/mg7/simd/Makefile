@@ -20,7 +20,9 @@ $(COMMON_LIB_NAME): $(COMMON_LIB)
 
 $(SUBPROC_LIB_NAME): $(SUBPROC_LIB)
 	cp $(SUBPROC_LIB) $(SUBPROC_LIB_NAME)
-	install_name_tool -id @rpath/$(SUBPROC_LIB_NAME) $(SUBPROC_LIB_NAME)
+	if [ "$(shell uname)" = "Darwin" ]; then\
+		install_name_tool -id @rpath/$(SUBPROC_LIB_NAME) $(SUBPROC_LIB_NAME);\
+	fi
 
 $(MAIN): api_simd.cpp $(COMMON_LIB_NAME) $(SUBPROC_LIB_NAME)
 	$(CXX) -shared $(CXXFLAGS) -I$(INCDIR_SP) -I$(INCDIR_SRC) -I. -Wl,-rpath $(shell pwd) -o $@ \
