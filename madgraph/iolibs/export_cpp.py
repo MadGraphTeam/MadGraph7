@@ -3628,13 +3628,13 @@ class ProcessExporterMG7(ProcessExporterCPP):
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp'],
                      'Cards': [s+'mg7/run_card.toml']}
-    from_template_simd = [
-        s+"mg7/api.h",
-        s+"mg7/simd/api_simd.cpp",
-        s+"mg7/simd/cudacpp.mk",
-        s+"mg7/simd/Makefile",
-    ]
-    to_link_simd = ["api.h", "api_simd.cpp", "cudacpp.mk", "Makefile"]
+    #from_template_simd = [
+    #    s+"mg7/api.h",
+    #    s+"mg7/simd/api_simd.cpp",
+    #    s+"mg7/simd/cudacpp.mk",
+    #    s+"mg7/simd/Makefile",
+    #]
+    #to_link_simd = ["api.h", "api_simd.cpp", "cudacpp.mk", "Makefile"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3661,18 +3661,17 @@ class ProcessExporterMG7(ProcessExporterCPP):
             dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
             os.mkdir(dirpath)
 
-            with misc.chdir(dirpath):
-                logger.info('Creating files in directory %s' % dirpath)
-
-                with open("config.mk", "w") as f:
-                    f.write(
-                        f"PROC_PATH={self.matrix_element_path}\n"
-                        f"SUBPROC_NUMBER={process_exporter_cpp.process_number}\n"
-                        f"SUBPROC_NAME={process_exporter_cpp.process_name}\n"
-                    )
-
-                for file in self.to_link_simd:
-                    ln('../%s' % file) 
+            logger.info('Creating files in directory %s' % dirpath)
+            common_lib_name = "libmg5amc_common_cpp.so"
+            subproc_lib_name = f"libmg5amc_{process_exporter_cpp.process_name}_cpp.so"
+            shutil.copy(
+                os.path.join(self.matrix_element_path, "lib", subproc_lib_name),
+                os.path.join(dirpath, "api.so")
+            )
+            shutil.copy(
+                os.path.join(self.matrix_element_path, "lib", common_lib_name),
+                os.path.join(dirpath, common_lib_name)
+            )
 
         else:
             proc_dir_name = super().generate_subprocess_directory(
@@ -3701,7 +3700,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
             # Copy the needed src files
             from_template = {
-                **self.from_template, "SubProcesses": self.from_template_simd
+                **self.from_template, "SubProcesses": []
             }
             for key, files in from_template.items():
                 for f in files:

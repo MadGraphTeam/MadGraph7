@@ -27,7 +27,8 @@ void compute_matrix_element(
     size_t stride,
     const double* momenta_in,
     const int* flavor_in,
-    double* m2_out
+    double* m2_out,
+    void* cuda_stream
 ) {
     CPPProcess* process = static_cast<CPPProcess*>(subprocess);
 
@@ -55,7 +56,8 @@ void compute_matrix_element_multichannel(
     double* amp2_out,
     int* diagram_out,
     int* color_out,
-    int* helicity_out
+    int* helicity_out,
+    void* cuda_stream
 ) {
     CPPProcess* process = static_cast<CPPProcess*>(subprocess);
 
