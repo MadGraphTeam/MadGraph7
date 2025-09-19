@@ -1748,7 +1748,10 @@ class Event(list):
             if particle.pdg in pdg_to_decay and pdg_to_decay[particle.pdg]:
                 one_decay = pdg_to_decay[particle.pdg].pop()
                 self.add_decay_to_particle(i, one_decay)
+                particle.helicity = 9
                 return self.add_decays(pdg_to_decay)
+            
+            
         return self
                 
 
