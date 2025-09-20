@@ -3661,14 +3661,15 @@ class ProcessExporterMG7(ProcessExporterCPP):
             dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
             os.mkdir(dirpath)
 
+            suffix = "cuda" if self.matrix_element_gpu else "cpp"
             logger.info('Creating files in directory %s' % dirpath)
-            common_lib_name = "libmg5amc_common_cpp.so"
-            subproc_lib_name = f"libmg5amc_{process_exporter_cpp.process_name}_cpp.so"
-            shutil.copy(
+            common_lib_name = f"libmg5amc_common_{suffix}.so"
+            subproc_lib_name = f"libmg5amc_{process_exporter_cpp.process_name}_{suffix}.so"
+            os.symlink(
                 os.path.join(self.matrix_element_path, "lib", subproc_lib_name),
                 os.path.join(dirpath, "api.so")
             )
-            shutil.copy(
+            os.symlink(
                 os.path.join(self.matrix_element_path, "lib", common_lib_name),
                 os.path.join(dirpath, common_lib_name)
             )

@@ -197,11 +197,11 @@ class MadgraphProcess:
         device_name = self.run_card["run"]["device"]
         if device_name == "cpu":
             device = me.cpu_device()
-        elif device_name == "gpu":
-            device = me.gpu_device()
+        elif device_name == "cuda":
+            device = me.cuda_device()
         else:
             raise ValueError("Unknown device")
-        self.context = me.Context()
+        self.context = me.Context(device)
 
     def init_subprocesses(self) -> None:
         self.subprocesses = []
@@ -681,6 +681,8 @@ class MadgraphSubprocess:
                 flags,
                 channel.channel_weight_indices,
             ))
+        #print(integrands[0].function())
+        #print(integrands[1].function())
         return integrands
 
     def train_madnis(self, phasespace: PhaseSpace) -> None:
