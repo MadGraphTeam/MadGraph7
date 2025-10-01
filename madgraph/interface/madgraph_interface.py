@@ -4962,6 +4962,12 @@ This implies that with decay chains:
         myleglist = base_objects.MultiLegList()
         state = False
 
+        if ('!a!' in args and 'j' in args):
+            upc_with_jet = True
+            self.do_define('aUPC = a j / g', log=False)
+        else:
+            upc_with_jet = False
+
         # Extract process
         for part_name in args:
             if part_name == '>':
@@ -4983,7 +4989,10 @@ This implies that with decay chains:
 
             # check that only final-state particles are tagged
             if is_tagged and not state:
-                raise self.InvalidCmd("initial particles cannot be tagged")
+                if part_name!='a' and part_name!='22':
+                    raise self.InvalidCmd("only initial photons can be tagged")
+                elif upc_with_jet:
+                    part_name = 'aUPC'.lower()
 
             mylegids = []
             polarization = []
@@ -5073,8 +5082,8 @@ This implies that with decay chains:
 
             duplicate =1
             if part_name in self._multiparticles:
-                # multiparticles cannot be tagged
-                if is_tagged:
+                # final-state multiparticles cannot be tagged
+                if is_tagged and state:
                     raise self.InvalidCmd("Multiparticles cannot be tagged")
                 if isinstance(self._multiparticles[part_name][0], list):
                     raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \
@@ -5123,8 +5132,10 @@ This implies that with decay chains:
             else:
                 raise self.InvalidCmd("No particle %s in model" % part_name)
 
-        if any(['is_tagged' in l.keys()  and l['is_tagged'] for l in myleglist]):
+        if any(['is_tagged' in l.keys()  and l['is_tagged'] and l['state'] for l in myleglist]):
             logger.warning('The process involves tagged particles. Please consider citing arXiv:2106.02059 if relevant.')
+        if any(['is_tagged' in l.keys()  and l['is_tagged'] and not l['state'] for l in myleglist]):
+            logger.warning('The process involves coherent photons in the initial-state. Please consider citing arXiv:2504.10104 if relevant.')
 
         # Apply the keyword 'all' for perturbed coupling orders.
         if perturbation_couplings.lower() in ['all', 'loonly']:

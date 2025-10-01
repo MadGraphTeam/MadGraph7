@@ -1730,11 +1730,25 @@ class MultiProcess(base_objects.PhysicsObject):
         except KeyError:
             fstags = []
 
+        try:
+            istags = [leg['is_tagged'] for leg in process_definition['legs'] \
+                 if 'is_tagged' in leg.keys() and leg['state'] == False]
+
+        except KeyError:
+            istags = []
+
         # Generate all combinations for the initial state
         for prod in itertools.product(*isids):
+            if any(istags):
+                if not all(istags):
+                    logger.error("Tagging only one initial-state particle is not allowed")
+                    exit()
+                islegs = [\
+                        fks_tag.TagLeg({'id':id, 'state': False, 'polarization': isleg['polarization'], 'is_tagged': tag}) \
+                        for id, isleg, tag in zip(prod, islegs_orig, istags)]
+            else:
             islegs = [\
-                    base_objects.Leg({'id':id, 'state': False, 
-                                      'polarization': islegs_orig[i]['polarization']})
+                        base_objects.Leg({'id':id, 'state': False, 'polarization': islegs_orig[i]['polarization']})
                     for i,id in enumerate(prod)]
 
             # check for longitudinal photon

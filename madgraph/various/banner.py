@@ -1190,7 +1190,7 @@ class ConfigFile(dict):
                     
                 if not new_values:
 
-                    text= "value '%s' for entry '%s' is not valid.  Preserving previous value: '%s'.\n" \
+                    text= "value '%s' for entry '%s' is not valid.  1 Preserving previous value: '%s'.\n" \
                                % (value, name, self[lower_name])
                     text += "allowed values are any list composed of the following entries: %s" % ', '.join([str(i) for i in self.allowed_value[lower_name]])
                     return self.warn(text, 'warning', raiseerror)                    
@@ -1296,7 +1296,7 @@ class ConfigFile(dict):
                     
             if not valid:
                 # act if not valid:
-                text = "value '%s' for entry '%s' is not valid.  Preserving previous value: '%s'.\n" \
+                text = "value '%s' for entry '%s' is not valid.  2 Preserving previous value: '%s'.\n" \
                                % (value, name, self[lower_name])
                 text += "allowed values are %s\n" % ', '.join([str(i) for i in self.allowed_value[lower_name]])
                 if lower_name in self.comments:
@@ -3023,7 +3023,6 @@ class RunCard(ConfigFile):
                     if "$%s" % b.name not in text:
                         text += "\n$%s\n" % b.name
                 text = string.Template(text).substitute(mapping)
-
             if not self.list_parameter:
                 text = text % self
             else:
@@ -3049,7 +3048,7 @@ class RunCard(ConfigFile):
                         continue
                     else:
                         this_group = this_group[0]
-                    text += this_group.get_template(self) % self
+                    text += this_group.get_template(self) % self + "\n"
                     this_group.manage_parameters(self, written, to_write)
                     
                 elif len(nline) != 2:
@@ -3139,6 +3138,7 @@ class RunCard(ConfigFile):
                     text = text.replace(template_off, '\n'.join(to_add))
                 else:
                     text += '\n'.join(to_add)
+
 
         if to_write or write_hidden:
             text+="""#********************************************************************* 
@@ -5517,6 +5517,25 @@ class MadAnalysis5Card(dict):
 
         return cmds_list
 
+# HEAVY ION ------------------------------------------------------------------------------------
+template_on = \
+"""#*********************************************************************
+# Heavy ion PDF / rescaling of PDF                                   *
+# Note that ebeam1 and ebeam2 are energies of the ion beams          *
+# instead of energies per nucleon in nuclei                          *
+# For instance, the LHC beam energy of 2510 GeV/nucleon in Pb208     *
+# should set 2510*208=522080 GeV for ebeam                           *
+#*********************************************************************
+  %(nb_proton1)s    = nb_proton1 # number of proton for the first beam
+  %(nb_neutron1)s    = nb_neutron1 # number of neutron for the first beam
+# Note that seting differently the two beams only work if you use
+# group_subprocess=False when generating your matrix-element
+  %(nb_proton2)s    = nb_proton2 # number of proton for the second beam
+  %(nb_neutron2)s    = nb_neutron2 # number of neutron for the second beam"""
+template_off = "# To see heavy ion options: type \"update ion_pdf\""
+
+heavy_ion_block_nlo = RunBlock('ion_pdf', template_on=template_on, template_off=template_off)
+
 # Running -----------------------------------------------------------------------------------------
 template_on = \
 """#***********************************************************************
@@ -5532,7 +5551,7 @@ class RunCardNLO(RunCard):
      
     LO = False
     
-    blocks = [running_block_nlo]
+    blocks = [heavy_ion_block_nlo, running_block_nlo]
 
     dummy_fct_file = {"dummy_cuts": pjoin("SubProcesses","dummy_fct.f"),
                       "user_dynamical_scale": pjoin("SubProcesses","dummy_fct.f"),
@@ -5565,7 +5584,15 @@ class RunCardNLO(RunCard):
         self.add_param('lpp2', 1, fortran_name='lpp(2)')                        
         self.add_param('ebeam1', 6500.0, fortran_name='ebeam(1)')
         self.add_param('ebeam2', 6500.0, fortran_name='ebeam(2)')        
-        self.add_param('pdlabel', 'nn23nlo', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21'] +\
+        self.add_param('nb_proton1', 1, hidden=True, allowed=[1,0, 82 , '*'],fortran_name="nb_proton(1)",
+                       comment='For heavy ion physics nb of proton in the ion (for both beam but if group_subprocess was False)')
+        self.add_param('nb_proton2', 1, hidden=True, allowed=[1,0, 82 , '*'],fortran_name="nb_proton(2)",
+                       comment='For heavy ion physics nb of proton in the ion (used for beam 2 if group_subprocess was False)')
+        self.add_param('nb_neutron1', 0, hidden=True, allowed=[1,0, 126 , '*'],fortran_name="nb_neutron(1)",
+                       comment='For heavy ion physics nb of neutron in the ion (for both beam but if group_subprocess was False)')
+        self.add_param('nb_neutron2', 0, hidden=True, allowed=[1,0, 126 , '*'],fortran_name="nb_neutron(2)",
+                       comment='For heavy ion physics nb of neutron in the ion (of beam 2 if group_subprocess was False )')
+        self.add_param('pdlabel', 'nn23nlo', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21','edff','chff'] +\
              sum(self.allowed_lep_densities.values(),[]) )                
         self.add_param('lhaid', [244600],fortran_name='lhaPDFid')
         self.add_param('pdfscheme', 0)
@@ -5681,10 +5708,20 @@ class RunCardNLO(RunCard):
         
         super(RunCardNLO, self).check_validity()
 
+        # if heavy ion mode use for one beam, forbid lpp!=1
+        if self['lpp1'] not in [1,2]:
+            if self['nb_proton1'] !=1 or self['nb_neutron1'] !=0:
+                raise InvalidRunCard( "Heavy ion mode is only supported for lpp1=1/2")
+        if self['lpp2'] not in [1,2]:
+            if self['nb_proton2'] !=1 or self['nb_neutron2'] !=0:
+                raise InvalidRunCard( "Heavy ion mode is only supported for lpp2=1/2")
+
         # for lepton-lepton collisions, ignore 'pdlabel' and 'lhaid'
         if abs(self['lpp1'])!=1 or abs(self['lpp2'])!=1:
             if self['lpp1'] == 1 or self['lpp2']==1:
                 raise InvalidRunCard('Process like Deep Inelastic scattering not supported at NLO accuracy.')
+
+            if not self['lpp1'] == self['lpp2'] == 2:
 
             if abs(self['lpp1']) == abs(self['lpp2']) in [3,4]:
                 # for dressed lepton collisions, check that the lhaid is a valid one
@@ -5797,6 +5834,10 @@ class RunCardNLO(RunCard):
                 raise InvalidRunCard("'dynamical_scale_choice' has two or more identical entries. They have to be all different for the code to work correctly.")
             
         # Check that lenght of lists are consistent
+        if self['lpp1'] == self['lpp2'] == 2:
+            if not self['rw_fscale'] == [1.0]:
+                self['rw_fscale'] = [1.0]
+                logger.warning("Factorisation scale cannot be varied for elastic photon collisions.")
         if len(self['reweight_pdf']) != len(self['lhaid']):
             raise InvalidRunCard("'reweight_pdf' and 'lhaid' lists should have the same length")
         if len(self['reweight_scale']) != len(self['dynamical_scale_choice']):

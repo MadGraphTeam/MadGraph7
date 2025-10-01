@@ -1158,7 +1158,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         bornproc = matrix_element.born_me['processes'][0]
         startfromalpha0 = False
         if any([l['is_tagged'] and l['id'] == 22 for l in bornproc['legs']]):
-            if 'loop_qcd_qed_sm_a0' in bornproc['model'].get('modelpath'):
+            if 'loop_qcd_qed_sm_a0' in bornproc['model'].get('modelpath') \
+               or 'loop_qcd_qed_MSbar' in bornproc['model'].get('modelpath'):
                 startfromalpha0 = True
 
         text = 'logical  startfroma0\nparameter (startfroma0=%s)\n' % bool_dict[startfromalpha0]
@@ -4369,6 +4370,22 @@ Parameters              %(params)s\n\
                                                  "/%d*1D0/" % len(initial_states[i]) + \
                                                  "\n"
 
+            # Get PDF lines for UPC (non-factorized PDF)
+            if 22 in initial_states[0] and 22 in initial_states[1]:
+                if subproc_group:
+                    pdf_lines = pdf_lines + \
+                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                    pdf_lines = pdf_lines + \
+                        ("%s%d=PHOTONPDFSQUARE(XBK(IB(1)),XBK(IB(2)))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
+                        (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
+                else:
+                    pdf_lines = pdf_lines + \
+                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                    pdf_lines = pdf_lines + \
+                        ("%s%d=PHOTONPDFSQUARE(XBK(1),XBK(2))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
+                        (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
+                pdf_lines = pdf_lines + "ELSE\n"
+
             # Get PDF values for the different initial states
             for i, init_states in enumerate(initial_states):
                 if not mirror:
@@ -4420,6 +4437,9 @@ Parameters              %(params)s\n\
                                      "%s%d=0d0\n") % \
                                          (pdf_codes[initial_state],i + 1)                                
 
+                pdf_lines = pdf_lines + "ENDIF\n"
+
+            if 22 in initial_states[0] and 22 in initial_states[1]:
                 pdf_lines = pdf_lines + "ENDIF\n"
 
             # Add up PDFs for the different initial state particles

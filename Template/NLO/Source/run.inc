@@ -103,6 +103,14 @@ C stuff for alpha running in lepton collisions
 C  PDFs with beamstrahlung use specific initialisation/evaluation
       common /to_has_bs/ has_bstrahl
 
+C
+C     block for heavy ion beam
+C
+      integer nb_proton(2), nb_neutron(2)
+      common/to_heavyion_pdg/ nb_proton, nb_neutron
+C UPC parameter
+      double precision RAI(2),xiAI(2)
+      common /heavyion_upc_beams/ RAI, xiAI
 
 c for biassed generation based on the particle flavours of the processes
       integer flavour_bias(0:2)
