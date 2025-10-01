@@ -59,6 +59,8 @@ class PhaseSpace:
     channels: list[Channel]
     symfact: list[int | None]
     amp2_remap: list[int]
+    prop_chan_weights: me.PropagatorChannelWeights | None = None
+    subchan_weights: me.SubchannelWeights | None = None
     cwnet: me.ChannelWeightNetwork | None = None
 
 
@@ -368,6 +370,10 @@ class MadgraphSubprocess:
         amp2_remap = [-1] * diagram_count
         symfact = []
         channels = []
+        topologies = []
+        all_topologies = []
+        permutations = []
+        channel_indices = []
 
         for channel_id, channel in enumerate(self.meta["channels"]):
             propagators = []
@@ -389,7 +395,7 @@ class MadgraphSubprocess:
                 ))
             vertices = channel["vertices"]
             diagrams = channel["diagrams"]
-            permutations = [d["permutation"] for d in diagrams]
+            chan_permutations = [d["permutation"] for d in diagrams]
             channel_index = len(symfact)
             amp2_remap[diagrams[0]["diagram"]] = channel_index
             symfact.append(None)
@@ -400,38 +406,54 @@ class MadgraphSubprocess:
             diag = me.Diagram(
                 self.incoming_masses, self.outgoing_masses, propagators, vertices
             )
-            topology = me.Topology(diag)
+            chan_topologies = me.Topology.topologies(diag)
             mapping = me.PhaseSpaceMapping(
-                topology,
+                chan_topologies[0],
                 self.process.e_cm,
                 t_channel_mode=t_channel_mode,
                 cuts=self.cuts,
                 invariant_power=self.process.run_card["phasespace"]["invariant_power"],
-                permutations=permutations,
+                permutations=chan_permutations,
             )
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
             discrete_before, discrete_after = self.build_discrete(
-                len(permutations), len(self.meta["flavors"]), prefix
+                len(chan_permutations), len(self.meta["flavors"]), prefix
             )
+            indices = list(range(channel_index, channel_index + len(chan_permutations)))
             channels.append(Channel(
                 phasespace_mapping = mapping,
                 adaptive_mapping = self.build_vegas(mapping, prefix),
                 discrete_before = discrete_before,
                 discrete_after = discrete_after,
-                channel_weight_indices = list(
-                    range(channel_index, channel_index + len(permutations))
-                ),
+                channel_weight_indices = indices,
             ))
+            topologies.append(chan_topologies[0])
+            all_topologies.append(chan_topologies)
+            permutations.append(chan_permutations)
+            channel_indices.append(indices)
         diags_before_symmetries = len(symfact)
-        amp2_remap = [
-            diags_before_symmetries if remap == -1 else remap
-            for remap in amp2_remap
-        ]
+
+        if self.process.run_card["phasespace"]["sde_strategy"] == "denominators":
+            prop_chan_weights = me.PropagatorChannelWeights(
+                topologies, permutations, channel_indices
+            )
+            amp2_remap = list(range(len(symfact)))
+        else:
+            prop_chan_weights = None
+            amp2_remap = [
+                diags_before_symmetries if remap == -1 else remap
+                for remap in amp2_remap
+            ]
+
+        if any(len(topos) > 1 for topos in all_topologies):
+            print("found subchannels!")
+
         return PhaseSpace(
             mode="multichannel",
             channels=channels,
             amp2_remap=amp2_remap,
             symfact=symfact,
+            prop_chan_weights=prop_chan_weights,
         )
 
     def build_flat_phasespace(self) -> PhaseSpace:
@@ -524,7 +546,12 @@ class MadgraphSubprocess:
         ]
 
         return PhaseSpace(
-            mode="both", channels=channels, amp2_remap=amp2_remap, symfact=symfact
+            mode="both",
+            channels=channels,
+            amp2_remap=amp2_remap,
+            symfact=symfact,
+            prop_chan_weights=multi_phasespace.prop_chan_weights,
+            subchan_weights=multi_phasespace.subchan_weights,
         )
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
@@ -585,6 +612,8 @@ class MadgraphSubprocess:
             amp2_remap=phasespace.amp2_remap,
             symfact=phasespace.symfact,
             cwnet=self.build_cwnet(len(phasespace.symfact)),
+            prop_chan_weights=phasespace.prop_chan_weights,
+            subchan_weights=phasespace.subchan_weights,
         )
 
     def build_vegas(self, mapping: me.PhaseSpaceMapping, prefix: str) -> me.VegasMapping:
@@ -674,8 +703,7 @@ class MadgraphSubprocess:
             self.process.e_cm,
             self.scale,
             False,
-            len(phasespace.symfact),
-            phasespace.amp2_remap,
+            self.meta["diagram_count"],
             self.meta["has_mirror_process"],
         )
         integrands = []
@@ -688,8 +716,11 @@ class MadgraphSubprocess:
                 channel.discrete_after,
                 self.process.pdf_grid,
                 self.scale,
-                None, #TODO: propagator channel weights
+                phasespace.prop_chan_weights,
+                phasespace.subchan_weights,
                 phasespace.cwnet,
+                phasespace.amp2_remap,
+                len(phasespace.symfact),
                 flags,
                 channel.channel_weight_indices,
             ))
