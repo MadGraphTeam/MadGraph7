@@ -1665,10 +1665,10 @@ class ALOHAWriterForCPP(WriteALOHA):
             if argname.startswith('COUP'):
                 point = self.type2def['pointer_coup']
                 if 'M' in self.tag:
-                    type = 'FLV_COUPLING '
                     # define COUP as normal complex after fct definition
                     tmp.append('%s%s%s%s'% (type,point, argname, list_arg))
                     argname = argname.replace('COUP','MCOUP')
+                    type = 'FLV_COUPLING '
                 args.append('%s%s%s%s'% (type,point, argname, list_arg))
             else:
                 args.append('%s%s%s'% (type, argname, list_arg))
@@ -1914,7 +1914,7 @@ class ALOHAWriterForCPP(WriteALOHA):
                 else:
                     out.write('   int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
                     for i in range(2,nb_coupling+1):
-                        out.write('        if(flv_index1 == -1){flv_index1 = MCOUP%i.partner2[flv_index%i]}' %(i, incoming))  
+                        out.write('        if(flv_index1 == -1){flv_index1 = MCOUP%i.partner2[flv_index%i];}' %(i, incoming))  
                 out.write('   if(flv_index1 == -1){\n')
                 out.write('        for(int i=0; i<4; i++){F%i.W[i] = std::complex<double>(0.,0.);}\n F%i.flv_index = -1; \n return;\n }\n' %(outgoing, outgoing))
                 out.write('   F%i.flv_index = flv_index1;\n' % outgoing)                
