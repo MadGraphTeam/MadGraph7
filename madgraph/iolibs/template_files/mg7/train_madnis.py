@@ -71,7 +71,7 @@ def train_madnis(
         freeze_cwnet_iteration=int(
             madnis_args["train_batches"] * (1 - madnis_args["fixed_cwnet_fraction"])
         ),
-        device=torch.device("cpu"),
+        device=torch.device("cpu" if context.device() == me.cpu_device() else "cuda:0"),
         dtype=torch.float64,
     )
 
