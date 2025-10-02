@@ -2011,6 +2011,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                         )
 
             sys_obj.print_cross_sections(all_cross, nb_event, result_file)
+            if result_file is not sys.stdout:
+                result_file.close()
 
             #concatenate the output file
             subprocess.call(['cat']+\
@@ -3842,7 +3844,37 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """return the information that need to be kept for the scan summary.
         Auto-width are automatically added."""
         
-        return {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+        # try retrieving sys info for scan
+        try:
+            extraMUX, extraPDF = self.getSysSummaryFromLog(kpath=pjoin(self.me_dir, 'Cards', 'param_card.dat'),knext_name=self.run_name)                   
+            logger.info("Storing scale/PDF variation for scan summary %s" % self.run_name)
+        except AssertionError as err:
+            logger.debug(str(err))
+            logger.info("Not collecting scale/PDF variation for scan summary")
+            extraMUX, extraPDF = [], []
+        except Exception as err:
+            logger.debug(str(err))
+            logger.info("Failed to collect scale/PDF variation for scan summary from %s. Setting individual variations to zero." % self.run_name)
+            extraMUX, extraPDF = [], []
+
+
+        base_result = {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+
+        # add scale variation if available
+        if len(extraMUX)==2:
+            mux_result = {'scale_hi_percent' : extraMUX[0], 'scale_lo_percent' : extraMUX[1]}
+        else:
+            mux_result = {}
+        base_result.update(mux_result)
+
+        # add pdf variation if available
+        if len(extraPDF)==2:
+            pdf_result = {'pdf_hi_percent' : extraPDF[0], 'pdf_lo_percent' : extraPDF[1]}
+        else:
+            pdf_result = {}
+        base_result.update(pdf_result)
+
+        return base_result
 
 
     def add_error_log_in_html(self, errortype=None):
@@ -7869,7 +7901,6 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
             order = summaryorder(obj)()
             run_card_iterator.write_summary(path, order=order) 
 
-
     def decorator(original_fct):        
         def new_fct(obj, *args, **opts):
             
@@ -7901,7 +7932,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     #first run of the function
                     original_fct(obj, *args, **opts)
                     return
-            
+
             with restore_iterator(param_card_iterator, card_path):
                 # this with statement ensure that the original card is restore
                 # whatever happens inside those block
@@ -7915,6 +7946,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     set_run_name(obj)(next_name)
                     # run for the first time
                     original_fct(obj, *args, **opts)
+                    # store xsec and unc
                     param_card_iterator.store_entry(next_name, store_for_scan(obj)(), param_card_path=card_path)
                     for card in param_card_iterator:
                         card.write(card_path)
