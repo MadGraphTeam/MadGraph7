@@ -58,7 +58,7 @@ class PhaseSpace:
     mode: Literal["multichannel", "flat", "both"]
     channels: list[Channel]
     symfact: list[int | None]
-    amp2_remap: list[int]
+    chan_weight_remap: list[int]
     prop_chan_weights: me.PropagatorChannelWeights | None = None
     subchan_weights: me.SubchannelWeights | None = None
     cwnet: me.ChannelWeightNetwork | None = None
@@ -374,6 +374,8 @@ class MadgraphSubprocess:
         all_topologies = []
         permutations = []
         channel_indices = []
+        diagram_indices = []
+        channel_index = 0
 
         for channel_id, channel in enumerate(self.meta["channels"]):
             propagators = []
@@ -396,64 +398,82 @@ class MadgraphSubprocess:
             vertices = channel["vertices"]
             diagrams = channel["diagrams"]
             chan_permutations = [d["permutation"] for d in diagrams]
-            channel_index = len(symfact)
-            amp2_remap[diagrams[0]["diagram"]] = channel_index
-            symfact.append(None)
-            for d in diagrams[1:]:
-                amp2_remap[d["diagram"]] = len(symfact)
-                symfact.append(channel_index)
-
             diag = me.Diagram(
                 self.incoming_masses, self.outgoing_masses, propagators, vertices
             )
             chan_topologies = me.Topology.topologies(diag)
-            mapping = me.PhaseSpaceMapping(
-                chan_topologies[0],
-                self.process.e_cm,
-                t_channel_mode=t_channel_mode,
-                cuts=self.cuts,
-                invariant_power=self.process.run_card["phasespace"]["invariant_power"],
-                permutations=chan_permutations,
-            )
-            prefix = f"subproc{self.subproc_id}.channel{channel_id}"
-            discrete_before, discrete_after = self.build_discrete(
-                len(chan_permutations), len(self.meta["flavors"]), prefix
-            )
-            indices = list(range(channel_index, channel_index + len(chan_permutations)))
-            channels.append(Channel(
-                phasespace_mapping = mapping,
-                adaptive_mapping = self.build_vegas(mapping, prefix),
-                discrete_before = discrete_before,
-                discrete_after = discrete_after,
-                channel_weight_indices = indices,
-            ))
+            topo_count = len(chan_topologies)
+
+            amp2_remap[diagrams[0]["diagram"]] = channel_index
+            channel_index_first = channel_index
+            symfact_index_first = len(symfact)
+            channel_index += 1
+            symfact.extend([None] * topo_count)
+            for d in diagrams[1:]:
+                amp2_remap[d["diagram"]] = channel_index
+                channel_index += 1
+                symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
+
+            for topo_index, topo in enumerate(chan_topologies):
+                mapping = me.PhaseSpaceMapping(
+                    chan_topologies[0],
+                    self.process.e_cm,
+                    t_channel_mode=t_channel_mode,
+                    cuts=self.cuts,
+                    invariant_power=self.process.run_card["phasespace"]["invariant_power"],
+                    permutations=chan_permutations,
+                )
+                prefix = f"subproc{self.subproc_id}.channel{channel_id}"
+                if topo_count > 1:
+                    prefix += f".subchan{topo_index}"
+                discrete_before, discrete_after = self.build_discrete(
+                    len(chan_permutations), len(self.meta["flavors"]), prefix
+                )
+                indices = [
+                    symfact_index_first + topo_index + i * topo_count
+                    for i in range(len(chan_permutations))
+                ]
+                channels.append(Channel(
+                    phasespace_mapping = mapping,
+                    adaptive_mapping = self.build_vegas(mapping, prefix),
+                    discrete_before = discrete_before,
+                    discrete_after = discrete_after,
+                    channel_weight_indices = indices,
+                ))
             topologies.append(chan_topologies[0])
             all_topologies.append(chan_topologies)
             permutations.append(chan_permutations)
-            channel_indices.append(indices)
-        diags_before_symmetries = len(symfact)
+            channel_indices.append(list(range(channel_index_first, channel_index)))
+            diagram_indices.append([d["diagram"] for d in diagrams])
 
+        chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
         if self.process.run_card["phasespace"]["sde_strategy"] == "denominators":
             prop_chan_weights = me.PropagatorChannelWeights(
                 topologies, permutations, channel_indices
             )
-            amp2_remap = list(range(len(symfact)))
+            indices_for_subchan = channel_indices
         else:
             prop_chan_weights = None
-            amp2_remap = [
-                diags_before_symmetries if remap == -1 else remap
-                for remap in amp2_remap
-            ]
+            indices_for_subchan = diagram_indices
 
         if any(len(topos) > 1 for topos in all_topologies):
-            print("found subchannels!")
+            subchan_weights = me.SubchannelWeights(
+                all_topologies, permutations, indices_for_subchan
+            )
+        else:
+            subchan_weights = None
+            if prop_chan_weights is None:
+                chan_weight_remap = [
+                    len(symfact) if remap == -1 else remap for remap in amp2_remap
+                ]
 
         return PhaseSpace(
             mode="multichannel",
             channels=channels,
-            amp2_remap=amp2_remap,
+            chan_weight_remap=chan_weight_remap,
             symfact=symfact,
             prop_chan_weights=prop_chan_weights,
+            subchan_weights=subchan_weights,
         )
 
     def build_flat_phasespace(self) -> PhaseSpace:
@@ -477,7 +497,7 @@ class MadgraphSubprocess:
         return PhaseSpace(
             mode="flat",
             channels=[channel],
-            amp2_remap=[0] * self.meta["diagram_count"],
+            chan_weight_remap=[0] * self.meta["diagram_count"],
             symfact=[None],
         )
 
@@ -540,15 +560,15 @@ class MadgraphSubprocess:
         flat_index = len(symfact)
         symfact.append(None)
         channel_map[len(multi_phasespace.symfact)] = len(symfact)
-        amp2_remap = [
+        chan_weight_remap = [
             channel_map.get(remap, flat_index)
-            for remap in multi_phasespace.amp2_remap
+            for remap in multi_phasespace.chan_weight_remap
         ]
 
         return PhaseSpace(
             mode="both",
             channels=channels,
-            amp2_remap=amp2_remap,
+            chan_weight_remap=chan_weight_remap,
             symfact=symfact,
             prop_chan_weights=multi_phasespace.prop_chan_weights,
             subchan_weights=multi_phasespace.subchan_weights,
@@ -609,7 +629,7 @@ class MadgraphSubprocess:
         return PhaseSpace(
             mode="both",
             channels=channels,
-            amp2_remap=phasespace.amp2_remap,
+            chan_weight_remap=phasespace.chan_weight_remap,
             symfact=phasespace.symfact,
             cwnet=self.build_cwnet(len(phasespace.symfact)),
             prop_chan_weights=phasespace.prop_chan_weights,
@@ -719,7 +739,7 @@ class MadgraphSubprocess:
                 phasespace.prop_chan_weights,
                 phasespace.subchan_weights,
                 phasespace.cwnet,
-                phasespace.amp2_remap,
+                phasespace.chan_weight_remap,
                 len(phasespace.symfact),
                 flags,
                 channel.channel_weight_indices,
