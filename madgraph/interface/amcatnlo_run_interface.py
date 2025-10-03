@@ -5622,10 +5622,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             compile_cluster.wait(self.me_dir, update_status)
         except Exception as  error:
             logger.warning("Compilation of the Subprocesses failed")
-            if __debug__:
-                raise
             compile_cluster.remove()
-            self.do_quit('')
+            raise aMCatNLOError(error)
 
         logger.info('Checking test output:')
         for p_dir in p_dirs:
