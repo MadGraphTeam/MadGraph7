@@ -108,6 +108,8 @@ C     block for heavy ion beam
 C
       integer nb_proton(2), nb_neutron(2)
       common/to_heavyion_pdg/ nb_proton, nb_neutron
+      double precision mass_ion(2)
+      common/to_heavyion_mass/mass_ion
 C UPC parameter
       double precision RAI(2),xiAI(2)
       common /heavyion_upc_beams/ RAI, xiAI
