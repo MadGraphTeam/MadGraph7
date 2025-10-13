@@ -5078,8 +5078,8 @@ C the first entry in xkk is for QCD splittings, the second QED
       parameter (vca=3.d0)
       parameter (xnc=3.d0)
 
-      integer i_fks,j_fks
-      common/fks_indices/i_fks,j_fks
+      integer i_fks, j_fks
+      common/fks_indices/i_fks, j_fks
       include "run.inc"
       include "q_es.inc"
 
@@ -5160,10 +5160,10 @@ c
         endif
         xkk(1)=0d0
         if(dabs(ch1).gt.0d0.and.dabs(ch2).gt.0d0
-     $      .and.dabs(ch1).eq.dabs(ch2))then ! gamma -> f^* (ch1) fbar (ch2)
+     $      .and.dabs(ch1).eq.dabs(ch2)) then ! gamma -> f^* (ch1) fbar (ch2)
           xkk(2)=-abs(col1)*ch1**2*(1d0-x)*(x**2+(1d0-x)**2)
      $        *dlog(QES2*xiAI(j_fks)**2*RAI(j_fks)**2)
-         endif
+        endif
       else
         write(6,*)'Error in xkplus: wrong PDF scheme', PDFscheme
         stop

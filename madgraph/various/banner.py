@@ -1190,7 +1190,7 @@ class ConfigFile(dict):
                     
                 if not new_values:
 
-                    text= "value '%s' for entry '%s' is not valid.  1 Preserving previous value: '%s'.\n" \
+                    text= "value '%s' for entry '%s' is not valid.  Preserving previous value: '%s'.\n" \
                                % (value, name, self[lower_name])
                     text += "allowed values are any list composed of the following entries: %s" % ', '.join([str(i) for i in self.allowed_value[lower_name]])
                     return self.warn(text, 'warning', raiseerror)                    
@@ -1296,7 +1296,7 @@ class ConfigFile(dict):
                     
             if not valid:
                 # act if not valid:
-                text = "value '%s' for entry '%s' is not valid.  2 Preserving previous value: '%s'.\n" \
+                text = "value '%s' for entry '%s' is not valid.  Preserving previous value: '%s'.\n" \
                                % (value, name, self[lower_name])
                 text += "allowed values are %s\n" % ', '.join([str(i) for i in self.allowed_value[lower_name]])
                 if lower_name in self.comments:
@@ -5721,17 +5721,17 @@ class RunCardNLO(RunCard):
             if self['lpp1'] == 1 or self['lpp2']==1:
                 raise InvalidRunCard('Process like Deep Inelastic scattering not supported at NLO accuracy.')
 
-            if not self['lpp1'] == self['lpp2'] == 2:
+            if not self['lpp1'] == 2 == self['lpp2']:
 
-            if abs(self['lpp1']) == abs(self['lpp2']) in [3,4]:
-                # for dressed lepton collisions, check that the lhaid is a valid one
-                if self['pdlabel'] not in sum(self.allowed_lep_densities.values(),[]) + ['emela']:
-                    raise InvalidRunCard('pdlabel %s not allowed for dressed-lepton collisions' % self['pdlabel'])
-            
-            elif self['pdlabel']!='nn23nlo' or self['reweight_pdf']:
-                self['pdlabel']='nn23nlo'
-                self['reweight_pdf']=[False]
-                logger.info('''Lepton-lepton collisions: ignoring PDF related parameters in the run_card.dat (pdlabel, lhaid, reweight_pdf, ...)''')
+                if abs(self['lpp1']) == abs(self['lpp2']) in [3,4]:
+                    # for dressed lepton collisions, check that the lhaid is a valid one
+                    if self['pdlabel'] not in sum(self.allowed_lep_densities.values(),[]) + ['emela']:
+                        raise InvalidRunCard('pdlabel %s not allowed for dressed-lepton collisions' % self['pdlabel'])
+                
+                elif self['pdlabel']!='nn23nlo' or self['reweight_pdf']:
+                    self['pdlabel']='nn23nlo'
+                    self['reweight_pdf']=[False]
+                    logger.info('''Lepton-lepton collisions: ignoring PDF related parameters in the run_card.dat (pdlabel, lhaid, reweight_pdf, ...)''')
         
             if self['lpp1'] == 0  == self['lpp2']:
                 if self['pdlabel']!='nn23nlo' or self['reweight_pdf']:

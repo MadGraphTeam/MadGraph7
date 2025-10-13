@@ -468,17 +468,17 @@ c call the PDFs
                   if (lpp(1).eq.2 .and. lpp(2).eq.2) then
                      xlum(kf)=photonpdfsquare(bjx(1,i),bjx(2,i))
                   else
-                  xlum(kf)=1d0
-                  LP=SIGN(1,LPP(1))
-                  pd=pdg(1,i)
-                  if (pd.eq.21) pd=0
-                  xlum(kf)=xlum(kf)*PDG2PDF(LPP(1),pd*LP,-1,bjx(1,i)
-     &                 ,DSQRT(mu2_f(kf)))
-                  LP=SIGN(1,LPP(2))
-                  pd=pdg(2,i)
-                  if (pd.eq.21) pd=0
-                  xlum(kf)=xlum(kf)*PDG2PDF(LPP(2),pd*LP,-2,bjx(2,i)
-     &                 ,DSQRT(mu2_f(kf)))
+                     xlum(kf)=1d0
+                     LP=SIGN(1,LPP(1))
+                     pd=pdg(1,i)
+                     if (pd.eq.21) pd=0
+                     xlum(kf)=xlum(kf)*PDG2PDF(LPP(1),pd*LP,-1,bjx(1,i)
+     &                    ,DSQRT(mu2_f(kf)))
+                     LP=SIGN(1,LPP(2))
+                     pd=pdg(2,i)
+                     if (pd.eq.21) pd=0
+                     xlum(kf)=xlum(kf)*PDG2PDF(LPP(2),pd*LP,-2,bjx(2,i)
+     &                    ,DSQRT(mu2_f(kf)))
                   endif
                enddo
 
@@ -533,17 +533,17 @@ c call the PDFs
                if (lpp(1).eq.2 .and. lpp(2).eq.2) then
                   xlum=photonpdfsquare(bjx(1,i),bjx(2,i))
                else
-               xlum=1d0
-               LP=SIGN(1,LPP(1))
-               pd=pdg(1,i)
-               if (pd.eq.21) pd=0
-               xlum=xlum*
-     &            PDG2PDF(LPP(1),pd*LP,-1,bjx(1,i),DSQRT(mu2_f))
-               LP=SIGN(1,LPP(2))
-               pd=pdg(2,i)
-               if (pd.eq.21) pd=0
-               xlum=xlum*
-     &             PDG2PDF(LPP(2),pd*LP,-2,bjx(2,i),DSQRT(mu2_f))
+                  xlum=1d0
+                  LP=SIGN(1,LPP(1))
+                  pd=pdg(1,i)
+                  if (pd.eq.21) pd=0
+                  xlum=xlum*
+     &               PDG2PDF(LPP(1),pd*LP,-1,bjx(1,i),DSQRT(mu2_f))
+                  LP=SIGN(1,LPP(2))
+                  pd=pdg(2,i)
+                  if (pd.eq.21) pd=0
+                  xlum=xlum*
+     &                PDG2PDF(LPP(2),pd*LP,-2,bjx(2,i),DSQRT(mu2_f))
                endif
 c add the weights to the array
                wgts(iwgt,i)=xlum * (wgt(1,i) + wgt(2,i)*log(mu2_r/mu2_q)

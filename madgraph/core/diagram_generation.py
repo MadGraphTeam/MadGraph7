@@ -1747,7 +1747,7 @@ class MultiProcess(base_objects.PhysicsObject):
                         fks_tag.TagLeg({'id':id, 'state': False, 'polarization': isleg['polarization'], 'is_tagged': tag}) \
                         for id, isleg, tag in zip(prod, islegs_orig, istags)]
             else:
-            islegs = [\
+                islegs = [\
                         base_objects.Leg({'id':id, 'state': False, 'polarization': islegs_orig[i]['polarization']})
                     for i,id in enumerate(prod)]
 
