@@ -16,3 +16,29 @@ struct ALOHAOBJ{
 
 
 #endif
+#ifndef i_guard
+#define i_guard
+#include <complex>
+
+void ixxxxx(double p[4],double fmass,int nhel,int nsf, int flv, ALOHAOBJ &fi);
+#endif
+#ifndef o_guard
+#define o_guard
+#include <complex>
+void oxxxxx(double p[4],double fmass,int nhel,int nsf, int flv,  ALOHAOBJ &fo);
+#endif
+#ifndef s_guard
+#define s_guard
+#include <complex>
+void sxxxxx(double p[4],int nss, ALOHAOBJ &sc);
+#endif
+#ifndef i_guard
+#define i_guard
+#include <complex>
+//void txxxxx(double p[4],double tmass,int nhel,int nst,std::complex<double> fi[18]);
+#endif
+#ifndef v_guard
+#define v_guard
+#include <complex>
+void vxxxxx(double p[4],double vmass, int nhel,int nsv, ALOHAOBJ &v);
+#endif
