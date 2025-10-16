@@ -284,7 +284,7 @@ def find_splittings(leg, model, dict, pert='QCD', include_init_leptons=True): #t
                         nsoft += 1
                 if nsoft >= 1:
                     for split in split_leg(leg, parts, model):
-                        # check if the leg is tagged, that 
+                        # check if a final-state leg is tagged, that
                         # the same particles appear also in the two daughters
                         if 'is_tagged' in leg.keys() and leg['is_tagged'] and \
                            leg['state'] and \
