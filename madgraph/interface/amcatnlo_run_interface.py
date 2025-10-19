@@ -3922,7 +3922,9 @@ RESTART = %(mint_mode)s
             #this gives all the flags, i.e.
             #-I/Path/to/HepMC/include -L/Path/to/HepMC/lib -lHepMC
             # we just need the path to the HepMC libraries
-            extrapaths.append(hepmc.split()[1].replace('-L', '')) 
+            for token in hepmc.split():
+                if token.startswith('-L'):
+                    extrapaths.append(token.replace('-L', ''))
 
         # check that if FxFx is activated the correct shower plugin is present
         if shower == 'PYTHIA8' and self.run_card['ickkw'] == 3:
