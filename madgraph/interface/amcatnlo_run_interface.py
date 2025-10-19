@@ -3924,7 +3924,7 @@ RESTART = %(mint_mode)s
             # we just need the path to the HepMC libraries
             for token in hepmc.split():
                 if token.startswith('-L'):
-                    extrapaths.append(token.replace('-L', ''))
+                    extrapaths.append(token[2:])
 
         # check that if FxFx is activated the correct shower plugin is present
         if shower == 'PYTHIA8' and self.run_card['ickkw'] == 3:
