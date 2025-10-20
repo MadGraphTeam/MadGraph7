@@ -1454,10 +1454,7 @@ This will take effect only in a NEW terminal
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
         elif os.path.isdir(src_path):
-            if any(p.endswith('.cu') for p in os.listdir(src_path)):
-                return 'standalone_gpu'
-            else:   
-                return 'standalone_cpp'
+            return 'standalone_cpp'
         elif os.path.isdir(mw_path):
             return 'madweight'
         elif os.path.isfile(pjoin(bin_path,'aMCatNLO')):
@@ -1727,7 +1724,7 @@ This will take effect only in a NEW terminal
             # Check for special directory treatment
             if path == 'auto' and self._export_format in \
                      ['madevent', 'standalone', 'standalone_cpp', 'matchbox_cpp', 'madweight',
-                      'matchbox', 'plugin', 'standalone_gpu']:
+                      'matchbox', 'plugin']:
                 self.get_default_path()
                 if '-noclean' not in args and os.path.exists(self._export_dir):
                     args.append('-noclean')
@@ -1884,11 +1881,6 @@ This will take effect only in a NEW terminal
         elif self._export_format.startswith('standalone'):
             if self._export_format == 'standalone_cpp':
                 name_dir = lambda i: 'PROC_SA_CPP_%s_%s' % \
-                                    (self._curr_model['name'], i)
-                auto_path = lambda i: pjoin(self.writing_dir,
-                                               name_dir(i))
-            elif self._export_format == 'standalone_gpu':
-                name_dir = lambda i: 'PROC_SA_GPU_%s_%s' % \
                                     (self._curr_model['name'], i)
                 auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
@@ -2991,8 +2983,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _v4_export_formats = ['madevent', 'standalone', 'standalone_msP','standalone_msF',
                           'matrix', 'standalone_rw', 'madweight'] 
     _export_formats = _v4_export_formats + ['standalone_cpp', 'pythia8', 'aloha',
-                                            'matchbox_cpp', 'matchbox',
-                                            'standalone_gpu']
+                                            'matchbox_cpp', 'matchbox']
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -3186,7 +3177,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
         self._v4_export_formats = ['madevent', 'standalone','standalone_msP','standalone_msF',
                                    'matrix', 'standalone_rw']
-        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'pythia8', 'standalone_gpu']
+        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'pythia8']
         self._nlo_modes_for_completion = ['all','virt','real']
 
     def do_quit(self, line):
@@ -9224,7 +9215,6 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         config['standalone_msP'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_rw'] =  {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_cpp'] = {'check': False, 'exporter': 'cpp', 'output': 'Template'}
-        config['standalone_gpu'] = {'check': False, 'exporter': 'cpp', 'output': 'Template'}
         config['pythia8'] =        {'check': False, 'exporter': 'cpp', 'output':'dir'}
         config['matchbox_cpp'] =   {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['matchbox'] =       {'check': True, 'exporter': 'v4',  'output': 'Template'}
