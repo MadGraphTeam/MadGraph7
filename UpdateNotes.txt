@@ -4,6 +4,11 @@ ANNOUNCEMENT:
    2.9.X version as a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
+3.6.5 (17/10/25):
+     MZ: Ensure that the code is crashing at NLO when the analysis contains a syntax error
+     OM: add a "compile" command at LO
+     OM: Fix a bug in the cudacpp where the color of the events was wrongly selected when writting the events into lhef file
+
 3.6.4 (13/9/25):
      RF: Fixed critical bug in FxFx merging, introduced in version 3.3.1. This resulted in too many negatively weighted events,
          and too many high-pT jets. Particularly relevant for merging with up to 2 or 3 jets at NLO. Thanks to Lenart Jerala

@@ -3971,7 +3971,9 @@ RESTART = %(mint_mode)s
             #this gives all the flags, i.e.
             #-I/Path/to/HepMC/include -L/Path/to/HepMC/lib -lHepMC
             # we just need the path to the HepMC libraries
-            extrapaths.append(hepmc.split()[1].replace('-L', '')) 
+            for token in hepmc.split():
+                if token.startswith('-L'):
+                    extrapaths.append(token[2:])
 
         # check that if FxFx is activated the correct shower plugin is present
         if shower == 'PYTHIA8' and self.run_card['ickkw'] == 3:
@@ -5671,10 +5673,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             compile_cluster.wait(self.me_dir, update_status)
         except Exception as  error:
             logger.warning("Compilation of the Subprocesses failed")
-            if __debug__:
-                raise
             compile_cluster.remove()
-            self.do_quit('')
+            raise aMCatNLOError(error)
 
         logger.info('Checking test output:')
         for p_dir in p_dirs:
