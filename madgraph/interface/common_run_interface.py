@@ -3841,8 +3841,20 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     def store_scan_result(self):
         """return the information that need to be kept for the scan summary.
         Auto-width are automatically added."""
-        
-        return {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+
+        default = {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+
+        custom_scan = misc.plugin_import('custom_scan',
+                                             'custom scan entry can be defined in custom_scan.py via the function custom_store_scan_result',
+                                             fcts=['custom_store_scan_result'])
+        if custom_scan:
+            try:
+                default.update(custom_scan(self))
+            except Exception as e:
+                logger.error('Error while adding custom scan results: %s: %s',type(e), e)
+            return  default
+
+        return default 
 
 
     def add_error_log_in_html(self, errortype=None):
