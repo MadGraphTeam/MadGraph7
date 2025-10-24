@@ -3844,9 +3844,13 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
         default = {'cross': self.results.current['cross'], 'error': self.results.current['error']}
 
-        custom_scan = misc.plugin_import('custom_scan',
+        try:
+            custom_scan = misc.plugin_import('custom_scan',
                                              'custom scan entry can be defined in custom_scan.py via the function custom_store_scan_result',
                                              fcts=['custom_store_scan_result'])
+        except Exception as e:
+            custom_scan = None
+               
         if custom_scan:
             try:
                 default.update(custom_scan(self))
