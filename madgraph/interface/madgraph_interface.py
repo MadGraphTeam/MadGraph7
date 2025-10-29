@@ -217,15 +217,15 @@ class CmdExtended(cmd.Cmd):
                 if not alltag:
                     proc = subprocess.Popen(['git', 'describe', '--tags'], stdout=subprocess.PIPE,cwd=MG5DIR)
                     tag,_ = proc.communicate()
+                    tag = tag.decode(errors='ignore').strip()
                     
                 elif len(alltag) == 1:
                     tag = alltag[0]
                 else:
-                    tag = [name for name in alltag if name.startswith('v')]
+                    tag = [name for name in alltag if name.startswith('v')][0]
                 branch,_ = subprocess.Popen(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=subprocess.PIPE,cwd=MG5DIR).communicate()
-                
                 branch = branch.decode(errors='ignore').strip()
-                tag = tag.decode(errors='ignore').strip()
+                
 
                 info_line += "#*         GIT %s %s %s         *\n" % \
                                 (tag,
