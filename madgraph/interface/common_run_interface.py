@@ -7400,7 +7400,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if card in self.modified_card:
                 self.write_card(card)
                 self.modified_card.discard(card)
-                
+            elif os.path.basename(card.replace('_card.dat','')) in self.modified_card:
+                self.write_card(os.path.basename(card.replace('_card.dat','')))
+                self.modified_card.discard(os.path.basename(card.replace('_card.dat','')))
+                card = os.path.basename(card.replace('_card.dat',''))
+
             if card in self.paths:
                 path = self.paths[card]
             elif os.path.exists(card):
@@ -7427,6 +7431,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(pos, newline)
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("writting at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = pos
             elif args[1].startswith('--line_position='):
@@ -7438,6 +7443,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(pos, newline)
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("writting at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = pos
                 
@@ -7451,6 +7457,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(posline, line.split(None,2)[2])
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = posline
                 
@@ -7480,6 +7487,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split[posline] = new_line
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("Replacing the line \"%s\" [line %d of %s] by \"%s\"" %
                          (old_line, posline, card, new_line ),'$MG:BOLD') 
                 self.last_editline_pos = posline               
@@ -7503,6 +7511,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     logger.warning('no line commented (no line matching)')
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
 
                 self.last_editline_pos = posline               
 
@@ -7521,7 +7530,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(posline, re.split(search_pattern,line)[-1])
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, line.split(None,2)[2] ),'$MG:BOLD')                
+                ff.close()
+                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')                
                 self.last_editline_pos = posline
                                 
             elif args[1].startswith('--after_line='):
@@ -7538,8 +7548,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(posline+1, re.split(search_pattern,line)[-1])
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
 
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline+1, card, line.split(None,2)[2] ),'$MG:BOLD')                                 
+                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline+1, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')                                 
                 self.last_editline_pos = posline+1
                                                  
             else:
