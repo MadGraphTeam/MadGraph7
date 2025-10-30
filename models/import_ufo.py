@@ -517,11 +517,9 @@ class UFOMG5Converter(object):
         self.conservecharge = set(['charge'])
 
         if hasattr(model, 'startfromalpha0'):
-            misc.sprint('Found startfromalpha0 variable in ufomodels.py.', model.startfromalpha0)
             startfromalpha = bannermod.ConfigFile.format_variable(model.startfromalpha0, bool, name="startfromalpha0")
             self.model.set('startfromalpha0', startfromalpha)
         else:
-            misc.sprint('not found in model')
             self.model.set('startfromalpha0', False) 
          
         self.ufomodel = model
