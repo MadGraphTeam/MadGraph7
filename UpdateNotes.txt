@@ -4,6 +4,9 @@ ANNOUNCEMENT:
    2.9.X version as a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
+3.5.12 (30/10/25):
+  OM: Change in gensym to better determine which channel have impossible BW configuration. This removes many spurious warning.
+  OM: include bug fixing from LTS (2.9.26) --see below --
 
 3.5.11 (19/9/25):
   RF: Fixed critical bug in FxFx merging, introduced in version 3.3.1. This resulted in too many negatively weighted events,
@@ -223,6 +226,14 @@ ANNOUNCEMENT:
             - EW<=X / EW^2<=X is equivalent to QED<=X / QED^2<=X
 
                         ** Long Term Stable Update **
+
+
+2.9.26 (30/10/25):
+  OM: setup the code to not print the python3.12 syntax warning anymore (still printed in debug mode)
+  OM: fix card edition issue when combining "set" and "edit" command
+  OM: fix some additional issue related to GCC15
+
+
 2.9.25 (11/9/25):
   OM: (thanks to SungBeom Cho) crash when running  multi_run during the merging of multiple lhe file if 
       MadSpin was activated (if the BR was different of one). If the BR=1, the merging was going trough but 
