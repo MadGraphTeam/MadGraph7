@@ -4,6 +4,13 @@ ANNOUNCEMENT:
    2.9.X version as a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
+3.6.6 (30/10/25):
+     OM: Fix serious bug on the lhe writting of events where some intermediate particle were wrongly written in the file.
+     OM: change in default restriction for coupling order for BSM (closer to 2.9.x behaviour)
+     OM: new plugin feature: possibility to customize the entry in the scan summary file
+     OM: Fix the support of some electron/muon PDF at LO
+     OM: User using git will now have the git version/tag printed in the banner of MG5aMC instead of a warning
+    
 3.6.5 (17/10/25):
      MZ: Ensure that the code is crashing at NLO when the analysis contains a syntax error
      OM: add a "compile" command at LO
@@ -55,12 +62,20 @@ ANNOUNCEMENT:
           This feature also add OpenMP support for LO process (deactivated by default and which does not need the plugin).
       OM+JK+KM+KH+YJZ: implementation of the FD gauge via "set gauge FD" [2203.10440, 2405.01256]
 
-||||||| e0af2abf7
-=======
-3.5.10(12/9/25):
-  ALL: Include fix from LTS 2.9.25 (see details below)
+###### LTS 3.5.X
 
->>>>>>> 3.5.10
+3.5.12 (30/10/25):
+  OM: Change in gensym to better determine which channel have impossible BW configuration. This removes many spurious warning.
+  OM: include bug fixing from LTS (2.9.26) --see below --
+
+3.5.11 (19/9/25):
+  RF: Fixed critical bug in FxFx merging, introduced in version 3.3.1. This resulted in too many negatively weighted events,
+      and too many high-pT jets. Particularly relevant for merging with up to 2 or 3 jets at NLO. Thanks to Lenart Jerala
+	  for pointing this out and testing the fixes.
+
+3.5.10 (13/9/25):
+  All: propagate bug fixing from 2.9.x version (up to 2.9.25)
+
 3.5.9 (4/6/25):
   OM: Fixed an issue in fixed_fact_scale when set to T where sometimes some beam where kept on False (in assymetric beam context)
   OM: Fixed a wrong scale assignment when beam#2 was dynamic but beam#1 was static (at LO)
@@ -274,6 +289,12 @@ ANNOUNCEMENT:
             - EW<=X / EW^2<=X is equivalent to QED<=X / QED^2<=X
 
                         ** Long Term Stable Update **
+
+2.9.26 (30/10/25):
+  OM: setup the code to not print the python3.12 syntax warning anymore (still printed in debug mode)
+  OM: fix card edition issue when combining "set" and "edit" command
+  OM: fix some additional issue related to GCC15
+
 
 2.9.25 (11/9/25):
   OM: (thanks to SungBeom Cho) crash when running  multi_run during the merging of multiple lhe file if 
