@@ -1146,6 +1146,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
             if w_orig == 0:
                 tag, order = event.get_tag_and_order()
+                misc.sprint(self.id_to_path)
                 orig_order, Pdir, hel_dict = self.id_to_path[tag]
                 misc.sprint(w_orig, w_new)
                 misc.sprint(event)
@@ -1541,8 +1542,20 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             nb_retry, sleep = 5, 20 
         
-        tag, order = event.get_tag_and_order()
+        misc.sprint(self.model['merged_particles'], hasattr(self, 'revert_merged'))
+        if not hasattr(self, 'revert_merged'):
+            if self.model['merged_particles']:
+                self.revert_merged = {}
+                for key, value in self.model['merged_particles'].items():
+                    for val in value:
+                        self.revert_merged[val] = key
+                misc.sprint(self.revert_merged)
+            else:
+                self.revert_merged = None   
 
+        misc.sprint(self.revert_merged)
+        tag, order = event.get_tag_and_order(self.revert_merged)
+        misc.sprint(tag, order)
         if self.keep_ordering:
             old_tag = tuple(tag)
             tag = (tag[0], tuple(order[1])) 
@@ -1555,11 +1568,15 @@ class ReweightInterface(extended_cmd.Cmd):
         #    base = "rw_me"
 
         if (not self.second_model and not self.second_process and not self.dedicated_path) or hypp_id==0:
+            misc.sprint(tag, self.id_to_path.keys())
             if tag in self.id_to_path: 
                 orig_order, Pdir, hel_dict = self.id_to_path[tag]
+                misc.sprint(orig_order, Pdir, hel_dict)
             else:
                 cross_tag = self.get_crossing_tag(tag)
+                misc.sprint(cross_tag)
                 orig_order, Pdir, hel_dict = self.id_to_path[cross_tag] 
+                misc.sprint(cross_tag, orig_order, Pdir, hel_dict)
         else:
             try:
                 orig_order, Pdir, hel_dict = self.id_to_path_second[tag]
@@ -1573,31 +1590,48 @@ class ReweightInterface(extended_cmd.Cmd):
                     logger.critical('The following initial/final state %s can not be found in the new model/process. If you want to set the weights of such events to zero use "change allow_missing_finalstate False"', tag)
                     raise Exception
 
+
         base = os.path.basename(os.path.dirname(Pdir))
+        misc.sprint(base)
         if base == 'rw_me':
             moduletag = (base, 2+hypp_id)
         else:
             moduletag = (base, 2)
         
         module = self.f2pylib[moduletag]
-
+        misc.sprint(orig_order)
         if self.keep_ordering:
-            all_p = [event.get_momenta(orig_order)]
+            all_p = [event.get_momenta(orig_order, merged_map=self.revert_merged)]
         else:
-            all_p = event.get_all_momenta(orig_order)
+            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged)
             if len(all_p) >1:
                 if self.helicity_reweighting:
                     logger.warning("due to ordering ambiguity, we flip off helicity per helicity reweighting.")
                 self.helicity_reweighting = False
 
         # add helicity information
-        
-        hel_order = event.get_helicity(orig_order)
+        misc.sprint(event)
+        misc.sprint(orig_order)
+        misc.sprint(all_p)
+        event_pos2order, orderevent_2pos = event.get_mapping(orig_order, merged_map=self.revert_merged)        
+        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged)
         if self.helicity_reweighting and 9 not in hel_order:
             nhel = hel_dict[tuple(hel_order)]                
         else:
             nhel = -1
-            
+
+        misc.sprint(nhel)  
+
+        pdg = list(orig_order[0])+list(orig_order[1])
+        if any(p in self.model['merged_particles'] for p in  pdg):
+            misc.sprint(all_p)
+            pdg = event.get_pdg(all_p[0])
+            misc.sprint(pdg)
+            if any(p<0 for p in pdg):
+                raise Exception("Negative pdg code in the event")
+
+
+
         # For 2>N pass in the center of mass frame
         #   - required for helicity by helicity re-weighitng
         #   - Speed-up loop computation 
@@ -1644,8 +1678,8 @@ class ReweightInterface(extended_cmd.Cmd):
         me_value = 0
         for p in all_p:
             pold = list(p)
+                                   
             p = self.invert_momenta(p)
-            pdg = list(orig_order[0])+list(orig_order[1])
             try:
                 pid = event.ievent
             except AttributeError:
@@ -1660,9 +1694,12 @@ class ReweightInterface(extended_cmd.Cmd):
                     scale2 = 0
 
             with misc.chdir(Pdir):
-                with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                #with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                    misc.sprint(pdg, pid, p, event.aqcd, scale2, nhel)
                     new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
-
+                    misc.sprint(new_value)
+                    if new_value == 0:
+                        raise Exception("Invalid matrix element")
             # for loop we have also the stability status code
             if isinstance(new_value, tuple):
                 new_value, code = new_value
@@ -1688,12 +1725,16 @@ class ReweightInterface(extended_cmd.Cmd):
         """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
 
         # get list of possible crossing tag
-        crossing_tag = [tuple((list(t[0])+list(t[1]))).sort() for t in self.id_to_path.keys()]
+        crossing_tag = [tuple(sorted(list(t[0])+list(t[1]))) for t in self.id_to_path.keys()]
+        misc.sprint(tag)
+        misc.sprint(crossing_tag)
 
         mytag = list(tag[0])+list(tag[1])
         mytag.sort()
         mytag=tuple(mytag)
+        misc.sprint(mytag)
         nb_found = crossing_tag.count(mytag)
+        misc.sprint(nb_found)
         if nb_found == 0 :
             return None
         elif nb_found > 1:
@@ -1776,6 +1817,7 @@ class ReweightInterface(extended_cmd.Cmd):
         start = time.time()
         commandline=''
         for i,proc in enumerate(data['processes']):
+            misc.sprint(proc)
             if '[' not in proc:
                 commandline += "add process %s ;" % proc
             else:
@@ -1788,7 +1830,7 @@ class ReweightInterface(extended_cmd.Cmd):
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
                     commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
-
+        misc.sprint(commandline)
         if not self.keep_ordering:
             commandline = commandline.replace('add process', 'add process --no_crossing') 
         commandline = commandline.replace('add process', 'generate',1)
@@ -2029,9 +2071,9 @@ class ReweightInterface(extended_cmd.Cmd):
             #self.id_to_path_second = {}   
             #data['id2path'] = self.id_to_path_second 
 
-        if not self.keep_ordering:
-            for i,line in enumerate(data['processes']):
-                data['processes'][i] = '%s --no_crossing' % line
+        #if not self.keep_ordering:
+        #    for i,line in enumerate(data['processes']):
+        #        data['processes'][i] = '%s --no_crossing' % line
             
 
         # 0. clean previous run ------------------------------------------------
@@ -2252,6 +2294,7 @@ class ReweightInterface(extended_cmd.Cmd):
                             tmp_mod_name = tmp_mod_name.rsplit('.',1)[0]
                             del sys.modules[tmp_mod_name]
                         if six.PY3:
+                            misc.sprint(mod_name)
                             import importlib
                             mymod = importlib.import_module(mod_name,)
                             mymod = importlib.reload(mymod)
@@ -2287,7 +2330,7 @@ class ReweightInterface(extended_cmd.Cmd):
             all_pdgs = [[pdg for pdg in pdgs if pdg!=0] for pdgs in  allids]
             all_prefix = [bytes(j).decode(errors="ignore").strip().lower() for j in mymod.get_prefix()]
             prefix_set = set(all_prefix)
-
+            misc.sprint(data, allids, all_pdgs, all_prefix, prefix_set)
             hel_dict={}
             for prefix in prefix_set:
                 if hasattr(mymod,'%sprocess_nhel' % prefix):
@@ -2346,7 +2389,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         misc.sprint(data[tag][:-1])
                         misc.sprint(order, pdir,)
                         raise Exception( "two different matrix-element have the same initial/final state. Leading to an ambiguity. If your events are ALWAYS written in the correct-order (look at the numbering in the Feynman Diagram). Then you can add inside your reweight_card the line 'change keep_ordering True'." )
-
+                misc.sprint(tag, order, pdir)
                 data[tag] = order, pdir, hel
              
              

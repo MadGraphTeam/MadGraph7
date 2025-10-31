@@ -2783,7 +2783,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 else:
                     flavor_text += ' '
                 nb += 1
-                flavor_text += 'if (abs(pdgs(i)).eq.%i)then\n flavor(i) = abs(%i)\n pdgs(i) = Sign(pdgs(i), %i)\n' % (pid, pid, pdg)
+                flavor_text += 'if (abs(pdgs(i)).eq.%i)then\n flavor(i) = abs(%i)\n pdgs(i) = Sign(%i, pdgs(i))\n' % (pid, pid, pdg)
         if nb>0:
             flavor_text += 'endif\n'
         flavor_text += " enddo\n"
