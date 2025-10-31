@@ -1463,11 +1463,15 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                              self.run_name, '%s_pts.dat' % tag)
                 for observable_name, data_path in [('djr',djr_path),
                                                    ('pt',pt_path)]:
-                    if not self.generate_Pythia8_HwU_plots(
+                    try:
+                        if not self.generate_Pythia8_HwU_plots(
                                     PY8_plots_root_path, merging_scale_name,
                                                      observable_name,data_path):
-                        return False
-
+                            return False
+                    except Exception as error:
+                        if os.path.exists(data_path):
+                            logger.info('plot information present in %s' % data_path)
+                        return True
         if mode == 'Pythia8':
             plot_files = glob.glob(pjoin(PY8_plots_root_path,'*.gnuplot'))
             if not misc.which('gnuplot'):
@@ -1964,12 +1968,16 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 self.cluster.wait(os.path.dirname(output), update_status, update_first=update_status)
             except Exception:
                 self.cluster.remove()
+                for i in range(nb_submit):
+                    os.remove('%s/tmp_%s_%s' %(os.path.dirname(output),i,os.path.basename(output)))
                 old_run_mode = self.options['run_mode']
                 self.options['run_mode'] =0
+                out =False
                 try:
                     out = self.do_systematics(line)
                 finally:
                     self.options['run_mode']  =  old_run_mode
+                return out
             #collect the data
             all_cross = []
             for i in range(nb_submit):
@@ -1994,19 +2002,24 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             if 'event_norm' in self.run_card and \
                                        self.run_card['event_norm'] in ['unity']:
                 all_cross= [cross/nb_event for cross in all_cross]
-                
-            sys_obj = systematics.call_systematics([input, None] + opts, 
-                                         log=lambda x: logger.info(str(x)),
-                                         result=result_file,
-                                         running=False
-                                         )                    
+
+
+            sys_obj = systematics.call_systematics([input, None] + opts,
+                                        log=lambda x: logger.info(str(x)),
+                                        result=result_file,
+                                        running=False
+                                        )
+
             sys_obj.print_cross_sections(all_cross, nb_event, result_file)
-            
+            if result_file is not sys.stdout:
+                result_file.close()
+
             #concatenate the output file
             subprocess.call(['cat']+\
                             ['./tmp_%s_%s' % (i, os.path.basename(output)) for i in range(nb_submit)],
                             stdout=open(output,'w'),
                             cwd=os.path.dirname(output))
+
             for i in range(nb_submit):
                 os.remove('%s/tmp_%s_%s' %(os.path.dirname(output),i,os.path.basename(output)))
             #    os.remove('%s/log_sys_%s.txt' % (os.path.dirname(output),i))
@@ -3831,7 +3844,50 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """return the information that need to be kept for the scan summary.
         Auto-width are automatically added."""
         
-        return {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+        # try retrieving sys info for scan
+        try:
+            extraMUX, extraPDF = self.getSysSummaryFromLog(kpath=pjoin(self.me_dir, 'Cards', 'param_card.dat'),knext_name=self.run_name)                   
+            logger.info("Storing scale/PDF variation for scan summary %s" % self.run_name)
+        except AssertionError as err:
+            logger.debug(str(err))
+            logger.info("Not collecting scale/PDF variation for scan summary")
+            extraMUX, extraPDF = [], []
+        except Exception as err:
+            logger.debug(str(err))
+            logger.info("Failed to collect scale/PDF variation for scan summary from %s. Setting individual variations to zero." % self.run_name)
+            extraMUX, extraPDF = [], []
+
+
+        base_result = {'cross': self.results.current['cross'], 'error': self.results.current['error']}
+
+        # add scale variation if available
+        if len(extraMUX)==2:
+            mux_result = {'scale_hi_percent' : extraMUX[0], 'scale_lo_percent' : extraMUX[1]}
+        else:
+            mux_result = {}
+        base_result.update(mux_result)
+
+        try:
+            custom_scan = misc.plugin_import('custom_scan',
+                                             'custom scan entry can be defined in custom_scan.py via the function custom_store_scan_result',
+                                             fcts=['custom_store_scan_result'])
+        except Exception as e:
+            custom_scan = None
+               
+        if custom_scan:
+            try:
+                base_result.update(custom_scan(self))
+            except Exception as e:
+                logger.error('Error while adding custom scan results: %s: %s',type(e), e)
+
+        # add pdf variation if available
+        if len(extraPDF)==2:
+            pdf_result = {'pdf_hi_percent' : extraPDF[0], 'pdf_lo_percent' : extraPDF[1]}
+        else:
+            pdf_result = {}
+        base_result.update(pdf_result)
+
+        return base_result
 
 
     def add_error_log_in_html(self, errortype=None):
@@ -6421,14 +6477,14 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                  self.run_card['mass_ion1'] != self.run_card['mass_ion2']):
                 raise Exception("Heavy ion profile for both beam are different but the symmetry used forbids it. \n Please generate your process with \"set group_subprocesses False\".")
             
-            # check for nhel if using eva
-            if  self.run_card['pdlabel']  == 'eva' or \
-                self.run_card['pdlabel1'] == 'eva' or \
-                self.run_card['pdlabel2'] == 'eva':
+            # check for nhel if using eva/ieva
+            if  (self.run_card['pdlabel']  in  ['eva']) or \
+                (self.run_card['pdlabel1'] in  ['eva']) or \
+                (self.run_card['pdlabel2'] in  ['eva']) :
                 logger.warning("Running with EVA. Updating EW inputs in Source/PDF/ElectroweakFlux.inc to match param_card.")
 
                 if self.run_card['nhel'] == 0:
-                    logger.warning("EVA mode requies MC sampling by polarization: updating run_card with nhel=1")
+                    logger.warning("EVA mode requires MC sampling by polarization: updating run_card with nhel=1")
                     self.do_set('run_card nhel 1')
 
             # check the status of small width status from LO
@@ -6879,8 +6935,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         else:
             log_level=20
 
-
-        if run_card:
+        if run_card and (run_card['lpp1'] !=0 or run_card['lpp2'] !=0):
+            # They are likely case like lpp=+-3, where alpas not need reset
+            # but those have dedicated name of pdf avoid the reset
             as_for_pdf = {'cteq6_m': 0.118,
                           'cteq6_d': 0.118, 
                           'cteq6_l': 0.118, 
@@ -7372,7 +7429,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if card in self.modified_card:
                 self.write_card(card)
                 self.modified_card.discard(card)
-                
+            elif os.path.basename(card.replace('_card.dat','')) in self.modified_card:
+                self.write_card(os.path.basename(card.replace('_card.dat','')))
+                self.modified_card.discard(os.path.basename(card.replace('_card.dat','')))
+                card = os.path.basename(card.replace('_card.dat',''))
+
             if card in self.paths:
                 path = self.paths[card]
             elif os.path.exists(card):
@@ -7399,6 +7460,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(pos, newline)
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("writting at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = pos
             elif args[1].startswith('--line_position='):
@@ -7410,6 +7472,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(pos, newline)
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("writting at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = pos
                 
@@ -7423,6 +7486,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(posline, line.split(None,2)[2])
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = posline
                 
@@ -7452,6 +7516,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split[posline] = new_line
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
                 logger.info("Replacing the line \"%s\" [line %d of %s] by \"%s\"" %
                          (old_line, posline, card, new_line ),'$MG:BOLD') 
                 self.last_editline_pos = posline               
@@ -7475,6 +7540,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     logger.warning('no line commented (no line matching)')
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
 
                 self.last_editline_pos = posline               
 
@@ -7493,7 +7559,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(posline, re.split(search_pattern,line)[-1])
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, line.split(None,2)[2] ),'$MG:BOLD')                
+                ff.close()
+                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')                
                 self.last_editline_pos = posline
                                 
             elif args[1].startswith('--after_line='):
@@ -7510,8 +7577,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 split.insert(posline+1, re.split(search_pattern,line)[-1])
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
+                ff.close()
 
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline+1, card, line.split(None,2)[2] ),'$MG:BOLD')                                 
+                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline+1, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')                                 
                 self.last_editline_pos = posline+1
                                                  
             else:
@@ -7857,7 +7925,6 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
             order = summaryorder(obj)()
             run_card_iterator.write_summary(path, order=order) 
 
-
     def decorator(original_fct):        
         def new_fct(obj, *args, **opts):
             
@@ -7889,7 +7956,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     #first run of the function
                     original_fct(obj, *args, **opts)
                     return
-            
+
             with restore_iterator(param_card_iterator, card_path):
                 # this with statement ensure that the original card is restore
                 # whatever happens inside those block
@@ -7903,6 +7970,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                     set_run_name(obj)(next_name)
                     # run for the first time
                     original_fct(obj, *args, **opts)
+                    # store xsec and unc
                     param_card_iterator.store_entry(next_name, store_for_scan(obj)(), param_card_path=card_path)
                     for card in param_card_iterator:
                         card.write(card_path)

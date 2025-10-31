@@ -18,6 +18,13 @@ endif
 $(LIBDIR)libdhelas.$(libext):
 	cd ../Source/DHELAS;make
 
+%$(MENUM)py.so: %/matrix.f
+	$(F2PY) --f77exec=$(FC) $(LINKLIBS_ME) -c $^ -m $(patsubst %/matrix.f,%$(MENUM)py,$^) --include-paths=$(HERE)/$(patsubst %/matrix.f,%,$^) -I$(HERE)/$(patsubst %/matrix.f,%,$^)
+	
+	
+all_matrix$(MENUM)py.so: $(LIBDIR)/$(LIBRARY) all_matrix.f
+	$(F2PY) --f77exec=$(FC) $(LINKLIBS_ALL) -c all_matrix.f -m all_matrix$(MENUM)py --include-paths=$(HERE) -I$(HERE)
+
 $(LIBDIR)libmodel.$(libext):
 	cd ../Source/MODEL; make
 
