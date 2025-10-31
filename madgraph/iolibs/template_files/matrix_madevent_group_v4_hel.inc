@@ -1,4 +1,4 @@
-SUBROUTINE SMATRIX%(proc_id)s(P, FLAVOR, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
+SUBROUTINE SMATRIX%(proc_id)s(P, IFLAV, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
 C 
 %(info_lines)s
 C 
@@ -34,6 +34,7 @@ C
     double precision RCOL ! random number for selecting helicity
     integer channel ! channel to keep for the multi-channel
     integer ivec ! for using the correct coupling
+    integer iflav
 c
 c   output argument
 c
@@ -48,7 +49,8 @@ C
         REAL*8 T
         REAL*8 R,SUMHEL,TS(NCOMB)
         INTEGER I,IDEN
-        INTEGER FLAVOR(NEXTERNAL),II
+        INTEGER FLAVOR(NEXTERNAL, %(max_flavor)s),II
+        %(get_flavor_matrix)s
         REAL*8 XTOT
         INTEGER  J, JJ
       double precision get_channel_cut
@@ -102,7 +104,7 @@ C ----------
 
     TS(:) = 0d0
 
-    call MATRIX%(proc_id)s(P ,FLAVOR(1), TS, AMP2, JAMP2, IVEC)
+    call MATRIX%(proc_id)s(P ,FLAVOR(1, IFLAV), TS, AMP2, JAMP2, IVEC)
     DO I=1,NCOMB     
        T=TS(I)  
        DO JJ=1,nincoming
