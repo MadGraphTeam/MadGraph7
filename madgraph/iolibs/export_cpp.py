@@ -79,8 +79,8 @@ class UFOModelConverterCPP(object):
                  "complex": "std::complex<double>"}
 
     # Regular expressions for cleaning of lines from Aloha files
-    compiler_option_re = re.compile('^#\w')
-    namespace_re = re.compile('^using namespace')
+    compiler_option_re = re.compile(r'^#\w')
+    namespace_re = re.compile(r'^using namespace')
 
     slha_to_depend = {('SMINPUTS', (3,)): ('aS',),
                       ('SMINPUTS', (1,)): ('aEM',)}
