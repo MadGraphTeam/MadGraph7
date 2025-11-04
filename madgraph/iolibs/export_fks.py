@@ -1158,8 +1158,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         bornproc = matrix_element.born_me['processes'][0]
         startfromalpha0 = False
         if any([l['is_tagged'] and l['id'] == 22 for l in bornproc['legs']]):
-            if 'loop_qcd_qed_sm_a0' in bornproc['model'].get('modelpath'):
-                startfromalpha0 = True
+            startfromalpha0 = bornproc['model'].get('startfromalpha0')
 
         text = 'logical  startfroma0\nparameter (startfroma0=%s)\n' % bool_dict[startfromalpha0]
         writer.writelines(text)
