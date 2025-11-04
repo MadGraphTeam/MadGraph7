@@ -5014,9 +5014,20 @@ tar -czf split_$1.tar.gz split_$1
                                 # other UNIX systems 
                                 os.system(' '.join(['sed','-i']+["-e '%id'"%(i+1) for i in range(n_head)]+
                                                                             ["-e '$d'",hepmc_file]))
-                            
-                        os.system(' '.join(['cat',pjoin(tmp_dir,'header.hepmc')]+all_hepmc_files+
-                                                    [pjoin(tmp_dir,'tail.hepmc'),'>',hepmc_output]))
+
+                        all_files = [pjoin(tmp_dir, 'header.hepmc')] + all_hepmc_files + [pjoin(tmp_dir, 'tail.hepmc')]
+                        return_code = os.system(' '.join(['cat'] + all_files + ['>',hepmc_output]))
+                        if return_code != 0:
+                            # max 20 files can be concatenated at once
+                            n_files = len(all_files)
+                            step = 20
+                            intermediate_files = []
+                            for i in range(0, n_files, step):
+                                part_files = all_files[i:i+step]
+                                return_code = os.system(' '.join(['cat'] + part_files + ['>' if i == 0 else '>>', hepmc_output]))
+                                if return_code != 0:
+                                    raise MadGraph5Error('Error during merging of HEPMC files.')
+
 
                 # We are done with the parallelization directory. Clean it.
                 if os.path.isdir(parallelization_dir):
