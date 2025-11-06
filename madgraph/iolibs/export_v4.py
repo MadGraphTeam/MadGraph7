@@ -2212,6 +2212,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     MadGraph v4 StandAlone format."""
 
     matrix_template = "matrix_standalone_v4.inc"
+    f2py_template = "matrix_standalone_f2py.inc"
     jamp_optim = True
 
     def __init__(self, *args,**opts):
@@ -2682,8 +2683,13 @@ CF2PY integer, intent(in) :: new_value
 
         return params                      
                                         
-        
-        
+    def write_f2py_matrix_wrapper(self, writer, replace_dict):
+        """ Write the f2py wrapper for matrix element."""
+
+        path =pjoin(_file_path, 'iolibs', 'template_files', self.f2py_template)
+        template = open(path).read()
+        writer.write(template % replace_dict)
+
     def write_f2py_check_sa(self, matrix_element, writer):
         """ Write the general check_sa.py in SubProcesses that calls all processes successively."""
         # To be implemented. It is just an example file, i.e. not crucial.
@@ -2784,11 +2790,18 @@ CF2PY integer, intent(in) :: new_value
                 ids = [l.get('id') for l in proc.get('legs_with_decays')]
                 self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix, proc.get_tag()] 
                 
-        calls = self.write_matrix_element_v4(
+        replace_dict = self.write_matrix_element_v4(
             writers.FortranWriter(filename),
             matrix_element,
             fortran_model,
-            proc_prefix=proc_prefix)
+            proc_prefix=proc_prefix,
+            return_replace_dict=True)
+        calls = replace_dict.get('return_value', 0)
+
+        self.write_f2py_matrix_wrapper(
+            writers.FortranWriter(pjoin(dirpath, 'f2py_matrix_wrapper.f')),
+                                  replace_dict=replace_dict)
+        
 
         if self.opt['export_format'] == 'standalone_msP':
             filename =  pjoin(dirpath,'configs_production.inc')
@@ -2890,7 +2903,7 @@ CF2PY integer, intent(in) :: new_value
     # write_matrix_element_v4
     #===========================================================================
     def write_matrix_element_v4(self, writer, matrix_element, fortran_model,
-                                write=True, proc_prefix=''):
+                                write=True, proc_prefix='', return_replace_dict=False):
         """Export a matrix element to a matrix.f file in MG4 standalone format
         if write is on False, just return the replace_dict and not write anything."""
 
@@ -3057,7 +3070,11 @@ CF2PY integer, intent(in) :: new_value
                 content = '\n' + open(replace_dict['template_file2'])\
                                    .read()%replace_dict
                 writer.writelines(content)
-            return len([call for call in helas_calls if call.find('#') != 0])
+            if return_replace_dict:
+                replace_dict['return_value'] = len([call for call in helas_calls if call.find('#') != 0])
+                return replace_dict
+            else:
+                return len([call for call in helas_calls if call.find('#') != 0])
         else:
             replace_dict['return_value'] = len([call for call in helas_calls if call.find('#') != 0])
             return replace_dict # for subclass update

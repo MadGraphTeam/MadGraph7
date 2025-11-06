@@ -23,6 +23,11 @@ ifeq ($(origin MENUM),undefined)
   MENUM=2
 endif
 
-matrix$(MENUM)py.so: matrix.f makefile $(LIBS)
+libmatrix.a: matrix.o
+	ar rcs libmatrix.a matrix.o
+
+matrix$(MENUM)py.so: f2py_matrix_wrapper.f libmatrix.a makefile $(LIBS)
 	touch __init__.py
-	$(F2PY) $(LINKLIBS) -c  matrix.f -m matrix$(MENUM)py --f77exec=$(FC) --include-paths=$(HERE)
+	$(F2PY) $(LINKLIBS) -c f2py_matrix_wrapper.f -L$(HERE) -lmatrix -m matrix$(MENUM)py
+	touch matrix$(MENUM)py.so
+
