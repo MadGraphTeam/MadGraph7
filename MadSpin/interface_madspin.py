@@ -1770,13 +1770,21 @@ class MadSpinInterface(extended_cmd.Cmd):
         else:
             if sys.path[0] != pjoin(self.path_me, 'madspin_me', 'SubProcesses'):
                 sys.path.insert(0, pjoin(self.path_me, 'madspin_me', 'SubProcesses'))
-            
-            mymod = __import__("%s.matrix2py" % (pdir))
-            if six.PY3:
+
+            import ctypes
+            libdhelas_library = None
+            exts = ['so','dylib','dll'] 
+            for ext in exts:
+                me_library = pjoin(self.path_me, 'madspin_me', 'SubProcesses', pdir, 'libme%s.%s' % (pdir, ext))
+                if os.path.exists(me_library):
+                    break
+            ctypes.CDLL(me_library)
+
+            with misc.chdir(pjoin(self.path_me, 'madspin_me', 'SubProcesses')):
+                mymod = __import__("%s.matrix2py" % pdir)
                 from importlib import reload
-            else:
-                from imp import reload
-            reload(mymod)
+                reload(mymod)
+
             mymod = getattr(mymod, 'matrix2py')  
             with misc.chdir(pjoin(self.path_me, 'madspin_me', 'SubProcesses', pdir)):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):
