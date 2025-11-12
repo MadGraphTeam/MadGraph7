@@ -4,6 +4,10 @@ ANNOUNCEMENT:
    2.9.X version as a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
 
+3.5.13 ():
+  VD: fixing issue with custom functions that moving back to no custom functions was not correctly recompiling the code.
+
+
 3.5.12 (30/10/25):
   OM: Change in gensym to better determine which channel have impossible BW configuration. This removes many spurious warning.
   OM: include bug fixing from LTS (2.9.26) --see below --

@@ -192,7 +192,6 @@ def mv(path1, path2):
         if os.path.isfile(path2):
             os.remove(path2)
             shutil.move(path1, path2)
-            return
         elif os.path.isdir(path2) and os.path.exists(
                                    os.path.join(path2, os.path.basename(path1))):      
             path2 = os.path.join(path2, os.path.basename(path1))
@@ -200,7 +199,12 @@ def mv(path1, path2):
             shutil.move(path1, path2)
         else:
             raise
-        
+
+    # ensure that the mtime of the destination is updated    
+    from pathlib import Path
+    Path(path2).touch()
+    return
+
 def put_at_end(src, *add):
     
     with open(src,'ab') as wfd:
