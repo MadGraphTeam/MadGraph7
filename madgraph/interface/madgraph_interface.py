@@ -8699,9 +8699,10 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                             process_string = self._generate_info, version = version)
                 process_names.append(exporter.process_file_name)
 
+            wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
             # Output the model parameter and ALOHA files
             model_name, model_path = exporter.convert_model_to_pythia8(\
-                            self._curr_model, self._export_dir)
+                            self._curr_model, self._export_dir, wanted_lorentz=wanted_lorentz)
 
             # Generate the main program file
             filename, make_filename = \
