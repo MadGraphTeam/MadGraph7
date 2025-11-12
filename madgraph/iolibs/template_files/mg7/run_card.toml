@@ -7,6 +7,7 @@ device = "cpu" # options: cpu, cuda
 #   on Apple silicon: 1, 2
 simd_vector_size = -1
 thread_pool_size = -1 # -1 sets count automatically based on number of CPUs
+output_format = "compact_npy" # options: compact_npy, lhe_npy, lhe
 
 [beam]
 e_cm = 13000.0

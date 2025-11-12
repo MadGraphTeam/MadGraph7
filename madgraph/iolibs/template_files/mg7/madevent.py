@@ -227,7 +227,7 @@ class MadgraphProcess:
         self, phasespaces: list[PhaseSpace], mode: str | None = None
     ) -> me.EventGenerator:
         event_generator = self.build_event_generator(
-            phasespaces, "events.npy" if mode is None else f"events_{mode}.npy"
+            phasespaces, "events" if mode is None else f"events_{mode}"
         )
 
         print()
@@ -286,7 +286,7 @@ class MadgraphProcess:
             ]
 
             if not self.run_card["madnis"]["enable"]:
-                self.event_generator = self.build_event_generator(self.phasespaces, "events.npy")
+                self.event_generator = self.build_event_generator(self.phasespaces, "events")
                 #TODO: avoid to run survey again
                 self.event_generator.survey()
         else:
@@ -303,13 +303,55 @@ class MadgraphProcess:
             subproc.train_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
         self.phasespaces = madnis_phasespaces
-        self.event_generator = self.build_event_generator(madnis_phasespaces, "events.npy")
+        self.event_generator = self.build_event_generator(madnis_phasespaces, "events")
         self.event_generator.survey() #TODO: avoid
 
     def generate_events(self) -> None:
         start_time = get_start_time()
         self.event_generator.generate()
-        print_run_time(start_time)
+        output_format = self.run_card["run"]["output_format"]
+        if output_format == "compact_npy":
+            self.event_generator.combine_to_compact_npy(
+                os.path.join(self.run_path, "events.npy")
+            )
+        elif output_format == "lhe_npy":
+            lhe_completer = self.build_lhe_completer()
+            self.event_generator.combine_to_lhe_npy(
+                os.path.join(self.run_path, "events.npy"), lhe_completer
+            )
+        elif output_format == "lhe":
+            lhe_completer = self.build_lhe_completer()
+            self.event_generator.combine_to_lhe(
+                os.path.join(self.run_path, "events.lhe"), lhe_completer
+            )
+        else:
+            raise ValueError("Unknown output format")
+
+    def build_lhe_completer(self):
+        completer = me.LHECompleter(
+            subproc_args = [
+                me.SubprocArgs(
+                    topologies = [topo_s, topo_t],
+                    permutations = [[[0, 1, 2, 3]], [[0, 1, 2, 3], [0, 1, 3, 2]]],
+                    diagram_indices = [[0], [1, 2]],
+                    diagram_color_indices = [[[0, 1]], [[0], [1]]],
+                    color_flows = [[
+                        [(501, 502), (502, 503), (501, 0), (0, 503)],
+                        [(503, 502), (501, 503), (501, 0), (0, 502)],
+                    ]],
+                    pdg_color_types = {-6: -3, 6: 3, 21: 8},
+                    helicities = [
+                        [-1.,-1.,-1., 1.], [-1.,-1.,-1.,-1.], [-1.,-1., 1., 1.], [-1.,-1., 1.,-1.],
+                        [-1., 1.,-1., 1.], [-1., 1.,-1.,-1.], [-1., 1., 1., 1.], [-1., 1., 1.,-1.],
+                        [ 1.,-1.,-1., 1.], [ 1.,-1.,-1.,-1.], [ 1.,-1., 1., 1.], [ 1.,-1., 1.,-1.],
+                        [ 1., 1.,-1., 1.], [ 1., 1.,-1.,-1.], [ 1., 1., 1., 1.], [ 1., 1., 1.,-1.],
+                    ],
+                    pdg_ids = [[[21, 21, 6, -6]]],
+                    matrix_flavor_indices = [0],
+                ),
+            ],
+            bw_cutoff = 15.
+        )
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)
@@ -714,7 +756,7 @@ class MadgraphSubprocess:
         phasespace: PhaseSpace,
         flags: int = me.EventGenerator.integrand_flags
     ) -> list[me.Integrand]:
-        flavors = [flav[0] for flav in self.meta["flavors"]]
+        flavors = [flav["options"][0] for flav in self.meta["flavors"]]
         cross_section = me.DifferentialCrossSection(
             flavors,
             self.me_index,
