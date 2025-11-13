@@ -27,7 +27,7 @@ ifeq ($(origin MENUM),undefined)
 endif
 
 libme$(PDIR).$(dylibext): $(LIBDIR)libdhelas.$(dylibext) $(LIBDIR)libmodel.$(dylibext) matrix.o
-	gfortran -dynamiclib -o libme$(PDIR).$(dylibext) matrix.o ../../Source/DHELAS/*.o ../../Source/MODEL/*.o
+	gfortran $(DYNLIBFLAG) -o libme$(PDIR).$(dylibext) matrix.o ../../Source/DHELAS/*.o ../../Source/MODEL/*.o
 
 
 $(LIBDIR)libdhelas.$(dylibext):
@@ -37,7 +37,7 @@ $(LIBDIR)libmodel.$(dylibext):
 
 matrix$(MENUM)py.so: f2py_matrix_wrapper.f libme$(PDIR).$(dylibext)  makefile 
 	touch __init__.py
-	$(F2PY)  -c f2py_matrix_wrapper.f -L$(HERE) -lme$(PDIR) $(LINKLIBS) -m matrix$(MENUM)py --f90flags="-Wl,-rpath,$(HERE)"
+	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY)  -c f2py_matrix_wrapper.f -L$(HERE) -lme$(PDIR) $(LINKLIBS) -m matrix$(MENUM)py 
 	touch matrix$(MENUM)py.so
 	cp $(LIBDIR)/*$(dylibext) .
 
