@@ -1771,14 +1771,14 @@ class MadSpinInterface(extended_cmd.Cmd):
             if sys.path[0] != pjoin(self.path_me, 'madspin_me', 'SubProcesses'):
                 sys.path.insert(0, pjoin(self.path_me, 'madspin_me', 'SubProcesses'))
 
-            import ctypes
-            libdhelas_library = None
-            exts = ['so','dylib','dll'] 
-            for ext in exts:
-                me_library = pjoin(self.path_me, 'madspin_me', 'SubProcesses', pdir, 'libme%s.%s' % (pdir, ext))
-                if os.path.exists(me_library):
-                    break
-            ctypes.CDLL(me_library)
+            #if Rpath linking is not working the below code can be an alternative:
+            #import ctypes
+            #exts = ['so','dylib','dll'] 
+            #for ext in exts:
+            #    me_library = pjoin(self.path_me, 'madspin_me', 'SubProcesses', pdir, 'libme%s.%s' % (pdir, ext))
+            #    if os.path.exists(me_library):
+            #        break
+            # ctypes.CDLL(me_library)
 
             with misc.chdir(pjoin(self.path_me, 'madspin_me', 'SubProcesses')):
                 mymod = __import__("%s.matrix2py" % pdir)
