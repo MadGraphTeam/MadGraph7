@@ -2410,11 +2410,12 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         allids = list(self.prefix_info.keys())
         allprefix = [self.prefix_info[key][0] for key in allids]
+        allncomb = [self.prefix_info[key][2] for key in allids]
         min_nexternal = min([len(ids[0]) for ids in allids])
         max_nexternal = max([len(ids[0]) for ids in allids])
 
         info = []
-        for (key, pid), (prefix, tag) in self.prefix_info.items():
+        for (key, pid), (prefix, tag, ncomb) in self.prefix_info.items():
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
             
 
@@ -2455,6 +2456,28 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             helreset_setup.append(' %shelreset = .true. ' % prefix)
             helreset_def.append(' logical %shelreset \n common /%shelreset/ %shelreset' % (prefix, prefix, prefix))
         
+        #nhel
+        all_nhel = ' '
+        nhel_template = """
+        subroutine %(prefix)sget_nhel_entry(icomb, ipart, hel)
+CF2PY integer, intent(in) :: icomb
+CF2PY integer, intent(in) :: ipart
+CF2PY integer, intent(out) :: hel
+        integer icomb, ipart, hel
+        integer %(prefix)snhel(%(next)s,%(ncombs)s)
+        common/%(prefix)sPROCESS_NHEL/%(prefix)sNHEL
+
+        hel = %(prefix)snhel(ipart, icomb)
+        return
+        end 
+"""
+        done_prefix = set()
+        for prefix, ids, ncomb in zip(allprefix, allids, allncomb):
+            if prefix in done_prefix:
+                continue
+            done_prefix.add(prefix)
+            misc.sprint(ids, allids)
+            all_nhel += nhel_template % {'prefix': prefix, 'next': len(ids[0]), 'ncombs': ncomb}
 
         formatting = {'python_information':'\n'.join(info), 
                           'smatrixhel': '\n'.join(text),
@@ -2467,6 +2490,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                           'parameter_setup': '\n'.join(parameter_setup),
                           'helreset_def' : '\n'.join(helreset_def),
                           'helreset_setup' : '\n'.join(helreset_setup),
+                          'nhel': all_nhel,
                           }
         formatting['lenprefix'] = len(formatting['prefix'])
         text = template % formatting
@@ -2609,9 +2633,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 proc_prefix = matrix_element.get('processes')[0].shell_string().split('_',1)[1]
             else:
                 raise Exception('--prefix options supports only \'int\' and \'proc\'')
+            ncomb = matrix_element.get_helicity_combinations()
             for proc in matrix_element.get('processes'):
                 ids = [l.get('id') for l in proc.get('legs_with_decays')]
-                self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix, proc.get_tag()] 
+                self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix, proc.get_tag(), ncomb]
                 
         replace_dict = self.write_matrix_element_v4(
             writers.FortranWriter(filename),

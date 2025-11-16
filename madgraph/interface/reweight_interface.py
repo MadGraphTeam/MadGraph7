@@ -1854,10 +1854,10 @@ class ReweightInterface(extended_cmd.Cmd):
             else:
                 nb_core = 1
             os.environ['MENUM'] = '2'
-            misc.compile(['allmatrix2py.so'], cwd=pdir, nb_core=nb_core)
+            misc.compile(['all_matrix2py.so'], cwd=pdir, nb_core=nb_core)
             if not (self.second_model or self.second_process or self.dedicated_path):
                 os.environ['MENUM'] = '3'
-                misc.compile(['allmatrix3py.so'], cwd=pdir, nb_core=nb_core)
+                misc.compile(['all_matrix3py.so'], cwd=pdir, nb_core=nb_core)
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -1874,8 +1874,15 @@ class ReweightInterface(extended_cmd.Cmd):
                 continue 
             pdir = pjoin(path_me, onedir, 'SubProcesses')
             for tag in [2*metag,2*metag+1]:
-                with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,'onedir', 'SubProcesses')]+sys.path):      
-                    mod_name = '%s.SubProcesses.allmatrix%spy' % (onedir, tag)
+                with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,onedir, 'SubProcesses')]+sys.path): 
+                    import ctypes
+                    for ext in ['.so', '.pyd', '.dylib']:
+                        if os.path.exists(pjoin(pdir, 'liballme%s' % ext)):
+                            ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext))
+                            break
+                    else:
+                        raise Exception('No liballme found in %s' % pdir)
+                    mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
                     #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
                     if mod_name in list(sys.modules.keys()):
                         del sys.modules[mod_name]
@@ -1891,7 +1898,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         else:
                             mymod = __import__(mod_name, globals(), locals(), [],-1) 
                             S = mymod.SubProcesses
-                            mymod = getattr(S, 'allmatrix%spy' % tag)
+                            mymod = getattr(S, 'all_matrix%spy' % tag)
                             reload(mymod) 
                     else:
                         if six.PY3:
@@ -1901,7 +1908,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         else:
                             mymod = __import__(mod_name, globals(), locals(), [],-1)
                             S = mymod.SubProcesses
-                            mymod = getattr(S, 'allmatrix%spy' % tag) 
+                            mymod = getattr(S, 'all_matrix%spy' % tag) 
                     
                 
                 # Param card not available -> no initialisation
