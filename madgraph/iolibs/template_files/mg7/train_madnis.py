@@ -47,6 +47,14 @@ def train_madnis(
         else:
             return None
 
+    madevent_device = context.device()
+    if madevent_device == me.cpu_device():
+        device = torch.device("cpu")
+    elif madevent_device == me.cuda_device():
+        device = torch.device("cpu")
+    elif madevent_device == me.hip_device():
+        device = torch.device("rocm")
+
     integrator = Integrator(
         integrand=madnis_integrand,
         flow=flow,

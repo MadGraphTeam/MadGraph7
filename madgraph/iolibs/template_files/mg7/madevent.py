@@ -7,7 +7,7 @@ import json
 import subprocess
 import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, NamedTuple
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -62,6 +62,17 @@ class PhaseSpace:
     prop_chan_weights: me.PropagatorChannelWeights | None = None
     subchan_weights: me.SubchannelWeights | None = None
     cwnet: me.ChannelWeightNetwork | None = None
+
+
+class MultiChannelData(NamedTuple):
+    amp2_remap: list[int]
+    symfact: list[int | None]
+    topologies: list[list[me.Topology]]
+    permutations: list[list[list[int]]]
+    channel_indices: list[list[int]]
+    channel_weight_indices: list[list[list[int]]]
+    diagram_indices: list[list[int]]
+    diagram_color_indices: list[list[list[int]]]
 
 
 class MadgraphProcess:
@@ -201,6 +212,8 @@ class MadgraphProcess:
             device = me.cpu_device()
         elif device_name == "cuda":
             device = me.cuda_device()
+        elif device_name == "hip":
+            device = me.hip_device()
         else:
             raise ValueError("Unknown device")
         self.context = me.Context(device)
@@ -328,29 +341,39 @@ class MadgraphProcess:
             raise ValueError("Unknown output format")
 
     def build_lhe_completer(self):
-        completer = me.LHECompleter(
-            subproc_args = [
+        subproc_args = []
+        for subproc, meta in zip(self.subprocesses, self.subprocess_data):
+            (
+                _,
+                _,
+                topologies,
+                permutations,
+                _,
+                _,
+                diagram_indices,
+                diagram_color_indices,
+            ) = subproc.build_multi_channel_data()
+            subproc_args.append(
                 me.SubprocArgs(
-                    topologies = [topo_s, topo_t],
-                    permutations = [[[0, 1, 2, 3]], [[0, 1, 2, 3], [0, 1, 3, 2]]],
-                    diagram_indices = [[0], [1, 2]],
-                    diagram_color_indices = [[[0, 1]], [[0], [1]]],
-                    color_flows = [[
-                        [(501, 502), (502, 503), (501, 0), (0, 503)],
-                        [(503, 502), (501, 503), (501, 0), (0, 502)],
-                    ]],
-                    pdg_color_types = {-6: -3, 6: 3, 21: 8},
-                    helicities = [
-                        [-1.,-1.,-1., 1.], [-1.,-1.,-1.,-1.], [-1.,-1., 1., 1.], [-1.,-1., 1.,-1.],
-                        [-1., 1.,-1., 1.], [-1., 1.,-1.,-1.], [-1., 1., 1., 1.], [-1., 1., 1.,-1.],
-                        [ 1.,-1.,-1., 1.], [ 1.,-1.,-1.,-1.], [ 1.,-1., 1., 1.], [ 1.,-1., 1.,-1.],
-                        [ 1., 1.,-1., 1.], [ 1., 1.,-1.,-1.], [ 1., 1., 1., 1.], [ 1., 1., 1.,-1.],
+                    topologies = [topo[0] for topo in topologies],
+                    permutations = permutations,
+                    diagram_indices = diagram_indices,
+                    diagram_color_indices = diagram_color_indices,
+                    color_flows = meta["color_flows"],
+                    pdg_color_types = {
+                        int(key): value
+                        for key, value in meta["pdg_color_types"].items()
+                    },
+                    helicities = meta["helicities"],
+                    pdg_ids = [flavor["options"] for flavor in meta["flavors"]],
+                    matrix_flavor_indices = [
+                        flavor["index"] for flavor in meta["flavors"]
                     ],
-                    pdg_ids = [[[21, 21, 6, -6]]],
-                    matrix_flavor_indices = [0],
-                ),
-            ],
-            bw_cutoff = 15.
+                )
+            )
+        return me.LHECompleter(
+            subproc_args=subproc_args,
+            bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
         )
 
     def get_mass(self, pid: int) -> float:
@@ -375,6 +398,7 @@ class MadgraphSubprocess:
         self.process = process
         self.meta = meta
         self.subproc_id = subproc_id
+        self.multi_channel_data = None
 
         api_path = self.meta["path"]
         if not os.path.isfile(api_path):
@@ -402,21 +426,21 @@ class MadgraphSubprocess:
             api_path, self.process.param_card_path
         )
 
-    def build_multichannel_phasespace(self) -> PhaseSpace:
-        t_channel_mode = self.t_channel_mode(
-            self.process.run_card["phasespace"]["t_channel"]
-        )
+    def build_multi_channel_data(self) -> MultiChannelData:
+        if self.multi_channel_data is not None:
+            return self.multi_channel_data
+
         diagram_count = self.meta["diagram_count"]
         bw_cutoff = self.process.run_card["phasespace"]["bw_cutoff"]
 
         amp2_remap = [-1] * diagram_count
         symfact = []
-        channels = []
         topologies = []
-        all_topologies = []
         permutations = []
         channel_indices = []
+        channel_weight_indices = []
         diagram_indices = []
+        diagram_color_indices = []
         channel_index = 0
 
         for channel_id, channel in enumerate(self.meta["channels"]):
@@ -456,7 +480,51 @@ class MadgraphSubprocess:
                 channel_index += 1
                 symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
 
-            for topo_index, topo in enumerate(chan_topologies):
+            topologies.append(chan_topologies)
+            permutations.append(chan_permutations)
+            channel_indices.append(list(range(channel_index_first, channel_index)))
+            channel_weight_indices.append([
+                [
+                    symfact_index_first + topo_index + i * topo_count
+                    for i in range(len(chan_permutations))
+                ]
+                for topo_index in range(topo_count)
+            ])
+            diagram_indices.append([d["diagram"] for d in diagrams])
+            diagram_color_indices.append([d["active_colors"] for d in diagrams])
+        self.multi_channel_data = MultiChannelData(
+            amp2_remap,
+            symfact,
+            topologies,
+            permutations,
+            channel_indices,
+            channel_weight_indices,
+            diagram_indices,
+            diagram_color_indices,
+        )
+        return self.multi_channel_data
+
+    def build_multichannel_phasespace(self) -> PhaseSpace:
+        (
+            amp2_remap,
+            symfact,
+            topologies,
+            permutations,
+            channel_indices,
+            channel_weight_indices,
+            diagram_indices,
+            _,
+        ) = self.build_multi_channel_data()
+
+        channels = []
+        t_channel_mode = self.t_channel_mode(
+            self.process.run_card["phasespace"]["t_channel"]
+        )
+        for channel_id, (chan_topologies, chan_permutations, chan_indices) in enumerate(zip(
+            topologies, permutations, channel_weight_indices
+        )):
+            topo_count = len(chan_topologies)
+            for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
                 mapping = me.PhaseSpaceMapping(
                     chan_topologies[0],
                     self.process.e_cm,
@@ -471,10 +539,6 @@ class MadgraphSubprocess:
                 discrete_before, discrete_after = self.build_discrete(
                     len(chan_permutations), len(self.meta["flavors"]), prefix
                 )
-                indices = [
-                    symfact_index_first + topo_index + i * topo_count
-                    for i in range(len(chan_permutations))
-                ]
                 channels.append(Channel(
                     phasespace_mapping = mapping,
                     adaptive_mapping = self.build_vegas(mapping, prefix),
@@ -482,25 +546,20 @@ class MadgraphSubprocess:
                     discrete_after = discrete_after,
                     channel_weight_indices = indices,
                 ))
-            topologies.append(chan_topologies[0])
-            all_topologies.append(chan_topologies)
-            permutations.append(chan_permutations)
-            channel_indices.append(list(range(channel_index_first, channel_index)))
-            diagram_indices.append([d["diagram"] for d in diagrams])
 
         chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
         if self.process.run_card["phasespace"]["sde_strategy"] == "denominators":
             prop_chan_weights = me.PropagatorChannelWeights(
-                topologies, permutations, channel_indices
+                [topo[0] for topo in topologies], permutations, channel_indices
             )
             indices_for_subchan = channel_indices
         else:
             prop_chan_weights = None
             indices_for_subchan = diagram_indices
 
-        if any(len(topos) > 1 for topos in all_topologies):
+        if any(len(topos) > 1 for topos in topologies):
             subchan_weights = me.SubchannelWeights(
-                all_topologies, permutations, indices_for_subchan
+                topologies, permutations, indices_for_subchan
             )
         else:
             subchan_weights = None
