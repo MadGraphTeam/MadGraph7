@@ -1930,7 +1930,7 @@ class ReweightInterface(extended_cmd.Cmd):
             hel_dict={}
             for prefix in prefix_set:
                 if hasattr(mymod,'%sprocess_nhel' % prefix):
-                    nhel = getattr(mymod, '%sprocess_nhel' % prefix).nhel    
+                    nhel = getattr(getattr(mymod, '%sprocess_nhel' % prefix), '%snhel' %prefix)
                     hel_dict[prefix] = {}
                     for i, onehel in enumerate(zip(*nhel)):
                         hel_dict[prefix][tuple(onehel)] = i+1
