@@ -2405,6 +2405,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     def write_f2py_splitter(self):
         """write a function to call the correct matrix element"""
 
+
         template = open(pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files', self.f2py_matrix_splitter)).read()
         template2 = open(pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files', self.f2py_wrapper_all)).read()
 

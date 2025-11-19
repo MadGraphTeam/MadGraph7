@@ -8,10 +8,12 @@ ifeq ($(wildcard ../Source/make_opts),)
 else
     ROOT = ..
 endif
-LIBDIR = $(ROOT)/lib/
+LIBDIR = $(abspath $(ROOT))/lib/
 
 PROG   = check
 all : $(PROG)
+
+HERE := $(dir $(abspath $(firstword $(MAKEFILE_LIST))))
 
 # For the compilation of the MadLoop file polynomial.f it makes a big difference to use -O3 and
 # to turn off the bounds check. These can however be modified here if really necessary.
@@ -27,6 +29,7 @@ STABCHECKDRIVER = StabilityCheckDriver
 CHECK_SA_BORN_SPLITORDERS = check_sa_born_splitOrders
 LINKLIBS = -L$(LIBDIR) -ldhelas -lmodel $(LINK_LOOP_LIBS) $(LDFLAGS)
 LIBS =  $(LIBDIR)libdhelas.$(libext) $(LIBDIR)libmodel.$(libext) $(LOOP_LIBS)
+DYLIBS =  $(LIBDIR)libdhelas.$(dylibext) $(LIBDIR)libmodel.$(dylibext) $(LOOP_LIBS)
 
 PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard polynomial.f)) \
@@ -114,9 +117,43 @@ $(OLP)_static: $(OLP_PROCESS)
 
 libMadLoop.$(dylibext): ../$(OLP)
 
+WRAPPER_SRCS := $(wildcard */f2py_wrapper.f)
+WRAPPER_OBJS := $(patsubst %.f,%.o,$(wildcard */f2py_wrapper.f))
+
+%/f2py_wrapper.o: %/f2py_wrapper.f
+	$(MAKE) -C $* f2py_wrapper.o
+
+
+
+
+ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matrix.f */CT_interface.f \
+             */loop_num.f \
+             */helas_calls*.f */mp_compute_loop_coefs.f */mp_helas_calls*.f */coef_construction_*.f \
+             */loop_CT_calls_*.f */mp_coef_construction_*.f */TIR_interface.f */COLLIER_interface.f \
+             MadLoopParamReader.f MadLoopCommons.f */GOLEM_interface.f */compute_color_flows.f \
+             */mp_born_amps_and_wfs.f */jamp?_calls_*.f)
+
+# Convert .f to .o
+ALL_DOTO := $(patsubst %.f,%.o,$(ALL_DOTF))
+
+
+liballme.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
+	echo $(PROCESS)
+	gfortran $(DYNLIBFLAG) -o liballme.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(LINK_LOOP_LIBS) $(ALL_DOTO)
+
+
+
+
+
+
+shared: liballme.$(dylibext)
+
 ifeq ($(origin MENUM),undefined)
   MENUM=2
 endif
+
+
+
 matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f 
 	touch __init__.py
 	$(F2PY) $(MADLOOP_LIB) -m matrix$(MENUM)py -c f2py_wrapper.f --f77exec=$(FC)   -L../../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB)
@@ -124,6 +161,14 @@ matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f
 allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.f $(LIBS) $(WRAPPER)
 	touch __init__.py
 	$(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --f77exec=$(FC)   -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB)
+
+
+all_matrix$(MENUM)py.so:  liballme.$(dylibext) f2py_wrapper.f makefile
+	echo $(HERE)
+	LDFLAGS="-Wl,-rpath,$(HERE) $(LINKLIBS) $(LINK_LOOP_LIBS)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lallme -m all_matrix$(MENUM)py  
+	touch all_matrix$(MENUM)py.so
+	touch __init__.py
+
 
 clean:
 	@rm -f *.o *.so *.$(libext) *.$(dylibext)
