@@ -93,6 +93,16 @@ $(CHECK_SA_BORN_SPLITORDERS):  check_sa_born_splitOrders.o $(patsubst $(DOTF),$(
 %olynomial.o : %olynomial.f
 	$(FC) $(patsubst -O%,, $(subst -fbounds-check,,$(FFLAGS))) $(POLYNOMIAL_OPTIMIZATION) $(POLYNOMIAL_BOUNDS_CHECK) -c $< -o $@ $(LOOP_INCLUDE)
 
+%/%oloop_matrix.o : %/polynomial.o %/%oloop_matrix.f
+	$(FC) $(patsubst -O%,,$(subst -fbounds-check,,$(FFLAGS))) \
+		$(POLYNOMIAL_OPTIMIZATION) $(POLYNOMIAL_BOUNDS_CHECK) \
+		-c $< -o $@ $(LOOP_INCLUDE)
+
+%/polynomial.o : %/polynomial.f
+	$(FC) $(patsubst -O%,,$(subst -fbounds-check,,$(FFLAGS))) \
+		$(POLYNOMIAL_OPTIMIZATION) $(POLYNOMIAL_BOUNDS_CHECK) \
+		-c $< -o $@ $(LOOP_INCLUDE)
+
 
 $(DOTO) : $(DOTF) $(POLYNOMIAL) $(OLP_POLYNOMIAL)
 	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
