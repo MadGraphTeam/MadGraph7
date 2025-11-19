@@ -136,10 +136,16 @@ ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matr
 # Convert .f to .o
 ALL_DOTO := $(patsubst %.f,%.o,$(ALL_DOTF))
 
+ifeq ($(UNAME), Darwin)
+  LIBALLME_DYNFLAG = -install_name @rpath/liballme.dylib
+else
+  LIBALLME_DYNFLAG =
+endif
+
 
 liballme.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
 	echo $(PROCESS)
-	gfortran $(DYNLIBFLAG) -o liballme.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(LINK_LOOP_LIBS) $(ALL_DOTO)
+	gfortran $(DYNLIBFLAG) $(LIBALLME_DYNFLAG) -o liballme.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(LINK_LOOP_LIBS) $(ALL_DOTO)
 
 
 

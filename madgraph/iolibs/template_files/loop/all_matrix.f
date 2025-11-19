@@ -40,7 +40,7 @@ CF2PY intent(in) :: value
  
  
 
-      subroutine smatrixhel(pdgs, procid, npdg, p, ALPHAS, SCALES2, nhel, ANS, RETURNCODE)
+      subroutine f77_smatrixhel(pdgs, procid, npdg, p, ALPHAS, SCALES2, nhel, ANS, RETURNCODE)
       IMPLICIT NONE
 
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p

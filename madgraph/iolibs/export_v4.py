@@ -2458,27 +2458,32 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             helreset_def.append(' logical %shelreset \n common /%shelreset/ %shelreset' % (prefix, prefix, prefix))
         
         #nhel
-        all_nhel = ' '
-        nhel_template = """
-        subroutine %(prefix)sget_nhel_entry(icomb, ipart, hel)
-CF2PY integer, intent(in) :: icomb
-CF2PY integer, intent(in) :: ipart
-CF2PY integer, intent(out) :: hel
-        integer icomb, ipart, hel
+        all_nhel_f2py = ' '
+        all_nhel = ''
+        nhel_template_f2py = """
+        subroutine %(prefix)sget_nhel_entry()
         integer %(prefix)snhel(%(next)s,%(ncombs)s)
         common/%(prefix)sPROCESS_NHEL/%(prefix)sNHEL
+        call f77_%(prefix)sget_nhel_entry(%(prefix)sNHEL)
 
-        hel = %(prefix)snhel(ipart, icomb)
         return
         end 
 """
+        nhel_template = """subroutine f77_%(prefix)sget_nhel_entry(NHEL)
+        integer %(prefix)snhel(%(next)s,%(ncombs)s), NHEL(%(next)s,%(ncombs)s)
+        common/%(prefix)sPROCESS_NHEL/%(prefix)sNHEL
+        NHEL(:,:) = %(prefix)snhel(:,:)
+        return
+        end 
+"""
+
         done_prefix = set()
         for prefix, ids, ncomb in zip(allprefix, allids, allncomb):
             if prefix in done_prefix:
                 continue
             done_prefix.add(prefix)
-            misc.sprint(ids, allids)
             all_nhel += nhel_template % {'prefix': prefix, 'next': len(ids[0]), 'ncombs': ncomb}
+            all_nhel_f2py += nhel_template_f2py % {'prefix': prefix, 'next': len(ids[0]), 'ncombs': ncomb}
 
         formatting = {'python_information':'\n'.join(info), 
                           'smatrixhel': '\n'.join(text),
@@ -2498,6 +2503,7 @@ CF2PY integer, intent(out) :: hel
         fsock = writers.FortranWriter(pjoin(self.dir_path, 'SubProcesses', 'all_matrix.f'),'w')
         fsock.writelines(text)
         fsock.close()
+        formatting['nhel'] = all_nhel_f2py
         text = template2 % formatting
         fsock = writers.FortranWriter(pjoin(self.dir_path, 'SubProcesses', 'f2py_wrapper.f'),'w')
         fsock.writelines(text)

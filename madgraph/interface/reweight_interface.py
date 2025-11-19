@@ -1308,6 +1308,7 @@ class ReweightInterface(extended_cmd.Cmd):
         hel_order = event.get_helicity(orig_order)
         if self.helicity_reweighting and 9 not in hel_order:
             nhel = hel_dict[tuple(hel_order)]                
+
         else:
             nhel = -1
             
@@ -1854,10 +1855,17 @@ class ReweightInterface(extended_cmd.Cmd):
             else:
                 nb_core = 1
             os.environ['MENUM'] = '2'
-            misc.compile(['all_matrix2py.so'], cwd=pdir, nb_core=nb_core)
+            try:
+                misc.compile(['all_matrix2py.so'], cwd=pdir, nb_core=nb_core)
+            except Exception as e:
+                misc.compile(['all_matrix2py.so'], cwd=pdir, nb_core=1)
+                
             if not (self.second_model or self.second_process or self.dedicated_path):
                 os.environ['MENUM'] = '3'
-                misc.compile(['all_matrix3py.so'], cwd=pdir, nb_core=nb_core)
+                try:
+                    misc.compile(['all_matrix3py.so'], cwd=pdir, nb_core=nb_core)
+                except Exception as e:
+                    misc.compile(['all_matrix3py.so'], cwd=pdir, nb_core=1)
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -1873,6 +1881,7 @@ class ReweightInterface(extended_cmd.Cmd):
             if not os.path.exists(pjoin(path_me,onedir)):
                 continue 
             pdir = pjoin(path_me, onedir, 'SubProcesses')
+            misc.sprint('Loading module all_matrix%spy from %s' % (2*metag, pdir))
             for tag in [2*metag,2*metag+1]:
                 with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,onedir, 'SubProcesses')]+sys.path): 
                     import ctypes
@@ -1930,10 +1939,14 @@ class ReweightInterface(extended_cmd.Cmd):
             hel_dict={}
             for prefix in prefix_set:
                 if hasattr(mymod,'%sprocess_nhel' % prefix):
+                    #transer nhel information from fortran to wrapper
+                    getattr(mymod, '%sget_nhel_entry' % prefix)()
+                    #transer now to python dictionary
                     nhel = getattr(getattr(mymod, '%sprocess_nhel' % prefix), '%snhel' %prefix)
                     hel_dict[prefix] = {}
                     for i, onehel in enumerate(zip(*nhel)):
                         hel_dict[prefix][tuple(onehel)] = i+1
+                    misc.sprint('LO hel_dict for %s found in fortran data structure' % prefix)
                 elif hasattr(mymod, 'set_madloop_path') and \
                      os.path.exists(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())):
                     hel_dict[prefix] = {}
@@ -1941,10 +1954,13 @@ class ReweightInterface(extended_cmd.Cmd):
                         onehel = [int(h) for h in line.split()]
                         hel_dict[prefix][tuple(onehel)] = i+1
                 else:
+                    raise Exception(dir(mymod), prefix)
                     misc.sprint(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper() ))
                     misc.sprint(os.path.exists(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())))
                     continue
-
+            misc.sprint(hel_dict)
+            if not hel_dict:
+                raise Exception("No helicity information found for reweighting ME in %s" % pdir)    
             for i,(pdg,pid) in enumerate(zip(all_pdgs,all_pids)):
                 if self.is_decay:
                     incoming = [pdg[0]]
