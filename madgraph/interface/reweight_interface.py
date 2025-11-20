@@ -72,6 +72,7 @@ class ReweightInterface(extended_cmd.Cmd):
     
     prompt = 'Reweight>'
     debug_output = 'Reweight_debug'
+    nb_rw=0
     
     @misc.mute_logger()
     def __init__(self, event_path=None, allow_madspin=False, mother=None, *completekey, **stdin):
@@ -1510,7 +1511,8 @@ class ReweightInterface(extended_cmd.Cmd):
             misc.sprint(type(error))
             raise
         
-        commandline = 'output standalone_rw %s --prefix=int' % pjoin(path_me,data['paths'][0])
+        commandline = 'output standalone_rw %s --prefix=int --prefixf2py=%s' % (pjoin(path_me,data['paths'][0]), self.nb_rw)
+        self.nb_rw += 1
         mgcmd.exec_cmd(commandline, precmd=True)        
         logger.info('Done %.4g' % (time.time()-start))
         self.has_standalone_dir = True
@@ -1613,7 +1615,8 @@ class ReweightInterface(extended_cmd.Cmd):
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
         mgcmd.exec_cmd(commandline, precmd=True)
-        commandline = 'output standalone_rw %s --prefix=int -f' % pjoin(path_me, data['paths'][1])
+        commandline = 'output standalone_rw %s --prefix=int -f --prefixf2py=%i ' % (pjoin(path_me, data['paths'][1]), self.nb_rw)
+        self.nb_rw += 1
         mgcmd.exec_cmd(commandline, precmd=True) 
         
         #put back golem to original value
@@ -1811,7 +1814,8 @@ class ReweightInterface(extended_cmd.Cmd):
             commandline = commandline.replace('add process', 'generate',1)
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
-            commandline = 'output standalone_rw %s --prefix=int -f' % pjoin(path_me, data['paths'][1])
+            commandline = 'output standalone_rw %s --prefix=int -f --prefixf2py=%i' % (pjoin(path_me, data['paths'][1]), self.nb_rw)
+            self.nb_rw+=1
             mgcmd.exec_cmd(commandline, precmd=True)    
             #put back golem to original value
             mgcmd.options['golem'] = old_options['golem']
@@ -1887,7 +1891,11 @@ class ReweightInterface(extended_cmd.Cmd):
                     import ctypes
                     for ext in ['.so', '.pyd', '.dylib']:
                         if os.path.exists(pjoin(pdir, 'liballme%s' % ext)):
-                            ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext))
+                            try:
+                                ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext), mode=ctypes.RTLD_DEEPBIND)
+                            except Exception as err:
+                                logger.debug('ctypes trick fail for module')
+                                misc.sprint(err)
                             break
                     else:
                         raise Exception('No liballme found in %s' % pdir)
@@ -1910,6 +1918,7 @@ class ReweightInterface(extended_cmd.Cmd):
                             mymod = getattr(S, 'all_matrix%spy' % tag)
                             reload(mymod) 
                     else:
+
                         if six.PY3:
                             import importlib
                             mymod = importlib.import_module(mod_name,)
@@ -1954,9 +1963,9 @@ class ReweightInterface(extended_cmd.Cmd):
                         onehel = [int(h) for h in line.split()]
                         hel_dict[prefix][tuple(onehel)] = i+1
                 else:
-                    raise Exception(dir(mymod), prefix)
-                    misc.sprint(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper() ))
-                    misc.sprint(os.path.exists(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())))
+                    misc.sprint(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper()))
+                    misc.sprint(dir(mymod))
+                    raise Exception
                     continue
             misc.sprint(hel_dict)
             if not hel_dict:
