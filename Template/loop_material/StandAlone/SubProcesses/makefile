@@ -148,14 +148,19 @@ ALL_DOTO := $(patsubst %.f,%.o,$(ALL_DOTF))
 
 ifeq ($(UNAME), Darwin)
   LIBALLME_DYNFLAG = -install_name @rpath/liballme.dylib
+  WHOLE_ARCH=-Wl,-force_load,
+  NOWHOLE_ARCH=
+  STAT_LIB = $(WHOLE_ARCH)$(LIBDIR)libcts.$(libext) $(WHOLE_ARCH)$(LIBDIR)libiregi.$(libext)
 else
   LIBALLME_DYNFLAG =
+  WHOLE_ARCH=  -Wl,--whole-archive
+  NOWHOLE_ARCH= -Wl,--no-whole-archiv
+  STAT_LIB = $(WHOLE_ARCH) $(LIBDIR)libcts.$(libext) $(LIBDIR)libiregi.$(libext) $(NOWHOLE_ARCH)
 endif
 
 
 liballme.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
-	echo $(PROCESS)
-	gfortran $(DYNLIBFLAG) $(LIBALLME_DYNFLAG) -o liballme.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o -Wl,--whole-archive $(LOOP_LIBS) -Wl,--no-whole-archive $(ALL_DOTO) $(STDLIB)
+	$(CXX) $(DYNLIBFLAG)  $(LIBALLME_DYNFLAG)  $(STDLIB_FLAG) -undefined dynamic_lookup  -o liballme.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(STAT_LIB) -Wl,-rpath,$(LIBDIR)/collier_lib/ -Wl,-rpath,$(LIBDIR)/ninja_lib/ $(LINK_LOOP_LIBS) $(ALL_DOTO) $(STDLIB) 
 
 
 
@@ -176,12 +181,11 @@ matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f
 
 allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.f $(LIBS) $(WRAPPER)
 	touch __init__.py
-	$(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --f77exec=$(FC)   -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) 
+	$(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --f77exec=$(FC)   -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB) 
 
 
 all_matrix$(MENUM)py.so:  liballme.$(dylibext) f2py_wrapper.f makefile
-	echo $(HERE)
-	LDFLAGS="-Wl,-rpath,$(HERE) $(LINKLIBS) $(LINK_LOOP_LIBS)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lallme -m all_matrix$(MENUM)py  
+	LDFLAGS="-Wl,-rpath,$(HERE) -Wl,-rpath,$(LIBDIR)/collier_lib/ -Wl,-rpath,$(LIBDIR)/ninja_lib/  $(LINK_LOOP_LIBS)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lallme -m all_matrix$(MENUM)py  
 	touch all_matrix$(MENUM)py.so
 	touch __init__.py
 

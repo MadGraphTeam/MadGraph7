@@ -462,11 +462,16 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         replace_dict={}
         replace_dict['link_tir_libs']=' '.join(link_tir_libs)
         replace_dict['tir_libs']=' '.join(tir_libs)
+        tir_libs = tir_libs[:]
+        tir_libs = [lib for lib in tir_libs if 'iregi' not in lib.lower()]
+        dylibs =' '.join(tir_libs).replace('ninja.$(libext)', 'ninja.$(dylibext)') 
+        dylibs = dylibs.replace('collier.$(libext)', 'collier.$(dylibext)')
+        replace_dict['tir_dylibs'] = dylibs
         replace_dict['dotf']='%.f'
-        replace_dict['prefix']= self.SubProc_prefix
-        replace_dict['doto']='%.o'
-        replace_dict['tir_include']=' '.join(tir_include)
-        file=file%replace_dict
+        replace_dict['prefix'] = self.SubProc_prefix
+        replace_dict['doto'] = '%.o'
+        replace_dict['tir_include'] = ' '.join(tir_include)
+        file = file % replace_dict
         if writer:
             writer.writelines(file)
         else:

@@ -1892,10 +1892,9 @@ class ReweightInterface(extended_cmd.Cmd):
                     for ext in ['.so', '.pyd', '.dylib']:
                         if os.path.exists(pjoin(pdir, 'liballme%s' % ext)):
                             try:
-                                ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext), mode=ctypes.RTLD_DEEPBIND)
+                                ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext))
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
-                                misc.sprint(err)
                             break
                     else:
                         raise Exception('No liballme found in %s' % pdir)

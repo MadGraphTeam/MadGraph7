@@ -1,5 +1,6 @@
 LINK_LOOP_LIBS = -L$(LIBDIR) -lcts %(link_tir_libs)s
 LOOP_LIBS = $(LIBDIR)libcts.$(libext) %(tir_libs)s
+DYLOOP_LIBS = %(tir_dylibs)s
 LOOP_INCLUDE = %(tir_include)s
 LOOP_PREFIX = %(prefix)s
 DOTO = %(doto)s
