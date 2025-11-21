@@ -7,6 +7,7 @@ DOTO = %(doto)s
 DOTF = %(dotf)s
 LINK_MADLOOP_LIB = -L$(LIBDIR) -lMadLoop
 MADLOOP_LIB = $(LIBDIR)libMadLoop.$(libext)
+RPATH_LIBS = %(rpaths_libs)s
 
 $(MADLOOP_LIB):
 	cd ..; make -f makefile_MadLoop OLP_static

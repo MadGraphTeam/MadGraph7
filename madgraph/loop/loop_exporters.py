@@ -471,6 +471,10 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         replace_dict['prefix'] = self.SubProc_prefix
         replace_dict['doto'] = '%.o'
         replace_dict['tir_include'] = ' '.join(tir_include)
+        replace_dict['rpaths_libs'] = ''
+        for lib in tir_libs:
+            replace_dict['rpaths_libs'] += '-Wl,-rpath,%s '%os.path.dirname(lib)    
+
         file = file % replace_dict
         if writer:
             writer.writelines(file)
