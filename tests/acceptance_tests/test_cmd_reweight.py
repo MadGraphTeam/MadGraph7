@@ -177,7 +177,8 @@ class TestMECmdRWGT(unittest.TestCase):
 
         #check that initial file is untouched!        
         lhe = lhe_parser.EventFile(pjoin(self.run_dir,'Events','run_01', 'unweighted_events.lhe.gz'))
-        for i,event in enumerate(lhe):      
+        for i,event in enumerate(lhe):
+            if i==0: misc.sprint(event)      
             rwgt_data = event.parse_reweight()
             for part in event:
                 if part.status ==1: #final state
@@ -192,12 +193,15 @@ class TestMECmdRWGT(unittest.TestCase):
             rwgt_data = event.parse_reweight()
             #solutions.append(event.wgt)
             self.assertTrue(misc.equal(event.scale, event.get_ht_scale(0.5)))
+            misc.sprint(event)
             for part in event:
                 if part.status ==1: #final state
                     self.assertEqual(part.mass, 200)
             self.assertNotIn('rwgt_1', rwgt_data)
+            misc.sprint(i, event.wgt, solutions[i])
             self.assertTrue(misc.equal(event.wgt, solutions[i]))
         #misc.sprint(solutions)
+        #raise Exception('stop here')
         
     def test_nlo_reweighting(self):
         """ check identical re-weighting in ttbar 

@@ -147,7 +147,7 @@ ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matr
 ALL_DOTO := $(patsubst %.f,%.o,$(ALL_DOTF))
 
 ifeq ($(UNAME), Darwin)
-  LIBALLME_DYNFLAG = -install_name @rpath/liballme.dylib -undefined dynamic_lookup
+  LIBALLME_DYNFLAG = -install_name @rpath/liball$(MENUM)me.dylib -undefined dynamic_lookup
   WHOLE_ARCH=-Wl,-force_load,
   NOWHOLE_ARCH=
   STAT_LIB = $(WHOLE_ARCH)$(LIBDIR)libcts.$(libext) $(WHOLE_ARCH)$(LIBDIR)libiregi.$(libext)
@@ -161,8 +161,8 @@ else
 endif
 
 
-liballme.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
-	$(CXX) $(DYNLIBFLAG)  $(LIBALLME_DYNFLAG)  $(STDLIB_FLAG)  -o liballme.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(STAT_LIB) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(ALL_DOTO) $(STDLIB) 
+liball$(MENUM)me.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
+	$(CXX) $(DYNLIBFLAG)  $(LIBALLME_DYNFLAG)  $(STDLIB_FLAG)  -o liball$(MENUM)me.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(STAT_LIB) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(ALL_DOTO) $(STDLIB) 
 
 
 
@@ -187,8 +187,8 @@ allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.f $(LIBS) $(WRAPPER)
 	$(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --f77exec=$(FC)   -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB) 
 
 
-all_matrix$(MENUM)py.so:  liballme.$(dylibext) f2py_wrapper.f makefile
-	LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS)  $(LINK_LOOP_LIBS) $(LD_F2PY)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lallme -m all_matrix$(MENUM)py  
+all_matrix$(MENUM)py.so:  liball$(MENUM)me.$(dylibext) f2py_wrapper.f makefile
+	LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS)  $(LINK_LOOP_LIBS) $(LD_F2PY)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lall$(MENUM)me -m all_matrix$(MENUM)py  
 	touch all_matrix$(MENUM)py.so
 	touch __init__.py
 
