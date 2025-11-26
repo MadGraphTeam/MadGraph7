@@ -120,6 +120,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.exitted = False # Flag to know if do_quit was already called.
         self.keep_ordering = False
         self.use_eventid = False
+        self.path2prefix = {} # store the f2pyprefix associated to a library 
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1512,6 +1513,7 @@ class ReweightInterface(extended_cmd.Cmd):
             raise
         
         commandline = 'output standalone_rw %s --prefix=int --prefixf2py=%s' % (pjoin(path_me,data['paths'][0]), self.nb_rw)
+        self.path2prefix[pjoin(path_me,data['paths'][0])] = self.nb_rw
         self.nb_rw += 1
         mgcmd.exec_cmd(commandline, precmd=True)        
         logger.info('Done %.4g' % (time.time()-start))
@@ -1616,6 +1618,7 @@ class ReweightInterface(extended_cmd.Cmd):
         logger.info(commandline)
         mgcmd.exec_cmd(commandline, precmd=True)
         commandline = 'output standalone_rw %s --prefix=int -f --prefixf2py=%i ' % (pjoin(path_me, data['paths'][1]), self.nb_rw)
+        self.path2prefix[pjoin(path_me,data['paths'][1])] = self.nb_rw
         self.nb_rw += 1
         mgcmd.exec_cmd(commandline, precmd=True) 
         
@@ -1815,6 +1818,7 @@ class ReweightInterface(extended_cmd.Cmd):
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
             commandline = 'output standalone_rw %s --prefix=int -f --prefixf2py=%i' % (pjoin(path_me, data['paths'][1]), self.nb_rw)
+            self.path2prefix[pjoin(path_me,data['paths'][1])] = self.nb_rw
             self.nb_rw+=1
             mgcmd.exec_cmd(commandline, precmd=True)    
             #put back golem to original value
@@ -1881,7 +1885,10 @@ class ReweightInterface(extended_cmd.Cmd):
         self.id_to_path = {}
         self.id_to_path_second = {}
         rwgt_dir_possibility =   ['rw_me','rw_me_%s' % self.nb_library,'rw_mevirt','rw_mevirt_%s' % self.nb_library]
+        fprefix = ''
         for onedir in rwgt_dir_possibility:
+            if pjoin(path_me,onedir) in self.path2prefix:
+                fprefix = self.path2prefix[pjoin(path_me,onedir)]
             if not os.path.exists(pjoin(path_me,onedir)):
                 continue 
             pdir = pjoin(path_me, onedir, 'SubProcesses')
@@ -1934,19 +1941,28 @@ class ReweightInterface(extended_cmd.Cmd):
                     mymod.set_madloop_path(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources'))
                 if (self.second_model or self.second_process or self.dedicated_path):
                     break
+
+            if fprefix != '':
+                fprefix = 'f%i_' % fprefix
+                for attr in dir(mymod):
+                    if attr.startswith(fprefix):
+                        setattr(mymod, attr[len(fprefix):], getattr(mymod, attr)    )
+            fprefix = ''
+
             data = self.id_to_path
             if onedir not in ["rw_me",  "rw_mevirt"]:
                 data = self.id_to_path_second
 
             # get all the information
-            allids, all_pids = mymod.get_pdg_order()
+
+            allids, all_pids = getattr(mymod, 'get_pdg_order')()
             all_pdgs = [[pdg for pdg in pdgs if pdg!=0] for pdgs in  allids]
             all_prefix = [bytes(j).decode(errors="ignore").strip().lower() for j in mymod.get_prefix()]
             prefix_set = set(all_prefix)
 
             hel_dict={}
             for prefix in prefix_set:
-                if hasattr(mymod,'%sprocess_nhel' % prefix):
+                if hasattr(mymod,'%s%sprocess_nhel' % (fprefix,prefix)):
                     #transer nhel information from fortran to wrapper
                     getattr(mymod, '%sget_nhel_entry' % prefix)()
                     #transer now to python dictionary
@@ -1955,7 +1971,7 @@ class ReweightInterface(extended_cmd.Cmd):
                     for i, onehel in enumerate(zip(*nhel)):
                         hel_dict[prefix][tuple(onehel)] = i+1
                     misc.sprint('LO hel_dict for %s found in fortran data structure' % prefix)
-                elif hasattr(mymod, 'set_madloop_path') and \
+                elif hasattr(mymod, '%sset_madloop_path' % fprefix) or  hasattr(mymod, 'set_madloop_path') and \
                      os.path.exists(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())):
                     hel_dict[prefix] = {}
                     for i,line in enumerate(open(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper()))):

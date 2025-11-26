@@ -1,5 +1,5 @@
 %(python_information)s
-  subroutine f77_smatrixhel(pdgs, procid, npdg, p, ALPHAS, SCALE2, nhel, ANS)
+  subroutine %(f2py_prefix)sf77_smatrixhel(pdgs, procid, npdg, p, ALPHAS, SCALE2, nhel, ANS)
   IMPLICIT NONE
 C ALPHAS is given at scale2 (SHOULD be different of 0 for loop induced, ignore for LO)  
 
@@ -30,7 +30,7 @@ CF2PY double precision, intent(in) :: SCALE2
       return
       end
   
-      SUBROUTINE f77_INITIALISE(PATH)
+      SUBROUTINE %(f2py_prefix)sf77_INITIALISE(PATH)
 C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
@@ -40,7 +40,7 @@ CF2PY INTENT(IN) :: PATH
       END
       
       
-      subroutine f77_CHANGE_PARA(name, value)
+      subroutine %(f2py_prefix)sf77_CHANGE_PARA(name, value)
       implicit none
 CF2PY intent(in) :: name
 CF2PY intent(in) :: value
@@ -64,14 +64,14 @@ CF2PY intent(in) :: value
       return
       end
       
-    subroutine f77_update_all_coup()
+    subroutine %(f2py_prefix)sf77_update_all_coup()
     implicit none
      call coup()
     return 
     end
       
 
-    subroutine f77_get_pdg_order(PDG, ALLPROC)
+    subroutine %(f2py_prefix)sf77_get_pdg_order(PDG, ALLPROC)
   IMPLICIT NONE
 CF2PY INTEGER, intent(out) :: PDG(%(nb_me)i,%(maxpart)i)  
 CF2PY INTEGER, intent(out) :: ALLPROC(%(nb_me)i)
@@ -84,7 +84,7 @@ CF2PY INTEGER, intent(out) :: ALLPROC(%(nb_me)i)
   RETURN
   END 
 
-    subroutine f77_get_prefix(PREFIX)
+    subroutine %(f2py_prefix)sf77_get_prefix(prefix)
   IMPLICIT NONE
 CF2PY CHARACTER*20, intent(out) :: PREFIX(%(nb_me)i)
   character*20 PREFIX(%(nb_me)i),PREF(%(nb_me)i)
@@ -95,7 +95,7 @@ CF2PY CHARACTER*20, intent(out) :: PREFIX(%(nb_me)i)
  
 
 
-    subroutine f77_set_fixed_extra_scale(new_value)
+    subroutine %(f2py_prefix)sf77_set_fixed_extra_scale(new_value)
     implicit none
 CF2PY logical, intent(in) :: new_value
     logical new_value
@@ -109,7 +109,7 @@ CF2PY logical, intent(in) :: new_value
         return 
         end
 
-    subroutine f77_set_mue_over_ref(new_value)
+    subroutine %(f2py_prefix)sf77_set_mue_over_ref(new_value)
     implicit none
 CF2PY double precision, intent(in) :: new_value
     double precision new_value
@@ -124,7 +124,7 @@ CF2PY double precision, intent(in) :: new_value
     return 
     end
 
-    subroutine f77_set_mue_ref_fixed(new_value)
+    subroutine %(f2py_prefix)sf77_set_mue_ref_fixed(new_value)
     implicit none
 CF2PY double precision, intent(in) :: new_value
     double precision new_value
@@ -140,7 +140,7 @@ CF2PY double precision, intent(in) :: new_value
     end
 
 
-    subroutine f77_set_maxjetflavor(new_value)
+    subroutine %(f2py_prefix)sf77_set_maxjetflavor(new_value)
     implicit none
 CF2PY integer, intent(in) :: new_value
     integer new_value
@@ -156,7 +156,7 @@ CF2PY integer, intent(in) :: new_value
     end
 
 
-    subroutine f77_set_asmz(new_value)
+    subroutine %(f2py_prefix)sf77_set_asmz(new_value)
     implicit none
 CF2PY double precision, intent(in) :: new_value
     double precision new_value
@@ -169,7 +169,7 @@ CF2PY double precision, intent(in) :: new_value
     return 
     end
 
-    subroutine f77_set_nloop(new_value)
+    subroutine %(f2py_prefix)sf77_set_nloop(new_value)
     implicit none
 CF2PY integer, intent(in) :: new_value
     integer new_value

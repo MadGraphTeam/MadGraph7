@@ -2461,15 +2461,15 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         all_nhel_f2py = ' '
         all_nhel = ''
         nhel_template_f2py = """
-        subroutine %(prefix)sget_nhel_entry()
+        subroutine %(f2py_prefix)s%(prefix)sget_nhel_entry()
         integer %(prefix)snhel(%(next)s,%(ncombs)s)
-        common/%(prefix)sPROCESS_NHEL/%(prefix)sNHEL
-        call f77_%(prefix)sget_nhel_entry(%(prefix)sNHEL)
+        common/%(f2py_prefix)s%(prefix)sPROCESS_NHEL/%(prefix)sNHEL
+        call %(f2py_prefix)sf77_%(prefix)sget_nhel_entry(%(prefix)sNHEL)
 
         return
         end 
 """
-        nhel_template = """subroutine f77_%(prefix)sget_nhel_entry(NHEL)
+        nhel_template = """subroutine %(f2py_prefix)sf77_%(prefix)sget_nhel_entry(NHEL)
         integer %(prefix)snhel(%(next)s,%(ncombs)s), NHEL(%(next)s,%(ncombs)s)
         common/%(prefix)sPROCESS_NHEL/%(prefix)sNHEL
         NHEL(:,:) = %(prefix)snhel(:,:)
@@ -2477,13 +2477,19 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         end 
 """
 
+        f2py_prefix = ''
+        if self.opt['output_options'] and 'prefixf2py' in self.opt['output_options']:
+            f2py_prefix = 'f%s_' % self.opt['output_options']['prefixf2py']
+
         done_prefix = set()
         for prefix, ids, ncomb in zip(allprefix, allids, allncomb):
             if prefix in done_prefix:
                 continue
             done_prefix.add(prefix)
-            all_nhel += nhel_template % {'prefix': prefix, 'next': len(ids[0]), 'ncombs': ncomb}
-            all_nhel_f2py += nhel_template_f2py % {'prefix': prefix, 'next': len(ids[0]), 'ncombs': ncomb}
+            all_nhel += nhel_template % {'prefix': prefix, 'next': len(ids[0]), 'ncombs': ncomb,
+                                          'f2py_prefix': f2py_prefix}
+            all_nhel_f2py += nhel_template_f2py % {'prefix': prefix, 'next': len(ids[0]), 
+                                                   'ncombs': ncomb, 'f2py_prefix': f2py_prefix}
 
         formatting = {'python_information':'\n'.join(info), 
                           'smatrixhel': '\n'.join(text),
@@ -2497,6 +2503,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                           'helreset_def' : '\n'.join(helreset_def),
                           'helreset_setup' : '\n'.join(helreset_setup),
                           'nhel': all_nhel,
+                          'f2py_prefix': f2py_prefix
                           }
         formatting['lenprefix'] = len(formatting['prefix'])
         text = template % formatting
