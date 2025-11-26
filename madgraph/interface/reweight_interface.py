@@ -1899,7 +1899,7 @@ class ReweightInterface(extended_cmd.Cmd):
                     for ext in ['.so', '.pyd', '.dylib']:
                         if os.path.exists(pjoin(pdir, 'liballme%s' % ext)):
                             try:
-                                ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext))
+                                ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext), mode=os.RTLD_GLOBAL | os.RTLD_DEEPBIND)
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
                             break
