@@ -912,9 +912,6 @@ class ReweightInterface(extended_cmd.Cmd):
                 
         #initialise module.
         for (path,tag), module in self.f2pylib.items():
-            misc.sprint(path, self.path2prefix, tag)
-            #misc.sprint(module.__path__)
-            misc.sprint(id(module))
 
             with misc.chdir(pjoin(os.path.dirname(rw_dir), path)):
                 #with misc.stdchannel_redirected(sys.stdout, os.devnull):                    
@@ -922,9 +919,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         param_card = self.new_param_card
                     else:
                         param_card = check_param_card.ParamCard(self.orig_param_card_text)
-                    misc.sprint(dir(module))
                     module.initialise('../Cards/param_card.dat')
-                    misc.sprint('after initialise')
                     for block in param_card:
                         if block.lower() == 'qnumbers':
                             continue
@@ -1401,8 +1396,6 @@ class ReweightInterface(extended_cmd.Cmd):
                     me_value = new_value
             else: 
                 raise Exception("not valid option")
-
-        misc.sprint('ME=', me_value)
 
         if self.options["identical_particle_in_prod_and_decay"] == "average":
             return me_value / len(all_p)        
@@ -1900,7 +1893,6 @@ class ReweightInterface(extended_cmd.Cmd):
             if not os.path.exists(pjoin(path_me,onedir)):
                 continue 
             pdir = pjoin(path_me, onedir, 'SubProcesses')
-            misc.sprint('Loading module all_matrix%spy from %s' % (2*metag, pdir))
             for tag in [2*metag,2*metag+1]:
                 with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,onedir, 'SubProcesses')]+sys.path): 
                     tmp = sys.path[0]
@@ -1946,26 +1938,19 @@ class ReweightInterface(extended_cmd.Cmd):
                             S = mymod.SubProcesses
                             mymod = getattr(S, 'all_matrix%spy' % tag) 
                     
-                misc.sprint("load module with fprefix=", fprefix)
-                misc.sprint(dir(mymod))
-                misc.sprint([(attr, attr.startswith('f'), attr[1:].split('_')[0].isdigit()) for attr in dir(mymod)])
                 if fprefix != '':
                     fprefix = 'f%i_' % fprefix
                     for attr in dir(mymod):
                         if attr.startswith(fprefix):
                             setattr(mymod, attr[len(fprefix):], getattr(mymod, attr)    )
                 elif any(attr.startswith('f') and attr[1:].split('_')[0].isdigit() for attr in dir(mymod)):
-                    misc.sprint("found prefix automatically")
                     fprefix = [attr for attr in dir(mymod) if attr.startswith('f') and attr[1:].split('_')[0].isdigit()][0].split('_')[0] + '_'
-                    misc.sprint("detected fprefix=", fprefix)
                     for attr in dir(mymod):
                         if attr.startswith(fprefix):
                             setattr(mymod, attr[len(fprefix):], getattr(mymod, attr))
                 else:
                     logger.debug("Could not find the fortran prefix in module %s", mod_name)
                 fprefix = ''
-                misc.sprint(id(mymod))
-                misc.sprint(dir(mymod)) 
                 # Param card not available -> no initialisation
                 self.f2pylib[(onedir,tag)] = mymod
                 if hasattr(mymod, 'set_madloop_path'):
@@ -1996,7 +1981,6 @@ class ReweightInterface(extended_cmd.Cmd):
                     hel_dict[prefix] = {}
                     for i, onehel in enumerate(zip(*nhel)):
                         hel_dict[prefix][tuple(onehel)] = i+1
-                    misc.sprint('LO hel_dict for %s found in fortran data structure' % prefix)
                 elif hasattr(mymod, '%sset_madloop_path' % fprefix) or  hasattr(mymod, 'set_madloop_path') and \
                      os.path.exists(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())):
                     hel_dict[prefix] = {}
@@ -2008,7 +1992,6 @@ class ReweightInterface(extended_cmd.Cmd):
                     misc.sprint(dir(mymod))
                     raise Exception
                     continue
-            misc.sprint(hel_dict)
             if not hel_dict:
                 raise Exception("No helicity information found for reweighting ME in %s" % pdir)    
             for i,(pdg,pid) in enumerate(zip(all_pdgs,all_pids)):
