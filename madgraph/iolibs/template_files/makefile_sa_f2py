@@ -9,6 +9,13 @@ LIBS = $(LIBDIR)libdhelas.$(libext) $(LIBDIR)libmodel.$(libext)
 PROCESS=  allmatrix.o
 LIBRARY = libmatrix.a
 
+ifeq ($(strip $(HERE)),)
+    HERE := ./
+endif
+
+
+PROCNAME= $(notdir $(notdir $(abspath $(HERE))))
+
 # For python linking (require f2py part of numpy)
 ifeq ($(origin MENUM),undefined)
   MENUM=2
@@ -44,10 +51,10 @@ MATRIX_OBJS := $(patsubst %.f,%.o,$(wildcard */matrix.f))
 %/matrix.o: %/matrix.f
 	$(MAKE) -C $* matrix.o
 
-liball$(MENUM)me.$(dylibext): $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext) all_matrix.o $(MATRIX_OBJS)
-	 $(FC) $(DYNLIBFLAG) $(RPATHFLAG)liball$(MENUM)me.$(dylibext) -o liball$(MENUM)me.$(dylibext) all_matrix.o */matrix.o ../Source/DHELAS/*.o ../Source/MODEL/*.o
+liball$(PROCNAME)_$(MENUM)me.$(dylibext): $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext) all_matrix.o $(MATRIX_OBJS)
+	 $(FC) $(DYNLIBFLAG) $(RPATHFLAG)liball$(PROCNAME)_$(MENUM)me.$(dylibext) -o liball$(PROCNAME)_$(MENUM)me.$(dylibext) all_matrix.o */matrix.o ../Source/DHELAS/*.o ../Source/MODEL/*.o
 
 
-all_matrix$(MENUM)py.so:  liball$(MENUM)me.$(dylibext) f2py_wrapper.f makefile
-	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lall$(MENUM)me $(LINKLIBS) -m                 all_matrix$(MENUM)py
+all_matrix$(MENUM)py.so:  liball$(PROCNAME)_$(MENUM)me.$(dylibext) f2py_wrapper.f makefile
+	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lall$(PROCNAME)_$(MENUM)me $(LINKLIBS) -m                 all_matrix$(MENUM)py
 	touch all_matrix$(MENUM)py.so

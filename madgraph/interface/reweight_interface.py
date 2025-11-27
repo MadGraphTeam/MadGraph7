@@ -1904,12 +1904,12 @@ class ReweightInterface(extended_cmd.Cmd):
             for tag in [2*metag,2*metag+1]:
                 with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,onedir, 'SubProcesses')]+sys.path): 
                     tmp = sys.path[0]
-                    os.environ['DYLD_LIBRARY_PATH'] = tmp + ":" + os.environ.get('DYLD_LIBRARY_PATH','')
-                    os.environ['LD_LIBRARY_PATH'] = tmp + ":" + os.environ.get('LD_LIBRARY_PATH','')
+                    #os.environ['DYLD_LIBRARY_PATH'] = tmp + ":" + os.environ.get('DYLD_LIBRARY_PATH','')
+                    #os.environ['LD_LIBRARY_PATH'] = tmp + ":" + os.environ.get('LD_LIBRARY_PATH','')
                     #mac fallback
-                    os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = tmp + ":" + os.environ.get('DYLD_FALLBACK_LIBRARY_PATH','')
+                    #os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = tmp + ":" + os.environ.get('DYLD_FALLBACK_LIBRARY_PATH','')
                     import ctypes
-                    for ext in ['.so', '.pyd']:
+                    for ext in []: # try without it -> need cleaning if working
                         if os.path.exists(pjoin(pdir, 'liballme%s' % ext)):
                             os.environ['LD_PRELOAD'] = pjoin(pdir, 'liballme%s' % ext) + os.pathsep + os.environ.get('LD_PRELOAD','')
                             if ext == '.dylib':
