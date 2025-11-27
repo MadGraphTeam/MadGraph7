@@ -1962,7 +1962,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         if attr.startswith(fprefix):
                             setattr(mymod, attr[len(fprefix):], getattr(mymod, attr))
                 else:
-                    raise Exception("Could not find the fortran prefix in module %s" % mod_name) 
+                    logger.debug("Could not find the fortran prefix in module %s", mod_name)
                 fprefix = ''
                 misc.sprint(id(mymod))
                 misc.sprint(dir(mymod)) 
