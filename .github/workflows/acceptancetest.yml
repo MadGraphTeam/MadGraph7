@@ -721,7 +721,10 @@ jobs:
 
   test_oneloop_reweighting:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-25.10]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -737,11 +740,11 @@ jobs:
             which f2py
             echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
-      - name: Breakpoint
-        uses: namespacelabs/breakpoint-action@v0
-        with:
-          duration: 30m
-          authorized-users: oliviermattelaer
+      #- name: Breakpoint
+      #  uses: namespacelabs/breakpoint-action@v0
+      #  with:
+      #    duration: 30m
+      #    authorized-users: oliviermattelaer
       # Runs a set of commands using the runners shell
       - name: test one of the test test_oneloop_reweighting
         run: |
