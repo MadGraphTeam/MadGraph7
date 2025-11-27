@@ -1108,12 +1108,16 @@ jobs:
             echo "install pythia8" > cmd
             echo "install rivet" >> cmd
             echo "install contur" >> cmd
-            ./bin/mg5_aMC cmd
+
       - name: Breakpoint
         uses: namespacelabs/breakpoint-action@v0
         with:
           duration: 30m
           authorized-users: oliviermattelaer 
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_contur_from_file
+        run: |
+            ./bin/mg5_aMC cmd
       - name: run the test
         run: |
             ls /home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/
@@ -1955,6 +1959,11 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
+
+      - name: Install Meson and Ninja
+        run: |
+           sudo apt-get update
+           sudo apt-get install -y meson ninja-build
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_loop_improved_reweighting
