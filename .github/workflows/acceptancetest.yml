@@ -719,7 +719,7 @@ jobs:
             ./tests/test_manager.py test_mass_reweighting -pA -t0 -l INFO
 
 
-  acceptancetest_41:
+  test_oneloop_reweighting:
     # The type of runner that the job will run on
     runs-on: ubuntu-22.04
 
@@ -737,6 +737,15 @@ jobs:
             which f2py
             echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
+      - name: Breakpoint
+        uses: namespacelabs/breakpoint-action@v0
+        with:
+          duration: 30m
+          authorized-users: oliviermattelaer
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_oneloop_reweighting
+        run: |
+            cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_oneloop_reweighting -pA -t0 -l INFO
 
 
