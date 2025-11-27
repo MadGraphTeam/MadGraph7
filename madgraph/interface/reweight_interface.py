@@ -1904,25 +1904,19 @@ class ReweightInterface(extended_cmd.Cmd):
             for tag in [2*metag,2*metag+1]:
                 with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,onedir, 'SubProcesses')]+sys.path): 
                     tmp = sys.path[0]
-                    #os.environ['DYLD_LIBRARY_PATH'] = tmp + ":" + os.environ.get('DYLD_LIBRARY_PATH','')
-                    #os.environ['LD_LIBRARY_PATH'] = tmp + ":" + os.environ.get('LD_LIBRARY_PATH','')
-                    #mac fallback
-                    #os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = tmp + ":" + os.environ.get('DYLD_FALLBACK_LIBRARY_PATH','')
                     import ctypes
-                    for ext in []: # try without it -> need cleaning if working
-                        if os.path.exists(pjoin(pdir, 'liballme%s' % ext)):
-                            os.environ['LD_PRELOAD'] = pjoin(pdir, 'liballme%s' % ext) + os.pathsep + os.environ.get('LD_PRELOAD','')
-                            if ext == '.dylib':
-                                mode=os.RTLD_LOCAL
-                            else:
-                                mode=os.RTLD_GLOBAL | os.RTLD_DEEPBIND
+                    alllib = pjoin(sys.path[0], ('liball%s_%sme.so' % (onedir, tag)))
+                    if os.path.exists(alllib):
+                            #os.environ['LD_PRELOAD'] = pjoin(pdir, 'liballme%s' % ext) + os.pathsep + os.environ.get('LD_PRELOAD','')
+                            #if ext == '.dylib':
+                            #    mode=os.RTLD_LOCAL
+                            #else:
+                            mode=os.RTLD_GLOBAL | os.RTLD_DEEPBIND
                             try:
-                                ctypes.CDLL(pjoin(pdir, 'liballme%s' % ext), mode=mode)
+                                ctypes.CDLL(alllib, mode=mode)
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
                             break
-                    #else:
-                    #    raise Exception('No liballme found in %s' % pdir)
                     mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
                     #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
                     if mod_name in list(sys.modules.keys()):
