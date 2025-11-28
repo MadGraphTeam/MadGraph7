@@ -914,7 +914,7 @@ class ReweightInterface(extended_cmd.Cmd):
         for (path,tag), module in self.f2pylib.items():
 
             with misc.chdir(pjoin(os.path.dirname(rw_dir), path)):
-                #with misc.stdchannel_redirected(sys.stdout, os.devnull):                    
+                with misc.stdchannel_redirected(sys.stdout, os.devnull):                    
                     if 'rw_me_' in path or tag == 3:
                         param_card = self.new_param_card
                     else:
