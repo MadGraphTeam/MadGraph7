@@ -1,141 +1,209 @@
+/*
+ *                                   _
+ *                                  (_)
+ *   _   _ _ __ ___   __ _ _ __ ___  _
+ *  | | | | '_ ` _ \ / _` | '_ ` _ \| |
+ *  | |_| | | | | | | (_| | | | | | | |
+ *   \__,_|_| |_| |_|\__,_|_| |_| |_|_|
+ *
+ *  Unified  MAtrix  eleMent  Interface
+ *
+ *
+ */
+
+#ifndef UMAMI_HEADER
+#define UMAMI_HEADER 1
+
 #include <stddef.h>
-#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** Contains information on the matrix elements contained in this subprocess */
-struct SubProcessInfo {
-    /** boolean indicating whether this code runs on the GPU */
-    bool on_gpu;
+/**
+ * Major version number of the UMAMI interface. If the major version is the same
+ * between caller and implementation, binary compatibility is ensured.
+ */
+const int UMAMI_MAJOR_VERSION = 1;
+/**
+ * Minor version number of the UMAMI interface. Between minor versions, new keys for
+ * errors, devices, metadata, inputs and outputs can be added.
+ */
+const int UMAMI_MINOR_VERSION = 0;
 
-    /** number of particles (incoming and outgoing) */
-    size_t particle_count;
+typedef enum {
+    UMAMI_SUCCESS,
+    UMAMI_ERROR,
+    UMAMI_ERROR_NOT_IMPLEMENTED,
+    UMAMI_ERROR_UNSUPPORTED_INPUT,
+    UMAMI_ERROR_UNSUPPORTED_OUTPUT,
+    UMAMI_ERROR_UNSUPPORTED_META,
+    UMAMI_ERROR_MISSING_INPUT,
+} UmamiStatus;
 
-    /** number of diagrams */
-    size_t diagram_count;
+typedef enum {
+    UMAMI_DEVICE_CPU,
+    UMAMI_DEVICE_CUDA,
+    UMAMI_DEVICE_HIP,
+} UmamiDevice;
 
-    /** number of helicity configurations */
-    size_t helicity_count;
-};
+typedef enum {
+    UMAMI_META_DEVICE,
+    UMAMI_META_PARTICLE_COUNT,
+    UMAMI_META_DIAGRAM_COUNT,
+    UMAMI_META_HELICITY_COUNT,
+    UMAMI_META_COLOR_COUNT,
+} UmamiMetaKey;
+
+typedef enum {
+    UMAMI_IN_MOMENTA,
+    UMAMI_IN_ALPHA_S,
+    UMAMI_IN_FLAVOR_INDEX,
+    UMAMI_IN_RANDOM_COLOR,
+    UMAMI_IN_RANDOM_HELICITY,
+    UMAMI_IN_RANDOM_DIAGRAM,
+    UMAMI_IN_HELICITY_INDEX,
+    UMAMI_IN_DIAGRAM_INDEX,
+} UmamiInputKey;
+
+typedef enum {
+    UMAMI_OUT_MATRIX_ELEMENT,
+    UMAMI_OUT_DIAGRAM_AMP2,
+    UMAMI_OUT_COLOR_INDEX,
+    UMAMI_OUT_HELICITY_INDEX,
+    UMAMI_OUT_DIAGRAM_INDEX,
+    UMAMI_OUT_GPU_STREAM,
+    // NLO: born, virtual, poles, counterterms
+    // color: LC-ME, FC-ME
+} UmamiOutputKey;
+
+typedef void* UmamiHandle;
+
 
 /**
- * Returns information about the subprocess
+ * Creates an instance of the matrix element. Each instance is independent, so thread
+ * safety can be achieved by creating a separate one for every thread.
+ *
+ * @param meta_key
+ *     path to the parameter file
+ * @param handle
+ *     pointer to an instance of the subprocess. Has to be cleaned up by
+ *     the caller with `free_subprocess`.
  * @return
- *     pointer to a SubProcessInfo object
+ *     UMAMI_SUCCESS on success, error code otherwise
  */
-const SubProcessInfo* subprocess_info();
+UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result);
 
-/** 
- * Initializes a subprocess object. Each subprocess object is independent, so thread safety can be
- * achieved by creating a separate instance for every thread.
+/**
+ * Creates an instance of the matrix element. Each instance is independent, so thread
+ * safety can be achieved by creating a separate one for every thread.
  *
  * @param param_card_path
  *     path to the parameter file
- * @return 
+ * @param handle
  *     pointer to an instance of the subprocess. Has to be cleaned up by
  *     the caller with `free_subprocess`.
+ * @return
+ *     UMAMI_SUCCESS on success, error code otherwise
  */
-void* init_subprocess(const char* param_card_path);
+UmamiStatus umami_initialize(UmamiHandle* handle, char const* param_card_path);
 
 /**
- * Computes the squared matrix elements for a batch of events.
- * All pointers (except for the first argument) can either point to CPU or GPU memory,
- * depending on the value of `on_gpu`.
- * 
- * @param subprocess
- *     pointer to the subprocess object
- * @param count
- *     size of the batch
- * @param stride
- *     step size between events in memory. Can be larger than count.
- * @param momenta_in
- *     pointer to a batch of four-momenta of the incoming and outgoing particles.
- *     The i-th component of the j-th particle of the k-th event is accessed as
- *     `momenta_in[stride * particle_count * i + stride * j + k]`
- *     with `i` between `0` and `3`, `j` between 0 and `particle_count - 1`,
- *     `k` between `0` and `count - 1`
- * @param flavor_in
- *     pointer to a batch of flavor configuration indices
- * @param m2_out
- *     pointer to the batch of the computed squared matrix elements
- */
-void compute_matrix_element(
-    void* subprocess,
-    size_t count,
-    size_t stride,
-    const double* momenta_in,
-    const int* flavor_in,
-    double* m2_out,
-    void* cuda_stream
-);
-
-/**
- * Computes the squared matrix elements and channel weights for a batch of events.
- * All pointers (except for the first argument) can either point to CPU or GPU memory,
- * depending on the value of `on_gpu`.
- * 
- * @param subprocess
- *     pointer to the subprocess object
- * @param count
- *     size of the batch
- * @param stride
- *     step size between events in memory. Can be larger than count.
- * @param momenta_in
- *     pointer to a batch of four-momenta of the incoming and outgoing particles.
- *     The i-th component of the j-th particle of the k-th event is accessed as
- *     `momenta_in[stride * particle_count * i + stride * j + k]`
- *     with `i` between `0` and `3`, `j` between 0 and `particle_count - 1`,
- *     `k` between `0` and `count - 1`
- * @param alpha_s_in
- *     pointer to a batch of strong couplings
- * @param random_in
- *     pointer to a batch of random numbers from [0,1) to determine color and diagram
- *     The random number for color of the k-th event is accessed as `random_in[k]`,
- *     the random number for the diagram is accessed as `random_in[stride + k]`
- *     with `k` between `0` and `count - 1`
- * @param flavor_in
- *     pointer to a batch of flavor configuration indices
- * @param m2_out
- *     pointer to the batch of the computed squared matrix elements
- * @param channel_weights_out
- *     pointer to the batch of the computed channel weights.
- *     The i-th channel weight of the k-th event,
- *     with `i` between `0` and `channel_count - 1`
- *     and `k` between `0` and `count - 1`
- *     is accessed as `channel_weights_out[stride * i + k]`
- * @param m2_out
- *     pointer to the batch of the computed squared matrix elements
- * @param color_out
- *     pointer to the batch of picked color configurations
- * @param diagram_out
- *     pointer to the batch of picked diagrams
- */
-void compute_matrix_element_multichannel(
-    void* subprocess,
-    size_t count,
-    size_t stride,
-    const double* momenta_in,
-    const double* alpha_s_in,
-    const double* random_in,
-    const int* flavor_in,
-    double* m2_out,
-    double* amp2_out,
-    int* diagram_out,
-    int* color_out,
-    int* helicity_out,
-    void* cuda_stream
-);
-
-/**
- * Frees subprocess object
+ * Sets the value of a model parameter
  *
- * @param subprocess
- *     pointer to the subprocess object
+ * @param handle
+ *     handle of a matrix element instance
+ * @param name
+ *     name of the parameter
+ * @param parameter_real
+ *     real part of the parameter value
+ * @param parameter_imag
+ *     imaginary part of the parameter value. Ignored for real valued parameters.
+ * @return
+ *     UMAMI_SUCCESS on success, error code otherwise
  */
-void free_subprocess(void* subprocess);
+UmamiStatus umami_set_parameter(
+    UmamiHandle handle,
+    char const* name,
+    double parameter_real,
+    double parameter_imag
+);
+
+/**
+ * Retrieves the value of a model parameter
+ *
+ * @param handle
+ *     handle of a matrix element instance
+ * @param name
+ *     name of the parameter
+ * @param parameter_real
+ *     pointer to double to return real part of the parameter value
+ * @param parameter_imag
+ *     pointer to double to return imaginary part of the parameter value. Ignored
+ *     for real-valued parameters (i.e. you may pass a null pointer)
+ * @return
+ *     UMAMI_SUCCESS on success, error code otherwise
+ */
+UmamiStatus umami_get_parameter(
+    UmamiHandle handle,
+    char const* name,
+    double* parameter_real,
+    double* parameter_imag
+);
+
+/**
+ * Evaluates the matrix element as a function of the given inputs, filling the
+ * requested outputs.
+ *
+ * @param handle
+ *     handle of a matrix element instance
+ * @param count
+ *     number of events to evaluate the matrix element for
+ * @param stride
+ *     stride of the batch dimension of the input and output arrays, see memory layout
+ * @param offset
+ *     offset of the event index
+ * @param input_count
+ *     number of inputs to the matrix element
+ * @param input_keys
+ *     pointer to an array of input keys, length `input_count`
+ * @param inputs
+ *     pointer to an array of void pointers to the inputs. The type of the inputs
+ *     depends on the input key
+ * @param output_count
+ *     number of outputs to the matrix element
+ * @param output_keys
+ *     pointer to an array of output keys, length `output_count`
+ * @param outputs
+ *     pointer to an array of void pointers to the outputs. The type of the outputs
+ *     depends on the output key. The caller is responsible for allocating memory for
+ *     the outputs.
+ * @return
+ *     UMAMI_SUCCESS on success, error code otherwise
+ */
+UmamiStatus umami_matrix_element(
+    UmamiHandle handle,
+    size_t count,
+    size_t stride,
+    size_t offset,
+    size_t input_count,
+    UmamiInputKey const* input_keys,
+    void const* const* inputs,
+    size_t output_count,
+    UmamiOutputKey const* output_keys,
+    void* const* outputs
+);
+
+/**
+ * Frees matrix element instance
+ *
+ * @param handle
+ *     handle of a matrix element instance
+ */
+UmamiStatus umami_free(UmamiHandle handle);
 
 #ifdef __cplusplus
 }
 #endif
+
+#endif // UMAMI_HEADER

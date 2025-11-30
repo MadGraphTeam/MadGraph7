@@ -422,7 +422,7 @@ class MadgraphSubprocess:
             particle_count=self.particle_count, **self.process.scale_kwargs
         )
 
-        self.me_index = self.process.context.load_matrix_element(
+        self.matrix_element = self.process.context.load_matrix_element(
             api_path, self.process.param_card_path
         )
 
@@ -816,16 +816,24 @@ class MadgraphSubprocess:
         flags: int = me.EventGenerator.integrand_flags
     ) -> list[me.Integrand]:
         flavors = [flav["options"][0] for flav in self.meta["flavors"]]
+        matrix_element = me.MatrixElement(
+            self.matrix_element,
+            me.Integrand.matrix_element_inputs,
+            me.Integrand.matrix_element_outputs,
+            True
+        )
         cross_section = me.DifferentialCrossSection(
-            flavors,
-            self.me_index,
-            self.process.running_coupling,
-            None if len(flavors) > 1 else self.process.pdf_grid,
-            self.process.e_cm,
-            self.scale,
-            False,
-            self.meta["diagram_count"],
-            self.meta["has_mirror_process"],
+            matrix_element=matrix_element,
+            cm_energy=self.process.e_cm,
+            running_coupling=self.process.running_coupling,
+            energy_scale=self.scale,
+            pid_options=flavors,
+            has_pdf1=True,
+            has_pdf2=True,
+            pdf_grid1=None if len(flavors) > 1 else self.process.pdf_grid,
+            pdf_grid2=None if len(flavors) > 1 else self.process.pdf_grid,
+            has_mirror=self.meta["has_mirror_process"],
+            input_momentum_fraction=True,
         )
         integrands = []
         for channel in phasespace.channels:
