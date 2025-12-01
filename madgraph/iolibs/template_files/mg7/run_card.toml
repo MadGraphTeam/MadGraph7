@@ -8,6 +8,7 @@ device = "cpu" # options: cpu, cuda
 simd_vector_size = -1
 thread_pool_size = -1 # -1 sets count automatically based on number of CPUs
 output_format = "compact_npy" # options: compact_npy, lhe_npy, lhe
+verbosity = "pretty" # options: silent, pretty, log
 
 [beam]
 e_cm = 13000.0

@@ -188,6 +188,7 @@ class MadgraphProcess:
         self.running_coupling = me.RunningCoupling(self.alphas_grid)
 
     def init_generator_config(self) -> None:
+        run_args = self.run_card["run"]
         gen_args = self.run_card["generation"]
         vegas_args = self.run_card["vegas"]
         cfg = me.EventGeneratorConfig()
@@ -203,6 +204,7 @@ class MadgraphProcess:
         cfg.optimization_patience = vegas_args["optimization_patience"]
         cfg.optimization_threshold = vegas_args["optimization_threshold"]
         cfg.batch_size = gen_args["batch_size"]
+        cfg.verbosity = run_args["verbosity"]
         self.event_generator_config = cfg
         self.event_generator = None
 
