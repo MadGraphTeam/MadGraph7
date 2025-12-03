@@ -2940,6 +2940,8 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
                 except KeyError:
                     particle_dict[particles[0]] = [[particles[1:], result/nb_output]]
     
+        if not os.path.exists(pjoin(self.me_dir, 'Events', run_name)):
+            os.mkdir(pjoin(self.me_dir, 'Events', run_name))
         self.update_width_in_param_card(particle_dict,
                         initial = pjoin(self.me_dir, 'Cards', 'param_card.dat'),
                         output=pjoin(self.me_dir, 'Events', run_name, "param_card.dat"))
