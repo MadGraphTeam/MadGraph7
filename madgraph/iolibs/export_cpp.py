@@ -3640,13 +3640,17 @@ class ProcessExporterMG7(ProcessExporterCPP):
         super().__init__(*args, **kwargs)
         output_options = args[1]["output_options"]
         simd_opt = output_options.get("simd")
-        gpu_opt = output_options.get("gpu")
+        cuda_opt = output_options.get("cuda")
+        hip_opt = output_options.get("hip")
         if simd_opt is not None:
             self.matrix_element_path = os.path.abspath(simd_opt)
-            self.matrix_element_gpu = False
-        elif gpu_opt is not None:
-            self.matrix_element_path = os.path.abspath(gpu_opt)
-            self.matrix_element_gpu = True
+            self.matrix_element_gpu = None
+        elif cuda_opt is not None:
+            self.matrix_element_path = os.path.abspath(cuda_opt)
+            self.matrix_element_gpu = "cuda"
+        elif hip_opt is not None:
+            self.matrix_element_path = os.path.abspath(hip_opt)
+            self.matrix_element_gpu = "hip"
         else:
             self.matrix_element_path = None
         self.process_info = []
@@ -3661,7 +3665,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
             os.mkdir(dirpath)
 
-            suffix = "cuda" if self.matrix_element_gpu else "cpp"
+            suffix = self.matrix_element_gpu or "cpp"
             logger.info('Creating files in directory %s' % dirpath)
             common_lib_name = f"libmg5amc_common_{suffix}.so"
             subproc_lib_name = f"libmg5amc_{process_exporter_cpp.process_name}_{suffix}.so"
