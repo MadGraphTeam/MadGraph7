@@ -424,9 +424,12 @@ class MadgraphSubprocess:
             particle_count=self.particle_count, **self.process.scale_kwargs
         )
 
-        self.matrix_element = self.process.context.load_matrix_element(
-            api_path, self.process.param_card_path
-        )
+        if self.process.run_card["run"]["dummy_matrix_element"]:
+            self.matrix_element = None
+        else: 
+            self.matrix_element = self.process.context.load_matrix_element(
+                api_path, self.process.param_card_path
+            )
 
     def build_multi_channel_data(self) -> MultiChannelData:
         if self.multi_channel_data is not None:
@@ -818,12 +821,22 @@ class MadgraphSubprocess:
         flags: int = me.EventGenerator.integrand_flags
     ) -> list[me.Integrand]:
         flavors = [flav["options"][0] for flav in self.meta["flavors"]]
-        matrix_element = me.MatrixElement(
-            self.matrix_element,
-            me.Integrand.matrix_element_inputs,
-            me.Integrand.matrix_element_outputs,
-            True
-        )
+        if self.matrix_element:
+            matrix_element = me.MatrixElement(
+                self.matrix_element,
+                me.Integrand.matrix_element_inputs,
+                me.Integrand.matrix_element_outputs,
+                True,
+            )
+        else:
+            matrix_element = me.MatrixElement(
+                0xBADCAFE,
+                self.particle_count,
+                me.Integrand.matrix_element_inputs,
+                me.Integrand.matrix_element_outputs,
+                self.meta["diagram_count"],
+                True,
+            )
         cross_section = me.DifferentialCrossSection(
             matrix_element=matrix_element,
             cm_energy=self.process.e_cm,
