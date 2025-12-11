@@ -394,6 +394,8 @@ def clean_pids(pids: list[int]) -> list[int]:
         pid = abs(pid)
         if pid == 81:
             pid = 1
+        if pid == 82:
+            pid = 11
         pids_out.append(pid)
     return pids_out
 

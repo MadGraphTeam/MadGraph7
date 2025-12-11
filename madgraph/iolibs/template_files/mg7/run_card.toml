@@ -58,6 +58,9 @@ bw_cutoff = 15
 jet.pt.min = 20.0
 jet.eta.max = 5.0
 jet.dR.min = 0.4
+lepton.pt.min = 10.0
+lepton.eta.max = 2.5
+lepton.dR.min = 0.4
 sqrt_s.min = 0.0
 
 [madnis]
