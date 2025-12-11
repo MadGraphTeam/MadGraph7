@@ -231,6 +231,9 @@ class MadgraphProcess:
         integrands = []
         for subproc, phasespace in zip(self.subprocesses, phasespaces):
             integrands.extend(subproc.build_integrands(phasespace))
+        #print(integrands[0].function())
+        #integrands[0].function().save("test.json")
+        #integrands[0] = me.Function.load("test.json")
         return me.EventGenerator(
             self.context,
             integrands,
@@ -246,13 +249,7 @@ class MadgraphProcess:
         )
 
         print()
-        if mode is None:
-            print("Running survey")
-        else:
-            print(f"Running survey for {mode} phasespace")
-        start_time = get_start_time()
         event_generator.survey()
-        print_run_time(start_time)
         return event_generator
 
     def survey(self) -> None:
@@ -341,6 +338,7 @@ class MadgraphProcess:
             )
         else:
             raise ValueError("Unknown output format")
+        self.save_gridpack()
 
     def build_lhe_completer(self):
         subproc_args = []
@@ -377,6 +375,11 @@ class MadgraphProcess:
             subproc_args=subproc_args,
             bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
         )
+
+    def save_gridpack(self) -> None:
+        gridpack_path = os.path.join(self.run_path, "gridpack")
+        os.mkdir(gridpack_path)
+        self.context.save(os.path.join(gridpack_path, "context.json"))
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)
