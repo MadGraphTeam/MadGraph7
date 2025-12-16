@@ -595,7 +595,6 @@ C ----------
           ENDDO
         ENDDO
     ENDDO
-    BORNS(:,:) = BORNS(:,:)/DENOM
         Do I = 1, NGRAPHS
           amp2(i)=amp2(i)+amp(i)*dconjg(amp(i))
         Enddo
@@ -610,7 +609,7 @@ C ----------
       do i = 1, nsqampso
       borns(1,0)=borns(1,0)+borns(1,i)
       borns(2,0)=borns(2,0)+borns(2,i)
-      ans(1,i) = borns(1,i) + borns(2,i) 
+      ans(1,i) = (borns(1,i) + borns(2,i))/denom
       enddo
       DO M = 1, NAMPSO
       CF_INDEX = 0
@@ -625,7 +624,7 @@ C ----------
       ENDDO
 
       ENDDO
-      ANS(2,:) = ANS(2,:)/DENOM
+      ANS(2,:) = ANS(2,:)/(2d0*DENOM)
       if (glu_ij.ne.0) nhel(glu_ij) = back_hel
       END
        
