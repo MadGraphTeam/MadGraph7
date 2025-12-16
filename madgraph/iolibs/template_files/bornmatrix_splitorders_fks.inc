@@ -606,10 +606,11 @@ C ----------
         ENDDO
       endif
       Enddo
+      borns(:,:) = borns(:,:)/DENOM
       do i = 1, nsqampso
       borns(1,0)=borns(1,0)+borns(1,i)
       borns(2,0)=borns(2,0)+borns(2,i)
-      ans(1,i) = (borns(1,i) + borns(2,i))/denom
+      ans(1,i) = borns(1,i) + borns(2,i)
       enddo
       DO M = 1, NAMPSO
       CF_INDEX = 0
