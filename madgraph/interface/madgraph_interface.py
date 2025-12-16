@@ -2995,6 +2995,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'timeout': 60,
                        'web_browser':None,
                        'eps_viewer':None,
+                       'gzip': None,
                        'text_editor':None,
                        'fortran_compiler':None,
                        'f2py_compiler':None,
@@ -7424,7 +7425,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     else:
                         if key in self.options_madgraph:
                             self.history.append('set %s %s' % (key, self.options[key]))
-            elif key not in ['text_editor','eps_viewer','web_browser', 'stdout_level']:
+            elif key not in ['text_editor','eps_viewer','gzip','web_browser', 'stdout_level']:
                 # Default: try to set parameter
                 try:
                     self.do_set("%s %s --no_save" % (key, self.options[key]), log=False)
@@ -7442,6 +7443,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
+        # Configure the way to compress a file:
+        misc.configure_gzip(self.options)
         return self.options
 
     def check_for_export_dir(self, filepath):

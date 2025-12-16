@@ -59,6 +59,12 @@
 #!  If None: try to find one available on the system
 # eps_viewer = None
 
+#! Prefered gzip or gzip-compatible tool
+#!  If None: try to find one available on the system
+#!  For example, you could install the `pigz` tool, a multithreaded version of gzip.
+#!  This would be faster than standard gzip on a multicore machine.
+# gzip = None
+
 #! Time allowed to answer question (if no answer takes default value)
 #!  0: No time limit
 # timeout = 60

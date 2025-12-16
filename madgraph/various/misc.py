@@ -1264,12 +1264,24 @@ def gunzip(path, keep=False, stdout=None):
         os.remove(path)
     return 0
 
+_gzip_tool = 'gzip'
+
+def configure_gzip(configuration=None):
+    if not configuration:
+        configuration = {'gzip': None}
+
+    global _gzip_tool
+    if configuration['gzip'] is None:
+        _gzip_tool = open_file.find_valid(['pigz', 'gzip'], 'gzip') 
+    else:
+        _gzip_tool = configuration['gzip']
+    
 def gzip(path, stdout=None, error=True, forceexternal=False):
     """ a standard replacement for os.system('gzip %s ' % path)"""
  
-    #for large file (>1G) it is faster and safer to use a separate thread
-    if os.path.getsize(path) > 1e9 or forceexternal:
-        call(['gzip', '-f', path])
+    #for large file (>256M) it is faster and safer to use a separate thread
+    if os.path.getsize(path) > 256e6 or forceexternal:
+        call([_gzip_tool, '-f', path])
         if stdout:
             if not stdout.endswith(".gz"):
                 stdout = "%s.gz" % stdout

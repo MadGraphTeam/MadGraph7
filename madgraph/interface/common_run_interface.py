@@ -668,6 +668,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'web_browser':None,
                        'eps_viewer':None,
                        'text_editor':None,
+                       'gzip':None,
                        'fortran_compiler':None,
                        'cpp_compiler': None,
                        'auto_update':7,
@@ -4094,7 +4095,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 if self.options[key] in ['False', 'True']:
                     self.allow_notification_center =ast.literal_eval(self.options[key])
                     self.options[key] =ast.literal_eval(self.options[key])
-            elif key not in ['text_editor','eps_viewer','web_browser','stdout_level',
+            elif key not in ['text_editor','eps_viewer','gzip','web_browser','stdout_level',
                               'complex_mass_scheme', 'gauge', 'group_subprocesses']:
                 # Default: try to set parameter
                 try:
@@ -4105,6 +4106,9 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
         # Configure the way to open a file:
         misc.open_file.configure(self.options)
+        
+        # Configure the way to compress a file:
+        misc.configure_gzip(self.options)
 
         # update the path to the PLUGIN directory of MG%
         if MADEVENT and 'mg5_path' in self.options and self.options['mg5_path']:
