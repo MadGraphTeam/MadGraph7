@@ -19,7 +19,24 @@ else
     fi
 fi
 
+tarCounter=0
+while [[ (-f MadLoop5_resources.tar.gz) && (! -f MadLoop5_resources/HelConfigs.dat) && ($tarCounter < 10) ]]; do
+    if [[ $tarCounter > 0 ]]; then
+	sleep 2s
+    fi
+    tar -xzf MadLoop5_resources.tar.gz >/dev/null 2>&1
+    tarCounter=$[$tarCounter+1]
+done
+
+if [[ (-e MadLoop5_resources.tar.gz) && (! -e MadLoop5_resources/HelConfigs.dat) ]]; then
+    echo "Cannot untar and unzip file `pwd`/MadLoop5_resources.tar.gz." > log.txt
+    exit
+fi
+
 mkdir -p "$DMTCP_CHECKPOINT_DIR"
+if compgen -G "G*" > /dev/null; then
+    cd G* || exit 1
+fi
 
 dmtcp_coordinator -i 86400 --daemon --exit-on-last -p 0 --port-file "$DMTCP_CHECKPOINT_DIR/dmtcp.port" 1>/dev/null 2>&1
 export DMTCP_COORD_HOST=$(hostname)
