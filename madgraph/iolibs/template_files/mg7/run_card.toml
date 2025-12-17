@@ -61,6 +61,7 @@ jet.dR.min = 0.4
 lepton.pt.min = 10.0
 lepton.eta.max = 2.5
 lepton.dR.min = 0.4
+jet-lepton.dR.min=0.4
 sqrt_s.min = 0.0
 
 [madnis]

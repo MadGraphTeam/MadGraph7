@@ -129,32 +129,45 @@ class MadgraphProcess:
         }
         cut_args = self.run_card["cuts"]
         self.cut_data = []
-        for group_name, group in groups.items():
-            if group_name not in cut_args:
+        for group_name, group_args in cut_args.items():
+            if group_name == "sqrt_s":
+                if "min" in group_args:
+                    self.cut_data.append(
+                        me.CutItem(me.Cuts.obs_sqrt_s, me.Cuts.min, group_args["min"], [])
+                    )
+                if "max" in group_args:
+                    self.cut_data.append(
+                        me.CutItem(me.Cuts.obs_sqrt_s, me.Cuts.max, group_args["max"], [])
+                    )
                 continue
-            group_args = cut_args[group_name]
-            for obs_name, obs in observables.items():
-                if obs_name not in group_args:
-                    continue
-                obs_args = group_args[obs_name]
+
+            if "-" in group_name:
+                group_name1, group_name2 = group_name.split("-")
+                pids1 = (
+                    [int(group_name1)]
+                    if group_name1.isnumeric()
+                    else groups[group_name1]
+                )
+                pids2 = (
+                    [int(group_name2)]
+                    if group_name2.isnumeric()
+                    else groups[group_name2]
+                )
+            else:
+                pids1 = (
+                    [int(group_name)] if group_name.isnumeric() else groups[group_name]
+                )
+                pids2 = []
+            for obs_name, obs_args in group_args.items():
+                obs = observables[obs_name]
                 if "min" in obs_args:
                     self.cut_data.append(
-                        me.CutItem(obs, me.Cuts.min, obs_args["min"], group)
+                        me.CutItem(obs, me.Cuts.min, obs_args["min"], pids1, pids2)
                     )
                 if "max" in obs_args:
                     self.cut_data.append(
-                        me.CutItem(obs, me.Cuts.max, obs_args["max"], group)
+                        me.CutItem(obs, me.Cuts.max, obs_args["max"], pids1, pids2)
                     )
-        if "sqrt_s" in cut_args:
-            sqs_args = cut_args["sqrt_s"]
-            if "min" in sqs_args:
-                self.cut_data.append(
-                    me.CutItem(me.Cuts.obs_sqrt_s, me.Cuts.min, sqs_args["min"], [])
-                )
-            if "max" in sqs_args:
-                self.cut_data.append(
-                    me.CutItem(me.Cuts.obs_sqrt_s, me.Cuts.max, sqs_args["max"], [])
-                )
 
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
