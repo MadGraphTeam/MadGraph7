@@ -1228,10 +1228,15 @@ def gunzip(path, keep=False, stdout=None):
     
     #for large file (>1G) it is faster and safer to use a separate thread
     if os.path.getsize(path) > 1e8:
-        if stdout:
-            os.system('gunzip -c %s > %s' % (path, stdout))
+        if keep:
+            options = '-k '
         else:
-            os.system('gunzip  %s' % path) 
+            options = ''
+
+        if stdout:
+            os.system('gunzip  %s -c %s > %s' % (options, path, stdout))
+        else:
+            os.system('gunzip %s %s' % (options, path)) 
         return 0
     
     if not stdout:
