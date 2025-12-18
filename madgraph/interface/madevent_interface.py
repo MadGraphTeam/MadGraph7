@@ -3681,10 +3681,12 @@ Beware that this can be dangerous for local multicore runs.""")
         if len(AllEvent) == 0:
             nb_event = 0 
         else:
-            nb_event = AllEvent.unweight(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe.gz"),
+            nb_event = AllEvent.unweight(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"),
                           get_wgt, trunc_error=1e-2, event_target=self.run_card['nevents'],
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic)
+            misc.sprint("zipping now", time.time()-start)
+            misc.gzip(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"))
 
             if nb_event < self.run_card['nevents']:
                 logger.warning("failed to generate enough events. Please follow one of the following suggestions to fix the issue:")
