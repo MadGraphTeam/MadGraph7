@@ -1755,7 +1755,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if event[0].color1 == 599 and event.aqcd==0:
                     new_value = self.all_f2py[pdir](p, 0.113, 0)
                 else:
-                    new_value = self.all_f2py[pdir](p, event.aqcd, 0)
+                    new_value = self.all_f2py[pdir](p, event.aqcd, event.scale, -1)
                 if self.options['identical_particle_in_prod_and_decay'] == "average":
                     out += new_value
                 else:
@@ -1771,6 +1771,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             if sys.path[0] != pjoin(self.path_me, 'madspin_me', 'SubProcesses'):
                 sys.path.insert(0, pjoin(self.path_me, 'madspin_me', 'SubProcesses'))
 
+            mymod = __import__('all_matrix2py')
+            #if mymod.__path__[0] != pjoin(self.path_me, 'madspin_me', 'SubProcesses'):
+            #    from importlib import reload
+            #    mymod = reload(mymod)
+
             #if Rpath linking is not working the below code can be an alternative:
             #import ctypes
             #exts = ['so','dylib','dll'] 
@@ -1780,20 +1785,22 @@ class MadSpinInterface(extended_cmd.Cmd):
             #        break
             # ctypes.CDLL(me_library)
 
-            with misc.chdir(pjoin(self.path_me, 'madspin_me', 'SubProcesses')):
-                mymod = __import__("%s.matrix2py" % pdir)
-                from importlib import reload
-                reload(mymod)
+            #with misc.chdir(pjoin(self.path_me, 'madspin_me', 'SubProcesses')):
+            #    #misc.compile(['matrix2py.so'], cwd=pdir)                
+            #    mymod = __import__("%s.allmatrix2py" % pdir)
+            #    from importlib import reload
+            #    reload(mymod)
 
-            mymod = getattr(mymod, 'matrix2py')  
+            #mymod = getattr(mymod, 'matrix2py')  
             with misc.chdir(pjoin(self.path_me, 'madspin_me', 'SubProcesses', pdir)):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):
                     if not os.path.exists(pjoin(self.path_me, 'Cards','param_card.dat')) and \
                             os.path.exists(pjoin(self.path_me,'param_card.dat')):
-                        mymod.py_initialisemodel(pjoin(self.path_me,'param_card.dat'))
+                        mymod.initialise(pjoin(self.path_me,'param_card.dat'))
                     else:
-                        mymod.py_initialisemodel(pjoin(self.path_me, 'Cards','param_card.dat'))
-            self.all_f2py[pdir] = mymod.py_get_value 
+                        mymod.initialise(pjoin(self.path_me, 'Cards','param_card.dat'))
+            pdg = list(orig_order[0]) + list(orig_order[1])
+            self.all_f2py[pdir] = lambda *args : mymod.smatrixhel(pdg, 0, *args)
             return self.calculate_matrix_element(event)
         
         
