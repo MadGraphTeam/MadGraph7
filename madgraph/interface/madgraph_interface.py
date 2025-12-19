@@ -213,7 +213,6 @@ class CmdExtended(cmd.Cmd):
                 #
                 alltag,_ = proc.communicate() 
                 alltag = alltag.decode(errors='ignore').strip().split()
-                misc.sprint(alltag)
                 if not alltag:
                     proc = subprocess.Popen(['git', 'describe', '--tags'], stdout=subprocess.PIPE,cwd=MG5DIR)
                     tag,_ = proc.communicate()
