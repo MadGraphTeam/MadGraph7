@@ -2995,7 +2995,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'timeout': 60,
                        'web_browser':None,
                        'eps_viewer':None,
-                       'gzip': None,
+                       'use_pigz':None,
                        'text_editor':None,
                        'fortran_compiler':None,
                        'f2py_compiler':None,
@@ -7425,7 +7425,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     else:
                         if key in self.options_madgraph:
                             self.history.append('set %s %s' % (key, self.options[key]))
-            elif key not in ['text_editor','eps_viewer','gzip','web_browser', 'stdout_level']:
+            elif key not in ['text_editor','eps_viewer','use_pigz','web_browser', 'stdout_level']:
                 # Default: try to set parameter
                 try:
                     self.do_set("%s %s --no_save" % (key, self.options[key]), log=False)

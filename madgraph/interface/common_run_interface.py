@@ -668,7 +668,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'web_browser':None,
                        'eps_viewer':None,
                        'text_editor':None,
-                       'gzip':None,
+                       'use_pigz':None,
                        'fortran_compiler':None,
                        'cpp_compiler': None,
                        'auto_update':7,
@@ -4095,7 +4095,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 if self.options[key] in ['False', 'True']:
                     self.allow_notification_center =ast.literal_eval(self.options[key])
                     self.options[key] =ast.literal_eval(self.options[key])
-            elif key not in ['text_editor','eps_viewer','gzip','web_browser','stdout_level',
+            elif key not in ['text_editor','eps_viewer','use_pigz','web_browser','stdout_level',
                               'complex_mass_scheme', 'gauge', 'group_subprocesses']:
                 # Default: try to set parameter
                 try:
