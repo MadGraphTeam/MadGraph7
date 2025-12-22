@@ -251,6 +251,7 @@ class MadgraphProcess:
             self.context,
             integrands,
             os.path.join(self.run_path, file),
+            os.path.join(self.run_path, "info.json"),
             self.event_generator_config,
         )
 
