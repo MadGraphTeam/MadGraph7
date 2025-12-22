@@ -32,7 +32,7 @@
 # acknowledged_v3.1_syntax = False
 
 
-#! Prefered Fortran Compiler
+#! Preferred Fortran Compiler
 #! If None: try to find g77 or gfortran on the system
 #!
 # fortran_compiler = None
@@ -40,30 +40,31 @@
 # f2py_compiler_py3 = None 
 
 
-#! Prefered C++ Compiler
+#! Preferred C++ Compiler
 #! If None: try to find g++ or clang on the system
 #!
 # cpp_compiler = None
 
-#! Prefered Text Editor
+#! Preferred Text Editor
 #!  Default: use the shell default Editor
 #!           or try to find one available on the system
 #!  Be careful: Only shell based editor are allowed
 # text_editor = None
 
-#! Prefered WebBrower
+#! Preferred WebBrower
 #! If None: try to find one available on the system
 # web_browser = None
 
-#! Prefered PS viewer
+#! Preferred PS viewer
 #!  If None: try to find one available on the system
 # eps_viewer = None
 
-#! Prefered gzip or gzip-compatible tool
-#!  If None: try to find one available on the system
-#!  For example, you could install the `pigz` tool, a multithreaded version of gzip.
-#!  This would be faster than standard gzip on a multicore machine.
-# gzip = None
+#! Controls whether to use `pigz`, the multithreaded `gzip` implementation,
+#! when available on the system (will respect the nb_core setting).
+#!  If None: try to use pigz if available on the system, fall back to gzip otherwise.
+#!  If False: use gzip
+#!  If True: use pigz
+# use_pigz = None
 
 #! Time allowed to answer question (if no answer takes default value)
 #!  0: No time limit

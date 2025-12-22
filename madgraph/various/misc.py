@@ -1265,29 +1265,53 @@ def gunzip(path, keep=False, stdout=None):
     return 0
 
 _gzip_tool = 'gzip'
+_gzip_tool_supports_multithreading = False
+_gzip_tool_max_cores = None
 
 def configure_gzip(configuration=None):
     if not configuration:
-        configuration = {'gzip': None}
+        configuration = {}
 
-    global _gzip_tool
-    if configuration['gzip'] is None:
+    # Set some default values, in case the keys are missing from the configuration
+    configuration = {'use_pigz': None, 'nb_core': None} | configuration
+
+    global _gzip_tool, _gzip_tool_supports_multithreading, _gzip_tool_max_cores
+
+    use_pigz = configuration['use_pigz']
+    if use_pigz is None:
+        # Try using pigz if possible, fall back to gzip otherwise
         _gzip_tool = open_file.find_valid(['pigz', 'gzip'], 'gzip') 
+    elif use_pigz:
+        _gzip_tool = open_file.find_valid(['pigz'], 'pigz')
+        if not which(_gzip_tool):
+            logger.warning('Could not find valid `pigz` executable.')
     else:
-        _gzip_tool = configuration['gzip']
-    
+        _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
+        if not which(_gzip_tool):
+            logger.warning('Could not find valid `gzip` executable.')
+
+    # If we use the pigz binary, enable multithreading support
+    if 'pigz' in _gzip_tool:
+        _gzip_tool_supports_multithreading = True
+        if configuration['nb_core'] is not None:
+            _gzip_tool_max_cores = configuration['nb_core']
+
 def gzip(path, stdout=None, error=True, forceexternal=False):
     """ a standard replacement for os.system('gzip %s ' % path)"""
- 
-    #for large file (>256M) it is faster and safer to use a separate thread
+
+    # For large files (>256M), it is faster and safer to use a separate tool.
     if os.path.getsize(path) > 256e6 or forceexternal:
-        call([_gzip_tool, '-f', path])
+        if _gzip_tool_supports_multithreading and _gzip_tool_max_cores is not None:
+            call([_gzip_tool, '-p', str(_gzip_tool_max_cores), '-f', path])
+        else:
+            call([_gzip_tool, '-f', path])
+
         if stdout:
             if not stdout.endswith(".gz"):
                 stdout = "%s.gz" % stdout
             shutil.move('%s.gz' % path, stdout)
         return
-    
+
     if not stdout:
         stdout = "%s.gz" % path
     elif not stdout.endswith(".gz"):
