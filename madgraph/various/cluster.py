@@ -1098,7 +1098,7 @@ class CondorCluster(Cluster):
                   error = %(stderr)s
                   log = %(log)s
                   %(argument)s
-                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(RETRY); DMTCP_PATH=%(dmtcp_path)s
+                  environment = CONDOR_ID=$(DAGManJobId); CONDOR_RESTART_COUNT=$(RETRY); DMTCP_PATH=%(dmtcp_path)s; INITIAL_DIR=%(cwd)s
                   %(spool_on_evict)s
                   should_transfer_files = YES
                   when_to_transfer_output = ON_EXIT
@@ -1164,7 +1164,7 @@ class CondorCluster(Cluster):
         
         
 
-        dico = {'prog': prog, 'cwd': cwd, 'stdout': stdout, 
+        dico = {'prog': prog, 'cwd': cwd, 'dmtcp_path': '', 'stdout': stdout, 
                 'stderr': stderr,'log': log,'argument': argument,
                 'requirement': requirement, 'input_files':input_files, 
                 'output_files':output_files, 'walltime': walltime, 'vacatetime': '',
