@@ -89,7 +89,7 @@
 
 #! DMTCP path.
 #!  Defines the path to the DMTCP installation directory (i.e. the
-#!  on containing the lib, bin and include directories) .
+#!  one containing the lib, bin and include directories) .
 # dmtcp = 
 
 #! Control when MG5 checks if he is up-to-date.
@@ -128,7 +128,7 @@
 #! Advanced cluster settings
 # cluster_walltime =  # time in minute for slurm and second for condor (not supported for other scheduller)
 # cluster_requirement = x86_64-v4 # selected microarchitecture for checkpointing consistency
-# cluster_vacatetime = 120 # time in seconds for checkpoint creation before the job eviction
+# cluster_vacatetime = 120 # time in seconds for checkpoint creation before the job removal/requeuing
 # enforce_shared_disk = True # enforce shared disk I/O (this setting is currently only relevant for Condor)
 
 #! Path to a node directory to avoid direct writing on the central disk
