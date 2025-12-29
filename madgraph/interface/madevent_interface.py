@@ -3685,7 +3685,7 @@ Beware that this can be dangerous for local multicore runs.""")
                           get_wgt, trunc_error=1e-2, event_target=self.run_card['nevents'],
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic)
-            misc.sprint("zipping now", time.time()-start)
+            logger.debug("unweight done. start zipping after %.1f s", time.time()-start)
             misc.gzip(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"))
 
             if nb_event < self.run_card['nevents']:
