@@ -2943,6 +2943,8 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
                 except KeyError:
                     particle_dict[particles[0]] = [[particles[1:], result/nb_output]]
     
+        if not os.path.exists(pjoin(self.me_dir, 'Events', run_name)):
+            os.mkdir(pjoin(self.me_dir, 'Events', run_name))
         self.update_width_in_param_card(particle_dict,
                         initial = pjoin(self.me_dir, 'Cards', 'param_card.dat'),
                         output=pjoin(self.me_dir, 'Events', run_name, "param_card.dat"))
@@ -3794,7 +3796,7 @@ Beware that this can be dangerous for local multicore runs.""")
                 nb_G = len(Gdirs) // nb_chunk 
 
             for i, local_G in enumerate(split(Gdirs, nb_chunk)):
-                line = [pjoin(self.me_dir, "Events", self.run_name, "partials%d.lhe.gz" % i)]
+                line = [pjoin(self.me_dir, "Events", self.run_name, "partials%d.lhe" % i)]
                 line.append(pjoin(self.me_dir, 'Events', self.run_name, '%s_%s_banner.txt' % (self.run_name, tag)))
                 line.append(str(self.results.current.get('axsec')))
                 line += local_G
@@ -3814,10 +3816,12 @@ Beware that this can be dangerous for local multicore runs.""")
                 AllEvent.add(*data)
             
             start_unweight= time.perf_counter()
-            nb_event = AllEvent.unweight(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe.gz"),
+            nb_event = AllEvent.unweight(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"),
                           get_wgt, trunc_error=1e-2, event_target=self.run_card['nevents'],
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic)
+            logger.debug("unweight done. start zipping after %.1f s", time.time()-start)
+            misc.gzip(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"))
             
             #cleaning
             for data in partials_info:
@@ -3910,7 +3914,8 @@ Beware that this can be dangerous for local multicore runs.""")
                              result.get('xsec'),
                              result.get('xerru'),
                              result.get('axsec')
-                             ) 
+                    )
+ 
         if preprocess_only:
             return output, sum_xsec, math.sqrt(sum(x**2 for x in sum_xerru)), sum_axsec
         nb_event = max(min(abs(1.01*self.run_card['nevents']*sum_axsec/cross),self.run_card['nevents']), 10)

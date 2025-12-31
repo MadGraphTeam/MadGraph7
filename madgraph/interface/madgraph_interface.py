@@ -9087,8 +9087,12 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                 me_cmd.exec_cmd('survey decay -f %s' % (
                        " ".join(['--%s=%s' % val for val in me_opts])),
                       postcmd=False)
-                me_cmd.exec_cmd('combine_events', postcmd=False)
-                #me_cmd.exec_cmd('store_events', postcmd=False)
+                try:
+                    me_cmd.exec_cmd('combine_events', postcmd=False)
+                    me_cmd.exec_cmd('store_events', postcmd=False)
+                except Exception as err:
+                    logger.debug(str(err))
+
                 me_cmd.collect_decay_widths()
                 me_cmd.do_quit('')
                 # cleaning
