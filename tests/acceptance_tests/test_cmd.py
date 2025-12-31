@@ -218,12 +218,13 @@ class TestCmdShell1(unittest.TestCase):
                     'zerowidth_tchannel': True,
                     'auto_convert_model': True,
                     'nlo_mixed_expansion': True,
-                    'acknowledged_v3.1_syntax': False,
+                    'acknowledged_v3.1_syntax': True,
                     'contur_path': './HEPTools/contur',
                     'rivet_path': './HEPTools/rivet',
                     'yoda_path':'./HEPTools/yoda',
                     'eMELA': 'eMELA-config',
                     'cluster_walltime': None,
+                    'use_pigz': None,
                     }
 
         self.assertEqual(config, expected)
