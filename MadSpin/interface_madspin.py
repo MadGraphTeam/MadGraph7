@@ -1475,7 +1475,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 #check if a splitting is needed
                 if nb_needed == nb_event:
                     nb_needed = int(efficiency*nb_needed) + nevents_for_max   
-                    evt_decayfile[pdg], pwidth = self.generate_events(pdg, nb_needed, mg5, output_width=True)
+                    evt_decayfile[pdg], pwidth = self.generate_events(pdg, nb_needed, mg5, output_width=True, cumul=True)
                     if pwidth > 1.01*totwidth:
                         logger.warning('partial width (%s) larger than total width (%s) --from param_card--', pwidth, totwidth)
                     elif pwidth > totwidth:
