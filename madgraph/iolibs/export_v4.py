@@ -4186,7 +4186,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         elif '%(W)s' in arg['mass']:
             raise Exception
 
-        arg['coup'] = re.sub('coup(\d+)\)s','coup\g<1>)s%(vec\g<1>)s', arg['coup'])
+        arg['coup'] = re.sub(r'coup(\d+)\)s',r'coup\g<1>)s%(vec\g<1>)s', arg['coup'])
 
         return call, arg
     

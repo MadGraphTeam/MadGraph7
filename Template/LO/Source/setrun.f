@@ -295,7 +295,7 @@ C-------------------------------------------------
       end
 
 
-      FUNCTION DDILOG(X)
+      double precision FUNCTION DDILOG(X)
 *
 * $Id: imp64.inc,v 1.1.1.1 1996/04/01 15:02:59 mclareni Exp $
 *

@@ -3373,6 +3373,15 @@ class LoopInducedExporterMEGroup(LoopInducedExporterME,
         self.proc_characteristic['loop_induced'] = True
         
         export_v4.ProcessExporterFortranMEGroup.finalize(self,*args,**opts)
+
+        # special handling for loop-induced processes for the template files
+        #since some function are duplicated...
+        text = open(pjoin(self.dir_path,'Source','setrun.f'), 'r').read()
+        import madgraph.iolibs.file_writers as file_writers
+        fsock = file_writers.FortranWriter(pjoin(self.dir_path,'Source', 'setrun.f'),'w')
+        fsock.remove_routine(text, 'DDILOG')
+        fsock.close()
+
         
         # And the finilize from LoopInducedExporterME which essentially takes
         # care of MadLoop virtuals initialization

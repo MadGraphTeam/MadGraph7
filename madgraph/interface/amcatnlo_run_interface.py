@@ -1100,6 +1100,12 @@ class AskRunNLO(cmd.ControlSwitch):
         else:
             return self.print_options('fixed_order', keep_default=True)
     
+    def print_options_madspin(self):
+        if 'QED' in self.proc_characteristics['splitting_types']:
+            return "No madspin for EW correction"
+        else:
+            return self.print_options('madspin', keep_default=True)
+
     def color_for_shower(self, switch_value):
          
         if switch_value in ['ON']:
@@ -1119,7 +1125,7 @@ class AskRunNLO(cmd.ControlSwitch):
             to_check ={'fixed_order': ['ON'],
                        'shower': ['OFF'],
                        'madanalysis': ['OFF'],
-                       'madspin': ['OFF','onshell','none'],
+                       'madspin': ['OFF','none'],
                        'reweight': ['OFF']}
             for key, allowed  in to_check.items():        
                 if switch[key] not in allowed:
@@ -1310,7 +1316,7 @@ class AskRunNLO(cmd.ControlSwitch):
             return self.allowed_madspin
         else:        
             if 'QED' in self.proc_characteristics['splitting_types']:
-                self.allowed_madspin = ['OFF', 'onshell']
+                self.allowed_madspin = ['OFF']
             else:
                 self.allowed_madspin = ['OFF', 'ON', 'onshell']
             return  self.allowed_madspin
