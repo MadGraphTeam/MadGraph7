@@ -495,4 +495,3 @@ c         if hel=0 return the number of helicity state possible for that particl
 
 
 %(ADDITIONAL_FCT)s
-
