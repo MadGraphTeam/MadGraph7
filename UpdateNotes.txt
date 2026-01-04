@@ -62,7 +62,9 @@ ANNOUNCEMENT:
           This feature also add OpenMP support for LO process (deactivated by default and which does not need the plugin).
       OM+JK+KM+KH+YJZ: implementation of the FD gauge via "set gauge FD" [2203.10440, 2405.01256]
 
-###### LTS 3.5.X
+3.5.13 ():
+  VD: fixing issue with custom functions that moving back to no custom functions was not correctly recompiling the code.
+
 
 3.5.12 (30/10/25):
   OM: Change in gensym to better determine which channel have impossible BW configuration. This removes many spurious warning.
