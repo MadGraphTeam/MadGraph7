@@ -8816,7 +8816,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         """
         args = ['checkpointing'] + args
         self.check_set(args)
-        self.options[args[0]] = args[1].strip()
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
     
     def set2_cluster_requirement(self, args, log=True):
         """
@@ -8846,7 +8846,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         """
         args = ['enforce_shared_disk'] + args
         self.check_set(args)
-        self.options[args[0]] = args[1].strip()
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
 
     def set2_dmtcp(self, args, log=True):
         """ Usage: set dmtcp /PATH/TO/dmtcp_install_directory
