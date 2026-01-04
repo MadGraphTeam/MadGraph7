@@ -53,11 +53,10 @@ KERNELSPEC void kernel_reduce_sum(FIn<T, 1> in, FOut<T, 0> out) {
 
 template <typename T>
 KERNELSPEC void kernel_reduce_sum_vector(FIn<T, 2> in, FOut<T, 1> out) {
-    for (std::size_t i = 0; i < in.size(); ++i) {
-        auto in_i = in[i];
+    for (std::size_t i = 0; i < out.size(); ++i) {
         FVal<T> sum(0.);
-        for (std::size_t j = 0; j < in_i.size(); ++j) {
-            sum = sum + in_i[j];
+        for (std::size_t j = 0; j < in.size(); ++j) {
+            sum = sum + in[j][i];
         }
         out[i] = sum;
     }

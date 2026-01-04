@@ -525,6 +525,7 @@ void op_histogram(
     shape[0] = 1;
     std::copy(out_shape.begin(), out_shape.end(), shape.begin() + 1);
     values = Tensor(DataType::dt_float, shape, device);
+    square_values = Tensor(DataType::dt_float, shape, device);
     device.sync_barrier();
 
     auto weights_view_flat = weights.flat_view<double, 1>(0);
@@ -552,11 +553,11 @@ void op_histogram(
         TensorView<double, 2> square_values_view(square_values_view_flat);
 
         std::size_t n_dims = input_view.size(1);
-        std::size_t n_bins = values_view.size(2);
+        std::size_t n_bins = values_view.size(1) - 2;
 
         auto bin_values = values_view[0];
         auto bin_square_values = square_values_view[0];
-        for (std::size_t i_bin = 0; i_bin < n_bins; ++i_bin) {
+        for (std::size_t i_bin = 0; i_bin < n_bins + 2; ++i_bin) {
             bin_values[i_bin] = 0.;
             bin_square_values[i_bin] = 0.;
         }

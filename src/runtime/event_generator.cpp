@@ -98,7 +98,7 @@ EventGenerator::EventGenerator(
         }
         RuntimePtr obs_histograms = nullptr;
         if (channel_histograms.size() > 0) {
-            discrete_histogram =
+            obs_histograms =
                 build_runtime(channel_histograms.at(i).function(), context, false);
         }
         _channels.push_back({
@@ -551,8 +551,9 @@ std::vector<EventGenerator::Histogram> EventGenerator::histograms() const {
             for (auto [chan_w, val, err] :
                  zip(chan_hist, out_hist.bin_values, out_hist.bin_errors)) {
                 auto [w, w2] = chan_w;
-                val += w / channel.total_sample_count_opt;
-                err += (w2 - w * w) / channel.total_sample_count_opt;
+                auto n = channel.total_sample_count_opt;
+                val += w / n;
+                err += (w2 - w * w / n) / (n * n);
             }
         }
     }
@@ -594,7 +595,7 @@ std::tuple<Tensor, std::vector<Tensor>> EventGenerator::integrate_and_optimize(
             channel.discrete_optimizer->add_data(hist);
         }
         if (channel.observable_histograms) {
-            auto hists = channel.observable_histograms->run({events.at(1)});
+            auto hists = channel.observable_histograms->run({weights, events.at(1)});
             for (std::size_t i = 0; i < hists.size() / 2; ++i) {
                 Tensor hist_cpu = hists.at(2 * i).cpu();
                 Tensor hist2_cpu = hists.at(2 * i + 1).cpu();
@@ -603,7 +604,7 @@ std::tuple<Tensor, std::vector<Tensor>> EventGenerator::integrate_and_optimize(
                 if (channel.histograms.size() <= i) {
                     channel.histograms.emplace_back(hist_view.size());
                 }
-                auto chan_hist = channel.histograms.at(i);
+                auto& chan_hist = channel.histograms.at(i);
                 for (std::size_t j = 0; j < hist_view.size(); ++j) {
                     chan_hist.at(j).first += hist_view[j];
                     chan_hist.at(j).second += hist2_view[j];
@@ -704,6 +705,7 @@ void EventGenerator::clear_channel(ChannelState& channel) {
     channel.weight_file.clear();
     channel.cross_section.reset();
     channel.large_weights.clear();
+    channel.histograms.clear();
 }
 
 void EventGenerator::update_max_weight(ChannelState& channel, Tensor weights) {
