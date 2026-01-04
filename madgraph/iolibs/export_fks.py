@@ -282,6 +282,16 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                  'Source','make_opts.inc')).read()  
         replace_dict={}
         replace_dict['link_tir_libs']=' '.join(link_tir_libs)
+        if 'collier' in replace_dict['link_tir_libs']:
+            collierpath = ''
+            for lib in link_tir_libs:
+                if '-lcollier' in lib:
+                    collierpath = lib.split()[0][2:]
+                    break
+            if collierpath:
+                replace_dict['link_tir_libs'] = ' -Wl,-rpath,%s %s ' % (collierpath, replace_dict['link_tir_libs'])
+        #raise Exception
+
         replace_dict['tir_libs']=' '.join(tir_libs)
         replace_dict['dotf']='%.f'
         replace_dict['doto']='%.o'
@@ -5049,7 +5059,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         replace_dict['path'] = os.path.join(self.dir_path, 'SubProcesses')
         replace_dict['pdir_list'] = ", ".join(["'%s'" % dd[0] for dd in self.dirstopdg])  
         replace_dict['pdg2sud'] = ",\n".join([str(self.get_pdg_tuple(dd[1], dd[2], sortfinal=True)) + \
-                ": importlib.import_module('%s.ewsudpy')" % dd[0] for dd in self.dirstopdg])   
+                ": import_lib('%s')" % dd[0] for dd in self.dirstopdg])   
 
         replace_dict['pdgsorted'] = ",\n".join(["%s: %s" % (
                         str(self.get_pdg_tuple(dd[1], dd[2], sortfinal=True)),
