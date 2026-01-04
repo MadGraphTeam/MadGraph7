@@ -2264,7 +2264,7 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
             outstr += "                      Configuration Options    \n"
             outstr += "                      ---------------------    \n"
             for key, default in self.options_configuration.items():
-                value = self.options[key]
+                value = self.options.get(key, None)
                 if value == default:
                     outstr += "  %25s \t:\t%s\n" % (key,value)
                 else:
