@@ -16,6 +16,9 @@ Cuts::Cuts(std::size_t particle_count) :
 ValueVec Cuts::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
     ValueVec weights;
     for (auto& item : _cut_data) {
+        if (item.observable.not_found()) {
+            continue;
+        }
         Value obs = item.observable.build_function(fb, args).at(0);
         if (obs.type.shape.size() == 0) {
             weights.push_back(fb.cut_one(obs, item.min, item.max));

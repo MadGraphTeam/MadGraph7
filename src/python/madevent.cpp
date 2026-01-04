@@ -433,7 +433,9 @@ PYBIND11_MODULE(_madevent_py, m) {
             {"phi", Observable::obs_phi},
             {"theta", Observable::obs_theta},
             {"y", Observable::obs_y},
+            {"y_abs", Observable::obs_y_abs},
             {"eta", Observable::obs_eta},
+            {"eta_abs", Observable::obs_eta_abs},
             {"delta_eta", Observable::obs_delta_eta},
             {"delta_phi", Observable::obs_delta_phi},
             {"delta_r", Observable::obs_delta_r},
@@ -473,8 +475,8 @@ PYBIND11_MODULE(_madevent_py, m) {
         cuts,
         "CutMode",
         {
-            {"min", Cuts::any},
-            {"max", Cuts::all},
+            {"any", Cuts::any},
+            {"all", Cuts::all},
         }
     );
     py::classh<Cuts::CutItem>(m, "CutItem")
@@ -1167,7 +1169,7 @@ PYBIND11_MODULE(_madevent_py, m) {
             py::arg("temp_file_prefix"),
             py::arg("status_file") = "",
             py::arg_v(
-                "default_config",
+                "config",
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
             ),

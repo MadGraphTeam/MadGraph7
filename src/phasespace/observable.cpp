@@ -129,6 +129,17 @@ std::tuple<nested_vector2<me_int_t>, nested_vector2<me_int_t>, Type> build_indic
         break;
     }
 
+    bool empty = false;
+    for (auto& indices : selected_indices) {
+        if (indices.size() == 0) {
+            empty = true;
+            break;
+        }
+    }
+    if (empty && obs_type != 0) {
+        return {{}, {}, batch_float};
+    }
+
     nested_vector2<me_int_t> ret_order_indices(selected_indices.size());
     if (order_observable) {
         if (observable_type(order_observable.value()) != 1) {
@@ -277,6 +288,9 @@ Observable::Observable(
 
 ValueVec
 Observable::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
+    if (not_found()) {
+        return {0.};
+    }
     Value sqrt_s = args.at(0);
     Value momenta = args.at(1);
     /*if (_order_observable) {
@@ -342,4 +356,8 @@ Observable::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const
         observables.push_back(build_observable(fb, _observable, {momentum}, sqrt_s));
     }
     return {fb.sum(observables)};
+}
+
+bool Observable::not_found() const {
+    return observable_type(_observable) != 0 && _indices.size() == 0;
 }

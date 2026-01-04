@@ -1306,10 +1306,10 @@ cut_all:
       type: [float, n]
       desc:
     - name: min
-      type: [float, n]
+      type: [float]
       desc:
     - name: max
-      type: [float, n]
+      type: [float]
       desc:
   outputs:
     - name: w
@@ -1322,10 +1322,10 @@ cut_any:
       type: [float, n]
       desc:
     - name: min
-      type: [float, n]
+      type: [float]
       desc:
     - name: max
-      type: [float, n]
+      type: [float]
       desc:
   outputs:
     - name: w

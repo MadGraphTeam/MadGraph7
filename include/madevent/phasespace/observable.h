@@ -56,6 +56,7 @@ public:
         }
     }
     std::string name() const { return _name; }
+    bool not_found() const;
 
 private:
     Observable(

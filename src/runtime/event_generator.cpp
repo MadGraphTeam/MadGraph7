@@ -1166,7 +1166,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
         format_si_prefix(_status_all.count_target)
     );
     std::string time_str;
-    if (_status_all.done) {
+    if (done) {
         time_str = format_run_time("generate");
     } else {
         unw_str = std::format(
