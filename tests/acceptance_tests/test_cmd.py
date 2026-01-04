@@ -225,6 +225,10 @@ class TestCmdShell1(unittest.TestCase):
                     'eMELA': 'eMELA-config',
                     'cluster_walltime': None,
                     'use_pigz': None,
+                    'checkpointing': False,
+                    'cluster_requirement': None,
+                    'cluster_vacatetime': '120',
+                    'enforce_shared_disk': False,
                     }
 
         self.assertEqual(config, expected)
