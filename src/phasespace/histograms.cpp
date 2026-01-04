@@ -10,6 +10,7 @@ ObservableHistograms::ObservableHistograms(const std::vector<HistItem>& observab
             TypeVec ret_types;
             for (auto& obs : observables) {
                 ret_types.push_back(single_float_array(obs.bin_count + 2));
+                ret_types.push_back(single_float_array(obs.bin_count + 2));
             }
             return ret_types;
         }()
@@ -24,9 +25,11 @@ ValueVec ObservableHistograms::build_function_impl(
     ValueVec histograms;
     for (auto& obs : _observables) {
         Value obs_result = obs.observable.build_function(fb, args).at(0);
-        histograms.push_back(fb.histogram(
+        auto [values, square_values] = fb.histogram(
             obs_result, weight, obs.min, obs.max, static_cast<me_int_t>(obs.bin_count)
-        ));
+        );
+        histograms.push_back(values);
+        histograms.push_back(square_values);
     }
     return histograms;
 }

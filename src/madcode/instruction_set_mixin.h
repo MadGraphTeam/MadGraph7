@@ -135,5 +135,5 @@ InstructionOwner instructions[] {
     mi("vegas_forward", 117, true, {{DataType::dt_float, false, {"n"}, false}, {DataType::dt_float, true, {"n", "b"}, false}}, {{DataType::dt_float, false, {"n"}, false}, {DataType::dt_float, false, {"n"}, false}}),
     mi("vegas_inverse", 118, true, {{DataType::dt_float, false, {"n"}, false}, {DataType::dt_float, true, {"n", "b"}, false}}, {{DataType::dt_float, false, {"n"}, false}, {DataType::dt_float, false, {"n"}, false}}),
     mi("vegas_histogram", 119, true, {{DataType::dt_float, false, {"n"}, false}, {DataType::dt_float, false, {}, false}, {DataType::dt_int, true, {"b"}, true}}, {{DataType::dt_float, true, {"n", "b"}, false}, {DataType::dt_int, true, {"n", "b"}, false}}),
-    mi("histogram", 120, true, {{DataType::dt_float, false, {std::monostate{}}, false}, {DataType::dt_float, false, {}, false}, {DataType::dt_float, false, {}, false}, {DataType::dt_float, false, {}, false}, {DataType::dt_int, true, {"b"}, true}}, {{DataType::dt_float, true, {"b+2"}, false}}),
+    mi("histogram", 120, true, {{DataType::dt_float, false, {std::monostate{}}, false}, {DataType::dt_float, false, {}, false}, {DataType::dt_float, false, {}, false}, {DataType::dt_float, false, {}, false}, {DataType::dt_int, true, {"b"}, true}}, {{DataType::dt_float, true, {"b+2"}, false}, {DataType::dt_float, true, {"b+2"}, false}}),
 };

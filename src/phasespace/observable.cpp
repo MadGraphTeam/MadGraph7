@@ -228,7 +228,8 @@ Observable::Observable(
     bool sum_observable,
     const std::optional<ObservableOption>& order_observable,
     const std::vector<int>& order_indices,
-    bool ignore_incoming
+    bool ignore_incoming,
+    const std::string& name
 ) :
     Observable(
         build_indices(
@@ -246,7 +247,8 @@ Observable::Observable(
         sum_momenta,
         sum_observable,
         order_observable,
-        ignore_incoming
+        ignore_incoming,
+        name
     ) {}
 
 Observable::Observable(
@@ -257,7 +259,8 @@ Observable::Observable(
     bool sum_momenta,
     bool sum_observable,
     const std::optional<ObservableOption>& order_observable,
-    bool ignore_incoming
+    bool ignore_incoming,
+    const std::string& name
 ) :
     FunctionGenerator(
         "Observable",
@@ -269,7 +272,8 @@ Observable::Observable(
     _order_observable(order_observable),
     _order_indices(std::get<1>(indices_and_type)),
     _sum_momenta(sum_momenta),
-    _sum_observable(sum_observable) {}
+    _sum_observable(sum_observable),
+    _name(name) {}
 
 ValueVec
 Observable::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {

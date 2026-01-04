@@ -518,6 +518,7 @@ void op_histogram(
     auto& hist_min = locals[instruction.input_indices[2]];
     auto& hist_max = locals[instruction.input_indices[3]];
     auto& values = locals[instruction.output_indices[0]];
+    auto& square_values = locals[instruction.output_indices[1]];
 
     auto out_shape = instruction.output_shapes[0];
     Sizes shape(out_shape.size() + 1);
@@ -531,6 +532,7 @@ void op_histogram(
     auto min_view_flat = hist_min.flat_view<double, 1>(0);
     auto max_view_flat = hist_max.flat_view<double, 1>(0);
     auto values_view_flat = values.flat_view<double, 2>(0);
+    auto square_values_view_flat = square_values.flat_view<double, 2>(0);
 
     std::size_t batch_size = locals[instruction.batch_size_index].size(0);
 
@@ -540,19 +542,23 @@ void op_histogram(
                    min_view_flat,
                    max_view_flat,
                    values_view_flat,
+                   square_values_view_flat,
                    batch_size]() mutable {
         TensorView<double, 1> input_view(input_view_flat);
         TensorView<double, 1> weights_view(weights_view_flat);
         TensorView<double, 1> min_view(min_view_flat);
         TensorView<double, 1> max_view(max_view_flat);
         TensorView<double, 2> values_view(values_view_flat);
+        TensorView<double, 2> square_values_view(square_values_view_flat);
 
         std::size_t n_dims = input_view.size(1);
         std::size_t n_bins = values_view.size(2);
 
         auto bin_values = values_view[0];
+        auto bin_square_values = square_values_view[0];
         for (std::size_t i_bin = 0; i_bin < n_bins; ++i_bin) {
             bin_values[i_bin] = 0.;
+            bin_square_values[i_bin] = 0.;
         }
         for (std::size_t i_sample = 0; i_sample < batch_size; ++i_sample) {
             int i_bin_rounded = (input_view[i_sample] - min_view[i_sample]) /
@@ -567,6 +573,7 @@ void op_histogram(
             }
             double w = weights_view[i_sample];
             bin_values[i_bin] += w;
+            bin_square_values[i_bin] += w * w;
         }
     });
 }

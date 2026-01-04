@@ -450,7 +450,8 @@ PYBIND11_MODULE(_madevent_py, m) {
                bool,
                const std::optional<Observable::ObservableOption>&,
                const std::vector<int>&,
-               bool>(),
+               bool,
+               const std::string&>(),
            py::arg("pids"),
            py::arg("observable"),
            py::arg("select_pids"),
@@ -458,7 +459,8 @@ PYBIND11_MODULE(_madevent_py, m) {
            py::arg("sum_observable") = false,
            py::arg("order_observable") = std::nullopt,
            py::arg("order_indices") = std::vector<int>{},
-           py::arg("ignore_incoming") = true
+           py::arg("ignore_incoming") = true,
+           py::arg("name") = ""
     )
         .def_readonly_static("jet_pids", &Observable::jet_pids)
         .def_readonly_static("bottom_pids", &Observable::bottom_pids)
@@ -1142,6 +1144,12 @@ PYBIND11_MODULE(_madevent_py, m) {
         .def_readwrite("count_target", &EventGenerator::Status::count_target)
         .def_readwrite("iterations", &EventGenerator::Status::iterations)
         .def_readwrite("done", &EventGenerator::Status::done);
+    py::classh<EventGenerator::Histogram>(m, "EventGeneratorHistogram")
+        .def_readonly("name", &EventGenerator::Histogram::name)
+        .def_readonly("min", &EventGenerator::Histogram::min)
+        .def_readonly("max", &EventGenerator::Histogram::max)
+        .def_readonly("bin_values", &EventGenerator::Histogram::bin_values)
+        .def_readonly("bin_errors", &EventGenerator::Histogram::bin_errors);
     py::classh<EventGenerator>(m, "EventGenerator")
         .def_readonly_static("default_config", &EventGenerator::default_config)
         .def(
@@ -1151,8 +1159,9 @@ PYBIND11_MODULE(_madevent_py, m) {
                 const std::string&,
                 const std::string&,
                 const EventGenerator::Config&,
-                std::vector<std::size_t>,
-                std::vector<std::string>>(),
+                const std::vector<std::size_t>&,
+                const std::vector<std::string>&,
+                const std::vector<ObservableHistograms>&>(),
             py::arg("context"),
             py::arg("channels"),
             py::arg("temp_file_prefix"),
@@ -1163,7 +1172,8 @@ PYBIND11_MODULE(_madevent_py, m) {
                 "EventGenerator.default_config"
             ),
             py::arg("channel_subprocesses") = std::vector<std::size_t>{},
-            py::arg("channel_names") = std::vector<std::string>{}
+            py::arg("channel_names") = std::vector<std::string>{},
+            py::arg("channel_histograms") = std::vector<ObservableHistograms>{}
         )
         .def("survey", &EventGenerator::survey)
         .def("generate", &EventGenerator::generate)
@@ -1186,6 +1196,7 @@ PYBIND11_MODULE(_madevent_py, m) {
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)
+        .def("histograms", &EventGenerator::histograms)
         .def_readonly_static("integrand_flags", &EventGenerator::integrand_flags);
 
     py::classh<LHEHeader>(m, "LHEHeader")

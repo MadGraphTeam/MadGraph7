@@ -44,7 +44,8 @@ public:
         bool sum_observable = false,
         const std::optional<ObservableOption>& order_observable = std::nullopt,
         const std::vector<int>& order_indices = {},
-        bool ignore_incoming = true
+        bool ignore_incoming = true,
+        const std::string& name = ""
     );
     ObservableOption observable() const { return _observable; }
     std::vector<std::size_t> simple_observable_indices() const {
@@ -54,6 +55,7 @@ public:
             return {_indices.at(0).begin(), _indices.at(0).end()};
         }
     }
+    std::string name() const { return _name; }
 
 private:
     Observable(
@@ -64,7 +66,8 @@ private:
         bool sum_momenta,
         bool sum_observable,
         const std::optional<ObservableOption>& order_observable,
-        bool ignore_incoming
+        bool ignore_incoming,
+        const std::string& name
     );
     ValueVec
     build_function_impl(FunctionBuilder& fb, const ValueVec& args) const override;
@@ -75,6 +78,7 @@ private:
     nested_vector2<me_int_t> _order_indices;
     bool _sum_momenta;
     bool _sum_observable;
+    std::string _name;
 };
 
 } // namespace madevent

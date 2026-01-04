@@ -14,6 +14,7 @@ public:
         std::size_t bin_count;
     };
     ObservableHistograms(const std::vector<HistItem>& observables);
+    const std::vector<HistItem>& observables() const { return _observables; }
 
 private:
     ValueVec
