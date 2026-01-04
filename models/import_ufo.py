@@ -946,7 +946,7 @@ class UFOMG5Converter(object):
     def get_symmetric_color(old_color, substitution):
         """ """
         all_color_flag = ['f','d', 'Epsilon', 'EpsilonBar', 'K6', 'K6Bar', 'T', 'T6', 'Tr' ]
-        split = re.split("(%s)\(([\d,\s\-\+]*)\)" % '|'.join(all_color_flag), old_color)
+        split = re.split(r"(%s)\(([\d,\s\-\+]*)\)" % '|'.join(all_color_flag), old_color)
         new_expr = ''
         for i in range(len(split)):
             if i % 3 == 0:
@@ -1003,7 +1003,7 @@ class UFOMG5Converter(object):
         for old,new in substitution.items():
                 new_spins[new] = lor_orig.spins[old]
 
-        split = re.split("(%s)\(([\d,\s\-\+]*)\)" % '|'.join(self.all_aloha_obj), lor_orig.structure )
+        split = re.split(r"(%s)\(([\d,\s\-\+]*)\)" % '|'.join(self.all_aloha_obj), lor_orig.structure )
         new_expr = ''
         for i in range(len(split)):
             if i % 3 == 0:
