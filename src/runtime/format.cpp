@@ -35,8 +35,9 @@ std::string madevent::format_si_prefix(double value) {
 
 std::string madevent::format_with_error(double value, double error) {
     int value_power = std::floor(std::log10(value));
-    int sig_power = std::isnan(error) || error <= 0. ?
-        3 - value_power : 1 - static_cast<int>(std::floor(std::log10(error)));
+    int sig_power = std::isnan(error) || error <= 0.
+        ? 3 - value_power
+        : 1 - static_cast<int>(std::floor(std::log10(error)));
     if (sig_power < 0 || sig_power > 5) {
         std::string exp_fmt = std::format("{:.{}e}", value, value_power + sig_power);
         auto e_pos = exp_fmt.find("e");
