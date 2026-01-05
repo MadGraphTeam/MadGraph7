@@ -514,7 +514,6 @@ class MadgraphSubprocess:
             if len(self.process.hist_data) > 0
             else None
         )
-        print (self.histograms.function())
 
         self.scale = me.EnergyScale(
             particle_count=self.particle_count, **self.process.scale_kwargs
