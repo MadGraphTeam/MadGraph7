@@ -50,19 +50,33 @@ simplified_channel_count = 10
 invariant_power = 0.7
 bw_cutoff = 15
 
+[multiparticles]
+jet = [1, 2, 3, 4, -1, -2, -3, -4, 21]
+bottom = [-5, 5]
+lepton = [11, 13, 15, -11, -13, -15]
+missing = [12, 14, 16, -12, -14, -16]
+photon = [22]
+
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon
 # possible observables: pt, eta, dR, mass, sqrt_s
 #     (mass is for pairs of particles from the same group, sqrt_s is for all outgoing particles)
 # for all cuts, min or max can be specified
-jet.pt.min = 20.0
-jet.eta.max = 5.0
-jet.dR.min = 0.4
-lepton.pt.min = 10.0
-lepton.eta.max = 2.5
-lepton.dR.min = 0.4
-jet-lepton.dR.min=0.4
+
+jet-pt.min = 20.0
+jet-eta_abs.max = 5.0
+jet-delta_r.min = 0.4
+
+lepton-pt.min = 10.0
+lepton-eta_abs.max = 2.5
+lepton-delta_r.min = 0.4
+
+jet-lepton-delta_r.min=0.4
+
 sqrt_s.min = 0.0
+
+[histograms]
+
 
 [madnis]
 enable = false

@@ -51,6 +51,7 @@ class Channel:
     discrete_before: me.DiscreteSampler | me.DiscreteFlow | None
     discrete_after: me.DiscreteSampler | me.DiscreteFlow | None
     channel_weight_indices: list[int] | None
+    name: str
 
 
 @dataclass
@@ -75,6 +76,22 @@ class MultiChannelData(NamedTuple):
     diagram_color_indices: list[list[list[int]]]
 
 
+@dataclass
+class CutItem:
+    observable_kwargs: dict
+    min: float
+    max: float
+    mode: str
+
+
+@dataclass
+class HistItem:
+    observable_kwargs: dict
+    min: float
+    max: float
+    bin_count: int
+
+
 class MadgraphProcess:
     def __init__(self):
         self.load_cards()
@@ -82,6 +99,7 @@ class MadgraphProcess:
         self.init_event_dir()
         self.init_context()
         self.init_cuts()
+        self.init_histograms()
         self.init_generator_config()
         self.init_beam()
         self.init_subprocesses()
@@ -113,61 +131,82 @@ class MadgraphProcess:
             except FileExistsError:
                 run_index += 1
 
-    def init_cuts(self) -> None:
-        observables = {
-            "pt": me.Cuts.obs_pt,
-            "eta": me.Cuts.obs_eta,
-            "dR": me.Cuts.obs_dr,
-            "mass": me.Cuts.obs_mass,
-        }
-        groups = {
-            "jet": me.Cuts.jet_pids,
-            "bottom": me.Cuts.bottom_pids,
-            "lepton": me.Cuts.lepton_pids,
-            "missing": me.Cuts.missing_pids,
-            "photon": me.Cuts.photon_pids,
-        }
-        cut_args = self.run_card["cuts"]
-        self.cut_data = []
-        for group_name, group_args in cut_args.items():
-            if group_name == "sqrt_s":
-                if "min" in group_args:
-                    self.cut_data.append(
-                        me.CutItem(me.Cuts.obs_sqrt_s, me.Cuts.min, group_args["min"], [])
-                    )
-                if "max" in group_args:
-                    self.cut_data.append(
-                        me.CutItem(me.Cuts.obs_sqrt_s, me.Cuts.max, group_args["max"], [])
-                    )
-                continue
+    def parse_observable(self, name: str, order_observable: str) -> dict:
+        parts = name.split("-")
+        sum_momenta = False
+        sum_observable = False
+        ordered = False
+        multiparticles = self.run_card["multiparticles"]
 
-            if "-" in group_name:
-                group_name1, group_name2 = group_name.split("-")
-                pids1 = (
-                    [int(group_name1)]
-                    if group_name1.isnumeric()
-                    else groups[group_name1]
-                )
-                pids2 = (
-                    [int(group_name2)]
-                    if group_name2.isnumeric()
-                    else groups[group_name2]
-                )
+        if len(parts) == 0:
+            raise ValueError("Invalid observable name")
+        elif len(parts) == 1:
+            # event-level observables
+            obs_name = parts[0]
+            select_pids = []
+        else:
+            if parts[-1] == "sum":
+                sum_observable = True
+                obs_name = parts[-2]
+                selection = parts[:-2]
+            elif parts[-2] == "sum":
+                sum_momenta = True
+                obs_name = parts[-1]
+                selection = parts[:-2]
             else:
-                pids1 = (
-                    [int(group_name)] if group_name.isnumeric() else groups[group_name]
-                )
-                pids2 = []
-            for obs_name, obs_args in group_args.items():
-                obs = observables[obs_name]
-                if "min" in obs_args:
-                    self.cut_data.append(
-                        me.CutItem(obs, me.Cuts.min, obs_args["min"], pids1, pids2)
-                    )
-                if "max" in obs_args:
-                    self.cut_data.append(
-                        me.CutItem(obs, me.Cuts.max, obs_args["max"], pids1, pids2)
-                    )
+                obs_name = parts[-1]
+                selection = parts[:-1]
+            select_pids = []
+            order_indices = []
+            for mp_name in selection:
+                mp_parts = mp_name.split("_")
+                if mp_parts[-1].isnumeric():
+                    order_indices.append(int(mp_parts[-1]))
+                    select_pids.append(multiparticles["_".join(mp_parts[:-1])])
+                    ordered = True
+                else:
+                    order_indices.append(0)
+                    select_pids.append(multiparticles[mp_name])
+
+        return dict(
+            observable=obs_name,
+            select_pids=select_pids,
+            sum_momenta=sum_momenta,
+            sum_observable=sum_observable,
+            order_observable=order_observable if ordered else None,
+            order_indices=order_indices if ordered else [],
+            ignore_incoming=True,
+            name=name,
+        )
+
+    def init_cuts(self) -> None:
+        inf = float("inf")
+        order_observable = self.run_card["cuts"].get("order_by", "pt")
+        self.cut_data = [
+            CutItem(
+                observable_kwargs=self.parse_observable(key, order_observable),
+                min=values.get("min", -inf),
+                max=values.get("max", inf),
+                mode=values.get("mode", "all"),
+            )
+            for key, values in self.run_card["cuts"].items()
+            if key != "order_by"
+        ]
+
+    def init_histograms(self) -> None:
+        inf = float("inf")
+        order_observable = self.run_card["histograms"].get("order_by", "pt")
+        #TODO: add reasonable defaults for min, max, bin_count
+        self.hist_data = [
+            HistItem(
+                observable_kwargs=self.parse_observable(key, order_observable),
+                min=values["min"],
+                max=values["max"],
+                bin_count=values["bin_count"],
+            )
+            for key, values in self.run_card["histograms"].items()
+            if key != "order_by"
+        ]
 
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
@@ -242,17 +281,28 @@ class MadgraphProcess:
         self, phasespaces: list[PhaseSpace], file: str
     ) -> me.EventGenerator:
         integrands = []
-        for subproc, phasespace in zip(self.subprocesses, phasespaces):
+        subproc_ids = []
+        channel_names = []
+        channel_hists = []
+        for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
+            subproc_integrands = subproc.build_integrands(phasespace)
             integrands.extend(subproc.build_integrands(phasespace))
+            subproc_ids.extend([i] * len(phasespace.channels))
+            channel_names.extend([f"{i}.{chan.name}" for chan in phasespace.channels])
+            if subproc.histograms is not None:
+                channel_hists.extend([subproc.histograms] * len(phasespace.channels))
         #print(integrands[0].function())
         #integrands[0].function().save("test.json")
         #integrands[0] = me.Function.load("test.json")
         return me.EventGenerator(
-            self.context,
-            integrands,
-            os.path.join(self.run_path, file),
-            os.path.join(self.run_path, "info.json"),
-            self.event_generator_config,
+            context=self.context,
+            channels=integrands,
+            temp_file_prefix=os.path.join(self.run_path, file),
+            status_file=os.path.join(self.run_path, "info.json"),
+            config=self.event_generator_config,
+            channel_subprocesses=subproc_ids,
+            channel_names=channel_names,
+            channel_histograms=channel_hists,
         )
 
     def survey_phasespaces(
@@ -437,7 +487,34 @@ class MadgraphSubprocess:
             self.process.get_mass(pid) for pid in clean_pids(self.meta["outgoing"])
         ]
         self.particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
-        self.cuts = me.Cuts(clean_pids(self.meta["outgoing"]), self.process.cut_data)
+        all_pids = clean_pids(self.meta["incoming"]) + clean_pids(self.meta["outgoing"])
+        self.cuts = (
+            me.Cuts([
+                me.CutItem(
+                    observable=me.Observable(all_pids, **cut_item.observable_kwargs),
+                    min=cut_item.min,
+                    max=cut_item.max,
+                    mode=cut_item.mode,
+                )
+                for cut_item in self.process.cut_data
+            ])
+            if len(self.process.cut_data) > 0
+            else None
+        )
+        self.histograms = (
+            me.ObservableHistograms([
+                me.HistItem(
+                    observable=me.Observable(all_pids, **hist_item.observable_kwargs),
+                    min=hist_item.min,
+                    max=hist_item.max,
+                    bin_count=hist_item.bin_count,
+                )
+                for hist_item in self.process.hist_data
+            ])
+            if len(self.process.hist_data) > 0
+            else None
+        )
+        print (self.histograms.function())
 
         self.scale = me.EnergyScale(
             particle_count=self.particle_count, **self.process.scale_kwargs
@@ -569,6 +646,7 @@ class MadgraphSubprocess:
                     discrete_before = discrete_before,
                     discrete_after = discrete_after,
                     channel_weight_indices = indices,
+                    name = f"{channel_id}",
                 ))
 
         chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
@@ -618,6 +696,7 @@ class MadgraphSubprocess:
             discrete_before = discrete_before,
             discrete_after = discrete_after,
             channel_weight_indices = [0],
+            name = "F",
         )
         return PhaseSpace(
             mode="flat",
@@ -672,6 +751,7 @@ class MadgraphSubprocess:
                 channel_weight_indices = list(range(
                     channel_index, channel_index + perm_count
                 )),
+                name = channel.name,
             ))
 
         flat_channel = flat_phasespace.channels[0]
@@ -681,6 +761,7 @@ class MadgraphSubprocess:
             discrete_before = flat_channel.discrete_before,
             discrete_after = flat_channel.discrete_after,
             channel_weight_indices = [len(symfact)],
+            name = flat_channel.name,
         ))
         flat_index = len(symfact)
         symfact.append(None)
@@ -749,6 +830,7 @@ class MadgraphSubprocess:
                 discrete_before = discrete_before,
                 discrete_after = discrete_after,
                 channel_weight_indices = channel.channel_weight_indices,
+                name = channel.name,
             ))
 
         return PhaseSpace(
