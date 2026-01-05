@@ -3049,6 +3049,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'samurai':None,
                        'ninja':'./HEPTools/lib',
                        'collier':'./HEPTools/lib',
+                       'dmtcp': None,
                        'lhapdf':'lhapdf-config',
                        'pineappl':'pineappl',
                        'lhapdf_py2': None,
