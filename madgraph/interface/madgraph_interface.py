@@ -2685,7 +2685,8 @@ class CompleteForCmd(cmd.CompleteCmd):
                 return self.list_completion(text, [str(i) for i in range(3)] + ['default'])
             elif args[1] == 'cluster_type':
                 return self.list_completion(text, list(cluster.from_name.keys()) + ['default'])
-            elif args[1] in ['cluster_queue', 'cluster_walltime']:
+            elif args[1] in ['cluster_queue', 'cluster_walltime',\
+                             'cluster_requirement', 'cluster_vacatetime']:
                 return []
             elif args[1] == 'automatic_html_opening':
                 return self.list_completion(text, ['False', 'True', 'default'])
@@ -2977,7 +2978,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
                               'hepmc','mg5amc_py8_interface','ninja','oneloop','MadAnalysis5',
                               'yoda', 'rivet', 'fastjet', 'fjcontrib', 'contur', 'cmake', 'eMELA',
-                              'cudacpp', 'hepmc3', 'pythia8_hepmc3']
+                              'cudacpp', 'hepmc3', 'pythia8_hepmc3', 'DMTCP']
 
     _install_opts.extend(_advanced_install_opts)
 
@@ -3034,16 +3035,21 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'f2py_compiler_py2':None,
                        'f2py_compiler_py3':None,
                        'cpp_compiler':None,
+                       'checkpointing': False,
                        'cluster_type': 'condor',
                        'cluster_queue': None,
                        'cluster_status_update': (600, 30),
                        'cluster_walltime': None,
+                       'cluster_requirement': None,
+                       'cluster_vacatetime': '120',
+                       'enforce_shared_disk': False,
                        'fastjet':'fastjet-config',
                        'eMELA':'eMELA-config',
                        'golem':'auto',
                        'samurai':None,
                        'ninja':'./HEPTools/lib',
                        'collier':'./HEPTools/lib',
+                       'dmtcp': None,
                        'lhapdf':'lhapdf-config',
                        'pineappl':'pineappl',
                        'lhapdf_py2': None,
@@ -6623,7 +6629,7 @@ MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
                 return self.do_install('%s --source=%s' % (' '.join(args), othersource), 
                                        paths, additional_options) 
             else:
-                if 'xxx' in advertisements[name][0]:
+                if name in advertisements and 'xxx' in advertisements[name][0]:
                     logger.warning("Program not yet released. Please try later")
                 else:
                     raise Exception("Online server are corrupted. No tarball available for %s" % name)
@@ -7814,7 +7820,9 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                             if '_path' in key and os.path.basename(self.options[key]) == 'None':
                                 continue
                             to_define[key] = self.options[key]
-                        elif key in ['cluster_queue', 'cluster_walltime'] and self.options[key] is None:
+                        elif key in ['cluster_queue', 'cluster_walltime',\
+                                     'cluster_requirement', 'cluster_vacatetime']\
+                                     and self.options[key] is None:
                             to_define[key] = self.options[key]
     
                 if '--all' in args:
@@ -8803,6 +8811,64 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         """
         return self.set_default('include_lepton_initiated_processes', args, log=log)
 
+    def set2_checkpointing(self, args, log=True):
+        """ Usage: set checkpointing True|False
+         Default; False
+         Checkpoint is created before the walltime limit and the calculation is resumed on another machine. 
+         Requeuing of checkpointed job is handled automatically by the scheduler. 
+         Implementation for SLURM and HTCondor is provided. 
+         Checkpointing is possible only for NLO calculations (any calculation step). 
+         Periodic checkpointing is supported, period is set to 24 hours.  
+         This options requires DMTCP to be installed on the cluster. ("install DMTCP" command is available in MG5_aMC).
+         Related options: 
+           -  cluster_requirement
+           -  cluster_vacatetime
+           -  enforce_shared_disk (only relevant for HTCondor)
+           -  dmtcp  
+        """
+        args = ['checkpointing'] + args
+        self.check_set(args)
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
+    
+    def set2_cluster_requirement(self, args, log=True):
+        """
+        Microarchitecture or CPU model may be specified. This is useful for inhomogenious clusters. 
+        To restart from a DMTCP checkpoint, instruction sets from the previous machine are required.
+        """
+        args = ['cluster_requirement'] + args
+        self.check_set(args)
+        self.options[args[0]] = args[1].strip()
+    
+    def set2_cluster_vacatetime(self, args, log=True):
+        """
+        Used only if checkpointing is True.
+        Grace period before the job removal/requeuing allocated for checkpoint creation.
+        """
+        args = ['cluster_vacatetime'] + args
+        self.check_set(args)
+        self.options[args[0]] = args[1].strip()
+
+    def set2_enforce_shared_disk(self, args, log=True):
+        """Usage: set enforce_shared_disk True|False 
+        Only relevant for HTCondor clusters. 
+        -> Enforce shared disk usage. 
+           By default HTCondor I/O goes via sandbox (local disk). 
+           Data transfer takes place before and after the job. 
+           Local checkpoint storage may result in a checkpoint loss in the hardware failure scenario.
+        """
+        args = ['enforce_shared_disk'] + args
+        self.check_set(args)
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
+
+    def set2_dmtcp(self, args, log=True):
+        """ Usage: set dmtcp /PATH/TO/dmtcp_install_directory
+            usefull only if checkpointing is True.
+            DMTCP installation directory should contain bin/dmtcp_restart and bin/dmtcp_launch
+        """
+        args = ['dmtcp'] + args
+        self.check_set(args)
+        self.options[args[0]] = args[1].strip()
+
 # not documented options:
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
@@ -8938,7 +9004,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         elif args[args[0]] in ['store_rwgt_info']:
             raise Exception('This option is now handled by a dedicated function.')
             # set_store_rwgt_info(args[1:], log=log)
-        elif args[0] in ['cluster_queue', 'cluster_walltime']:
+        elif args[0] in ['cluster_queue', 'cluster_walltime', 'checkpointing',\
+                         'cluster_requirement', 'cluster_vacatetime', 'enforce_shared_disk']:
             raise Exception('This option is now handled by a dedicated function.')
             # getattr(self, 'set_%s' % args[0])(args[1:],
             # log=log)  
