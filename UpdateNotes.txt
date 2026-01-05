@@ -1,8 +1,16 @@
 Update notes for MadGraph5_aMC@NLO (in reverse time order)
 
 ANNOUNCMENT: 
-   2.9.X version has a LONG TERM STABLE has now an end of life for bug fixing/support in december 2025.
+   2.9.X version has a LONG TERM STABLE IS now an end of life for bug fixing/support since december 2025.
    A new LTS (based on current 3.5.X) is starting now and will act as stable release for the coming years.
+
+2.9.27 (05/01/26): LAST Bug fix for that LTS version
+   OM+RF: Fix an issue where overweight were discarded leading to some under-estimation 
+          of the tail (and of the error) 
+   OM: fix madspin onshell in the computation of the BR when multiple decay was present
+   OM: correct an issue with exrootanalysis when event file was deleted due to an unhandle flag on how file was unzip
+   OM: add warning message for python37,3.8,3.9
+   Alexander Puck Neuwirth: Fix quotes and permissions in PYTHIA8 script
 
 2.9.26 (30/10/25):
   OM: setup the code to not print the python3.12 syntax warning anymore (still printed in debug mode)
