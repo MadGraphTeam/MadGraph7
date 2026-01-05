@@ -846,7 +846,7 @@ void op_histogram(
         device.stream(),
         batch_size,
         n_bins,
-        input.view<me_int_t, 1>(),
+        input.view<double, 1>(),
         hist_min.view<double, 1>(),
         hist_max.view<double, 1>(),
         weights.view<double, 1>(),
