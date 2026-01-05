@@ -784,8 +784,8 @@ __global__ void kernel_prepare_hist(
     GpuTensorView<double, 1, true> max,
     GpuTensorView<double, 1, true> weights_in,
     GpuTensorView<me_int_t, 1, true> indices,
-    GpuTensorView<double, 1, true> weights_out
-        GpuTensorView<double, 1, true> square_weights_out
+    GpuTensorView<double, 1, true> weights_out,
+    GpuTensorView<double, 1, true> square_weights_out
 ) {
     me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= batch_size + n_bins + 2) {
@@ -808,13 +808,12 @@ __global__ void kernel_prepare_hist(
         w = 0.;
         index = i - batch_size;
     }
-    double w = i < batch_size ? weights_in[i] : 0.;
     indices[i] = index;
     weights_out[i] = w;
     square_weights_out[i] = w * w;
 }
 
-void op_discrete_histogram(
+void op_histogram(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
     const AsyncGpuDevice& device
