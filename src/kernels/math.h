@@ -6,26 +6,6 @@ namespace madevent {
 namespace kernels {
 
 template <typename T>
-KERNELSPEC void kernel_copy(FIn<T, 0> in, FOut<T, 0> out) {
-    out = in;
-}
-
-template <typename T>
-KERNELSPEC void kernel_copy_int(IIn<T, 0> in, IOut<T, 0> out) {
-    out = in;
-}
-
-template <typename T>
-KERNELSPEC void kernel_zero(FIn<T, 0> in, FOut<T, 0> out) {
-    out = 0.;
-}
-
-template <typename T>
-KERNELSPEC void kernel_zero_int(IIn<T, 0> in, IOut<T, 0> out) {
-    out = 0;
-}
-
-template <typename T>
 KERNELSPEC void kernel_add_inplace(FIn<T, 0> in, FOut<T, 0> out) {
     out += in;
 }
@@ -60,6 +40,26 @@ KERNELSPEC void backward_kernel_mul(
 ) {
     in1_grad = out_grad * in2;
     in2_grad = out_grad * in1;
+}
+
+template <typename T>
+KERNELSPEC void kernel_reduce_sum(FIn<T, 1> in, FOut<T, 0> out) {
+    FVal<T> sum(0.);
+    for (std::size_t i = 0; i < in.size(); ++i) {
+        sum = sum + in[i];
+    }
+    out = sum;
+}
+
+template <typename T>
+KERNELSPEC void kernel_reduce_sum_vector(FIn<T, 2> in, FOut<T, 1> out) {
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        FVal<T> sum(0.);
+        for (std::size_t j = 0; j < in.size(); ++j) {
+            sum = sum + in[j][i];
+        }
+        out[i] = sum;
+    }
 }
 
 template <typename T>

@@ -134,6 +134,8 @@ add_library(
     src/phasespace/multichannel.cpp
     src/phasespace/rambo.cpp
     src/phasespace/cuts.cpp
+    src/phasespace/observable.cpp
+    src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
     src/phasespace/integrand.cpp
     src/phasespace/vegas.cpp
@@ -179,6 +181,8 @@ add_library(
     include/madevent/phasespace/multichannel.h
     include/madevent/phasespace/rambo.h
     include/madevent/phasespace/cuts.h
+    include/madevent/phasespace/observable.h
+    include/madevent/phasespace/histograms.h
     include/madevent/phasespace/chili.h
     include/madevent/phasespace/integrand.h
     include/madevent/phasespace/vegas.h
@@ -194,6 +198,7 @@ add_library(
     include/madevent/phasespace/scale.h
 )
 
+#target_compile_options(madevent PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(madevent PUBLIC include)
 target_compile_features(madevent PUBLIC cxx_std_20)
 target_link_libraries(madevent PUBLIC nlohmann_json::nlohmann_json)
@@ -218,13 +223,16 @@ set(
     src/kernels/invariants.h
     src/kernels/kernels.h
     src/kernels/kinematics.h
+    src/kernels/multichannel.h
     src/kernels/math.h
     src/kernels/rambo.h
     src/kernels/cuts.h
     src/kernels/chili.h
     src/kernels/nn.h
+    src/kernels/observables.h
     src/kernels/discrete.h
     src/kernels/vegas.h
+    src/kernels/util.h
     src/kernels/definitions.h
     src/kernels/operations.h
 )

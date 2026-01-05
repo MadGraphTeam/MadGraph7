@@ -86,9 +86,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         permutations.size() > 1 ? TypeVec{batch_int} : TypeVec{}
     ),
     _topology(topology),
-    _cuts(
-        cuts.value_or(Cuts(std::vector<int>(topology.outgoing_masses().size(), 0), {}))
-    ),
+    _cuts(cuts.value_or(Cuts(topology.outgoing_masses().size() + 2))),
     _pi_factors(
         std::pow(2 * PI, 4 - 3 * static_cast<int>(topology.outgoing_masses().size()))
     ),

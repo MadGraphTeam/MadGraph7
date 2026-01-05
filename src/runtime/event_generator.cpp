@@ -31,7 +31,8 @@ EventGenerator::EventGenerator(
     const std::string& status_file,
     const Config& config,
     const std::vector<std::size_t>& channel_subprocesses,
-    const std::vector<std::string>& channel_names
+    const std::vector<std::string>& channel_names,
+    const std::vector<ObservableHistograms>& channel_histograms
 ) :
     _context(context),
     _config(config),
@@ -95,6 +96,11 @@ EventGenerator::EventGenerator(
             DiscreteHistogram hist(option_counts);
             discrete_histogram = build_runtime(hist.function(), context, false);
         }
+        RuntimePtr obs_histograms = nullptr;
+        if (channel_histograms.size() > 0) {
+            obs_histograms =
+                build_runtime(channel_histograms.at(i).function(), context, false);
+        }
         _channels.push_back({
             .index = i,
             .runtime = build_runtime(channel.function(), context, false),
@@ -116,6 +122,7 @@ EventGenerator::EventGenerator(
             .vegas_histogram = std::move(vegas_histogram),
             .discrete_optimizer = discrete_optimizer,
             .discrete_histogram = std::move(discrete_histogram),
+            .observable_histograms = std::move(obs_histograms),
             .batch_size = config.start_batch_size,
             .name =
                 channel_names.size() > 0 ? channel_names.at(i) : std::format("{}", i),
@@ -123,6 +130,17 @@ EventGenerator::EventGenerator(
                 channel_subprocesses.size() > 0 ? channel_subprocesses.at(i) : 0,
         });
         ++i;
+    }
+    if (channel_histograms.size() > 0) {
+        for (auto& item : channel_histograms.at(0).observables()) {
+            _empty_histograms.push_back({
+                .name = item.observable.name(),
+                .min = item.min,
+                .max = item.max,
+                .bin_values = std::vector<double>(item.bin_count + 2),
+                .bin_errors = std::vector<double>(item.bin_count + 2),
+            });
+        }
     }
 }
 
@@ -526,6 +544,27 @@ std::vector<EventGenerator::Status> EventGenerator::channel_status() const {
     return status;
 }
 
+std::vector<EventGenerator::Histogram> EventGenerator::histograms() const {
+    auto hists = _empty_histograms;
+    for (auto& channel : _channels) {
+        for (auto [chan_hist, out_hist] : zip(channel.histograms, hists)) {
+            for (auto [chan_w, val, err] :
+                 zip(chan_hist, out_hist.bin_values, out_hist.bin_errors)) {
+                auto [w, w2] = chan_w;
+                auto n = channel.total_sample_count_opt;
+                val += w / n;
+                err += (w2 - w * w / n) / (n * n);
+            }
+        }
+    }
+    for (auto& hist : hists) {
+        for (double& err : hist.bin_errors) {
+            err = std::sqrt(err);
+        }
+    }
+    return hists;
+}
+
 std::tuple<Tensor, std::vector<Tensor>> EventGenerator::integrate_and_optimize(
     ChannelState& channel, TensorVec& events, bool run_optim
 ) {
@@ -543,6 +582,24 @@ std::tuple<Tensor, std::vector<Tensor>> EventGenerator::integrate_and_optimize(
     channel.total_sample_count_opt += w_view.size();
     channel.total_sample_count_after_cuts += sample_count_after_cuts;
     channel.total_sample_count_after_cuts_opt += sample_count_after_cuts;
+
+    if (channel.observable_histograms) {
+        auto hists = channel.observable_histograms->run({weights, events.at(1)});
+        for (std::size_t i = 0; i < hists.size() / 2; ++i) {
+            Tensor hist_cpu = hists.at(2 * i).cpu();
+            Tensor hist2_cpu = hists.at(2 * i + 1).cpu();
+            auto hist_view = hist_cpu.view<double, 2>()[0];
+            auto hist2_view = hist2_cpu.view<double, 2>()[0];
+            if (channel.histograms.size() <= i) {
+                channel.histograms.emplace_back(hist_view.size());
+            }
+            auto& chan_hist = channel.histograms.at(i);
+            for (std::size_t j = 0; j < hist_view.size(); ++j) {
+                chan_hist.at(j).first += hist_view[j];
+                chan_hist.at(j).second += hist2_view[j];
+            }
+        }
+    }
 
     if (run_optim) {
         if (channel.vegas_optimizer) {
@@ -649,6 +706,7 @@ void EventGenerator::clear_channel(ChannelState& channel) {
     channel.weight_file.clear();
     channel.cross_section.reset();
     channel.large_weights.clear();
+    channel.histograms.clear();
 }
 
 void EventGenerator::update_max_weight(ChannelState& channel, Tensor weights) {
@@ -922,6 +980,7 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
         {"process", _status_all},
         {"channels", channel_status()},
         {"run_times", _timing_data},
+        {"histograms", histograms()},
     };
     f << j.dump();
     // rename atomically deletes the old file and replaces it with the new one
@@ -1110,7 +1169,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
         format_si_prefix(_status_all.count_target)
     );
     std::string time_str;
-    if (_status_all.done) {
+    if (done) {
         time_str = format_run_time("generate");
     } else {
         unw_str = std::format(
@@ -1312,5 +1371,15 @@ void madevent::to_json(
     j = nlohmann::json{
         {"wall_time_sec", timing_data.wall_time_sec},
         {"cpu_time_sec", timing_data.cpu_time_sec},
+    };
+}
+
+void madevent::to_json(nlohmann::json& j, const EventGenerator::Histogram& hist) {
+    j = nlohmann::json{
+        {"name", hist.name},
+        {"min", hist.min},
+        {"max", hist.max},
+        {"bin_values", hist.bin_values},
+        {"bin_errors", hist.bin_errors},
     };
 }

@@ -89,6 +89,13 @@ public:
         bool optimized;
         bool done;
     };
+    struct Histogram {
+        std::string name;
+        double min;
+        double max;
+        std::vector<double> bin_values;
+        std::vector<double> bin_errors;
+    };
     static void set_abort_check_function(std::function<void(void)> func) {
         _abort_check_function = func;
     }
@@ -100,7 +107,8 @@ public:
         const std::string& status_file = "",
         const Config& config = default_config,
         const std::vector<std::size_t>& channel_subprocesses = {},
-        const std::vector<std::string>& channel_names = {}
+        const std::vector<std::string>& channel_names = {},
+        const std::vector<ObservableHistograms>& channel_histograms = {}
     );
     void survey();
     void generate();
@@ -109,6 +117,7 @@ public:
     void combine_to_lhe(const std::string& file_name, LHECompleter& lhe_completer);
     Status status() const { return _status_all; }
     std::vector<Status> channel_status() const;
+    std::vector<Histogram> histograms() const;
 
 private:
     struct ChannelState {
@@ -120,6 +129,7 @@ private:
         RuntimePtr vegas_histogram;
         std::optional<DiscreteOptimizer> discrete_optimizer;
         RuntimePtr discrete_histogram;
+        RuntimePtr observable_histograms;
         std::size_t batch_size;
         std::string name;
         std::size_t subprocess_index;
@@ -137,6 +147,7 @@ private:
         double best_rsd = std::numeric_limits<double>::max();
         std::vector<double> large_weights;
         std::size_t job_count = 0;
+        nested_vector2<std::pair<double, double>> histograms;
     };
     struct RunningJob {
         std::size_t channel_index;
@@ -170,6 +181,7 @@ private:
     PrettyBox _pretty_box_lower;
     std::string _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
+    std::vector<Histogram> _empty_histograms;
 
     void reset_start_time();
     void add_timing_data(const std::string& key);
@@ -238,6 +250,8 @@ private:
     to_json(nlohmann::json& j, const EventGenerator::TimingData& timing_data);
 };
 
+void to_json(nlohmann::json& j, const EventGenerator::TimingData& timing_data);
 void to_json(nlohmann::json& j, const EventGenerator::Status& status);
+void to_json(nlohmann::json& j, const EventGenerator::Histogram& hist);
 
 } // namespace madevent
