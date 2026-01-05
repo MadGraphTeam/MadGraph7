@@ -240,6 +240,9 @@ void tensor_foreach(
     for (std::size_t i = 1; i < dims; ++i) {
         total_count *= first_view.size(i);
     }
+    if (total_count == 0) {
+        return;
+    }
 
     std::size_t n_threads = std::min(
         MAX_THREADS_PER_BLOCK,
