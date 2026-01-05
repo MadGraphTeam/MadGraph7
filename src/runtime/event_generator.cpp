@@ -583,6 +583,24 @@ std::tuple<Tensor, std::vector<Tensor>> EventGenerator::integrate_and_optimize(
     channel.total_sample_count_after_cuts += sample_count_after_cuts;
     channel.total_sample_count_after_cuts_opt += sample_count_after_cuts;
 
+    if (channel.observable_histograms) {
+        auto hists = channel.observable_histograms->run({weights, events.at(1)});
+        for (std::size_t i = 0; i < hists.size() / 2; ++i) {
+            Tensor hist_cpu = hists.at(2 * i).cpu();
+            Tensor hist2_cpu = hists.at(2 * i + 1).cpu();
+            auto hist_view = hist_cpu.view<double, 2>()[0];
+            auto hist2_view = hist2_cpu.view<double, 2>()[0];
+            if (channel.histograms.size() <= i) {
+                channel.histograms.emplace_back(hist_view.size());
+            }
+            auto& chan_hist = channel.histograms.at(i);
+            for (std::size_t j = 0; j < hist_view.size(); ++j) {
+                chan_hist.at(j).first += hist_view[j];
+                chan_hist.at(j).second += hist2_view[j];
+            }
+        }
+    }
+
     if (run_optim) {
         if (channel.vegas_optimizer) {
             auto hist = channel.vegas_histogram->run({events.at(6), weights});
@@ -593,23 +611,6 @@ std::tuple<Tensor, std::vector<Tensor>> EventGenerator::integrate_and_optimize(
             args.push_back(weights);
             auto hist = channel.discrete_histogram->run(args);
             channel.discrete_optimizer->add_data(hist);
-        }
-        if (channel.observable_histograms) {
-            auto hists = channel.observable_histograms->run({weights, events.at(1)});
-            for (std::size_t i = 0; i < hists.size() / 2; ++i) {
-                Tensor hist_cpu = hists.at(2 * i).cpu();
-                Tensor hist2_cpu = hists.at(2 * i + 1).cpu();
-                auto hist_view = hist_cpu.view<double, 2>()[0];
-                auto hist2_view = hist2_cpu.view<double, 2>()[0];
-                if (channel.histograms.size() <= i) {
-                    channel.histograms.emplace_back(hist_view.size());
-                }
-                auto& chan_hist = channel.histograms.at(i);
-                for (std::size_t j = 0; j < hist_view.size(); ++j) {
-                    chan_hist.at(j).first += hist_view[j];
-                    chan_hist.at(j).second += hist2_view[j];
-                }
-            }
         }
         if (channel.job_count == 0) {
             if (channel.vegas_optimizer) {
