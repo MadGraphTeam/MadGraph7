@@ -552,7 +552,6 @@ void op_histogram(
         TensorView<double, 2> values_view(values_view_flat);
         TensorView<double, 2> square_values_view(square_values_view_flat);
 
-        std::size_t n_dims = input_view.size(1);
         std::size_t n_bins = values_view.size(1) - 2;
 
         auto bin_values = values_view[0];
