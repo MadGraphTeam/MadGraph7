@@ -1156,8 +1156,12 @@ C
 
     subroutine select_color(rcol, jamp2, iconfig, iproc, icol)
     implicit none
+    include 'nexternal.inc'
     include 'maxamps.inc' ! for the definition of maxflow
     include 'coloramps.inc' ! set the coloramps
+    include 'cluster.inc'
+    include 'genps.inc'
+    include 'run.inc'
 c    
 c   argument IN
 c
@@ -1178,6 +1182,11 @@ c
     double precision targetamp(0:maxflow)
     integer i,j
     double precision xtarget
+
+    if (ickkw.gt.0) then
+        iconfig = igraphs(1)
+    endif   
+
 
       nc = int(jamp2(0))
       is_LC = .true.

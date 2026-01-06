@@ -126,6 +126,9 @@ def compile_dir(*arguments):
             # skip check_poles for LOonly dirs
             if test == 'check_poles' and os.path.exists(pjoin(this_dir, 'parton_lum_0.f')):
                 continue
+            # skip check_poles for no virtual
+            if test == 'check_poles' and len(misc.glob(pjoin(this_dir, 'V*'))) == 0:
+                continue
             if test == 'test_ME' or test == 'test_MC':
                 test_exe='test_soft_col_limits'
             else:
@@ -1100,6 +1103,12 @@ class AskRunNLO(cmd.ControlSwitch):
         else:
             return self.print_options('fixed_order', keep_default=True)
     
+    def print_options_madspin(self):
+        if 'QED' in self.proc_characteristics['splitting_types']:
+            return "No madspin for EW correction"
+        else:
+            return self.print_options('madspin', keep_default=True)
+
     def color_for_shower(self, switch_value):
          
         if switch_value in ['ON']:
@@ -1119,7 +1128,7 @@ class AskRunNLO(cmd.ControlSwitch):
             to_check ={'fixed_order': ['ON'],
                        'shower': ['OFF'],
                        'madanalysis': ['OFF'],
-                       'madspin': ['OFF','onshell','none'],
+                       'madspin': ['OFF','none'],
                        'reweight': ['OFF']}
             for key, allowed  in to_check.items():        
                 if switch[key] not in allowed:
@@ -1310,7 +1319,7 @@ class AskRunNLO(cmd.ControlSwitch):
             return self.allowed_madspin
         else:        
             if 'QED' in self.proc_characteristics['splitting_types']:
-                self.allowed_madspin = ['OFF', 'onshell']
+                self.allowed_madspin = ['OFF']
             else:
                 self.allowed_madspin = ['OFF', 'ON', 'onshell']
             return  self.allowed_madspin
@@ -5055,6 +5064,12 @@ RESTART = %(mint_mode)s
             input_files.append(pjoin(cwd, os.path.pardir, 'leshouche_info.dat'))
             input_files.append(pjoin(cwd, os.path.pardir, 'orderstags_glob.dat'))
             input_files.append(args[0])
+            open('%s.rwgt' % os.path.basename(args[0]), "a").close()
+            open('reweight_xsec_events.output', "a").close()
+            open('scale_pdf_dependence.dat', "a").close()
+            input_files.append('%s.rwgt' % os.path.basename(args[0]))
+            input_files.append('reweight_xsec_events.output')
+            input_files.append('scale_pdf_dependence.dat')
             output_files.append('%s.rwgt' % os.path.basename(args[0]))
             output_files.append('reweight_xsec_events.output')
             output_files.append('scale_pdf_dependence.dat')
@@ -5515,6 +5530,11 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             if self.run_card['lpp1'] == 1 == self.run_card['lpp2']:
                 logger.info('Using built-in libraries for PDFs')
 
+            elif self.run_card['lpp1'] == 2 == self.run_card['lpp2']:
+                if self.run_card['pdlabel'] in ['edff', 'chff']:
+                    logger.info('Using '+self.run_card['pdlabel'].upper()+' in gamma-UPC')
+                    self.make_opts_var['pdlabel'] = self.run_card['pdlabel']
+
             self.make_opts_var['lhapdf'] = ""
 
         # create param_card.inc and run_card.inc
@@ -5696,7 +5716,9 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         Skip check_poles for LOonly folders"""
         if test in ['test_ME', 'test_MC']:
             return self.parse_test_mx_log(pjoin(dir, '%s.log' % test)) 
-        elif test == 'check_poles' and not os.path.exists(pjoin(dir,'parton_lum_0.f')):
+        # we must ensure there is virtual. Otherwise, we skip the pole checks
+        elif test == 'check_poles' and not os.path.exists(pjoin(dir,'parton_lum_0.f')) \
+          and len(misc.glob(pjoin(dir,'V*'))) > 0:
             return self.parse_check_poles_log(pjoin(dir, '%s.log' % test)) 
 
 

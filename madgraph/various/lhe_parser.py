@@ -233,7 +233,6 @@ class EventFile(object):
             except IOError as error:
                 raise
             except Exception as error:
-                misc.sprint(error)
                 if mode == 'r':
                     misc.gunzip(path)
                 else:
@@ -1114,7 +1113,6 @@ class MultiEventFile(EventFile):
 %(cross_info)s
 %(generator_info)s
 """
-        misc.sprint(template_init % init_information)
         self.banner["init"] = template_init % init_information
         
             
@@ -2269,15 +2267,21 @@ class Event(list):
         merged particle is a dictionary id:merged
         such that if id is in the tag, it will be replace by merged[id]
         """
-        misc.sprint(merged_particle)
         if merged_particle is None:
             map = lambda x: x
         else:
-            map = lambda x: merged_particle.get(x,x)
+            def get_merged(x):
+                try:
+                    return merged_particle[x]
+                except:
+                    try:
+                        return - merged_particle[-x]
+                    except:
+                        return x
+            map = get_merged
         
         initial, final, order = [], [], [[], []]
         for particle in self:
-            misc.sprint(particle.pid, particle.status, map(particle.pid))
             if particle.status == -1:
                 initial.append(map(particle.pid))
                 order[0].append(particle.pid)
@@ -2450,7 +2454,14 @@ class Event(list):
         if not merged_map:
             map = lambda x: x
         else:
-            map = lambda x: merged_map.get(x,x)
+            def map(x):
+                try:
+                    return merged_map[x]
+                except:
+                    try:
+                        return - merged_map[-x]
+                    except:
+                        return x
 
         #avoid to modify the input
         order = [list(get_order[0]), list(get_order[1])] 
@@ -2707,7 +2718,15 @@ class Event(list):
         if not merged_map:
             map = lambda x: x
         else:
-            map = lambda x: merged_map.get(x,x)
+            def map(x):
+                try:
+                    return merged_map[x]
+                except:
+                    try:
+                        return - merged_map[-x]
+                    except:
+                        return x
+
 
         out1 = {}
         out2 = {}        
@@ -2760,7 +2779,6 @@ class Event(list):
         """return the momenta vector in the order asked for"""
         
         event_pos2order, orderevent_2pos = self.get_mapping(get_order, allow_reversed, allow_crossing, merged_map)
-        misc.sprint(event_pos2order, orderevent_2pos)
         curr_pos = -1
         out = [''] *(len(get_order[0])+len(get_order[1]))
         for i, part in enumerate(self):
@@ -2768,7 +2786,6 @@ class Event(list):
                 continue
             curr_pos += 1
             position = event_pos2order[curr_pos]
-            misc.sprint(part.status, position)
             # check for crossing
             if part.status == -1 and position >= len(get_order[0]):
                 flip = True
@@ -2792,8 +2809,6 @@ class Event(list):
     def get_pdg(self, momenta):
         """return the pdg vector in the order related to the momenta"""
     
-        misc.sprint(momenta)
-        misc.sprint(self)
         out = [''] *len(momenta)
         data = {}
         for i, part in enumerate(self):
@@ -2827,7 +2842,6 @@ class Event(list):
 
 
         p = self.get_momenta(get_order, allow_reversed, merged_map=merged_map)
-        misc.sprint(p)
 
         nbin = len(get_order[0])
         #final = get_order[1]

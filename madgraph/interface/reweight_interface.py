@@ -74,7 +74,8 @@ class ReweightInterface(extended_cmd.Cmd):
     prompt = 'Reweight>'
     debug_output = 'Reweight_debug'
     sa_class = 'standalone_rw'
-
+    nb_rw=0
+    
     @misc.mute_logger()
     def __init__(self, event_path=None, allow_madspin=False, mother=None, *completekey, **stdin):
         """initialize the interface with potentially an event_path"""
@@ -122,6 +123,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.keep_ordering = False
         self.use_eventid = False
         self.inc_sudakov = False
+        self.path2prefix = {} # store the f2pyprefix associated to a library 
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1001,6 +1003,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
         #initialise module.
         for (path,tag), module in self.f2pylib.items():
+
             with misc.chdir(pjoin(os.path.dirname(rw_dir), path)):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):                    
                     if 'rw_me_' in path or tag == 3:
@@ -1157,7 +1160,6 @@ class ReweightInterface(extended_cmd.Cmd):
 
             if w_orig == 0:
                 tag, order = event.get_tag_and_order()
-                misc.sprint(self.id_to_path)
                 orig_order, Pdir, hel_dict = self.id_to_path[tag]
                 misc.sprint(w_orig, w_new)
                 misc.sprint(event)
@@ -1169,7 +1171,6 @@ class ReweightInterface(extended_cmd.Cmd):
                     nhel = hel_dict[tuple(hel_order)]
                 else:
                     nhel = 0
-                misc.sprint(nhel, Pdir, hel_dict)                        
                 raise Exception("Invalid matrix element for original computation (weight=0)")
 
             return {'orig': orig_wgt, '': w_new/w_orig*orig_wgt*jac}
@@ -1553,20 +1554,17 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             nb_retry, sleep = 5, 20 
         
-        misc.sprint(self.model['merged_particles'], hasattr(self, 'revert_merged'))
         if not hasattr(self, 'revert_merged'):
             if self.model['merged_particles']:
                 self.revert_merged = {}
                 for key, value in self.model['merged_particles'].items():
                     for val in value:
                         self.revert_merged[val] = key
-                misc.sprint(self.revert_merged)
             else:
                 self.revert_merged = None   
 
-        misc.sprint(self.revert_merged)
+        tag_orig, order = event.get_tag_and_order(None)
         tag, order = event.get_tag_and_order(self.revert_merged)
-        misc.sprint(tag, order)
         if self.keep_ordering:
             old_tag = tuple(tag)
             tag = (tag[0], tuple(order[1])) 
@@ -1579,15 +1577,11 @@ class ReweightInterface(extended_cmd.Cmd):
         #    base = "rw_me"
 
         if (not self.second_model and not self.second_process and not self.dedicated_path) or hypp_id==0:
-            misc.sprint(tag, self.id_to_path.keys())
             if tag in self.id_to_path: 
                 orig_order, Pdir, hel_dict = self.id_to_path[tag]
-                misc.sprint(orig_order, Pdir, hel_dict)
             else:
                 cross_tag = self.get_crossing_tag(tag)
-                misc.sprint(cross_tag)
                 orig_order, Pdir, hel_dict = self.id_to_path[cross_tag] 
-                misc.sprint(cross_tag, orig_order, Pdir, hel_dict)
         else:
             try:
                 orig_order, Pdir, hel_dict = self.id_to_path_second[tag]
@@ -1603,14 +1597,12 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
         base = os.path.basename(os.path.dirname(Pdir))
-        misc.sprint(base)
         if base == 'rw_me':
             moduletag = (base, 2+hypp_id)
         else:
             moduletag = (base, 2)
         
         module = self.f2pylib[moduletag]
-        misc.sprint(orig_order)
         if self.keep_ordering:
             all_p = [event.get_momenta(orig_order, merged_map=self.revert_merged)]
         else:
@@ -1621,27 +1613,18 @@ class ReweightInterface(extended_cmd.Cmd):
                 self.helicity_reweighting = False
 
         # add helicity information
-        misc.sprint(event)
-        misc.sprint(orig_order)
-        misc.sprint(all_p)
         event_pos2order, orderevent_2pos = event.get_mapping(orig_order, merged_map=self.revert_merged)        
         hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged)
         if self.helicity_reweighting and 9 not in hel_order:
             nhel = hel_dict[tuple(hel_order)]                
+
         else:
             nhel = -1
 
-        misc.sprint(nhel)  
 
         pdg = list(orig_order[0])+list(orig_order[1])
         if any(p in self.model['merged_particles'] for p in  pdg):
-            misc.sprint(all_p)
             pdg = event.get_pdg(all_p[0])
-            misc.sprint(pdg)
-            if any(p<0 for p in pdg):
-                raise Exception("Negative pdg code in the event")
-
-
 
         # For 2>N pass in the center of mass frame
         #   - required for helicity by helicity re-weighitng
@@ -1705,10 +1688,10 @@ class ReweightInterface(extended_cmd.Cmd):
                     scale2 = 0
 
             with misc.chdir(Pdir):
-                #with misc.stdchannel_redirected(sys.stdout, os.devnull):
-                    misc.sprint(pdg, pid, p, event.aqcd, scale2, nhel)
+                with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                    #misc.sprint(pdg, pid, p, event.aqcd, scale2, nhel)
                     new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
-                    misc.sprint(new_value)
+                    #misc.sprint(new_value)
                     if new_value == 0:
                         raise Exception("Invalid matrix element")
             # for loop we have also the stability status code
@@ -1736,16 +1719,18 @@ class ReweightInterface(extended_cmd.Cmd):
         """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
 
         # get list of possible crossing tag
-        crossing_tag = [tuple(sorted(list(t[0])+list(t[1]))) for t in self.id_to_path.keys()]
-        misc.sprint(tag)
-        misc.sprint(crossing_tag)
+        crossing_tag = [tuple([int(x) for x in sorted(list(t[0])+list(t[1]))]) for t in self.id_to_path.keys()]
 
         mytag = list(tag[0])+list(tag[1])
+        if self.revert_merged:
+            for i in range(len(mytag)):
+                if mytag[i] in self.revert_merged:
+                    mytag[i] = self.revert_merged[mytag[i]] 
+                if -mytag[i] in self.revert_merged:
+                    mytag[i] = -self.revert_merged[-mytag[i]]
         mytag.sort()
         mytag=tuple(mytag)
-        misc.sprint(mytag)
         nb_found = crossing_tag.count(mytag)
-        misc.sprint(nb_found)
         if nb_found == 0 :
             return None
         elif nb_found > 1:
@@ -1828,7 +1813,6 @@ class ReweightInterface(extended_cmd.Cmd):
         start = time.time()
         commandline=''
         for i,proc in enumerate(data['processes']):
-            misc.sprint(proc)
             if '[' not in proc:
                 commandline += "add process %s ;" % proc
             else:
@@ -1841,7 +1825,6 @@ class ReweightInterface(extended_cmd.Cmd):
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
                     commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
-        misc.sprint(commandline)
         if not self.keep_ordering:
             commandline = commandline.replace('add process', 'add process --no_crossing') 
         commandline = commandline.replace('add process', 'generate',1)
@@ -1870,11 +1853,15 @@ class ReweightInterface(extended_cmd.Cmd):
             misc.sprint(type(error))
             raise
         
+        commandline = 'output %s %s --prefix=int --prefixf2py=%s' % (self.sa_class, pjoin(path_me,data['paths'][0]), self.nb_rw)
+        self.path2prefix[pjoin(path_me,data['paths'][0])] = self.nb_rw
+        self.nb_rw += 1
         commandline = 'output %s %s --prefix=int' % (self.sa_class, pjoin(path_me,data['paths'][0]))
         if self.inc_sudakov:
             # in this case, the sudakov output format has to be changed
             commandline = 'output ewsudakovsa %s --prefix=int' % pjoin(path_me,data['paths'][0])
         mgcmd.exec_cmd(commandline, precmd=True)
+
         logger.info('Done %.4g' % (time.time()-start))
         self.has_standalone_dir = True
         
@@ -1976,7 +1963,9 @@ class ReweightInterface(extended_cmd.Cmd):
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
         mgcmd.exec_cmd(commandline, precmd=True)
-        commandline = 'output standalone_rw %s --prefix=int -f' % pjoin(path_me, data['paths'][1])
+        commandline = 'output standalone_rw %s --prefix=int -f --prefixf2py=%i ' % (pjoin(path_me, data['paths'][1]), self.nb_rw)
+        self.path2prefix[pjoin(path_me,data['paths'][1])] = self.nb_rw
+        self.nb_rw += 1
         mgcmd.exec_cmd(commandline, precmd=True) 
         
         #put back golem to original value
@@ -2177,7 +2166,9 @@ class ReweightInterface(extended_cmd.Cmd):
             commandline = commandline.replace('add process', 'generate',1)
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
-            commandline = 'output standalone_rw %s --prefix=int -f' % pjoin(path_me, data['paths'][1])
+            commandline = 'output standalone_rw %s --prefix=int -f --prefixf2py=%i' % (pjoin(path_me, data['paths'][1]), self.nb_rw)
+            self.path2prefix[pjoin(path_me,data['paths'][1])] = self.nb_rw
+            self.nb_rw+=1
             mgcmd.exec_cmd(commandline, precmd=True)    
             #put back golem to original value
             mgcmd.options['golem'] = old_options['golem']
@@ -2272,10 +2263,18 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             nb_core = 1
         os.environ['MENUM'] = '2'
-        misc.compile(['allmatrix2py.so'], cwd=Sdir, nb_core=nb_core)
+        try: 
+            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
+        except Exception as e:
+            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=1)
+
         if not (self.second_model or self.second_process or self.dedicated_path):
             os.environ['MENUM'] = '3'
-            misc.compile(['allmatrix3py.so'], cwd=Sdir, nb_core=nb_core)
+            try:
+                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+            except Exception as e:
+                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=1)
+                
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -2288,15 +2287,32 @@ class ReweightInterface(extended_cmd.Cmd):
         self.id_to_path = {}
         self.id_to_path_second = {}
         rwgt_dir_possibility =   ['rw_me','rw_me_%s' % self.nb_library,'rw_mevirt','rw_mevirt_%s' % self.nb_library]
+        fprefix = ''
         for onedir in rwgt_dir_possibility:
+            if pjoin(path_me,onedir) in self.path2prefix:
+                fprefix = self.path2prefix[pjoin(path_me,onedir)]
             if not os.path.exists(pjoin(path_me,onedir)):
                 continue 
             if self.inc_sudakov:
                 return
             pdir = pjoin(path_me, onedir, 'SubProcesses')
             for tag in [2*metag,2*metag+1]:
-                with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,'onedir', 'SubProcesses')]+sys.path):      
-                    mod_name = '%s.SubProcesses.allmatrix%spy' % (onedir, tag)
+                with misc.TMP_variable(sys, 'path', [pjoin(path_me), pjoin(path_me,onedir, 'SubProcesses')]+sys.path): 
+                    tmp = sys.path[0]
+                    import ctypes
+                    alllib = pjoin(sys.path[0], ('liball%s_%sme.so' % (onedir, tag)))
+                    if os.path.exists(alllib):
+                            #os.environ['LD_PRELOAD'] = pjoin(pdir, 'liballme%s' % ext) + os.pathsep + os.environ.get('LD_PRELOAD','')
+                            #if ext == '.dylib':
+                            #    mode=os.RTLD_LOCAL
+                            #else:
+                            mode=os.RTLD_GLOBAL | os.RTLD_DEEPBIND
+                            try:
+                                ctypes.CDLL(alllib, mode=mode)
+                            except Exception as err:
+                                logger.debug('ctypes trick fail for module')
+                            break
+                    mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
                     #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
                     if mod_name in list(sys.modules.keys()):
                         del sys.modules[mod_name]
@@ -2305,7 +2321,6 @@ class ReweightInterface(extended_cmd.Cmd):
                             tmp_mod_name = tmp_mod_name.rsplit('.',1)[0]
                             del sys.modules[tmp_mod_name]
                         if six.PY3:
-                            misc.sprint(mod_name)
                             import importlib
                             mymod = importlib.import_module(mod_name,)
                             mymod = importlib.reload(mymod)
@@ -2313,9 +2328,10 @@ class ReweightInterface(extended_cmd.Cmd):
                         else:
                             mymod = __import__(mod_name, globals(), locals(), [],-1) 
                             S = mymod.SubProcesses
-                            mymod = getattr(S, 'allmatrix%spy' % tag)
+                            mymod = getattr(S, 'all_matrix%spy' % tag)
                             reload(mymod) 
                     else:
+
                         if six.PY3:
                             import importlib
                             mymod = importlib.import_module(mod_name,)
@@ -2323,43 +2339,63 @@ class ReweightInterface(extended_cmd.Cmd):
                         else:
                             mymod = __import__(mod_name, globals(), locals(), [],-1)
                             S = mymod.SubProcesses
-                            mymod = getattr(S, 'allmatrix%spy' % tag) 
+                            mymod = getattr(S, 'all_matrix%spy' % tag) 
                     
-                
+                if fprefix != '':
+                    fprefix = 'f%i_' % fprefix
+                    for attr in dir(mymod):
+                        if attr.startswith(fprefix):
+                            setattr(mymod, attr[len(fprefix):], getattr(mymod, attr)    )
+                elif any(attr.startswith('f') and attr[1:].split('_')[0].isdigit() for attr in dir(mymod)):
+                    fprefix = [attr for attr in dir(mymod) if attr.startswith('f') and attr[1:].split('_')[0].isdigit()][0].split('_')[0] + '_'
+                    for attr in dir(mymod):
+                        if attr.startswith(fprefix):
+                            setattr(mymod, attr[len(fprefix):], getattr(mymod, attr))
+                else:
+                    logger.debug("Could not find the fortran prefix in module %s", mod_name)
+                fprefix = ''
                 # Param card not available -> no initialisation
                 self.f2pylib[(onedir,tag)] = mymod
                 if hasattr(mymod, 'set_madloop_path'):
                     mymod.set_madloop_path(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources'))
                 if (self.second_model or self.second_process or self.dedicated_path):
                     break
+
+
+
             data = self.id_to_path
             if onedir not in ["rw_me",  "rw_mevirt"]:
                 data = self.id_to_path_second
 
             # get all the information
-            allids, all_pids = mymod.get_pdg_order()
+
+            allids, all_pids = getattr(mymod, 'get_pdg_order')()
             all_pdgs = [[pdg for pdg in pdgs if pdg!=0] for pdgs in  allids]
             all_prefix = [bytes(j).decode(errors="ignore").strip().lower() for j in mymod.get_prefix()]
             prefix_set = set(all_prefix)
-            misc.sprint(data, allids, all_pdgs, all_prefix, prefix_set)
             hel_dict={}
             for prefix in prefix_set:
-                if hasattr(mymod,'%sprocess_nhel' % prefix):
-                    nhel = getattr(mymod, '%sprocess_nhel' % prefix).nhel    
+                if hasattr(mymod,'%s%sprocess_nhel' % (fprefix,prefix)):
+                    #transer nhel information from fortran to wrapper
+                    getattr(mymod, '%sget_nhel_entry' % prefix)()
+                    #transer now to python dictionary
+                    nhel = getattr(getattr(mymod, '%sprocess_nhel' % prefix), '%snhel' %prefix)
                     hel_dict[prefix] = {}
                     for i, onehel in enumerate(zip(*nhel)):
                         hel_dict[prefix][tuple(onehel)] = i+1
-                elif hasattr(mymod, 'set_madloop_path') and \
+                elif hasattr(mymod, '%sset_madloop_path' % fprefix) or  hasattr(mymod, 'set_madloop_path') and \
                      os.path.exists(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())):
                     hel_dict[prefix] = {}
                     for i,line in enumerate(open(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper()))):
                         onehel = [int(h) for h in line.split()]
                         hel_dict[prefix][tuple(onehel)] = i+1
                 else:
-                    misc.sprint(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper() ))
-                    misc.sprint(os.path.exists(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())))
+                    misc.sprint(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper()))
+                    misc.sprint(dir(mymod))
+                    raise Exception
                     continue
-
+            if not hel_dict:
+                raise Exception("No helicity information found for reweighting ME in %s" % pdir)    
             for i,(pdg,pid) in enumerate(zip(all_pdgs,all_pids)):
                 if self.is_decay:
                     incoming = [pdg[0]]
@@ -2400,7 +2436,6 @@ class ReweightInterface(extended_cmd.Cmd):
                         misc.sprint(data[tag][:-1])
                         misc.sprint(order, pdir,)
                         raise Exception( "two different matrix-element have the same initial/final state. Leading to an ambiguity. If your events are ALWAYS written in the correct-order (look at the numbering in the Feynman Diagram). Then you can add inside your reweight_card the line 'change keep_ordering True'." )
-                misc.sprint(tag, order, pdir)
                 data[tag] = order, pdir, hel
              
              

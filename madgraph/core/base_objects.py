@@ -1228,6 +1228,7 @@ class Model(PhysicsObject):
         self['merged_particles'] = {}
         self['limitations'] = [] # MLM means that the model can sometimes have issue with MLM/default scale. 
                                  # fix_scale means that the model should use fix_scale computation.
+        self['startfromalpha0'] = False
         # attribute which might be define if needed
         #self['name2pdg'] = {'name': pdg}
         
@@ -1288,7 +1289,7 @@ class Model(PhysicsObject):
             if not (isinstance(value, list)):
                 raise self.PhysicsObjectError("Object of type %s is not a list" % type(value))
 
-        elif name == 'case_sensitive':
+        elif name in ['case_sensitive', 'startfromalpha0']:
             if not value in [True ,False]:
                 raise self.PhysicsObjectError("Object of type %s is not a boolean" % type(value))
             
