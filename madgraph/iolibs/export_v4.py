@@ -2090,10 +2090,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             for ibeam in [1, 2]:
                                 initial_state = proc.get_initial_pdg(ibeam)
                                 if abs(initial_state) in model.get('merged_particles'):
-                                    if initial_state>0:
-                                        initial_state = model.get('merged_particles')[initial_state][one_flv[ibeam-1]-1]
+                                    flv = proc.get_initial_flavor(ibeam)
+                                    if len(flv) == 0:
+                                        if initial_state>0:
+                                            initial_state = model.get('merged_particles')[initial_state][one_flv[ibeam-1]-1]
+                                        else:
+                                            initial_state = -model.get('merged_particles')[-initial_state][one_flv[ibeam-1]-1]
+                                    elif len(flv) ==1:
+                                        initial_state = flv[0]
                                     else:
-                                        initial_state = -model.get('merged_particles')[-initial_state][one_flv[ibeam-1]-1]
+                                        raise MadGraph5Error("Cannot determine the correct flavor for merged particle %s in process %s" % \
+                                                              (initial_state, process_line))
+                                
                                 if initial_state in list(pdf_codes.keys()):
                                     pdf_lines = pdf_lines + "%s%d*" % \
                                                 (pdf_codes[initial_state], ibeam)
@@ -2131,10 +2139,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                         for ibeam in [1, 2]:
                             initial_state = proc.get_initial_pdg(ibeam)
                             if abs(initial_state) in model.get('merged_particles'):
-                                if initial_state>0:
-                                    initial_state = model.get('merged_particles')[initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+                                flv = proc.get_initial_flavor(ibeam)
+                                if len(flv) == 0:
+                                    if initial_state>0:
+                                        initial_state = model.get('merged_particles')[initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+                                    else:
+                                        initial_state = -model.get('merged_particles')[-initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+                                elif len(flv) ==1:
+                                    initial_state = flv[0]
                                 else:
-                                    initial_state = -model.get('merged_particles')[-initial_state][matrix_element.get_external_flavors()[nb_flavor][ibeam-1]-1]
+                                    raise MadGraph5Error("Cannot determine the correct flavor for merged particle %s in process %s" % \
+                                                          (initial_state, process_line))
 
                             if initial_state in list(pdf_codes.keys()):
                                 pdf_lines = pdf_lines + "%s%d(IVEC)*" % \

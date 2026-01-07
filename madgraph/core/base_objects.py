@@ -3976,6 +3976,16 @@ class Process(PhysicsObject):
         else:
             return legs[0].get('id')
         
+    def get_initial_flavor(self, number):
+        """Return the pdg codes for initial state particles for beam number"""
+
+        legs = [leg for leg in self.get('legs') if leg.get('state') == False and\
+                       leg.get('number') == number]
+        if not legs:
+            return None
+        else:
+            return legs[0].get('flavor')
+        
     def get_initial_final_ids(self):
         """return a tuple of two tuple containing the id of the initial/final
            state particles. Each list is ordered"""

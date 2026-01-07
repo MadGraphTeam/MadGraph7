@@ -5158,7 +5158,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         restricted_flavor = [None]*len(external_wfs)
         for i,wf in enumerate(external_wfs):
             if wf.get('flavor'):
-                restricted_flavor[i] = wf.get('flavor') 
+                if wf.get('state') == 'final':
+                    restricted_flavor[i] = wf.get('flavor') 
+                else:
+                    restricted_flavor[i] = [-f for f in wf.get('flavor')]
 
         # need to avoid to compute for the permutation(?)
         checked = {}
