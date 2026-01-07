@@ -324,10 +324,12 @@ def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
             # It might be that the default of the model (i.e. 'CMSParam') is CMS.
             model.change_mass_to_complex_scheme(toCMS=False, bypass_check=allow_qed)
 
-    misc.sprint("Passing to generic quark/lepton/neut should be optional/smart/...")
-    model.merge_flavor([1,2,3,4])
-    model.merge_flavor([11,13])
-    model.merge_flavor([12,14,16])
+ 
+    if options.get('apply_flavor_grouping', True):
+        misc.sprint("Apply flavor grouping to the model")
+        model.merge_flavor([1,2,3,4])
+        model.merge_flavor([11,13])
+        model.merge_flavor([12,14,16])
 
     return model
     

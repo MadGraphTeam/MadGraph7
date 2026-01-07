@@ -5165,7 +5165,7 @@ This implies that with decay chains:
                                 mylegids.append(pdg)
                             else:
                                 mylegids.append(-pdg)
-                            flavor.append(self._curr_model.merged_particles[pdg].index(abs(int(part_name))))
+                            flavor = [int(part_name)]
                             break 
                 elif int(part_name) in self._curr_model.get('particle_dict'):
                     mylegids.append(int(part_name))
@@ -5183,8 +5183,8 @@ This implies that with decay chains:
                                     mylegids.append(mpdg)
                                 else:
                                     mylegids.append(-mpdg)
-                                flavor.append(self._curr_model.merged_particles[mpdg].index(abs(pdg)))
-                            break
+                                flavor = [pdg] 
+                                break
                     else:  
                         mylegids.append(pdg)
                 else:
@@ -5210,9 +5210,11 @@ This implies that with decay chains:
                                 "%s mode does not handle tagged particles" % LoopOption)
                         if flavor:
                             logger.critical("convert process to multi-flavor equivalent (flavor selection is not yet supported)")
+                        
                         myleglist.append(base_objects.MultiLeg({'ids':mylegids,
                                                             'state':state,
-                                                            'polarization': polarization}))
+                                                            'polarization': polarization,
+                                                            'flavor': flavor }))
                     else:
                         myleglist.append(fks_tag.MultiTagLeg({'ids':mylegids,
                                                           'state':state,
@@ -5764,6 +5766,8 @@ This implies that with decay chains:
                 else:
                     aloha.aloha_prefix=''
                 
+                options['apply_flavor_grouping'] = self.options.get('apply_flavor_grouping', True)
+
                 try:
                     self._curr_model = import_ufo.import_model(args[1], prefix=prefix,
                         complex_mass_scheme=self.options['complex_mass_scheme'],

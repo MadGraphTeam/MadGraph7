@@ -650,6 +650,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         #
         #
         self['polarization'] = []
+        self['flavor'] = []
 
     # Customized constructor
     def __init__(self, *arguments):
@@ -688,6 +689,10 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 else:
                     if 99 in leg.get('polarization'):
                         raise Exception("polarization A only valid for propagator.")
+                    
+                if leg.get('flavor') and self['state'] in ['initial','final']:
+                    self.set('flavor', leg.get('flavor'))
+
                 # Set fermion flow state. Initial particle and final
                 # antiparticle are incoming, and vice versa for
                 # outgoing
@@ -935,7 +940,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         return ['particle', 'antiparticle', 'is_part',
                 'interaction_id', 'pdg_codes', 'orders', 'inter_color', 
                 'lorentz', 'coupling', 'color_key', 'state', 'number_external',
-                'number', 'fermionflow', 'mothers', 'is_loop']
+                'number', 'fermionflow', 'mothers', 'is_loop', 'flavor']
 
     # Helper functions
 
@@ -1879,6 +1884,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 res.append(self.get('is_part'))
 
         res.append(tuple(self.get('polarization')) )
+        res.append(tuple(self.get('flavor')))
 
         # Check if we need to append a charge conjugation flag
         if self.needs_hermitian_conjugate():
@@ -5149,7 +5155,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             to_map[key] = model.get('merged_particles')[key] 
             
         flavor_list = []
-    
+        restricted_flavor = [None]*len(external_wfs)
+        for i,wf in enumerate(external_wfs):
+            if wf.get('flavor'):
+                restricted_flavor[i] = wf.get('flavor') 
+
         # need to avoid to compute for the permutation(?)
         checked = {}
 
@@ -5157,6 +5167,19 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         for one_flavor in itertools.product(*[to_map[abs(id)] for id in pdgs]):
             # get the actual pdg code (with the sign)
             pdg = [one_flavor[i] if id > 0 else -one_flavor[i] for i,id in enumerate(pdgs)]
+
+            #check if restricted flavor
+            if restricted_flavor != [None]*len(external_wfs):
+                skip = False
+                for i,rf in enumerate(restricted_flavor):
+                    if rf is not None and pdg[i] not in rf:
+                        skip = True
+                        break
+                if skip:
+                    misc.sprint('  skip flavor:', one_flavor)
+                    continue
+
+
             # flip initial states
             next, ninit = self.get_nexternal_ninitial()
             for i in range(ninit):

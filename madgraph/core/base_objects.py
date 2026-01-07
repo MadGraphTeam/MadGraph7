@@ -2459,6 +2459,7 @@ class Leg(PhysicsObject):
         self['onshell'] = None
         # filter on the helicty
         self['polarization'] = []
+        self['flavor'] = []
 
     def filter(self, name, value):
         """Filter for valid leg property values."""
@@ -2501,7 +2502,7 @@ class Leg(PhysicsObject):
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization']
+        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization', 'flavor']
 
     def is_fermion(self, model):
         """Returns True if the particle corresponding to the leg is a
@@ -2674,6 +2675,7 @@ class MultiLeg(PhysicsObject):
         self['ids'] = []
         self['state'] = True
         self['polarization'] = []
+        self['flavor'] = []
 
     def filter(self, name, value):
         """Filter for valid multileg property values."""
@@ -2694,6 +2696,15 @@ class MultiLeg(PhysicsObject):
                     raise self.PhysicsObjectError( \
                           "%s is not a valid polarization" % str(value))
 
+        if name == 'flavor':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError( \
+                        "%s is not a valid list" % str(value))
+            for i in value:
+                if i != int(i):
+                    raise self.PhysicsObjectError( \
+                          "%s is not a valid flavor" % str(value))
+                
         if name == 'state':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid leg state (initial|final)" % \
@@ -2704,7 +2715,7 @@ class MultiLeg(PhysicsObject):
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['ids', 'state','polarization']
+        return ['ids', 'state','polarization','flavor']
 
 #===============================================================================
 # LegList
