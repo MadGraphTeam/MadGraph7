@@ -8,7 +8,7 @@
 using namespace madevent;
 using json = nlohmann::json;
 
-void Function::store(const std::string& file) const {
+void Function::save(const std::string& file) const {
     std::ofstream f(file);
     json j;
     j = *this;
@@ -105,7 +105,12 @@ void madevent::to_json(json& j, const Function& func) {
     json globals(json::value_t::array);
     for (auto& input : func.inputs()) {
         inputs.push_back(
+            input.type.dtype == DataType::batch_sizes ?
             json{
+                {"local", input},
+                {"dtype", input.type.dtype},
+                {"batch_sizes", input.type.batch_size_list},
+            } : json{
                 {"local", input},
                 {"dtype", input.type.dtype},
                 {"batch_size", input.type.batch_size},
@@ -144,13 +149,19 @@ void madevent::from_json(const json& j, Function& func) {
     TypeVec input_types, output_types;
     std::vector<std::size_t> input_locals, output_locals;
     for (auto& j_input : j.at("inputs")) {
-        BatchSize batch_size = BatchSize::one;
-        j_input.at("batch_size").get_to<BatchSize>(batch_size);
-        input_types.emplace_back(
-            j_input.at("dtype").get<DataType>(),
-            batch_size,
-            j_input.at("shape").get<std::vector<int>>()
-        );
+        if (j_input.at("dtype").get<DataType>() == DataType::batch_sizes) {
+            input_types.emplace_back(
+                j_input.at("batch_sizes").get<std::vector<BatchSize>>()
+            );
+        } else {
+            BatchSize batch_size = BatchSize::one;
+            j_input.at("batch_size").get_to<BatchSize>(batch_size);
+            input_types.emplace_back(
+                j_input.at("dtype").get<DataType>(),
+                batch_size,
+                j_input.at("shape").get<std::vector<int>>()
+            );
+        }
         input_locals.push_back(j_input.at("local").get<std::size_t>());
     }
     for (auto& j_output : j.at("outputs")) {

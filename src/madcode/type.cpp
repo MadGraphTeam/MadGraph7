@@ -4,6 +4,45 @@
 using namespace madevent;
 using json = nlohmann::json;
 
+namespace {
+
+json escape_special_values(double value) {
+    if (std::isnan(value)) {
+        return "nan";
+    } else if (std::isinf(value)) {
+        return value > 0 ? "+inf" : "-inf";
+    } else {
+        return value;
+    }
+}
+json escape_special_values(const std::vector<double>& values) {
+    json ret = json::array();
+    for (double value : values) {
+        ret.push_back(escape_special_values(value));
+    }
+    return ret;
+}
+json escape_special_values(auto value) { return value; }
+
+double unescape_special_values(const json& json_value) {
+    if (json_value.is_string()) {
+        std::string value = json_value.get<std::string>();
+        if (value == "nan") {
+            return std::numeric_limits<double>::quiet_NaN();
+        } else if (value == "+inf") {
+            return std::numeric_limits<double>::infinity();
+        } else if (value == "-inf") {
+            return -std::numeric_limits<double>::infinity();
+        } else {
+            throw std::invalid_argument("invalid value");
+        }
+    } else {
+        return json_value.get<double>();
+    }
+}
+
+} // namespace
+
 std::size_t BatchSize::UnnamedBody::counter = 0;
 const BatchSize BatchSize::zero = BatchSize(BatchSize::Compound{});
 const BatchSize BatchSize::one = BatchSize(BatchSize::One{});
@@ -160,7 +199,7 @@ void madevent::to_json(json& j, const Value& value) {
                 j = json{
                     {"dtype", value.type.dtype},
                     {"shape", json(json::value_t::array)},
-                    {"data", val}
+                    {"data", json(escape_special_values(val))}
                 };
             },
             [&](TensorValue val) {
@@ -168,7 +207,10 @@ void madevent::to_json(json& j, const Value& value) {
                     {"dtype", value.type.dtype},
                     {"shape", std::get<0>(val)},
                     {"data",
-                     std::visit([](auto data) { return json{data}; }, std::get<1>(val))}
+                     std::visit(
+                         [](auto data) { return escape_special_values(data); },
+                         std::get<1>(val)
+                     )}
                 };
             },
             [&](std::monostate val) { j = value.local_index; }
@@ -228,11 +270,16 @@ void madevent::from_json(const json& j, Value& value) {
         } else {
             value = Value(j_data.get<std::vector<me_int_t>>(), shape);
         }
+        break;
     case DataType::dt_float:
         if (shape.size() == 0) {
-            value = j_data.get<double>();
+            value = unescape_special_values(j_data);
         } else {
-            value = Value(j_data.get<std::vector<double>>(), shape);
+            std::vector<double> tensor;
+            for (json j_val : j_data) {
+                tensor.push_back(unescape_special_values(j_val));
+            }
+            value = Value(tensor, shape);
         }
         break;
     case DataType::batch_sizes:

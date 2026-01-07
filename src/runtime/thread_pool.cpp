@@ -11,27 +11,7 @@ ThreadPool::~ThreadPool() { set_thread_count(0); }
 void ThreadPool::set_thread_count(int new_count) {
     {
         std::unique_lock<std::mutex> lock(_mutex);
-        if (_busy_threads > 0) {
-            throw std::runtime_error(
-                "Cannot change thread count while thread pool is busy"
-            );
-        }
         _thread_count = new_count < 0 ? std::thread::hardware_concurrency() : new_count;
-
-        std::size_t queue_size = _thread_count * QUEUE_SIZE_PER_THREAD;
-        std::size_t queue_size_rounded = 1;
-        while (queue_size_rounded < queue_size) {
-            queue_size_rounded *= 2;
-        }
-        _job_queue.resize(queue_size_rounded);
-        _done_queue.resize(queue_size_rounded);
-        _queue_mask = queue_size_rounded - 1;
-        _job_queue_begin = 0;
-        _job_queue_end = 0;
-        _job_queue_read = 0;
-        _done_queue_begin = 0;
-        _done_queue_end = 0;
-        _done_queue_write = 0;
     }
 
     if (_threads.size() < _thread_count) {
@@ -56,68 +36,50 @@ void ThreadPool::set_thread_count(int new_count) {
 void ThreadPool::submit(JobFunc job) {
     // Spin until there is space in the queue. The queue should be sufficiently large
     // such that this never happens.
-    std::size_t begin_index, current_index, next_index;
-    do {
-        begin_index = _job_queue_begin.load();
-        current_index = _job_queue_end.load();
-        next_index = (current_index + 1) & _queue_mask;
-    } while (next_index == begin_index);
-    _job_queue[current_index] = std::move(job);
-    _job_queue_end.store(next_index);
+    std::unique_lock<std::mutex> lock(_mutex);
+    _job_queue.push_back(job);
+    if (!_done_queue.empty()) {
+        _done_buffer.insert(
+            _done_buffer.begin(), _done_queue.rbegin(), _done_queue.rend()
+        );
+        _done_queue.clear();
+    }
+    lock.unlock();
     _cv_run.notify_one();
 }
 
 void ThreadPool::submit(std::vector<JobFunc>& jobs) {
-    std::size_t job_index = 0;
-    while (job_index < jobs.size()) {
-        std::size_t begin_index, current_index;
-        do {
-            begin_index = _job_queue_begin.load();
-            current_index = _job_queue_end.load();
-        } while (((current_index + 1) & _queue_mask) == begin_index);
-        for (; ((current_index + 1) & _queue_mask) != begin_index &&
-             job_index < jobs.size();
-             ++job_index, current_index = (current_index + 1) & _queue_mask) {
-            _job_queue[current_index] = std::move(jobs[job_index]);
-        }
-        _job_queue_end.store(current_index);
-        _cv_run.notify_all();
+    if (jobs.empty()) {
+        return;
     }
+    std::unique_lock<std::mutex> lock(_mutex);
+    for (auto& job : jobs) {
+        _job_queue.push_back(std::move(job));
+    }
+    if (!_done_queue.empty()) {
+        _done_buffer.insert(
+            _done_buffer.begin(), _done_queue.rbegin(), _done_queue.rend()
+        );
+        _done_queue.clear();
+    }
+    lock.unlock();
+    _cv_run.notify_all();
 }
 
 bool ThreadPool::fill_done_cache() {
-    if (!_done_queue_cache.empty()) {
+    if (!_done_buffer.empty()) {
         return true;
     }
 
-    std::size_t begin_index = _done_queue_begin.load();
-    std::size_t end_index = _done_queue_end.load();
-    if (begin_index == end_index) {
-        std::unique_lock<std::mutex> lock(_mutex);
-        // if (_job_queue_begin == _job_queue_end && _busy_threads == 0) return false;
-        bool no_more_jobs;
-        _cv_done.wait(lock, [&] {
-            end_index = _done_queue_end.load();
-            no_more_jobs = false;
-            if (_busy_threads == 0) {
-                if (_job_queue_begin.load() == _job_queue_end.load()) {
-                    no_more_jobs = true;
-                } else {
-                    // TODO: why is this necessary?
-                    _cv_run.notify_all();
-                }
-            }
-            return begin_index != end_index || no_more_jobs;
-        });
-        if (begin_index == end_index) {
+    std::unique_lock<std::mutex> lock(_mutex);
+    if (_done_queue.empty()) {
+        if (_job_queue.empty() && _busy_threads == 0) {
             return false;
         }
+        _cv_done.wait(lock, [&] { return !_done_queue.empty(); });
     }
-
-    for (std::size_t i = begin_index; i != end_index; i = (i + 1) & _queue_mask) {
-        _done_queue_cache.push_back(_done_queue[i]);
-    }
-    _done_queue_begin.store(end_index);
+    _done_buffer.insert(_done_buffer.begin(), _done_queue.rbegin(), _done_queue.rend());
+    _done_queue.clear();
     return true;
 }
 
@@ -125,8 +87,8 @@ std::optional<std::size_t> ThreadPool::wait() {
     if (!fill_done_cache()) {
         return std::nullopt;
     }
-    std::size_t result = _done_queue_cache.back();
-    _done_queue_cache.pop_back();
+    std::size_t result = _done_buffer.back();
+    _done_buffer.pop_back();
     return result;
 }
 
@@ -134,8 +96,8 @@ std::vector<std::size_t> ThreadPool::wait_multiple() {
     if (!fill_done_cache()) {
         return {};
     }
-    std::vector<std::size_t> ret(_done_queue_cache.rbegin(), _done_queue_cache.rend());
-    _done_queue_cache.clear();
+    std::vector<std::size_t> ret(_done_buffer.rbegin(), _done_buffer.rend());
+    _done_buffer.clear();
     return ret;
 }
 
@@ -157,72 +119,19 @@ void ThreadPool::thread_loop(std::size_t index) {
     std::unique_lock<std::mutex> lock(_mutex);
     while (true) {
         _cv_run.wait(lock, [&] {
-            return _job_queue_begin != _job_queue_end || index >= _thread_count;
+            return !_job_queue.empty() || index >= _thread_count;
         });
         if (index >= _thread_count) {
             return;
         }
-        std::size_t bt = ++_busy_threads;
+        auto job = _job_queue.front();
+        _job_queue.pop_front();
+        ++_busy_threads;
         lock.unlock();
-
-        while (true) {
-            // if queue is empty, go to sleep
-            std::size_t current_index = _job_queue_read.load();
-            if (current_index == _job_queue_end.load()) {
-                break;
-            }
-
-            // spin until read index was increased
-            std::size_t next_index = (current_index + 1) & _queue_mask;
-            if (!_job_queue_read.compare_exchange_weak(current_index, next_index)) {
-                continue;
-            }
-
-            // we now have exclusive access to the queue item at current_index
-            JobFunc job = std::move(_job_queue[current_index]);
-
-            // free up space in the queue
-            std::size_t current_index_before = current_index;
-            while (!_job_queue_begin.compare_exchange_weak(current_index, next_index)) {
-                current_index = current_index_before;
-            }
-
-            // run job
-            std::size_t result = job();
-
-            // spin until there is space in done queue and it was successfully increased
-            // spinning can be prevented by making the queue large enough
-            std::size_t current_done_index, next_done_index, done_begin_index;
-            do {
-                done_begin_index = _done_queue_begin.load();
-                current_done_index = _done_queue_write.load();
-                next_done_index = (current_done_index + 1) & _queue_mask;
-                if (next_done_index == done_begin_index) {
-                    continue;
-                }
-            } while (!_done_queue_write.compare_exchange_weak(
-                current_done_index, next_done_index
-            ));
-
-            // we now have exclusive access to the queue item at current_done_index
-            _done_queue[current_done_index] = result;
-
-            // increase end index to make result available
-            std::size_t current_done_index_before = current_done_index;
-            while (!_done_queue_end.compare_exchange_weak(
-                current_done_index, next_done_index
-            )) {
-                current_done_index = current_done_index_before;
-            }
-
-            // if queue was empty, notify waiting threads
-            if (current_done_index_before == done_begin_index) {
-                _cv_done.notify_one();
-            }
-        }
-
+        std::size_t result = job();
         lock.lock();
-        bt = --_busy_threads;
+        --_busy_threads;
+        _done_queue.push_back(result);
         _cv_done.notify_one();
     }
 }

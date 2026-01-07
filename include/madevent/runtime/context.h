@@ -49,6 +49,7 @@ public:
         return count;
     }
     std::size_t index() const { return _index; }
+    const std::string& file_name() const { return _file_name; }
 
     void call(
         UmamiHandle handle,
@@ -116,6 +117,8 @@ public:
     Tensor global(const std::string& name);
     bool global_requires_grad(const std::string& name);
     bool global_exists(const std::string& name);
+    std::vector<std::string> global_names() const;
+    void delete_global(const std::string& name);
     const MatrixElementApi& matrix_element(std::size_t index) const;
     void save(const std::string& file) const;
     void load(const std::string& file);
@@ -125,8 +128,9 @@ private:
     // make sure that ThreadPool outlives any Context instance
     inline static ThreadPool& thread_pool_ref = default_thread_pool();
     DevicePtr _device;
-    std::unordered_map<std::string, std::tuple<Tensor, bool>> globals;
-    std::vector<MatrixElementApi> matrix_elements;
+    std::unordered_map<std::string, std::tuple<Tensor, bool>> _globals;
+    std::vector<MatrixElementApi> _matrix_elements;
+    std::vector<std::string> _param_card_paths;
 };
 
 using ContextPtr = std::shared_ptr<Context>;

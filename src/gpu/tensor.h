@@ -228,6 +228,9 @@ void tensor_foreach(
     std::size_t batch_size,
     const AsyncGpuDevice& device
 ) {
+    if (batch_size == 0) {
+        return;
+    }
     // get views to the tensors with the correct types based on the signature of func
     auto views =
         std::apply(get_views<decltype(func), dims>(), std::tuple_cat(inputs, outputs));

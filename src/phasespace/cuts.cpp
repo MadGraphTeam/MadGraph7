@@ -1,190 +1,86 @@
 #include "madevent/phasespace/cuts.h"
 
-#include <ranges>
-
 #include "madevent/madcode/type.h"
-#include "madevent/util.h"
 
 using namespace madevent;
 
-namespace {
-
-void update_cuts(
-    double& min_cut, double& max_cut, Cuts::LimitType limit_type, double value
-) {
-    if (limit_type == Cuts::min) {
-        if (min_cut < value) {
-            min_cut = value;
-        }
-    } else if (max_cut > value) {
-        max_cut = value;
-    }
-}
-
-} // namespace
-
-const Cuts::PidVec Cuts::jet_pids{1, 2, 3, 4, -1, -2, -3, -4, 21};
-const Cuts::PidVec Cuts::bottom_pids{-5, 5};
-const Cuts::PidVec Cuts::lepton_pids{11, 13, 15, -11, -13, -15};
-const Cuts::PidVec Cuts::missing_pids{12, 14, 16, -12, -14, -16};
-const Cuts::PidVec Cuts::photon_pids{22};
-
-Cuts::Cuts(std::vector<int> pids, std::vector<CutItem> cut_data) :
-    FunctionGenerator(
-        "Cuts", {batch_float, batch_four_vec_array(pids.size() + 2)}, {batch_float}
-    ),
-    _pids(pids),
+Cuts::Cuts(const std::vector<CutItem>& cut_data) :
+    FunctionGenerator("Cuts", cut_data.at(0).observable.arg_types(), {batch_float}),
     _cut_data(cut_data) {}
 
+Cuts::Cuts(std::size_t particle_count) :
+    FunctionGenerator("Cuts", {batch_four_vec_array(particle_count)}, {batch_float}) {}
+
 ValueVec Cuts::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
-    auto sqrt_s = args.at(0);
-    auto momenta = args.at(1);
-
-    bool has_pt_cuts(false), has_eta_cuts(false), has_dr_cuts(false);
-    bool has_mass_cuts(false), has_sqrt_s_cuts(false);
-    double inf = std::numeric_limits<double>::infinity();
-    int n_out = _pids.size();
-    std::vector<double> pt_cuts(2 * n_out, 0.), eta_cuts(2 * n_out, 0.);
-    std::vector<double> dr_cuts, mass_cuts, sqrt_s_cuts{0., inf};
-    std::vector<me_int_t> dr_indices, mass_indices;
-    for (std::size_t i = n_out; i < 2 * n_out; ++i) {
-        pt_cuts.at(i) = inf;
-        eta_cuts.at(i) = inf;
-    }
-
-    // TODO: reduce code duplication
-    for (auto& cut : _cut_data) {
-        switch (cut.observable) {
-        case obs_pt:
-            process_single_cuts(cut, pt_cuts, has_pt_cuts);
-            break;
-        case obs_eta:
-            process_single_cuts(cut, eta_cuts, has_eta_cuts);
-            break;
-        case obs_dr:
-            process_pair_cuts(cut, dr_indices, dr_cuts, has_dr_cuts);
-            break;
-        case obs_mass:
-            process_pair_cuts(cut, mass_indices, mass_cuts, has_mass_cuts);
-            break;
-        case obs_sqrt_s:
-            update_cuts(
-                sqrt_s_cuts.at(0), sqrt_s_cuts.at(1), cut.limit_type, cut.value
-            );
-            has_sqrt_s_cuts = true;
-            break;
-        }
-    }
-
     ValueVec weights;
-    if (has_pt_cuts) {
-        weights.push_back(fb.cut_pt(momenta, Value(pt_cuts, {n_out, 2})));
-    }
-    if (has_eta_cuts) {
-        weights.push_back(fb.cut_eta(momenta, Value(eta_cuts, {n_out, 2})));
-    }
-    if (has_dr_cuts) {
-        weights.push_back(fb.cut_dr(
-            momenta,
-            Value(dr_indices, {static_cast<int>(dr_indices.size()) / 2, 2}),
-            Value(dr_cuts, {static_cast<int>(dr_cuts.size()) / 2, 2})
-        ));
-    }
-    if (has_mass_cuts) {
-        weights.push_back(fb.cut_m_inv(
-            momenta,
-            Value(mass_indices, {static_cast<int>(mass_indices.size()) / 2, 2}),
-            Value(mass_cuts, {static_cast<int>(mass_cuts.size()) / 2, 2})
-        ));
-    }
-    if (has_sqrt_s_cuts && (sqrt_s_cuts.at(0) > 0. || sqrt_s_cuts.at(1) < inf)) {
-        weights.push_back(fb.cut_sqrt_s(momenta, Value(sqrt_s_cuts, {2})));
+    for (auto& item : _cut_data) {
+        if (item.observable.not_found()) {
+            continue;
+        }
+        Value obs = item.observable.build_function(fb, args).at(0);
+        if (obs.type.shape.size() == 0) {
+            weights.push_back(fb.cut_one(obs, item.min, item.max));
+        } else if (item.mode == CutMode::all) {
+            weights.push_back(fb.cut_all(obs, item.min, item.max));
+        } else {
+            weights.push_back(fb.cut_any(obs, item.min, item.max));
+        }
     }
     return {fb.product(weights)};
 }
 
 double Cuts::sqrt_s_min() const {
     double sqrt_s_min = 0.;
-    for (auto& cut : _cut_data) {
-        if (cut.observable == Cuts::obs_sqrt_s && cut.limit_type == Cuts::min &&
-            sqrt_s_min < cut.value) {
-            sqrt_s_min = cut.value;
+    for (auto& item : _cut_data) {
+        if (item.observable.observable() == Observable::obs_sqrt_s &&
+            sqrt_s_min < item.min) {
+            sqrt_s_min = item.min;
         }
     }
     return sqrt_s_min;
 }
 
 std::vector<double> Cuts::eta_max() const {
-    return limits(Cuts::obs_eta, Cuts::max, std::numeric_limits<double>::infinity());
-}
-
-std::vector<double> Cuts::pt_min() const { return limits(Cuts::obs_pt, Cuts::min, 0.); }
-
-std::vector<double> Cuts::limits(
-    CutObservable observable, LimitType limit_type, double default_value
-) const {
-    std::vector<double> limits(_pids.size(), default_value);
-    for (auto& cut : _cut_data) {
-        if (cut.observable == observable && cut.limit_type == limit_type) {
-            for (auto [limit, pid] : zip(limits, _pids)) {
-                if (std::find(cut.pids.begin(), cut.pids.end(), pid) !=
-                        cut.pids.end() &&
-                    ((limit_type == Cuts::max && (limit > cut.value)) ||
-                     (limit_type == Cuts::min && (limit < cut.value)))) {
-                    limit = cut.value;
-                }
+    std::vector<double> eta_max(
+        arg_types().at(0).shape.at(0) - 2, std::numeric_limits<double>::infinity()
+    );
+    for (auto& item : _cut_data) {
+        double item_max = std::numeric_limits<double>::infinity();
+        if (item.observable.observable() == Observable::obs_eta_abs) {
+            item_max = item.max;
+        } else if (item.observable.observable() == Observable::obs_eta) {
+            item_max = std::max(-item.min, item.max);
+        } else {
+            continue;
+        }
+        for (std::size_t index : item.observable.simple_observable_indices()) {
+            if (index < 2) {
+                continue;
+            }
+            double& limit = eta_max.at(index - 2);
+            if (limit > item_max) {
+                limit = item_max;
             }
         }
     }
-    return limits;
+    return eta_max;
 }
 
-void Cuts::process_pair_cuts(
-    CutItem cut,
-    std::vector<me_int_t>& indices,
-    std::vector<double>& limits,
-    bool& has_cuts
-) const {
-    double inf = std::numeric_limits<double>::infinity();
-    std::size_t i = 0;
-    std::vector<me_int_t> indices2;
-    std::vector<double> limits2;
-    for (auto pid_i : _pids) {
-        std::size_t j = i + 1;
-        for (auto pid_j : _pids | std::views::drop(i + 1)) {
-            if (std::find(cut.pids.begin(), cut.pids.end(), pid_i) != cut.pids.end() &&
-                std::find(cut.pids.begin(), cut.pids.end(), pid_j) != cut.pids.end()) {
-                indices.push_back(i);
-                indices2.push_back(j);
-                // TODO: update existing cuts
-                if (cut.limit_type == Cuts::min) {
-                    limits.push_back(cut.value);
-                    limits2.push_back(inf);
-                } else {
-                    limits.push_back(0.);
-                    limits2.push_back(cut.value);
-                }
-                has_cuts = true;
+std::vector<double> Cuts::pt_min() const {
+    std::vector<double> pt_min(arg_types().at(0).shape.at(0) - 2, 0.);
+    for (auto& item : _cut_data) {
+        if (item.observable.observable() != Observable::obs_pt) {
+            continue;
+        }
+        for (std::size_t index : item.observable.simple_observable_indices()) {
+            if (index < 2) {
+                continue;
             }
-            ++j;
+            double& limit = pt_min.at(index - 2);
+            if (limit < item.max) {
+                limit = item.max;
+            }
         }
-        ++i;
     }
-    indices.insert(indices.end(), indices2.begin(), indices2.end());
-    limits.insert(limits.end(), limits2.begin(), limits2.end());
-}
-
-void Cuts::process_single_cuts(
-    CutItem cut, std::vector<double>& limits, bool& has_cuts
-) const {
-    std::size_t i = 0;
-    for (auto pid : _pids) {
-        if (std::find(cut.pids.begin(), cut.pids.end(), pid) != cut.pids.end()) {
-            auto& limit_min = limits.at(i);
-            auto& limit_max = limits.at(_pids.size() + i);
-            update_cuts(limit_min, limit_max, cut.limit_type, cut.value);
-            has_cuts = true;
-        }
-        ++i;
-    }
+    return pt_min;
 }

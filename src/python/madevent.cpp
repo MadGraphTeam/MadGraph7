@@ -66,12 +66,13 @@ template <typename EnumType, typename ParentType>
 void add_enum(
     ParentType& parent,
     const char* enum_name,
-    std::initializer_list<std::pair<const std::string, EnumType>> values
+    std::initializer_list<std::pair<const std::string, EnumType>> values,
+    const std::string& prefix = ""
 ) {
     std::unordered_map<std::string, EnumType> str_to_enum_map(values);
     py::enum_<EnumType> enumeration(parent, enum_name);
     for (auto& [key, value] : values) {
-        enumeration.value(key.c_str(), value);
+        enumeration.value((prefix + key).c_str(), value);
     }
     enumeration.def(
         "__init__",
@@ -163,7 +164,7 @@ PYBIND11_MODULE(_madevent_py, m) {
     py::classh<Function>(m, "Function", py::dynamic_attr())
         .def("__str__", &to_string<Function>)
         .def("__repr__", &to_string<Function>)
-        .def("store", &Function::store, py::arg("file"))
+        .def("save", &Function::save, py::arg("file"))
         .def_static("load", &Function::load, py::arg("file"))
         .def_property_readonly("inputs", &Function::inputs)
         .def_property_readonly("outputs", &Function::outputs)
@@ -417,51 +418,102 @@ PYBIND11_MODULE(_madevent_py, m) {
     py::classh<MultiChannelMapping, Mapping>(m, "MultiChannelMapping")
         .def(py::init<std::vector<std::shared_ptr<Mapping>>&>(), py::arg("mappings"));
 
-    auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts");
-    add_enum<Cuts::CutObservable>(
-        cuts,
-        "CutObservable",
+    auto obs = py::classh<Observable, FunctionGenerator>(m, "Observable");
+    add_enum<Observable::ObservableOption>(
+        obs,
+        "ObservableOption",
         {
-            {"obs_pt", Cuts::obs_pt},
-            {"obs_eta", Cuts::obs_eta},
-            {"obs_dr", Cuts::obs_dr},
-            {"obs_mass", Cuts::obs_mass},
-            {"obs_sqrt_s", Cuts::obs_sqrt_s},
-        }
+            {"e", Observable::obs_e},
+            {"px", Observable::obs_px},
+            {"py", Observable::obs_py},
+            {"pz", Observable::obs_pz},
+            {"mass", Observable::obs_mass},
+            {"pt", Observable::obs_pt},
+            {"p_mag", Observable::obs_p_mag},
+            {"phi", Observable::obs_phi},
+            {"theta", Observable::obs_theta},
+            {"y", Observable::obs_y},
+            {"y_abs", Observable::obs_y_abs},
+            {"eta", Observable::obs_eta},
+            {"eta_abs", Observable::obs_eta_abs},
+            {"delta_eta", Observable::obs_delta_eta},
+            {"delta_phi", Observable::obs_delta_phi},
+            {"delta_r", Observable::obs_delta_r},
+            {"sqrt_s", Observable::obs_sqrt_s},
+        },
+        "obs_"
     );
-    add_enum<Cuts::LimitType>(
+    obs.def(
+           py::init<
+               const std::vector<int>&,
+               Observable::ObservableOption,
+               const nested_vector2<int>&,
+               bool,
+               bool,
+               const std::optional<Observable::ObservableOption>&,
+               const std::vector<int>&,
+               bool,
+               const std::string&>(),
+           py::arg("pids"),
+           py::arg("observable"),
+           py::arg("select_pids"),
+           py::arg("sum_momenta") = false,
+           py::arg("sum_observable") = false,
+           py::arg("order_observable") = std::nullopt,
+           py::arg("order_indices") = std::vector<int>{},
+           py::arg("ignore_incoming") = true,
+           py::arg("name") = ""
+    )
+        .def_readonly_static("jet_pids", &Observable::jet_pids)
+        .def_readonly_static("bottom_pids", &Observable::bottom_pids)
+        .def_readonly_static("lepton_pids", &Observable::lepton_pids)
+        .def_readonly_static("missing_pids", &Observable::missing_pids)
+        .def_readonly_static("photon_pids", &Observable::photon_pids);
+
+    auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts");
+    add_enum<Cuts::CutMode>(
         cuts,
-        "LimitType",
+        "CutMode",
         {
-            {"min", Cuts::min},
-            {"max", Cuts::max},
+            {"any", Cuts::any},
+            {"all", Cuts::all},
         }
     );
     py::classh<Cuts::CutItem>(m, "CutItem")
         .def(
-            py::init<Cuts::CutObservable, Cuts::LimitType, double, Cuts::PidVec>(),
+            py::init<Observable, double, double, Cuts::CutMode>(),
             py::arg("observable"),
-            py::arg("limit_type"),
-            py::arg("value"),
-            py::arg("pids")
+            py::arg("min") = -std::numeric_limits<double>::infinity(),
+            py::arg("max") = std::numeric_limits<double>::infinity(),
+            py::arg("mode") = Cuts::CutMode::all
         )
         .def_readonly("observable", &Cuts::CutItem::observable)
-        .def_readonly("limit_type", &Cuts::CutItem::limit_type)
-        .def_readonly("value", &Cuts::CutItem::value)
-        .def_readonly("pids", &Cuts::CutItem::pids);
-    cuts.def(
-            py::init<std::vector<int>, std::vector<Cuts::CutItem>>(),
-            py::arg("pids"),
-            py::arg("cut_data")
-    )
+        .def_readonly("min", &Cuts::CutItem::min)
+        .def_readonly("max", &Cuts::CutItem::max)
+        .def_readonly("mode", &Cuts::CutItem::mode);
+    cuts.def(py::init<const std::vector<Cuts::CutItem>&>(), py::arg("cut_data"))
+        .def(py::init<std::size_t>(), py::arg("particle_count"))
         .def("sqrt_s_min", &Cuts::sqrt_s_min)
         .def("eta_max", &Cuts::eta_max)
-        .def("pt_min", &Cuts::pt_min)
-        .def_readonly_static("jet_pids", &Cuts::jet_pids)
-        .def_readonly_static("bottom_pids", &Cuts::bottom_pids)
-        .def_readonly_static("lepton_pids", &Cuts::lepton_pids)
-        .def_readonly_static("missing_pids", &Cuts::missing_pids)
-        .def_readonly_static("photon_pids", &Cuts::photon_pids);
+        .def("pt_min", &Cuts::pt_min);
+
+    py::classh<ObservableHistograms::HistItem>(m, "HistItem")
+        .def(
+            py::init<Observable, double, double, std::size_t>(),
+            py::arg("observable"),
+            py::arg("min"),
+            py::arg("max"),
+            py::arg("bin_count")
+        )
+        .def_readonly("observable", &ObservableHistograms::HistItem::observable)
+        .def_readonly("min", &ObservableHistograms::HistItem::min)
+        .def_readonly("max", &ObservableHistograms::HistItem::max)
+        .def_readonly("bin_count", &ObservableHistograms::HistItem::bin_count);
+    py::classh<ObservableHistograms, FunctionGenerator>(m, "ObservableHistograms")
+        .def(
+            py::init<const std::vector<ObservableHistograms::HistItem>&>(),
+            py::arg("observables")
+        );
 
     py::classh<Diagram::LineRef>(m, "LineRef")
         .def(py::init<std::string>(), py::arg("str"))
@@ -1094,6 +1146,12 @@ PYBIND11_MODULE(_madevent_py, m) {
         .def_readwrite("count_target", &EventGenerator::Status::count_target)
         .def_readwrite("iterations", &EventGenerator::Status::iterations)
         .def_readwrite("done", &EventGenerator::Status::done);
+    py::classh<EventGenerator::Histogram>(m, "EventGeneratorHistogram")
+        .def_readonly("name", &EventGenerator::Histogram::name)
+        .def_readonly("min", &EventGenerator::Histogram::min)
+        .def_readonly("max", &EventGenerator::Histogram::max)
+        .def_readonly("bin_values", &EventGenerator::Histogram::bin_values)
+        .def_readonly("bin_errors", &EventGenerator::Histogram::bin_errors);
     py::classh<EventGenerator>(m, "EventGenerator")
         .def_readonly_static("default_config", &EventGenerator::default_config)
         .def(
@@ -1101,19 +1159,23 @@ PYBIND11_MODULE(_madevent_py, m) {
                 ContextPtr,
                 const std::vector<Integrand>&,
                 const std::string&,
+                const std::string&,
                 const EventGenerator::Config&,
-                std::vector<std::size_t>,
-                std::vector<std::string>>(),
+                const std::vector<std::size_t>&,
+                const std::vector<std::string>&,
+                const std::vector<ObservableHistograms>&>(),
             py::arg("context"),
             py::arg("channels"),
             py::arg("temp_file_prefix"),
+            py::arg("status_file") = "",
             py::arg_v(
-                "default_config",
+                "config",
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
             ),
             py::arg("channel_subprocesses") = std::vector<std::size_t>{},
-            py::arg("channel_names") = std::vector<std::string>{}
+            py::arg("channel_names") = std::vector<std::string>{},
+            py::arg("channel_histograms") = std::vector<ObservableHistograms>{}
         )
         .def("survey", &EventGenerator::survey)
         .def("generate", &EventGenerator::generate)
@@ -1136,6 +1198,7 @@ PYBIND11_MODULE(_madevent_py, m) {
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)
+        .def("histograms", &EventGenerator::histograms)
         .def_readonly_static("integrand_flags", &EventGenerator::integrand_flags);
 
     py::classh<LHEHeader>(m, "LHEHeader")
@@ -1322,7 +1385,8 @@ PYBIND11_MODULE(_madevent_py, m) {
             py::arg("file_name"),
             py::arg("meta")
         )
-        .def("write", &LHEFileWriter::write, py::arg("event"));
+        .def("write", &LHEFileWriter::write, py::arg("event"))
+        .def("write_string", &LHEFileWriter::write_string, py::arg("str"));
 
     m.def("format_si_prefix", &format_si_prefix, py::arg("value"));
     m.def("format_with_error", &format_with_error, py::arg("value"), py::arg("error"));

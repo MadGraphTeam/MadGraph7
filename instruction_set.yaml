@@ -194,6 +194,28 @@ mul:
   differentiable: True
   dims: 0
 
+reduce_sum:
+  inputs:
+    - name: in1
+      type: [float, ..., n]
+      desc:
+  outputs:
+    - name: out
+      type: [float, ...]
+      desc:
+  dims: 0
+
+reduce_sum_vector:
+  inputs:
+    - name: in1
+      type: [float, ..., n, m]
+      desc:
+  outputs:
+    - name: out
+      type: [float, ..., m]
+      desc:
+  dims: 0
+
 reduce_product:
   inputs:
     - name: in1
@@ -255,6 +277,203 @@ max:
   desc:
   dims: 0
 
+---
+title: Observables
+
+obs_sqrt_s:
+  inputs:
+    - name: p_ext
+      type: [float, n, 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float]
+      desc:
+
+obs_e:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_px:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_py:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_pz:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_mass:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_pt:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_p_mag:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_phi:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_theta:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_y:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_y_abs:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_eta:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_eta_abs:
+  inputs:
+    - name: p
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_delta_eta:
+  inputs:
+    - name: p1
+      type: [float, ..., 4]
+      desc:
+    - name: p2
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_delta_phi:
+  inputs:
+    - name: p1
+      type: [float, ..., 4]
+      desc:
+    - name: p2
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
+
+obs_delta_r:
+  inputs:
+    - name: p1
+      type: [float, ..., 4]
+      desc:
+    - name: p2
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  dims: 0
 
 ---
 title: Kinematics
@@ -1075,72 +1294,48 @@ cut_unphysical:
       type: [float]
       desc:
 
-
-cut_pt:
+cut_one:
   inputs:
-    - name: p
-      type: [float, n, 4]
+    - name: obs
+      type: [float]
       desc:
-    - name: min_max
-      type: [float, single, n-2, 2]
+    - name: min
+      type: [float]
+      desc:
+    - name: max
+      type: [float]
       desc:
   outputs:
     - name: w
       type: [float]
       desc:
 
-cut_eta:
+cut_all:
   inputs:
-    - name: p
-      type: [float, n, 4]
+    - name: obs
+      type: [float, n]
       desc:
-    - name: min_max
-      type: [float, single, n-2, 2]
+    - name: min
+      type: [float]
+      desc:
+    - name: max
+      type: [float]
       desc:
   outputs:
     - name: w
       type: [float]
       desc:
 
-cut_dr:
+cut_any:
   inputs:
-    - name: p
-      type: [float, n, 4]
+    - name: obs
+      type: [float, n]
       desc:
-    - name: indices
-      type: [int, single, m, 2]
-      desc:
-    - name: min_max
-      type: [float, single, m, 2]
-      desc:
-  outputs:
-    - name: w
+    - name: min
       type: [float]
       desc:
-
-cut_m_inv:
-  inputs:
-    - name: p
-      type: [float, n, 4]
-      desc:
-    - name: indices
-      type: [int, single, m, k]
-      desc:
-    - name: min_max
-      type: [float, single, m, 2]
-      desc:
-  outputs:
-    - name: w
+    - name: max
       type: [float]
-      desc:
-
-cut_sqrt_s:
-  inputs:
-    - name: p
-      type: [float, n, 4]
-      desc:
-    - name: min_max
-      type: [float, single, 2]
       desc:
   outputs:
     - name: w
@@ -1620,13 +1815,26 @@ gather_int:
       type: [int]
       desc:
 
+select_int:
+  inputs:
+    - name: input
+      type: [int, n]
+      desc:
+    - name: indices
+      type: [int, m]
+      desc:
+  outputs:
+    - name: output
+      type: [int, m]
+      desc:
+
 select:
   inputs:
     - name: input
       type: [float, n]
       desc:
     - name: indices
-      type: [int, single, m]
+      type: [int, m]
       desc:
       backward_arg: True
   outputs:
@@ -1634,6 +1842,31 @@ select:
       type: [float, m]
       desc:
   differentiable: True
+
+select_vector:
+  inputs:
+    - name: input
+      type: [float, n, k]
+      desc:
+    - name: indices
+      type: [int, m]
+      desc:
+  outputs:
+    - name: output
+      type: [float, m, k]
+      desc:
+  vectorized: False
+
+argsort:
+  inputs:
+    - name: input
+      type: [float, n]
+      desc:
+  outputs:
+    - name: indices
+      type: [int, n]
+      desc:
+  vectorized: False
 
 one_hot:
   inputs:
@@ -1770,5 +2003,31 @@ vegas_histogram:
       desc:
     - name: counts
       type: [int, single, n, b]
+      desc:
+  custom_op: True
+
+histogram:
+  inputs:
+    - name: input
+      type: [float, ...]
+      desc:
+    - name: weights
+      type: [float]
+      desc:
+    - name: min
+      type: [float]
+      desc:
+    - name: max
+      type: [float]
+      desc:
+    - name: bin_count
+      type: [size, b]
+      desc:
+  outputs:
+    - name: values
+      type: [float, single, b+2]
+      desc:
+    - name: square_values
+      type: [float, single, b+2]
       desc:
   custom_op: True

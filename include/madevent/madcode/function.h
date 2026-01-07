@@ -30,7 +30,7 @@ public:
     const std::unordered_map<std::string, Value>& globals() const { return _globals; }
     const std::vector<InstructionCall>& instructions() const { return _instructions; }
 
-    void store(const std::string& file) const;
+    void save(const std::string& file) const;
     static Function load(const std::string& file);
 
 private:

@@ -20,10 +20,50 @@ std::size_t cantor_pairing(std::size_t i, std::size_t j, std::size_t k, std::siz
 
 } // namespace
 
+void LHEEvent::format_to(std::string& buffer) const {
+    auto insert_iter = std::back_inserter(buffer);
+    std::format_to(
+        insert_iter,
+        "<event>\n{:4} {:4} {:+.10e} {:.10e} {:.10e} {:.10e}\n",
+        particles.size(),
+        process_id,
+        weight,
+        scale,
+        alpha_qed,
+        alpha_qcd
+    );
+    for (auto particle : particles) {
+        std::format_to(
+            insert_iter,
+            "{:4} {:4} {:4} {:4} {:4} {:4} {:+.10e} {:+.10e} {:+.10e} {:.10e} {:.10e} "
+            "{:.4e} {:+.4e}\n",
+            particle.pdg_id,
+            particle.status_code,
+            particle.mother1,
+            particle.mother2,
+            particle.color,
+            particle.anti_color,
+            particle.px,
+            particle.py,
+            particle.pz,
+            particle.energy,
+            particle.mass,
+            particle.lifetime,
+            particle.spin
+        );
+    }
+    buffer += "</event>\n";
+}
+
 LHECompleter::LHECompleter(
     const std::vector<SubprocArgs>& subproc_args, double bw_cutoff
 ) :
-    _bw_cutoff(bw_cutoff), _max_particle_count(0), _rand_gen(std::random_device{}()) {
+    _bw_cutoff(bw_cutoff),
+    _max_particle_count(0),
+    _rand_gens(default_thread_pool(), []() {
+        std::random_device rand_device;
+        return std::mt19937(rand_device());
+    }) {
     std::size_t color_offset = 0, pdg_id_offset = 0, helicity_offset = 0,
                 mass_offset = 0;
     _max_particle_count = 0;
@@ -329,7 +369,7 @@ void LHECompleter::complete_event_data(
     auto [pdg_index, matrix_flavor_index, pdg_count] =
         _pdg_id_index_and_count.at(subproc_data.pdg_id_offset + flavor_index);
     std::uniform_int_distribution<std::size_t> dist(0, pdg_count - 1);
-    std::size_t pdg_random = dist(_rand_gen);
+    std::size_t pdg_random = dist(_rand_gens.get(ThreadPool::thread_index()));
     std::size_t pdg_offset = pdg_index + subproc_data.particle_count * pdg_random;
 
     for (std::size_t particle_index = 0; auto& particle : event.particles) {
@@ -481,48 +521,11 @@ LHEFileWriter::LHEFileWriter(const std::string& file_name, const LHEMeta& meta) 
 }
 
 void LHEFileWriter::write(const LHEEvent& event) {
-    add_to_buffer(event);
-    write_buffer();
+    std::string buffer;
+    event.format_to(buffer);
+    _file_stream << buffer;
 }
 
-void LHEFileWriter::add_to_buffer(const LHEEvent& event) {
-    auto insert_iter = std::back_inserter(_buffer);
-    std::format_to(
-        insert_iter,
-        "<event>\n{:4} {:4} {:+.10e} {:.10e} {:.10e} {:.10e}\n",
-        event.particles.size(),
-        event.process_id,
-        event.weight,
-        event.scale,
-        event.alpha_qed,
-        event.alpha_qcd
-    );
-    for (auto particle : event.particles) {
-        std::format_to(
-            insert_iter,
-            "{:4} {:4} {:4} {:4} {:4} {:4} {:+.10e} {:+.10e} {:+.10e} {:.10e} {:.10e} "
-            "{:.4e} {:+.4e}\n",
-            particle.pdg_id,
-            particle.status_code,
-            particle.mother1,
-            particle.mother2,
-            particle.color,
-            particle.anti_color,
-            particle.px,
-            particle.py,
-            particle.pz,
-            particle.energy,
-            particle.mass,
-            particle.lifetime,
-            particle.spin
-        );
-    }
-    _buffer += "</event>\n";
-}
-
-void LHEFileWriter::write_buffer() {
-    _file_stream << _buffer;
-    _buffer.clear();
-}
+void LHEFileWriter::write_string(const std::string& str) { _file_stream << str; }
 
 LHEFileWriter::~LHEFileWriter() { _file_stream << "</LesHouchesEvents>\n"; }

@@ -19,7 +19,7 @@ std::string dtype_to_str(DataType dtype) {
         return "<f8";
         break;
     case DataType::dt_int:
-        return "<i8";
+        return "<i4";
         break;
     default:
         throw std::invalid_argument("Unsupported data type");
@@ -29,7 +29,7 @@ std::string dtype_to_str(DataType dtype) {
 DataType str_to_dtype(std::string dtype) {
     if (dtype == "<f8") {
         return DataType::dt_float;
-    } else if (dtype == "<i8") {
+    } else if (dtype == "<i4") {
         return DataType::dt_int;
     } else {
         throw std::invalid_argument("Unsupported data type");
@@ -37,8 +37,18 @@ DataType str_to_dtype(std::string dtype) {
 }
 
 json parse_header(std::fstream& file_stream) {
-    std::string header;
-    auto header_end = header.end();
+    char magic_num[8];
+    file_stream.read(magic_num, 8);
+    if (std::memcmp(magic_num, "\x93NUMPY\x01\x00", 8) != 0) {
+        throw std::runtime_error("invalid header of npy file");
+    }
+    union {
+        uint16_t size;
+        char chars[2];
+    } header_size;
+    file_stream.read(&header_size.chars[0], 2);
+    std::string header(header_size.size, '\0');
+    file_stream.read(header.data(), header_size.size);
     header.erase(
         std::remove_if(
             header.begin(), header.end(), [](char x) { return std::isspace(x); }
@@ -62,6 +72,10 @@ json parse_header(std::fstream& file_stream) {
     pos = 0;
     while ((pos = header.find("True", pos)) != std::string::npos) {
         header[pos] = 't';
+    }
+    pos = 0;
+    while ((pos = header.find("'", pos)) != std::string::npos) {
+        header[pos] = '"';
     }
     return json::parse(header);
 }
@@ -149,7 +163,10 @@ std::tuple<std::size_t, std::size_t> write_event_header(
 } // namespace
 
 Tensor madevent::load_tensor(const std::string& file) {
-    std::fstream file_stream(file, std::ios::binary);
+    std::fstream file_stream(file, std::ios::binary | std::ios::in);
+    if (file_stream.fail()) {
+        throw std::runtime_error(std::format("Could not open file '{}'", file));
+    }
     json header = parse_header(file_stream);
     if (!header.is_object()) {
         throw std::runtime_error("Invalid header");
@@ -158,7 +175,7 @@ Tensor madevent::load_tensor(const std::string& file) {
     json fortran_order = header.at("fortran_order");
     json header_shape = header.at("shape");
     if (!descr.is_string() || !fortran_order.is_boolean() ||
-        !fortran_order.get<bool>() || header_shape.is_array()) {
+        !fortran_order.get<bool>() || !header_shape.is_array()) {
         throw std::runtime_error("Invalid file header");
     }
     DataType dtype = str_to_dtype(descr);
@@ -170,7 +187,7 @@ Tensor madevent::load_tensor(const std::string& file) {
         shape.push_back(size.get<std::size_t>());
     }
     Tensor tensor(dtype, shape);
-    file_stream.read(reinterpret_cast<char*>(tensor.data()), tensor.byte_size());
+    file_stream.read(static_cast<char*>(tensor.data()), tensor.byte_size());
     if (file_stream.fail()) {
         throw std::runtime_error("Failed to read file");
     }
@@ -178,10 +195,11 @@ Tensor madevent::load_tensor(const std::string& file) {
 }
 
 void madevent::save_tensor(const std::string& file, Tensor tensor) {
+    using namespace std::string_literals;
     Tensor cpu_tensor = tensor.cpu().contiguous();
     std::ofstream file_stream(file, std::ios::binary);
-    file_stream << "\x93NUMPY\x01\x00\x76\x00{'descr':'" << dtype_to_str(tensor.dtype())
-                << "','fortran_order':True,'shape':(";
+    file_stream << "\x93NUMPY\x01\x00\x76\x00{'descr':'"s
+                << dtype_to_str(tensor.dtype()) << "','fortran_order':True,'shape':(";
     for (std::size_t size : tensor.shape()) {
         file_stream << size << ",";
     }
@@ -191,7 +209,7 @@ void madevent::save_tensor(const std::string& file, Tensor tensor) {
     }
     file_stream.put('\n');
     file_stream.write(
-        reinterpret_cast<const char*>(cpu_tensor.data()), cpu_tensor.byte_size()
+        static_cast<const char*>(cpu_tensor.data()), cpu_tensor.byte_size()
     );
 }
 

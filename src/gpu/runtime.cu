@@ -64,6 +64,34 @@ void op_matrix_element(
         std::copy(output_shape.begin(), output_shape.end(), shape.begin() + 1);
         output = Tensor(instruction.output_dtypes[i], shape, device);
         output_ptrs[i] = output.data();
+        if (me_index == 0xBADCAFE) {
+            // flat dummy matrix element for testing purposes
+            // implemented at LUMI hackathon where the coffee was indeed terrible
+            switch (output_keys[i]) {
+            case UMAMI_OUT_MATRIX_ELEMENT:
+                thrust::fill_n(
+                    thrust_par.on(device.stream()),
+                    thrust::device_pointer_cast(static_cast<double*>(output_ptrs[i])),
+                    batch_size,
+                    1.0
+                );
+                break;
+            case UMAMI_OUT_DIAGRAM_AMP2:
+                thrust::fill_n(
+                    thrust_par.on(device.stream()),
+                    thrust::device_pointer_cast(static_cast<double*>(output_ptrs[i])),
+                    batch_size * shape[1],
+                    1. / shape[1]
+                );
+                break;
+            default:
+                output.zero(device);
+                break;
+            }
+        }
+    }
+    if (me_index == 0xBADCAFE || batch_size == 0) {
+        return;
     }
     auto& matrix_element = instruction.runtime.context().matrix_element(me_index);
     if (matrix_element.device() != get_device()) {
@@ -746,6 +774,126 @@ void op_discrete_histogram(
     );
     indices_tmp.reset(device);
     weights_tmp.reset(device);
+}
+
+__global__ void kernel_prepare_hist(
+    std::size_t batch_size,
+    std::size_t n_bins,
+    GpuTensorView<double, 1, true> input,
+    GpuTensorView<double, 1, true> min,
+    GpuTensorView<double, 1, true> max,
+    GpuTensorView<double, 1, true> weights_in,
+    GpuTensorView<me_int_t, 1, true> indices,
+    GpuTensorView<double, 1, true> weights_out,
+    GpuTensorView<double, 1, true> square_weights_out
+) {
+    me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= batch_size + n_bins + 2) {
+        return;
+    }
+    double bin_count_f = n_bins;
+    double w;
+    me_int_t index;
+    if (i < batch_size) {
+        w = weights_in[i];
+        me_int_t index_rounded = (input[i] - min[i]) / (max[i] - min[i]) * bin_count_f;
+        if (index_rounded < 0) {
+            index = 0;
+        } else if (index_rounded >= n_bins) {
+            index = n_bins + 1;
+        } else {
+            index = index_rounded + 1;
+        }
+    } else {
+        w = 0.;
+        index = i - batch_size;
+    }
+    indices[i] = index;
+    weights_out[i] = w;
+    square_weights_out[i] = w * w;
+}
+
+void op_histogram(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    Tensor input = locals[instruction.input_indices[0]].contiguous(device);
+    auto& weights = locals[instruction.input_indices[1]];
+    auto& hist_min = locals[instruction.input_indices[2]];
+    auto& hist_max = locals[instruction.input_indices[3]];
+    auto& values = locals[instruction.output_indices[0]];
+    auto& square_values = locals[instruction.output_indices[1]];
+
+    auto out_shape = instruction.output_shapes[0];
+    Sizes shape(out_shape.size() + 1);
+    shape[0] = 1;
+    std::copy(out_shape.begin(), out_shape.end(), shape.begin() + 1);
+    values = Tensor(DataType::dt_float, shape, device);
+    square_values = Tensor(DataType::dt_float, shape, device);
+
+    std::size_t batch_size = locals[instruction.batch_size_index].size(0);
+    std::size_t n_bins = values.size(1) - 2;
+    std::size_t padded_size = batch_size + n_bins + 2;
+    Tensor indices_tmp(DataType::dt_int, {padded_size}, device);
+    Tensor weights_tmp(DataType::dt_float, {padded_size}, device);
+    Tensor square_weights_tmp(DataType::dt_float, {padded_size}, device);
+    Tensor reduce_tmp(DataType::dt_float, {n_bins}, device);
+
+    launch_kernel(
+        kernel_prepare_hist,
+        padded_size,
+        device.stream(),
+        batch_size,
+        n_bins,
+        input.view<double, 1>(),
+        hist_min.view<double, 1>(),
+        hist_max.view<double, 1>(),
+        weights.view<double, 1>(),
+        indices_tmp.view<me_int_t, 1>(),
+        weights_tmp.view<double, 1>(),
+        square_weights_tmp.view<double, 1>()
+    );
+
+    auto policy = thrust_par.on(device.stream());
+    auto indices_ptr =
+        thrust::device_pointer_cast(static_cast<me_int_t*>(indices_tmp.data()));
+    auto reduce_tmp_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(reduce_tmp.data()));
+
+    auto weights_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(weights_tmp.data()));
+    auto values_ptr = thrust::device_pointer_cast(static_cast<double*>(values.data()));
+    thrust::sort_by_key(policy, indices_ptr, indices_ptr + padded_size, weights_ptr);
+    thrust::reduce_by_key(
+        policy,
+        indices_ptr,
+        indices_ptr + padded_size,
+        weights_ptr,
+        reduce_tmp_ptr,
+        values_ptr
+    );
+
+    auto square_weights_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(square_weights_tmp.data()));
+    auto square_values_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(square_values.data()));
+    thrust::sort_by_key(
+        policy, indices_ptr, indices_ptr + padded_size, square_weights_ptr
+    );
+    thrust::reduce_by_key(
+        policy,
+        indices_ptr,
+        indices_ptr + padded_size,
+        square_weights_ptr,
+        reduce_tmp_ptr,
+        square_values_ptr
+    );
+
+    reduce_tmp.reset(device);
+    indices_tmp.reset(device);
+    weights_tmp.reset(device);
+    square_weights_tmp.reset(device);
 }
 
 } // namespace

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "madevent/phasespace/topology.h"
+#include "madevent/runtime/thread_pool.h"
 #include "madevent/util.h"
 
 namespace madevent {
@@ -57,6 +58,8 @@ struct LHEEvent {
     double alpha_qed;
     double alpha_qcd;
     std::vector<LHEParticle> particles;
+
+    void format_to(std::string& buffer) const;
 };
 
 class LHECompleter {
@@ -111,15 +114,14 @@ private:
     std::vector<std::tuple<int, int>> _propagator_colors;
     double _bw_cutoff;
     std::size_t _max_particle_count;
-    std::mt19937 _rand_gen;
+    ThreadResource<std::mt19937> _rand_gens;
 };
 
 class LHEFileWriter {
 public:
     LHEFileWriter(const std::string& file_name, const LHEMeta& meta);
     void write(const LHEEvent& event);
-    void add_to_buffer(const LHEEvent& event);
-    void write_buffer();
+    void write_string(const std::string& str);
     ~LHEFileWriter();
 
 private:

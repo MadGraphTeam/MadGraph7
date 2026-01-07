@@ -81,6 +81,30 @@ void op_matrix_element(
         std::copy(output_shape.begin(), output_shape.end(), shape.begin() + 1);
         output = Tensor(instruction.output_dtypes[i], shape, device);
         output_ptrs[i] = output.data();
+        if (me_index == 0xBADCAFE) {
+            // flat dummy matrix element for testing purposes
+            // implemented at LUMI hackathon where the coffee was indeed terrible
+            switch (output_keys[i]) {
+            case UMAMI_OUT_MATRIX_ELEMENT:
+                device.submit([=]() mutable {
+                    double* ptr = static_cast<double*>(output_ptrs[i]);
+                    std::fill(ptr, ptr + batch_size, 1.);
+                });
+                break;
+            case UMAMI_OUT_DIAGRAM_AMP2:
+                device.submit([=]() mutable {
+                    double* ptr = static_cast<double*>(output_ptrs[i]);
+                    std::fill(ptr, ptr + batch_size * shape[1], 1. / shape[1]);
+                });
+                break;
+            default:
+                output.zero(device);
+                break;
+            }
+        }
+    }
+    if (me_index == 0xBADCAFE || batch_size == 0) {
+        return;
     }
     auto& matrix_element = instruction.runtime.context().matrix_element(me_index);
     if (matrix_element.device() != cpu_device()) {
@@ -482,6 +506,75 @@ void op_unweight(
 
         indices = indices_tmp.slice(0, 0, count);
         uw_weights = uw_weights_tmp.slice(0, 0, count);
+    });
+}
+
+template <typename D>
+void op_histogram(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    Tensor input = locals[instruction.input_indices[0]].contiguous(device);
+    auto& weights = locals[instruction.input_indices[1]];
+    auto& hist_min = locals[instruction.input_indices[2]];
+    auto& hist_max = locals[instruction.input_indices[3]];
+    auto& values = locals[instruction.output_indices[0]];
+    auto& square_values = locals[instruction.output_indices[1]];
+
+    auto out_shape = instruction.output_shapes[0];
+    Sizes shape(out_shape.size() + 1);
+    shape[0] = 1;
+    std::copy(out_shape.begin(), out_shape.end(), shape.begin() + 1);
+    values = Tensor(DataType::dt_float, shape, device);
+    square_values = Tensor(DataType::dt_float, shape, device);
+    device.sync_barrier();
+
+    auto weights_view_flat = weights.flat_view<double, 1>(0);
+    auto input_view_flat = input.flat_view<double, 1>(input.shape().size());
+    auto min_view_flat = hist_min.flat_view<double, 1>(0);
+    auto max_view_flat = hist_max.flat_view<double, 1>(0);
+    auto values_view_flat = values.flat_view<double, 2>(0);
+    auto square_values_view_flat = square_values.flat_view<double, 2>(0);
+
+    std::size_t batch_size = locals[instruction.batch_size_index].size(0);
+
+    device.submit([input,
+                   input_view_flat,
+                   weights_view_flat,
+                   min_view_flat,
+                   max_view_flat,
+                   values_view_flat,
+                   square_values_view_flat,
+                   batch_size]() mutable {
+        TensorView<double, 1> input_view(input_view_flat);
+        TensorView<double, 1> weights_view(weights_view_flat);
+        TensorView<double, 1> min_view(min_view_flat);
+        TensorView<double, 1> max_view(max_view_flat);
+        TensorView<double, 2> values_view(values_view_flat);
+        TensorView<double, 2> square_values_view(square_values_view_flat);
+
+        std::size_t n_bins = values_view.size(1) - 2;
+
+        auto bin_values = values_view[0];
+        auto bin_square_values = square_values_view[0];
+        for (std::size_t i_bin = 0; i_bin < n_bins + 2; ++i_bin) {
+            bin_values[i_bin] = 0.;
+            bin_square_values[i_bin] = 0.;
+        }
+        for (std::size_t i_sample = 0; i_sample < batch_size; ++i_sample) {
+            int i_bin_rounded = (input_view[i_sample] - min_view[i_sample]) /
+                (max_view[i_sample] - min_view[i_sample]) * n_bins;
+            int i_bin;
+            if (i_bin_rounded < 0) {
+                i_bin = 0;
+            } else if (i_bin_rounded >= n_bins) {
+                i_bin = n_bins + 1;
+            } else {
+                i_bin = i_bin_rounded + 1;
+            }
+            double w = weights_view[i_sample];
+            bin_values[i_bin] += w;
+            bin_square_values[i_bin] += w * w;
+        }
     });
 }
 
