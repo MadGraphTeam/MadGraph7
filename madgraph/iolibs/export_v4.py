@@ -2659,13 +2659,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             else:
                 map_all_flv[coup] = [flv1]
  
+        pdg_to_flv_index = {}
+        for i, opts in self.model.merged_particles.items():
+            for j, pdg in enumerate(opts):
+                pdg_to_flv_index[pdg] = j+1
+
         all_flavors = [flv[0] for flv in map_all_flv.values()]
         maxflavor = len(all_flavors )
         flavor_text = ['        FLAVOR(:,:) =1']
         for i in range(1, maxflavor+1):
             for j in range(1,1+len(all_flavors[i-1])):
                 if all_flavors[i-1][j-1] != 1:
-                    flavor_text.append('FLAVOR(%d,%d) = %d' % (j,i,all_flavors[i-1][j-1]))
+                    flavor_text.append('FLAVOR(%d,%d) = %d ! PDG = %d' % (j,i,pdg_to_flv_index[all_flavors[i-1][j-1]], all_flavors[i-1][j-1]))
         flavor_text = '\n        '.join(flavor_text)
         fsock.write(template % {'maxflavor':maxflavor, 'flavor_def': flavor_text,
                                 'proc_prefix':proc_prefix})
