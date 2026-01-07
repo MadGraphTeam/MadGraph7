@@ -815,10 +815,10 @@ class Amplitude(base_objects.PhysicsObject):
         if diagram_filter:
             res = self.apply_user_filter(res)
 
-        # 4 gluon specials
-        if True:
-            misc.sprint('apply 4 gluon specials')
-            #res = self.apply_4gluon_specials(res)
+        # 4 gluon specials demo (dedicated aloha not implemented yet)
+        #if True:
+        #    misc.sprint('apply 4 gluon specials')
+        #    #res = self.apply_4gluon_specials(res)
 
         # Replace final id=0 vertex if necessary
         if not process.get('is_decay_chain'):

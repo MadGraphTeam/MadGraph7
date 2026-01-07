@@ -5156,7 +5156,30 @@ This implies that with decay chains:
                 if isinstance(self._multiparticles[part_name][0], list):
                     raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \
                           " which can be used only for required s-channels")
-                mylegids.extend(self._multiparticles[part_name])
+                all_merged = sum(self._curr_model.merged_particles.values(),[])
+                # support l+ l- when they are exactly the multiparticle definition with merged particles
+                if self._multiparticles[part_name] in self._curr_model.merged_particles.values():
+                    key = [k for k,v in self._curr_model.merged_particles.items() if v==self._multiparticles[part_name]][0]
+                    mylegids.append(key)
+                elif [-i for i in self._multiparticles[part_name]] in self._curr_model.merged_particles.values(): 
+                    key = [k for k,v in self._curr_model.merged_particles.items() if v==[-i for i in self._multiparticles[part_name]]][0]
+                    mylegids.append(-key)
+                #check where none-merged particles are present in the multiparticle definition                    
+                elif all(abs(i) not in all_merged for i in self._multiparticles[part_name]): 
+                    mylegids.extend(self._multiparticles[part_name])
+                else:
+                    pdg_to_merge = {}
+                    for pdg, merged_list in self._curr_model.merged_particles.items():
+                        for mpart in merged_list:
+                            pdg_to_merge[mpart] = pdg
+                            pdg_to_merge[-mpart] = -pdg
+                    for pid in self._multiparticles[part_name]:
+                        if pid in pdg_to_merge and pdg_to_merge[pid] not in mylegids:
+                            mylegids.append(pdg_to_merge[pid])
+                            if not all(pdg in self._multiparticles[part_name] for pdg in self._curr_model.merged_particles[abs(pdg_to_merge[pid])]):
+                                raise self.InvalidCmd("Multiparticle %s contains merged particles but not all their merged components." % part_name)
+                        else:
+                            mylegids.append(pid)
             elif part_name.isdigit() or part_name.startswith('-') and part_name[1:].isdigit():
                 if abs(int(part_name)) in sum(self._curr_model.merged_particles.values(),[]):
                    for pdg in self._curr_model.merged_particles: 
