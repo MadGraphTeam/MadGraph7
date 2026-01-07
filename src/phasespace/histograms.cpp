@@ -5,7 +5,7 @@ using namespace madevent;
 ObservableHistograms::ObservableHistograms(const std::vector<HistItem>& observables) :
     FunctionGenerator(
         "ObservablesHistogram",
-        {batch_float, observables.at(0).observable.arg_types().at(1)},
+        {batch_float, observables.at(0).observable.arg_types().at(0)},
         [&]() {
             TypeVec ret_types;
             for (auto& obs : observables) {
@@ -21,10 +21,9 @@ ValueVec ObservableHistograms::build_function_impl(
     FunctionBuilder& fb, const ValueVec& args
 ) const {
     Value weight = args.at(0), momenta = args.at(1);
-    Value sqrt_s = fb.obs_mass(fb.reduce_sum_vector(momenta));
     ValueVec histograms;
     for (auto& obs : _observables) {
-        Value obs_result = obs.observable.build_function(fb, args).at(0);
+        Value obs_result = obs.observable.build_function(fb, {momenta}).at(0);
         auto [values, square_values] = fb.histogram(
             obs_result, weight, obs.min, obs.max, static_cast<me_int_t>(obs.bin_count)
         );

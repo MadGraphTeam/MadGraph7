@@ -280,6 +280,16 @@ max:
 ---
 title: Observables
 
+obs_sqrt_s:
+  inputs:
+    - name: p_ext
+      type: [float, n, 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float]
+      desc:
+
 obs_e:
   inputs:
     - name: p

@@ -27,6 +27,17 @@ KERNELSPEC FVal<T> delta_phi(FIn<T, 1> p1, FIn<T, 1> p2) {
 // Kernels
 
 template <typename T>
+KERNELSPEC void kernel_obs_sqrt_s(FIn<T, 2> p_ext, FOut<T, 0> obs) {
+    FourMom<T> p_tot{
+        p_ext[0][0] + p_ext[1][0],
+        p_ext[0][1] + p_ext[1][1],
+        p_ext[0][2] + p_ext[1][2],
+        p_ext[0][3] + p_ext[1][3],
+    };
+    obs = sqrt(max(lsquare<T>(p_tot), 0.));
+}
+
+template <typename T>
 KERNELSPEC void kernel_obs_e(FIn<T, 1> p, FOut<T, 0> obs) {
     obs = p[0];
 }

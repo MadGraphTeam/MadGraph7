@@ -9,9 +9,7 @@ Cuts::Cuts(const std::vector<CutItem>& cut_data) :
     _cut_data(cut_data) {}
 
 Cuts::Cuts(std::size_t particle_count) :
-    FunctionGenerator(
-        "Cuts", {batch_float, batch_four_vec_array(particle_count)}, {batch_float}
-    ) {}
+    FunctionGenerator("Cuts", {batch_four_vec_array(particle_count)}, {batch_float}) {}
 
 ValueVec Cuts::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
     ValueVec weights;
@@ -44,7 +42,7 @@ double Cuts::sqrt_s_min() const {
 
 std::vector<double> Cuts::eta_max() const {
     std::vector<double> eta_max(
-        arg_types().at(1).shape.at(0) - 2, std::numeric_limits<double>::infinity()
+        arg_types().at(0).shape.at(0) - 2, std::numeric_limits<double>::infinity()
     );
     for (auto& item : _cut_data) {
         double item_max = std::numeric_limits<double>::infinity();
@@ -69,7 +67,7 @@ std::vector<double> Cuts::eta_max() const {
 }
 
 std::vector<double> Cuts::pt_min() const {
-    std::vector<double> pt_min(arg_types().at(1).shape.at(0) - 2, 0.);
+    std::vector<double> pt_min(arg_types().at(0).shape.at(0) - 2, 0.);
     for (auto& item : _cut_data) {
         if (item.observable.observable() != Observable::obs_pt) {
             continue;

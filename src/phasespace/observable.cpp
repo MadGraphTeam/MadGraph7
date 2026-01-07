@@ -35,8 +35,7 @@ int observable_type(Observable::ObservableOption observable) {
 Value build_observable(
     FunctionBuilder& fb,
     Observable::ObservableOption observable,
-    std::vector<Value> momenta,
-    Value sqrt_s
+    std::vector<Value> momenta
 ) {
     switch (observable) {
     case Observable::obs_e:
@@ -72,7 +71,7 @@ Value build_observable(
     case Observable::obs_delta_r:
         return fb.obs_delta_r(momenta.at(0), momenta.at(1));
     case Observable::obs_sqrt_s:
-        return sqrt_s;
+        return fb.obs_sqrt_s(momenta.at(0));
     }
 }
 
@@ -275,7 +274,7 @@ Observable::Observable(
 ) :
     FunctionGenerator(
         "Observable",
-        {batch_float, batch_four_vec_array(pids.size())},
+        {batch_four_vec_array(pids.size())},
         {std::get<2>(indices_and_type)}
     ),
     _observable(observable),
@@ -291,39 +290,20 @@ Observable::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const
     if (not_found()) {
         return {0.};
     }
-    Value sqrt_s = args.at(0);
-    Value momenta = args.at(1);
-    /*if (_order_observable) {
-        Value order_obs = fb.argsort(build_observable(
-            fb, _order_observable.value(), _order_indices, momenta, sqrt_s
-        ));
-    }
-    Value order_obs = fb.argsort(build_observable(
-        fb, _observable, _indices, momenta, sqrt_s
-    ));*/
+    Value momenta = args.at(0);
     int obs_type = observable_type(_observable);
     if (obs_type == 0) {
-        return {build_observable(fb, _observable, {}, sqrt_s)};
+        return {build_observable(fb, _observable, {momenta})};
     }
 
     ValueVec selected_momenta;
     for (auto [indices, order_indices] : zip(_indices, _order_indices)) {
         Value sel_indices;
         if (order_indices.size() > 0) {
-            /*ValueVec order = fb.unstack(fb.argsort(build_observable(
-                fb,
-                _order_observable.value(),
-                {fb.select_vector(momenta, order_indices)},
-                sqrt_s
-            )));
-            //sel_indices = fb.unsqueeze(fb.gather_int(order.at(indices.at(0)),
-            order_indices)); sel_indices = fb.select_int(order_indices,
-            fb.unsqueeze(order.at(indices.at(0))));*/
             Value order = fb.argsort(build_observable(
                 fb,
                 _order_observable.value(),
-                {fb.select_vector(momenta, order_indices)},
-                sqrt_s
+                {fb.select_vector(momenta, order_indices)}
             ));
             sel_indices = fb.select_int(order_indices, fb.select_int(order, indices));
         } else {
@@ -333,14 +313,14 @@ Observable::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const
     }
 
     if (obs_type == 2) {
-        return {build_observable(fb, _observable, selected_momenta, sqrt_s)};
+        return {build_observable(fb, _observable, selected_momenta)};
     }
 
     if (selected_momenta.size() == 1) {
         if (_sum_momenta) {
             selected_momenta.at(0) = fb.reduce_sum_vector(selected_momenta.at(0));
         }
-        Value obs = build_observable(fb, _observable, selected_momenta, sqrt_s);
+        Value obs = build_observable(fb, _observable, selected_momenta);
         if (_sum_observable && !_sum_momenta) {
             obs = fb.reduce_sum(obs);
         }
@@ -348,12 +328,12 @@ Observable::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const
     }
 
     if (_sum_momenta) {
-        return {build_observable(fb, _observable, {fb.sum(selected_momenta)}, sqrt_s)};
+        return {build_observable(fb, _observable, {fb.sum(selected_momenta)})};
     }
 
     ValueVec observables;
     for (auto& momentum : selected_momenta) {
-        observables.push_back(build_observable(fb, _observable, {momentum}, sqrt_s));
+        observables.push_back(build_observable(fb, _observable, {momentum}));
     }
     return {fb.sum(observables)};
 }

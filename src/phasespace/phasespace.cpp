@@ -381,7 +381,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
 
     // boost into correct frame and apply cuts
     auto p_ext_lab = _map_luminosity ? fb.boost_beam(p_ext_stack, x1, x2) : p_ext_stack;
-    dets.push_back(_cuts.build_function(fb, {sqrt_s_hat, p_ext_lab}).at(0));
+    dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
     return {{p_ext_lab, x1, x2}, ps_weight};
 }

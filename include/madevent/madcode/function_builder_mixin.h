@@ -95,6 +95,10 @@ Value max(Value in1, Value in2) {
     return instruction("max", {in1, in2})[0];
 }
 
+Value obs_sqrt_s(Value p_ext) {
+    return instruction("obs_sqrt_s", {p_ext})[0];
+}
+
 Value obs_e(Value p) {
     return instruction("obs_e", {p})[0];
 }

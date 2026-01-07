@@ -36,6 +36,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("square", &FunctionBuilder::square, py::arg("in1"));
     fb.def("min", &FunctionBuilder::min, py::arg("in1"), py::arg("in2"));
     fb.def("max", &FunctionBuilder::max, py::arg("in1"), py::arg("in2"));
+    fb.def("obs_sqrt_s", &FunctionBuilder::obs_sqrt_s, py::arg("p_ext"));
     fb.def("obs_e", &FunctionBuilder::obs_e, py::arg("p"));
     fb.def("obs_px", &FunctionBuilder::obs_px, py::arg("p"));
     fb.def("obs_py", &FunctionBuilder::obs_py, py::arg("p"));
