@@ -2249,7 +2249,7 @@ class ALOHAWriterForGPU(ALOHAWriterForCPP):
     imagoperator = '.imag()'
     ci_definition = 'cxtype cI = cxtype(0., 1.);\n'
     
-    type2def = {}    
+    type2def = ALOHAWriterForCPP.type2def
     type2def['int'] = 'int '
     type2def['double'] = 'fptype '
     type2def['complex'] = 'cxtype '
