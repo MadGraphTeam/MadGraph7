@@ -49,6 +49,7 @@ public:
     void tensor_add(const Tensor& source, Tensor& target) const override;
     void tensor_cpu(const Tensor& source, Tensor& target) const override {}
     DevicePtr device_ptr() const override { return &instance(); }
+    DeviceType device_type() const override { return DeviceType::cpu; }
 
     template <typename F>
     void foreach (std::size_t batch_size, F func, bool single_job = false) const {
