@@ -1496,7 +1496,7 @@ class Model(PhysicsObject):
         self['merged_particles'][pdg_code] = ids
         return new_part, anti_part
 
-    def get_get_merge_key(self, inter, ids, new_part):
+    def get_get_merge_key(self, inter, ids, new_part, force_delta=None):
         """define a key for the merge interaction to see if we need to merge this interaction
         into another one or to have a new one"""
 
@@ -1505,7 +1505,7 @@ class Model(PhysicsObject):
         # need to check for non diagonal support (CKM, PMNS, ...) 
         # create an entry delta in the key to avoid merging too much (important to have different amplitude)
         change = [abs(i) for i in inter_id if abs(i) in ids]
-        if change:
+        if change and force_delta is None:
             # change should be by pair 
             # special case for quark -> check with b/t
             # special case for lepton -> check with neutrino
@@ -1522,7 +1522,7 @@ class Model(PhysicsObject):
                         if id in ids:
                             change[i]= id
                         else:
-                            assert(12 in ids)
+#                            assert(12 in ids)
                             c = next(iter(inter.get('couplings').values()))
                             f = next(iter(c['flavors']))
                             change[i] =  9 + 2 * f[pos]

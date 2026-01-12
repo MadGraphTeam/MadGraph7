@@ -1509,7 +1509,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         return self.get(name)
     
 
-    def tag_external_flavor(self, flavor_id, model, tag_name='flavor'):
+    def tag_external_flavor(self, flavor_id, model, tag_name='flavortag'):
 
         # check special case for external wavefunction
         assert(len(self.get('mothers'))==0)
@@ -1522,7 +1522,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         else:
             raise Exception('Not Implemented')
 
-    def propagate_flavor_tag(self, model, tag_name='flavor', fct=None, check_valid_input=True):
+    def propagate_flavor_tag(self, model, tag_name='flavortag', fct=None, check_valid_input=True):
         """Propagate the flavor tag from the mothers to the wavefunction.
            if fct is None:
                Return False if the flavor tag is not possible for this particle
@@ -1578,7 +1578,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 return return_fct(self, True, model, tag_name)
             else:
                 # need to set the flavor for a valid combination
-                pdg, flav_input = [(w.get('pdg_code'), w.get('flavor')) for i, w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')][0] 
+                pdg, flav_input = [(w.get('pdg_code'), w.get(tag_name)) for i, w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')][0] 
                 pdg_order = [p.get_pdg_code() for  p in vertex.get('particles')]
                 pos_input = pdg_order.index(pdg)
                 pos_output = pdg_order.index(-pdg_out)
@@ -1596,7 +1596,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
             vertex = model.get('interaction_dict')[self.get('interaction_id')]
             map = {}
             pdg_in = [w.get_pdg_code() for w in self.get('mothers')]
-            flav = [w['flavor'] for w in self.get('mothers')]
+            flav = [w[tag_name] for w in self.get('mothers')]
 
             for pdg, flavor in zip(pdg_in,flav):
                 if pdg in map:
@@ -1624,7 +1624,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         raise Exception
         
 
-    def get_coupling_for_flavor(self, model, tag_name='flavor'):
+    def get_coupling_for_flavor(self, model, tag_name='flavortag'):
         """Return the coupling for the given flavor"""
 
         vertex = model.get('interaction_dict')[self.get('interaction_id')]
@@ -1632,7 +1632,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         if isinstance(coup, str):
             return coup
         
-        if not self['flavor']:
+        if not self[tag_name]:
             return None
         
         pdg_out = self.get('pdg_code')
@@ -1865,7 +1865,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         return wf_index + 1
     
     def get_call_key(self):
-        """Generate the (spin, number, C-state) tuple used as key for
+        """Generate the (spin, number, C-state, flavor) tuple used as key for
         the helas call dictionaries in HelasModel"""
 
         res = []
@@ -2992,11 +2992,11 @@ class HelasAmplitude(base_objects.PhysicsObject):
                                    None,
                                    wf_number)
 
-    def propagate_flavor_tag(self, model, debug=False, fct=None):
+    def propagate_flavor_tag(self, model, debug=False, fct=None, tag_name='flavortag'):
 
         # pdg and flavor from previous wfct
         pdg_in = [w.get_pdg_code() for w in self.get('mothers')]
-        flav = [w['flavor'] if hasattr(w,'flavor') else None for w in self.get('mothers') ]
+        flav = [w[tag_name] if hasattr(w,tag_name) else None for w in self.get('mothers') ]
         
         if debug: misc.sprint(flav, [id(w) for w in self.get('mothers')])
         if 0 in flav: # means one of them is tagged as not valid
@@ -3005,14 +3005,14 @@ class HelasAmplitude(base_objects.PhysicsObject):
         # (not hit due to impossible configuration in previous diag)
         if None in flav:
             for wf in self.get('mothers'):
-                if not hasattr(wf, 'flavor'):
+                if not hasattr(wf, tag_name):
                     wf.propagate_flavor_tag(model)
-            flav = [w['flavor'] for w in self.get('mothers') ]
+            flav = [w[tag_name] for w in self.get('mothers') ]
             if 0 in flav:
                 return False
         if debug: 
             for wf in self.get('mothers'):
-                misc.sprint(wf.nice_string('flavor'))
+                misc.sprint(wf.nice_string(tag_name))
 
         vertex = model.get('interaction_dict')[self.get('interaction_id')]
         map= {}
@@ -3026,9 +3026,9 @@ class HelasAmplitude(base_objects.PhysicsObject):
         status = vertex.check_flavor(map, model)
         if debug: misc.sprint(status)
         if not status:
-            self['flavor'] = 0
+            self[tag_name] = 0
             return False
-        self['flavor'] = 1
+        self[tag_name] = 1
         return True
 
     def needs_hermitian_conjugate(self):
@@ -3211,10 +3211,10 @@ class HelasAmplitude(base_objects.PhysicsObject):
 
         return (-1) ** nflips
         
-    def get_coupling_for_flavor(self, model, tag_name='flavor'):
+    def get_coupling_for_flavor(self, model, tag_name='flavortag'):
         """Return the coupling for the given flavor"""
 
-        valid = self.propagate_flavor_tag(model)
+        valid = self.propagate_flavor_tag(model, tag_name=tag_name)
         if not valid:
             return None
         vertex = model.get('interaction_dict')[self.get('interaction_id')]
@@ -3621,13 +3621,13 @@ class HelasDiagram(base_objects.PhysicsObject):
         # remove the information from previous check
         for wfct in self['wavefunctions'] + self['amplitudes']:
             try:
-                del wfct['flavor']
+                del wfct['flavortag']
             except:
                 pass
 
         if debug:misc.sprint(len(self['wavefunctions']), len(self['amplitudes']), [id(w) for w in self['wavefunctions']], [id(w) for w in self['amplitudes']])
         for wfct in self['wavefunctions']:
-            if debug: misc.sprint(wfct.nice_string('flavor'))
+            if debug: misc.sprint(wfct.nice_string('flavortag'))
             if len(wfct.get('mothers'))==0:
                 wfct.tag_external_flavor(flavor_id, model)
             else:
@@ -3656,16 +3656,16 @@ class HelasDiagram(base_objects.PhysicsObject):
         for wfct in self['wavefunctions']:
             if len(wfct.get('mothers'))==0:
                 wfct.tag_external_flavor(flavor_id1, model)
-                wfct.tag_external_flavor(flavor_id2, model, tag_name='flavor2')
+                wfct.tag_external_flavor(flavor_id2, model, tag_name='flavortag2')
             else:
                 c1 = wfct.propagate_flavor_tag(model, fct=get_coup)
-                c2 = wfct.propagate_flavor_tag(model, tag_name='flavor2', fct=get_coup)
+                c2 = wfct.propagate_flavor_tag(model, tag_name='flavortag2', fct=get_coup)
                 if c1 != c2:
                     return False
 
         for wfct in self['amplitudes']:  
             c1 = wfct.get_coupling_for_flavor(model)
-            c2 = wfct.get_coupling_for_flavor(model, tag_name='flavor2')
+            c2 = wfct.get_coupling_for_flavor(model, tag_name='flavortag2')
             if c1 != c2:
                 return False
 
