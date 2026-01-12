@@ -234,6 +234,9 @@ set(
     src/kernels/vegas.h
     src/kernels/util.h
     src/kernels/definitions.h
+    src/kernels/twoparticle.h
+    src/kernels/threeparticle.h
+    src/kernels/multichannel.h
     src/kernels/operations.h
 )
 

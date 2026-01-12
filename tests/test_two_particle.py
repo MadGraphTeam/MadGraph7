@@ -75,7 +75,7 @@ def mass(momentum):
 
 InputPoint = namedtuple("InputPoint", ["r1", "r2", "m0", "m1", "m2", "p0", "pa", "pb"])
 
-N = 10000
+N = 10_000
 
 ZEROS = np.zeros(N)
 PA = np.full((N, 4), [np.sqrt(100**2 + 200**2 + 300**2), 100.0, 200.0, 300.0])
@@ -134,6 +134,16 @@ def test_momentum_conservation(mapping_and_args, input_points):
     inputs, conditions, p0 = make_args(input_points)
     (p1, p2), det = mapping.map_forward(inputs, conditions)
     assert p1 + p2 == approx(p0)
+
+
+def test_inverse(mapping_and_args, input_points):
+    mapping, make_args = mapping_and_args
+    inputs, conditions, p0 = make_args(input_points)
+    (p1, p2), det = mapping.map_forward(inputs, conditions)
+    inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
+    assert inv_det == approx(1 / det)
+    for inp, inv_inp in zip(inputs, inv_inputs):
+        assert inp == approx(inv_inp)
 
 
 def test_outgoing_masses(mapping_and_args, input_points):

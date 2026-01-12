@@ -78,6 +78,18 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> fast_rambo_r_to_u(FVal<T> r, std::size_t index
 }
 
 template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> fast_rambo_u_to_r(FVal<T> u, std::size_t index) {
+    auto a = a_fit_vals[index]; // index = m-1, m = n_part-2, ... , 1
+    auto x = pow(u, 2 * index + 2);
+    auto xr = 1. - x;
+    auto det_denom = (1. + (a - 2.) * x * xr);
+    auto det_x = (2. * x * xr + a * xr * xr) / (det_denom * det_denom);
+    auto det_inv = det_x / (1. - u * u);
+    auto r = (x * x + a * x * xr) / (1 + (a - 2) * x * xr);
+    return {r, det_inv};
+}
+
+template <typename T>
 KERNELSPEC void fast_rambo_massless_body(
     FIn<T, 1> r, FIn<T, 0> e_cm, FOut<T, 2> p_out, FOut<T, 0> det, FourMom<T> q
 ) {
@@ -170,11 +182,20 @@ KERNELSPEC void fast_rambo_massive_body(
 
 // Kernels
 
+// massles
+
 template <typename T>
 KERNELSPEC void kernel_fast_rambo_massless(
     FIn<T, 1> r, FIn<T, 0> e_cm, FIn<T, 1> p0, FOut<T, 2> p_out, FOut<T, 0> det
 ) {
     fast_rambo_massless_body<T>(r, e_cm, p_out, det, load_mom<T>(p0));
+}
+
+template <typename T>
+KERNELSPEC void kernel_fast_rambo_massless_inverse(
+    FIn<T, 2> p_out, FOut<T, 1> r, FOut<T, 0> e_cm, FOut<T, 1> p0, FOut<T, 0> det
+) {
+    fast_rambo_massless_body_inverse<T>(p_out, r, e_cm, det, load_mom<T>(p0));
 }
 
 template <typename T>
@@ -184,6 +205,8 @@ KERNELSPEC void kernel_fast_rambo_massless_com(
     FourMom<T> p0{e_cm, 0., 0., 0.};
     fast_rambo_massless_body<T>(r, e_cm, p_out, det, p0);
 }
+
+// masssive
 
 template <typename T>
 KERNELSPEC void kernel_fast_rambo_massive(
