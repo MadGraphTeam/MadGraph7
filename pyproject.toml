@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "madevent7"
-version = "0.2.2"
+version = "0.3.1"
 description="Fast and flexible phase space mappings"
 readme = "README.md"
 authors = [

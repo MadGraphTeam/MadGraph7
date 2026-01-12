@@ -1,0 +1,5 @@
+sphinx
+sphinx-autodoc-typehints
+breathe
+furo
+madevent7

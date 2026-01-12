@@ -163,6 +163,8 @@ private:
 
 class Tensor;
 
+enum class DeviceType { cpu, cuda, hip };
+
 class Device {
 public:
     virtual ~Device() = default;
@@ -175,6 +177,7 @@ public:
     virtual void tensor_cpu(const Tensor& source, Tensor& target) const = 0;
     virtual const Device* device_ptr() const = 0;
     virtual void sync_barrier() const {}
+    virtual DeviceType device_type() const = 0;
 };
 
 using DevicePtr = const Device*;

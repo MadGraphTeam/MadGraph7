@@ -5,6 +5,8 @@
 #include <random>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "madevent/madcode.h"
 #include "madevent/phasespace.h"
 #include "madevent/runtime/discrete_optimizer.h"
@@ -66,11 +68,14 @@ public:
         std::size_t optimization_patience = 3;
         double optimization_threshold = 0.99;
         std::size_t batch_size = 1000;
-        Verbosity verbosity;
+        Verbosity verbosity = silent;
+        bool write_live_data = false;
     };
     static const Config default_config;
     struct Status {
         std::size_t index;
+        std::size_t subprocess;
+        std::string name;
         double mean;
         double error;
         double rel_std_dev;
@@ -84,6 +89,13 @@ public:
         bool optimized;
         bool done;
     };
+    struct Histogram {
+        std::string name;
+        double min;
+        double max;
+        std::vector<double> bin_values;
+        std::vector<double> bin_errors;
+    };
     static void set_abort_check_function(std::function<void(void)> func) {
         _abort_check_function = func;
     }
@@ -92,9 +104,11 @@ public:
         ContextPtr context,
         const std::vector<Integrand>& channels,
         const std::string& temp_file_prefix,
+        const std::string& status_file = "",
         const Config& config = default_config,
         const std::vector<std::size_t>& channel_subprocesses = {},
-        const std::vector<std::string>& channel_names = {}
+        const std::vector<std::string>& channel_names = {},
+        const std::vector<ObservableHistograms>& channel_histograms = {}
     );
     void survey();
     void generate();
@@ -103,6 +117,7 @@ public:
     void combine_to_lhe(const std::string& file_name, LHECompleter& lhe_completer);
     Status status() const { return _status_all; }
     std::vector<Status> channel_status() const;
+    std::vector<Histogram> histograms() const;
 
 private:
     struct ChannelState {
@@ -114,6 +129,7 @@ private:
         RuntimePtr vegas_histogram;
         std::optional<DiscreteOptimizer> discrete_optimizer;
         RuntimePtr discrete_histogram;
+        RuntimePtr observable_histograms;
         std::size_t batch_size;
         std::string name;
         std::size_t subprocess_index;
@@ -131,6 +147,7 @@ private:
         double best_rsd = std::numeric_limits<double>::max();
         std::vector<double> large_weights;
         std::size_t job_count = 0;
+        nested_vector2<std::pair<double, double>> histograms;
     };
     struct RunningJob {
         std::size_t channel_index;
@@ -142,6 +159,10 @@ private:
         EventBuffer event_buffer;
         EventBuffer weight_buffer;
         std::size_t buffer_index;
+    };
+    struct TimingData {
+        double wall_time_sec;
+        double cpu_time_sec;
     };
     inline static std::function<void(void)> _abort_check_function = [] {};
 
@@ -155,11 +176,16 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;
     std::chrono::time_point<std::chrono::steady_clock> _last_print_time;
+    std::chrono::time_point<std::chrono::steady_clock> _last_status_time;
     PrettyBox _pretty_box_upper;
     PrettyBox _pretty_box_lower;
+    std::string _status_file;
+    std::unordered_map<std::string, TimingData> _timing_data;
+    std::vector<Histogram> _empty_histograms;
 
     void reset_start_time();
-    std::string format_run_time() const;
+    void add_timing_data(const std::string& key);
+    std::string format_run_time(const std::string& key) const;
     void unweight_all();
     void unweight_channel(ChannelState& channel, std::mt19937 rand_gen);
     std::tuple<Tensor, std::vector<Tensor>> integrate_and_optimize(
@@ -186,6 +212,9 @@ private:
         EventBuffer& buffer,
         std::size_t event_index
     );
+
+    void init_status(const std::string& status);
+    void write_status(const std::string& status, bool force_write);
 
     void print_survey_init();
     void print_survey_update(
@@ -216,6 +245,13 @@ private:
     void print_combine_update(std::size_t count);
     void print_combine_update_pretty(std::size_t count);
     void print_combine_update_log(std::size_t count);
+
+    friend void
+    to_json(nlohmann::json& j, const EventGenerator::TimingData& timing_data);
 };
+
+void to_json(nlohmann::json& j, const EventGenerator::TimingData& timing_data);
+void to_json(nlohmann::json& j, const EventGenerator::Status& status);
+void to_json(nlohmann::json& j, const EventGenerator::Histogram& hist);
 
 } // namespace madevent

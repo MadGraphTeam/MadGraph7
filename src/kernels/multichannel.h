@@ -1,11 +1,34 @@
 #pragma once
 
-#include "kinematics.h"
+#include "definitions.h"
 
 namespace madevent {
 namespace kernels {
 
-// Kernels
+template <typename T>
+KERNELSPEC void kernel_collect_channel_weights(
+    FIn<T, 1> amp2,
+    IIn<T, 1> channel_indices,
+    IIn<T, 0> channel_count,
+    FOut<T, 1> channel_weights
+) {
+    FVal<T> norm(0.);
+    for (std::size_t i = 0; i < channel_weights.size(); ++i) {
+        channel_weights[i] = 0.;
+    }
+    for (std::size_t i = 0; i < amp2.size(); ++i) {
+        std::size_t chan_index = single_index(channel_indices[i]);
+        if (chan_index >= channel_weights.size()) {
+            continue;
+        }
+        auto amp2_val = amp2[i];
+        norm = norm + amp2_val;
+        channel_weights[chan_index] += amp2_val;
+    }
+    for (std::size_t i = 0; i < channel_weights.size(); ++i) {
+        channel_weights[i] = channel_weights[i] / norm;
+    }
+}
 
 template <typename T>
 KERNELSPEC void kernel_sde2_channel_weights(
@@ -100,6 +123,20 @@ KERNELSPEC void kernel_apply_subchannel_weights(
         auto subchan_weight =
             subchannel_weights.gather(where(mask, 0, subchannel_indices[i]));
         channel_weights_out[i] = chan_weight * where(mask, 1., subchan_weight);
+    }
+}
+
+template <typename T>
+KERNELSPEC void kernel_permute_momenta(
+    FIn<T, 2> momenta, IIn<T, 2> permutations, IIn<T, 0> index, FOut<T, 2> output
+) {
+    auto perm = permutations[single_index(index)];
+    for (std::size_t i = 0; i < perm.size(); ++i) {
+        auto input_i = momenta[single_index(perm[i])];
+        auto output_i = output[i];
+        for (std::size_t j = 0; j < 4; ++j) {
+            output_i[j] = input_i[j];
+        }
     }
 }
 

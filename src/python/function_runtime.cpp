@@ -42,7 +42,9 @@ Runtime* get_runtime(FunctionRuntime& func_runtime, DevicePtr expected_device) {
             }
             rt = build_runtime(func_runtime.function, func_runtime.context);
         } else {
-            rt = build_runtime(func_runtime.function, madevent::default_context());
+            rt = build_runtime(
+                func_runtime.function, madevent::default_device_context(expected_device)
+            );
         }
         runtime = rt.get();
         func_runtime.runtimes[expected_device] = std::move(rt);
@@ -83,7 +85,16 @@ std::tuple<std::vector<Tensor>, Runtime*> check_and_convert_args(
 } // namespace
 
 std::tuple<int, int> madevent_py::dlpack_device(Tensor tensor) {
-    return {tensor.device() == cpu_device() ? kDLCPU : kDLCUDA, 0};
+    switch (tensor.device()->device_type()) {
+    case DeviceType::cpu:
+        return {kDLCPU, 0};
+    case DeviceType::cuda:
+        return {kDLCUDA, 0};
+    case DeviceType::hip:
+        return {kDLROCM, 0};
+    default:
+        throw std::logic_error("unreachable");
+    }
 }
 
 py::object madevent_py::tensor_to_dlpack(
@@ -135,9 +146,10 @@ py::object madevent_py::tensor_to_dlpack(
             {},
             tensor
         };
+        auto [device_type, device_id] = dlpack_device(tensor);
         dl_tensor = new DLManagedTensor{
             {context->tensor.data(),
-             {tensor.device() == cpu_device() ? kDLCPU : kDLCUDA, 0},
+             DLDevice{static_cast<DLDeviceType>(device_type), device_id},
              static_cast<int32_t>(context->shape.size()),
              dtype,
              context->shape.data(),
@@ -277,6 +289,9 @@ Tensor madevent_py::dlpack_to_tensor(
     DevicePtr device;
     if (dl_tensor->device.device_type == kDLCUDA && dl_tensor->device.device_id == 0) {
         device = cuda_device();
+    } else if (dl_tensor->device.device_type == kDLROCM &&
+               dl_tensor->device.device_id == 0) {
+        device = hip_device();
     } else if (dl_tensor->device.device_type == kDLCPU &&
                dl_tensor->device.device_id == 0) {
         device = cpu_device();

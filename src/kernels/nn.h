@@ -648,21 +648,10 @@ KERNELSPEC void backward_kernel_softmax_prior(
 }
 
 template <typename T>
-KERNELSPEC void kernel_select(FIn<T, 1> input, IIn<T, 1> indices, FOut<T, 1> output) {
-    for (std::size_t i = 0; i < indices.size(); ++i) {
-        output[i] = input[single_index(indices[i])];
-    }
-}
-
-template <typename T>
-KERNELSPEC void backward_kernel_select(
-    IIn<T, 1> indices,
-    FIn<T, 1> output_grad,
-    FOut<T, 1> input_grad,
-    FOut<T, 1> indices_grad
-) {
-    for (std::size_t i = 0; i < indices.size(); ++i) {
-        input_grad[single_index(indices[i])] = output_grad[i];
+KERNELSPEC void
+kernel_one_hot(IIn<T, 0> index, IIn<T, 0> option_count, FOut<T, 1> output) {
+    for (std::size_t i = 0; i < output.size(); ++i) {
+        output[i] = where(i == index, FVal<T>(1.), 0.);
     }
 }
 
