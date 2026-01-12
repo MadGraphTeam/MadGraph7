@@ -610,7 +610,9 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     auto m1_2 = lsquare<T>(load_mom<T>(p1));
     auto m2_2 = lsquare<T>(load_mom<T>(p2));
     auto phi = atan2(p1_rot[2], p1_rot[1]);
-    phi_index = where(phi < 0, 1, 0); // choose phi index based on the value of phi
+    phi_index = where(
+        phi < 0, IVal<T>(1), IVal<T>(0)
+    ); // choose phi index based on the value of phi
 
     auto gram4 = bk_gram4<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12, s23);
     auto det_2to3 = 8 * sqrt(max(-gram4, EPS2));
