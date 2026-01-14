@@ -73,7 +73,7 @@ nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) 
         perm_out.resize(perm_in.size());
         std::iota(perm_out.begin(), perm_out.end(), 0);
         std::sort(perm_out.begin(), perm_out.end(), [&](me_int_t i, me_int_t j) {
-            return perms_in.at(i) < perms_in.at(j);
+            return perm_in.at(i) < perm_in.at(j);
         });
     }
     return perms_out;
@@ -464,7 +464,7 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                     decay_out.rend()
                 );
                 if (data.decay.index != 0) {
-                    data.momentum = decay_out.at(decay_map.random_dim());
+                    data.momentum = decay_out.back();
                 }
                 dets.push_back(det);
             },

@@ -108,3 +108,16 @@ def test_process_momentum_conservation(mapping, masses, permutation_count):
     p_out = np.sum(p_ext[:, 2:], axis=1)
 
     assert p_out == approx(p_in, rel=1e-6, abs=1e-10)
+
+
+def test_process_inverse(mapping, masses, permutation_count):
+    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    condition = (
+        []
+        if permutation_count <= 1
+        else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
+    )
+    map_out, det = mapping.map_forward([r], condition)
+    (r_inv,), det_inv = mapping.map_inverse(map_out, condition)
+    assert r_inv == approx(r, abs=1e-3, rel=1e-3)
+    assert det_inv == approx(1 / det, rel=1e-4)
