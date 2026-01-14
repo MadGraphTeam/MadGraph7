@@ -101,6 +101,15 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
     assert p_out == approx(p_in, rel=1e-6, abs=1e-9)
 
 
+def test_t_channel_inverse(masses, rng, mode):
+    mapping = me.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
+    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    map_out, det = mapping.map_forward([r])
+    (r_inv,), det_inv = mapping.map_inverse(map_out)
+    assert r_inv == approx(r)
+    assert det_inv == approx(1 / det)
+
+
 @pytest.mark.parametrize(
     "particle_count",
     [2, 3, 4, 5],
