@@ -1706,11 +1706,30 @@ chili_forward:
     - name: p_ext
       type: [float, n+2, 4]
       desc:
-    - name: x1
+    - name: det
       type: [float]
       desc:
-    - name: x2
+
+chili_inverse:
+  inputs:
+    - name: p_ext
+      type: [float, n+2, 4]
+      desc:
+    - name: pt_min
+      type: [float, n]
+      desc:
+    - name: y_max
+      type: [float, n]
+      desc:
+  outputs:
+    - name: r
+      type: [float, 3n-2]
+      desc:
+    - name: e_cm
       type: [float]
+      desc:
+    - name: m_out
+      type: [float, n]
       desc:
     - name: det
       type: [float]

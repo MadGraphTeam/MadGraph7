@@ -91,7 +91,7 @@ backward_kernel_reduce_product(FIn<T, 1> in, FIn<T, 0> out_grad, FOut<T, 1> in_g
 
 template <typename T>
 KERNELSPEC void kernel_sqrt(FIn<T, 0> in, FOut<T, 0> out) {
-    out = sqrt(in);
+    out = sqrt(where(in >= 0., in, 0.));
 }
 
 template <typename T>

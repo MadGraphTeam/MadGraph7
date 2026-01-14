@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <format>
 #include <ranges>
+#include <sstream>
 #include <tuple>
 
 using namespace madevent;
@@ -188,9 +189,17 @@ TypeVec SimpleInstruction::signature(const ValueVec& args) const {
         }
 
         if (input_dtype != arg_dtype) {
-            std::cout << input_dtype << " " << arg_dtype << "\n";
+            std::ostringstream expected_dt, got_dt;
+            expected_dt << input_dtype;
+            got_dt << arg_dtype;
             throw std::invalid_argument(
-                std::format("{}, argument {}: dtypes not matching", name(), i + 1)
+                std::format(
+                    "{}, argument {}: expected dtype {}, got {}",
+                    name(),
+                    i + 1,
+                    expected_dt.str(),
+                    got_dt.str()
+                )
             );
         }
 

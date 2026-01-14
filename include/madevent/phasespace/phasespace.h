@@ -54,14 +54,14 @@ private:
     Topology _topology;
     Cuts _cuts;
     double _pi_factors;
-    double _s_lab;
+    double _sqrt_s_lab;
     bool _leptonic;
     bool _map_luminosity;
     std::vector<Invariant> _s_invariants;
     std::variant<TPropagatorMapping, FastRamboMapping, ChiliMapping, std::monostate>
         _t_mapping;
     std::vector<std::variant<TwoBodyDecay, ThreeBodyDecay, FastRamboMapping>> _s_decays;
-    std::vector<std::vector<me_int_t>> _permutations;
+    nested_vector2<me_int_t> _permutations;
 };
 
 } // namespace madevent

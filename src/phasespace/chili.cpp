@@ -12,12 +12,7 @@ ChiliMapping::ChiliMapping(
     Mapping(
         "ChiliMapping",
         TypeVec(4 * _n_particles - 1, batch_float),
-        [&] {
-            TypeVec output_types(_n_particles + 2, batch_four_vec);
-            output_types.push_back(batch_float);
-            output_types.push_back(batch_float);
-            return output_types;
-        }(),
+        TypeVec(_n_particles + 2, batch_four_vec),
         {}
     ),
     n_particles(_n_particles),
@@ -27,24 +22,24 @@ ChiliMapping::ChiliMapping(
 Mapping::Result ChiliMapping::build_forward_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
 ) const {
-    ValueVec r, m_out;
-    for (auto it = inputs.begin(); it != inputs.begin() + 3 * n_particles - 2; ++it) {
-        r.push_back(*it);
-    }
-    auto e_cm = inputs.at(3 * n_particles - 2);
-    for (auto it = inputs.begin() + 3 * n_particles - 1; it != inputs.end(); ++it) {
-        m_out.push_back(*it);
-    }
-    auto [p_ext, x1, x2, det] =
+    ValueVec r(inputs.begin(), inputs.begin() + 3 * n_particles - 2);
+    Value e_cm = inputs.at(3 * n_particles - 2);
+    ValueVec m_out(inputs.begin() + 3 * n_particles - 1, inputs.end());
+    auto [p_ext, det] =
         fb.chili_forward(fb.stack(r), e_cm, fb.stack(m_out), pt_min, y_max);
     auto outputs = fb.unstack(p_ext);
-    outputs.push_back(x1);
-    outputs.push_back(x2);
     return {outputs, det};
 }
 
 Mapping::Result ChiliMapping::build_inverse_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
 ) const {
-    throw std::logic_error("inverse mapping not implemented");
+    auto [r, e_cm, m_out, det] = fb.chili_inverse(fb.stack(inputs), pt_min, y_max);
+    ValueVec r_vec = fb.unstack(r);
+    ValueVec m_out_vec = fb.unstack(m_out);
+    ValueVec outputs;
+    outputs.insert(outputs.end(), r_vec.begin(), r_vec.end());
+    outputs.push_back(e_cm);
+    outputs.insert(outputs.end(), m_out_vec.begin(), m_out_vec.end());
+    return {outputs, det};
 }

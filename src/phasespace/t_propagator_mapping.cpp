@@ -114,7 +114,7 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
     std::size_t n_out = _integration_order.size() + 1;
 
     // compute COM energy, outgoing masses and s-invariants from momenta
-    nested_vector2<me_int_t> invariant_factors;
+    nested_vector2<double> invariant_factors;
     auto& cm_factors = invariant_factors.emplace_back(n_out + 2);
     cm_factors.at(0) = 1;
     cm_factors.at(1) = 1;
@@ -124,20 +124,23 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
     }
     if (_integration_order.size() > 1) {
         std::size_t last_index = _integration_order.back();
-        std::vector<me_int_t> marked_indices(n_out + 2);
+        std::vector<double> marked_indices(n_out + 2);
         marked_indices.at(last_index + 2) = 1;
         marked_indices.at(last_index + 3) = 1;
         invariant_factors.push_back(marked_indices);
         for (std::size_t i = _integration_order.size() - 2; i > 0; --i) {
             marked_indices.at(_integration_order.at(i) + _sample_sides.at(i) + 2) = 1;
+            invariant_factors.push_back(marked_indices);
         }
     }
     ValueVec invariants =
         fb.unstack(fb.invariants_from_momenta(fb.stack(inputs), invariant_factors));
-    Value e_cm = invariants.at(0);
-    ValueVec m_out{invariants.begin() + 1, invariants.begin() + n_out + 1};
-    ValueVec mass_sum_invariants{invariants.rbegin(), invariants.rend() + n_out + 1};
-    mass_sum_invariants.push_back(m_out.at(_integration_order.back()));
+    Value e_cm = fb.sqrt(invariants.at(0));
+    ValueVec m_out;
+    for (auto inv : std::span(invariants.begin() + 1, invariants.begin() + n_out + 1)) {
+        m_out.push_back(fb.sqrt(inv));
+    }
+    ValueVec mass_sum_invariants{invariants.rbegin(), invariants.rend() - n_out - 1};
 
     ValueVec random_out;
     ValueVec dets;
@@ -157,18 +160,17 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
 
         // recover random numbers from intermediate invariant masses
         auto max_mass = e_cm;
-        for (auto [mass, min_mass, max_mass_subtract] :
+        for (auto [mass2, min_mass, max_mass_subtract] :
              zip(mass_sum_invariants,
                  std::views::reverse(min_masses),
                  std::views::reverse(max_masses_subtract))) {
             auto s_min = fb.square(min_mass);
             auto s_max = fb.square(fb.sub(max_mass, max_mass_subtract));
             auto [r_vec, det] =
-                _uniform_invariant.build_forward(fb, {mass}, {s_min, s_max});
+                _uniform_invariant.build_inverse(fb, {mass2}, {s_min, s_max});
             random_out.push_back(r_vec.at(0));
-            mass_sum_invariants.push_back(mass);
             dets.push_back(det);
-            max_mass = mass;
+            max_mass = fb.sqrt(mass2);
         }
     }
 
@@ -176,15 +178,14 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
     Value k_rest = fb.add(inputs.at(0), inputs.at(1));
     Value p1_rest = inputs.at(0), p2_rest = inputs.at(1);
     bool first = true;
-    for (auto [index, side, mass_sum] :
-         zip(_integration_order, _sample_sides, mass_sum_invariants)) {
+    for (auto [index, side] : zip(_integration_order, _sample_sides)) {
         auto& scattering = first ? _com_scattering : _lab_scattering;
         first = false;
         std::size_t sampled_index = index + side;
         auto mass = m_out.at(sampled_index);
         auto k = inputs.at(sampled_index + 2);
         k_rest = fb.sub(k_rest, k);
-        auto [rs, det] = scattering.build_forward(
+        auto [rs, det] = scattering.build_inverse(
             fb, {k_rest, k}, {side ? p1_rest : p2_rest, side ? p2_rest : p1_rest}
         );
         random_out.push_back(rs.at(0));
@@ -197,5 +198,8 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
         }
     }
 
-    return {random_out, fb.product(dets)};
+    ValueVec outputs = random_out;
+    outputs.push_back(e_cm);
+    outputs.insert(outputs.end(), m_out.begin(), m_out.end());
+    return {outputs, fb.product(dets)};
 }

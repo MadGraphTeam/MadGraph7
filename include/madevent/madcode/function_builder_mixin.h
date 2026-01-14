@@ -401,8 +401,13 @@ Value scale_partonic_energy(Value momenta) {
     return instruction("scale_partonic_energy", {momenta})[0];
 }
 
-std::array<Value, 4> chili_forward(Value r, Value e_cm, Value m_out, Value pt_min, Value y_max) {
+std::array<Value, 2> chili_forward(Value r, Value e_cm, Value m_out, Value pt_min, Value y_max) {
     auto output_vector = instruction("chili_forward", {r, e_cm, m_out, pt_min, y_max});
+    return {output_vector[0], output_vector[1]};
+}
+
+std::array<Value, 4> chili_inverse(Value p_ext, Value pt_min, Value y_max) {
+    auto output_vector = instruction("chili_inverse", {p_ext, pt_min, y_max});
     return {output_vector[0], output_vector[1], output_vector[2], output_vector[3]};
 }
 

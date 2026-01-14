@@ -14,6 +14,7 @@ struct DecayData {
     std::optional<Value> max_mass;
     std::vector<Value> max_mass_subtract;
     std::optional<Value> momentum;
+    std::optional<Value> computed_mass;
 
     DecayData(const Topology::Decay& decay) : decay(decay) {}
 };
@@ -66,6 +67,18 @@ void update_mass_min_max(
         current_decay->mass ? current_decay->mass : current_decay->max_mass;
 }
 
+nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) {
+    nested_vector2<me_int_t> perms_out(perms_in.size());
+    for (auto [perm_in, perm_out] : zip(perms_in, perms_out)) {
+        perm_out.resize(perm_in.size());
+        std::iota(perm_out.begin(), perm_out.end(), 0);
+        std::sort(perm_out.begin(), perm_out.end(), [&](me_int_t i, me_int_t j) {
+            return perms_in.at(i) < perms_in.at(j);
+        });
+    }
+    return perms_out;
+}
+
 } // namespace
 
 PhaseSpaceMapping::PhaseSpaceMapping(
@@ -90,7 +103,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     _pi_factors(
         std::pow(2 * PI, 4 - 3 * static_cast<int>(topology.outgoing_masses().size()))
     ),
-    _s_lab(cm_energy * cm_energy),
+    _sqrt_s_lab(cm_energy),
     _leptonic(leptonic),
     _map_luminosity(
         !leptonic &&
@@ -239,7 +252,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     auto next_random = [&]() { return *(r++); };
 
     ValueVec dets{_pi_factors};
-    Value x1 = 1.0, x2 = 1.0, s_hat = _s_lab;
+    Value x1 = 1.0, x2 = 1.0;
 
     // initialize masses and square masses
     std::vector<DecayData> decay_data(
@@ -252,7 +265,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         data.mass2 = mass * mass;
     }
     auto& root_data = decay_data.at(0);
-    root_data.max_mass = fb.sqrt(_s_lab);
+    root_data.max_mass = _sqrt_s_lab;
 
     // sample decay s-invariants, following the integration order
     std::size_t invariant_index = 0;
@@ -273,15 +286,17 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             data.mass = fb.sqrt(data.mass2.value());
             dets.push_back(det);
         } else if (decay_index == 0) {
-            data.mass2 = s_hat;
-            data.mass = fb.sqrt(s_hat);
+            data.mass2 = _sqrt_s_lab * _sqrt_s_lab;
+            data.mass = _sqrt_s_lab;
         }
     }
 
+    // sample momentum fractions
     auto sqrt_s_hat = root_data.mass.value();
-    s_hat = root_data.mass2.value();
+    auto s_hat = root_data.mass2.value();
     if (_map_luminosity) {
-        auto [x1_new, x2_new, det_x] = fb.r_to_x1x2(next_random(), s_hat, _s_lab);
+        auto [x1_new, x2_new, det_x] =
+            fb.r_to_x1x2(next_random(), s_hat, _sqrt_s_lab * _sqrt_s_lab);
         x1 = x1_new;
         x2 = x2_new;
         dets.push_back(det_x);
@@ -293,7 +308,6 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         Overloaded{
             [&](auto& t_mapping) {
                 ValueVec args;
-                auto momentum_count = _topology.t_propagator_count() + 1;
                 for (std::size_t i = 0; i < t_mapping.random_dim(); ++i) {
                     args.push_back(next_random());
                 }
@@ -319,9 +333,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 dets.push_back(det);
 
                 if constexpr (std::is_same_v<TMapping, ChiliMapping>) {
-                    auto out_size = t_result.size();
-                    x1 = t_result.at(out_size - 2);
-                    x2 = t_result.at(out_size - 1);
+                    std::tie(x1, x2) = fb.momenta_to_x1x2(
+                        fb.stack({t_result.at(0), t_result.at(1)}), _sqrt_s_lab
+                    );
                 }
             },
             [&](std::monostate) {
@@ -389,5 +403,144 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
 Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
 ) const {
-    throw std::logic_error("inverse mapping not implemented");
+    Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
+    Value p_ext_stack =
+        _map_luminosity ? fb.boost_beam_inverse(p_ext_lab, x1, x2) : p_ext_lab;
+
+    // permute momenta if permutations are given
+    if (_permutations.size() > 1) {
+        p_ext_stack = fb.permute_momenta(
+            p_ext_stack, invert_permutations(_permutations), conditions.at(0)
+        );
+    } else if (_permutations.size() == 1 &&
+               !std::is_sorted(
+                   _permutations.at(0).begin(), _permutations.at(0).end()
+               )) {
+        p_ext_stack = fb.permute_momenta(
+            p_ext_stack, invert_permutations(_permutations), static_cast<me_int_t>(0)
+        );
+    }
+
+    // initialize momenta, masses and square masses
+    ValueVec p_ext = fb.unstack(p_ext_stack);
+    std::vector<DecayData> decay_data(
+        _topology.decays().begin(), _topology.decays().end()
+    );
+    for (auto [decay_index, mass, momentum] :
+         zip(_topology.outgoing_indices(),
+             _topology.outgoing_masses(),
+             std::span(p_ext.begin() + 2, p_ext.end()))) {
+        auto& data = decay_data.at(decay_index);
+        data.mass = mass;
+        data.mass2 = mass * mass;
+        data.momentum = momentum;
+    }
+    auto& root_data = decay_data.at(0);
+    root_data.max_mass = _sqrt_s_lab;
+
+    // go through decays and recover random numbers from momenta
+    ValueVec random_out_reversed;
+    ValueVec dets{1. / _pi_factors};
+    for (std::size_t decay_map_index = 0;
+         auto& data : std::views::reverse(decay_data)) {
+        if (data.decay.child_indices.size() == 0) {
+            continue;
+        }
+        if (data.decay.index == 0 &&
+            !std::holds_alternative<std::monostate>(_t_mapping)) {
+            continue;
+        }
+        std::visit(
+            [&](auto& decay_map) {
+                ValueVec decay_args;
+                for (auto child_index : data.decay.child_indices) {
+                    decay_args.push_back(decay_data.at(child_index).momentum.value());
+                }
+                auto [decay_out, det] = decay_map.build_inverse(fb, decay_args, {});
+                data.computed_mass = decay_out.at(decay_map.random_dim());
+                random_out_reversed.insert(
+                    random_out_reversed.end(),
+                    decay_out.rend() - decay_map.random_dim(),
+                    decay_out.rend()
+                );
+                if (data.decay.index != 0) {
+                    data.momentum = decay_out.at(decay_map.random_dim());
+                }
+                dets.push_back(det);
+            },
+            _s_decays.at(decay_map_index++)
+        );
+    }
+
+    // if required, build inverse t-channel part of phase space mapping
+    std::visit(
+        Overloaded{
+            [&](auto& t_mapping) {
+                ValueVec args;
+                using TMapping = std::decay_t<decltype(t_mapping)>;
+                if constexpr (!std::is_same_v<TMapping, FastRamboMapping>) {
+                    args.push_back(p_ext.at(0));
+                    args.push_back(p_ext.at(1));
+                }
+                for (std::size_t index : decay_data.at(0).decay.child_indices) {
+                    args.push_back(decay_data.at(index).momentum.value());
+                }
+                auto [t_result, det] = t_mapping.build_inverse(fb, args, {});
+                random_out_reversed.insert(
+                    random_out_reversed.end(),
+                    t_result.rend() - t_mapping.random_dim(),
+                    t_result.rend()
+                );
+                decay_data.at(0).computed_mass = t_result.at(t_mapping.random_dim());
+                dets.push_back(det);
+                /*for (auto [index, mass] : zip(
+                    decay_data.at(0).decay.child_indices,
+                    std::span(t_result.begin() + t_mapping.random_dim() + 1,
+                t_result.end())
+                )) {
+                    decay_data.at(index).computed_mass = mass;
+                }*/
+            },
+            [&](std::monostate) {}
+        },
+        _t_mapping
+    );
+
+    if (_map_luminosity) {
+        auto [r, det_x] = fb.x1x2_to_r(x1, x2, _sqrt_s_lab * _sqrt_s_lab);
+        random_out_reversed.push_back(r);
+        dets.push_back(det_x);
+    }
+
+    // recover random numbers for s-invariants, following the integration order
+    ValueVec random_out;
+    std::size_t invariant_index = 0;
+    for (std::size_t decay_index : _topology.decay_integration_order()) {
+        auto& decay = _topology.decays().at(decay_index);
+        auto& data = decay_data.at(decay_index);
+        update_mass_min_max(fb, decay_data, decay_index);
+        auto s_min = fb.square(fb.sum(data.min_masses));
+        auto sqrt_s_max = fb.sub(data.max_mass.value(), fb.sum(data.max_mass_subtract));
+        if (data.decay.e_max > 0.) {
+            sqrt_s_max = fb.min(sqrt_s_max, data.decay.e_max);
+        }
+        if (decay_index != 0 || _map_luminosity) {
+            auto s_max = fb.square(sqrt_s_max);
+            data.mass = data.computed_mass.value();
+            data.mass2 = fb.square(data.mass.value());
+            auto [r_out, det] =
+                _s_invariants.at(invariant_index++)
+                    .build_inverse(fb, {data.mass2.value()}, {s_min, s_max});
+            random_out.push_back(r_out.at(0));
+            dets.push_back(det);
+        } else if (decay_index == 0) {
+            data.mass2 = _sqrt_s_lab * _sqrt_s_lab;
+            data.mass = _sqrt_s_lab;
+        }
+    }
+
+    random_out.insert(
+        random_out.end(), random_out_reversed.rbegin(), random_out_reversed.rend()
+    );
+    return {{fb.stack(random_out)}, fb.product(dets)};
 }

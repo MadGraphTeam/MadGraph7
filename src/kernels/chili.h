@@ -13,8 +13,6 @@ KERNELSPEC void kernel_chili_forward(
     FIn<T, 1> pt_min,
     FIn<T, 1> y_max,
     FOut<T, 2> p_ext,
-    FOut<T, 0> x1,
-    FOut<T, 0> x2,
     FOut<T, 0> det
 ) {
     // Handle the first n-1 outgoing t-channel particles
@@ -118,13 +116,24 @@ KERNELSPEC void kernel_chili_forward(
     p_b[3] = -pm / 2.;
 
     // Get the bjorken variables
-    x1 = pp / e_cm;
-    x2 = pm / e_cm;
+    auto x1 = pp / e_cm;
+    auto x2 = pm / e_cm;
 
     // keep invalid point but set det/weight to zero (important to obtain correct
     // integral)
     det = where((x1 < 1.) & (x2 < 1.), det_tmp, 0.);
 }
+
+template <typename T>
+KERNELSPEC void kernel_chili_inverse(
+    FIn<T, 2> p_ext,
+    FIn<T, 1> pt_min,
+    FIn<T, 1> y_max,
+    FOut<T, 1> r,
+    FOut<T, 0> e_cm,
+    FOut<T, 1> m_out,
+    FOut<T, 0> det
+) {}
 
 } // namespace kernels
 } // namespace madevent
