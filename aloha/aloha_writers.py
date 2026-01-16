@@ -1560,11 +1560,11 @@ class ALOHAWriterForCPP(WriteALOHA):
     type2def['int'] = 'int '
     type2def['double'] = 'double '
     type2def['complex'] = 'std::complex<double> '
-    type2def['alohaS'] = 'ALOHAOBJ &'
-    type2def['alohaF'] = 'ALOHAOBJ &'
-    type2def['alohaV'] = 'ALOHAOBJ &'
-    type2def['alohaR'] = 'ALOHAOBJ &'
-    type2def['alohaT'] = 'ALOHAOBJ &'
+    type2def['alohaS'] = 'ALOHAOBJ '
+    type2def['alohaF'] = 'ALOHAOBJ '
+    type2def['alohaV'] = 'ALOHAOBJ '
+    type2def['alohaR'] = 'ALOHAOBJ ' 
+    type2def['alohaT'] = 'ALOHAOBJ '
     type2def['pointer_vertex'] = '&' # using complex<double> & vertex)
     type2def['pointer_coup'] = ''
     #variable overwritten by gpu
