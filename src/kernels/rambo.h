@@ -48,6 +48,15 @@ map_fourvector_rambo_diet(FVal<T> q0, FVal<T> r_cos_theta, FVal<T> r_phi) {
 }
 
 template <typename T>
+KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
+map_fourvector_rambo_diet_inverse(FourMom<T> q) {
+    auto q0 = q[0];
+    auto r_cos_theta = (q[3] / q0 + 1.) / 2.;
+    auto r_phi = atan2(q[2], q[1]) / (2. * PI) + 0.5;
+    return {q0, r_cos_theta, r_phi};
+}
+
+template <typename T>
 KERNELSPEC FVal<T> two_body_decay_factor_massless(FVal<T> cum_m_prev, FVal<T> cum_m) {
     auto cum_m_prev_square = cum_m_prev * cum_m_prev;
     return 1.0 / (8 * cum_m_prev_square) * (cum_m_prev_square - cum_m * cum_m);
@@ -94,6 +103,42 @@ KERNELSPEC void fast_rambo_massless_body(
     FIn<T, 1> r, FIn<T, 0> e_cm, FOut<T, 2> p_out, FOut<T, 0> det, FourMom<T> q
 ) {
     std::size_t n_particles = p_out.size();
+    FVal<T> det_tmp_inv = 1 / rambo_weight_factor[n_particles - 3];
+    FVal<T> cum_u = 1.;
+    FVal<T> cum_m_prev = e_cm;
+    for (std::size_t i = n_particles - 1; i-- > 0;) {
+        FVal<T> cum_m;
+        if (i == n_particles - 2) {
+            cum_m = 0;
+        } else {
+            auto [ri, det_u_inv] = fast_rambo_r_to_u<T>(ui, n_particles - 3 - i);
+            r[3 * i + 2] = ri;
+            det_tmp_inv = det_tmp_inv * det_u_inv;
+            cum_u = cum_u * r[3 * i + 2];
+            cum_m = e_cm * cum_u;
+        }
+
+        auto e_massless =
+            4 * cum_m_prev * two_body_decay_factor_massless<T>(cum_m_prev, cum_m);
+        auto p_i = map_fourvector_rambo_diet<T>(e_massless, r[3 * i], r[3 * i + 1]);
+        FourMom<T> q_i{
+            sqrt(e_massless * e_massless + cum_m * cum_m), -p_i[1], -p_i[2], -p_i[3]
+        };
+        store_mom<T>(p_out[i], boost<T>(p_i, q, 1.0));
+        q = boost<T>(q_i, q, 1.0);
+
+        cum_m_prev = cum_m;
+    }
+    store_mom<T>(p_out[n_particles - 1], q);
+    det = det_tmp * pow(e_cm, 2. * n_particles - 4.);
+}
+
+template <typename T>
+KERNELSPEC void fast_rambo_massless_body_inverse(
+    FIn<T, 2> p_out, FOut<T, 1> r, FIn<T, 0> e_cm, FOut<T, 0> det, FourMom<T> q
+) {
+    std::size_t n_particles = p_out.size();
+    q = p_out[-1];
     FVal<T> det_tmp = rambo_weight_factor[n_particles - 3];
     FVal<T> cum_u = 1.;
     FVal<T> cum_m_prev = e_cm;
