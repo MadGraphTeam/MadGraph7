@@ -611,17 +611,11 @@ C     ----------
 C     BEGIN CODE
 C     ----------
       JAMP(:,:) = (0D0,0D0)
+      BORNS(:,:) =0D0
+      ANS(:,:) = (0D0, 0D0)
+
       GLU_IJ = IJ_VALUES(NFKSPROCESS)
       IF (FORCE_IJGLU_ZERO) GLU_IJ = 0
-
-      DO I = 1, NSQAMPSO
-        ANS(1,I)=0D0
-        ANS(2,I)=0D0
-        BORNS(1,I)=0D0
-        BORNS(2,I)=0D0
-      ENDDO
-      BORNS(1,0)=0D0
-      BORNS(2,0)=0D0
       IF (GLU_IJ.NE.0) THEN
         BACK_HEL = NHEL(GLU_IJ)
         IF (BACK_HEL.NE.0) THEN
@@ -693,10 +687,6 @@ C         JAMPs contributing to orders QCD=0 QED=2
      $           *DCONJG(JAMP(I,N))
               ENDDO
             ENDDO
-            DO N = 1, NAMPSO
-              BORNS(2-(1+BACK_HEL*IHEL)/2,SQSOINDEXB(M,N))=BORNS(2-(1
-     $         +BACK_HEL*IHEL)/2,SQSOINDEXB(M,N))/DENOM
-            ENDDO
           ENDDO
           DO I = 1, NGRAPHS
             AMP2(I)=AMP2(I)+AMP(I)*DCONJG(AMP(I))
@@ -709,6 +699,7 @@ C         JAMPs contributing to orders QCD=0 QED=2
           ENDDO
         ENDIF
       ENDDO
+      BORNS(:,:) = BORNS(:,:)/DENOM
       DO I = 1, NSQAMPSO
         BORNS(1,0)=BORNS(1,0)+BORNS(1,I)
         BORNS(2,0)=BORNS(2,0)+BORNS(2,I)
@@ -720,18 +711,16 @@ C         JAMPs contributing to orders QCD=0 QED=2
           ZTEMP = (0.D0,0.D0)
           DO J = I, NCOLOR
             CF_INDEX = CF_INDEX +1
-            ZTEMP = ZTEMP + CF(CF_INDEX)*JAMPH(2,J,M)
-          ENDDO
-          DO N = 1, NAMPSO
-            ANS(2,SQSOINDEXB(M,N))= ANS(2,SQSOINDEXB(M,N)) + ZTEMP
-     $       *DCONJG(JAMPH(1,I,N))
+            DO  N = 1, NAMPSO
+              ANS(2,SQSOINDEXB(M,N))= ANS(2,SQSOINDEXB(M,N)) +
+     $          CF(CF_INDEX)*(JAMPH(2,J,M)*DCONJG(JAMPH(1,I,N))
+     $         +JAMPH(2,I,M)*DCONJG(JAMPH(1,J,N)))
+            ENDDO
           ENDDO
         ENDDO
 
-        DO N = 1, NAMPSO
-          ANS(2,SQSOINDEXB(M,N))= ANS(2,SQSOINDEXB(M,N))/DENOM
-        ENDDO
       ENDDO
+      ANS(2,:) = ANS(2,:)/(2D0*DENOM)
       IF (GLU_IJ.NE.0) NHEL(GLU_IJ) = BACK_HEL
       END
 

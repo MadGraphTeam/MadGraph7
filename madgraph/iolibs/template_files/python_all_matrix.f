@@ -1,4 +1,6 @@
 %(python_information)s
+
+
   subroutine smatrixhel(pdgs, procid, npdg, p, ALPHAS, SCALE2, nhel, ANS)
   use model_object
   IMPLICIT NONE
@@ -15,7 +17,30 @@ CF2PY double precision, intent(in) :: SCALE2
   integer npdg, nhel, procid
   double precision p(*)
   double precision ANS, ALPHAS, PI,SCALE2
-  integer flavor(%(maxpart)i)
+  call smatrixhel_internal(pdgs, procid, npdg, p, ALPHAS, SCALE2, nhel, ANS)
+  return
+  end
+
+
+
+
+  subroutine smatrixhel_internal(pdgs, procid, npdg, p, ALPHAS, SCALE2, nhel, ANS)
+  use model_object
+  IMPLICIT NONE
+C ALPHAS is given at scale2 (SHOULD be different of 0 for loop induced, ignore for LO)  
+
+CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
+CF2PY integer, intent(in), dimension(npdg) :: pdgs
+CF2PY integer, intent(in):: procid
+CF2PY integer, intent(in) :: npdg
+CF2PY double precision, intent(out) :: ANS
+CF2PY double precision, intent(in) :: ALPHAS
+CF2PY double precision, intent(in) :: SCALE2
+  integer pdgs(*)
+  integer npdg, nhel, procid
+  double precision p(*)
+  double precision ANS, ALPHAS, PI,SCALE2
+  integer flavor(%(maxpart)i),I
   include 'coupl.inc'
   
   
@@ -46,6 +71,19 @@ CF2PY INTENT(IN) :: PATH
       
       
       subroutine CHANGE_PARA(name, value)
+      use model_object
+      implicit none
+CF2PY intent(in) :: name
+CF2PY intent(in) :: value
+
+      character*512 name
+      double precision value
+
+      call change_para_internal(name, value)
+      return
+      end
+
+      subroutine CHANGE_PARA_internal(name, value)
       use model_object
       implicit none
 CF2PY intent(in) :: name

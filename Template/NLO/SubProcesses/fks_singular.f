@@ -7,6 +7,13 @@ c to the list of weights using the add_wgt subroutine
       include 'coupl.inc'
       include 'timing_variables.inc'
       include 'orders.inc'
+      include 'run.inc'
+      include 'genps.inc'
+      integer i
+      integer idup(nexternal,maxproc)
+      integer mothup(2,nexternal,maxproc)
+      integer icolup(2,nexternal,maxflow)
+      include 'born_leshouche.inc'
       integer orders(nsplitorders)
       integer iamp
 
@@ -37,6 +44,12 @@ c to the list of weights using the add_wgt subroutine
         orders_tag=get_orders_tag(orders)
         amp_pos=iamp
         wgt1=amp_split(iamp)*f_b/g**(qcd_power)
+c     For UPC processes, we only need to fill the Born contribution for
+c     photon-photon initial state
+        if ((abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2) 
+     &   .and. .not. (idup(1,1).eq.22 .and. idup(2,1).eq.22)) then
+          cycle
+        endif
         call add_wgt(2,orders,wgt1,0d0,0d0)
       enddo
 
@@ -1170,6 +1183,8 @@ c     iterm= -3 : only restore scales for n+1-body w/o recomputing
      $                     FxFx_fac_scale(2)
       common/c_FxFx_scales/FxFx_ren_scales,nFxFx_ren_scales,
      $                     FxFx_fac_scale
+      integer            i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
       INTEGER              NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       save rewgt_mohdr_calculated,rewgt_izero_calculated,p_last_izero
@@ -1179,7 +1194,9 @@ c     iterm= -3 : only restore scales for n+1-body w/o recomputing
      &     ,nfxfx_ren_scales_izero ,nfxfx_ren_scales_mohdr
       integer need_matching(nexternal),need_matching_izero(nexternal)
       integer need_matching_S(nexternal),need_matching_H(nexternal)
+     $     ,need_matching_cuts(nexternal)
       common /c_need_matching/ need_matching_S,need_matching_H
+     $     ,need_matching_cuts
       save need_matching_izero
       double precision shower_S_scale(fks_configs*2)
      &     ,shower_H_scale(fks_configs*2),ref_H_scale(fks_configs*2)
@@ -1212,7 +1229,10 @@ c n-body momenta FxFx Sudakov factor (i.e. for S-events)
             rewgt_izero=min(rewgt_izero,1d0)
             fxfx_exp_rewgt=min(rewgt_exp_izero,0d0)
             need_matching_S(1:nexternal)=need_matching(1:nexternal)
-            need_matching_izero(1:nexternal)=need_matching_S(1:nexternal)
+            need_matching_cuts(1:nexternal)=[need_matching_S(1:i_fks-1)
+     $           ,1,need_matching_S(i_fks:nexternal-1)]
+            need_matching_izero(1:nexternal)=
+     $           need_matching_S(1:nexternal)
 c Update shower starting scale to be the scale down to which the MINLO
 c Sudakov factors are included.
             shower_S_scale(nFKSprocess*2-1)=
@@ -1269,6 +1289,7 @@ c n+1-body momenta FxFx Sudakov factor (i.e. for H-events)
             fxfx_fac_scale(2)=fxfx_fac_scale(1)
             rewgt_mohdr=min(rewgt_mohdr,1d0)
             need_matching_H(1:nexternal)=need_matching(1:nexternal)
+            need_matching_cuts(1:nexternal)=need_matching_H(1:nexternal)
 c Update shower starting scale
             pthardness=ref_H_scale(nFKSprocess*2)-
      $           shower_H_scale(nFKSprocess*2)
@@ -1307,6 +1328,8 @@ c Update shower starting scale
          return
       elseif (iterm.eq.-1 .or. iterm.eq.-2) then
 c Restore scales for the n-body FxFx terms
+         need_matching_cuts(1:nexternal)=[need_matching_S(1:i_fks-1),1,
+     $        need_matching_S(i_fks:nexternal-1)]
          nFxFx_ren_scales=nFxFx_ren_scales_izero
          do i=0,nexternal
             FxFx_ren_scales(i)=FxFx_ren_scales_izero(i)
@@ -1316,6 +1339,7 @@ c Restore scales for the n-body FxFx terms
          enddo
       elseif (iterm.eq.-3) then
 c Restore scales for the n+1-body FxFx terms
+         need_matching_cuts(1:nexternal)=need_matching_H(1:nexternal)
          nFxFx_ren_scales=nFxFx_ren_scales_mohdr
          do i=0,nexternal
             FxFx_ren_scales(i)=FxFx_ren_scales_mohdr(i)
@@ -1882,7 +1906,9 @@ c        contribution
       double precision       wgt_ME_born,wgt_ME_real
       common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
       integer need_matching_S(nexternal),need_matching_H(nexternal)
+     $     ,need_matching_cuts(nexternal)
       common /c_need_matching/ need_matching_S,need_matching_H
+     $     ,need_matching_cuts
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer ntagph
@@ -1974,6 +2000,10 @@ C schemes; it is needed when there are tagged photons around
       scales2(1,icontr)=QES2
       scales2(2,icontr)=scale**2
       scales2(3,icontr)=q2fact(1)
+C for UPC processes set scale to Ellis-Sexton scale      
+      if (abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2) then
+        scales2(3,icontr)=QES2
+      endif
       g_strong(icontr)=g
       nFKS(icontr)=nFKSprocess
       y_bst(icontr)=ybst_til_tolab
@@ -2081,6 +2111,7 @@ c or to fill histograms.
       include 'timing_variables.inc'
       include 'genps.inc'
       include 'orders.inc'
+      include 'q_es.inc'
       integer orders(nsplitorders)
       integer i,j,k,iamp,icontr_orig
       logical virt_found
@@ -2112,6 +2143,11 @@ c call to separate_flavour_config().
          mu2_f=scales2(3,i)
          q2fact(1)=mu2_f
          q2fact(2)=mu2_f
+c for UPC processes set scale to Ellis-Sexton scale      
+         if (abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2) then
+            q2fact(1)=QES2
+            q2fact(2)=QES2
+         endif
 c call the PDFs
          xlum = dlum()
 c iwgt=1 is the central value (i.e. no scale/PDF reweighting).
@@ -5042,6 +5078,11 @@ C the first entry in xkk is for QCD splittings, the second QED
       parameter (vca=3.d0)
       parameter (xnc=3.d0)
 
+      integer i_fks, j_fks
+      common/fks_indices/i_fks, j_fks
+      include "run.inc"
+      include "q_es.inc"
+
       include "coupl.inc"
 c
       if (PDFscheme.eq.0) then
@@ -5110,6 +5151,18 @@ c
           xkk(2)=ch2**2*(1-x)*(1+(1-x)**2)/x*(2*dlog(x)+1)
         else
           xkk(:) = 0d0
+        endif
+      else if (PDFscheme.eq.7) then
+        ! scheme for UPC photons (need to multiply 1-x in addition)
+        if (j_fks.gt.2) then
+          write(6,*)'Error in xkplus: wrong j_fks', j_fks
+          stop
+        endif
+        xkk(1)=0d0
+        if(dabs(ch1).gt.0d0.and.dabs(ch2).gt.0d0
+     $      .and.dabs(ch1).eq.dabs(ch2)) then ! gamma -> f^* (ch1) fbar (ch2)
+          xkk(2)=-abs(col1)*ch1**2*(1d0-x)*(x**2+(1d0-x)**2)
+     $        *dlog(QES2*xiAI(j_fks)**2*RAI(j_fks)**2)
         endif
       else
         write(6,*)'Error in xkplus: wrong PDF scheme', PDFscheme
@@ -5209,6 +5262,9 @@ c
         else
           xkk(:) = 0d0
         endif
+      elseif(PDFscheme.eq.7)then
+        ! scheme for UPC photons (NO need to multiply 1-x in addition)
+        xkk(:)=0d0
       else
         write(6,*)'Error in xklog: wrong PDF scheme', PDFscheme
         stop
@@ -5306,6 +5362,9 @@ c
         else
           xkk(:) = 0d0
         endif
+      elseif(PDFscheme.eq.7) then
+        ! scheme for UPC photons
+        xkk(:)=0d0
       else
         write(6,*)'Error in xkdelta: wrong PDF scheme', PDFscheme
         stop
@@ -5872,6 +5931,7 @@ C keep track of each split orders
       ! 4 -> mixed (leptonic)
       ! 5 -> nobeta (leptonic)
       ! 6 -> delta (leptonic)
+      ! 7 -> UPC
       if(firsttime_pdf) then
         write(*,*) 'PDFscheme' , pdfscheme
         firsttime_pdf = .false.
@@ -6055,7 +6115,7 @@ c       y(k)_lab = y(k)_tilde - ybst_til_tolab
 c where y(k)_lab and y(k)_tilde are the rapidities computed with a generic
 c four-momentum k, in the lab frame and in the \tilde{k}_1+\tilde{k}_2 
 c c.m. frame respectively
-      ybst_til_tolab=-ycm_cnt(0)
+      ybst_til_tolab=-ycm_cnt(0)-0.5d0*log(ebeam(1)/ebeam(2))
       if(icountevts.eq.-100)then
 c set Bjorken x's in run.inc for the computation of PDFs in auto_dsig
         xbk(1)=xbjrk_ev(1)
@@ -7350,7 +7410,12 @@ c 1+2+3+4
           arg2=arg1*betai
           arg3=Ej
           arg4=arg3*betaj
+          if(vij.lt.1d0)then
           xi0=1/vij*log((1+vij)/(1-vij))
+          else
+             xi0=dlog(4d0*kikj**2/(xmi2*xmj2))
+          endif
+c          xi0=1/vij*log((1+vij)/(1-vij))
           xi1a=kikj**2*(1+vij)/xmi2*( xj1a(arg1,arg2,tHVv,tHVvl)-
      #                                xj1a(arg3,arg4,tHVv,tHVvl) )
 

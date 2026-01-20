@@ -815,10 +815,10 @@ class Amplitude(base_objects.PhysicsObject):
         if diagram_filter:
             res = self.apply_user_filter(res)
 
-        # 4 gluon specials
-        if True:
-            misc.sprint('apply 4 gluon specials')
-            #res = self.apply_4gluon_specials(res)
+        # 4 gluon specials demo (dedicated aloha not implemented yet)
+        #if True:
+        #    misc.sprint('apply 4 gluon specials')
+        #    #res = self.apply_4gluon_specials(res)
 
         # Replace final id=0 vertex if necessary
         if not process.get('is_decay_chain'):
@@ -1761,11 +1761,25 @@ class MultiProcess(base_objects.PhysicsObject):
         except KeyError:
             fstags = []
 
+        try:
+            istags = [leg['is_tagged'] for leg in process_definition['legs'] \
+                 if 'is_tagged' in leg.keys() and leg['state'] == False]
+
+        except KeyError:
+            istags = []
+
         # Generate all combinations for the initial state
         for prod in itertools.product(*isids):
-            islegs = [\
-                    base_objects.Leg({'id':id, 'state': False, 
-                                      'polarization': islegs_orig[i]['polarization']})
+            if any(istags):
+                if not all(istags):
+                    raise MadGraph5Error("Tagging only one initial-state particle is not allowed")
+                islegs = [\
+                        fks_tag.TagLeg({'id':id, 'state': False, 'polarization': isleg['polarization'], 'is_tagged': tag}) \
+                        for id, isleg, tag in zip(prod, islegs_orig, istags)]
+            else:
+                islegs = [\
+                        base_objects.Leg({'id':id, 'state': False, 'polarization': islegs_orig[i]['polarization'],
+                                          'flavor': islegs_orig[i]['flavor']}) \
                     for i,id in enumerate(prod)]
 
             # check for longitudinal photon
@@ -1797,7 +1811,8 @@ class MultiProcess(base_objects.PhysicsObject):
                 
                 if not fstags:   
                     leg_list.extend([\
-                            base_objects.Leg({'id':id, 'state': True, 'polarization': fsleg['polarization']}) \
+                            base_objects.Leg({'id':id, 'state': True, 'polarization': fsleg['polarization'],
+                                              'flavor': fsleg['flavor']}) \
                             for id, fsleg in zip(prod, fslegs)])
                 else:
                     leg_list.extend([\

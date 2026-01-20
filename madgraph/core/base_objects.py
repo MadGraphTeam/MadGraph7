@@ -1228,6 +1228,7 @@ class Model(PhysicsObject):
         self['merged_particles'] = {}
         self['limitations'] = [] # MLM means that the model can sometimes have issue with MLM/default scale. 
                                  # fix_scale means that the model should use fix_scale computation.
+        self['startfromalpha0'] = False
         # attribute which might be define if needed
         #self['name2pdg'] = {'name': pdg}
         
@@ -1288,7 +1289,7 @@ class Model(PhysicsObject):
             if not (isinstance(value, list)):
                 raise self.PhysicsObjectError("Object of type %s is not a list" % type(value))
 
-        elif name == 'case_sensitive':
+        elif name in ['case_sensitive', 'startfromalpha0']:
             if not value in [True ,False]:
                 raise self.PhysicsObjectError("Object of type %s is not a boolean" % type(value))
             
@@ -1495,7 +1496,7 @@ class Model(PhysicsObject):
         self['merged_particles'][pdg_code] = ids
         return new_part, anti_part
 
-    def get_get_merge_key(self, inter, ids, new_part):
+    def get_get_merge_key(self, inter, ids, new_part, force_delta=None):
         """define a key for the merge interaction to see if we need to merge this interaction
         into another one or to have a new one"""
 
@@ -1504,7 +1505,7 @@ class Model(PhysicsObject):
         # need to check for non diagonal support (CKM, PMNS, ...) 
         # create an entry delta in the key to avoid merging too much (important to have different amplitude)
         change = [abs(i) for i in inter_id if abs(i) in ids]
-        if change:
+        if change and force_delta is None:
             # change should be by pair 
             # special case for quark -> check with b/t
             # special case for lepton -> check with neutrino
@@ -1521,7 +1522,7 @@ class Model(PhysicsObject):
                         if id in ids:
                             change[i]= id
                         else:
-                            assert(12 in ids)
+#                            assert(12 in ids)
                             c = next(iter(inter.get('couplings').values()))
                             f = next(iter(c['flavors']))
                             change[i] =  9 + 2 * f[pos]
@@ -2458,6 +2459,7 @@ class Leg(PhysicsObject):
         self['onshell'] = None
         # filter on the helicty
         self['polarization'] = []
+        self['flavor'] = []
 
     def filter(self, name, value):
         """Filter for valid leg property values."""
@@ -2500,7 +2502,7 @@ class Leg(PhysicsObject):
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization']
+        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization', 'flavor']
 
     def is_fermion(self, model):
         """Returns True if the particle corresponding to the leg is a
@@ -2673,6 +2675,7 @@ class MultiLeg(PhysicsObject):
         self['ids'] = []
         self['state'] = True
         self['polarization'] = []
+        self['flavor'] = []
 
     def filter(self, name, value):
         """Filter for valid multileg property values."""
@@ -2693,6 +2696,15 @@ class MultiLeg(PhysicsObject):
                     raise self.PhysicsObjectError( \
                           "%s is not a valid polarization" % str(value))
 
+        if name == 'flavor':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError( \
+                        "%s is not a valid list" % str(value))
+            for i in value:
+                if i != int(i):
+                    raise self.PhysicsObjectError( \
+                          "%s is not a valid flavor" % str(value))
+                
         if name == 'state':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid leg state (initial|final)" % \
@@ -2703,7 +2715,7 @@ class MultiLeg(PhysicsObject):
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['ids', 'state','polarization']
+        return ['ids', 'state','polarization','flavor']
 
 #===============================================================================
 # LegList
@@ -3963,6 +3975,16 @@ class Process(PhysicsObject):
             return None
         else:
             return legs[0].get('id')
+        
+    def get_initial_flavor(self, number):
+        """Return the pdg codes for initial state particles for beam number"""
+
+        legs = [leg for leg in self.get('legs') if leg.get('state') == False and\
+                       leg.get('number') == number]
+        if not legs:
+            return None
+        else:
+            return legs[0].get('flavor')
         
     def get_initial_final_ids(self):
         """return a tuple of two tuple containing the id of the initial/final
