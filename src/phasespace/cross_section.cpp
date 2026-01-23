@@ -42,7 +42,7 @@ DifferentialCrossSection::DifferentialCrossSection(
                     for (auto& option : pid_options) {
                         pids.insert(option.at(index));
                     }
-                    arg_types.push_back(batch_float_array(pids.size())); // pdf1 cache
+                    arg_types.push_back(batch_float_array(pids.size())); // pdf cache
                     eval_pdf = true;
                 }
             };
@@ -64,13 +64,13 @@ DifferentialCrossSection::DifferentialCrossSection(
     _has_mirror(has_mirror),
     _input_momentum_fraction(input_momentum_fraction) {
     auto init_pdf = [&](auto& pdf_grid, bool has_pdf, int index) {
-        if (has_pdf1) {
-            if (pdf_grid1) {
+        if (has_pdf) {
+            if (pdf_grid) {
                 std::vector<int> pids;
                 for (auto& option : pid_options) {
                     pids.push_back(option.at(index));
                 }
-                _pdfs.at(index) = PartonDensity(pdf_grid1.value(), pids, true);
+                _pdfs.at(index) = PartonDensity(pdf_grid.value(), pids, true);
             } else {
                 std::set<int> pids;
                 for (auto& option : pid_options) {
@@ -121,7 +121,7 @@ ValueVec DifferentialCrossSection::build_function_impl(
     // TODO: need to use mirror_id if we have two different PDFs
     ValueVec scales;
     Value ren_scale;
-    if (_pdfs.at(0) || _pdfs.at(1)) {
+    if (_pdf_indices.at(0).size() == 0 && _pdf_indices.at(1).size() == 0) {
         scales = _energy_scale.build_function(fb, {momenta});
         ren_scale = scales.at(0);
     } else {
@@ -135,7 +135,7 @@ ValueVec DifferentialCrossSection::build_function_impl(
             pdf_output = pdf.value()
                              .build_function(fb, {x, scales.at(i + 1), pdf_flavor_id})
                              .at(0);
-        } else {
+        } else if (pdf_indices.size() > 0) {
             pdf_output = fb.gather(
                 fb.gather_int(pdf_flavor_id, pdf_indices), args.at(arg_index + i)
             );
