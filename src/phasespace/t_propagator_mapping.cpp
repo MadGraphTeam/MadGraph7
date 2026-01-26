@@ -9,9 +9,9 @@ TPropagatorMapping::TPropagatorMapping(
 ) :
     Mapping(
         "TPropagatorMapping",
-        TypeVec(4 * integration_order.size() + 1, batch_float),
+        TypeVec(3 * integration_order.size() - 1, batch_float),
         TypeVec(integration_order.size() + 3, batch_four_vec),
-        {}
+        TypeVec(integration_order.size() + 2, batch_float)
     ),
     _integration_order(integration_order),
     _com_scattering(true, invariant_power),
@@ -34,10 +34,9 @@ TPropagatorMapping::TPropagatorMapping(
 Mapping::Result TPropagatorMapping::build_forward_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
 ) const {
-    ValueVec random(inputs.begin(), inputs.begin() + random_dim());
-    Value e_cm = inputs.at(random_dim());
-    ValueVec m_out(inputs.begin() + random_dim() + 1, inputs.end());
-    auto r = random.begin();
+    Value e_cm = conditions.at(0);
+    ValueVec m_out(conditions.begin() + 1, conditions.end());
+    auto r = inputs.begin();
     auto next_random = [&]() { return *(r++); };
     ValueVec dets;
 
@@ -111,18 +110,15 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
 Mapping::Result TPropagatorMapping::build_inverse_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
 ) const {
+    Value e_cm = conditions.at(0);
+    ValueVec m_out(conditions.begin() + 1, conditions.end());
     std::size_t n_out = _integration_order.size() + 1;
+    ValueVec random_out;
+    ValueVec dets;
 
-    // compute COM energy, outgoing masses and s-invariants from momenta
-    nested_vector2<double> invariant_factors;
-    auto& cm_factors = invariant_factors.emplace_back(n_out + 2);
-    cm_factors.at(0) = 1;
-    cm_factors.at(1) = 1;
-    for (std::size_t i = 0; i < n_out; ++i) {
-        auto& factors = invariant_factors.emplace_back(n_out + 2);
-        factors.at(i + 2) = 1;
-    }
+    // compute s-invariants from momenta
     if (_integration_order.size() > 1) {
+        nested_vector2<double> invariant_factors;
         std::size_t last_index = _integration_order.back();
         std::vector<double> marked_indices(n_out + 2);
         marked_indices.at(last_index + 2) = 1;
@@ -132,21 +128,10 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
             marked_indices.at(_integration_order.at(i) + _sample_sides.at(i) + 2) = 1;
             invariant_factors.push_back(marked_indices);
         }
-    }
-    ValueVec invariants =
-        fb.unstack(fb.invariants_from_momenta(fb.stack(inputs), invariant_factors));
-    Value e_cm = fb.sqrt(invariants.at(0));
-    ValueVec m_out;
-    for (auto inv : std::span(invariants.begin() + 1, invariants.begin() + n_out + 1)) {
-        m_out.push_back(fb.sqrt(inv));
-    }
-    ValueVec mass_sum_invariants{invariants.rbegin(), invariants.rend() - n_out - 1};
+        ValueVec mass_sum_invariants =
+            fb.unstack(fb.invariants_from_momenta(fb.stack(inputs), invariant_factors));
 
-    ValueVec random_out;
-    ValueVec dets;
-    if (_integration_order.size() > 1) {
         // compute sums of outgoing masses, starting from those sampled last
-        std::size_t last_index = _integration_order.back();
         ValueVec min_masses{fb.add(m_out.at(last_index), m_out.at(last_index + 1))};
         ValueVec max_masses_subtract;
         for (std::size_t i = _integration_order.size() - 2; i > 0; --i) {
@@ -161,7 +146,7 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
         // recover random numbers from intermediate invariant masses
         auto max_mass = e_cm;
         for (auto [mass2, min_mass, max_mass_subtract] :
-             zip(mass_sum_invariants,
+             zip(std::views::reverse(mass_sum_invariants),
                  std::views::reverse(min_masses),
                  std::views::reverse(max_masses_subtract))) {
             auto s_min = fb.square(min_mass);
@@ -198,8 +183,5 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
         }
     }
 
-    ValueVec outputs = random_out;
-    outputs.push_back(e_cm);
-    outputs.insert(outputs.end(), m_out.begin(), m_out.end());
-    return {outputs, fb.product(dets)};
+    return {random_out, fb.product(dets)};
 }

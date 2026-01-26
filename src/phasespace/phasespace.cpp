@@ -307,15 +307,15 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     std::visit(
         Overloaded{
             [&](auto& t_mapping) {
-                ValueVec args;
+                ValueVec args, conds;
                 for (std::size_t i = 0; i < t_mapping.random_dim(); ++i) {
                     args.push_back(next_random());
                 }
-                args.push_back(sqrt_s_hat);
+                conds.push_back(sqrt_s_hat);
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
-                    args.push_back(decay_data.at(index).mass.value());
+                    conds.push_back(decay_data.at(index).mass.value());
                 }
-                auto [t_result, det] = t_mapping.build_forward(fb, args, {});
+                auto [t_result, det] = t_mapping.build_forward(fb, args, conds);
                 std::size_t result_index;
                 using TMapping = std::decay_t<decltype(t_mapping)>;
                 if constexpr (std::is_same_v<TMapping, FastRamboMapping>) {
@@ -433,6 +433,7 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         auto& data = decay_data.at(decay_index);
         data.mass = mass;
         data.mass2 = mass * mass;
+        data.computed_mass = mass;
         data.momentum = momentum;
     }
     auto& root_data = decay_data.at(0);
@@ -476,30 +477,26 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     std::visit(
         Overloaded{
             [&](auto& t_mapping) {
-                ValueVec args;
+                ValueVec args, conds;
                 using TMapping = std::decay_t<decltype(t_mapping)>;
                 if constexpr (!std::is_same_v<TMapping, FastRamboMapping>) {
                     args.push_back(p_ext.at(0));
                     args.push_back(p_ext.at(1));
                 }
+                Value e_cm = fb.obs_mass(fb.add(p_ext.at(0), p_ext.at(1)));
+                conds.push_back(e_cm);
+                decay_data.at(0).computed_mass = e_cm;
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
                     args.push_back(decay_data.at(index).momentum.value());
+                    conds.push_back(decay_data.at(index).computed_mass.value());
                 }
-                auto [t_result, det] = t_mapping.build_inverse(fb, args, {});
+                auto [t_result, det] = t_mapping.build_inverse(fb, args, conds);
                 random_out_reversed.insert(
                     random_out_reversed.end(),
                     t_result.rend() - t_mapping.random_dim(),
                     t_result.rend()
                 );
-                decay_data.at(0).computed_mass = t_result.at(t_mapping.random_dim());
                 dets.push_back(det);
-                /*for (auto [index, mass] : zip(
-                    decay_data.at(0).decay.child_indices,
-                    std::span(t_result.begin() + t_mapping.random_dim() + 1,
-                t_result.end())
-                )) {
-                    decay_data.at(index).computed_mass = mass;
-                }*/
             },
             [&](std::monostate) {}
         },

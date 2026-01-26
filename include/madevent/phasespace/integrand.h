@@ -128,10 +128,8 @@ private:
         Value& momenta() { return values[2]; }
         Value& momenta_mirror() { return values[3]; }
         Value& momenta_acc() { return values[4]; }
-        Value& x1() { return values[5]; }
-        Value& x1_acc() { return values[6]; }
-        Value& x2() { return values[7]; }
-        Value& x2_acc() { return values[8]; }
+        Value& x(std::size_t pdf_index) { return values[5 + pdf_index]; }
+        Value& x_acc(std::size_t pdf_index) { return values[7 + pdf_index]; }
         Value& pdf_prior() { return values[9]; }
         Value& chan_index() { return values[10]; }
         Value& chan_index_in_group() { return values[11]; }
@@ -141,8 +139,7 @@ private:
         Value& weight_before_cuts() { return values[15]; }
         Value& weight_after_cuts() { return values[16]; }
         Value& adaptive_prob() { return values[17]; }
-        Value& pdf1_cache() { return values[18]; }
-        Value& pdf2_cache() { return values[19]; }
+        Value& pdf_cache(std::size_t pdf_index) { return values[18 + pdf_index]; }
         Value& scale_cache() { return values[20]; }
     };
 
@@ -159,10 +156,8 @@ private:
     AdaptiveMapping _adaptive_map;
     AdaptiveDiscrete _discrete_before;
     AdaptiveDiscrete _discrete_after;
-    std::optional<PartonDensity> _pdf1;
-    std::optional<PartonDensity> _pdf2;
-    std::vector<me_int_t> _pdf_indices1;
-    std::vector<me_int_t> _pdf_indices2;
+    std::array<std::optional<PartonDensity>, 2> _pdfs;
+    std::array<std::vector<me_int_t>, 2> _pdf_indices;
     std::optional<EnergyScale> _energy_scale;
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
     std::optional<SubchannelWeights> _subchan_weights;

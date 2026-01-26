@@ -151,21 +151,18 @@ Integrand::Integrand(
         diff_xs.has_mirror()                 // flipped initial state
     ) {
     if (pdf_grid) {
-        std::set<int> pids1, pids2;
-        for (auto& option : diff_xs.pid_options()) {
-            pids1.insert(option.at(0));
-            pids2.insert(option.at(1));
+        for (std::size_t i = 0; i < 2; ++i) {
+            std::set<int> pids;
+            for (auto& option : diff_xs.pid_options()) {
+                pids.insert(option.at(i));
+            }
+            for (auto& option : diff_xs.pid_options()) {
+                _pdf_indices.at(i).push_back(
+                    std::distance(pids.begin(), pids.find(option.at(i)))
+                );
+            }
+            _pdfs.at(i) = PartonDensity(pdf_grid.value(), {pids.begin(), pids.end()});
         }
-        for (auto& option : diff_xs.pid_options()) {
-            _pdf_indices1.push_back(
-                std::distance(pids1.begin(), pids1.find(option.at(0)))
-            );
-            _pdf_indices2.push_back(
-                std::distance(pids2.begin(), pids2.find(option.at(1)))
-            );
-        }
-        _pdf1 = PartonDensity(pdf_grid.value(), {pids1.begin(), pids1.end()});
-        _pdf2 = PartonDensity(pdf_grid.value(), {pids2.begin(), pids2.end()});
         if (active_flavors.size() > 0) {
             _active_flavors.resize(diff_xs.pid_options().size());
             for (auto index : active_flavors) {
@@ -183,7 +180,7 @@ std::tuple<std::vector<std::size_t>, std::vector<bool>> Integrand::latent_dims()
     if (flav_count > 1 && !std::holds_alternative<std::monostate>(_discrete_after)) {
         dims.push_back(1);
         is_float.push_back(false);
-        if (_pdf1 && _energy_scale) {
+        if ((_pdfs.at(0) || _pdfs.at(1)) && _energy_scale) {
             dims.push_back(flav_count);
             is_float.push_back(true);
         }
@@ -201,7 +198,8 @@ Integrand::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const 
         .has_permutations = _mapping.channel_count() > 1,
         .has_multi_flavor = has_multi_flavor,
         .has_mirror = _diff_xs.has_mirror(),
-        .has_pdf_prior = _pdf1 && _energy_scale && has_multi_flavor,
+        .has_pdf_prior =
+            (_pdfs.at(0) || _pdfs.at(1)) && _energy_scale && has_multi_flavor,
     };
     if (_flags & unweight) {
         channel_args.max_weight = args.at(1);
@@ -299,8 +297,8 @@ Integrand::ChannelResult Integrand::build_channel_part(
         _mapping.build_forward(fb, {result.latent()}, mapping_conditions);
     weights_before_cuts.push_back(det);
     result.momenta() = momenta_x1_x2.at(0);
-    result.x1() = momenta_x1_x2.at(1);
-    result.x2() = momenta_x1_x2.at(2);
+    result.x(0) = momenta_x1_x2.at(1);
+    result.x(1) = momenta_x1_x2.at(2);
 
     if (args.has_mirror) {
         auto [index, mirror_det] =
@@ -315,8 +313,9 @@ Integrand::ChannelResult Integrand::build_channel_part(
     result.weight_before_cuts() = fb.product(weights_before_cuts);
     result.indices_acc() = fb.nonzero(result.weight_before_cuts());
     result.momenta_acc() = fb.batch_gather(result.indices_acc(), result.momenta());
-    result.x1_acc() = fb.batch_gather(result.indices_acc(), result.x1());
-    result.x2_acc() = fb.batch_gather(result.indices_acc(), result.x2());
+    for (std::size_t i = 0; i < 2; ++i) {
+        result.x_acc(i) = fb.batch_gather(result.indices_acc(), result.x(i));
+    }
     for (auto& cond : flow_conditions) {
         cond = fb.batch_gather(result.indices_acc(), cond);
     }
@@ -326,17 +325,21 @@ Integrand::ChannelResult Integrand::build_channel_part(
     // sampling
     if (args.has_pdf_prior) {
         auto scales = _energy_scale.value().build_function(fb, {result.momenta_acc()});
-        auto pdf1 =
-            _pdf1.value().build_function(fb, {result.x1_acc(), scales.at(1)}).at(0);
-        auto pdf2 =
-            _pdf2.value().build_function(fb, {result.x2_acc(), scales.at(2)}).at(0);
-        result.pdf_prior() =
-            fb.mul(fb.select(pdf1, _pdf_indices1), fb.select(pdf2, _pdf_indices2));
+        ValueVec pdf_priors;
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (_diff_xs.has_pdf(i)) {
+                auto pdf = _pdfs.at(i)
+                               .value()
+                               .build_function(fb, {result.x_acc(i), scales.at(i + 1)})
+                               .at(0);
+                result.pdf_cache(i) = pdf;
+                pdf_priors.push_back(fb.select(pdf, _pdf_indices.at(i)));
+            }
+        }
+        result.pdf_prior() = fb.product(pdf_priors);
         if (_active_flavors.size() > 0) {
             result.pdf_prior() = fb.mul(result.pdf_prior(), _active_flavors);
         }
-        result.pdf1_cache() = pdf1;
-        result.pdf2_cache() = pdf2;
         result.scale_cache() = scales.at(0);
     }
 
@@ -419,16 +422,20 @@ ValueVec Integrand::build_common_part(
     ValueVec xs_args{
         result.momenta_acc(),
         result.flavor_id(),
-        result.x1_acc(),
-        result.x2_acc(),
-        result.flavor_id()
     };
+    for (std::size_t i = 0; i < 2; ++i) {
+        xs_args.push_back(result.x_acc(i));
+    }
+    xs_args.push_back(result.flavor_id());
     if (args.has_mirror) {
         xs_args.push_back(result.mirror_id());
     }
     if (args.has_pdf_prior) {
-        xs_args.push_back(result.pdf1_cache());
-        xs_args.push_back(result.pdf2_cache());
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (_diff_xs.has_pdf(i)) {
+                xs_args.push_back(result.pdf_cache(i));
+            }
+        }
         xs_args.push_back(result.scale_cache());
     }
     auto dxs_vec = _diff_xs.build_function(fb, xs_args);
@@ -456,8 +463,8 @@ ValueVec Integrand::build_common_part(
                                .build_function(
                                    fb,
                                    {result.momenta_acc(),
-                                    result.x1_acc(),
-                                    result.x2_acc(),
+                                    result.x_acc(0),
+                                    result.x_acc(1),
                                     chan_weights_acc}
                                )
                                .at(0);
@@ -488,8 +495,8 @@ ValueVec Integrand::build_common_part(
         outputs.push_back(args.has_mirror ? result.momenta_mirror() : result.momenta());
     }
     if (_flags & return_x1_x2) {
-        outputs.push_back(result.x1());
-        outputs.push_back(result.x2());
+        outputs.push_back(result.x(0));
+        outputs.push_back(result.x(1));
     }
     if (_flags & return_indices) {
         auto zeros = fb.full({static_cast<me_int_t>(0), args.batch_size});
@@ -532,7 +539,7 @@ ValueVec Integrand::build_common_part(
         auto cw_preproc_acc =
             preproc
                 .build_function(
-                    fb, {result.momenta_acc(), result.x1_acc(), result.x2_acc()}
+                    fb, {result.momenta_acc(), result.x_acc(0), result.x_acc(1)}
                 )
                 .at(0);
         auto zeros =
@@ -626,8 +633,9 @@ ValueVec MultiChannelIntegrand::build_function_impl(
         .has_permutations = first_integrand->_mapping.channel_count() > 1,
         .has_multi_flavor = has_multi_flavor,
         .has_mirror = first_integrand->_diff_xs.has_mirror(),
-        .has_pdf_prior = first_integrand->_pdf1 && first_integrand->_energy_scale &&
-            has_multi_flavor,
+        .has_pdf_prior =
+            (first_integrand->_pdfs.at(0) || first_integrand->_pdfs.at(1)) &&
+            first_integrand->_energy_scale && has_multi_flavor,
     };
     if (first_integrand->_flags & Integrand::unweight) {
         common_args.max_weight = args.at(1);
@@ -679,7 +687,8 @@ IntegrandProbability::IntegrandProbability(const Integrand& integrand) :
             if (flavor_count > 1 &&
                 !std::holds_alternative<std::monostate>(integrand._discrete_after)) {
                 arg_types.push_back(batch_int);
-                if (integrand._pdf1 && integrand._energy_scale) {
+                if ((integrand._pdfs.at(0) || integrand._pdfs.at(1)) &&
+                    integrand._energy_scale) {
                     arg_types.push_back(batch_float_array(flavor_count));
                 }
             }
@@ -692,7 +701,9 @@ IntegrandProbability::IntegrandProbability(const Integrand& integrand) :
     _discrete_after(integrand._discrete_after),
     _permutation_count(integrand._mapping.channel_count()),
     _flavor_count(integrand._diff_xs.pid_options().size()),
-    _has_pdf_prior(integrand._pdf1 && integrand._energy_scale) {}
+    _has_pdf_prior(
+        (integrand._pdfs.at(0) || integrand._pdfs.at(1)) && integrand._energy_scale
+    ) {}
 
 ValueVec IntegrandProbability::build_function_impl(
     FunctionBuilder& fb, const ValueVec& args

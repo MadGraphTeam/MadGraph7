@@ -278,7 +278,7 @@ case 91:
     batch_foreach<tensor_foreach<kernel_chili_forward<GpuTypes>, 5, 2, 1>, 5, 2>(instr, locals, device);
     break;
 case 92:
-    batch_foreach<tensor_foreach<kernel_chili_inverse<GpuTypes>, 3, 4, 1>, 3, 4>(instr, locals, device);
+    batch_foreach<tensor_foreach<kernel_chili_inverse<GpuTypes>, 5, 2, 1>, 5, 2>(instr, locals, device);
     break;
 case 93:
     op_matrix_element(instr, locals, device);
