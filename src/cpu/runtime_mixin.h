@@ -278,7 +278,7 @@ case 91:
     batch_foreach<tensor_foreach<kernel_chili_forward<CpuTypes>, kernel_chili_forward<SimdTypes>, 5, 2, 1, DeviceType>, 5, 2>(instr, locals, device);
     break;
 case 92:
-    batch_foreach<tensor_foreach<kernel_chili_inverse<CpuTypes>, kernel_chili_inverse<SimdTypes>, 3, 4, 1, DeviceType>, 3, 4>(instr, locals, device);
+    batch_foreach<tensor_foreach<kernel_chili_inverse<CpuTypes>, kernel_chili_inverse<SimdTypes>, 5, 2, 1, DeviceType>, 5, 2>(instr, locals, device);
     break;
 case 93:
     op_matrix_element(instr, locals, device);

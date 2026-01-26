@@ -1715,6 +1715,12 @@ chili_inverse:
     - name: p_ext
       type: [float, n+2, 4]
       desc:
+    - name: e_cm
+      type: [float]
+      desc:
+    - name: m_out
+      type: [float, n]
+      desc:
     - name: pt_min
       type: [float, n]
       desc:
@@ -1724,12 +1730,6 @@ chili_inverse:
   outputs:
     - name: r
       type: [float, 3n-2]
-      desc:
-    - name: e_cm
-      type: [float]
-      desc:
-    - name: m_out
-      type: [float, n]
       desc:
     - name: det
       type: [float]

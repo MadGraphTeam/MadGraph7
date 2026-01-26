@@ -6,9 +6,9 @@ namespace madevent {
 
 class FastRamboMapping : public Mapping {
 public:
-    FastRamboMapping(std::size_t _n_particles, bool _massless, bool _com = true);
+    FastRamboMapping(std::size_t n_particles, bool massless, bool com = true);
 
-    std::size_t random_dim() const { return 3 * n_particles - 4; }
+    std::size_t random_dim() const { return 3 * _n_particles - 4; }
 
 private:
     Result build_forward_impl(
@@ -18,9 +18,9 @@ private:
         FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
     ) const override;
 
-    std::size_t n_particles;
-    bool massless;
-    double com;
+    std::size_t _n_particles;
+    bool _massless;
+    double _com;
 };
 
 } // namespace madevent
