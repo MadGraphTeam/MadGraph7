@@ -1,4 +1,6 @@
-## madspace
+<p align="center">
+  <img src="https://github.com/madgraph-ml/madevent7/raw/main/docs/source/_static/logo-light.png" width="450", alt="MadSpace">
+</p>
 
 ### Installation
 
