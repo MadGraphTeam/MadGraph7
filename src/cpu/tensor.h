@@ -1,11 +1,11 @@
 #pragma once
 
 #include "device.h"
-#include "madevent/runtime/tensor.h"
-#include "madevent/runtime/thread_pool.h"
+#include "madspace/runtime/tensor.h"
+#include "madspace/runtime/thread_pool.h"
 #include "simd.h"
 
-namespace madevent {
+namespace madspace {
 namespace cpu {
 
 template <class V, ScalarType T, int _dim, bool is_batch>
@@ -420,4 +420,4 @@ inline void tensor_foreach_dynamic_single(
 }
 
 } // namespace cpu
-} // namespace madevent
+} // namespace madspace

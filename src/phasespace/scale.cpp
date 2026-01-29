@@ -1,6 +1,6 @@
-#include "madevent/phasespace/scale.h"
+#include "madspace/phasespace/scale.h"
 
-using namespace madevent;
+using namespace madspace;
 
 EnergyScale::EnergyScale(
     std::size_t particle_count,

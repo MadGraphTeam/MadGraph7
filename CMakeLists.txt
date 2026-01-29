@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.15...3.27)
 project (
-    madevent
+    madspace
     VERSION 0.1
     LANGUAGES CXX
 )
@@ -102,11 +102,11 @@ set(BLA_SIZEOF_INTEGER 4)
 find_package(BLAS REQUIRED)
 
 ########################################################################################
-# Main madevent module                                                                 #
+# Main madspace module                                                                 #
 ########################################################################################
 
 add_library(
-    madevent
+    madspace
     SHARED
     src/runtime/format.cpp
     src/runtime/tensor.cpp
@@ -149,67 +149,67 @@ add_library(
     src/phasespace/matrix_element.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
-    include/madevent/util.h
-    include/madevent/runtime.h
-    include/madevent/runtime/format.h
-    include/madevent/runtime/tensor.h
-    include/madevent/runtime/context.h
-    include/madevent/runtime/thread_pool.h
-    include/madevent/runtime/event_generator.h
-    include/madevent/runtime/io.h
-    include/madevent/runtime/vegas_optimizer.h
-    include/madevent/runtime/discrete_optimizer.h
-    include/madevent/runtime/runtime_base.h
-    include/madevent/runtime/lhe_output.h
-    include/madevent/runtime/logger.h
-    include/madevent/madcode.h
-    include/madevent/madcode/type.h
-    include/madevent/madcode/function.h
-    include/madevent/madcode/function_builder_mixin.h
-    include/madevent/madcode/opcode_mixin.h
-    include/madevent/madcode/instruction.h
-    include/madevent/madcode/optimizer.h
-    include/madevent/phasespace.h
-    include/madevent/phasespace/base.h
-    include/madevent/phasespace/invariants.h
-    include/madevent/phasespace/two_particle.h
-    include/madevent/phasespace/three_particle.h
-    include/madevent/phasespace/luminosity.h
-    include/madevent/phasespace/topology.h
-    include/madevent/phasespace/t_propagator_mapping.h
-    include/madevent/phasespace/phasespace.h
-    include/madevent/phasespace/multichannel.h
-    include/madevent/phasespace/rambo.h
-    include/madevent/phasespace/cuts.h
-    include/madevent/phasespace/observable.h
-    include/madevent/phasespace/histograms.h
-    include/madevent/phasespace/chili.h
-    include/madevent/phasespace/integrand.h
-    include/madevent/phasespace/vegas.h
-    include/madevent/phasespace/mlp.h
-    include/madevent/phasespace/flow.h
-    include/madevent/phasespace/discrete_flow.h
-    include/madevent/phasespace/discrete_sampler.h
-    include/madevent/phasespace/channel_weights.h
-    include/madevent/phasespace/channel_weight_network.h
-    include/madevent/phasespace/pdf.h
-    include/madevent/phasespace/matrix_element.h
-    include/madevent/phasespace/cross_section.h
-    include/madevent/phasespace/scale.h
+    include/madspace/util.h
+    include/madspace/runtime.h
+    include/madspace/runtime/format.h
+    include/madspace/runtime/tensor.h
+    include/madspace/runtime/context.h
+    include/madspace/runtime/thread_pool.h
+    include/madspace/runtime/event_generator.h
+    include/madspace/runtime/io.h
+    include/madspace/runtime/vegas_optimizer.h
+    include/madspace/runtime/discrete_optimizer.h
+    include/madspace/runtime/runtime_base.h
+    include/madspace/runtime/lhe_output.h
+    include/madspace/runtime/logger.h
+    include/madspace/madcode.h
+    include/madspace/madcode/type.h
+    include/madspace/madcode/function.h
+    include/madspace/madcode/function_builder_mixin.h
+    include/madspace/madcode/opcode_mixin.h
+    include/madspace/madcode/instruction.h
+    include/madspace/madcode/optimizer.h
+    include/madspace/phasespace.h
+    include/madspace/phasespace/base.h
+    include/madspace/phasespace/invariants.h
+    include/madspace/phasespace/two_particle.h
+    include/madspace/phasespace/three_particle.h
+    include/madspace/phasespace/luminosity.h
+    include/madspace/phasespace/topology.h
+    include/madspace/phasespace/t_propagator_mapping.h
+    include/madspace/phasespace/phasespace.h
+    include/madspace/phasespace/multichannel.h
+    include/madspace/phasespace/rambo.h
+    include/madspace/phasespace/cuts.h
+    include/madspace/phasespace/observable.h
+    include/madspace/phasespace/histograms.h
+    include/madspace/phasespace/chili.h
+    include/madspace/phasespace/integrand.h
+    include/madspace/phasespace/vegas.h
+    include/madspace/phasespace/mlp.h
+    include/madspace/phasespace/flow.h
+    include/madspace/phasespace/discrete_flow.h
+    include/madspace/phasespace/discrete_sampler.h
+    include/madspace/phasespace/channel_weights.h
+    include/madspace/phasespace/channel_weight_network.h
+    include/madspace/phasespace/pdf.h
+    include/madspace/phasespace/matrix_element.h
+    include/madspace/phasespace/cross_section.h
+    include/madspace/phasespace/scale.h
 )
 
-#target_compile_options(madevent PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_include_directories(madevent PUBLIC include)
-target_compile_features(madevent PUBLIC cxx_std_20)
-target_link_libraries(madevent PUBLIC nlohmann_json::nlohmann_json)
+#target_compile_options(madspace PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(madspace PUBLIC include)
+target_compile_features(madspace PUBLIC cxx_std_20)
+target_link_libraries(madspace PUBLIC nlohmann_json::nlohmann_json)
 if (USE_SIMD)
-    target_compile_definitions(madevent PRIVATE SIMD_AVAILABLE=1)
+    target_compile_definitions(madspace PRIVATE SIMD_AVAILABLE=1)
 endif()
 
-install(TARGETS madevent DESTINATION madevent7/lib)
+install(TARGETS madspace DESTINATION madspace/lib)
 install(
     DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
-    DESTINATION "madevent7/include"
+    DESTINATION "madspace/include"
     FILES_MATCHING PATTERN "*.h*"
 )
 
@@ -247,7 +247,7 @@ set(
 
 if(COMPILE_CUDA)
     add_library(
-        madevent_cuda
+        madspace_cuda
         SHARED
         src/gpu/runtime.cu
         src/gpu/device.cu
@@ -258,17 +258,17 @@ if(COMPILE_CUDA)
         src/gpu/gpu_abstraction.h
         ${KERNEL_SRC}
     )
-    target_include_directories(madevent_cuda PUBLIC include)
-    set_property(TARGET madevent_cuda PROPERTY CUDA_STANDARD 20)
-    target_link_libraries(madevent_cuda PRIVATE madevent)
-    target_link_libraries(madevent_cuda PRIVATE CUDA::cublas)
-    target_link_libraries(madevent_cuda PRIVATE CUDA::curand)
-    install(TARGETS madevent_cuda DESTINATION madevent7/lib)
+    target_include_directories(madspace_cuda PUBLIC include)
+    set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
+    target_link_libraries(madspace_cuda PRIVATE madspace)
+    target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
+    target_link_libraries(madspace_cuda PRIVATE CUDA::curand)
+    install(TARGETS madspace_cuda DESTINATION madspace/lib)
 endif()
 
 if(COMPILE_HIP)
     add_library(
-        madevent_hip
+        madspace_hip
         SHARED
         src/gpu/runtime.hip
         src/gpu/device.hip
@@ -279,15 +279,15 @@ if(COMPILE_HIP)
         src/gpu/gpu_abstraction.h
         ${KERNEL_SRC}
     )
-    target_include_directories(madevent_hip PUBLIC include)
-    set_property(TARGET madevent_hip PROPERTY HIP_STANDARD 20)
-    set_property(TARGET madevent_hip PROPERTY HIP_EXTENSIONS OFF)
-    target_link_libraries(madevent_hip PRIVATE madevent)
-    target_link_libraries(madevent_hip PRIVATE hip::device)
-    target_link_libraries(madevent_hip PRIVATE roc::rocblas)
-    target_link_libraries(madevent_hip PRIVATE roc::rocrand)
-    target_link_libraries(madevent_hip PRIVATE roc::rocthrust)
-    install(TARGETS madevent_hip DESTINATION madevent7/lib)
+    target_include_directories(madspace_hip PUBLIC include)
+    set_property(TARGET madspace_hip PROPERTY HIP_STANDARD 20)
+    set_property(TARGET madspace_hip PROPERTY HIP_EXTENSIONS OFF)
+    target_link_libraries(madspace_hip PRIVATE madspace)
+    target_link_libraries(madspace_hip PRIVATE hip::device)
+    target_link_libraries(madspace_hip PRIVATE roc::rocblas)
+    target_link_libraries(madspace_hip PRIVATE roc::rocrand)
+    target_link_libraries(madspace_hip PRIVATE roc::rocthrust)
+    install(TARGETS madspace_hip DESTINATION madspace/lib)
 endif()
 
 
@@ -296,15 +296,15 @@ endif()
 ########################################################################################
 
 if(NOT USE_SIMD)
-    set(CPU_TARGETS madevent_cpu)
+    set(CPU_TARGETS madspace_cpu)
     set(SIMD_FLAGS "")
     set(SIMD_DEFINES "")
 elseif(APPLE)
-    set(CPU_TARGETS madevent_cpu madevent_cpu_neon)
+    set(CPU_TARGETS madspace_cpu madspace_cpu_neon)
     set(SIMD_FLAGS "" "")
     set(SIMD_DEFINES "" "USE_SIMD_NEON=1")
 else()
-    set(CPU_TARGETS madevent_cpu madevent_cpu_avx2 madevent_cpu_avx512)
+    set(CPU_TARGETS madspace_cpu madspace_cpu_avx2 madspace_cpu_avx512)
     set(SIMD_FLAGS "" "-mavx2" "-mavx512f")
     set(SIMD_DEFINES "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512=1")
 endif()
@@ -331,14 +331,14 @@ foreach(
     target_include_directories(${cpu_target} PUBLIC include)
     target_compile_features(${cpu_target} PUBLIC cxx_std_20)
     target_link_libraries(${cpu_target} PRIVATE BLAS::BLAS)
-    target_link_libraries(${cpu_target} PRIVATE madevent)
-    if(NOT cpu_target STREQUAL "madevent_cpu")
+    target_link_libraries(${cpu_target} PRIVATE madspace)
+    if(NOT cpu_target STREQUAL "madspace_cpu")
         target_link_libraries(${cpu_target} PRIVATE sleef::sleef)
         target_compile_definitions(${cpu_target} PRIVATE ${simd_define})
         target_compile_options(${cpu_target} PRIVATE ${simd_flag})
         target_compile_definitions(${cpu_target} PRIVATE USE_SIMD=1)
     endif()
-    install(TARGETS ${cpu_target} DESTINATION madevent7/lib)
+    install(TARGETS ${cpu_target} DESTINATION madspace/lib)
 endforeach()
 
 
@@ -347,14 +347,14 @@ endforeach()
 ########################################################################################
 
 python_add_library(
-    _madevent_py
+    _madspace_py
     MODULE
-    src/python/madevent.cpp
+    src/python/madspace.cpp
     src/python/instruction_set.h
     src/python/function_runtime.cpp
     src/python/function_runtime.h
     WITH_SOABI
 )
-target_link_libraries(_madevent_py PRIVATE pybind11::headers)
-target_link_libraries(_madevent_py PUBLIC madevent)
-install(TARGETS _madevent_py DESTINATION madevent7)
+target_link_libraries(_madspace_py PRIVATE pybind11::headers)
+target_link_libraries(_madspace_py PUBLIC madspace)
+install(TARGETS _madspace_py DESTINATION madspace)

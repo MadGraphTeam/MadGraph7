@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-import madevent7 as me
+import madspace as ms
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def mapping_and_args(request):
     com = request.param["com"]
     zeros = np.zeros(N)
     if request.param["decay"]:
-        mapping = me.TwoBodyDecay(com=com)
+        mapping = ms.TwoBodyDecay(com=com)
         if com:
 
             def make_args(point):
@@ -47,7 +47,7 @@ def mapping_and_args(request):
                 )
 
     else:
-        mapping = me.TwoToTwoParticleScattering(com=com)
+        mapping = ms.TwoToTwoParticleScattering(com=com)
         if com:
 
             def make_args(point):

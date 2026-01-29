@@ -2,9 +2,9 @@
 #include "../kernels/kernels.h"
 #include "tensor.h"
 
-using namespace madevent;
-using namespace madevent::cpu;
-using namespace madevent::kernels;
+using namespace madspace;
+using namespace madspace::cpu;
+using namespace madspace::kernels;
 
 namespace {
 

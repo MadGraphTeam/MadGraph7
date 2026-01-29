@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 constexpr double INV_GEV2_TO_PB = 0.38937937217186e9;
@@ -450,4 +450,4 @@ kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

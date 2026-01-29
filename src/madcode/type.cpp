@@ -1,7 +1,7 @@
-#include "madevent/madcode/type.h"
-#include "madevent/util.h"
+#include "madspace/madcode/type.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 using json = nlohmann::json;
 
 namespace {
@@ -82,7 +82,7 @@ BatchSize BatchSize::add(const BatchSize& other, int factor) const {
     return compound;
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const DataType& dtype) {
+std::ostream& madspace::operator<<(std::ostream& out, const DataType& dtype) {
     switch (dtype) {
     case DataType::dt_float:
         out << "float";
@@ -97,7 +97,7 @@ std::ostream& madevent::operator<<(std::ostream& out, const DataType& dtype) {
     return out;
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const BatchSize& batch_size) {
+std::ostream& madspace::operator<<(std::ostream& out, const BatchSize& batch_size) {
     std::visit(
         Overloaded{
             [&](BatchSize::Named value) { out << value; },
@@ -132,7 +132,7 @@ std::ostream& madevent::operator<<(std::ostream& out, const BatchSize& batch_siz
     return out;
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const Type& type) {
+std::ostream& madspace::operator<<(std::ostream& out, const Type& type) {
     if (type.dtype == DataType::batch_sizes) {
         out << "{";
         bool first = true;
@@ -155,7 +155,7 @@ std::ostream& madevent::operator<<(std::ostream& out, const Type& type) {
     return out;
 }
 
-Type madevent::multichannel_batch_size(int count) {
+Type madspace::multichannel_batch_size(int count) {
     std::vector<BatchSize> batch_sizes;
     BatchSize remaining = batch_size;
     for (std::size_t i = 0; i < count - 1; ++i) {
@@ -167,7 +167,7 @@ Type madevent::multichannel_batch_size(int count) {
     return batch_sizes;
 }
 
-void madevent::to_json(json& j, const BatchSize& batch_size) {
+void madspace::to_json(json& j, const BatchSize& batch_size) {
     std::visit(
         Overloaded{
             [&](BatchSize::Named value) { j = value; },
@@ -192,7 +192,7 @@ void madevent::to_json(json& j, const BatchSize& batch_size) {
     );
 }
 
-void madevent::to_json(json& j, const Value& value) {
+void madspace::to_json(json& j, const Value& value) {
     std::visit(
         Overloaded{
             [&](auto val) {
@@ -219,7 +219,7 @@ void madevent::to_json(json& j, const Value& value) {
     );
 }
 
-void madevent::to_json(json& j, const DataType& dtype) {
+void madspace::to_json(json& j, const DataType& dtype) {
     switch (dtype) {
     case DataType::dt_int:
         j = "int";
@@ -233,7 +233,7 @@ void madevent::to_json(json& j, const DataType& dtype) {
     }
 }
 
-void madevent::from_json(const json& j, BatchSize& batch_size) {
+void madspace::from_json(const json& j, BatchSize& batch_size) {
     if (j.is_string()) {
         batch_size = j.get<std::string>();
     } else if (j.is_number_integer() && j.get<int>() == 1) {
@@ -259,7 +259,7 @@ void madevent::from_json(const json& j, BatchSize& batch_size) {
     }
 }
 
-void madevent::from_json(const json& j, Value& value) {
+void madspace::from_json(const json& j, Value& value) {
     auto dtype = j.at("dtype").get<DataType>();
     auto shape = j.at("shape").get<std::vector<int>>();
     auto j_data = j.at("data");
@@ -287,7 +287,7 @@ void madevent::from_json(const json& j, Value& value) {
     }
 }
 
-void madevent::from_json(const json& j, DataType& dtype) {
+void madspace::from_json(const json& j, DataType& dtype) {
     auto str = j.get<std::string>();
     if (str == "int") {
         dtype = DataType::dt_int;

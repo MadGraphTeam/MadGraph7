@@ -1,10 +1,10 @@
-#include "madevent/phasespace/integrand.h"
+#include "madspace/phasespace/integrand.h"
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
 #include <set>
 
-using namespace madevent;
+using namespace madspace;
 
 Unweighter::Unweighter(const TypeVec& types) :
     FunctionGenerator(

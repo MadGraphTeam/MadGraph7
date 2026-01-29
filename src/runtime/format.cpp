@@ -1,4 +1,4 @@
-#include "madevent/runtime/format.h"
+#include "madspace/runtime/format.h"
 
 #include <cmath>
 #include <format>
@@ -6,7 +6,7 @@
 #include <span>
 #include <sstream>
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 
@@ -17,7 +17,7 @@ const std::array<std::string, 9> progress_symbols{
 
 } // namespace
 
-std::string madevent::format_si_prefix(double value) {
+std::string madspace::format_si_prefix(double value) {
     value = std::round(value);
     int value_power = std::floor(std::log10(value));
     int value_power3 = value_power / 3;
@@ -33,7 +33,7 @@ std::string madevent::format_si_prefix(double value) {
     }
 }
 
-std::string madevent::format_with_error(double value, double error) {
+std::string madspace::format_with_error(double value, double error) {
     int value_power = std::floor(std::log10(value));
     int sig_power = std::isnan(error) || error <= 0.
         ? 3 - value_power
@@ -55,7 +55,7 @@ std::string madevent::format_with_error(double value, double error) {
     }
 }
 
-std::string madevent::format_progress(double progress, int width) {
+std::string madspace::format_progress(double progress, int width) {
     double frac = width * std::min(1.0, std::max(0.0, progress));
     int n_full = frac;
     std::stringstream str;

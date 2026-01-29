@@ -1,8 +1,8 @@
-#include "madevent/runtime/thread_pool.h"
+#include "madspace/runtime/thread_pool.h"
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 ThreadPool::ThreadPool(int thread_count) { set_thread_count(thread_count); }
 

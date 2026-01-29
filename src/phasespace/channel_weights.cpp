@@ -1,8 +1,8 @@
-#include "madevent/phasespace/channel_weights.h"
+#include "madspace/phasespace/channel_weights.h"
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 PropagatorChannelWeights::PropagatorChannelWeights(
     const std::vector<Topology>& topologies,

@@ -1,11 +1,11 @@
-#include "madevent/phasespace/topology.h"
+#include "madspace/phasespace/topology.h"
 
 #include <algorithm>
 #include <numeric>
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 
@@ -207,7 +207,7 @@ Diagram::Diagram(
     // TODO: run more checks
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const Diagram::LineRef& value) {
+std::ostream& madspace::operator<<(std::ostream& out, const Diagram::LineRef& value) {
     switch (value.type()) {
     case Diagram::incoming:
         out << "i";

@@ -5,7 +5,7 @@
 
 #define KERNELSPEC __device__ //__forceinline__
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 struct GpuTypes {
@@ -58,4 +58,4 @@ using ::tan;
 using ::isnan;
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

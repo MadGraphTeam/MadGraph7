@@ -1,8 +1,8 @@
-#include "madevent/phasespace/cuts.h"
+#include "madspace/phasespace/cuts.h"
 
-#include "madevent/madcode/type.h"
+#include "madspace/madcode/type.h"
 
-using namespace madevent;
+using namespace madspace;
 
 Cuts::Cuts(const std::vector<CutItem>& cut_data) :
     FunctionGenerator("Cuts", cut_data.at(0).observable.arg_types(), {batch_float}),

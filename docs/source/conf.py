@@ -10,7 +10,7 @@ import sys
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "madevent7"
+project = "madspace"
 copyright = "2025, Theo Heimel"
 author = "Theo Heimel"
 release = "0.2.2"
@@ -44,8 +44,8 @@ autoclass_content = "both"
 # add_module_names = False
 typehints_fully_qualified = False
 
-breathe_projects = {"madevent7": "../build/doxygenxml"}
-breathe_default_project = "madevent7"
+breathe_projects = {"madspace": "../build/doxygenxml"}
+breathe_default_project = "madspace"
 breathe_domain_by_extension = {"h": "cpp"}
 breathe_default_members = ("members", "undoc-members")
 

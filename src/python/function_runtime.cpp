@@ -6,7 +6,7 @@
 
 #include "dlpack.h"
 
-using namespace madevent_py;
+using namespace madspace_py;
 using namespace pybind11::literals;
 
 namespace {
@@ -43,7 +43,7 @@ Runtime* get_runtime(FunctionRuntime& func_runtime, DevicePtr expected_device) {
             rt = build_runtime(func_runtime.function, func_runtime.context);
         } else {
             rt = build_runtime(
-                func_runtime.function, madevent::default_device_context(expected_device)
+                func_runtime.function, madspace::default_device_context(expected_device)
             );
         }
         runtime = rt.get();
@@ -84,7 +84,7 @@ std::tuple<std::vector<Tensor>, Runtime*> check_and_convert_args(
 
 } // namespace
 
-std::tuple<int, int> madevent_py::dlpack_device(Tensor tensor) {
+std::tuple<int, int> madspace_py::dlpack_device(Tensor tensor) {
     switch (tensor.device()->device_type()) {
     case DeviceType::cpu:
         return {kDLCPU, 0};
@@ -97,7 +97,7 @@ std::tuple<int, int> madevent_py::dlpack_device(Tensor tensor) {
     }
 }
 
-py::object madevent_py::tensor_to_dlpack(
+py::object madspace_py::tensor_to_dlpack(
     Tensor tensor,
     std::optional<int> stream,
     std::optional<std::tuple<int, int>> max_version,
@@ -178,7 +178,7 @@ py::object madevent_py::tensor_to_dlpack(
     });
 }
 
-Tensor madevent_py::dlpack_to_tensor(
+Tensor madspace_py::dlpack_to_tensor(
     py::object tensor,
     std::optional<Type> expected_type,
     std::size_t arg_index,

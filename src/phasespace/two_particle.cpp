@@ -1,6 +1,6 @@
-#include "madevent/phasespace/two_particle.h"
+#include "madspace/phasespace/two_particle.h"
 
-using namespace madevent;
+using namespace madspace;
 
 Mapping::Result TwoBodyDecay::build_forward_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions

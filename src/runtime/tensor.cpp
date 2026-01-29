@@ -1,6 +1,6 @@
-#include "madevent/runtime/tensor.h"
+#include "madspace/runtime/tensor.h"
 
-using namespace madevent;
+using namespace madspace;
 
 Tensor Tensor::select(std::size_t axis, std::size_t index) const {
     check_impl();

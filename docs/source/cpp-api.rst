@@ -1,4 +1,4 @@
 C++ API
 =======
 
-.. doxygenindex:: madevent7
+.. doxygenindex:: madspace

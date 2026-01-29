@@ -2,9 +2,9 @@
 #include "device.h"
 #include "tensor.h"
 
-using namespace madevent;
-using namespace madevent::gpu;
-using namespace madevent::kernels;
+using namespace madspace;
+using namespace madspace::gpu;
+using namespace madspace::kernels;
 
 void* GpuDevice::allocate(std::size_t size) const {
     void* ptr;

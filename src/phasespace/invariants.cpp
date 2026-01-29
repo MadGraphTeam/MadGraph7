@@ -1,6 +1,6 @@
-#include "madevent/phasespace/invariants.h"
+#include "madspace/phasespace/invariants.h"
 
-using namespace madevent;
+using namespace madspace;
 
 Mapping::Result Invariant::build_forward_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions

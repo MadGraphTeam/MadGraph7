@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 template <typename T>
@@ -89,4 +89,4 @@ KERNELSPEC void backward_kernel_sample_discrete_probs_inverse(
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-import madevent7 as me
+import madspace as ms
 
 # ----------------------------
 # Utilities
@@ -92,7 +92,7 @@ def fixed_input_points(rng, request):
     """
     m0, m12, m1, m2, m3, pA, pB, p0 = request.param
 
-    map_22 = me.TwoToTwoParticleScattering(com=False)
+    map_22 = ms.TwoToTwoParticleScattering(com=False)
     r1 = rng.random(N)
     r2 = rng.random(N)
     (p12, p3), det_22 = map_22.map_forward([r1, r2, m12, m3], [pA, pB])
@@ -145,7 +145,7 @@ def input_points(rng, request):
     m2 = rng.uniform(1.0, 40.0, N)
     m12 = rng.uniform(160, 400, N)
 
-    map_22 = me.TwoToTwoParticleScattering(com=com)
+    map_22 = ms.TwoToTwoParticleScattering(com=com)
     r1 = rng.random(N)
     r2 = rng.random(N)
     (p12, p3), det_22 = map_22.map_forward([r1, r2, m12, m3], [pa, pb])
@@ -167,7 +167,7 @@ def input_points(rng, request):
 
 
 def test_momentum_conservation(input_points):
-    mapping = me.TwoToThreeParticleScattering()
+    mapping = ms.TwoToThreeParticleScattering()
 
     inputs = [
         input_points.r_choice,
@@ -188,7 +188,7 @@ def test_momentum_conservation(input_points):
 
 # TODO: Find bug in inverse mapping
 # def test_inverse(input_points):
-#     mapping = me.TwoToThreeParticleScattering()
+#     mapping = ms.TwoToThreeParticleScattering()
 
 #     inputs = [
 #         input_points.r_choice,
@@ -213,7 +213,7 @@ def test_momentum_conservation(input_points):
 
 
 def test_on_shell_masses(input_points):
-    mapping = me.TwoToThreeParticleScattering()
+    mapping = ms.TwoToThreeParticleScattering()
 
     inputs = [
         input_points.r_choice,
@@ -233,8 +233,8 @@ def test_on_shell_masses(input_points):
 
 
 def test_phase_space_compare(rng, input_points):
-    mapping23 = me.TwoToThreeParticleScattering()
-    mapping22 = me.TwoToTwoParticleScattering(com=False)
+    mapping23 = ms.TwoToThreeParticleScattering()
+    mapping22 = ms.TwoToTwoParticleScattering(com=False)
     r1 = rng.random(N)
     r2 = rng.random(N)
 
@@ -263,7 +263,7 @@ def test_phase_space_compare(rng, input_points):
 
 
 def test_phase_space_volume(fixed_input_points):
-    mapping23 = me.TwoToThreeParticleScattering()
+    mapping23 = ms.TwoToThreeParticleScattering()
 
     inputs = [
         fixed_input_points.r_choice,

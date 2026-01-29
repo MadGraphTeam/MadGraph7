@@ -1,6 +1,6 @@
-#include "madevent/phasespace/histograms.h"
+#include "madspace/phasespace/histograms.h"
 
-using namespace madevent;
+using namespace madspace;
 
 ObservableHistograms::ObservableHistograms(const std::vector<HistItem>& observables) :
     FunctionGenerator(

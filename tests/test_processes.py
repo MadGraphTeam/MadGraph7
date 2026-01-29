@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-import madevent7 as me
+import madspace as ms
 
 BATCH_SIZE = 1000
 CM_ENERGY = 13000.0
@@ -37,14 +37,14 @@ def process(request):
 
 @pytest.fixture
 def mapping(process):
-    diagram = me.Diagram(
+    diagram = ms.Diagram(
         process["incoming_masses"],
         process["outgoing_masses"],
-        [me.Propagator(*prop) for prop in process["propagators"]],
+        [ms.Propagator(*prop) for prop in process["propagators"]],
         process["vertices"],
     )
-    topology = me.Topology(diagram)
-    return me.PhaseSpaceMapping(
+    topology = ms.Topology(diagram)
+    return ms.PhaseSpaceMapping(
         topology, CM_ENERGY, permutations=process["permutations"]
     )
 

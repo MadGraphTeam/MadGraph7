@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 // Kernels
@@ -50,4 +50,4 @@ kernel_cut_any(FIn<T, 1> obs, FIn<T, 1> min, FIn<T, 1> max, FOut<T, 0> w) {
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

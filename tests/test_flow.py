@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pytest import approx
 
-import madevent7 as me
-from madevent7.torch import FunctionModule
+import madspace as ms
+from madspace.torch import FunctionModule
 
 torch.set_default_dtype(torch.float64)
 torch.manual_seed(3210)
@@ -16,12 +16,12 @@ def test_block_gradient(inverse):
     n_bins = 10
     n_dims = 4
     n_cond = (3 * n_bins + 1) * n_dims
-    cond_type = me.batch_float_array(n_cond)
-    io_type = me.batch_float_array(n_dims)
+    cond_type = ms.batch_float_array(n_cond)
+    io_type = ms.batch_float_array(n_dims)
 
-    fb = me.FunctionBuilder([io_type, cond_type], [io_type, me.batch_float])
+    fb = ms.FunctionBuilder([io_type, cond_type], [io_type, ms.batch_float])
     widths_unnorm, heights_unnorm, derivatives = fb.rqs_reshape(
-        fb.input(1), me.Value(n_bins)
+        fb.input(1), ms.Value(n_bins)
     )
     widths = fb.softmax(widths_unnorm)
     heights = fb.softmax(heights_unnorm)

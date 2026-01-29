@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 // Helper functions
@@ -52,4 +52,4 @@ KERNELSPEC void kernel_scale_partonic_energy(FIn<T, 2> momenta, FOut<T, 0> scale
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

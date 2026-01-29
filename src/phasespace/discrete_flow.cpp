@@ -1,9 +1,9 @@
-#include "madevent/phasespace/discrete_flow.h"
+#include "madspace/phasespace/discrete_flow.h"
 
-#include "madevent/phasespace/discrete_sampler.h"
-#include "madevent/util.h"
+#include "madspace/phasespace/discrete_sampler.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 DiscreteFlow::DiscreteFlow(
     const std::vector<std::size_t>& option_counts,

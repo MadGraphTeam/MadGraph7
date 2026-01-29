@@ -2,12 +2,12 @@
 
 #include <random>
 
-#include "madevent/madcode/function.h"
-#include "madevent/runtime/context.h"
-#include "madevent/runtime/runtime_base.h"
-#include "madevent/runtime/tensor.h"
+#include "madspace/madcode/function.h"
+#include "madspace/runtime/context.h"
+#include "madspace/runtime/runtime_base.h"
+#include "madspace/runtime/tensor.h"
 
-namespace madevent {
+namespace madspace {
 namespace cpu {
 
 class CpuRuntime : public Runtime {
@@ -82,4 +82,4 @@ extern "C" Runtime*
 build_runtime(const Function& function, ContextPtr context, bool concurrent);
 
 } // namespace cpu
-} // namespace madevent
+} // namespace madspace

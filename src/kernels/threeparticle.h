@@ -2,7 +2,7 @@
 
 #include "kinematics.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 // Helper functions
@@ -622,4 +622,4 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

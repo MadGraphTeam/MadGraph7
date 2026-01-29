@@ -1,10 +1,10 @@
-#include "madevent/phasespace/pdf.h"
+#include "madspace/phasespace/pdf.h"
 
 #include <cmath>
 #include <fstream>
 #include <sstream>
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 

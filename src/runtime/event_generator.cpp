@@ -1,5 +1,5 @@
-#include "madevent/runtime/event_generator.h"
-#include "madevent/runtime/logger.h"
+#include "madspace/runtime/event_generator.h"
+#include "madspace/runtime/logger.h"
 
 #include <cmath>
 #include <filesystem>
@@ -7,9 +7,9 @@
 #include <ranges>
 #include <sys/resource.h>
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 
@@ -1345,7 +1345,7 @@ void EventGenerator::print_combine_update_log(std::size_t count) {
     }
 }
 
-void madevent::to_json(nlohmann::json& j, const EventGenerator::Status& status) {
+void madspace::to_json(nlohmann::json& j, const EventGenerator::Status& status) {
     j = nlohmann::json{
         {"index", status.index},
         {"subprocess", status.subprocess},
@@ -1365,7 +1365,7 @@ void madevent::to_json(nlohmann::json& j, const EventGenerator::Status& status) 
     };
 }
 
-void madevent::to_json(
+void madspace::to_json(
     nlohmann::json& j, const EventGenerator::TimingData& timing_data
 ) {
     j = nlohmann::json{
@@ -1374,7 +1374,7 @@ void madevent::to_json(
     };
 }
 
-void madevent::to_json(nlohmann::json& j, const EventGenerator::Histogram& hist) {
+void madspace::to_json(nlohmann::json& j, const EventGenerator::Histogram& hist) {
     j = nlohmann::json{
         {"name", hist.name},
         {"min", hist.min},

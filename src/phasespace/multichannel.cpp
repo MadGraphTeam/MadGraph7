@@ -1,6 +1,6 @@
-#include "madevent/phasespace/multichannel.h"
+#include "madspace/phasespace/multichannel.h"
 
-using namespace madevent;
+using namespace madspace;
 
 MultiChannelMapping::MultiChannelMapping(
     const std::vector<std::shared_ptr<Mapping>>& mappings

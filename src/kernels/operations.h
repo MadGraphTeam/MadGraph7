@@ -1,9 +1,9 @@
 #pragma once
 
-#include "madevent/runtime/tensor.h"
-#include "madevent/util.h"
+#include "madspace/runtime/tensor.h"
+#include "madspace/util.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 template <auto foreach_func, int n_in, int n_out, typename I, typename D>
@@ -382,4 +382,4 @@ void backward_op_rqs_reshape(
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

@@ -1,6 +1,6 @@
-#include "madevent/runtime/vegas_optimizer.h"
+#include "madspace/runtime/vegas_optimizer.h"
 
-using namespace madevent;
+using namespace madspace;
 
 void VegasGridOptimizer::add_data(Tensor values, Tensor counts) {
     auto values_cpu = values.cpu();

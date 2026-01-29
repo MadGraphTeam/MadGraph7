@@ -1,9 +1,9 @@
 #pragma once
 
 #include "definitions.h"
-#include "madevent/constants.h"
+#include "madspace/constants.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 // Kernels
@@ -656,4 +656,4 @@ kernel_one_hot(IIn<T, 0> index, IIn<T, 0> option_count, FOut<T, 1> output) {
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

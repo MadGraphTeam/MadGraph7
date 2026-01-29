@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-import madevent7 as me
+import madspace as ms
 
 PDF_SET = "NNPDF40_nlo_as_01180"
 
@@ -28,11 +28,11 @@ pytestmark = [
 
 
 def test_pdf():
-    ctx = me.default_context()
-    grid = me.PdfGrid(os.path.join(lhapdf.paths()[0], PDF_SET, f"{PDF_SET}_0000.dat"))
+    ctx = ms.default_context()
+    grid = ms.PdfGrid(os.path.join(lhapdf.paths()[0], PDF_SET, f"{PDF_SET}_0000.dat"))
     grid.initialize_globals(ctx)
     pids = [-5, -4, -3, -2, -1, 21, 1, 2, 3, 4, 5]
-    pdf = me.PartonDensity(grid, pids)
+    pdf = ms.PartonDensity(grid, pids)
 
     xs = np.logspace(
         np.log10(reference_pdf.xMin) + 1e-6, np.log10(reference_pdf.xMax), 100
@@ -49,10 +49,10 @@ def test_pdf():
 
 
 def test_alpha_s():
-    ctx = me.default_context()
-    grid = me.AlphaSGrid(os.path.join(lhapdf.paths()[0], PDF_SET, f"{PDF_SET}.info"))
+    ctx = ms.default_context()
+    grid = ms.AlphaSGrid(os.path.join(lhapdf.paths()[0], PDF_SET, f"{PDF_SET}.info"))
     grid.initialize_globals(ctx)
-    alpha_s = me.RunningCoupling(grid)
+    alpha_s = ms.RunningCoupling(grid)
 
     q2 = np.logspace(
         np.log10(reference_pdf.q2Min) + 1e-6, np.log10(reference_pdf.q2Max), 1000

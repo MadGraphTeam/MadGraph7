@@ -1,6 +1,6 @@
-#include "madevent/phasespace/luminosity.h"
+#include "madspace/phasespace/luminosity.h"
 
-using namespace madevent;
+using namespace madspace;
 
 Mapping::Result Luminosity::build_forward_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions

@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 template <typename T>
@@ -109,4 +109,4 @@ KERNELSPEC void kernel_interpolate_alpha_s(
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

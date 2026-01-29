@@ -1,8 +1,8 @@
-#include "madevent/phasespace/phasespace.h"
-#include "madevent/constants.h"
-#include "madevent/util.h"
+#include "madspace/phasespace/phasespace.h"
+#include "madspace/constants.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 

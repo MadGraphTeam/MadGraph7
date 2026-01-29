@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-import madevent7 as me
+import madspace as ms
 
 
 @pytest.fixture
@@ -48,8 +48,8 @@ def masses(request):
 
 @pytest.fixture(
     params=[
-        me.PhaseSpaceMapping.propagator,
-        me.PhaseSpaceMapping.rambo,  # , me.PhaseSpaceMapping.chili
+        ms.PhaseSpaceMapping.propagator,
+        ms.PhaseSpaceMapping.rambo,  # , ms.PhaseSpaceMapping.chili
     ],
     ids=["propagator", "rambo"],  # , "chili"
 )
@@ -62,7 +62,7 @@ CM_ENERGY = 13000.0
 
 
 def test_t_channel_masses(masses, rng, mode):
-    mapping = me.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
+    mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     (p_ext, x1, x2), det = mapping.map_forward([r])
 
@@ -74,7 +74,7 @@ def test_t_channel_masses(masses, rng, mode):
 
 
 def test_t_channel_incoming(masses, rng, mode):
-    mapping = me.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
+    mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     (p_ext, x1, x2), det = mapping.map_forward([r])
     zeros = np.zeros(BATCH_SIZE)
@@ -92,7 +92,7 @@ def test_t_channel_incoming(masses, rng, mode):
 
 
 def test_t_channel_momentum_conservation(masses, rng, mode):
-    mapping = me.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
+    mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     (p_ext, x1, x2), det = mapping.map_forward([r])
     p_in = np.sum(p_ext[:, :2], axis=1)
@@ -103,10 +103,10 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
 
 def test_t_channel_inverse(masses, rng, mode):
     if (
-        mode == me.PhaseSpaceMapping.rambo
+        mode == ms.PhaseSpaceMapping.rambo
     ):  # TODO: remove once inverse rambo is implemented
         return
-    mapping = me.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
+    mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     map_out, det = mapping.map_forward([r])
     (r_inv,), det_inv = mapping.map_inverse(map_out)
@@ -123,7 +123,7 @@ def test_t_channel_inverse(masses, rng, mode):
     "energy", [10.0, 100.0, 1000.0], ids=["10GeV", "100GeV", "1TeV"]
 )
 def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
-    mapping = me.PhaseSpaceMapping(
+    mapping = ms.PhaseSpaceMapping(
         [0.0] * (particle_count + 2), energy, mode=mode, leptonic=True
     )
     sample_count = 100000

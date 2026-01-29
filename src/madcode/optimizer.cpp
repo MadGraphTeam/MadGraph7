@@ -1,13 +1,13 @@
-#include "madevent/madcode/optimizer.h"
+#include "madspace/madcode/optimizer.h"
 
 #include <algorithm>
 #include <numeric>
 #include <ranges>
 #include <unordered_map>
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 InstructionDependencies::InstructionDependencies(const Function& function) :
     size(function.instructions().size()), matrix(size * size) {
