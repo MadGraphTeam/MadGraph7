@@ -333,9 +333,11 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 dets.push_back(det);
 
                 if constexpr (std::is_same_v<TMapping, ChiliMapping>) {
-                    std::tie(x1, x2) = fb.momenta_to_x1x2(
+                    auto [x1_new, x2_new] = fb.momenta_to_x1x2(
                         fb.stack({t_result.at(0), t_result.at(1)}), _sqrt_s_lab
                     );
+                    x1 = x1_new;
+                    x2 = x2_new;
                 }
             },
             [&](std::monostate) {
