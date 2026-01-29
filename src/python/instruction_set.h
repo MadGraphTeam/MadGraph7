@@ -93,8 +93,10 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("stable_invariant_nu", &FunctionBuilder::stable_invariant_nu, py::arg("r"), py::arg("mass"), py::arg("nu"), py::arg("s_min"), py::arg("s_max"));
     fb.def("stable_invariant_nu_inverse", &FunctionBuilder::stable_invariant_nu_inverse, py::arg("s"), py::arg("mass"), py::arg("nu"), py::arg("s_min"), py::arg("s_max"));
     fb.def("fast_rambo_massless", &FunctionBuilder::fast_rambo_massless, py::arg("r"), py::arg("e_cm"), py::arg("p0"));
+    fb.def("fast_rambo_massless_inverse", &FunctionBuilder::fast_rambo_massless_inverse, py::arg("p_out"), py::arg("e_cm"));
     fb.def("fast_rambo_massless_com", &FunctionBuilder::fast_rambo_massless_com, py::arg("r"), py::arg("e_cm"));
     fb.def("fast_rambo_massive", &FunctionBuilder::fast_rambo_massive, py::arg("r"), py::arg("e_cm"), py::arg("masses"), py::arg("p0"));
+    fb.def("fast_rambo_massive_inverse", &FunctionBuilder::fast_rambo_massive_inverse, py::arg("p_out"), py::arg("e_cm"), py::arg("masses"));
     fb.def("fast_rambo_massive_com", &FunctionBuilder::fast_rambo_massive_com, py::arg("r"), py::arg("e_cm"), py::arg("masses"));
     fb.def("cut_unphysical", &FunctionBuilder::cut_unphysical, py::arg("w_in"), py::arg("p"), py::arg("x1"), py::arg("x2"));
     fb.def("cut_one", &FunctionBuilder::cut_one, py::arg("obs"), py::arg("min"), py::arg("max"));

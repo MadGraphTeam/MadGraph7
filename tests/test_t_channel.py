@@ -49,9 +49,9 @@ def masses(request):
 @pytest.fixture(
     params=[
         me.PhaseSpaceMapping.propagator,
-        me.PhaseSpaceMapping.rambo,  # , me.PhaseSpaceMapping.chili
+        me.PhaseSpaceMapping.rambo,  # me.PhaseSpaceMapping.chili,
     ],
-    ids=["propagator", "rambo"],  # , "chili"
+    ids=["propagator", "rambo"],  # , "chili"]
 )
 def mode(request):
     return request.param
@@ -102,16 +102,13 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
 
 
 def test_t_channel_inverse(masses, rng, mode):
-    if (
-        mode == me.PhaseSpaceMapping.rambo
-    ):  # TODO: remove once inverse rambo is implemented
-        return
-    mapping = me.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
+    mapping = me.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode, invariant_power=0.3)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     map_out, det = mapping.map_forward([r])
     (r_inv,), det_inv = mapping.map_inverse(map_out)
+    one_batch = np.ones_like(det)
     assert r_inv == approx(r, abs=1e-3, rel=1e-3)
-    assert det_inv == approx(1 / det, rel=1e-5)
+    assert det * det_inv == approx(one_batch, rel=1e-5)
 
 
 @pytest.mark.parametrize(
@@ -123,6 +120,8 @@ def test_t_channel_inverse(masses, rng, mode):
     "energy", [10.0, 100.0, 1000.0], ids=["10GeV", "100GeV", "1TeV"]
 )
 def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
+    if mode == me.PhaseSpaceMapping.chili:
+        return
     mapping = me.PhaseSpaceMapping(
         [0.0] * (particle_count + 2), energy, mode=mode, leptonic=True
     )

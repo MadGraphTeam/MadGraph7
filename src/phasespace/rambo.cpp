@@ -57,5 +57,17 @@ Mapping::Result FastRamboMapping::build_forward_impl(
 Mapping::Result FastRamboMapping::build_inverse_impl(
     FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
 ) const {
-    throw std::logic_error("inverse mapping not implemented");
+    Value p_out = fb.stack(inputs);
+    Value e_cm = conditions.at(0);
+
+    auto [r, p0, det] = _massless
+        ? fb.fast_rambo_massless_inverse(p_out, e_cm)
+        : fb.fast_rambo_massive_inverse(
+              p_out, e_cm, fb.stack(ValueVec(conditions.begin() + 1, conditions.end()))
+          );
+    ValueVec inv_inputs = fb.unstack(r);
+    if (!_com) {
+        inv_inputs.push_back(p0);
+    }
+    return {inv_inputs, det};
 }

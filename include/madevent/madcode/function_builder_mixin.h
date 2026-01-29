@@ -354,6 +354,11 @@ std::array<Value, 2> fast_rambo_massless(Value r, Value e_cm, Value p0) {
     return {output_vector[0], output_vector[1]};
 }
 
+std::array<Value, 3> fast_rambo_massless_inverse(Value p_out, Value e_cm) {
+    auto output_vector = instruction("fast_rambo_massless_inverse", {p_out, e_cm});
+    return {output_vector[0], output_vector[1], output_vector[2]};
+}
+
 std::array<Value, 2> fast_rambo_massless_com(Value r, Value e_cm) {
     auto output_vector = instruction("fast_rambo_massless_com", {r, e_cm});
     return {output_vector[0], output_vector[1]};
@@ -362,6 +367,11 @@ std::array<Value, 2> fast_rambo_massless_com(Value r, Value e_cm) {
 std::array<Value, 2> fast_rambo_massive(Value r, Value e_cm, Value masses, Value p0) {
     auto output_vector = instruction("fast_rambo_massive", {r, e_cm, masses, p0});
     return {output_vector[0], output_vector[1]};
+}
+
+std::array<Value, 3> fast_rambo_massive_inverse(Value p_out, Value e_cm, Value masses) {
+    auto output_vector = instruction("fast_rambo_massive_inverse", {p_out, e_cm, masses});
+    return {output_vector[0], output_vector[1], output_vector[2]};
 }
 
 std::array<Value, 2> fast_rambo_massive_com(Value r, Value e_cm, Value masses) {

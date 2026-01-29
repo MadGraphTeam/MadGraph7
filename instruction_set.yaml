@@ -1512,6 +1512,25 @@ fast_rambo_massless:
       type: [float]
       desc:
 
+fast_rambo_massless_inverse:
+  inputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc:
+    - name: e_cm
+      type: [float]
+      desc:
+  outputs:
+    - name: r
+      type: [float, 3n-4]
+      desc:
+    - name: p0
+      type: [float, 4]
+      desc:
+    - name: det
+      type: [float]
+      desc:
+
 fast_rambo_massless_com:
   inputs:
     - name: r
@@ -1545,6 +1564,28 @@ fast_rambo_massive:
   outputs:
     - name: p_out
       type: [float, n, 4]
+      desc:
+    - name: det
+      type: [float]
+      desc:
+
+fast_rambo_massive_inverse:
+  inputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc:
+    - name: e_cm
+      type: [float]
+      desc:
+    - name: masses
+      type: [float, n]
+      desc:
+  outputs:
+    - name: r
+      type: [float, 3n-4]
+      desc:
+    - name: p0
+      type: [float, 4]
       desc:
     - name: det
       type: [float]
