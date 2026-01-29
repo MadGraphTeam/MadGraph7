@@ -2,28 +2,29 @@ from collections.abc import Callable
 
 import torch
 import torch.nn as nn
-from madnis.integrator import ChannelGrouping, Integrand
-from madnis.nn import Distribution
 
-from . import _madspace_py_loader as me
-from .torch import FunctionModule
+from .. import _madspace_py_loader as ms
+from ..torch import FunctionModule
+from .channel_grouping import ChannelGrouping
+from .distribution import Distribution
+from .integrand import Integrand
 
 MADNIS_INTEGRAND_FLAGS = (
-    me.Integrand.sample
-    | me.Integrand.return_latent
-    | me.Integrand.return_channel
-    | me.Integrand.return_chan_weights
-    | me.Integrand.return_cwnet_input
-    | me.Integrand.return_discrete_latent
+    ms.Integrand.sample
+    | ms.Integrand.return_latent
+    | ms.Integrand.return_channel
+    | ms.Integrand.return_chan_weights
+    | ms.Integrand.return_cwnet_input
+    | ms.Integrand.return_discrete_latent
 )
 
 
 class IntegrandDistribution(nn.Module, Distribution):
     def __init__(
         self,
-        channels: list[me.Integrand],
+        channels: list[ms.Integrand],
         channel_remap_function: Callable[[torch.Tensor], torch.Tensor],
-        context: me.Context,
+        context: ms.Context,
     ):
         super().__init__()
         self.channel_count = len(channels)
@@ -36,9 +37,9 @@ class IntegrandDistribution(nn.Module, Distribution):
 
     def update_channel_mask(self, mask: torch.Tensor) -> None:
         self.channel_mask = mask
-        multi_prob = me.MultiChannelFunction(
+        multi_prob = ms.MultiChannelFunction(
             [
-                me.IntegrandProbability(chan)
+                ms.IntegrandProbability(chan)
                 for chan, active in zip(self.channels, mask)
                 if active
             ]
@@ -47,7 +48,7 @@ class IntegrandDistribution(nn.Module, Distribution):
         if self.integrand_prob is None:
             self.integrand_prob = FunctionModule(func, self.context)
         else:
-            self.integrand_prob.runtime = me.FunctionRuntime(func, self.context)
+            self.integrand_prob.runtime = ms.FunctionRuntime(func, self.context)
 
     def sample(
         self,
@@ -61,7 +62,7 @@ class IntegrandDistribution(nn.Module, Distribution):
     ) -> torch.Tensor | tuple[torch.Tensor, ...]:
         raise NotImplementedError(
             "IntegrandDistribution does not support sampling directly. "
-            "Use the underlying me.Integrand object instead."
+            "Use the underlying ms.Integrand object instead."
         )
 
     def prob(
@@ -95,7 +96,7 @@ class IntegrandDistribution(nn.Module, Distribution):
 
 
 class IntegrandFunction:
-    def __init__(self, channels: list[me.Integrand], context: me.Context):
+    def __init__(self, channels: list[ms.Integrand], context: ms.Context):
         self.channel_count = len(channels)
         self.channels = channels
         self.context = context
@@ -103,10 +104,10 @@ class IntegrandFunction:
 
     def update_channel_mask(self, mask: torch.Tensor) -> None:
         self.channel_mask = mask.cpu()
-        multi_integrand = me.MultiChannelIntegrand(
+        multi_integrand = ms.MultiChannelIntegrand(
             [chan for chan, active in zip(self.channels, mask) if active]
         )
-        self.multi_runtime = me.FunctionRuntime(
+        self.multi_runtime = ms.FunctionRuntime(
             multi_integrand.function(), self.context
         )
 
@@ -145,12 +146,12 @@ class IntegrandFunction:
 
 
 def build_madnis_integrand(
-    channels: list[me.Integrand],
-    cwnet: me.ChannelWeightNetwork | None = None,
+    channels: list[ms.Integrand],
+    cwnet: ms.ChannelWeightNetwork | None = None,
     channel_grouping: ChannelGrouping | None = None,
-    context: me.Context = me.default_context(),
+    context: ms.Context = ms.default_context(),
 ) -> tuple[Integrand, Distribution, nn.Module | None]:
-    device = torch.device("cpu" if context.device() == me.cpu_device() else "cuda:0")
+    device = torch.device("cpu" if context.device() == ms.cpu_device() else "cuda:0")
     if channel_grouping is None:
         remap_channels = lambda channels: channels
         group_indices = torch.arange(len(channels))

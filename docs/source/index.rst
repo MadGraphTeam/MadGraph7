@@ -1,14 +1,14 @@
-MadEvent7 documentation
+MadSpace documentation
 =======================
 
-MadEvent7 is a modular and GPU-ready phase-space sampling and event generation library.
+MadSpace is a modular and GPU-ready phase-space sampling and event generation library.
 
-You can find instructions on how to install and use MadEvent7 on the following pages:
+You can find instructions on how to install and use MadSpace on the following pages:
 
 * :doc:`installation`
 
 The following pages contain a detailed reference of all the classes and methods in
-MadEvent7:
+MadSpace:
 
 * :doc:`python-api`
 * :doc:`cpp-api`
