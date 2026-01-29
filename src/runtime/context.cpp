@@ -1,13 +1,13 @@
-#include "madevent/runtime/context.h"
+#include "madspace/runtime/context.h"
 
 #include <dlfcn.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <unordered_map>
 
-#include "madevent/runtime/io.h"
+#include "madspace/runtime/io.h"
 
-using namespace madevent;
+using namespace madspace;
 using json = nlohmann::json;
 
 MatrixElementApi::MatrixElementApi(
@@ -225,22 +225,22 @@ void Context::load(const std::string& file) {
     }
 }
 
-ContextPtr madevent::default_context() {
+ContextPtr madspace::default_context() {
     static ContextPtr context = default_device_context(cpu_device());
     return context;
 }
 
-ContextPtr madevent::default_cuda_context() {
+ContextPtr madspace::default_cuda_context() {
     static ContextPtr context = default_device_context(cuda_device());
     return context;
 }
 
-ContextPtr madevent::default_hip_context() {
+ContextPtr madspace::default_hip_context() {
     static ContextPtr context = default_device_context(hip_device());
     return context;
 }
 
-ContextPtr madevent::default_device_context(DevicePtr device) {
+ContextPtr madspace::default_device_context(DevicePtr device) {
     static std::unordered_map<DevicePtr, ContextPtr> default_contexts;
     if (auto search = default_contexts.find(device); search != default_contexts.end()) {
         return search->second;

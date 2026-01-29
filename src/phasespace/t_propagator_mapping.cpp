@@ -1,8 +1,8 @@
-#include "madevent/phasespace/t_propagator_mapping.h"
+#include "madspace/phasespace/t_propagator_mapping.h"
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 
 TPropagatorMapping::TPropagatorMapping(
     const std::vector<std::size_t>& integration_order, double invariant_power

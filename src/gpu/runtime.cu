@@ -18,12 +18,12 @@
 #include "../kernels/kernels.h"
 #include "../kernels/operations.h"
 #include "device.h"
-#include "madevent/util.h"
+#include "madspace/util.h"
 #include "tensor.h"
 
-using namespace madevent;
-using namespace madevent::gpu;
-using namespace madevent::kernels;
+using namespace madspace;
+using namespace madspace::gpu;
+using namespace madspace::kernels;
 
 namespace {
 

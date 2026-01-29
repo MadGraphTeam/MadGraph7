@@ -1,10 +1,10 @@
-#include "madevent/phasespace/rambo.h"
+#include "madspace/phasespace/rambo.h"
 
 #include <cmath>
 
-#include "madevent/constants.h"
+#include "madspace/constants.h"
 
-using namespace madevent;
+using namespace madspace;
 
 FastRamboMapping::FastRamboMapping(std::size_t n_particles, bool massless, bool com) :
     Mapping(

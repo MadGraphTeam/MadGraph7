@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 template <typename T>
@@ -110,4 +110,4 @@ KERNELSPEC void kernel_max(FIn<T, 0> in1, FIn<T, 0> in2, FOut<T, 0> out) {
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

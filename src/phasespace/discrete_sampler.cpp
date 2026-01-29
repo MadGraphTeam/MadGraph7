@@ -1,6 +1,6 @@
-#include "madevent/phasespace/discrete_sampler.h"
+#include "madspace/phasespace/discrete_sampler.h"
 
-using namespace madevent;
+using namespace madspace;
 
 DiscreteHistogram::DiscreteHistogram(const std::vector<std::size_t>& option_counts) :
     FunctionGenerator(
@@ -104,7 +104,7 @@ void DiscreteSampler::initialize_globals(ContextPtr context) const {
     }
 }
 
-void madevent::initialize_uniform_probs(
+void madspace::initialize_uniform_probs(
     ContextPtr context, const std::string& name, std::size_t option_count
 ) {
     bool is_cpu = context->device() == cpu_device();

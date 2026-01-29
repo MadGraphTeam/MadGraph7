@@ -1,9 +1,9 @@
-#include "madevent/phasespace/observable.h"
+#include "madspace/phasespace/observable.h"
 
 #include <ranges>
 #include <set>
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 

@@ -1,6 +1,6 @@
-#include "madevent/phasespace/flow.h"
+#include "madspace/phasespace/flow.h"
 
-#include "madevent/constants.h"
+#include "madspace/constants.h"
 
 #include <algorithm>
 #include <bitset>
@@ -9,7 +9,7 @@
 #include <numeric>
 #include <ranges>
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 

@@ -1,9 +1,9 @@
 #pragma once
 
 #include "definitions.h"
-#include "madevent/constants.h"
+#include "madspace/constants.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 // Kernels
@@ -95,4 +95,4 @@ KERNELSPEC void kernel_argsort(FIn<T, 1> in, IOut<T, 1> out) {
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

@@ -1,8 +1,8 @@
-#include "madevent/phasespace/chili.h"
+#include "madspace/phasespace/chili.h"
 
 #include <ranges>
 
-using namespace madevent;
+using namespace madspace;
 
 ChiliMapping::ChiliMapping(
     std::size_t n_particles,

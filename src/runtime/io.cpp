@@ -1,4 +1,4 @@
-#include "madevent/runtime/io.h"
+#include "madspace/runtime/io.h"
 
 #include <algorithm>
 #include <cctype>
@@ -6,9 +6,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
-using namespace madevent;
+using namespace madspace;
 using json = nlohmann::json;
 
 namespace {
@@ -162,7 +162,7 @@ std::tuple<std::size_t, std::size_t> write_event_header(
 
 } // namespace
 
-Tensor madevent::load_tensor(const std::string& file) {
+Tensor madspace::load_tensor(const std::string& file) {
     std::fstream file_stream(file, std::ios::binary | std::ios::in);
     if (file_stream.fail()) {
         throw std::runtime_error(std::format("Could not open file '{}'", file));
@@ -194,7 +194,7 @@ Tensor madevent::load_tensor(const std::string& file) {
     return tensor;
 }
 
-void madevent::save_tensor(const std::string& file, Tensor tensor) {
+void madspace::save_tensor(const std::string& file, Tensor tensor) {
     using namespace std::string_literals;
     Tensor cpu_tensor = tensor.cpu().contiguous();
     std::ofstream file_stream(file, std::ios::binary);

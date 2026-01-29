@@ -4,13 +4,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "madevent/madcode.h"
-#include "madevent/runtime/runtime_base.h"
+#include "madspace/madcode.h"
+#include "madspace/runtime/runtime_base.h"
 
 namespace py = pybind11;
-using namespace madevent;
+using namespace madspace;
 
-namespace madevent_py {
+namespace madspace_py {
 
 std::tuple<int, int> dlpack_device(Tensor tensor);
 py::object tensor_to_dlpack(
@@ -56,4 +56,4 @@ struct FunctionRuntime {
     bool dlpack_version_cache = false;
 };
 
-} // namespace madevent_py
+} // namespace madspace_py

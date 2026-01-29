@@ -5,10 +5,10 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include "madevent/madcode.h"
+#include "madspace/madcode.h"
 
 namespace py = pybind11;
-using madevent::FunctionBuilder;
+using madspace::FunctionBuilder;
 
 namespace {
 

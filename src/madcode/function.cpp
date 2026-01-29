@@ -1,11 +1,11 @@
-#include "madevent/madcode/function.h"
-#include "madevent/util.h"
+#include "madspace/madcode/function.h"
+#include "madspace/util.h"
 
 #include <format>
 #include <fstream>
 #include <stdexcept>
 
-using namespace madevent;
+using namespace madspace;
 using json = nlohmann::json;
 
 void Function::save(const std::string& file) const {
@@ -20,7 +20,7 @@ Function Function::load(const std::string& file) {
     return json::parse(f).get<Function>();
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const Value& value) {
+std::ostream& madspace::operator<<(std::ostream& out, const Value& value) {
     std::visit(
         Overloaded{
             [&out](auto val) { out << val; },
@@ -52,7 +52,7 @@ std::ostream& madevent::operator<<(std::ostream& out, const Value& value) {
     return out;
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const ValueVec& list) {
+std::ostream& madspace::operator<<(std::ostream& out, const ValueVec& list) {
     bool first = true;
     for (auto value : list) {
         if (first) {
@@ -65,13 +65,13 @@ std::ostream& madevent::operator<<(std::ostream& out, const ValueVec& list) {
     return out;
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const InstructionCall& call) {
+std::ostream& madspace::operator<<(std::ostream& out, const InstructionCall& call) {
     out << call.outputs << " = " << call.instruction->name() << "(" << call.inputs
         << ")";
     return out;
 }
 
-std::ostream& madevent::operator<<(std::ostream& out, const Function& func) {
+std::ostream& madspace::operator<<(std::ostream& out, const Function& func) {
     out << "Inputs:\n";
     for (auto& input : func.inputs()) {
         out << "  " << input << " : " << input.type << "\n";
@@ -91,7 +91,7 @@ std::ostream& madevent::operator<<(std::ostream& out, const Function& func) {
     return out;
 }
 
-void madevent::to_json(json& j, const InstructionCall& call) {
+void madspace::to_json(json& j, const InstructionCall& call) {
     j = json{
         {"name", call.instruction->name()},
         {"inputs", call.inputs},
@@ -99,7 +99,7 @@ void madevent::to_json(json& j, const InstructionCall& call) {
     };
 }
 
-void madevent::to_json(json& j, const Function& func) {
+void madspace::to_json(json& j, const Function& func) {
     json inputs(json::value_t::array);
     json outputs(json::value_t::array);
     json globals(json::value_t::array);
@@ -145,7 +145,7 @@ void madevent::to_json(json& j, const Function& func) {
     };
 }
 
-void madevent::from_json(const json& j, Function& func) {
+void madspace::from_json(const json& j, Function& func) {
     TypeVec input_types, output_types;
     std::vector<std::size_t> input_locals, output_locals;
     for (auto& j_input : j.at("inputs")) {

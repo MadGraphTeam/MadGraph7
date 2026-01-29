@@ -1,5 +1,5 @@
-#include "madevent/madcode/instruction.h"
-#include "madevent/umami.h"
+#include "madspace/madcode/instruction.h"
+#include "madspace/umami.h"
 
 #include <algorithm>
 #include <format>
@@ -7,7 +7,7 @@
 #include <sstream>
 #include <tuple>
 
-using namespace madevent;
+using namespace madspace;
 
 ShapeExpr::ShapeExpr(const char* expr) {
     int state = 0;
@@ -871,7 +871,7 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
 }
 
 const std::unordered_map<std::string, InstructionOwner>
-madevent::build_instruction_set() {
+madspace::build_instruction_set() {
 #include "instruction_set_mixin.h"
     std::unordered_map<std::string, InstructionOwner> instruction_set;
     for (auto& instruction : instructions) {

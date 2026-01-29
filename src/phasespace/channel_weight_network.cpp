@@ -1,6 +1,6 @@
-#include "madevent/phasespace/channel_weight_network.h"
+#include "madspace/phasespace/channel_weight_network.h"
 
-using namespace madevent;
+using namespace madspace;
 
 MomentumPreprocessing::MomentumPreprocessing(std::size_t particle_count) :
     FunctionGenerator(

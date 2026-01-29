@@ -3,7 +3,7 @@
 #include "definitions.h"
 #include "kinematics.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 // Helper functions
@@ -123,4 +123,4 @@ KERNELSPEC void kernel_obs_delta_r(FIn<T, 1> p1, FIn<T, 1> p2, FOut<T, 0> obs) {
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

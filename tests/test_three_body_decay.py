@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-import madevent7 as me
+import madspace as ms
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def mapping_and_args(request):
     com = request.param["com"]
     zeros = np.zeros(N)
     if request.param["decay"]:
-        mapping = me.ThreeBodyDecay(com=com)
+        mapping = ms.ThreeBodyDecay(com=com)
         if com:
 
             def make_args(point):
@@ -164,7 +164,7 @@ def test_phase_space_via_two_2body(mapping_and_args, rng):
     mQ = np.sqrt(s12)
 
     # --- First 2-body: 0 -> Q + 3 ---
-    mapping1 = me.TwoBodyDecay(com=True)
+    mapping1 = ms.TwoBodyDecay(com=True)
     inputs1 = [r[:, 1], r[:, 2], np.full(N, m0), np.full(N, mQ), np.full(N, m3)]
     (pQ, p3), det1 = mapping1.map_forward(inputs1, [])
 
@@ -172,7 +172,7 @@ def test_phase_space_via_two_2body(mapping_and_args, rng):
     assert approx(np.sqrt(pQ[:, 0] ** 2 - (pQ[:, 1:] ** 2).sum(1))) == mQ
 
     # --- Second 2-body: Q -> 1 + 2 ---
-    mapping2 = me.TwoBodyDecay(com=False)  # use actual pQ (boosted)
+    mapping2 = ms.TwoBodyDecay(com=False)  # use actual pQ (boosted)
     inputs2 = [r[:, 3], r[:, 4], mQ, np.full(N, m1), np.full(N, m2), pQ]
     (p1, p2), det2 = mapping2.map_forward(inputs2, [])
 

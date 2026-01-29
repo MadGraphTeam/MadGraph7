@@ -7,7 +7,7 @@
 
 #define KERNELSPEC
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 struct CpuTypes {
@@ -73,4 +73,4 @@ using SimdTypes = CpuTypes;
 #endif // USE_SIMD
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

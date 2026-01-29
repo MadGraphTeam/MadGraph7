@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 template <typename T>
@@ -147,4 +147,4 @@ KERNELSPEC void kernel_stable_invariant_nu_inverse(
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

@@ -32,7 +32,7 @@ def write_autogen(f):
 
 
 def function_builder_mixin(commands):
-    with open("include/madevent/madcode/function_builder_mixin.h", "w") as f:
+    with open("include/madspace/madcode/function_builder_mixin.h", "w") as f:
         write_autogen(f)
         first = True
         for name, cmd in commands.items():
@@ -79,9 +79,9 @@ def instruction_set_python(commands):
             "#pragma once\n\n"
             "#include <pybind11/pybind11.h>\n"
             "#include <pybind11/stl.h>\n"
-            '#include "madevent/madcode.h"\n\n'
+            '#include "madspace/madcode.h"\n\n'
             "namespace py = pybind11;\n"
-            "using madevent::FunctionBuilder;\n\n"
+            "using madspace::FunctionBuilder;\n\n"
             "namespace {\n\n"
             "void add_instructions(py::classh<FunctionBuilder>& fb) {\n"
         )
@@ -120,7 +120,7 @@ def format_type(data):
 def instruction_set_mixin(commands):
     with (
         open("src/madcode/instruction_set_mixin.h", "w") as f,
-        open("include/madevent/madcode/opcode_mixin.h", "w") as f_op,
+        open("include/madspace/madcode/opcode_mixin.h", "w") as f_op,
     ):
         write_autogen(f)
         f.write("using SigType = SimpleInstruction::SigType;\n")

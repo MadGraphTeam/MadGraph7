@@ -24,7 +24,7 @@ jobs:
               yum -y install cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-thrust-12-8 libcublas-devel-12-8 libcurand-devel-12-8 rocm-hip-runtime-devel rocblas-devel rocrand-devel rocthrust-devel
             CIBW_REPAIR_WHEEL_COMMAND: >
               auditwheel repair
-              --exclude libmadevent.so
+              --exclude libmadspace.so
               --exclude 'libcublas.so.*'
               --exclude 'libcurand.so.*'
               --exclude 'libcublasLt.so.*'
@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/madevent7
+      url: https://pypi.org/p/madspace
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:

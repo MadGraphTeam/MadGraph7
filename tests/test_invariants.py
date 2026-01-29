@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-import madevent7 as me
+import madspace as ms
 
 COUNT = 10000
 SQRT_S_MAX = 13000.0
@@ -51,7 +51,7 @@ def r_in(rng):
     ],
 )
 def invariant(request):
-    return me.Invariant(**request.param)
+    return ms.Invariant(**request.param)
 
 
 def test_invariant_min(invariant, r_in, s_min, s_max):

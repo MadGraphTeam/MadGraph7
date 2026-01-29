@@ -1,7 +1,7 @@
 Python API
 ==========
 
-.. automodule:: madevent7
+.. automodule:: madspace
    :members:
    :undoc-members:
    :imported-members:

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "madevent/runtime/tensor.h"
-#include "madevent/runtime/thread_pool.h"
+#include "madspace/runtime/tensor.h"
+#include "madspace/runtime/thread_pool.h"
 #include "simd.h"
 
-namespace madevent {
+namespace madspace {
 namespace cpu {
 
 inline std::tuple<std::size_t, std::size_t>
@@ -150,4 +150,4 @@ private:
 extern "C" DevicePtr get_device();
 
 } // namespace cpu
-} // namespace madevent
+} // namespace madspace

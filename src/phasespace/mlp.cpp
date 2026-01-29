@@ -1,9 +1,9 @@
-#include "madevent/phasespace/mlp.h"
+#include "madspace/phasespace/mlp.h"
 
 #include <format>
 #include <random>
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 

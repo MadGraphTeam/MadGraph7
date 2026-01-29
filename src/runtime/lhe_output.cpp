@@ -1,12 +1,12 @@
-#include "madevent/runtime/lhe_output.h"
+#include "madspace/runtime/lhe_output.h"
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <span>
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 

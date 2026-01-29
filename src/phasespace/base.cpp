@@ -1,6 +1,6 @@
-#include "madevent/phasespace/base.h"
+#include "madspace/phasespace/base.h"
 
-#include "madevent/util.h"
+#include "madspace/util.h"
 
 #define CATCH_ONE_ERROR(etype, name)                                                   \
     catch (const etype& e) {                                                           \
@@ -15,7 +15,7 @@
     CATCH_ONE_ERROR(std::range_error, name)                                            \
     CATCH_ONE_ERROR(std::runtime_error, name)
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 

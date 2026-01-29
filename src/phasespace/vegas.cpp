@@ -1,6 +1,6 @@
-#include "madevent/phasespace/vegas.h"
+#include "madspace/phasespace/vegas.h"
 
-using namespace madevent;
+using namespace madspace;
 
 VegasHistogram::VegasHistogram(std::size_t dimension, std::size_t bin_count) :
     FunctionGenerator(
@@ -49,7 +49,7 @@ void VegasMapping::initialize_globals(ContextPtr context) const {
     initialize_vegas_grid(context, _grid_name);
 }
 
-void madevent::initialize_vegas_grid(ContextPtr context, const std::string& grid_name) {
+void madspace::initialize_vegas_grid(ContextPtr context, const std::string& grid_name) {
     bool is_cpu = context->device() == cpu_device();
     auto grid_global = context->global(grid_name);
     if (grid_global.shape().size() != 3 || grid_global.size(0) != 1 ||

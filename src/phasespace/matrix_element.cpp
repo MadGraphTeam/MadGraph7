@@ -1,6 +1,6 @@
-#include "madevent/phasespace/matrix_element.h"
+#include "madspace/phasespace/matrix_element.h"
 
-using namespace madevent;
+using namespace madspace;
 
 MatrixElement::MatrixElement(
     std::size_t matrix_element_index,

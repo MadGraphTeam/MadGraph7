@@ -1,11 +1,11 @@
-#include "madevent/runtime/runtime_base.h"
+#include "madspace/runtime/runtime_base.h"
 
 #include <cstdlib>
 #include <dlfcn.h>
 #include <format>
 #include <unordered_map>
 
-using namespace madevent;
+using namespace madspace;
 
 namespace {
 
@@ -99,48 +99,48 @@ const LoadedRuntime& cpu_runtime() {
 
         switch (vector_size) {
         case 2:
-            return LoadedRuntime("libmadevent_cpu_neon");
+            return LoadedRuntime("libmadspace_cpu_neon");
         case 4:
-            return LoadedRuntime("libmadevent_cpu_avx2");
+            return LoadedRuntime("libmadspace_cpu_avx2");
         case 8:
-            return LoadedRuntime("libmadevent_cpu_avx512");
+            return LoadedRuntime("libmadspace_cpu_avx512");
         default:
-            return LoadedRuntime("libmadevent_cpu");
+            return LoadedRuntime("libmadspace_cpu");
         }
     }();
     return runtime;
 }
 
 const LoadedRuntime& cuda_runtime() {
-    static LoadedRuntime runtime("libmadevent_cuda");
+    static LoadedRuntime runtime("libmadspace_cuda");
     return runtime;
 }
 
 const LoadedRuntime& hip_runtime() {
-    static LoadedRuntime runtime("libmadevent_hip");
+    static LoadedRuntime runtime("libmadspace_hip");
     return runtime;
 }
 
 } // namespace
 
 RuntimePtr
-madevent::build_runtime(const Function& function, ContextPtr context, bool concurrent) {
+madspace::build_runtime(const Function& function, ContextPtr context, bool concurrent) {
     auto& loaded_runtime = LoadedRuntime::device_runtimes.at(context->device());
     Runtime* runtime = loaded_runtime->build_runtime(function, context, concurrent);
     runtime->shared_lib = loaded_runtime->shared_lib;
     return RuntimePtr(runtime);
 }
 
-DevicePtr madevent::cpu_device() { return cpu_runtime().get_device(); }
+DevicePtr madspace::cpu_device() { return cpu_runtime().get_device(); }
 
-DevicePtr madevent::cuda_device() { return cuda_runtime().get_device(); }
+DevicePtr madspace::cuda_device() { return cuda_runtime().get_device(); }
 
-DevicePtr madevent::hip_device() { return hip_runtime().get_device(); }
+DevicePtr madspace::hip_device() { return hip_runtime().get_device(); }
 
-void madevent::set_lib_path(const std::string& lib_path) {
+void madspace::set_lib_path(const std::string& lib_path) {
     LoadedRuntime::lib_path = lib_path;
 }
 
-void madevent::set_simd_vector_size(int vector_size) {
+void madspace::set_simd_vector_size(int vector_size) {
     LoadedRuntime::vector_size = vector_size;
 }

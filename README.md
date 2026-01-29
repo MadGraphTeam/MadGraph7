@@ -1,4 +1,6 @@
-## madevent7
+<p align="center">
+  <img src="https://raw.githubusercontent.com/madgraph-ml/madevent7/refs/heads/dev/docs/source/_static/logo-light.png" width="500", alt="MadSpace">
+</p>
 
 ### Installation
 
@@ -8,7 +10,7 @@ Packages on PyPI are available for Linux and MacOS X (with Apple silicon),
 for Python 3.11 to 3.14.
 
 ```sh
-pip install madevent7
+pip install madspace
 ```
 
 #### Build
@@ -26,11 +28,11 @@ newer version, for example with
 brew install cmake
 ```
 
-Then check out the `madevent7` repository and build and install it with
+Then check out the `madspace` repository and build and install it with
 
 ```sh
-git clone git@github.com:madgraph-ml/madevent7.git
-cd madevent7
+git clone git@github.com:madgraph-ml/madspace.git
+cd madspace
 pip install .
 ```
 

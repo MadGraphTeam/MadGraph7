@@ -8,8 +8,8 @@
 #include "../kernels/kernels.h"
 #include "../kernels/operations.h"
 #include "device.h"
-#include "madevent/madcode/optimizer.h"
-#include "madevent/util.h"
+#include "madspace/madcode/optimizer.h"
+#include "madspace/util.h"
 
 extern "C" void dgemm_(
     char* transa,
@@ -41,9 +41,9 @@ extern "C" void dgemv_(
     int* incy
 );
 
-using namespace madevent;
-using namespace madevent::cpu;
-using namespace madevent::kernels;
+using namespace madspace;
+using namespace madspace::cpu;
+using namespace madspace::kernels;
 
 namespace {
 

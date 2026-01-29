@@ -1,12 +1,12 @@
 #pragma once
 
 #include "device.h"
-#include "madevent/madcode/type.h"
-#include "madevent/runtime/tensor.h"
+#include "madspace/madcode/type.h"
+#include "madspace/runtime/tensor.h"
 
 #include <algorithm>
 
-namespace madevent {
+namespace madspace {
 namespace gpu {
 
 constexpr std::size_t THREADS_MULTIPLE = 32;
@@ -293,4 +293,4 @@ void tensor_foreach_dynamic(
 }
 
 } // namespace gpu
-} // namespace madevent
+} // namespace madspace

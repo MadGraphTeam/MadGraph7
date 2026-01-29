@@ -1,8 +1,8 @@
-#include "madevent/phasespace/cross_section.h"
+#include "madspace/phasespace/cross_section.h"
 
 #include <set>
 
-using namespace madevent;
+using namespace madspace;
 
 DifferentialCrossSection::DifferentialCrossSection(
     const MatrixElement& matrix_element,

@@ -1,11 +1,11 @@
 #pragma once
 
 #include "gpu_abstraction.h"
-#include "madevent/runtime/tensor.h"
+#include "madspace/runtime/tensor.h"
 
 #include <format>
 
-namespace madevent {
+namespace madspace {
 namespace gpu {
 
 inline void check_error(gpublasStatus_t status) {
@@ -85,4 +85,4 @@ private:
 extern "C" DevicePtr get_device();
 
 } // namespace gpu
-} // namespace madevent
+} // namespace madspace

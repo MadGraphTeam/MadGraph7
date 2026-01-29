@@ -1,6 +1,6 @@
-#include "madevent/runtime/discrete_optimizer.h"
+#include "madspace/runtime/discrete_optimizer.h"
 
-using namespace madevent;
+using namespace madspace;
 
 void DiscreteOptimizer::add_data(const std::vector<Tensor>& values_and_counts) {
     if (_data.size() != _prob_names.size()) {

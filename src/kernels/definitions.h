@@ -1,6 +1,6 @@
 #pragma once
 
-#include "madevent/constants.h"
+#include "madspace/constants.h"
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
 #include "../gpu/kernel_definitions.h"
@@ -8,7 +8,7 @@
 #include "../cpu/kernel_definitions.h"
 #endif
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 inline constexpr double EPS = 1e-12;
@@ -34,4 +34,4 @@ template <typename T>
 using BVal = typename T::BVal;
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

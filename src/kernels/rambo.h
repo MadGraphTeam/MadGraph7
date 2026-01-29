@@ -3,7 +3,7 @@
 #include "definitions.h"
 #include "kinematics.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 // constants and helper functions
@@ -379,4 +379,4 @@ KERNELSPEC void kernel_fast_rambo_massive_inverse(
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

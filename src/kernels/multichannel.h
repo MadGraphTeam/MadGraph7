@@ -2,7 +2,7 @@
 
 #include "definitions.h"
 
-namespace madevent {
+namespace madspace {
 namespace kernels {
 
 template <typename T>
@@ -141,4 +141,4 @@ KERNELSPEC void kernel_permute_momenta(
 }
 
 } // namespace kernels
-} // namespace madevent
+} // namespace madspace

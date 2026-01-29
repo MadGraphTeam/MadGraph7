@@ -1,5 +1,5 @@
-PROJECT_NAME           = madevent7
-INPUT                  = ../include/madevent/
+PROJECT_NAME           = madspace
+INPUT                  = ../include/madspace/
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = *mixin*
 
