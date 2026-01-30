@@ -485,7 +485,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                     args.push_back(p_ext.at(0));
                     args.push_back(p_ext.at(1));
                 }
-                Value e_cm = fb.obs_mass(fb.add(p_ext.at(0), p_ext.at(1)));
+                Value e_cm = std::is_same_v<TMapping, ChiliMapping>
+                    ? Value(_sqrt_s_lab)
+                    : fb.obs_mass(fb.add(p_ext.at(0), p_ext.at(1)));
                 conds.push_back(e_cm);
                 decay_data.at(0).computed_mass = e_cm;
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
