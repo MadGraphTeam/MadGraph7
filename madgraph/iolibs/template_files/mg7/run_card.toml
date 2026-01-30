@@ -13,6 +13,7 @@ dummy_matrix_element = false
 
 [beam]
 e_cm = 13000.0
+leptonic = false
 pdf = "NNPDF23_lo_as_0130_qed"
 fixed_ren_scale = true
 fixed_fact_scale = true

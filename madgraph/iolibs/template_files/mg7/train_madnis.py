@@ -1,17 +1,22 @@
 import torch
 import numpy as np
-from madnis.integrator import (
-    ChannelGrouping, Integrator, stratified_variance, kl_divergence, rkl_divergence
+import madspace as ms
+from madspace.madnis import (
+    ChannelGrouping,
+    Integrator,
+    stratified_variance,
+    kl_divergence,
+    rkl_divergence,
+    build_madnis_integrand,
+    MADNIS_INTEGRAND_FLAGS,
 )
-import madevent7 as me
-from madevent7.madnis import build_madnis_integrand, MADNIS_INTEGRAND_FLAGS
 
 
 def train_madnis(
-    integrands: list[me.Integrand],
+    integrands: list[ms.Integrand],
     phasespace,
     madnis_args: dict,
-    context: me.Context,
+    context: ms.Context,
 ) -> None:
     channel_grouping = (
         None if phasespace.symfact is None else ChannelGrouping(phasespace.symfact)
@@ -48,11 +53,11 @@ def train_madnis(
             return None
 
     madevent_device = context.device()
-    if madevent_device == me.cpu_device():
+    if madevent_device == ms.cpu_device():
         device = torch.device("cpu")
-    elif madevent_device == me.cuda_device():
+    elif madevent_device == ms.cuda_device():
         device = torch.device("cpu")
-    elif madevent_device == me.hip_device():
+    elif madevent_device == ms.hip_device():
         device = torch.device("rocm")
 
     integrator = Integrator(
@@ -79,7 +84,7 @@ def train_madnis(
         freeze_cwnet_iteration=int(
             madnis_args["train_batches"] * (1 - madnis_args["fixed_cwnet_fraction"])
         ),
-        device=torch.device("cpu" if context.device() == me.cpu_device() else "cuda:0"),
+        device=torch.device("cpu" if context.device() == ms.cpu_device() else "cuda:0"),
         dtype=torch.float64,
     )
 

@@ -24,7 +24,7 @@ else:
     except ImportError:
         raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
 
-import madevent7 as me
+import madspace as ms
 from models.check_param_card import ParamCard
 
 logger = logging.getLogger("madevent7")
@@ -46,10 +46,10 @@ def print_run_time(start):
 
 @dataclass
 class Channel:
-    phasespace_mapping: me.PhaseSpaceMapping
-    adaptive_mapping: me.Flow | me.VegasMapping
-    discrete_before: me.DiscreteSampler | me.DiscreteFlow | None
-    discrete_after: me.DiscreteSampler | me.DiscreteFlow | None
+    phasespace_mapping: ms.PhaseSpaceMapping
+    adaptive_mapping: ms.Flow | ms.VegasMapping
+    discrete_before: ms.DiscreteSampler | ms.DiscreteFlow | None
+    discrete_after: ms.DiscreteSampler | ms.DiscreteFlow | None
     channel_weight_indices: list[int] | None
     name: str
 
@@ -60,15 +60,15 @@ class PhaseSpace:
     channels: list[Channel]
     symfact: list[int | None]
     chan_weight_remap: list[int]
-    prop_chan_weights: me.PropagatorChannelWeights | None = None
-    subchan_weights: me.SubchannelWeights | None = None
-    cwnet: me.ChannelWeightNetwork | None = None
+    prop_chan_weights: ms.PropagatorChannelWeights | None = None
+    subchan_weights: ms.SubchannelWeights | None = None
+    cwnet: ms.ChannelWeightNetwork | None = None
 
 
 class MultiChannelData(NamedTuple):
     amp2_remap: list[int]
     symfact: list[int | None]
-    topologies: list[list[me.Topology]]
+    topologies: list[list[ms.Topology]]
     permutations: list[list[list[int]]]
     channel_indices: list[list[int]]
     channel_weight_indices: list[list[list[int]]]
@@ -113,8 +113,8 @@ class MadgraphProcess:
             self.subprocess_data = json.load(f)
 
     def init_backend(self) -> None:
-        me.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
-        me.set_thread_count(self.run_card["run"]["thread_pool_size"])
+        ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+        ms.set_thread_count(self.run_card["run"]["thread_pool_size"])
 
     def init_event_dir(self) -> None:
         run_name = self.run_card["run"]["run_name"]
@@ -212,12 +212,13 @@ class MadgraphProcess:
         beam_args = self.run_card["beam"]
 
         self.e_cm = beam_args["e_cm"]
+        self.leptonic = beam_args["leptonic"]
 
         dynamical_scales = {
-            "transverse_energy": me.EnergyScale.transverse_energy,
-            "transverse_mass": me.EnergyScale.transverse_mass,
-            "half_transverse_mass": me.EnergyScale.half_transverse_mass,
-            "partonic_energy": me.EnergyScale.partonic_energy,
+            "transverse_energy": ms.EnergyScale.transverse_energy,
+            "transverse_mass": ms.EnergyScale.transverse_mass,
+            "half_transverse_mass": ms.EnergyScale.half_transverse_mass,
+            "partonic_energy": ms.EnergyScale.partonic_energy,
         }
         if beam_args["dynamical_scale_choice"] in dynamical_scales:
             dynamical_scale_type = dynamical_scales[beam_args["dynamical_scale_choice"]]
@@ -233,17 +234,17 @@ class MadgraphProcess:
         )
 
         pdf_set = beam_args["pdf"]
-        self.pdf_grid = me.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
+        self.pdf_grid = ms.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
         self.pdf_grid.initialize_globals(self.context)
-        self.alphas_grid = me.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
+        self.alphas_grid = ms.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
         self.alphas_grid.initialize_globals(self.context)
-        self.running_coupling = me.RunningCoupling(self.alphas_grid)
+        self.running_coupling = ms.RunningCoupling(self.alphas_grid)
 
     def init_generator_config(self) -> None:
         run_args = self.run_card["run"]
         gen_args = self.run_card["generation"]
         vegas_args = self.run_card["vegas"]
-        cfg = me.EventGeneratorConfig()
+        cfg = ms.EventGeneratorConfig()
         cfg.target_count = gen_args["events"]
         cfg.vegas_damping = vegas_args["damping"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
@@ -263,14 +264,14 @@ class MadgraphProcess:
     def init_context(self) -> None:
         device_name = self.run_card["run"]["device"]
         if device_name == "cpu":
-            device = me.cpu_device()
+            device = ms.cpu_device()
         elif device_name == "cuda":
-            device = me.cuda_device()
+            device = ms.cuda_device()
         elif device_name == "hip":
-            device = me.hip_device()
+            device = ms.hip_device()
         else:
             raise ValueError("Unknown device")
-        self.context = me.Context(device)
+        self.context = ms.Context(device)
 
     def init_subprocesses(self) -> None:
         self.subprocesses = []
@@ -279,7 +280,7 @@ class MadgraphProcess:
 
     def build_event_generator(
         self, phasespaces: list[PhaseSpace], file: str
-    ) -> me.EventGenerator:
+    ) -> ms.EventGenerator:
         integrands = []
         subproc_ids = []
         channel_names = []
@@ -293,8 +294,8 @@ class MadgraphProcess:
                 channel_hists.extend([subproc.histograms] * len(phasespace.channels))
         #print(integrands[0].function())
         #integrands[0].function().save("test.json")
-        #integrands[0] = me.Function.load("test.json")
-        return me.EventGenerator(
+        #integrands[0] = ms.Function.load("test.json")
+        return ms.EventGenerator(
             context=self.context,
             channels=integrands,
             temp_file_prefix=os.path.join(self.run_path, file),
@@ -307,7 +308,7 @@ class MadgraphProcess:
 
     def survey_phasespaces(
         self, phasespaces: list[PhaseSpace], mode: str | None = None
-    ) -> me.EventGenerator:
+    ) -> ms.EventGenerator:
         event_generator = self.build_event_generator(
             phasespaces, "events" if mode is None else f"events_{mode}"
         )
@@ -418,7 +419,7 @@ class MadgraphProcess:
                 diagram_color_indices,
             ) = subproc.build_multi_channel_data()
             subproc_args.append(
-                me.SubprocArgs(
+                ms.SubprocArgs(
                     topologies = [topo[0] for topo in topologies],
                     permutations = permutations,
                     diagram_indices = diagram_indices,
@@ -435,7 +436,7 @@ class MadgraphProcess:
                     ],
                 )
             )
-        return me.LHECompleter(
+        return ms.LHECompleter(
             subproc_args=subproc_args,
             bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
         )
@@ -489,9 +490,9 @@ class MadgraphSubprocess:
         self.particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         all_pids = clean_pids(self.meta["incoming"]) + clean_pids(self.meta["outgoing"])
         self.cuts = (
-            me.Cuts([
-                me.CutItem(
-                    observable=me.Observable(all_pids, **cut_item.observable_kwargs),
+            ms.Cuts([
+                ms.CutItem(
+                    observable=ms.Observable(all_pids, **cut_item.observable_kwargs),
                     min=cut_item.min,
                     max=cut_item.max,
                     mode=cut_item.mode,
@@ -502,9 +503,9 @@ class MadgraphSubprocess:
             else None
         )
         self.histograms = (
-            me.ObservableHistograms([
-                me.HistItem(
-                    observable=me.Observable(all_pids, **hist_item.observable_kwargs),
+            ms.ObservableHistograms([
+                ms.HistItem(
+                    observable=ms.Observable(all_pids, **hist_item.observable_kwargs),
                     min=hist_item.min,
                     max=hist_item.max,
                     bin_count=hist_item.bin_count,
@@ -515,7 +516,7 @@ class MadgraphSubprocess:
             else None
         )
 
-        self.scale = me.EnergyScale(
+        self.scale = ms.EnergyScale(
             particle_count=self.particle_count, **self.process.scale_kwargs
         )
 
@@ -554,7 +555,7 @@ class MadgraphSubprocess:
                 else:
                     e_min = 0
                     e_max = 0
-                propagators.append(me.Propagator(
+                propagators.append(ms.Propagator(
                     mass=mass,
                     width=width,
                     integration_order=0,
@@ -564,10 +565,10 @@ class MadgraphSubprocess:
             vertices = channel["vertices"]
             diagrams = channel["diagrams"]
             chan_permutations = [d["permutation"] for d in diagrams]
-            diag = me.Diagram(
+            diag = ms.Diagram(
                 self.incoming_masses, self.outgoing_masses, propagators, vertices
             )
-            chan_topologies = me.Topology.topologies(diag)
+            chan_topologies = ms.Topology.topologies(diag)
             topo_count = len(chan_topologies)
 
             amp2_remap[diagrams[0]["diagram"]] = channel_index
@@ -625,13 +626,14 @@ class MadgraphSubprocess:
         )):
             topo_count = len(chan_topologies)
             for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
-                mapping = me.PhaseSpaceMapping(
+                mapping = ms.PhaseSpaceMapping(
                     chan_topologies[0],
                     self.process.e_cm,
                     t_channel_mode=t_channel_mode,
                     cuts=self.cuts,
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
+                    leptonic=self.process.leptonic,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -650,7 +652,7 @@ class MadgraphSubprocess:
 
         chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
         if self.process.run_card["phasespace"]["sde_strategy"] == "denominators":
-            prop_chan_weights = me.PropagatorChannelWeights(
+            prop_chan_weights = ms.PropagatorChannelWeights(
                 [topo[0] for topo in topologies], permutations, channel_indices
             )
             indices_for_subchan = channel_indices
@@ -659,7 +661,7 @@ class MadgraphSubprocess:
             indices_for_subchan = diagram_indices
 
         if any(len(topos) > 1 for topos in topologies):
-            subchan_weights = me.SubchannelWeights(
+            subchan_weights = ms.SubchannelWeights(
                 topologies, permutations, indices_for_subchan
             )
         else:
@@ -679,11 +681,12 @@ class MadgraphSubprocess:
         )
 
     def build_flat_phasespace(self) -> PhaseSpace:
-        mapping = me.PhaseSpaceMapping(
+        mapping = ms.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
             self.process.e_cm,
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
+            leptonic=self.process.leptonic,
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_before, discrete_after = self.build_discrete(
@@ -792,7 +795,7 @@ class MadgraphSubprocess:
             #cond_dim = perm_count if perm_count > 1 else 0
             flow_dim = channel.phasespace_mapping.random_dim()
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
-            flow = me.Flow(
+            flow = ms.Flow(
                 input_dim=flow_dim,
                 condition_dim=0,
                 prefix=prefix,
@@ -812,7 +815,7 @@ class MadgraphSubprocess:
 
             discrete_after = channel.discrete_after
             if discrete_after is not None:
-                discrete_after = me.DiscreteFlow(
+                discrete_after = ms.DiscreteFlow(
                     option_counts=[len(self.meta["flavors"])],
                     prefix=f"{prefix}.discrete_after",
                     dims_with_prior=[0],
@@ -842,11 +845,11 @@ class MadgraphSubprocess:
             subchan_weights=phasespace.subchan_weights,
         )
 
-    def build_vegas(self, mapping: me.PhaseSpaceMapping, prefix: str) -> me.VegasMapping:
+    def build_vegas(self, mapping: ms.PhaseSpaceMapping, prefix: str) -> ms.VegasMapping:
         if not self.process.run_card["vegas"]["enable"]:
             return None
 
-        vegas = me.VegasMapping(
+        vegas = ms.VegasMapping(
             mapping.random_dim(),
             self.process.run_card["vegas"]["bins"],
             prefix,
@@ -856,11 +859,11 @@ class MadgraphSubprocess:
 
     def build_discrete(
         self, permutation_count: int, flavor_count: int, prefix: str
-    ) -> tuple[me.DiscreteSampler | None, me.DiscreteSampler | None]:
+    ) -> tuple[ms.DiscreteSampler | None, ms.DiscreteSampler | None]:
         #return None, None
         discrete_before = None
         #if permutation_count > 1:
-        #    discrete_before = me.DiscreteSampler(
+        #    discrete_before = ms.DiscreteSampler(
         #        [permutation_count], f"{prefix}.discrete_before"
         #    )
         #    discrete_before.initialize_globals(self.process.context)
@@ -868,7 +871,7 @@ class MadgraphSubprocess:
         #    discrete_before = None
 
         if flavor_count > 1:
-            discrete_after = me.DiscreteSampler(
+            discrete_after = ms.DiscreteSampler(
                 [flavor_count], f"{prefix}.discrete_after", [0]
             )
             discrete_after.initialize_globals(self.process.context)
@@ -877,9 +880,9 @@ class MadgraphSubprocess:
 
         return discrete_before, discrete_after
 
-    def build_cwnet(self, channel_count: int) -> me.ChannelWeightNetwork:
+    def build_cwnet(self, channel_count: int) -> ms.ChannelWeightNetwork:
         madnis_args = self.process.run_card["madnis"]
-        cwnet = me.ChannelWeightNetwork(
+        cwnet = ms.ChannelWeightNetwork(
             channel_count=channel_count,
             particle_count=self.particle_count,
             hidden_dim=madnis_args["cwnet_hidden_dim"],
@@ -890,25 +893,25 @@ class MadgraphSubprocess:
         cwnet.initialize_globals(self.process.context)
         return cwnet
 
-    def t_channel_mode(self, name: str) -> me.PhaseSpaceMapping.TChannelMode:
+    def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:
         modes = {
-            "propagator": me.PhaseSpaceMapping.propagator,
-            "rambo": me.PhaseSpaceMapping.rambo,
-            "chili": me.PhaseSpaceMapping.chili,
+            "propagator": ms.PhaseSpaceMapping.propagator,
+            "rambo": ms.PhaseSpaceMapping.rambo,
+            "chili": ms.PhaseSpaceMapping.chili,
         }
         if name in modes:
             return modes[name]
         else:
             raise ValueError(f"Invalid t-channel mode '{name}'")
 
-    def activation(self, name: str) -> me.MLP.Activation:
+    def activation(self, name: str) -> ms.MLP.Activation:
         activations = {
-            "relu": me.MLP.relu,
-            "leaky_relu": me.MLP.leaky_relu,
-            "elu": me.MLP.elu,
-            "gelu": me.MLP.gelu,
-            "sigmoid": me.MLP.sigmoid,
-            "softplus": me.MLP.softplus,
+            "relu": ms.MLP.relu,
+            "leaky_relu": ms.MLP.leaky_relu,
+            "elu": ms.MLP.elu,
+            "gelu": ms.MLP.gelu,
+            "sigmoid": ms.MLP.sigmoid,
+            "softplus": ms.MLP.softplus,
         }
         if name in activations:
             return activations[name]
@@ -918,41 +921,46 @@ class MadgraphSubprocess:
     def build_integrands(
         self,
         phasespace: PhaseSpace,
-        flags: int = me.EventGenerator.integrand_flags
-    ) -> list[me.Integrand]:
+        flags: int = ms.EventGenerator.integrand_flags
+    ) -> list[ms.Integrand]:
         flavors = [flav["options"][0] for flav in self.meta["flavors"]]
         if self.matrix_element:
-            matrix_element = me.MatrixElement(
+            matrix_element = ms.MatrixElement(
                 self.matrix_element,
-                me.Integrand.matrix_element_inputs,
-                me.Integrand.matrix_element_outputs,
+                ms.Integrand.matrix_element_inputs,
+                ms.Integrand.matrix_element_outputs,
                 True,
             )
         else:
-            matrix_element = me.MatrixElement(
+            matrix_element = ms.MatrixElement(
                 0xBADCAFE,
                 self.particle_count,
-                me.Integrand.matrix_element_inputs,
-                me.Integrand.matrix_element_outputs,
+                ms.Integrand.matrix_element_inputs,
+                ms.Integrand.matrix_element_outputs,
                 self.meta["diagram_count"],
                 True,
             )
-        cross_section = me.DifferentialCrossSection(
+        pdf_grid = (
+            None
+            if len(flavors) > 1 or self.process.leptonic
+            else self.process.pdf_grid
+        )
+        cross_section = ms.DifferentialCrossSection(
             matrix_element=matrix_element,
             cm_energy=self.process.e_cm,
             running_coupling=self.process.running_coupling,
             energy_scale=self.scale,
             pid_options=flavors,
-            has_pdf1=True,
-            has_pdf2=True,
-            pdf_grid1=None if len(flavors) > 1 else self.process.pdf_grid,
-            pdf_grid2=None if len(flavors) > 1 else self.process.pdf_grid,
+            has_pdf1=not self.process.leptonic,
+            has_pdf2=not self.process.leptonic,
+            pdf_grid1=pdf_grid,
+            pdf_grid2=pdf_grid,
             has_mirror=self.meta["has_mirror_process"],
             input_momentum_fraction=True,
         )
         integrands = []
         for channel in phasespace.channels:
-            integrands.append(me.Integrand(
+            integrands.append(ms.Integrand(
                 channel.phasespace_mapping,
                 cross_section,
                 channel.adaptive_mapping,
