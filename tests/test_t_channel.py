@@ -16,32 +16,32 @@ def rng():
 
 @pytest.fixture(
     params=[
-        # [0.0, 0.0],
-        # [0.0, 0.0, 0.0],
-        # [0.0, 0.0, 0.0, 0.0],
-        # [0.0, 0.0, 0.0, 0.0, 0.0],
-        # [173.0, 173.0],
-        # [173.0, 173.0, 0.0],
-        # [173.0, 173.0, 0.0, 0.0],
-        # [173.0, 173.0, 0.0, 0.0, 0.0],
-        # [80.0, 80.0],
+        [0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0],
+        [173.0, 173.0],
+        [173.0, 173.0, 0.0],
+        [173.0, 173.0, 0.0, 0.0],
+        [173.0, 173.0, 0.0, 0.0, 0.0],
+        [80.0, 80.0],
         [80.0, 80.0, 80.0],
-        # [80.0, 80.0, 80.0, 80.0],
-        # [80.0, 80.0, 80.0, 80.0, 80.0],
+        [80.0, 80.0, 80.0, 80.0],
+        [80.0, 80.0, 80.0, 80.0, 80.0],
     ],
     ids=[
-        # "2 particles, massless",
-        # "3 particles, massless",
-        # "4 particles, massless",
-        # "5 particles, massless",
-        # "2 particles, t tbar",
-        # "3 particles, t tbar",
-        # "4 particles, t tbar",
-        # "5 particles, t tbar",
-        # "2 particles, W",
+        "2 particles, massless",
+        "3 particles, massless",
+        "4 particles, massless",
+        "5 particles, massless",
+        "2 particles, t tbar",
+        "3 particles, t tbar",
+        "4 particles, t tbar",
+        "5 particles, t tbar",
+        "2 particles, W",
         "3 particles, W",
-        # "4 particles, W",
-        # "5 particles, W",
+        "4 particles, W",
+        "5 particles, W",
     ],
 )
 def masses(request):
@@ -125,9 +125,6 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
 
 
 def test_t_channel_inverse(masses, rng, mode):
-    # if mode == ms.PhaseSpaceMapping.chili:
-    #     return
-    # cuts = ms.Cuts(cut_data=[ms.CutItem(ms.Cuts.obs_pt, min=10., pids=[21])])
     mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode, invariant_power=0.3)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     (p_ext, x1, x2), det = mapping.map_forward([r])
@@ -140,18 +137,10 @@ def test_t_channel_inverse(masses, rng, mode):
         r = r[physical_mask]
         det = det[physical_mask]
 
-    # pt_true = np.sqrt(np.sum(p_ext[0, 2:, 1:] ** 2))
-    # pt_max = CM_ENERGY / 2.0
-    # pt2_max = pt_max * pt_max
-    # pt_r = 2 * masses[2] * pt_max * r[0, [0,1]] / (2 * masses[2] + pt_max * (1 - r[0, [0,1]] ))
     (r_inv,), det_inv = mapping.map_inverse((p_ext, x1, x2))
     one_batch = np.ones_like(det)
-    print(r[0])
-    print(r_inv[0])
-    # print(pt_true)
-    # print(pt_r)
     assert r_inv == approx(r, abs=1e-3, rel=1e-3)
-    # assert det * det_inv == approx(one_batch, rel=1e-5)
+    assert det * det_inv == approx(one_batch, rel=1e-5)
 
 
 @pytest.mark.parametrize(

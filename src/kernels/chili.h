@@ -39,11 +39,12 @@ KERNELSPEC void kernel_chili_forward(
             pt2_withcut * pt2_withcut * (1. / pt2_min_i - 1. / pt2_max);
 
         // without pt cut
+        auto mm_pt_i = where(m_out_i > EPS, m_out_i, 1.0);
         auto pt_nocut =
-            2. * m_out_i * pt_max * r_pt / (2. * m_out_i + pt_max * (1. - r_pt));
+            2. * mm_pt_i * pt_max * r_pt / (2. * mm_pt_i + pt_max * (1. - r_pt));
         auto pt2_nocut = pt_nocut * pt_nocut;
-        auto factor_pt = (2 * m_out_i + pt_nocut);
-        auto denom_pt = m_out_i * (2 * m_out_i + pt_max);
+        auto factor_pt = (2 * mm_pt_i + pt_nocut);
+        auto denom_pt = mm_pt_i * (2 * mm_pt_i + pt_max);
         auto det_pt_nocut = pt_nocut * pt_max * factor_pt * factor_pt / denom_pt;
 
         auto has_pt_cut = pt2_min_i > 1e-9;
@@ -162,8 +163,9 @@ KERNELSPEC void kernel_chili_inverse(
         auto r_pt_cut = pt2_max * inv_pt2 * (pt2 - pt2_min_i) / (pt2_max - pt2_min_i);
 
         // no-cut inversion:
+        auto mm_pt_i = where(m_out_i > EPS, m_out_i, 1.0);
         auto r_pt_nocut =
-            pt * (2.0 * m_out_i + pt_max) / (pt_max * (2.0 * m_out_i + pt));
+            pt * (2.0 * mm_pt_i + pt_max) / (pt_max * (2.0 * mm_pt_i + pt));
 
         auto has_pt_cut = pt2_min_i > 1e-9;
         auto r_pt = where(has_pt_cut, r_pt_cut, r_pt_nocut);
@@ -174,9 +176,9 @@ KERNELSPEC void kernel_chili_inverse(
         auto det_pt_withcut =
             pt2_withcut * pt2_withcut * (1. / pt2_min_i - 1. / pt2_max);
         auto pt_nocut =
-            2. * m_out_i * pt_max * r_pt / (2. * m_out_i + pt_max * (1. - r_pt));
-        auto factor_pt = (2 * m_out_i + pt_nocut);
-        auto denom_pt = m_out_i * (2 * m_out_i + pt_max);
+            2. * mm_pt_i * pt_max * r_pt / (2. * mm_pt_i + pt_max * (1. - r_pt));
+        auto factor_pt = (2 * mm_pt_i + pt_nocut);
+        auto denom_pt = mm_pt_i * (2 * mm_pt_i + pt_max);
         auto det_pt_nocut = pt_nocut * pt_max * factor_pt * factor_pt / denom_pt;
 
         auto det_pt = where(has_pt_cut, det_pt_withcut, det_pt_nocut);
@@ -185,6 +187,7 @@ KERNELSPEC void kernel_chili_inverse(
         // forward: phi = 2π r_phi + atan2(py_sum, px_sum)
         if (i == 0) {
             auto phi = atan2(py, px);
+            phi = where(phi < 0, phi + 2. * PI, phi);
             auto r_phi = phi / (2. * PI);
             r[2 * n_out - 1 + i] = r_phi;
         } else {
