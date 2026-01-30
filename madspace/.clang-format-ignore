@@ -1,0 +1,9 @@
+# prevents formatting of auto-generated code
+include/madspace/madcode/function_builder_mixin.h
+src/python/instruction_set.h
+src/madcode/instruction_set_mixin.h
+include/madspace/madcode/opcode_mixin.h
+src/cpu/runtime_mixin.h
+src/gpu/runtime_mixin.h
+src/cpu/runtime_backward_mixin.h
+src/gpu/runtime_backward_mixin.h

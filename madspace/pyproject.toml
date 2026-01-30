@@ -1,0 +1,37 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "madspace"
+version = "0.3.1"
+description="Fast and flexible phase space mappings"
+readme = "README.md"
+authors = [
+  { name = "Theo Heimel", email = "theo.heimel@uclouvain.be" },
+]
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = []
+
+[tool.scikit-build]
+wheel.expand-macos-universal-tags = true
+minimum-version = "build-system.requires"
+cmake.build-type="Release"
+cmake.define.USE_SIMD="0"
+cmake.define.CMAKE_EXPORT_COMPILE_COMMANDS="1"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+atomic = true
+line_length = 88
