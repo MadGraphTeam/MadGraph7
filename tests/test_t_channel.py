@@ -6,6 +6,8 @@ from pytest import approx
 
 import madspace as ms
 
+np.set_printoptions(linewidth=1000)
+
 
 @pytest.fixture
 def rng():
@@ -49,9 +51,10 @@ def masses(request):
 @pytest.fixture(
     params=[
         ms.PhaseSpaceMapping.propagator,
-        ms.PhaseSpaceMapping.rambo,  # , ms.PhaseSpaceMapping.chili
+        ms.PhaseSpaceMapping.rambo,
+        ms.PhaseSpaceMapping.chili,
     ],
-    ids=["propagator", "rambo"],  # , "chili"]
+    ids=["propagator", "rambo", "chili"],
 )
 def mode(request):
     return request.param
@@ -66,7 +69,13 @@ def test_t_channel_masses(masses, rng, mode):
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     (p_ext, x1, x2), det = mapping.map_forward([r])
 
-    m_ext_true = np.full((BATCH_SIZE, len(masses)), masses)
+    batch_phys = BATCH_SIZE
+    if mode == ms.PhaseSpaceMapping.chili:
+        physical_mask = det != 0.0
+        p_ext = p_ext[physical_mask]
+        batch_phys = p_ext.shape[0]
+
+    m_ext_true = np.full((batch_phys, len(masses)), masses)
     m_ext = np.sqrt(
         np.maximum(0, p_ext[:, :, 0] ** 2 - np.sum(p_ext[:, :, 1:] ** 2, axis=2))
     )
@@ -77,7 +86,16 @@ def test_t_channel_incoming(masses, rng, mode):
     mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     (p_ext, x1, x2), det = mapping.map_forward([r])
-    zeros = np.zeros(BATCH_SIZE)
+
+    batch_phys = BATCH_SIZE
+    if mode == ms.PhaseSpaceMapping.chili:
+        physical_mask = det != 0.0
+        x1 = x1[physical_mask]
+        x2 = x2[physical_mask]
+        p_ext = p_ext[physical_mask]
+        batch_phys = p_ext.shape[0]
+
+    zeros = np.zeros(batch_phys)
     p_a = p_ext[:, 0]
     p_b = p_ext[:, 1]
     e_beam = 0.5 * CM_ENERGY
@@ -95,6 +113,11 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
     mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     (p_ext, x1, x2), det = mapping.map_forward([r])
+
+    if mode == ms.PhaseSpaceMapping.chili:
+        physical_mask = det != 0.0
+        p_ext = p_ext[physical_mask]
+
     p_in = np.sum(p_ext[:, :2], axis=1)
     p_out = np.sum(p_ext[:, 2:], axis=1)
 
@@ -104,8 +127,17 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
 def test_t_channel_inverse(masses, rng, mode):
     mapping = ms.PhaseSpaceMapping(masses, CM_ENERGY, mode=mode, invariant_power=0.3)
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
-    map_out, det = mapping.map_forward([r])
-    (r_inv,), det_inv = mapping.map_inverse(map_out)
+    (p_ext, x1, x2), det = mapping.map_forward([r])
+
+    if mode == ms.PhaseSpaceMapping.chili:
+        physical_mask = det != 0.0
+        p_ext = p_ext[physical_mask]
+        x1 = x1[physical_mask]
+        x2 = x2[physical_mask]
+        r = r[physical_mask]
+        det = det[physical_mask]
+
+    (r_inv,), det_inv = mapping.map_inverse((p_ext, x1, x2))
     one_batch = np.ones_like(det)
     assert r_inv == approx(r, abs=1e-3, rel=1e-3)
     assert det * det_inv == approx(one_batch, rel=1e-5)
