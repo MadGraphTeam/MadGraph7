@@ -55,6 +55,8 @@ jobs:
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.2.1
+        with:
+          package-dir: madspace
         env:
             CIBW_BUILD: ${{ (github.event_name == 'release' || github.ref == 'refs/heads/main') && matrix.build_full || matrix.build_small }}
             CIBW_BEFORE_ALL: ${{ matrix.CIBW_BEFORE_ALL }}
