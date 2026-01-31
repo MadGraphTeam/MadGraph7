@@ -153,10 +153,13 @@ def test_t_channel_inverse(masses, rng, mode):
 )
 def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
     if mode == ms.PhaseSpaceMapping.chili:
-        return
-    mapping = ms.PhaseSpaceMapping(
-        [0.0] * (particle_count + 2), energy, mode=mode, leptonic=True
-    )
+        mapping = ms.PhaseSpaceMapping(
+            [0.0] * (particle_count + 2), energy, mode=mode, leptonic=False
+        )
+    else:
+        mapping = ms.PhaseSpaceMapping(
+            [0.0] * (particle_count + 2), energy, mode=mode, leptonic=True
+        )
     sample_count = 100000
     r = rng.random((sample_count, mapping.random_dim()))
     _, det = mapping.map_forward([r])
@@ -166,5 +169,7 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
         * energy ** (2 * particle_count - 4)
         / (math.gamma(particle_count) * math.gamma(particle_count - 1))
     )
+    if mode == ms.PhaseSpaceMapping.chili:
+        ps_volume /= (particle_count - 1) ** 2  # integration over x1*x2 in [0,1]
     std_error = np.std(det) / np.sqrt(sample_count)
     assert np.mean(det) == approx(ps_volume, abs=3 * std_error, rel=1e-6)
