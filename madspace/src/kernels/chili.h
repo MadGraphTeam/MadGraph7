@@ -53,7 +53,9 @@ KERNELSPEC void kernel_chili_forward(
         auto det_pt = where(has_pt_cut, det_pt_withcut, det_pt_nocut);
 
         // ------ get first n-1 rapidities and phi
-        auto y_max_calc = log(sqrt(e_cm2 / 4. / pt2) + sqrt(e_cm2 / 4. / pt2 - 1.0));
+        auto mt2 = pt2 + m_out_i * m_out_i;
+        auto mt = sqrt(mt2);
+        auto y_max_calc = log(sqrt(e_cm2 / 4. / mt2) + sqrt(e_cm2 / 4. / mt2 - 1.0));
         y_max_calc = min(y_max_i, y_max_calc);
         auto y = y_max_calc * (2. * r_y - 1.0);
         auto phi = 2. * PI * r_phi + atan2(py_sum, px_sum);
@@ -63,7 +65,6 @@ KERNELSPEC void kernel_chili_forward(
         // calculate the momenta
         auto sinhy = sinh(y);
         auto coshy = sqrt(1. + sinhy * sinhy);
-        auto mt = sqrt(pt2 + m_out_i * m_out_i);
         auto e_i = mt * coshy;
         auto px_i = pt * cos(phi);
         auto py_i = pt * sin(phi);
@@ -203,7 +204,9 @@ KERNELSPEC void kernel_chili_inverse(
         // ---- compute y from momentum (same rapidity used forward)
         // wrong if pt is wrong, so fix pt first
         auto y = 0.5 * log((E + pz) / (E - pz));
-        auto y_max_calc = log(sqrt(e_cm2 / 4. / pt2) + sqrt(e_cm2 / 4. / pt2 - 1.0));
+        auto mt2 = pt2 + m_out_i * m_out_i;
+        auto mt = sqrt(mt2);
+        auto y_max_calc = log(sqrt(e_cm2 / 4. / mt2) + sqrt(e_cm2 / 4. / mt2 - 1.0));
         y_max_calc = min(y_max_i, y_max_calc);
 
         // invert y = y_max_calc * (2 r_y - 1)
