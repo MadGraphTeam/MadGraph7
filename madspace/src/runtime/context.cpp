@@ -15,7 +15,7 @@ MatrixElementApi::MatrixElementApi(
 ) :
     _file_name(file), _index(index) {
     _shared_lib = std::unique_ptr<void, std::function<void(void*)>>(
-        dlopen(file.c_str(), RTLD_NOW), [](void* lib) { dlclose(lib); }
+        dlopen(file.c_str(), RTLD_NOW), [file](void* lib) { dlclose(lib); }
     );
     if (!_shared_lib) {
         throw std::runtime_error(
@@ -100,7 +100,10 @@ void MatrixElementApi::throw_error(const std::string& message) const {
 const MatrixElementApi&
 Context::load_matrix_element(const std::string& file, const std::string& param_card) {
     _param_card_paths.push_back(param_card);
-    return _matrix_elements.emplace_back(file, param_card, _matrix_elements.size());
+    _matrix_elements.push_back(
+        std::make_unique<MatrixElementApi>(file, param_card, _matrix_elements.size())
+    );
+    return *_matrix_elements.back().get();
 }
 
 Tensor Context::define_global(
@@ -158,7 +161,7 @@ const MatrixElementApi& Context::matrix_element(std::size_t index) const {
     if (index >= _matrix_elements.size()) {
         throw std::runtime_error("Matrix element index out of bounds");
     }
-    return _matrix_elements[index];
+    return *_matrix_elements.at(index).get();
 }
 
 void Context::save(const std::string& file) const {
@@ -183,7 +186,7 @@ void Context::save(const std::string& file) const {
     json j_matrix_elements = json::array();
     for (auto [api, param_card] : zip(_matrix_elements, _param_card_paths)) {
         j_matrix_elements.push_back({
-            {"api", fs::absolute(api.file_name())},
+            {"api", fs::absolute(api->file_name())},
             {"param_card", fs::absolute(param_card)},
         });
     }

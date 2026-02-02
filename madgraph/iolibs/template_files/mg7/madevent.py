@@ -976,7 +976,7 @@ class MadgraphSubprocess:
                 flags,
                 channel.channel_weight_indices,
             ))
-        #print(integrands[0].function())
+        print(integrands[0].function())
         #print(integrands[1].function())
         return integrands
 
