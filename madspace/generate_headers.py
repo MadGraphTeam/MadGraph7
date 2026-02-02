@@ -1,7 +1,11 @@
+import os
+
 import yaml
 
 
 def main():
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
     with open("instruction_set.yaml") as f:
         data = list(yaml.safe_load_all(f))
 
