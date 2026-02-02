@@ -22,6 +22,7 @@ __all__ = [
     "EnergyScale",
     "EventGenerator",
     "EventGeneratorConfig",
+    "EventGeneratorHistogram",
     "EventGeneratorStatus",
     "EventGeneratorVerbosity",
     "FastRamboMapping",
@@ -30,6 +31,7 @@ __all__ = [
     "FunctionBuilder",
     "FunctionGenerator",
     "FunctionRuntime",
+    "HistItem",
     "Instruction",
     "InstructionCall",
     "Integrand",
@@ -53,6 +55,8 @@ __all__ = [
     "MultiChannelFunction",
     "MultiChannelIntegrand",
     "MultiChannelMapping",
+    "Observable",
+    "ObservableHistograms",
     "PartonDensity",
     "PdfGrid",
     "PhaseSpaceMapping",
@@ -169,53 +173,35 @@ class Context:
 class CutItem:
     def __init__(
         self,
-        observable: Cuts.CutObservable,
-        limit_type: Cuts.LimitType,
-        value: typing.SupportsFloat,
-        pids: collections.abc.Sequence[typing.SupportsInt],
-        pids2: collections.abc.Sequence[typing.SupportsInt] = [],
+        observable: Observable,
+        min: typing.SupportsFloat = ...,
+        max: typing.SupportsFloat = ...,
+        mode: Cuts.CutMode = Cuts.CutMode.CutMode.all,
     ) -> None: ...
     @property
-    def limit_type(self) -> Cuts.LimitType: ...
+    def max(self) -> float: ...
     @property
-    def observable(self) -> Cuts.CutObservable: ...
+    def min(self) -> float: ...
     @property
-    def pids(self) -> list[int]: ...
+    def mode(self) -> Cuts.CutMode: ...
     @property
-    def pids2(self) -> list[int]: ...
-    @property
-    def value(self) -> float: ...
+    def observable(self) -> Observable: ...
 
 class Cuts(FunctionGenerator):
-    class CutObservable:
+    class CutMode:
         """
         Members:
 
-          obs_pt
+          any
 
-          obs_eta
-
-          obs_dr
-
-          obs_mass
-
-          obs_sqrt_s
+          all
         """
 
         __members__: typing.ClassVar[
-            dict[str, Cuts.CutObservable]
-        ]  # value = {'obs_pt': <CutObservable.obs_pt: 0>, 'obs_eta': <CutObservable.obs_eta: 1>, 'obs_dr': <CutObservable.obs_dr: 2>, 'obs_mass': <CutObservable.obs_mass: 3>, 'obs_sqrt_s': <CutObservable.obs_sqrt_s: 4>}
-        obs_dr: typing.ClassVar[Cuts.CutObservable]  # value = <CutObservable.obs_dr: 2>
-        obs_eta: typing.ClassVar[
-            Cuts.CutObservable
-        ]  # value = <CutObservable.obs_eta: 1>
-        obs_mass: typing.ClassVar[
-            Cuts.CutObservable
-        ]  # value = <CutObservable.obs_mass: 3>
-        obs_pt: typing.ClassVar[Cuts.CutObservable]  # value = <CutObservable.obs_pt: 0>
-        obs_sqrt_s: typing.ClassVar[
-            Cuts.CutObservable
-        ]  # value = <CutObservable.obs_sqrt_s: 4>
+            dict[str, Cuts.CutMode]
+        ]  # value = {'any': <CutMode.any: 0>, 'all': <CutMode.all: 1>}
+        all: typing.ClassVar[Cuts.CutMode]  # value = <CutMode.all: 1>
+        any: typing.ClassVar[Cuts.CutMode]  # value = <CutMode.any: 0>
         def __eq__(self, other: typing.Any) -> bool: ...
         def __getstate__(self) -> int: ...
         def __hash__(self) -> int: ...
@@ -234,57 +220,12 @@ class Cuts(FunctionGenerator):
         @property
         def value(self) -> int: ...
 
-    class LimitType:
-        """
-        Members:
-
-          min
-
-          max
-        """
-
-        __members__: typing.ClassVar[
-            dict[str, Cuts.LimitType]
-        ]  # value = {'min': <LimitType.min: 0>, 'max': <LimitType.max: 1>}
-        max: typing.ClassVar[Cuts.LimitType]  # value = <LimitType.max: 1>
-        min: typing.ClassVar[Cuts.LimitType]  # value = <LimitType.min: 0>
-        def __eq__(self, other: typing.Any) -> bool: ...
-        def __getstate__(self) -> int: ...
-        def __hash__(self) -> int: ...
-        def __index__(self) -> int: ...
-        @typing.overload
-        def __init__(self, value: typing.SupportsInt) -> None: ...
-        @typing.overload
-        def __init__(self, name: str) -> None: ...
-        def __int__(self) -> int: ...
-        def __ne__(self, other: typing.Any) -> bool: ...
-        def __repr__(self) -> str: ...
-        def __setstate__(self, state: typing.SupportsInt) -> None: ...
-        def __str__(self) -> str: ...
-        @property
-        def name(self) -> str: ...
-        @property
-        def value(self) -> int: ...
-
-    bottom_pids: typing.ClassVar[list] = [-5, 5]
-    jet_pids: typing.ClassVar[list] = [1, 2, 3, 4, -1, -2, -3, -4, 21]
-    lepton_pids: typing.ClassVar[list] = [11, 13, 15, -11, -13, -15]
-    max: typing.ClassVar[Cuts.LimitType]  # value = <LimitType.max: 1>
-    min: typing.ClassVar[Cuts.LimitType]  # value = <LimitType.min: 0>
-    missing_pids: typing.ClassVar[list] = [12, 14, 16, -12, -14, -16]
-    obs_dr: typing.ClassVar[Cuts.CutObservable]  # value = <CutObservable.obs_dr: 2>
-    obs_eta: typing.ClassVar[Cuts.CutObservable]  # value = <CutObservable.obs_eta: 1>
-    obs_mass: typing.ClassVar[Cuts.CutObservable]  # value = <CutObservable.obs_mass: 3>
-    obs_pt: typing.ClassVar[Cuts.CutObservable]  # value = <CutObservable.obs_pt: 0>
-    obs_sqrt_s: typing.ClassVar[
-        Cuts.CutObservable
-    ]  # value = <CutObservable.obs_sqrt_s: 4>
-    photon_pids: typing.ClassVar[list] = [22]
-    def __init__(
-        self,
-        pids: collections.abc.Sequence[typing.SupportsInt],
-        cut_data: collections.abc.Sequence[CutItem],
-    ) -> None: ...
+    all: typing.ClassVar[Cuts.CutMode]  # value = <CutMode.all: 1>
+    any: typing.ClassVar[Cuts.CutMode]  # value = <CutMode.any: 0>
+    @typing.overload
+    def __init__(self, cut_data: collections.abc.Sequence[CutItem]) -> None: ...
+    @typing.overload
+    def __init__(self, particle_count: typing.SupportsInt) -> None: ...
     def eta_max(self) -> list[float]: ...
     def pt_min(self) -> list[float]: ...
     def sqrt_s_min(self) -> float: ...
@@ -523,15 +464,17 @@ class EventGenerator:
         channels: collections.abc.Sequence[Integrand],
         temp_file_prefix: str,
         status_file: str = "",
-        default_config: EventGeneratorConfig = ...,
+        config: EventGeneratorConfig = ...,
         channel_subprocesses: collections.abc.Sequence[typing.SupportsInt] = [],
         channel_names: collections.abc.Sequence[str] = [],
+        channel_histograms: collections.abc.Sequence[ObservableHistograms] = [],
     ) -> None: ...
     def channel_status(self) -> list[EventGeneratorStatus]: ...
     def combine_to_compact_npy(self, file_name: str) -> None: ...
     def combine_to_lhe(self, file_name: str, lhe_completer: ...) -> None: ...
     def combine_to_lhe_npy(self, file_name: str, lhe_completer: ...) -> None: ...
     def generate(self) -> None: ...
+    def histograms(self) -> list[EventGeneratorHistogram]: ...
     def status(self) -> EventGeneratorStatus: ...
     def survey(self) -> None: ...
 
@@ -586,6 +529,18 @@ class EventGeneratorConfig:
     def vegas_damping(self) -> float: ...
     @vegas_damping.setter
     def vegas_damping(self, arg0: typing.SupportsFloat) -> None: ...
+
+class EventGeneratorHistogram:
+    @property
+    def bin_errors(self) -> list[float]: ...
+    @property
+    def bin_values(self) -> list[float]: ...
+    @property
+    def max(self) -> float: ...
+    @property
+    def min(self) -> float: ...
+    @property
+    def name(self) -> str: ...
 
 class EventGeneratorStatus:
     done: bool
@@ -729,6 +684,7 @@ class FunctionBuilder:
         channel_indices: Value,
         subchannel_indices: Value,
     ) -> Value: ...
+    def argsort(self, input: Value) -> Value: ...
     def batch_cat(
         self, args: collections.abc.Sequence[Value]
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
@@ -747,18 +703,19 @@ class FunctionBuilder:
     def cat(self, args: collections.abc.Sequence[Value]) -> Value: ...
     def chili_forward(
         self, r: Value, e_cm: Value, m_out: Value, pt_min: Value, y_max: Value
-    ) -> typing.Annotated[list[Value], "FixedSize(4)"]: ...
+    ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
+    def chili_inverse(
+        self, p_ext: Value, e_cm: Value, m_out: Value, pt_min: Value, y_max: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
     def collect_channel_weights(
         self, amp2: Value, channel_indices: Value, channel_count: Value
     ) -> Value: ...
     def com_p_in(
         self, e_cm: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
-    def cut_dr(self, p: Value, indices: Value, min_max: Value) -> Value: ...
-    def cut_eta(self, p: Value, min_max: Value) -> Value: ...
-    def cut_m_inv(self, p: Value, indices: Value, min_max: Value) -> Value: ...
-    def cut_pt(self, p: Value, min_max: Value) -> Value: ...
-    def cut_sqrt_s(self, p: Value, min_max: Value) -> Value: ...
+    def cut_all(self, obs: Value, min: Value, max: Value) -> Value: ...
+    def cut_any(self, obs: Value, min: Value, max: Value) -> Value: ...
+    def cut_one(self, obs: Value, min: Value, max: Value) -> Value: ...
     def cut_unphysical(self, w_in: Value, p: Value, x1: Value, x2: Value) -> Value: ...
     def diff_cross_section(
         self,
@@ -779,12 +736,18 @@ class FunctionBuilder:
     def fast_rambo_massive_com(
         self, r: Value, e_cm: Value, masses: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
+    def fast_rambo_massive_inverse(
+        self, p_out: Value, e_cm: Value, masses: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
     def fast_rambo_massless(
         self, r: Value, e_cm: Value, p0: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
     def fast_rambo_massless_com(
         self, r: Value, e_cm: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
+    def fast_rambo_massless_inverse(
+        self, p_out: Value, e_cm: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
     def full(self, args: collections.abc.Sequence[Value]) -> Value: ...
     def function(self) -> Function: ...
     def gather(self, index: Value, choices: Value) -> Value: ...
@@ -796,6 +759,9 @@ class FunctionBuilder:
         dtype: DataType,
         shape: collections.abc.Sequence[typing.SupportsInt],
     ) -> Value: ...
+    def histogram(
+        self, input: Value, weights: Value, min: Value, max: Value, bin_count: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
     def input(self, index: typing.SupportsInt) -> Value: ...
     def input_range(
         self, start_index: typing.SupportsInt, end_index: typing.SupportsInt
@@ -824,6 +790,23 @@ class FunctionBuilder:
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
     def mul(self, in1: Value, in2: Value) -> Value: ...
     def nonzero(self, input: Value) -> Value: ...
+    def obs_delta_eta(self, p1: Value, p2: Value) -> Value: ...
+    def obs_delta_phi(self, p1: Value, p2: Value) -> Value: ...
+    def obs_delta_r(self, p1: Value, p2: Value) -> Value: ...
+    def obs_e(self, p: Value) -> Value: ...
+    def obs_eta(self, p: Value) -> Value: ...
+    def obs_eta_abs(self, p: Value) -> Value: ...
+    def obs_mass(self, p: Value) -> Value: ...
+    def obs_p_mag(self, p: Value) -> Value: ...
+    def obs_phi(self, p: Value) -> Value: ...
+    def obs_pt(self, p: Value) -> Value: ...
+    def obs_px(self, p: Value) -> Value: ...
+    def obs_py(self, p: Value) -> Value: ...
+    def obs_pz(self, p: Value) -> Value: ...
+    def obs_sqrt_s(self, p_ext: Value) -> Value: ...
+    def obs_theta(self, p: Value) -> Value: ...
+    def obs_y(self, p: Value) -> Value: ...
+    def obs_y_abs(self, p: Value) -> Value: ...
     def offset_indices(
         self, batch_sizes_offset: Value, batch_sizes_out: Value
     ) -> Value: ...
@@ -843,6 +826,8 @@ class FunctionBuilder:
     ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
     def random(self, batch_size: Value, count: Value) -> Value: ...
     def reduce_product(self, in1: Value) -> Value: ...
+    def reduce_sum(self, in1: Value) -> Value: ...
+    def reduce_sum_vector(self, in1: Value) -> Value: ...
     def relu(self, in1: Value) -> Value: ...
     def rqs_find_bin(
         self, input: Value, in_sizes: Value, out_sizes: Value, derivatives: Value
@@ -856,9 +841,12 @@ class FunctionBuilder:
     def rqs_reshape(
         self, input: Value, bin_count: Value
     ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
-    def s_inv_min_max(
+    def s23_min_max(
         self, pa: Value, pb: Value, p3: Value, t1_abs: Value, m1: Value, m2: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
+    def s23_value_and_min_max(
+        self, pa: Value, pb: Value, p3: Value, t1_abs: Value, p1: Value, p2: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
     def sample_discrete(
         self, r: Value, option_count: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
@@ -879,6 +867,8 @@ class FunctionBuilder:
         self, invariants: Value, masses: Value, widths: Value, indices: Value
     ) -> Value: ...
     def select(self, input: Value, indices: Value) -> Value: ...
+    def select_int(self, input: Value, indices: Value) -> Value: ...
+    def select_vector(self, input: Value, indices: Value) -> Value: ...
     def sigmoid(self, in1: Value) -> Value: ...
     def softmax(self, input: Value) -> Value: ...
     def softmax_prior(self, input: Value, prior: Value) -> Value: ...
@@ -912,6 +902,9 @@ class FunctionBuilder:
     def t_inv_min_max(
         self, pa: Value, pb: Value, m1: Value, m2: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
+    def t_inv_value_and_min_max(
+        self, pa: Value, pb: Value, p1: Value, p2: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
     def three_body_decay(
         self,
         r_e1: Value,
@@ -937,6 +930,12 @@ class FunctionBuilder:
         m2: Value,
         m3: Value,
     ) -> typing.Annotated[list[Value], "FixedSize(4)"]: ...
+    def three_body_decay_com_inverse(
+        self, p1: Value, p2: Value, p3: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(10)"]: ...
+    def three_body_decay_inverse(
+        self, p1: Value, p2: Value, p3: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(11)"]: ...
     def two_body_decay(
         self,
         r_phi: Value,
@@ -949,6 +948,12 @@ class FunctionBuilder:
     def two_body_decay_com(
         self, r_phi: Value, r_cos_theta: Value, m0: Value, m1: Value, m2: Value
     ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
+    def two_body_decay_com_inverse(
+        self, p1: Value, p2: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(6)"]: ...
+    def two_body_decay_inverse(
+        self, p1: Value, p2: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(7)"]: ...
     def two_to_three_particle_scattering(
         self,
         phi_choice: Value,
@@ -960,12 +965,28 @@ class FunctionBuilder:
         m1: Value,
         m2: Value,
     ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
+    def two_to_three_particle_scattering_inverse(
+        self,
+        p1: Value,
+        p2: Value,
+        p3: Value,
+        pa: Value,
+        pb: Value,
+        t1_abs: Value,
+        s23: Value,
+    ) -> typing.Annotated[list[Value], "FixedSize(4)"]: ...
     def two_to_two_particle_scattering(
         self, r_phi: Value, pa: Value, pb: Value, t_abs: Value, m1: Value, m2: Value
     ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
     def two_to_two_particle_scattering_com(
         self, r_phi: Value, pa: Value, pb: Value, t_abs: Value, m1: Value, m2: Value
     ) -> typing.Annotated[list[Value], "FixedSize(3)"]: ...
+    def two_to_two_particle_scattering_com_inverse(
+        self, p1: Value, p2: Value, pa: Value, pb: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(4)"]: ...
+    def two_to_two_particle_scattering_inverse(
+        self, p1: Value, p2: Value, pa: Value, pb: Value
+    ) -> typing.Annotated[list[Value], "FixedSize(4)"]: ...
     def uniform_invariant(
         self, r: Value, s_min: Value, s_max: Value
     ) -> typing.Annotated[list[Value], "FixedSize(2)"]: ...
@@ -1025,6 +1046,23 @@ class FunctionRuntime:
         arg0: collections.abc.Sequence[typing.Any],
         arg1: collections.abc.Sequence[bool],
     ) -> tuple[list[Tensor], list[madspace._madspace_py.Tensor | None], list[bool]]: ...
+
+class HistItem:
+    def __init__(
+        self,
+        observable: Observable,
+        min: typing.SupportsFloat,
+        max: typing.SupportsFloat,
+        bin_count: typing.SupportsInt,
+    ) -> None: ...
+    @property
+    def bin_count(self) -> int: ...
+    @property
+    def max(self) -> float: ...
+    @property
+    def min(self) -> float: ...
+    @property
+    def observable(self) -> Observable: ...
 
 class Instruction:
     def __str__(self) -> str: ...
@@ -1729,6 +1767,194 @@ class MultiChannelIntegrand(FunctionGenerator):
 
 class MultiChannelMapping(Mapping):
     def __init__(self, mappings: collections.abc.Sequence[Mapping]) -> None: ...
+
+class Observable(FunctionGenerator):
+    class ObservableOption:
+        """
+        Members:
+
+          obs_e
+
+          obs_px
+
+          obs_py
+
+          obs_pz
+
+          obs_mass
+
+          obs_pt
+
+          obs_p_mag
+
+          obs_phi
+
+          obs_theta
+
+          obs_y
+
+          obs_y_abs
+
+          obs_eta
+
+          obs_eta_abs
+
+          obs_delta_eta
+
+          obs_delta_phi
+
+          obs_delta_r
+
+          obs_sqrt_s
+        """
+
+        __members__: typing.ClassVar[
+            dict[str, Observable.ObservableOption]
+        ]  # value = {'obs_e': <ObservableOption.obs_e: 0>, 'obs_px': <ObservableOption.obs_px: 1>, 'obs_py': <ObservableOption.obs_py: 2>, 'obs_pz': <ObservableOption.obs_pz: 3>, 'obs_mass': <ObservableOption.obs_mass: 4>, 'obs_pt': <ObservableOption.obs_pt: 5>, 'obs_p_mag': <ObservableOption.obs_p_mag: 6>, 'obs_phi': <ObservableOption.obs_phi: 7>, 'obs_theta': <ObservableOption.obs_theta: 8>, 'obs_y': <ObservableOption.obs_y: 9>, 'obs_y_abs': <ObservableOption.obs_y_abs: 10>, 'obs_eta': <ObservableOption.obs_eta: 11>, 'obs_eta_abs': <ObservableOption.obs_eta_abs: 12>, 'obs_delta_eta': <ObservableOption.obs_delta_eta: 13>, 'obs_delta_phi': <ObservableOption.obs_delta_phi: 14>, 'obs_delta_r': <ObservableOption.obs_delta_r: 15>, 'obs_sqrt_s': <ObservableOption.obs_sqrt_s: 16>}
+        obs_delta_eta: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_delta_eta: 13>
+        obs_delta_phi: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_delta_phi: 14>
+        obs_delta_r: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_delta_r: 15>
+        obs_e: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_e: 0>
+        obs_eta: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_eta: 11>
+        obs_eta_abs: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_eta_abs: 12>
+        obs_mass: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_mass: 4>
+        obs_p_mag: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_p_mag: 6>
+        obs_phi: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_phi: 7>
+        obs_pt: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_pt: 5>
+        obs_px: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_px: 1>
+        obs_py: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_py: 2>
+        obs_pz: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_pz: 3>
+        obs_sqrt_s: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_sqrt_s: 16>
+        obs_theta: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_theta: 8>
+        obs_y: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_y: 9>
+        obs_y_abs: typing.ClassVar[
+            Observable.ObservableOption
+        ]  # value = <ObservableOption.obs_y_abs: 10>
+        def __eq__(self, other: typing.Any) -> bool: ...
+        def __getstate__(self) -> int: ...
+        def __hash__(self) -> int: ...
+        def __index__(self) -> int: ...
+        @typing.overload
+        def __init__(self, value: typing.SupportsInt) -> None: ...
+        @typing.overload
+        def __init__(self, name: str) -> None: ...
+        def __int__(self) -> int: ...
+        def __ne__(self, other: typing.Any) -> bool: ...
+        def __repr__(self) -> str: ...
+        def __setstate__(self, state: typing.SupportsInt) -> None: ...
+        def __str__(self) -> str: ...
+        @property
+        def name(self) -> str: ...
+        @property
+        def value(self) -> int: ...
+
+    bottom_pids: typing.ClassVar[list] = [-5, 5]
+    jet_pids: typing.ClassVar[list] = [1, 2, 3, 4, -1, -2, -3, -4, 21]
+    lepton_pids: typing.ClassVar[list] = [11, 13, 15, -11, -13, -15]
+    missing_pids: typing.ClassVar[list] = [12, 14, 16, -12, -14, -16]
+    obs_delta_eta: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_delta_eta: 13>
+    obs_delta_phi: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_delta_phi: 14>
+    obs_delta_r: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_delta_r: 15>
+    obs_e: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_e: 0>
+    obs_eta: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_eta: 11>
+    obs_eta_abs: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_eta_abs: 12>
+    obs_mass: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_mass: 4>
+    obs_p_mag: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_p_mag: 6>
+    obs_phi: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_phi: 7>
+    obs_pt: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_pt: 5>
+    obs_px: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_px: 1>
+    obs_py: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_py: 2>
+    obs_pz: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_pz: 3>
+    obs_sqrt_s: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_sqrt_s: 16>
+    obs_theta: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_theta: 8>
+    obs_y: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_y: 9>
+    obs_y_abs: typing.ClassVar[
+        Observable.ObservableOption
+    ]  # value = <ObservableOption.obs_y_abs: 10>
+    photon_pids: typing.ClassVar[list] = [22]
+    def __init__(
+        self,
+        pids: collections.abc.Sequence[typing.SupportsInt],
+        observable: Observable.ObservableOption,
+        select_pids: collections.abc.Sequence[
+            collections.abc.Sequence[typing.SupportsInt]
+        ],
+        sum_momenta: bool = False,
+        sum_observable: bool = False,
+        order_observable: (
+            madspace._madspace_py.Observable.ObservableOption | None
+        ) = None,
+        order_indices: collections.abc.Sequence[typing.SupportsInt] = [],
+        ignore_incoming: bool = True,
+        name: str = "",
+    ) -> None: ...
+
+class ObservableHistograms(FunctionGenerator):
+    def __init__(self, observables: collections.abc.Sequence[HistItem]) -> None: ...
 
 class PartonDensity(FunctionGenerator):
     def __init__(

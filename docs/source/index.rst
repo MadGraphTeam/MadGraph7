@@ -1,17 +1,10 @@
-MadSpace documentation
+MadGraph7 documentation
 =======================
 
-MadSpace is a modular and GPU-ready phase-space sampling and event generation library.
-
-You can find instructions on how to install and use MadSpace on the following pages:
-
-* :doc:`installation`
-
-The following pages contain a detailed reference of all the classes and methods in
-MadSpace:
-
-* :doc:`python-api`
-* :doc:`cpp-api`
+This is the documentation for the next major MadGraph release. It is still under active
+development. If you are looking for a stable release of MadGraph, please go the
+`MadGraph5_aMC@NLO repository <https://github.com/mg5amcnlo/mg5amcnlo>`_ or the
+`Launchpad <http://launchpad.net/madgraph5>`_.
 
 .. toctree::
    :maxdepth: 1
@@ -22,8 +15,10 @@ MadSpace:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Reference
+   :caption: MadSpace
    :hidden:
 
-   python-api
-   cpp-api
+   madspace/installation
+   madspace/umami-api
+   madspace/python-api
+   madspace/cpp-api
