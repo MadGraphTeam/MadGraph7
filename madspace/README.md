@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/madgraph-ml/madevent7/refs/heads/dev/docs/source/_static/logo-light.png" width="500", alt="MadSpace">
+  <img src="https://raw.githubusercontent.com/madgraph-ml/madevent7/refs/heads/dev/docs/source/_static/logo-light-madspace.png" width="500", alt="MadSpace">
 </p>
 
 ### Installation
