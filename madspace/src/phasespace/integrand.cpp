@@ -421,7 +421,7 @@ ValueVec Integrand::build_common_part(
     // evaluate differential cross section
     ValueVec xs_args{
         result.momenta_acc(),
-        result.flavor_id(),
+        result.flavor_id(), // TODO: remap
     };
     for (std::size_t i = 0; i < 2; ++i) {
         xs_args.push_back(result.x_acc(i));

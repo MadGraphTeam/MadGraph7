@@ -8,7 +8,6 @@ const int denominator = %(den_factors)s;
 %(flavor_table)s
 
 const int* flavor = &flavor_table[flavor_id][0];
-int multiplier = flavor_multipliers[flavor_id];
 
 ntry[flavor_id]++;
 
@@ -50,4 +49,4 @@ if (sum_hel[flavor_id] == 0 || ntry[flavor_id] < 10){
     }
 }
 
-return multiplier * matrix_element / (denominator * broken_sym(flavor));
+return matrix_element / (denominator * broken_sym(flavor));

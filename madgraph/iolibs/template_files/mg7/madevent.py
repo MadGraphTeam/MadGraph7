@@ -860,7 +860,7 @@ class MadgraphSubprocess:
     def build_discrete(
         self, permutation_count: int, flavor_count: int, prefix: str
     ) -> tuple[ms.DiscreteSampler | None, ms.DiscreteSampler | None]:
-        #return None, None
+        return None, None
         discrete_before = None
         #if permutation_count > 1:
         #    discrete_before = ms.DiscreteSampler(
