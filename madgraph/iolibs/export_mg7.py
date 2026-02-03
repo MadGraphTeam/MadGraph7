@@ -28,10 +28,10 @@ def get_subprocess_info(matrix_element, proc_dir_name):
     )
     diagrams = amplitude.get("diagrams")
     helas_diagrams = matrix_element.get("diagrams")
-    all_flavors = matrix_element.get_external_flavors_with_iden(preserve_sign=True)
+    all_flavors, all_flavors_sign = matrix_element.get_external_flavors_with_iden(return_sign=True)
     all_flavors_same_initial = []
     all_flavors_indices = []
-    for i, flavors in enumerate(all_flavors):
+    for i, flavors in enumerate(all_flavors_sign):
         flv_dict = defaultdict(list)
         for flv in flavors:
             flv_dict[(flv[0], flv[1])].append(flv)
@@ -71,7 +71,7 @@ def get_subprocess_info(matrix_element, proc_dir_name):
         active_flavors = [
             flav_id
             for indices, flavors in zip(all_flavors_indices, all_flavors)
-            if helas_diagram.check_flavor([abs(flv) for flv in flavors[0]], model)
+            if helas_diagram.check_flavor([flv for flv in flavors[0]], model)
             for flav_id in indices
         ]
 

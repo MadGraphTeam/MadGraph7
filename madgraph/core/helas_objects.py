@@ -5136,12 +5136,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return allowed_helicity
 
 
-    def get_external_flavors(self, all_perm=False, preserve_sign=False):
+    def get_external_flavors(self, all_perm=False, return_sign=False):
         """If merged particles are used, determine the list of possible flavor that are not zero """
 
         if self['allowed_flavors']:
-            if preserve_sign:
-                return self['allowed_flavors_sign']
+            if return_sign:
+                return self['allowed_flavors'], self['allowed_flavors_sign']
             else:
                 return self['allowed_flavors']
         pdgs=[]
@@ -5150,12 +5150,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         external_number=1
         for wf in external_wfs:
             if wf.get('number_external')==external_number:
-                pdgs.append(
-                    wf.get('particle').get_pdg_code()
-                    if external_number > 2
-                    else wf.get('particle').get_anti_pdg_code()
-                )
                 external_number=external_number+1
+                pdgs.append(wf.get('particle').get_pdg_code())
         
         to_map = {}
         model = self.get('processes')[0].get('model')
@@ -5164,7 +5160,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             
         flavor_list = []
         pdg_list = []
-    
         restricted_flavor = [None]*len(external_wfs)
         for i,wf in enumerate(external_wfs):
             if wf.get('flavor'):
@@ -5222,31 +5217,36 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         
         self['allowed_flavors'] = flavor_list
         self['allowed_flavors_sign'] = pdg_list
-        return pdg_list if preserve_sign else flavor_list
-    
-    def get_external_flavors_with_iden(self, preserve_sign=False):
-        if preserve_sign:
-            if self['allowed_flavors_with_iden_sign']:
-                return self['allowed_flavors_with_iden_sign']
+        if return_sign:
+            return self['allowed_flavors'], self['allowed_flavors_sign']
         else:
-            if self['allowed_flavors_with_iden']:
+            return self['allowed_flavors']
+    
+    def get_external_flavors_with_iden(self, return_sign=False):
+        if self['allowed_flavors_with_iden']:
+            if return_sign:
+                return self['allowed_flavors_with_iden'], self['allowed_flavors_with_iden_sign']
+            else:
                 return self['allowed_flavors_with_iden']
 
         model = self.get('processes')[0].get('model')
-        all_flv = self.get_external_flavors(preserve_sign=preserve_sign)
+        all_flv, all_flv_sign = self.get_external_flavors(return_sign=True)
         map_all_flv = {}
-        for i, flv1 in  enumerate(all_flv):
+        map_all_flv_sign = {}
+        for i, (flv1, flv1_sign) in  enumerate(zip(all_flv, all_flv_sign)):
             coup = self.get_coupling_for_flv(flv1, model)
             if coup in map_all_flv:
                 map_all_flv[coup].append(flv1)
+                map_all_flv_sign[coup].append(flv1_sign)
             else:
                 map_all_flv[coup] = [flv1]
+                map_all_flv_sign[coup] = [flv1_sign]
 
-        if preserve_sign:
-            self['allowed_flavors_with_iden_sign'] = map_all_flv.values()
-            return self['allowed_flavors_with_iden_sign']
+        self['allowed_flavors_with_iden_sign'] = map_all_flv_sign.values()
+        self['allowed_flavors_with_iden'] = map_all_flv.values()
+        if return_sign:
+            return self['allowed_flavors_with_iden'], self['allowed_flavors_with_iden_sign']
         else:
-            self['allowed_flavors_with_iden'] = map_all_flv.values()
             return self['allowed_flavors_with_iden']
 
     def check_flavor(self, real_pdgs, model, debug=False):
