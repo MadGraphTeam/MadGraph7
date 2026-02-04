@@ -52,6 +52,7 @@ class Channel:
     discrete_after: ms.DiscreteSampler | ms.DiscreteFlow | None
     channel_weight_indices: list[int] | None
     name: str
+    active_flavors: list[int]
 
 
 @dataclass
@@ -648,6 +649,7 @@ class MadgraphSubprocess:
                     discrete_after = discrete_after,
                     channel_weight_indices = indices,
                     name = f"{channel_id}",
+                    active_flavors = [], #TODO: properly initialize
                 ))
 
         chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
@@ -699,6 +701,7 @@ class MadgraphSubprocess:
             discrete_after = discrete_after,
             channel_weight_indices = [0],
             name = "F",
+            active_flavors = [],
         )
         return PhaseSpace(
             mode="flat",
@@ -754,6 +757,7 @@ class MadgraphSubprocess:
                     channel_index, channel_index + perm_count
                 )),
                 name = channel.name,
+                active_flavors = channel.active_flavors,
             ))
 
         flat_channel = flat_phasespace.channels[0]
@@ -764,6 +768,7 @@ class MadgraphSubprocess:
             discrete_after = flat_channel.discrete_after,
             channel_weight_indices = [len(symfact)],
             name = flat_channel.name,
+            active_flavors = flat_channel.active_flavors,
         ))
         flat_index = len(symfact)
         symfact.append(None)
@@ -923,7 +928,14 @@ class MadgraphSubprocess:
         phasespace: PhaseSpace,
         flags: int = ms.EventGenerator.integrand_flags
     ) -> list[ms.Integrand]:
-        flavors = [flav["options"][0] for flav in self.meta["flavors"]]
+        flavors = []
+        flavor_remap = []
+        flavor_factors = []
+        for flav in self.meta["flavors"]:
+            flavors.append(flav["options"][0])
+            flavor_remap.append(flav["index"])
+            flavor_factors.append(len(flav["options"]))
+        flavor_remap
         if self.matrix_element:
             matrix_element = ms.MatrixElement(
                 self.matrix_element,
@@ -975,8 +987,11 @@ class MadgraphSubprocess:
                 len(phasespace.symfact),
                 flags,
                 channel.channel_weight_indices,
+                channel.active_flavors,
+                flavor_remap,
+                flavor_factors,
             ))
-        print(integrands[0].function())
+        #print(integrands[0].function())
         #print(integrands[1].function())
         return integrands
 

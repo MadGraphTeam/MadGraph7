@@ -342,7 +342,6 @@ void LHECompleter::complete_event_data(
 ) {
     auto& subproc_data = _subproc_data.at(subprocess_index);
     if (event.particles.size() != subproc_data.particle_count) {
-        println("{} {}", event.particles.size(), subproc_data.particle_count);
         throw std::runtime_error("Invalid particle number for subprocess");
     }
     if (diagram_index < 0 || diagram_index >= subproc_data.diagram_count) {

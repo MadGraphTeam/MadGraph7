@@ -1040,7 +1040,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 int,
                 const std::vector<std::size_t>&,
-                const std::vector<std::size_t>&>(),
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&,
+                const std::vector<double>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -1055,7 +1057,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("remapped_chan_count") = 0,
             py::arg("flags") = 0,
             py::arg("channel_indices") = std::vector<std::size_t>{},
-            py::arg("active_flavors") = std::vector<std::size_t>{}
+            py::arg("active_flavors") = std::vector<std::size_t>{},
+            py::arg("flavor_remap") = std::vector<std::size_t>{},
+            py::arg("flavor_factors") = std::vector<double>{}
         )
         .def("particle_count", &Integrand::particle_count)
         .def("flags", &Integrand::flags)
