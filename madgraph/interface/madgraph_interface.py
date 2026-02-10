@@ -1451,10 +1451,10 @@ This will take effect only in a NEW terminal
             return 'pythia8'
         elif not os.path.isdir(os.path.join(path, 'SubProcesses')):
             raise self.InvalidCmd('%s : Not a valid directory' % path)
-        if os.path.isfile(pjoin(bin_path,'madevent')):
-            return 'madevent'
-        elif os.path.isfile(pjoin(card_path, 'run_card.toml')):
+        if os.path.isfile(pjoin(card_path, 'run_card.toml')):
             return 'mg7'
+        elif os.path.isfile(pjoin(bin_path,'madevent')):
+            return 'madevent'
         elif os.path.isdir(src_path):
             return 'standalone_cpp'
         elif os.path.isdir(mw_path):
