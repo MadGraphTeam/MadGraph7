@@ -157,8 +157,6 @@ namespace mg5amcCpu
   // Helicity combinations (and filtering of "good" helicity combinations)
 #ifdef MGONGPUCPP_GPUIMPL
   __device__ __constant__ short cHel[ncomb][npar];
-  __device__ __constant__ int cNGoodHel;
-  __device__ __constant__ int cGoodHel[ncomb];
   __device__ __constant__ int dcNGoodHel;
   __device__ __constant__ int dcGoodHel[ncomb];
   __device__ __constant__ short cFlavors[nmaxflavor][npar];
