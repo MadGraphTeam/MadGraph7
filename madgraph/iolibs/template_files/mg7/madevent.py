@@ -381,7 +381,7 @@ class MadgraphProcess:
             self.madnis_upper_box = ms.PrettyBox(
                 "MadNIS training", 2, [18, 0], self.madnis_lower_box.line_count
             )
-            self.madnis_upper_box.set_column(0, ["Subprocess:", "Run time:"])
+            self.madnis_upper_box.set_column(0, ["Subprocesses:", "Run time:"])
             self.madnis_upper_box.print_first()
             self.madnis_lower_box.print_first()
         else:
@@ -480,7 +480,7 @@ class MadgraphProcess:
             subproc_str = f"{subproc_count} / {subproc_count}"
         batch_str = f"{batch + 1} / {batch_target}"
         self.madnis_upper_box.set_column(1, [
-            f"{subproc_str:<15} {progress_bar}",
+            f"{subproc_str:<15} {progress_bar_all}",
             time_str,
         ])
         self.madnis_lower_box.set_row(subproc_id + 1, [
