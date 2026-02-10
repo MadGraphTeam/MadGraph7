@@ -113,7 +113,7 @@ class MadgraphProcess:
             self.subprocess_data = json.load(f)
 
     def init_backend(self) -> None:
-        ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+        # ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
         ms.set_thread_count(self.run_card["run"]["thread_pool_size"])
 
     def init_event_dir(self) -> None:
