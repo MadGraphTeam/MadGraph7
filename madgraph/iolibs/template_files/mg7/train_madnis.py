@@ -17,6 +17,7 @@ def train_madnis(
     phasespace,
     madnis_args: dict,
     context: ms.Context,
+    log_callback,
 ) -> None:
     channel_grouping = (
         None if phasespace.symfact is None else ChannelGrouping(phasespace.symfact)
@@ -88,30 +89,38 @@ def train_madnis(
         dtype=torch.float64,
     )
 
-    online_losses = []
-    buffered_losses = []
     log_interval = madnis_args["log_interval"]
+    batch_target = madnis_args["train_batches"]
+    online_losses = np.full(log_interval, np.nan)
+    buffered_losses = np.full(log_interval, np.nan)
+    channel_count = len(phasespace.channels)
     def callback(status):
+        nonlocal channel_count
         if status.buffered:
-            buffered_losses.append(status.loss)
+            buffered_losses[status.step % log_interval] = status.loss
         else:
-            online_losses.append(status.loss)
-        batch = status.step + 1
-        if batch % log_interval != 0:
-            return
-        online_loss = np.mean(online_losses)
-        info = [f"Batch {batch:6d}: loss={online_loss:.6f}"]
-        if len(buffered_losses) > 0:
-            buffered_loss = np.mean(buffered_losses)
-            info.append(f"buf={buffered_loss:.6f}")
-        if status.learning_rate is not None:
-            info.append(f"lr={status.learning_rate:.4e}")
-        if status.dropped_channels > 0:
-            info.append(f"drop={status.dropped_channels}")
+            online_losses[status.step % log_interval] = status.loss
+        channel_count -= status.dropped_channels
+        log_callback(
+            status.step,
+            batch_target,
+            np.nanmean(online_losses),
+            status.learning_rate,
+            channel_count
+        )
+        #online_loss = np.mean(online_losses)
+        #info = [f"Batch {batch:6d}: loss={online_loss:.6f}"]
+        #if len(buffered_losses) > 0:
+        #    buffered_loss = np.mean(buffered_losses)
+        #    info.append(f"buf={buffered_loss:.6f}")
+        #if status.learning_rate is not None:
+        #    info.append(f"lr={status.learning_rate:.4e}")
+        #if status.dropped_channels > 0:
+        #    info.append(f"drop={status.dropped_channels}")
 
-        print(", ".join(info))
-        online_losses.clear()
-        buffered_losses.clear()
+        #print(", ".join(info))
+        #online_losses.clear()
+        #buffered_losses.clear()
 
     integrator.train(madnis_args["train_batches"], callback)
 
