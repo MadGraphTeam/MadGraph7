@@ -460,7 +460,10 @@ extern "C"
       color_random[i_event] = random_color_in ? random_color_in[i_event + offset] : 0.5;
       diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
       g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-      flavor_indices[i_event] = flavor_indices_in ? flavor_indices[i_event + offset] : 0;
+      flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
+    }
+    for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
+      flavor_indices[i_event] = 0;
     }
     computeDependentCouplings( g_s.data(), couplings.data(), rounded_count );
 
