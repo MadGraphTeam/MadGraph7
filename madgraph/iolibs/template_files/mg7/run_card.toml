@@ -1,10 +1,6 @@
 [run]
 run_name = "run"
-device = "cpu" # options: cpu, cuda
-# options:
-#   -1 to choose automatically
-#   on x86: 1, 4, 8
-#   on Apple silicon: 1, 2
+device = "cpu" # cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto
 simd_vector_size = -1
 thread_pool_size = -1 # -1 sets count automatically based on number of CPUs
 output_format = "compact_npy" # options: compact_npy, lhe_npy, lhe
