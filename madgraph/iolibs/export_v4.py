@@ -6414,6 +6414,9 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     #===========================================================================
     # generate_subprocess_directory
     #===========================================================================
+    def save_subproc(self, *args, **kwargs):
+        pass
+
     def generate_subprocess_directory(self, subproc_group,
                                          fortran_model,
                                          group_number,
@@ -6538,6 +6541,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     process_exporter_cpp.generate_process_files_madevent(proc_id=str(ime+1),
                                         config_map=subproc_group.get('diagram_maps')[ime], 
                                         subproc_number=group_number)
+                    self.save_subproc(matrix_element, process_exporter_cpp)
                     for file in second_exporter.to_link_in_P:
                         ln('../%s' % file)    
                 # second_exporter.write_matrix_element_madevent(ime,
@@ -10715,4 +10719,25 @@ class ProcessExporterFortranMWGroup(ProcessExporterFortranMW):
         return True
 
 
-    
+from madgraph.iolibs.export_mg7 import get_subprocess_info
+import json
+class ProcessExporterME_MG7(ProcessExporterFortranMEGroup):
+    lib_format = ""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.process_info = []
+
+    def save_subproc(self, matrix_element, process_exporter_cpp):
+        me_lib_path = self.lib_format.format(processid_short = process_exporter_cpp.process_name)
+        proc_dir = os.path.relpath(process_exporter_cpp.path, self.dir_path)
+        self.process_info.append(get_subprocess_info(matrix_element, proc_dir, me_lib_path))
+
+    def finalize(self, *args, **kwargs):
+        super().finalize(*args, **kwargs)
+
+        file_name = os.path.normpath(os.path.join(
+            self.dir_path, "SubProcesses", "subprocesses.json"
+        ))
+        with open(file_name, 'w') as f:
+            json.dump(self.process_info, f)

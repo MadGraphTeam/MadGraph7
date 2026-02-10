@@ -351,9 +351,13 @@ class MG7_GPU_ProcessExporter(PLUGIN_ProcessExporter):
     @classmethod
     def change_output_args(cls, args, cmd):
         """ """
+        cmd._export_format = 'madevent'
+        cmd._export_plugin = export_v4.ProcessExporterME_MG7
         args.append('--hel_recycling=False')
+        args.append('--me_exporter=standalone_cuda')
         # path relative to the process directory
         args.append('--gpu=lib/libmg5amc_{processid_short}_' + cls.lib_suffix + ".so")
+        cmd._export_plugin.lib_format = 'lib/libmg5amc_{processid_short}_' + cls.lib_suffix + ".so"
         if 'vector_size' not in ''.join(args):
             args.append('--vector_size=32')
         if 'nb_wrap' not in ''.join(args):
