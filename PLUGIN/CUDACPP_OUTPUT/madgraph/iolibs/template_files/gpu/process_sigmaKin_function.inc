@@ -15,11 +15,9 @@
     const int nevt = gpublocks * gputhreads;
     gpuMemset( allMEs, 0, nevt * sizeof( fptype ) );
     gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype ) );
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
     gpuMemset( colAllJamp2s, 0, ncolor * nevt * sizeof( fptype ) );
     gpuMemset( ghelAllNumerators, 0, cNGoodHel * processConfig::ndiagrams * nevt * sizeof( fptype ) );
     gpuMemset( ghelAllDenominators, 0, cNGoodHel * nevt * sizeof( fptype ) );
-#endif
     gpuMemset( ghelAllMEs, 0, cNGoodHel * nevt * sizeof( fptype ) );
 #else
     // *** PART 0b - C++ ***
@@ -30,7 +28,6 @@
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
       MEs_sv = fptype_sv{ 0 };
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
       fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
       fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
       fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
@@ -40,7 +37,6 @@
         numerators_sv[i] = fptype_sv{ 0 };
       }
       denominators_sv = fptype_sv{ 0 };
-#endif
     }
 #endif
 
@@ -58,14 +54,10 @@
     {
       const int ihel = cGoodHel[ighel];
       fptype* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
       fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * processConfig::ndiagrams;
       fptype* hAllDenominators = ghelAllDenominators + ighel * nevt;
       bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
       gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt );
-#else
-      gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, nevt );
-#endif
     }
     // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
     color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads );
@@ -74,15 +66,11 @@
     // Event-by-event random choice of helicity #403 and ME sum over helicities (defer this after the helicity loop to avoid breaking streams parallelism)
     gpuLaunchKernel( add_and_select_hel, gpublocks, gputhreads, allselhel, allrndhel, ghelAllMEs, allMEs, gpublocks * gputhreads );
 
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
     bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
     gpuLaunchKernel( normalise_output, gpublocks, gputhreads, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
 
     // Event-by-event random choice of color and diagram #402
     gpuLaunchKernel( select_col_and_diag, gpublocks, gputhreads, allselcol, allDiagramIdsOut, allrndcol, allrnddiagram, allChannelIds, colAllJamp2s, ghelAllNumerators, ghelAllDenominators, gpublocks * gputhreads );
-#else
-    gpuLaunchKernel( normalise_output, gpublocks, gputhreads, allMEs, iflavorVec, helcolDenominators[0] );
-#endif
     // *** END OF PART 1a - CUDA (one event per GPU thread) ***
 
 #else // CUDA OR C++
@@ -104,11 +92,7 @@
     // - private: give each thread its own copy, without initialising
     // - firstprivate: give each thread its own copy, and initialise with value from outside
 #define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
 #define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
-#else
-#define _OMPLIST1
-#endif
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
 #undef _OMPLIST1
@@ -131,13 +115,9 @@
       {
         const int ihel = cGoodHel[ighel];
         cxtype_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
         // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
         bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
         calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
-#else
-        calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, ievt00 );
-#endif
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
@@ -182,7 +162,6 @@
         }
 #endif
       }
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       const int vecsize = 2 * neppV;
 #else
@@ -292,7 +271,6 @@
 #endif
         }
       }
-#endif // multichannel enabled (random color choice)
     }
     // *** END OF PART 1b - C++ (loop on event pages)
 
@@ -309,7 +287,6 @@
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
       MEs_sv /= (helcolDenominators[0] * broken_symmetry_factor(iflavorVec[ievt0]));
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
       if( mulChannelWeight && allChannelIds != nullptr ) // fix segfault #892 (not 'channelIds[0] != 0')
       {
         const unsigned int channelId = getChannelId( allChannelIds, ievt0, false );
@@ -319,7 +296,6 @@
         fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
         MEs_sv *= numerators_sv[channelId - 1] / denominators_sv;
       }
-#endif
       //for( int ieppV = 0; ieppV < neppV; ieppV++ )
       //{
       //  const unsigned int ievt = ipagV * neppV + ieppV;

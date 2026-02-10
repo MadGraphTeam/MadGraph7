@@ -28,11 +28,9 @@
 #include "color_sum.h"
 #include "processConfig.h"
 
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
 #include "MemoryAccessDenominators.h"
 #include "MemoryAccessNumerators.h"
 #include "coloramps.h"
-#endif
 
 #include <algorithm>
 #include <array>

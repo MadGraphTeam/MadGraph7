@@ -291,7 +291,6 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
   // A base class encapsulating a memory buffer for numerators (of the multichannel single-diagram enhancement factors)
   typedef BufferBase<fptype> BufferNumerators;
 
@@ -308,11 +307,9 @@ namespace mg5amcCpu
   // A class encapsulating a CUDA device buffer for numerators
   typedef DeviceBuffer<fptype, sizePerEventNumerators> DeviceBufferNumerators;
 #endif
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
   // A base class encapsulating a memory buffer for denominators (of the multichannel single-diagram enhancement factors)
   typedef BufferBase<fptype> BufferDenominators;
 
@@ -327,7 +324,6 @@ namespace mg5amcCpu
   typedef PinnedHostBuffer<fptype, sizePerEventDenominators> PinnedHostBufferDenominators;
   // A class encapsulating a CUDA device buffer for denominators
   typedef DeviceBuffer<fptype, sizePerEventDenominators> DeviceBufferDenominators;
-#endif
 #endif
 
   //--------------------------------------------------------------------------

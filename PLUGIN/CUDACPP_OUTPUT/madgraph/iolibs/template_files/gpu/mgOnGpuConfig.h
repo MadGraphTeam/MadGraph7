@@ -6,10 +6,6 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
-// HARDCODED AT CODE GENERATION TIME: DO NOT MODIFY (#473)
-// There are two different code bases for standalone_cudacpp (without multichannel) and madevent+cudacpp (with multichannel)
-%(mgongpu_supports_multichannel)s
-
 // Is this a GPU (CUDA, HIP) or CPU implementation?
 #ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
 #define MGONGPUCPP_GPUIMPL cuda
@@ -129,15 +125,6 @@
 #else
 #undef MGONGPU_NSIGHT_DEBUG // only option in HIP or C++
 #endif /* clang-format on */
-
-// Choose whether to enable or disable channelid debug printouts
-#ifndef MGONGPU_SUPPORTS_MULTICHANNEL
-#undef MGONGPU_CHANNELID_DEBUG // multichannel is not enabled
-#else
-// By default, do not hardcode, but allow this macro to be set from outside with e.g. -DMGONGPU_CHANNELID_DEBUG
-//#undef MGONGPU_CHANNELID_DEBUG // default
-////#define MGONGPU_CHANNELID_DEBUG 1
-#endif
 
 // SANITY CHECKS (floating point precision for everything but color algebra #537)
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE_FLOAT

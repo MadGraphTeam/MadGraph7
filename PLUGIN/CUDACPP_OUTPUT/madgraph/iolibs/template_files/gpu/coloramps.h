@@ -8,10 +8,6 @@
 
 #include "CPPProcess.h"
 
-// Note: strictly speaking the check '#ifdef MGONGPU_SUPPORTS_MULTICHANNEL' is not needed here,
-// because coloramps.h is not included otherwise, but adding it does not harm and makes the code clearer
-
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL /* clang-format off */
 
 namespace mgOnGpu
 {
@@ -66,6 +62,5 @@ namespace mgOnGpu
   };
 
 }
-#endif /* clang-format on */
 
 #endif // COLORAMPS_H

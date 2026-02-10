@@ -149,13 +149,11 @@ namespace mg5amcCpu
     // The buffer for the event-by-event couplings that depends on alphas QCD
     HostBufferCouplings m_couplings;
 
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
     // The buffer for the event-by-event numerators of multichannel factors
     HostBufferNumerators m_numerators;
 
     // The buffer for the event-by-event denominators of multichannel factors
     HostBufferDenominators m_denominators;
-#endif
   };
 #endif
 
@@ -206,7 +204,6 @@ namespace mg5amcCpu
     // The super-buffer of nGoodHel jamp buffers (dynamically allocated because nGoodHel is determined at runtime)
     std::unique_ptr<DeviceBufferSimple> m_pHelJamps;
 
-#ifdef MGONGPU_SUPPORTS_MULTICHANNEL
     // The super-buffer of nGoodHel numerator buffers (dynamically allocated because nGoodHel is determined at runtime)
     std::unique_ptr<DeviceBufferSimple> m_pHelNumerators;
 
@@ -215,7 +212,6 @@ namespace mg5amcCpu
 
     // The super-buffer of ncolor jamp2 buffers
     DeviceBufferSimple m_colJamp2s;
-#endif
 
 #ifdef MGONGPU_CHANNELID_DEBUG
     // The **host** buffer for the channelId array
