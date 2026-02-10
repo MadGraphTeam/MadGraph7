@@ -129,7 +129,7 @@ private:
     inline static ThreadPool& thread_pool_ref = default_thread_pool();
     DevicePtr _device;
     std::unordered_map<std::string, std::tuple<Tensor, bool>> _globals;
-    std::vector<MatrixElementApi> _matrix_elements;
+    std::vector<std::unique_ptr<MatrixElementApi>> _matrix_elements;
     std::vector<std::string> _param_card_paths;
 };
 

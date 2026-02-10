@@ -39,7 +39,7 @@ void op_matrix_element(
     TensorVec contiguous_inputs(input_count);
     std::vector<UmamiInputKey> input_keys(input_count + 1);
     std::vector<UmamiOutputKey> output_keys(output_count);
-    std::vector<void*> input_ptrs(input_count + 1), output_ptrs(output_count);
+    std::vector<void*> input_ptrs(input_count), output_ptrs(output_count + 1);
     for (std::size_t i = 0; i < input_count; ++i) {
         input_keys[i] = static_cast<UmamiInputKey>(
             locals[instruction.input_indices[3 + 2 * i]].index_value()
@@ -50,8 +50,6 @@ void op_matrix_element(
             );
         input_ptrs[i] = contiguous_inputs[i].data();
     }
-    input_keys[input_count] = UMAMI_IN_GPU_STREAM;
-    input_ptrs[input_count] = device.stream();
     std::size_t output_offset = 3 + 2 * input_count;
     for (std::size_t i = 0; i < output_count; ++i) {
         output_keys[i] = static_cast<UmamiOutputKey>(
@@ -90,6 +88,8 @@ void op_matrix_element(
             }
         }
     }
+    output_keys[output_count] = UMAMI_OUT_GPU_STREAM;
+    output_ptrs[output_count] = device.stream();
     if (me_index == 0xBADCAFE || batch_size == 0) {
         return;
     }

@@ -74,7 +74,9 @@ public:
         std::size_t remapped_chan_count = 0,
         int flags = 0,
         const std::vector<std::size_t>& channel_indices = {},
-        const std::vector<std::size_t>& active_flavors = {}
+        const std::vector<std::size_t>& active_flavors = {},
+        const std::vector<std::size_t>& flavor_remap = {},
+        const std::vector<double>& flavor_factors = {}
     );
     std::size_t particle_count() const { return _mapping.particle_count(); }
     int flags() const { return _flags; }
@@ -169,6 +171,8 @@ private:
     me_int_t _random_dim;
     std::size_t _latent_dim;
     std::vector<double> _active_flavors;
+    std::vector<me_int_t> _flavor_remap;
+    std::vector<double> _flavor_factors;
 
     friend class IntegrandProbability;
     friend class MultiChannelIntegrand;

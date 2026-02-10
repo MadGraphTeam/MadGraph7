@@ -34,14 +34,13 @@ def get_start_time():
     return time.time(), time.process_time()
 
 
-def print_run_time(start):
-    start_time, start_cpu_time = start
-    train_time = time.time() - start_time
-    train_cpu_time = time.process_time() - start_cpu_time
-    print(
-        f"--- Run time: {str(timedelta(seconds=round(train_time, 2) + 1e-5))[:-4]} wall time, "
-        f"{str(timedelta(seconds=round(train_cpu_time, 2) + 1e-5))[:-4]} cpu time ---\n"
-    )
+def format_time(t: int, centi: bool = False):
+    hours, t = divmod(t, 3600)
+    minutes, seconds = divmod(t, 60)
+    if centi:
+        return f"{int(hours):02}:{int(minutes):02}:{seconds:02.2f}"
+    else:
+        return f"{int(hours):02}:{int(minutes):02}:{seconds:02.0f}"
 
 
 @dataclass
@@ -52,6 +51,7 @@ class Channel:
     discrete_after: ms.DiscreteSampler | ms.DiscreteFlow | None
     channel_weight_indices: list[int] | None
     name: str
+    active_flavors: list[int]
 
 
 @dataclass
@@ -313,7 +313,6 @@ class MadgraphProcess:
             phasespaces, "events" if mode is None else f"events_{mode}"
         )
 
-        print()
         event_generator.survey()
         return event_generator
 
@@ -374,14 +373,124 @@ class MadgraphProcess:
         if not madnis_args["enable"]:
             return
 
+        if len(self.subprocesses) > 1:
+            self.madnis_lower_box = ms.PrettyBox(
+                "Subprocesses", len(self.subprocesses) + 1, [12, 12, 12, 0],
+            )
+            self.madnis_lower_box.set_row(0, ["Subprocess", "Loss", "Channels", "Batch"])
+            self.madnis_upper_box = ms.PrettyBox(
+                "MadNIS training", 2, [18, 0], self.madnis_lower_box.line_count
+            )
+            self.madnis_upper_box.set_column(0, ["Subprocess:", "Run time:"])
+            self.madnis_upper_box.print_first()
+            self.madnis_lower_box.print_first()
+        else:
+            self.madnis_box = ms.PrettyBox(
+                "MadNIS training", 4, [18, 0]
+            )
+            self.madnis_box.set_column(0, ["Batch:", "Loss:", "Channels:", "Run time:"])
+            self.madnis_box.print_first()
+
+        self.last_update_time = 0
+        self.madnis_wall_time = time.time()
+        self.madnis_cpu_time = time.process_time()
+
         madnis_phasespaces = []
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
             phasespace = subproc.build_madnis(phasespace)
-            subproc.train_madnis(phasespace)
+            if len(self.subprocesses) > 1:
+                status_func = lambda *args: self.update_madnis_status_multi(
+                    subproc.subproc_id, *args
+                )
+            else:
+                status_func = self.update_madnis_status_single
+            subproc.train_madnis(phasespace, status_func)
             madnis_phasespaces.append(phasespace)
         self.phasespaces = madnis_phasespaces
         self.event_generator = self.build_event_generator(madnis_phasespaces, "events")
         self.event_generator.survey() #TODO: avoid
+
+    def update_madnis_status_single(
+        self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
+    ) -> None:
+        now = time.time()
+        if batch + 1 < batch_target:
+            if now - self.last_update_time < 0.1:
+                return
+            self.last_update_time = now
+            progress_bar = ms.format_progress((batch + 1) / batch_target, 52)
+            time_diff = now - self.madnis_wall_time
+            time_str = f"{format_time(time_diff)}"
+        else:
+            progress_bar = ""
+            wall_diff = now - self.madnis_wall_time
+            cpu_diff = time.process_time() - self.madnis_cpu_time
+            time_str = (
+                f"{format_time(wall_diff, centi=True)} wall, "
+                f"{format_time(cpu_diff, centi=True)} cpu"
+            )
+        batch_str = f"{batch + 1} / {batch_target}"
+        self.madnis_box.set_column(1, [
+            f"{batch_str:<15} {progress_bar}",
+            f"{loss:>.4f}",
+            f"{channel_count}",
+            time_str
+        ])
+        self.madnis_box.print_update()
+
+    def update_madnis_status_multi(
+        self,
+        subproc_id: int,
+        batch: int,
+        batch_target: int,
+        loss: float,
+        lr: float,
+        channel_count: int
+    ) -> None:
+        now = time.time()
+        subproc_count = len(self.subprocesses)
+        if batch + 1 < batch_target:
+            if now - self.last_update_time < 0.1:
+                return
+            self.last_update_time = now
+            progress_bar = ms.format_progress((batch + 1) / batch_target, 34)
+            progress_bar_all = ms.format_progress(
+                (subproc_id * batch_target + batch + 1) / (subproc_count * batch_target),
+                52
+            )
+            time_str = f"{format_time(now - self.madnis_wall_time)}"
+            subproc_str = f"{subproc_id} / {subproc_count}"
+        elif subproc_id < subproc_count - 1:
+            progress_bar = ""
+            progress_bar_all = ms.format_progress(
+                ((subproc_id + 1) * batch_target + 1) / (subproc_count * batch_target),
+                52
+            )
+            time_str = f"{format_time(now - self.madnis_wall_time)}"
+            subproc_str = f"{subproc_id} / {subproc_count}"
+        else:
+            progress_bar = ""
+            progress_bar_all = ""
+            wall_diff = now - self.madnis_wall_time
+            cpu_diff = time.process_time() - self.madnis_cpu_time
+            time_str = (
+                f"{format_time(wall_diff, centi=True)} wall, "
+                f"{format_time(cpu_diff, centi=True)} cpu"
+            )
+            subproc_str = f"{subproc_count} / {subproc_count}"
+        batch_str = f"{batch + 1} / {batch_target}"
+        self.madnis_upper_box.set_column(1, [
+            f"{subproc_str:<15} {progress_bar}",
+            time_str,
+        ])
+        self.madnis_lower_box.set_row(subproc_id + 1, [
+            f"{subproc_id}",
+            f"{loss:>.4f}",
+            f"{channel_count}",
+            f"{batch_str:<15} {progress_bar}",
+        ])
+        self.madnis_upper_box.print_update()
+        self.madnis_lower_box.print_update()
 
     def generate_events(self) -> None:
         start_time = get_start_time()
@@ -403,7 +512,7 @@ class MadgraphProcess:
             )
         else:
             raise ValueError("Unknown output format")
-        self.save_gridpack()
+        #self.save_gridpack()
 
     def build_lhe_completer(self):
         subproc_args = []
@@ -650,6 +759,7 @@ class MadgraphSubprocess:
                     discrete_after = discrete_after,
                     channel_weight_indices = indices,
                     name = f"{channel_id}",
+                    active_flavors = [], #TODO: properly initialize
                 ))
 
         chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
@@ -701,6 +811,7 @@ class MadgraphSubprocess:
             discrete_after = discrete_after,
             channel_weight_indices = [0],
             name = "F",
+            active_flavors = [],
         )
         return PhaseSpace(
             mode="flat",
@@ -756,6 +867,7 @@ class MadgraphSubprocess:
                     channel_index, channel_index + perm_count
                 )),
                 name = channel.name,
+                active_flavors = channel.active_flavors,
             ))
 
         flat_channel = flat_phasespace.channels[0]
@@ -766,6 +878,7 @@ class MadgraphSubprocess:
             discrete_after = flat_channel.discrete_after,
             channel_weight_indices = [len(symfact)],
             name = flat_channel.name,
+            active_flavors = flat_channel.active_flavors,
         ))
         flat_index = len(symfact)
         symfact.append(None)
@@ -835,6 +948,7 @@ class MadgraphSubprocess:
                 discrete_after = discrete_after,
                 channel_weight_indices = channel.channel_weight_indices,
                 name = channel.name,
+                active_flavors = channel.active_flavors,
             ))
 
         return PhaseSpace(
@@ -862,7 +976,7 @@ class MadgraphSubprocess:
     def build_discrete(
         self, permutation_count: int, flavor_count: int, prefix: str
     ) -> tuple[ms.DiscreteSampler | None, ms.DiscreteSampler | None]:
-        #return None, None
+        return None, None
         discrete_before = None
         #if permutation_count > 1:
         #    discrete_before = ms.DiscreteSampler(
@@ -925,7 +1039,14 @@ class MadgraphSubprocess:
         phasespace: PhaseSpace,
         flags: int = ms.EventGenerator.integrand_flags
     ) -> list[ms.Integrand]:
-        flavors = [flav["options"][0] for flav in self.meta["flavors"]]
+        flavors = []
+        flavor_remap = []
+        flavor_factors = []
+        for flav in self.meta["flavors"]:
+            flavors.append(flav["options"][0])
+            flavor_remap.append(flav["index"])
+            flavor_factors.append(len(flav["options"]))
+        flavor_remap
         if self.matrix_element:
             matrix_element = ms.MatrixElement(
                 self.matrix_element,
@@ -977,23 +1098,24 @@ class MadgraphSubprocess:
                 len(phasespace.symfact),
                 flags,
                 channel.channel_weight_indices,
+                channel.active_flavors,
+                flavor_remap,
+                flavor_factors,
             ))
         #print(integrands[0].function())
         #print(integrands[1].function())
         return integrands
 
-    def train_madnis(self, phasespace: PhaseSpace) -> None:
-        print("Training MadNIS")
+    def train_madnis(self, phasespace: PhaseSpace, status_func) -> None:
         # do import here to make pytorch and MadNIS optional dependencies
         from .train_madnis import train_madnis, MADNIS_INTEGRAND_FLAGS
-        start_time = get_start_time()
         train_madnis(
             self.build_integrands(phasespace, MADNIS_INTEGRAND_FLAGS),
             phasespace,
             self.process.run_card["madnis"],
-            self.process.context
+            self.process.context,
+            status_func
         )
-        print_run_time(start_time)
 
 
 def ask_edit_cards() -> None:

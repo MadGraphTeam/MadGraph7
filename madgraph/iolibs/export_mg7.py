@@ -28,8 +28,18 @@ def get_subprocess_info(matrix_element, proc_dir, lib_me_path):
     )
     diagrams = amplitude.get("diagrams")
     helas_diagrams = matrix_element.get("diagrams")
-    all_flavors = matrix_element.get_external_flavors_unique()
-
+    all_flavors, all_flavors_sign = matrix_element.get_external_flavors_with_iden(return_sign=True)
+    all_flavors_same_initial = []
+    all_flavors_indices = []
+    for i, flavors in enumerate(all_flavors_sign):
+        flv_dict = defaultdict(list)
+        for flv in flavors:
+            flv_dict[(flv[0], flv[1])].append(flv)
+        indices = []
+        for flv in flv_dict.values():
+            indices.append(len(all_flavors_same_initial))
+            all_flavors_same_initial.append((i, flv))
+        all_flavors_indices.append(indices)
 
     color_basis = matrix_element.get("color_basis")
     if color_basis:
@@ -59,9 +69,10 @@ def get_subprocess_info(matrix_element, proc_dir, lib_me_path):
 
         helas_diagram = helas_diagrams[diagram_index]
         active_flavors = [
-            i
-            for i, flavors in enumerate(all_flavors)
-            if helas_diagram.check_flavor(flavors[0], model)
+            flav_id
+            for indices, flavors in zip(all_flavors_indices, all_flavors)
+            if helas_diagram.check_flavor([flv for flv in flavors[0]], model)
+            for flav_id in indices
         ]
 
         diagram = diagrams[diagram_index]
@@ -120,9 +131,9 @@ def get_subprocess_info(matrix_element, proc_dir, lib_me_path):
         color_flows = [[
             [[color_flow_dict[leg.get("number")][i] for i in [0, 1]] for leg in legs]
             for color_flow_dict in color_flow_dicts
-        ]] * len(all_flavors) #TODO: this is wrong for multiple flavors!!!
+        ]] * len(all_flavors_same_initial) #TODO: this is wrong for multiple flavors!!!
     else:
-        color_flows = [[[[0, 0]] * n_external]] * len(all_flavors) #TODO: this is wrong for multiple flavors!!!
+        color_flows = [[[[0, 0]] * n_external]] * len(all_flavors_same_initial) #TODO: this is wrong for multiple flavors!!!
 
     # We need the both particle and antiparticle wf_ids, since the identity
     # depends on the direction of the wf.
@@ -146,7 +157,10 @@ def get_subprocess_info(matrix_element, proc_dir, lib_me_path):
                 sign = -1 if part_id < 0 else 1
                 pdg_color_types[sign * pdg] = sign * model.get_particle(part_id).get_color()
 
-    flavors = [{"index": i, "options": options} for i, options in enumerate(all_flavors)]
+    flavors = [
+        {"index": index, "options": options}
+        for index, options in all_flavors_same_initial
+    ]
     return {
         "incoming": incoming,
         "outgoing": outgoing,

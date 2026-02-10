@@ -1,5 +1,12 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/madgraph-ml/madevent7/refs/heads/dev/docs/source/_static/logo-light-madspace.png" width="500", alt="MadSpace">
+  <img src="https://raw.githubusercontent.com/MadGraphTeam/MadGraph7/refs/heads/main/docs/source/_static/logo-light-madspace.png" width="500", alt="MadSpace">
+</p>
+
+<h3 align="center">Modular and GPU-ready phase-space library</h3>
+
+<p align="center">
+<a href="https://arxiv.org/abs/2602.06895"><img alt="Arxiv" src="https://img.shields.io/badge/arXiv-2602.06895-b31b1b.svg"></a>
+<a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
 
 ### Installation
@@ -58,3 +65,17 @@ To run the tests, go to the root directory of the repository and run
 ```sh
 pytest tests
 ```
+
+### Citation
+
+If you use this MadSpace or parts of it, please cite:
+
+    @article{Heimel:2026hgp,
+    author = "Heimel, Theo and Mattelaer, Olivier and Winterhalder, Ramon",
+    title = "{MadSpace -- Event Generation for the Era of GPUs and ML}",
+    eprint = "2602.06895",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    reportNumber = "MCNET-26-01, IRMP-CP3-26-04, TIF-UNIMI-2026-1",
+    month = "2",
+    year = "2026"}

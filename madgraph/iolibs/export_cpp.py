@@ -915,7 +915,7 @@ class OneProcessExporterCPP(object):
                 self.matrix_elements[0].get("diagrams")
             )
             replace_dict['nflav'] = len(
-                self.matrix_elements[0].get_external_flavors_unique()
+                self.matrix_elements[0].get_external_flavors_with_iden()
             )
 
         else:
@@ -1193,9 +1193,9 @@ class OneProcessExporterCPP(object):
                 return replace_dict
 
     def get_flavor_table(self, matrix_element):
-        flavors = matrix_element.get_external_flavors_unique()
-        flavor_multipliers = "{" + ",".join(str(len(f)) for f in flavors) + "}"
-
+        print(list(matrix_element.get_external_flavors()))
+        flavors = list(matrix_element.get_external_flavors_with_iden())
+        print(flavors)
         flavor_dict = {
             1: 0, 2: 1, 3: 2, 4: 3, # quarks
             11: 0, 13: 1, 15: 2,    # charged leptons
@@ -1211,7 +1211,6 @@ class OneProcessExporterCPP(object):
         ext_count = len(flavors[0][0])
         return f"""
         static const int flavor_table[{flavor_count}][{ext_count}] = {full_flavor_table};
-        static const int flavor_multipliers[{flavor_count}] = {flavor_multipliers};
         """
               
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):

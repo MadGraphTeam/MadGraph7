@@ -25,7 +25,8 @@ public:
     const nested_vector2<me_int_t>& pid_options() const { return _pid_options; }
     bool has_mirror() const { return _has_mirror; }
     bool has_pdf(std::size_t pdf_index) const {
-        return _pdfs.at(pdf_index) != std::nullopt;
+        return _pdfs.at(pdf_index) != std::nullopt ||
+            _pdf_indices.at(pdf_index).size() > 0;
     }
     const MatrixElement& matrix_element() const { return _matrix_element; }
 

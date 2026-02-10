@@ -42,7 +42,9 @@ Integrand::Integrand(
     std::size_t remapped_chan_count,
     int flags,
     const std::vector<std::size_t>& channel_indices,
-    const std::vector<std::size_t>& active_flavors
+    const std::vector<std::size_t>& active_flavors,
+    const std::vector<std::size_t>& flavor_remap,
+    const std::vector<double>& flavor_factors
 ) :
     FunctionGenerator(
         "Integrand",
@@ -149,7 +151,9 @@ Integrand::Integrand(
         (mapping.channel_count() > 1) +      // symmetric channel
         (diff_xs.pid_options().size() > 1) + // flavor
         diff_xs.has_mirror()                 // flipped initial state
-    ) {
+    ),
+    _flavor_remap(flavor_remap.begin(), flavor_remap.end()),
+    _flavor_factors(flavor_factors) {
     if (pdf_grid) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
@@ -163,7 +167,8 @@ Integrand::Integrand(
             }
             _pdfs.at(i) = PartonDensity(pdf_grid.value(), {pids.begin(), pids.end()});
         }
-        if (active_flavors.size() > 0) {
+        if (active_flavors.size() > 0 &&
+            active_flavors.size() < diff_xs.pid_options().size()) {
             _active_flavors.resize(diff_xs.pid_options().size());
             for (auto index : active_flavors) {
                 _active_flavors.at(index) = 1.;
@@ -421,7 +426,8 @@ ValueVec Integrand::build_common_part(
     // evaluate differential cross section
     ValueVec xs_args{
         result.momenta_acc(),
-        result.flavor_id(),
+        _flavor_remap.size() > 0 ? fb.gather_int(result.flavor_id(), _flavor_remap)
+                                 : result.flavor_id(),
     };
     for (std::size_t i = 0; i < 2; ++i) {
         xs_args.push_back(result.x_acc(i));
@@ -440,6 +446,10 @@ ValueVec Integrand::build_common_part(
     }
     auto dxs_vec = _diff_xs.build_function(fb, xs_args);
     auto diff_xs_acc = dxs_vec.at(0);
+    if (_flavor_factors.size() > 0) {
+        diff_xs_acc =
+            fb.mul(diff_xs_acc, fb.gather(result.flavor_id(), _flavor_factors));
+    }
     ValueVec weights_after_cuts{result.weight_after_cuts(), diff_xs_acc};
     if (!_prop_chan_weights) {
         chan_weights_acc = dxs_vec.at(1);

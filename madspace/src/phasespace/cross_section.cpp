@@ -35,22 +35,21 @@ DifferentialCrossSection::DifferentialCrossSection(
             if (has_mirror) {
                 arg_types.push_back(batch_int); // mirror
             }
-            bool eval_pdf = false;
+            bool uses_cached_pdf = false;
             auto add_pdf_args = [&](auto& pdf_grid, bool has_pdf, int index) {
-                if (!pdf_grid1 && has_pdf1) {
+                if (!pdf_grid && has_pdf) {
                     std::set<int> pids;
                     for (auto& option : pid_options) {
                         pids.insert(option.at(index));
                     }
                     arg_types.push_back(batch_float_array(pids.size())); // pdf cache
-                    eval_pdf = true;
+                    uses_cached_pdf = true;
                 }
             };
             add_pdf_args(pdf_grid1, has_pdf1, 0);
             add_pdf_args(pdf_grid2, has_pdf2, 1);
-            if (eval_pdf) {
+            if (uses_cached_pdf) {
                 arg_types.push_back(batch_float); // renormalization scale
-                arg_types.push_back(batch_int);   // pdf flavor index
             }
             return arg_types;
         }(),
@@ -121,11 +120,11 @@ ValueVec DifferentialCrossSection::build_function_impl(
     // TODO: need to use mirror_id if we have two different PDFs
     ValueVec scales;
     Value ren_scale;
-    if (_pdf_indices.at(0).size() == 0 && _pdf_indices.at(1).size() == 0) {
+    bool use_cached_pdf =
+        _pdf_indices.at(0).size() > 0 || _pdf_indices.at(1).size() > 0;
+    if (!use_cached_pdf) {
         scales = _energy_scale.build_function(fb, {momenta});
         ren_scale = scales.at(0);
-    } else {
-        ren_scale = args.at(arg_index++);
     }
 
     std::array<Value, 2> pdf_outputs{1., 1.};
@@ -137,9 +136,13 @@ ValueVec DifferentialCrossSection::build_function_impl(
                              .at(0);
         } else if (pdf_indices.size() > 0) {
             pdf_output = fb.gather(
-                fb.gather_int(pdf_flavor_id, pdf_indices), args.at(arg_index + i)
+                fb.gather_int(pdf_flavor_id, pdf_indices), args.at(arg_index++)
             );
         }
+    }
+
+    if (use_cached_pdf) {
+        ren_scale = args.at(arg_index++);
     }
 
     if (alpha_s_index != -1) {
