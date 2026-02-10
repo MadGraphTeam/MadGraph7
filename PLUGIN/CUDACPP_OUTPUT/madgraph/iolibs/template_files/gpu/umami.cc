@@ -30,10 +30,11 @@ namespace
   {
     bool is_good_hel[CPPProcess::ncomb];
     sigmaKin_getGoodHel(
-      momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
+      momenta, couplings, flavor_indices, matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
       color_jamps,
 #endif
+      numerators, denominators,
       is_good_hel,
       count );
     sigmaKin_setGoodHel( is_good_hel );
