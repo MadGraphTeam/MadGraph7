@@ -123,7 +123,8 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterMG7):
                                       s+'gpu/cudacpp_overlay.mk', s+'gpu/makefile_wrapper.mk',
                                       s+'gpu/umami.h', s+'gpu/umami.cc',
                                       s+'CMake/SubProcesses/CMakeLists.txt'],
-                     'Cards': [s+'mg7/run_card.toml'] }
+                     'Cards': [s+'mg7/run_card.toml'],
+                     'test': [s+'gpu/cudacpp_test.mk']}
 
     to_link_in_P = ['nvtx.h', 'timer.h', 'timermap.h',
                     'ompnumthreads.h', 'GpuRuntime.h', 'GpuAbstraction.h',
@@ -176,10 +177,22 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterMG7):
         return super().__init__(*args, **kwargs)
 
     # AV - overload the default version: create CMake directory, do not create lib directory
-    def copy_template_simd(self, model):
+    def copy_template(self, model):
         misc.sprint('Entering PLUGIN_ProcessExporter.copy_template (initialise the directory)')
-        super().copy_template_simd(model)
+        super().copy_template(model)
+        try: os.mkdir(self.dir_path)
+        except os.error as error: logger.warning(error.strerror + ' ' + self.dir_path)
         with misc.chdir(self.dir_path):
+            logger.info('Creating subdirectories in directory %s' % self.dir_path)
+            for d in ['src', 'Cards', 'SubProcesses', 'CMake', 'test', 'test/ref']: # AV - added CMake, test, test/ref; removed lib
+                try: os.mkdir(d)
+                except os.error as error: logger.warning(error.strerror + ' ' + os.path.join(self.dir_path,d))
+            # Write param_card
+            open(os.path.join('Cards','param_card.dat'), 'w').write(model.write_param_card())
+            # Copy files in various subdirectories
+            for key in self.from_template:
+                for f in self.from_template[key]:
+                    PLUGIN_export_cpp.cp(f, key) # NB this assumes directory key exists...
             # Copy src makefile
             if self.template_src_make:
                 makefile_src = self.read_template_file(self.template_src_make) % {'model': self.get_model_name(model.get('name'))}
@@ -208,7 +221,6 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterMG7):
 
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, subproc_group, fortran_model, me=None):
-        # used only for standalone
         misc.sprint('Entering PLUGIN_ProcessExporter.generate_subprocess_directory (create the directory)')
         misc.sprint('  type(subproc_group)=%s'%type(subproc_group)) # e.g. madgraph.core.helas_objects.HelasMatrixElement
         misc.sprint('  type(fortran_model)=%s'%type(fortran_model)) # e.g. madgraph.iolibs.helas_call_writers.GPUFOHelasCallWriter
@@ -235,9 +247,9 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterMG7):
             # make -f makefile -f cudacpp_overlay.mk to include the overlay
             # and instead just use `make`, see #1052
             subprocesses_dir = pjoin(self.dir_path, "SubProcesses")
-            files.cp(pjoin(subprocesses_dir, "makefile"), pjoin(subprocesses_dir, "makefile_original.mk"))
+            # files.cp(pjoin(subprocesses_dir, "makefile"), pjoin(subprocesses_dir, "makefile_original.mk"))
             files.rm(pjoin(subprocesses_dir, "makefile"))
-            files.ln(pjoin(subprocesses_dir, "makefile_wrapper.mk"), subprocesses_dir, 'makefile')
+            files.ln(pjoin(subprocesses_dir, "cudacpp.mk"), subprocesses_dir, 'makefile')
 
             patch_coupl_write = r"""set -euo pipefail
 # Get last fields from lines starting with WRITE(*,2)
@@ -271,8 +283,6 @@ done"""
             self.add_madevent_plugin_fct() # Added by OM
         # do not call standard finalize since is this is already done...
         #return super().finalize(matrix_element, cmdhistory, MG5options, outputflag)
-        else:
-            super().finalize()
 
     # AV (default from OM's tutorial) - overload settings and add a debug printout
     def modify_grouping(self, matrix_element):
@@ -299,15 +309,36 @@ done"""
         files.cp(pjoin(plugin_path, 'launch_plugin.py'), pjoin(self.dir_path, 'bin', 'internal'))
         files.ln(pjoin(self.dir_path, 'lib'),  pjoin(self.dir_path, 'SubProcesses'))
 
-class MG7_SIMD_ProcessExporter(PLUGIN_ProcessExporter):
+#------------------------------------------------------------------------------------
+
+class PLUGIN_ProcessExporter_MadEvent(PLUGIN_ProcessExporter):
+    """ a class to include all tweak related to madevent and not related to standalone.
+        in practise this class is never called but only the SIMD or GPU related class"""
+
+    s = PLUGINDIR + '/madgraph/iolibs/template_files/'
+    # add template file/ linking only needed in the madevent mode and not in standalone
+    from_template = dict(PLUGIN_ProcessExporter.from_template)
+    from_template['SubProcesses'] = from_template['SubProcesses'] + [s+'gpu/fbridge_common.inc',
+                                      s+'gpu/counters.cc',
+                                      s+'gpu/ompnumthreads.cc']
+
+    to_link_in_P = PLUGIN_ProcessExporter.to_link_in_P + ['fbridge_common.inc', 'counters.cc','ompnumthreads.cc']
+
+#------------------------------------------------------------------------------------
+
+class MG7_SIMD_ProcessExporter(PLUGIN_ProcessExporter_MadEvent):
     lib_suffix = "cpp"
 
     @classmethod
     def change_output_args(cls, args, cmd):
         """ """
+        cmd._export_format = 'madevent'
+        cmd._export_plugin = export_v4.ProcessExporterME_MG7
         args.append('--hel_recycling=False')
+        args.append('--me_exporter=standalone_simd')
         # path relative to the process directory
         args.append('--simd=lib/libmg5amc_{processid_short}_' + cls.lib_suffix + ".so")
+        cmd._export_plugin.lib_format = 'lib/libmg5amc_{processid_short}_' + cls.lib_suffix + ".so"
         if 'vector_size' not in ''.join(args):
             args.append('--vector_size=16')
         if 'nb_wrap' not in ''.join(args):
@@ -334,23 +365,6 @@ class MG7_CUDA_ProcessExporter(MG7_GPU_ProcessExporter):
 
 class MG7_HIP_ProcessExporter(MG7_GPU_ProcessExporter):
     lib_suffix = "hip"
-
-#------------------------------------------------------------------------------------
-
-class PLUGIN_ProcessExporter_MadEvent(PLUGIN_ProcessExporter):
-    """ a class to include all tweak related to madevent and not related to standalone.
-        in practise this class is never called but only the SIMD or GPU related class"""
-
-    s = PLUGINDIR + '/madgraph/iolibs/template_files/'
-    # add template file/ linking only needed in the madevent mode and not in standalone
-    from_template = dict(PLUGIN_ProcessExporter.from_template)
-    from_template['SubProcesses'] = from_template['SubProcesses'] + [s+'gpu/fbridge_common.inc',
-                                      s+'gpu/counters.cc',
-                                      s+'gpu/ompnumthreads.cc']
-
-    to_link_in_P = PLUGIN_ProcessExporter.to_link_in_P + ['fbridge_common.inc', 'counters.cc','ompnumthreads.cc']
-
-#------------------------------------------------------------------------------------
 
 class SIMD_ProcessExporter(PLUGIN_ProcessExporter_MadEvent):
 

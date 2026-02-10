@@ -697,7 +697,7 @@ class OneProcessExporterCPP(object):
                 'diagrams': helas_objects.HelasDiagramList([diagram])})
 
 
-            self.include_multi_channel = False
+            self.include_multi_channel = True
     #===============================================================================
     # Global helper methods
     #===============================================================================
@@ -3246,10 +3246,12 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     cp(f, key)
 
     def copy_template(self, model):
-        if self.matrix_element_path is None:
-            super().copy_template(model)
-        else:
-            self.copy_template_simd(model)
+        self.copy_template_simd(model)
+        # if self.matrix_element_path is None:
+        #     super().copy_template(model)
+        # else:
+        #     self.copy_template_simd(model)
+        # super().copy_template(model)
 
         # TODO: for now, we import the files from madgraph. eventually, we should copy
         # the files instead to allow for modification
