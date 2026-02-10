@@ -1362,7 +1362,7 @@ This will take effect only in a NEW terminal
         if not args:
             if self._done_export:
                 mode = self.find_output_type(self._done_export[0])
-                if (self._done_export[1] == 'plugin' and mode in self._export_formats):
+                if mode == "mg7" or (self._done_export[1] == 'plugin' and mode in self._export_formats):
                     args.append(mode)
                     args.append(self._done_export[0])
                 elif self._done_export[1].startswith(mode):
@@ -7675,7 +7675,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             ext_program = launch_ext.MWLauncher( self, args[1],
                                                  shell = isinstance(self, cmd.CmdShell),
                                                  options=self.options,**options)            
-        elif args[0] == 'mg7':
+        elif args[0][:3] == 'mg7':
             class ext_program:
                 @staticmethod
                 def run():
