@@ -42,6 +42,9 @@ else:
                    'madevent_gpu' : output.GPU_ProcessExporter,
                    'standalone_cudacpp' : output.PLUGIN_ProcessExporter,
                    'standalone_trex' : trex.TREX_ProcessExporter,
+                   'mg7_simd' :  output.MG7_SIMD_ProcessExporter,
+                   'mg7_cuda' :  output.MG7_CUDA_ProcessExporter,
+                   'mg7_hip' :  output.MG7_HIP_ProcessExporter,
                    # the following one are used for the second exporter class 
                    # (not really needed so far but interesting if need
                    #  specialization in the futur) 

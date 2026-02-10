@@ -5,7 +5,7 @@ from collections import defaultdict
 from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 
 
-def get_subprocess_info(matrix_element, proc_dir_name):
+def get_subprocess_info(matrix_element, proc_dir_name, lib_me_path):
     model = matrix_element.get("processes")[0].get("model")
     amplitude = matrix_element.get("base_amplitude")
 
@@ -151,7 +151,7 @@ def get_subprocess_info(matrix_element, proc_dir_name):
         "incoming": incoming,
         "outgoing": outgoing,
         "channels": channels,
-        "path": os.path.join("SubProcesses", proc_dir_name, "api.so"),
+        "path": lib_me_path,
         "flavors": flavors,
         "color_flows": color_flows,
         "pdg_color_types": pdg_color_types,

@@ -1746,19 +1746,19 @@ class PLUGIN_OneProcessExporter(PLUGIN_export_cpp.OneProcessExporterGPU):
         files.ln(pjoin(self.path, 'cudacpp.mk'), self.path, 'makefile')
         # Add link to makefile_original.mk, PR #1052
         files.ln(pjoin(self.path, '..', 'makefile_original.mk'), self.path, 'makefile_original.mk')
-        # Add symbolic links in the test directory
-        files.ln(pjoin(self.path + '/../../test', 'cudacpp_test.mk'), self.path + '/../../test', 'makefile')
-        # Add reference file in the test directory (if it exists for this process)
-        import pathlib
-        pathlib.Path(self.path + '/../../test/ref/.keepme').touch()
-        ###template_ref = 'dump_CPUTest.'+self.process_name+'.txt'
-        template_ref = self.template_path + '/../../../test/ref/' + 'dump_CPUTest.' + self.process_name + '.txt'
-        for ref in template_ref, template_ref + '2' : # two different reference files for tests without/with multichannel #896
-            if os.path.exists( ref ):
-                ###misc.sprint( 'Copying test reference file: ', ref )
-                PLUGIN_export_cpp.cp( ref, self.path + '/../../test/ref' )
-            ###else:
-                ###misc.sprint( 'Test reference file does not exist and will not be copied: ', ref )
+        # # Add symbolic links in the test directory
+        # files.ln(pjoin(self.path + '/../../test', 'cudacpp_test.mk'), self.path + '/../../test', 'makefile')
+        # # Add reference file in the test directory (if it exists for this process)
+        # import pathlib
+        # pathlib.Path(self.path + '/../../test/ref/.keepme').touch()
+        # ###template_ref = 'dump_CPUTest.'+self.process_name+'.txt'
+        # template_ref = self.template_path + '/../../../test/ref/' + 'dump_CPUTest.' + self.process_name + '.txt'
+        # for ref in template_ref, template_ref + '2' : # two different reference files for tests without/with multichannel #896
+        #     if os.path.exists( ref ):
+        #         ###misc.sprint( 'Copying test reference file: ', ref )
+        #         PLUGIN_export_cpp.cp( ref, self.path + '/../../test/ref' )
+        #     ###else:
+        #         ###misc.sprint( 'Test reference file does not exist and will not be copied: ', ref )
 
     # SR - generate CMakeLists.txt file inside the P* directory
     def edit_CMakeLists(self):

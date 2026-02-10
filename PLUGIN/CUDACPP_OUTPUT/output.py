@@ -49,7 +49,7 @@ from . import launch_plugin
 
 # AV - define the plugin's process exporter
 # (NB: this is the plugin's main class, enabled in the new_output dictionary in __init__.py)
-class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterCPP):
+class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterMG7):
     # Class structure information
     #  - object
     #  - VirtualExporter(object) [in madgraph/iolibs/export_v4.py]
@@ -94,12 +94,12 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterCPP):
     from_template = {'.': [s+'.clang-format', s+'CMake/CMakeLists.txt',
                            s+'COPYRIGHT', s+'COPYING', s+'COPYING.LESSER' ],
                      'CMake': [s+'CMake/Compilers.txt', s+'CMake/Platforms.txt', s+'CMake/Macros.txt'],
-                     'src': [s+'gpu/rambo.h', s+'read_slha.h', s+'read_slha.cc',
+                     'src': [s+'mg7/api.h', s+'gpu/rambo.h', s+'read_slha.h', s+'read_slha.cc',
                              s+'gpu/mgOnGpuFptypes.h', s+'gpu/mgOnGpuCxtypes.h', s+'gpu/mgOnGpuVectors.h',
                              s+'gpu/constexpr_math.h',
                              s+'gpu/cudacpp_config.mk',
                              s+'CMake/src/CMakeLists.txt' ],
-                     'SubProcesses': [s+'gpu/nvtx.h', s+'gpu/timer.h', s+'gpu/timermap.h',
+                     'SubProcesses': [s+'mg7/api.cpp', s+'gpu/nvtx.h', s+'gpu/timer.h', s+'gpu/timermap.h',
                                       s+'gpu/ompnumthreads.h', s+'gpu/GpuRuntime.h', s+'gpu/GpuAbstraction.h',
                                       s+'gpu/color_sum.h',
                                       s+'gpu/MemoryAccessHelpers.h', s+'gpu/MemoryAccessVectors.h',
@@ -123,7 +123,7 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterCPP):
                                       s+'gpu/cudacpp_overlay.mk', s+'gpu/makefile_wrapper.mk',
                                       s+'gpu/umami.h', s+'gpu/umami.cc',
                                       s+'CMake/SubProcesses/CMakeLists.txt'],
-                     'test': [s+'gpu/cudacpp_test.mk']}
+                     'Cards': [s+'mg7/run_card.toml'] }
 
     to_link_in_P = ['nvtx.h', 'timer.h', 'timermap.h',
                     'ompnumthreads.h', 'GpuRuntime.h', 'GpuAbstraction.h',
@@ -176,21 +176,10 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterCPP):
         return super().__init__(*args, **kwargs)
 
     # AV - overload the default version: create CMake directory, do not create lib directory
-    def copy_template(self, model):
+    def copy_template_simd(self, model):
         misc.sprint('Entering PLUGIN_ProcessExporter.copy_template (initialise the directory)')
-        try: os.mkdir(self.dir_path)
-        except os.error as error: logger.warning(error.strerror + ' ' + self.dir_path)
+        super().copy_template_simd(model)
         with misc.chdir(self.dir_path):
-            logger.info('Creating subdirectories in directory %s' % self.dir_path)
-            for d in ['src', 'Cards', 'SubProcesses', 'CMake', 'test', 'test/ref']: # AV - added CMake, test, test/ref; removed lib
-                try: os.mkdir(d)
-                except os.error as error: logger.warning(error.strerror + ' ' + os.path.join(self.dir_path,d))
-            # Write param_card
-            open(os.path.join('Cards','param_card.dat'), 'w').write(model.write_param_card())
-            # Copy files in various subdirectories
-            for key in self.from_template:
-                for f in self.from_template[key]:
-                    PLUGIN_export_cpp.cp(f, key) # NB this assumes directory key exists...
             # Copy src makefile
             if self.template_src_make:
                 makefile_src = self.read_template_file(self.template_src_make) % {'model': self.get_model_name(model.get('name'))}
@@ -199,10 +188,10 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterCPP):
             if self.template_Sub_make:
                 makefile = self.read_template_file(self.template_Sub_make) % {'model': self.get_model_name(model.get('name'))}
                 open(os.path.join('SubProcesses', 'cudacpp.mk'), 'w').write(makefile)
-            # Copy test makefile
-            if self.template_tst_make:
-                makefile_test = self.read_template_file(self.template_tst_make) % {'model': self.get_model_name(model.get('name'))}
-                open(os.path.join('test', 'cudacpp_test.mk'), 'w').write(makefile_test)
+            # # Copy test makefile
+            # if self.template_tst_make:
+            #     makefile_test = self.read_template_file(self.template_tst_make) % {'model': self.get_model_name(model.get('name'))}
+            #     open(os.path.join('test', 'cudacpp_test.mk'), 'w').write(makefile_test)
 
     # OM - overload export_v4.py version to add additional_clean section (and avoid patchMad.sh for Source/makefile)
     def write_source_makefile(self, writer, model=None, default=None):
@@ -219,6 +208,7 @@ class PLUGIN_ProcessExporter(PLUGIN_export_cpp.ProcessExporterCPP):
 
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, subproc_group, fortran_model, me=None):
+        # used only for standalone
         misc.sprint('Entering PLUGIN_ProcessExporter.generate_subprocess_directory (create the directory)')
         misc.sprint('  type(subproc_group)=%s'%type(subproc_group)) # e.g. madgraph.core.helas_objects.HelasMatrixElement
         misc.sprint('  type(fortran_model)=%s'%type(fortran_model)) # e.g. madgraph.iolibs.helas_call_writers.GPUFOHelasCallWriter
@@ -281,6 +271,8 @@ done"""
             self.add_madevent_plugin_fct() # Added by OM
         # do not call standard finalize since is this is already done...
         #return super().finalize(matrix_element, cmdhistory, MG5options, outputflag)
+        else:
+            super().finalize()
 
     # AV (default from OM's tutorial) - overload settings and add a debug printout
     def modify_grouping(self, matrix_element):
@@ -306,6 +298,42 @@ done"""
         plugin_path = os.path.dirname(os.path.realpath( __file__ ))
         files.cp(pjoin(plugin_path, 'launch_plugin.py'), pjoin(self.dir_path, 'bin', 'internal'))
         files.ln(pjoin(self.dir_path, 'lib'),  pjoin(self.dir_path, 'SubProcesses'))
+
+class MG7_SIMD_ProcessExporter(PLUGIN_ProcessExporter):
+    lib_suffix = "cpp"
+
+    @classmethod
+    def change_output_args(cls, args, cmd):
+        """ """
+        args.append('--hel_recycling=False')
+        # path relative to the process directory
+        args.append('--simd=lib/libmg5amc_{processid_short}_' + cls.lib_suffix + ".so")
+        if 'vector_size' not in ''.join(args):
+            args.append('--vector_size=16')
+        if 'nb_wrap' not in ''.join(args):
+            args.append('--nb_wrap=1')
+        return args
+
+class MG7_GPU_ProcessExporter(PLUGIN_ProcessExporter):
+    lib_suffix = "gpu"
+
+    @classmethod
+    def change_output_args(cls, args, cmd):
+        """ """
+        args.append('--hel_recycling=False')
+        # path relative to the process directory
+        args.append('--gpu=lib/libmg5amc_{processid_short}_' + cls.lib_suffix + ".so")
+        if 'vector_size' not in ''.join(args):
+            args.append('--vector_size=32')
+        if 'nb_wrap' not in ''.join(args):
+            args.append('--nb_wrap=512')
+        return args
+
+class MG7_CUDA_ProcessExporter(MG7_GPU_ProcessExporter):
+    lib_suffix = "cuda"
+
+class MG7_HIP_ProcessExporter(MG7_GPU_ProcessExporter):
+    lib_suffix = "hip"
 
 #------------------------------------------------------------------------------------
 
