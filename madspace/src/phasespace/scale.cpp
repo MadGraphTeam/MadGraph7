@@ -25,14 +25,15 @@ EnergyScale::EnergyScale(
 
 ValueVec
 EnergyScale::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
+    auto momenta = args.at(0);
     if (_ren_scale_fixed && _fact_scale_fixed) {
+        auto batch_size = fb.batch_size({momenta});
         return {
-            _ren_scale * _ren_scale,
-            _fact_scale1 * _fact_scale1,
-            _fact_scale2 * _fact_scale2
+            fb.full({_ren_scale * _ren_scale, batch_size}),
+            fb.full({_fact_scale1 * _fact_scale1, batch_size}),
+            fb.full({_fact_scale2 * _fact_scale2, batch_size}),
         };
     }
-    auto momenta = args.at(0);
     Value scale;
     switch (_dynamical_scale_type) {
     case transverse_energy:
@@ -50,9 +51,10 @@ EnergyScale::build_function_impl(FunctionBuilder& fb, const ValueVec& args) cons
     default:
         throw std::runtime_error("invalid dynamical scale type");
     }
+    auto batch_size = fb.batch_size({momenta});
     return {
-        _ren_scale_fixed ? Value(_ren_scale * _ren_scale) : scale,
-        _fact_scale_fixed ? Value(_fact_scale1 * _fact_scale1) : scale,
-        _fact_scale_fixed ? Value(_fact_scale2 * _fact_scale2) : scale
+        _ren_scale_fixed ? fb.full({_ren_scale * _ren_scale, batch_size}) : scale,
+        _fact_scale_fixed ? fb.full({_fact_scale1 * _fact_scale1, batch_size}) : scale,
+        _fact_scale_fixed ? fb.full({_fact_scale2 * _fact_scale2, batch_size}) : scale
     };
 }
