@@ -263,14 +263,12 @@ class MadgraphProcess:
 
     def init_context(self) -> None:
         device_name = self.run_card["run"]["device"]
-        if device_name == "cpu":
-            device = ms.cpu_device()
-        elif device_name == "cuda":
+        if device_name == "cuda":
             device = ms.cuda_device()
         elif device_name == "hip":
             device = ms.hip_device()
         else:
-            raise ValueError("Unknown device")
+            device = ms.cpu_device()
         self.context = ms.Context(device)
 
     def init_subprocesses(self) -> None:
@@ -597,7 +595,7 @@ class MadgraphSubprocess:
             subproc_dir = os.path.dirname(subproc_path)
             logger.info(f"Compiling subprocess {subproc_dir}")
             os.chdir(subproc_path)
-            backend = self.process.run_card.get("device", "cppnone")
+            backend = self.process.run_card["run"]["device"]
             subprocess.run(["make", "-j", f"BACKEND={backend}"])
             os.chdir(cwd)
 
