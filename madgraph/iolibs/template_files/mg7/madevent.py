@@ -307,10 +307,14 @@ class MadgraphProcess:
         )
 
     def survey_phasespaces(
-        self, phasespaces: list[PhaseSpace], mode: str | None = None
-    ) -> ms.EventGenerator:
+        self, phasespaces: list[PhaseSpace | None], mode: str | None = None
+    ) -> ms.EventGenerator | None:
+        ps_filtered = [ps for ps in phasespaces if ps is not None]
+        if len(ps_filtered) == 0:
+            return None
+
         event_generator = self.build_event_generator(
-            phasespaces, "events" if mode is None else f"events_{mode}"
+            ps_filtered, "events" if mode is None else f"events_{mode}"
         )
 
         event_generator.survey()
@@ -331,6 +335,7 @@ class MadgraphProcess:
             ]
             self.event_generator = self.survey_phasespaces(self.phasespaces)
         elif phasespace_mode == "both":
+            kept_count = self.run_card["phasespace"]["simplified_channel_count"]
             phasespaces_multi = [
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
@@ -339,6 +344,8 @@ class MadgraphProcess:
 
             phasespaces_flat = [
                 subproc.build_flat_phasespace()
+                if len(subproc.meta["channels"]) > kept_count + 1 else
+                None
                 for subproc in self.subprocesses
             ]
             evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
@@ -355,6 +362,8 @@ class MadgraphProcess:
                 index += channel_count
 
             self.phasespaces = [
+                ps_multi
+                if ps_flat is None else
                 subproc.simplify_phasespace(ps_multi, ps_flat, cross_secs)
                 for subproc, ps_multi, ps_flat, cross_secs in zip(
                     self.subprocesses, phasespaces_multi, phasespaces_flat, cross_sections
