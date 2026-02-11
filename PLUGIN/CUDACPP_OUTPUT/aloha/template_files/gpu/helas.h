@@ -25,7 +25,7 @@
       fptype * w;
       int flv_index;
 
-      __host__ __device__ ALOHAOBJ() = default;
+      __host__ __device__ ALOHAOBJ() {}
       __host__ __device__ ALOHAOBJ(fptype_sv * pvec_sv, cxtype_sv * w_sv, int flv = -1)
           : pvec(pvec_sv), w(reinterpret_cast<fptype*>(w_sv)), flv_index(flv) {}
   };
