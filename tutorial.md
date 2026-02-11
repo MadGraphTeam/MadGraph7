@@ -19,6 +19,22 @@ cd madspace
 pip install .
 ```
 
+For Parton Distribution Functions (PDFs), you need to either:
+- install `lhapdf6` through the MadGraph CLI
+- install the [python package `lhapdf-management`](https://pypi.org/project/lhapdf-management/) via `pip`:
+  ```bash
+  pip install lhapdf-management
+  ```
+  and then set, e.g., `LHAPDF_DATA_PATH` environment variable:
+  ```bash
+  mkdir -p pdfs
+  export LHAPDF_DATA_PATH="$(pwd)/pdfs"
+  ```
+  finally, install the PDF *NNPDF23_lo_as_0130_qed*
+  ```bash
+  lhapdf-management install NNPDF23_lo_as_0130_qed
+  ```
+
 If you want to try out the `madboard` web interface, you can install it using
 ```sh
 pip install madboard
