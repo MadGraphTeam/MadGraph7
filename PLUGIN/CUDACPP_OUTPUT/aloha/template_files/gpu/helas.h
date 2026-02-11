@@ -32,19 +32,37 @@
 
   struct FLV_COUPLING_VIEW {
 
-      const int* partner1;
-      const int* partner2;
-      const fptype* value;
+      const int* const partner1;
+      const int* const partner2;
+      const fptype* const value;
 
-      __host__ __device__ FLV_COUPLING_VIEW() = default;
       __host__ __device__
-      FLV_COUPLING_VIEW(const int* partner1_base,
-                        const int* partner2_base,
-                        const fptype* value_base,
-                        const int n)
-      : partner1(partner1_base + n),
-        partner2(partner2_base + n),
-        value(value_base + 2*n) {}
+      FLV_COUPLING_VIEW(const int* p1, const int* p2, const fptype* v)
+      : partner1(p1), partner2(p2), value(v) {}
+  };
+
+  template<int SIZE, int STRIDE>
+  class FLV_COUPLING_ARRAY {
+
+      static_assert(SIZE >= 0, "flvCOUPs SIZE must be non-negative");
+      static_assert(STRIDE > 0, "flvCOUPs STRIDE must be positive");
+      const int* const partner1;
+      const int* const partner2;
+      const fptype* const value;
+
+    public:
+      __host__ __device__
+      FLV_COUPLING_ARRAY(const int* p1, const int* p2, const fptype* v)
+      : partner1(p1), partner2(p2), value(v) {}
+
+      __host__ __device__
+      FLV_COUPLING_VIEW operator[](const int i) const {
+        return FLV_COUPLING_VIEW{
+          partner1 + i*STRIDE,
+          partner2 + i*STRIDE,
+          value + i*2*STRIDE
+        };
+      }
   };
 
   //--------------------------------------------------------------------------
