@@ -14,15 +14,19 @@ except ModuleNotFoundError:
     # for versions before 3.11
     import pip._vendor.tomli as tomllib
 
+MG_ROOT = os.path.abspath(os.path.realpath(__file__)).replace(os.path.join("madgraph", "iolibs", "template_files", "mg7", "madevent.py"), "")
+cwd = os.getcwd()
+os.chdir(MG_ROOT)
 if "LHAPDF_DATA_PATH" in os.environ:
-    PDF_PATH = os.environ["LHAPDF_DATA_PATH"]
+    PDF_PATH = os.path.abspath(os.environ["LHAPDF_DATA_PATH"])
 else:
     try:
         import lhapdf
         lhapdf.setVerbosity(0)
-        PDF_PATH = lhapdf.paths()[0]
+        PDF_PATH = os.path.abspath(lhapdf.paths()[0])
     except ImportError:
         raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
+os.chdir(cwd)
 
 import madspace as ms
 from models.check_param_card import ParamCard
