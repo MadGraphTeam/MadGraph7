@@ -4,7 +4,7 @@
 
 First check out the MadGraph7 repository:
 ```sh
-git clone git@github.com:MadGraphTeam/MadGraph7.git
+git clone -b heidelberg26 git@github.com:MadGraphTeam/MadGraph7.git
 cd MadGraph7
 ```
 
