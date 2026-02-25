@@ -687,7 +687,7 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     _context(context),
     _input_count(function.inputs().size()),
     _rand_gens(
-        default_thread_pool(),
+        context->thread_pool(),
         []() {
             std::random_device rand_device;
             return std::mt19937(rand_device());
@@ -868,7 +868,7 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
 }
 
 TensorVec CpuRuntime::run(const TensorVec& inputs) const {
-    if (_concurrent && default_thread_pool().thread_count() > 1) {
+    if (_concurrent && _context->thread_pool().thread_count() > 1) {
         auto [outputs, locals, eval_grad] = run_concurrent(inputs, {}, false);
         return outputs;
     } else {
@@ -879,7 +879,7 @@ TensorVec CpuRuntime::run(const TensorVec& inputs) const {
 std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad(
     const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) const {
-    if (_concurrent && default_thread_pool().thread_count() > 1) {
+    if (_concurrent && _context->thread_pool().thread_count() > 1) {
         return run_concurrent(inputs, input_requires_grad, true);
     } else {
         return run_with_grad_single(inputs, input_requires_grad);
@@ -892,7 +892,7 @@ CpuRuntime::run_backward(
     const TensorVec& stored_locals,
     const std::vector<bool>& eval_grad
 ) const {
-    if (_concurrent && default_thread_pool().thread_count() > 1) {
+    if (_concurrent && _context->thread_pool().thread_count() > 1) {
         return run_backward_concurrent(output_grads, stored_locals, eval_grad);
     } else {
         return run_backward_single(output_grads, stored_locals, eval_grad);
@@ -1013,7 +1013,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_concurrent(
     const std::vector<bool>& input_requires_grad,
     bool with_grad
 ) const {
-    auto& thread_pool = default_thread_pool();
+    auto& thread_pool = _context->thread_pool();
     auto locals = _locals_init;
     auto requires_grad = _requires_grad_init;
     std::vector<bool> store_local(with_grad ? locals.size() : 0);
@@ -1142,7 +1142,7 @@ CpuRuntime::run_backward_concurrent(
     const TensorVec& stored_locals,
     const std::vector<bool>& eval_grad
 ) const {
-    auto& thread_pool = default_thread_pool();
+    auto& thread_pool = _context->thread_pool();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);
     for (auto [index, grad] : zip(_output_indices, output_grads)) {

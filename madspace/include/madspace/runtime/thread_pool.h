@@ -40,12 +40,32 @@ private:
     std::size_t _thread_count;
     std::vector<std::thread> _threads;
     std::deque<JobFunc> _job_queue;
-    std::deque<std::size_t> _done_queue;
+    std::vector<std::size_t> _done_queue;
     std::vector<std::size_t> _done_buffer;
     std::size_t _busy_threads;
     std::size_t _listener_id = 0;
     std::unordered_map<std::size_t, std::function<void(std::size_t)>> _listeners;
-    bool _buffer_submit;
+    std::mutex* _shared_mutex = nullptr;
+    std::condition_variable* _shared_cv_done = nullptr;
+
+    friend class MultiThreadPool;
+};
+
+class MultiThreadPool {
+public:
+    MultiThreadPool(const std::vector<ThreadPool*>& pools);
+    ~MultiThreadPool();
+    std::optional<std::size_t> wait();
+    std::vector<std::size_t> wait_multiple();
+
+private:
+    bool all_queues_empty();
+    bool fill_done_cache();
+
+    std::vector<ThreadPool*> _pools;
+    std::vector<std::size_t> _done_buffer;
+    std::mutex _mutex;
+    std::condition_variable _cv_done;
 };
 
 template <typename T>
@@ -92,10 +112,5 @@ private:
     std::vector<T> _resources;
     std::size_t _listener_id;
 };
-
-inline ThreadPool& default_thread_pool() {
-    static ThreadPool instance;
-    return instance;
-}
 
 } // namespace madspace

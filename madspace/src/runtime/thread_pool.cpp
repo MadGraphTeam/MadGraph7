@@ -10,7 +10,7 @@ ThreadPool::~ThreadPool() { set_thread_count(0); }
 
 void ThreadPool::set_thread_count(int new_count) {
     {
-        std::unique_lock<std::mutex> lock(_mutex);
+        std::unique_lock<std::mutex> lock(_shared_mutex ? *_shared_mutex : _mutex);
         _thread_count = new_count < 0 ? std::thread::hardware_concurrency() : new_count;
     }
 
@@ -34,9 +34,7 @@ void ThreadPool::set_thread_count(int new_count) {
 }
 
 void ThreadPool::submit(JobFunc job) {
-    // Spin until there is space in the queue. The queue should be sufficiently large
-    // such that this never happens.
-    std::unique_lock<std::mutex> lock(_mutex);
+    std::unique_lock<std::mutex> lock(_shared_mutex ? *_shared_mutex : _mutex);
     _job_queue.push_back(job);
     if (!_done_queue.empty()) {
         _done_buffer.insert(
@@ -52,7 +50,7 @@ void ThreadPool::submit(std::vector<JobFunc>& jobs) {
     if (jobs.empty()) {
         return;
     }
-    std::unique_lock<std::mutex> lock(_mutex);
+    std::unique_lock<std::mutex> lock(_shared_mutex ? *_shared_mutex : _mutex);
     for (auto& job : jobs) {
         _job_queue.push_back(std::move(job));
     }
@@ -71,7 +69,7 @@ bool ThreadPool::fill_done_cache() {
         return true;
     }
 
-    std::unique_lock<std::mutex> lock(_mutex);
+    std::unique_lock<std::mutex> lock(_shared_mutex ? *_shared_mutex : _mutex);
     if (_done_queue.empty()) {
         if (_job_queue.empty() && _busy_threads == 0) {
             return false;
@@ -116,11 +114,27 @@ void ThreadPool::remove_listener(std::size_t id) {
 
 void ThreadPool::thread_loop(std::size_t index) {
     _thread_index = index;
+    std::mutex* shared_mutex_prev = nullptr;
+    std::condition_variable* cv_done = &_cv_done;
     std::unique_lock<std::mutex> lock(_mutex);
     while (true) {
         _cv_run.wait(lock, [&] {
-            return !_job_queue.empty() || index >= _thread_count;
+            return !_job_queue.empty() || index >= _thread_count ||
+                _shared_mutex != shared_mutex_prev;
         });
+        if (_shared_mutex != shared_mutex_prev) {
+            shared_mutex_prev = _shared_mutex;
+            lock.unlock();
+            if (_shared_mutex) {
+                lock = std::unique_lock(*_shared_mutex);
+                cv_done = _shared_cv_done;
+            } else {
+                lock = std::unique_lock(_mutex);
+                cv_done = &_cv_done;
+            }
+            lock.lock();
+            continue;
+        }
         if (index >= _thread_count) {
             return;
         }
@@ -132,6 +146,79 @@ void ThreadPool::thread_loop(std::size_t index) {
         lock.lock();
         --_busy_threads;
         _done_queue.push_back(result);
-        _cv_done.notify_one();
+        cv_done->notify_one();
     }
+}
+
+MultiThreadPool::MultiThreadPool(const std::vector<ThreadPool*>& pools) :
+    _pools(pools) {
+    for (auto pool : pools) {
+        std::unique_lock lock(pool->_mutex);
+        pool->_shared_mutex = &_mutex;
+        pool->_shared_cv_done = &_cv_done;
+        pool->_cv_run.notify_all();
+    }
+}
+
+MultiThreadPool::~MultiThreadPool() {
+    std::unique_lock lock(_mutex);
+    for (auto pool : _pools) {
+        pool->_shared_mutex = nullptr;
+        pool->_shared_cv_done = nullptr;
+        pool->_cv_run.notify_all();
+    }
+}
+
+std::optional<std::size_t> MultiThreadPool::wait() {
+    if (!fill_done_cache()) {
+        return std::nullopt;
+    }
+    std::size_t result = _done_buffer.back();
+    _done_buffer.pop_back();
+    return result;
+}
+
+std::vector<std::size_t> MultiThreadPool::wait_multiple() {
+    if (!fill_done_cache()) {
+        return {};
+    }
+    std::vector<std::size_t> ret(_done_buffer.rbegin(), _done_buffer.rend());
+    _done_buffer.clear();
+    return ret;
+}
+
+bool MultiThreadPool::all_queues_empty() {
+    for (auto pool : _pools) {
+        if (!pool->_done_queue.empty()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool MultiThreadPool::fill_done_cache() {
+    if (!_done_buffer.empty()) {
+        return true;
+    }
+
+    std::unique_lock<std::mutex> lock(_mutex);
+    if (all_queues_empty()) {
+        bool no_more_jobs = true;
+        for (auto pool : _pools) {
+            if (!pool->_job_queue.empty() || pool->_busy_threads > 0) {
+                no_more_jobs = false;
+            }
+        }
+        if (no_more_jobs) {
+            return false;
+        }
+        _cv_done.wait(lock, [&] { return !all_queues_empty(); });
+    }
+    for (auto pool : _pools) {
+        _done_buffer.insert(
+            _done_buffer.begin(), pool->_done_queue.rbegin(), pool->_done_queue.rend()
+        );
+        pool->_done_queue.clear();
+    }
+    return true;
 }

@@ -11,7 +11,10 @@ using namespace madspace;
 using json = nlohmann::json;
 
 MatrixElementApi::MatrixElementApi(
-    const std::string& file, const std::string& param_card, std::size_t index
+    const std::string& file,
+    const std::string& param_card,
+    ThreadPool& thread_pool,
+    std::size_t index
 ) :
     _file_name(file), _index(index) {
     _shared_lib = std::unique_ptr<void, std::function<void(void*)>>(
@@ -62,7 +65,7 @@ MatrixElementApi::MatrixElementApi(
         );
     }
 
-    _instances = ThreadResource<InstanceType>(default_thread_pool(), [&] {
+    _instances = ThreadResource<InstanceType>(thread_pool, [&] {
         void* instance;
         check_umami_status(_initialize(&instance, param_card.c_str()));
         return InstanceType(instance, [this](void* proc) { _free(proc); });
@@ -101,7 +104,9 @@ const MatrixElementApi&
 Context::load_matrix_element(const std::string& file, const std::string& param_card) {
     _param_card_paths.push_back(param_card);
     _matrix_elements.push_back(
-        std::make_unique<MatrixElementApi>(file, param_card, _matrix_elements.size())
+        std::make_unique<MatrixElementApi>(
+            file, param_card, *_thread_pool, _matrix_elements.size()
+        )
     );
     return *_matrix_elements.back().get();
 }

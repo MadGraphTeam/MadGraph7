@@ -84,7 +84,8 @@ public:
         int diagram_index,
         int color_index,
         int flavor_index,
-        int helicity_index
+        int helicity_index,
+        std::mt19937& rand_gen
     );
     std::size_t max_particle_count() const { return _max_particle_count; }
 
@@ -114,7 +115,6 @@ private:
     std::vector<std::tuple<int, int>> _propagator_colors;
     double _bw_cutoff;
     std::size_t _max_particle_count;
-    ThreadResource<std::mt19937> _rand_gens;
 };
 
 class LHEFileWriter {

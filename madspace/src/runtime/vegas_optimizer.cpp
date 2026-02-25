@@ -27,9 +27,8 @@ void VegasGridOptimizer::add_data(Tensor values, Tensor counts) {
 }
 
 void VegasGridOptimizer::optimize() {
-    auto grid = _context->global(_grid_name);
-    auto grid_cpu = grid.cpu();
-    std::size_t n_dims = grid.size(1);
+    auto grid_cpu = _contexts.at(0)->global(_grid_name).cpu();
+    std::size_t n_dims = grid_cpu.size(1);
     std::size_t n_bins = grid_cpu.size(2) - 1;
     auto new_grid = grid_cpu.copy();
     auto grid_view = grid_cpu.view<double, 3>()[0];
@@ -116,9 +115,11 @@ void VegasGridOptimizer::optimize() {
         std::fill(bin_values.begin(), bin_values.end(), 0.);
     }
 
-    grid.copy_from(new_grid);
+    for (auto& context : _contexts) {
+        context->global(_grid_name).copy_from(new_grid);
+    }
 }
 
 std::size_t VegasGridOptimizer::input_dim() const {
-    return _context->global(_grid_name).size(1);
+    return _contexts.at(0)->global(_grid_name).size(1);
 }

@@ -112,6 +112,8 @@ add_library(
     src/runtime/tensor.cpp
     src/runtime/context.cpp
     src/runtime/event_generator.cpp
+    src/runtime/channel_generator.cpp
+    src/runtime/generator_data.cpp
     src/runtime/thread_pool.cpp
     src/runtime/io.cpp
     src/runtime/vegas_optimizer.cpp
@@ -156,6 +158,8 @@ add_library(
     include/madspace/runtime/context.h
     include/madspace/runtime/thread_pool.h
     include/madspace/runtime/event_generator.h
+    include/madspace/runtime/channel_generator.h
+    include/madspace/runtime/generator_data.h
     include/madspace/runtime/io.h
     include/madspace/runtime/vegas_optimizer.h
     include/madspace/runtime/discrete_optimizer.h

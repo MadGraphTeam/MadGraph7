@@ -58,12 +58,7 @@ void LHEEvent::format_to(std::string& buffer) const {
 LHECompleter::LHECompleter(
     const std::vector<SubprocArgs>& subproc_args, double bw_cutoff
 ) :
-    _bw_cutoff(bw_cutoff),
-    _max_particle_count(0),
-    _rand_gens(default_thread_pool(), []() {
-        std::random_device rand_device;
-        return std::mt19937(rand_device());
-    }) {
+    _bw_cutoff(bw_cutoff), _max_particle_count(0) {
     std::size_t color_offset = 0, pdg_id_offset = 0, helicity_offset = 0,
                 mass_offset = 0;
     _max_particle_count = 0;
@@ -338,7 +333,8 @@ void LHECompleter::complete_event_data(
     int diagram_index,
     int color_index,
     int flavor_index,
-    int helicity_index
+    int helicity_index,
+    std::mt19937& rand_gen
 ) {
     auto& subproc_data = _subproc_data.at(subprocess_index);
     if (event.particles.size() != subproc_data.particle_count) {
@@ -368,7 +364,7 @@ void LHECompleter::complete_event_data(
     auto [pdg_index, matrix_flavor_index, pdg_count] =
         _pdg_id_index_and_count.at(subproc_data.pdg_id_offset + flavor_index);
     std::uniform_int_distribution<std::size_t> dist(0, pdg_count - 1);
-    std::size_t pdg_random = dist(_rand_gens.get(ThreadPool::thread_index()));
+    std::size_t pdg_random = dist(rand_gen);
     std::size_t pdg_offset = pdg_index + subproc_data.particle_count * pdg_random;
 
     for (std::size_t particle_index = 0; auto& particle : event.particles) {

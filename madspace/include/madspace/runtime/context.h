@@ -13,7 +13,10 @@ namespace madspace {
 class MatrixElementApi {
 public:
     MatrixElementApi(
-        const std::string& file, const std::string& param_card, std::size_t index = 0
+        const std::string& file,
+        const std::string& param_card,
+        ThreadPool& thread_pool,
+        std::size_t index = 0
     );
     MatrixElementApi(MatrixElementApi&&) noexcept = default;
     MatrixElementApi& operator=(MatrixElementApi&&) noexcept = default;
@@ -100,8 +103,9 @@ class Context {
      * Contains global variables and matrix elements
      */
 public:
-    Context() : _device(cpu_device()) {}
-    Context(DevicePtr device) : _device(device) {}
+    Context() : _device(cpu_device()), _thread_pool(std::make_unique<ThreadPool>()) {}
+    Context(DevicePtr device) :
+        _device(device), _thread_pool(std::make_unique<ThreadPool>()) {}
     Context(Context&&) = default;
     Context& operator=(Context&&) = default;
     Context(const Context&) = delete;
@@ -123,11 +127,11 @@ public:
     void save(const std::string& file) const;
     void load(const std::string& file);
     DevicePtr device() { return _device; }
+    ThreadPool& thread_pool() { return *_thread_pool; }
 
 private:
-    // make sure that ThreadPool outlives any Context instance
-    inline static ThreadPool& thread_pool_ref = default_thread_pool();
     DevicePtr _device;
+    std::unique_ptr<ThreadPool> _thread_pool;
     std::unordered_map<std::string, std::tuple<Tensor, bool>> _globals;
     std::vector<std::unique_ptr<MatrixElementApi>> _matrix_elements;
     std::vector<std::string> _param_card_paths;

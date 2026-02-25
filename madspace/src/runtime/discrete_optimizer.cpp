@@ -6,7 +6,7 @@ void DiscreteOptimizer::add_data(const std::vector<Tensor>& values_and_counts) {
     if (_data.size() != _prob_names.size()) {
         _data.resize(_prob_names.size());
         for (auto [prob_name, data_item] : zip(_prob_names, _data)) {
-            auto prob_global = _context->global(prob_name);
+            auto prob_global = _contexts.at(0)->global(prob_name);
             auto option_count = prob_global.size(1);
             auto& [weight_sums, counts] = data_item;
             weight_sums.resize(option_count);
@@ -35,10 +35,7 @@ void DiscreteOptimizer::optimize() {
     //_sample_count = next_sample_count;
     for (auto [prob_name, data_item] : zip(_prob_names, _data)) {
         auto& [weight_sums, counts] = data_item;
-        auto prob_global = _context->global(prob_name);
-        bool is_cpu = _context->device() == cpu_device();
-        auto prob =
-            is_cpu ? prob_global : Tensor(DataType::dt_float, prob_global.shape());
+        Tensor prob(DataType::dt_float, _contexts.at(0)->global(prob_name).shape());
         auto prob_view = prob.view<double, 2>()[0];
 
         double norm = 0.;
@@ -56,8 +53,8 @@ void DiscreteOptimizer::optimize() {
             ++i;
         }
 
-        if (!is_cpu) {
-            prob_global.copy_from(prob);
+        for (auto& context : _contexts) {
+            context->global(prob_name).copy_from(prob);
         }
         std::fill(weight_sums.begin(), weight_sums.end(), 0.);
         std::fill(counts.begin(), counts.end(), 0);
