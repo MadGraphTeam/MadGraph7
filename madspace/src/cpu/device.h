@@ -7,29 +7,6 @@
 namespace madspace {
 namespace cpu {
 
-inline std::tuple<std::size_t, std::size_t>
-job_count_and_size(std::size_t batch_size, bool single_job = false) {
-    if (batch_size == 0) {
-        return {0, 0};
-    }
-    // return {1, batch_size};
-    if (single_job) {
-        return {1, batch_size};
-    }
-
-    std::size_t batch_size_vec = (batch_size + simd_vec_size - 1) / simd_vec_size;
-    std::size_t min_batch_size = 64 / simd_vec_size;
-    std::size_t thread_count = default_thread_pool().thread_count();
-    // std::size_t job_count = (batch_size + min_batch_size - 1) / min_batch_size;
-    std::size_t job_count = batch_size_vec < thread_count * min_batch_size
-        ? (batch_size_vec + min_batch_size - 1) / min_batch_size
-        : thread_count;
-    std::size_t job_size = (batch_size_vec + job_count - 1) / job_count * simd_vec_size;
-    // correct rounding errors to vector size
-    job_count = (batch_size + job_size - 1) / job_size;
-    return {job_count, job_size};
-}
-
 class CpuDevice : public Device {
 public:
     static constexpr bool is_concurrent = false;
@@ -80,16 +57,42 @@ public:
         std::size_t instr_index,
         std::size_t& instr_job_count,
         bool& barrier_state,
-        std::vector<std::function<std::size_t()>>& funcs_after_barrier
+        std::vector<std::function<std::size_t()>>& funcs_after_barrier,
+        ThreadPool& thread_pool
     ) :
         _instr_index(instr_index),
         _instr_job_count(instr_job_count),
         _barrier_state(barrier_state),
-        _funcs_after_barrier(funcs_after_barrier) {}
+        _funcs_after_barrier(funcs_after_barrier),
+        _thread_pool(thread_pool) {}
 
     void tensor_copy(const Tensor& source, Tensor& target) const override;
     void tensor_zero(Tensor& tensor) const override;
     void tensor_add(const Tensor& source, Tensor& target) const override;
+
+    std::tuple<std::size_t, std::size_t>
+    job_count_and_size(std::size_t batch_size, bool single_job = false) const {
+        if (batch_size == 0) {
+            return {0, 0};
+        }
+        // return {1, batch_size};
+        if (single_job) {
+            return {1, batch_size};
+        }
+
+        std::size_t batch_size_vec = (batch_size + simd_vec_size - 1) / simd_vec_size;
+        std::size_t min_batch_size = 64 / simd_vec_size;
+        std::size_t thread_count = _thread_pool.thread_count();
+        // std::size_t job_count = (batch_size + min_batch_size - 1) / min_batch_size;
+        std::size_t job_count = batch_size_vec < thread_count * min_batch_size
+            ? (batch_size_vec + min_batch_size - 1) / min_batch_size
+            : thread_count;
+        std::size_t job_size =
+            (batch_size_vec + job_count - 1) / job_count * simd_vec_size;
+        // correct rounding errors to vector size
+        job_count = (batch_size + job_size - 1) / job_size;
+        return {job_count, job_size};
+    }
 
     template <typename F>
     void foreach (std::size_t batch_size, F func, bool single_job = false) const {
@@ -110,12 +113,12 @@ public:
             if (_barrier_state) {
                 _funcs_after_barrier.push_back(job_func);
             } else {
-                // default_thread_pool().submit(job_func);
+                // _thread_pool.submit(job_func);
                 jobs.push_back(job_func);
             }
         }
         if (!_barrier_state) {
-            default_thread_pool().submit(jobs);
+            _thread_pool.submit(jobs);
         }
     }
 
@@ -130,7 +133,7 @@ public:
             _funcs_after_barrier.push_back(job_func);
         } else {
             ++_instr_job_count;
-            default_thread_pool().submit(job_func);
+            _thread_pool.submit(job_func);
         }
     }
 
@@ -145,6 +148,7 @@ private:
     std::size_t& _instr_job_count;
     bool& _barrier_state;
     std::vector<std::function<std::size_t()>>& _funcs_after_barrier;
+    ThreadPool& _thread_pool;
 };
 
 extern "C" DevicePtr get_device();

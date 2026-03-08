@@ -26,13 +26,12 @@ const GeneratorConfig EventGenerator::default_config = {};
 
 EventGenerator::EventGenerator(
     const std::vector<ContextPtr>& contexts,
-    const std::vector<ChannelEventGenerator>& channels,
+    const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
     const std::string& status_file,
     const GeneratorConfig& config
 ) :
     _config(config),
     _status{
-        .index = 0,
         .subprocess = 0,
         .name = "",
         .mean = 0.,
@@ -69,8 +68,8 @@ void EventGenerator::survey() {
     std::size_t total_job_count = 0;
     std::size_t done_job_count = 0;
     for (auto& channel : _channels) {
-        std::size_t chan_batch_size = channel._batch_size;
-        for (std::size_t iter = channel._status.iterations; iter < min_iters; ++iter) {
+        std::size_t chan_batch_size = channel->_batch_size;
+        for (std::size_t iter = channel->_status.iterations; iter < min_iters; ++iter) {
             total_job_count +=
                 (chan_batch_size + _config.batch_size - 1) / _config.batch_size;
             chan_batch_size = std::min(chan_batch_size * 2, _config.max_batch_size);
@@ -81,15 +80,16 @@ void EventGenerator::survey() {
     std::size_t iter = 0;
     for (; !done && iter < max_iters; ++iter) {
         std::size_t job_count_before = _running_jobs.size();
-        for (auto& channel : _channels) {
-            if (channel.status().iterations > iter) {
+        for (std::size_t i = 0; auto& channel : _channels) {
+            if (channel->status().iterations > iter) {
                 continue;
             }
             if (iter >= min_iters &&
-                channel._cross_section.rel_error() < target_precision) {
+                channel->_cross_section.rel_error() < target_precision) {
                 continue;
             }
-            channel.build_vegas_jobs(_ready_jobs, iter >= min_iters - 1);
+            channel->build_vegas_jobs(_ready_jobs, iter >= min_iters - 1, i);
+            ++i;
         }
         start_jobs();
         if (iter >= min_iters) {
@@ -102,20 +102,20 @@ void EventGenerator::survey() {
             auto& channel = _channels.at(job.channel_index);
             auto& channel_job_count = _channel_job_counts.at(job.channel_index);
             if (channel_job_count == job.vegas_job_count) {
-                channel.clear_events();
+                channel->clear_events();
             }
             --channel_job_count;
             ++done_job_count;
 
-            channel.integrate_and_optimize(job, channel_job_count == 0);
+            channel->integrate_and_optimize(job, channel_job_count == 0);
             update_integral();
 
             if (iter >= min_iters - 1) {
-                channel.update_max_weight(job.weights);
-                channel.unweight_and_write(job.unweighted_events);
+                channel->update_max_weight(job.weights);
+                channel->unweight_and_write(job.unweighted_events);
                 update_counts();
                 if (channel_job_count == 0 &&
-                    channel._cross_section.rel_error() < target_precision) {
+                    channel->_cross_section.rel_error() < target_precision) {
                     done = false;
                 }
             } else {
@@ -133,8 +133,10 @@ void EventGenerator::generate() {
     print_gen_init();
 
     std::vector<ThreadPool*> thread_pools;
+    std::size_t target_job_count = 0;
     for (auto& context : _contexts) {
         thread_pools.push_back(&context->thread_pool());
+        target_job_count += 2 * context->thread_pool().thread_count();
     }
     MultiThreadPool multi_thread_pool(thread_pools);
     std::size_t channel_index = 0;
@@ -143,19 +145,19 @@ void EventGenerator::generate() {
 
         std::size_t job_count_before;
         do {
-            job_count_before = _running_jobs.size();
+            job_count_before = _ready_jobs.size();
             for (std::size_t i = 0;
                  i < _channels.size() && _running_jobs.size() < target_job_count;
                  ++i, channel_index = (channel_index + 1) % _channels.size()) {
                 auto& channel = _channels.at(channel_index);
-                if (channel._status.count_unweighted >=
-                    channel._integral_fraction * _config.target_count) {
+                if (channel->_status.count_unweighted >=
+                    channel->_integral_fraction * _config.target_count) {
                     continue;
                 }
-                if ((channel._vegas_optimizer || channel._discrete_optimizer) &&
-                    channel._needs_optimization) {
+                if ((channel->_vegas_optimizer || channel->_discrete_optimizer) &&
+                    channel->_needs_optimization) {
                     if (_channel_job_counts.at(i) == 0) {
-                        channel.build_vegas_jobs(_ready_jobs, true);
+                        channel->build_vegas_jobs(_ready_jobs, true, i);
                     }
                 } else {
                     _ready_jobs.push_back({
@@ -166,24 +168,25 @@ void EventGenerator::generate() {
                     });
                 }
             }
-        } while (_running_jobs.size() - job_count_before > 0);
+        } while (_ready_jobs.size() - job_count_before > 0);
+        start_jobs();
 
         if (auto job_id = multi_thread_pool.wait()) {
             auto& job = _running_jobs.at(*job_id);
             auto& channel = _channels.at(job.channel_index);
             auto& channel_job_count = _channel_job_counts.at(job.channel_index);
             bool run_optim =
-                (channel._vegas_optimizer || channel._discrete_optimizer) &&
-                channel._needs_optimization;
+                (channel->_vegas_optimizer || channel->_discrete_optimizer) &&
+                channel->_needs_optimization;
             if (run_optim && channel_job_count == job.vegas_job_count) {
-                channel.clear_events();
+                channel->clear_events();
             }
             --channel_job_count;
 
-            channel.integrate_and_optimize(job, run_optim);
+            channel->integrate_and_optimize(job, run_optim);
             update_integral();
-            channel.update_max_weight(job.weights);
-            channel.unweight_and_write(job.unweighted_events);
+            channel->update_max_weight(job.weights);
+            channel->unweight_and_write(job.unweighted_events);
             update_counts();
             print_gen_update(false);
             _running_jobs.erase(*job_id);
@@ -214,7 +217,7 @@ bool EventGenerator::start_jobs() {
                     ->second;
             job.job_id = _job_id;
             job.context_index = context_index;
-            _channels.at(job.channel_index).start_job(job);
+            _channels.at(job.channel_index)->start_job(job);
             ++_job_id;
             ++_channel_job_counts.at(job.channel_index);
             ++ready_index;
@@ -236,15 +239,16 @@ void EventGenerator::update_integral() {
     std::size_t iterations = 0;
     bool optimized = true;
     for (auto& channel : _channels) {
-        total_mean += channel._cross_section.mean();
-        total_var += channel._cross_section.variance() / channel._cross_section.count();
-        total_count += channel.status().count;
-        total_count_opt += channel.status().count_opt;
-        total_count_after_cuts += channel.status().count_after_cuts;
-        total_count_after_cuts_opt += channel.status().count_after_cuts_opt;
-        total_integ_count += channel._cross_section.count();
-        iterations = std::max(channel._status.iterations, iterations);
-        if (channel._needs_optimization) {
+        total_mean += channel->_cross_section.mean();
+        total_var +=
+            channel->_cross_section.variance() / channel->_cross_section.count();
+        total_count += channel->status().count;
+        total_count_opt += channel->status().count_opt;
+        total_count_after_cuts += channel->status().count_after_cuts;
+        total_count_after_cuts_opt += channel->status().count_after_cuts_opt;
+        total_integ_count += channel->_cross_section.count();
+        iterations = std::max(channel->_status.iterations, iterations);
+        if (channel->_needs_optimization) {
             optimized = false;
         }
     }
@@ -258,7 +262,7 @@ void EventGenerator::update_integral() {
     _status.iterations = iterations;
     _status.optimized = optimized;
     for (auto& channel : _channels) {
-        channel._integral_fraction = channel._cross_section.mean() / total_mean;
+        channel->_integral_fraction = channel->_cross_section.mean() / total_mean;
     }
 }
 
@@ -266,8 +270,8 @@ void EventGenerator::update_counts() {
     double total_eff_count = 0.;
     bool done = true;
     for (auto& channel : _channels) {
-        double chan_target = channel._integral_fraction * _config.target_count;
-        if (channel._status.count_unweighted < chan_target) {
+        double chan_target = channel->_integral_fraction * _config.target_count;
+        if (channel->_status.count_unweighted < chan_target) {
             total_eff_count += _status.count_unweighted;
             done = false;
         } else {
@@ -477,11 +481,11 @@ void EventGenerator::unweight_all() {
     bool done = true;
     double total_eff_count = 0.;
     for (auto& channel : _channels) {
-        channel.unweight_file(rand_gen);
+        channel->unweight_file(rand_gen);
 
-        double chan_target = channel._integral_fraction * _config.target_count;
-        if (channel._status.count_unweighted < chan_target) {
-            total_eff_count += channel._status.count_unweighted;
+        double chan_target = channel->_integral_fraction * _config.target_count;
+        if (channel->_status.count_unweighted < chan_target) {
+            total_eff_count += channel->_status.count_unweighted;
             done = false;
         } else {
             total_eff_count += chan_target;
@@ -495,21 +499,21 @@ std::vector<GeneratorStatus> EventGenerator::channel_status() const {
     std::vector<GeneratorStatus> status;
     for (auto& channel : _channels) {
         // double target_count = channel.integral_fraction * _config.target_count;
-        status.push_back(channel.status());
+        status.push_back(channel->status());
     }
     return status;
 }
 
 std::vector<Histogram> EventGenerator::histograms() const {
-    std::vector<Histogram> hists = _channels.at(0)._histograms;
+    std::vector<Histogram> hists = _channels.at(0)->_histograms;
     for (auto& channel : _channels) {
-        for (auto [chan_hist, out_hist] : zip(channel._histograms, hists)) {
+        for (auto [chan_hist, out_hist] : zip(channel->_histograms, hists)) {
             for (auto [chan_w, chan_w2, val, err] :
                  zip(chan_hist.bin_values,
                      chan_hist.bin_errors,
                      out_hist.bin_values,
                      out_hist.bin_errors)) {
-                auto n = channel._status.count_opt;
+                auto n = channel->_status.count_opt;
                 val += chan_w / n;
                 err += (chan_w2 - chan_w * chan_w / n) / (n * n);
             }
@@ -530,18 +534,19 @@ EventGenerator::init_combine() {
     std::size_t particle_count = 0;
     double weight_sum = 0.;
     for (auto& channel : _channels) {
-        particle_count = std::max(particle_count, channel._event_file.particle_count());
+        particle_count =
+            std::max(particle_count, channel->_event_file.particle_count());
         std::size_t count =
-            std::round(channel._integral_fraction * _config.target_count);
+            std::round(channel->_integral_fraction * _config.target_count);
         count_sum += count;
-        channel._event_file.seek(0);
-        weight_sum += channel.channel_weight_sum(count);
-        channel._weight_file.seek(0);
+        channel->_event_file.seek(0);
+        weight_sum += channel->channel_weight_sum(count);
+        channel->_weight_file.seek(0);
         channel_data.push_back({
             .cum_count = count_sum,
             .event_buffer = EventBuffer(
                 0,
-                channel._event_file.particle_count(),
+                channel->_event_file.particle_count(),
                 DataLayout::of<EventIndicesRecord, ParticleRecord>()
             ),
             .weight_buffer = EventBuffer(
@@ -582,8 +587,8 @@ void EventGenerator::read_and_combine(
         while (true) {
             if (sampled_chan->buffer_index ==
                 sampled_chan->event_buffer.event_count()) {
-                channel._event_file.read(sampled_chan->event_buffer, batch_size);
-                channel._weight_file.read(sampled_chan->weight_buffer, batch_size);
+                channel->_event_file.read(sampled_chan->event_buffer, batch_size);
+                channel->_weight_file.read(sampled_chan->weight_buffer, batch_size);
                 sampled_chan->buffer_index = 0;
             }
             weight = sampled_chan->weight_buffer
@@ -599,8 +604,8 @@ void EventGenerator::read_and_combine(
             sampled_chan->buffer_index
         );
         auto event_out = buffer.event<EventFullRecord>(event_index);
-        event_out.weight() = std::max(1., weight / channel._max_weight) * norm_factor;
-        event_out.subprocess_index() = channel._status.subprocess;
+        event_out.weight() = std::max(1., weight / channel->_max_weight) * norm_factor;
+        event_out.subprocess_index() = channel->_status.subprocess;
         event_out.diagram_index() = event_in.diagram_index();
         event_out.color_index() = event_in.color_index();
         event_out.flavor_index() = event_in.flavor_index();
@@ -900,7 +905,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
         });
 
         for (std::size_t row = 1; auto& channel : channels | std::views::take(20)) {
-            std::string index_str = std::format("{}", channel.index);
+            std::string index_str = std::format("{}", channel.name);
             std::string int_str, rsd_str, count_str, unw_str, opt_str;
             if (!std::isnan(channel.error)) {
                 int_str = format_with_error(channel.mean, channel.error);

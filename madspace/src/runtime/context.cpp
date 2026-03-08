@@ -104,9 +104,9 @@ const MatrixElementApi&
 Context::load_matrix_element(const std::string& file, const std::string& param_card) {
     _param_card_paths.push_back(param_card);
     _matrix_elements.push_back(
-        std::make_unique<MatrixElementApi>(
+        std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
             file, param_card, *_thread_pool, _matrix_elements.size()
-        )
+        ))
     );
     return *_matrix_elements.back().get();
 }

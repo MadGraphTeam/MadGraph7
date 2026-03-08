@@ -8,7 +8,6 @@ ChannelEventGenerator::ChannelEventGenerator(
     const std::string& event_file,
     const std::string& weight_file,
     const GeneratorConfig& config,
-    std::size_t index,
     std::size_t subprocess_index,
     const std::string& name,
     const std::optional<ObservableHistograms>& histograms,
@@ -16,7 +15,6 @@ ChannelEventGenerator::ChannelEventGenerator(
 ) :
     _contexts(contexts),
     _status{
-        .index = index,
         .subprocess = subprocess_index,
         .name = name,
         .mean = integral_estimate,
@@ -266,7 +264,7 @@ void ChannelEventGenerator::start_job(GeneratorBatchJob& job) {
 }
 
 void ChannelEventGenerator::build_vegas_jobs(
-    std::vector<GeneratorBatchJob>& ready_jobs, bool unweight
+    std::vector<GeneratorBatchJob>& ready_jobs, bool unweight, std::size_t channel_index
 ) {
     std::size_t vegas_job_count =
         (_batch_size + _config.batch_size - 1) / _config.batch_size;
@@ -274,7 +272,7 @@ void ChannelEventGenerator::build_vegas_jobs(
         std::size_t batch_size =
             std::min(_config.batch_size, _batch_size - i * _config.batch_size);
         ready_jobs.push_back(
-            {.channel_index = i,
+            {.channel_index = channel_index,
              .unweight = true,
              .batch_size = batch_size,
              .vegas_job_count = vegas_job_count}

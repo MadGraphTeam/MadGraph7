@@ -64,7 +64,6 @@ struct GeneratorConfig {
 };
 
 struct GeneratorStatus {
-    std::size_t index;
     std::size_t subprocess;
     std::string name;
     double mean;

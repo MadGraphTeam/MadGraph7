@@ -178,12 +178,6 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("hip_device", &hip_device, py::return_value_policy::reference);
 
     py::classh<MatrixElementApi>(m, "MatrixElementApi")
-        .def(
-            py::init<const std::string&, const std::string&, std::size_t>(),
-            py::arg("file"),
-            py::arg("param_card"),
-            py::arg("index") = 0
-        )
         .def("device", &MatrixElementApi::device)
         .def("particle_count", &MatrixElementApi::particle_count)
         .def("diagram_count", &MatrixElementApi::diagram_count)
@@ -202,8 +196,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("__dlpack_device__", &dlpack_device);
 
     py::classh<Context>(m, "Context")
-        .def(py::init<>())
-        .def(py::init<DevicePtr>(), py::arg("device"))
+        .def(py::init<int>(), py::arg("thread_count") = -1)
+        .def(
+            py::init<DevicePtr, int>(), py::arg("device"), py::arg("thread_count") = -1
+        )
         .def(
             "load_matrix_element",
             &Context::load_matrix_element,
@@ -856,8 +852,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("optimize", &VegasGridOptimizer::optimize)
         .def(
-            py::init<ContextPtr, const std::string&, double>(),
-            py::arg("context"),
+            py::init<const std::vector<ContextPtr>&, const std::string&, double>(),
+            py::arg("contexts"),
             py::arg("grid_name"),
             py::arg("damping")
         );
@@ -879,8 +875,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("optimize", &DiscreteOptimizer::optimize)
         .def(
-            py::init<ContextPtr, const std::vector<std::string>&>(),
-            py::arg("context"),
+            py::init<const std::vector<ContextPtr>&, const std::vector<std::string>&>(),
+            py::arg("contexts"),
             py::arg("prob_names")
         );
 
@@ -1099,87 +1095,102 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<IntegrandProbability, FunctionGenerator>(m, "IntegrandProbability")
         .def(py::init<const Integrand&>(), py::arg("integrand"));
 
-    add_enum<EventGenerator::Verbosity>(
+    add_enum<GeneratorConfig::Verbosity>(
         m,
-        "EventGeneratorVerbosity",
+        "GeneratorVerbosity",
         {
-            {"silent", EventGenerator::silent},
-            {"log", EventGenerator::log},
-            {"pretty", EventGenerator::pretty},
+            {"silent", GeneratorConfig::silent},
+            {"log", GeneratorConfig::log},
+            {"pretty", GeneratorConfig::pretty},
         }
     );
-    py::classh<EventGenerator::Config>(m, "EventGeneratorConfig")
+    py::classh<GeneratorConfig>(m, "GeneratorConfig")
         .def(py::init<>())
-        .def_readwrite("target_count", &EventGenerator::Config::target_count)
-        .def_readwrite("vegas_damping", &EventGenerator::Config::vegas_damping)
+        .def_readwrite("target_count", &GeneratorConfig::target_count)
+        .def_readwrite("vegas_damping", &GeneratorConfig::vegas_damping)
         .def_readwrite(
-            "max_overweight_truncation",
-            &EventGenerator::Config::max_overweight_truncation
+            "max_overweight_truncation", &GeneratorConfig::max_overweight_truncation
         )
         .def_readwrite(
-            "freeze_max_weight_after", &EventGenerator::Config::freeze_max_weight_after
+            "freeze_max_weight_after", &GeneratorConfig::freeze_max_weight_after
         )
-        .def_readwrite("start_batch_size", &EventGenerator::Config::start_batch_size)
-        .def_readwrite("max_batch_size", &EventGenerator::Config::max_batch_size)
-        .def_readwrite("survey_min_iters", &EventGenerator::Config::survey_min_iters)
-        .def_readwrite("survey_max_iters", &EventGenerator::Config::survey_max_iters)
+        .def_readwrite("start_batch_size", &GeneratorConfig::start_batch_size)
+        .def_readwrite("max_batch_size", &GeneratorConfig::max_batch_size)
+        .def_readwrite("survey_min_iters", &GeneratorConfig::survey_min_iters)
+        .def_readwrite("survey_max_iters", &GeneratorConfig::survey_max_iters)
         .def_readwrite(
-            "survey_target_precision", &EventGenerator::Config::survey_target_precision
+            "survey_target_precision", &GeneratorConfig::survey_target_precision
         )
+        .def_readwrite("optimization_patience", &GeneratorConfig::optimization_patience)
         .def_readwrite(
-            "optimization_patience", &EventGenerator::Config::optimization_patience
+            "optimization_threshold", &GeneratorConfig::optimization_threshold
         )
-        .def_readwrite(
-            "optimization_threshold", &EventGenerator::Config::optimization_threshold
-        )
-        .def_readwrite("batch_size", &EventGenerator::Config::batch_size)
-        .def_readwrite("verbosity", &EventGenerator::Config::verbosity);
-    py::classh<EventGenerator::Status>(m, "EventGeneratorStatus")
+        .def_readwrite("batch_size", &GeneratorConfig::batch_size)
+        .def_readwrite("verbosity", &GeneratorConfig::verbosity);
+
+    py::classh<GeneratorStatus>(m, "GeneratorStatus")
         .def(py::init<>())
-        .def_readwrite("index", &EventGenerator::Status::index)
-        .def_readwrite("mean", &EventGenerator::Status::mean)
-        .def_readwrite("error", &EventGenerator::Status::error)
-        .def_readwrite("rel_std_dev", &EventGenerator::Status::rel_std_dev)
-        .def_readwrite("count", &EventGenerator::Status::count)
-        .def_readwrite("count_opt", &EventGenerator::Status::count_opt)
-        .def_readwrite("count_after_cuts", &EventGenerator::Status::count_after_cuts)
-        .def_readwrite(
-            "count_after_cuts_opt", &EventGenerator::Status::count_after_cuts_opt
+        .def_readwrite("mean", &GeneratorStatus::mean)
+        .def_readwrite("error", &GeneratorStatus::error)
+        .def_readwrite("rel_std_dev", &GeneratorStatus::rel_std_dev)
+        .def_readwrite("count", &GeneratorStatus::count)
+        .def_readwrite("count_opt", &GeneratorStatus::count_opt)
+        .def_readwrite("count_after_cuts", &GeneratorStatus::count_after_cuts)
+        .def_readwrite("count_after_cuts_opt", &GeneratorStatus::count_after_cuts_opt)
+        .def_readwrite("count_unweighted", &GeneratorStatus::count_unweighted)
+        .def_readwrite("count_target", &GeneratorStatus::count_target)
+        .def_readwrite("iterations", &GeneratorStatus::iterations)
+        .def_readwrite("done", &GeneratorStatus::done);
+
+    py::classh<Histogram>(m, "Histogram")
+        .def_readonly("name", &Histogram::name)
+        .def_readonly("min", &Histogram::min)
+        .def_readonly("max", &Histogram::max)
+        .def_readonly("bin_values", &Histogram::bin_values)
+        .def_readonly("bin_errors", &Histogram::bin_errors);
+
+    py::classh<ChannelEventGenerator>(m, "ChannelEventGenerator")
+        .def(
+            py::init<
+                const std::vector<ContextPtr>&,
+                const Integrand&,
+                const std::string&,
+                const std::string&,
+                const GeneratorConfig&,
+                std::size_t,
+                const std::string&,
+                const std::optional<ObservableHistograms>&,
+                double>(),
+            py::arg("contexts"),
+            py::arg("integrand"),
+            py::arg("event_file"),
+            py::arg("weight_file"),
+            py::arg("config"),
+            py::arg("subprocess_index"),
+            py::arg("name"),
+            py::arg("histograms"),
+            py::arg("integral_estimate") = 0.
         )
-        .def_readwrite("count_unweighted", &EventGenerator::Status::count_unweighted)
-        .def_readwrite("count_target", &EventGenerator::Status::count_target)
-        .def_readwrite("iterations", &EventGenerator::Status::iterations)
-        .def_readwrite("done", &EventGenerator::Status::done);
-    py::classh<EventGenerator::Histogram>(m, "EventGeneratorHistogram")
-        .def_readonly("name", &EventGenerator::Histogram::name)
-        .def_readonly("min", &EventGenerator::Histogram::min)
-        .def_readonly("max", &EventGenerator::Histogram::max)
-        .def_readonly("bin_values", &EventGenerator::Histogram::bin_values)
-        .def_readonly("bin_errors", &EventGenerator::Histogram::bin_errors);
+        .def_readonly_static(
+            "integrand_flags", &ChannelEventGenerator::integrand_flags
+        );
+
     py::classh<EventGenerator>(m, "EventGenerator")
         .def_readonly_static("default_config", &EventGenerator::default_config)
         .def(
             py::init<
-                ContextPtr,
-                const std::vector<Integrand>&,
+                const std::vector<ContextPtr>&,
+                const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
                 const std::string&,
-                const std::string&,
-                const EventGenerator::Config&,
-                const std::vector<std::size_t>&,
-                const std::vector<std::string>&,
-                const std::vector<ObservableHistograms>&>(),
-            py::arg("context"),
+                const GeneratorConfig&>(),
+            py::arg("contexts"),
             py::arg("channels"),
-            py::arg("temp_file_prefix"),
             py::arg("status_file") = "",
             py::arg_v(
                 "config",
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
-            ),
-            py::arg("channel_subprocesses") = std::vector<std::size_t>{},
-            py::arg("channel_names") = std::vector<std::string>{},
-            py::arg("channel_histograms") = std::vector<ObservableHistograms>{}
+            )
         )
         .def("survey", &EventGenerator::survey)
         .def("generate", &EventGenerator::generate)
@@ -1202,8 +1213,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)
-        .def("histograms", &EventGenerator::histograms)
-        .def_readonly_static("integrand_flags", &EventGenerator::integrand_flags);
+        .def("histograms", &EventGenerator::histograms);
 
     py::classh<LHEHeader>(m, "LHEHeader")
         .def(
@@ -1372,7 +1382,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("subproc_args"),
             py::arg("bw_cutoff")
         )
-        .def(
+        /*.def(
             "complete_event_data",
             &LHECompleter::complete_event_data,
             py::arg("event"),
@@ -1381,7 +1391,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("color_index"),
             py::arg("flavor_index"),
             py::arg("helicity_index")
-        )
+        )*/
         .def_property_readonly("max_particle_count", &LHECompleter::max_particle_count);
     py::classh<LHEFileWriter>(m, "LHEFileWriter")
         .def(
@@ -1440,11 +1450,6 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_static("error", &Logger::error, py::arg("message"))
         .def_static("set_log_handler", &Logger::set_log_handler, py::arg("func"));
 
-    m.def(
-        "set_thread_count",
-        [](int new_count) { default_thread_pool().set_thread_count(new_count); },
-        py::arg("new_count")
-    );
     m.def(
         "initialize_vegas_grid",
         &initialize_vegas_grid,

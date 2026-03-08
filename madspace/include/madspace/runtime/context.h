@@ -12,12 +12,6 @@ namespace madspace {
 
 class MatrixElementApi {
 public:
-    MatrixElementApi(
-        const std::string& file,
-        const std::string& param_card,
-        ThreadPool& thread_pool,
-        std::size_t index = 0
-    );
     MatrixElementApi(MatrixElementApi&&) noexcept = default;
     MatrixElementApi& operator=(MatrixElementApi&&) noexcept = default;
     MatrixElementApi(const MatrixElementApi&) = delete;
@@ -85,6 +79,13 @@ public:
     }
 
 private:
+    MatrixElementApi(
+        const std::string& file,
+        const std::string& param_card,
+        ThreadPool& thread_pool,
+        std::size_t index = 0
+    );
+
     void check_umami_status(UmamiStatus status) const;
     [[noreturn]] void throw_error(const std::string& message) const;
     std::unique_ptr<void, std::function<void(void*)>> _shared_lib;
@@ -96,6 +97,8 @@ private:
     ThreadResource<InstanceType> _instances;
     std::string _file_name;
     std::size_t _index;
+
+    friend class Context;
 };
 
 class Context {
@@ -103,9 +106,11 @@ class Context {
      * Contains global variables and matrix elements
      */
 public:
-    Context() : _device(cpu_device()), _thread_pool(std::make_unique<ThreadPool>()) {}
-    Context(DevicePtr device) :
-        _device(device), _thread_pool(std::make_unique<ThreadPool>()) {}
+    Context(int thread_count = -1) :
+        _device(cpu_device()),
+        _thread_pool(std::make_unique<ThreadPool>(thread_count)) {}
+    Context(DevicePtr device, int thread_count = -1) :
+        _device(device), _thread_pool(std::make_unique<ThreadPool>(thread_count)) {}
     Context(Context&&) = default;
     Context& operator=(Context&&) = default;
     Context(const Context&) = delete;

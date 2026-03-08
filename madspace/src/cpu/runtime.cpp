@@ -1067,7 +1067,8 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_concurrent(
                     instr_index,
                     job_count,
                     barrier_state,
-                    funcs_after_barrier[instr_index]
+                    funcs_after_barrier[instr_index],
+                    _context->thread_pool()
                 );
                 switch (instr.opcode) {
                 case -1: { // free memory
@@ -1170,7 +1171,8 @@ CpuRuntime::run_backward_concurrent(
                         instr_index,
                         job_count,
                         barrier_state,
-                        funcs_after_barrier[instr_index]
+                        funcs_after_barrier[instr_index],
+                        _context->thread_pool()
                     );
 
                     for (auto [output_index, output_dtype] :

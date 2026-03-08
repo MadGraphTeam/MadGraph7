@@ -28,7 +28,7 @@ public:
 
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
-        const std::vector<ChannelEventGenerator>& channels,
+        const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         const std::string& status_file = "",
         const GeneratorConfig& config = default_config
     );
@@ -55,7 +55,7 @@ private:
     inline static std::function<void(void)> _abort_check_function = [] {};
 
     GeneratorConfig _config;
-    std::vector<ChannelEventGenerator> _channels;
+    std::vector<std::shared_ptr<ChannelEventGenerator>> _channels;
     GeneratorStatus _status;
     std::vector<ContextPtr> _contexts;
     std::unordered_map<std::size_t, GeneratorBatchJob> _running_jobs;

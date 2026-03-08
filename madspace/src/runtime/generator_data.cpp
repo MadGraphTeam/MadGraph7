@@ -4,7 +4,6 @@ using namespace madspace;
 
 void madspace::to_json(nlohmann::json& j, const GeneratorStatus& status) {
     j = nlohmann::json{
-        {"index", status.index},
         {"subprocess", status.subprocess},
         {"name", status.name},
         {"mean", status.mean},

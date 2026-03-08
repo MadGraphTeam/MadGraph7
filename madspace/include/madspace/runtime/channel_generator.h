@@ -27,7 +27,6 @@ public:
         const std::string& event_file,
         const std::string& weight_file,
         const GeneratorConfig& config,
-        std::size_t index,
         std::size_t subprocess_index,
         const std::string& name,
         const std::optional<ObservableHistograms>& histograms,
@@ -48,7 +47,11 @@ private:
     void integrate_and_optimize(const GeneratorBatchJob& job, bool run_optim);
     double channel_weight_sum(std::size_t event_count);
     void start_job(GeneratorBatchJob& job);
-    void build_vegas_jobs(std::vector<GeneratorBatchJob>& ready_jobs, bool unweight);
+    void build_vegas_jobs(
+        std::vector<GeneratorBatchJob>& ready_jobs,
+        bool unweight,
+        std::size_t channel_index
+    );
     void clear_events();
     void update_max_weight(Tensor weights);
     void unweight_and_write(const TensorVec& unweighted_events);
