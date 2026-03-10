@@ -1126,7 +1126,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             "optimization_threshold", &GeneratorConfig::optimization_threshold
         )
         .def_readwrite("batch_size", &GeneratorConfig::batch_size)
-        .def_readwrite("verbosity", &GeneratorConfig::verbosity);
+        .def_readwrite("verbosity", &GeneratorConfig::verbosity)
+        .def_readwrite("write_live_data", &GeneratorConfig::write_live_data)
+        .def_readwrite("combine_thread_count", &GeneratorConfig::combine_thread_count);
 
     py::classh<GeneratorStatus>(m, "GeneratorStatus")
         .def(py::init<>())

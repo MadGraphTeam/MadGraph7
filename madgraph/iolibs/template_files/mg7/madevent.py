@@ -114,7 +114,6 @@ class MadgraphProcess:
 
     def init_backend(self) -> None:
         ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
-        ms.set_thread_count(self.run_card["run"]["thread_pool_size"])
 
     def init_event_dir(self) -> None:
         run_name = self.run_card["run"]["run_name"]
@@ -244,7 +243,7 @@ class MadgraphProcess:
         run_args = self.run_card["run"]
         gen_args = self.run_card["generation"]
         vegas_args = self.run_card["vegas"]
-        cfg = ms.EventGeneratorConfig()
+        cfg = ms.GeneratorConfig()
         cfg.target_count = gen_args["events"]
         cfg.vegas_damping = vegas_args["damping"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
@@ -263,15 +262,15 @@ class MadgraphProcess:
 
     def init_context(self) -> None:
         device_name = self.run_card["run"]["device"]
-        if device_name == "cpu":
-            device = ms.cpu_device()
-        elif device_name == "cuda":
+        if device_name == "cuda":
             device = ms.cuda_device()
         elif device_name == "hip":
             device = ms.hip_device()
         else:
-            raise ValueError("Unknown device")
-        self.context = ms.Context(device)
+            device = ms.cpu_device()
+        self.context = ms.Context(
+            device=device, thread_count=self.run_card["run"]["thread_pool_size"]
+        )
 
     def init_subprocesses(self) -> None:
         self.subprocesses = []
@@ -281,29 +280,29 @@ class MadgraphProcess:
     def build_event_generator(
         self, phasespaces: list[PhaseSpace], file: str
     ) -> ms.EventGenerator:
-        integrands = []
-        subproc_ids = []
-        channel_names = []
-        channel_hists = []
-        for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
-            subproc_integrands = subproc.build_integrands(phasespace)
-            integrands.extend(subproc.build_integrands(phasespace))
-            subproc_ids.extend([i] * len(phasespace.channels))
-            channel_names.extend([f"{i}.{chan.name}" for chan in phasespace.channels])
-            if subproc.histograms is not None:
-                channel_hists.extend([subproc.histograms] * len(phasespace.channels))
-        #print(integrands[0].function())
-        #integrands[0].function().save("test.json")
-        #integrands[0] = ms.Function.load("test.json")
+        channel_generators = [
+            ms.ChannelEventGenerator(
+                contexts=[self.context],
+                integrand=integrand,
+                event_file=f"events.{i}.{channel.name}.npy",
+                weight_file=f"weights.{i}.{channel.name}.npy",
+                config=self.event_generator_config,
+                subprocess_index=i,
+                name=f"{i}.{channel.name}",
+                histograms=subproc.histograms,
+                integral_estimate=0.,
+            )
+            for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces))
+            for integrand, channel in zip(
+                subproc.build_integrands(phasespace), phasespace.channels
+            )
+        ]
+
         return ms.EventGenerator(
-            context=self.context,
-            channels=integrands,
-            temp_file_prefix=os.path.join(self.run_path, file),
+            contexts=[self.context],
+            channels=channel_generators,
             status_file=os.path.join(self.run_path, "info.json"),
             config=self.event_generator_config,
-            channel_subprocesses=subproc_ids,
-            channel_names=channel_names,
-            channel_histograms=channel_hists,
         )
 
     def survey_phasespaces(
@@ -590,7 +589,7 @@ class MadgraphSubprocess:
         self.subproc_id = subproc_id
         self.multi_channel_data = None
 
-        api_path = self.meta["path"]
+        api_path = self.meta["me_path"]
         if not os.path.isfile(api_path):
             cwd = os.getcwd()
             api_dir = os.path.dirname(api_path)
@@ -640,7 +639,7 @@ class MadgraphSubprocess:
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_element = None
-        else: 
+        else:
             self.matrix_element = self.process.context.load_matrix_element(
                 api_path, self.process.param_card_path
             )
@@ -1044,7 +1043,7 @@ class MadgraphSubprocess:
     def build_integrands(
         self,
         phasespace: PhaseSpace,
-        flags: int = ms.EventGenerator.integrand_flags
+        flags: int = ms.ChannelEventGenerator.integrand_flags
     ) -> list[ms.Integrand]:
         flavors = []
         flavor_remap = []

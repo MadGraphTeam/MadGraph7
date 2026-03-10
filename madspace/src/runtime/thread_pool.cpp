@@ -132,7 +132,6 @@ void ThreadPool::thread_loop(std::size_t index) {
                 lock = std::unique_lock(_mutex);
                 cv_done = &_cv_done;
             }
-            lock.lock();
             continue;
         }
         if (index >= _thread_count) {
@@ -170,6 +169,7 @@ MultiThreadPool::~MultiThreadPool() {
 }
 
 std::optional<std::size_t> MultiThreadPool::wait() {
+    // return _pools.at(0)->wait();
     if (!fill_done_cache()) {
         return std::nullopt;
     }
@@ -179,6 +179,7 @@ std::optional<std::size_t> MultiThreadPool::wait() {
 }
 
 std::vector<std::size_t> MultiThreadPool::wait_multiple() {
+    // return _pools.at(0)->wait_multiple();
     if (!fill_done_cache()) {
         return {};
     }

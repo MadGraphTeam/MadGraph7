@@ -147,6 +147,9 @@ void ChannelEventGenerator::integrate_and_optimize(
         }
         _cross_section.push(w_view[i]);
     }
+    _status.mean = _cross_section.mean();
+    _status.error = _cross_section.error();
+    _status.rel_std_dev = _cross_section.rel_std_dev();
     _status.count += w_view.size();
     _status.count_opt += w_view.size();
     _status.count_after_cuts += sample_count_after_cuts;
@@ -185,7 +188,7 @@ void ChannelEventGenerator::integrate_and_optimize(
         } else {
             ++_iters_without_improvement;
             if (_iters_without_improvement >= _config.optimization_patience) {
-                _needs_optimization = false;
+                _status.optimized = true;
             }
         }
         _best_rsd = std::min(rsd, _best_rsd);
@@ -263,15 +266,16 @@ void ChannelEventGenerator::start_job(GeneratorBatchJob& job) {
     });
 }
 
-void ChannelEventGenerator::build_vegas_jobs(
-    std::vector<GeneratorBatchJob>& ready_jobs, bool unweight, std::size_t channel_index
-) {
+std::vector<GeneratorBatchJob>
+ChannelEventGenerator::build_vegas_jobs(bool unweight, std::size_t channel_index) {
     std::size_t vegas_job_count =
         (_batch_size + _config.batch_size - 1) / _config.batch_size;
+    std::vector<GeneratorBatchJob> jobs;
+    jobs.reserve(vegas_job_count);
     for (std::size_t i = 0; i < vegas_job_count; ++i) {
         std::size_t batch_size =
             std::min(_config.batch_size, _batch_size - i * _config.batch_size);
-        ready_jobs.push_back(
+        jobs.push_back(
             {.channel_index = channel_index,
              .unweight = true,
              .batch_size = batch_size,
@@ -279,6 +283,7 @@ void ChannelEventGenerator::build_vegas_jobs(
         );
     }
     _batch_size = std::min(_batch_size * 2, _config.max_batch_size);
+    return jobs;
 }
 
 void ChannelEventGenerator::clear_events() {
@@ -380,4 +385,6 @@ void ChannelEventGenerator::unweight_and_write(
     _event_file.write(event_buffer);
     _weight_file.write(weight_buffer);
     _status.count_unweighted += w_view.size();
+    _status.done =
+        _status.count_unweighted >= _integral_fraction * _config.target_count;
 }

@@ -46,6 +46,7 @@ EventGenerator::EventGenerator(
         .optimized = false,
         .done = false
     },
+    _channels(channels),
     _contexts(contexts),
     _job_id(0),
     _channel_job_counts(channels.size()),
@@ -80,7 +81,8 @@ void EventGenerator::survey() {
     std::size_t iter = 0;
     for (; !done && iter < max_iters; ++iter) {
         std::size_t job_count_before = _running_jobs.size();
-        for (std::size_t i = 0; auto& channel : _channels) {
+        for (std::size_t i = 0;
+             auto [channel, channel_job_count] : zip(_channels, _channel_job_counts)) {
             if (channel->status().iterations > iter) {
                 continue;
             }
@@ -88,7 +90,9 @@ void EventGenerator::survey() {
                 channel->_cross_section.rel_error() < target_precision) {
                 continue;
             }
-            channel->build_vegas_jobs(_ready_jobs, iter >= min_iters - 1, i);
+            auto jobs = channel->build_vegas_jobs(iter >= min_iters - 1, i);
+            channel_job_count += jobs.size();
+            _ready_jobs.insert(_ready_jobs.end(), jobs.begin(), jobs.end());
             ++i;
         }
         start_jobs();
@@ -105,6 +109,7 @@ void EventGenerator::survey() {
                 channel->clear_events();
             }
             --channel_job_count;
+            --_context_job_counts.at(job.context_index);
             ++done_job_count;
 
             channel->integrate_and_optimize(job, channel_job_count == 0);
@@ -122,6 +127,7 @@ void EventGenerator::survey() {
                 done = false;
             }
             _running_jobs.erase(*job_id);
+            start_jobs();
             print_survey_update(false, done_job_count, total_job_count, iter);
         }
     }
@@ -147,25 +153,29 @@ void EventGenerator::generate() {
         do {
             job_count_before = _ready_jobs.size();
             for (std::size_t i = 0;
-                 i < _channels.size() && _running_jobs.size() < target_job_count;
+                 i < _channels.size() && _ready_jobs.size() < target_job_count;
                  ++i, channel_index = (channel_index + 1) % _channels.size()) {
                 auto& channel = _channels.at(channel_index);
+                auto& channel_job_count = _channel_job_counts.at(channel_index);
                 if (channel->_status.count_unweighted >=
                     channel->_integral_fraction * _config.target_count) {
                     continue;
                 }
                 if ((channel->_vegas_optimizer || channel->_discrete_optimizer) &&
-                    channel->_needs_optimization) {
-                    if (_channel_job_counts.at(i) == 0) {
-                        channel->build_vegas_jobs(_ready_jobs, true, i);
+                    !channel->_status.optimized) {
+                    if (channel_job_count == 0) {
+                        auto jobs = channel->build_vegas_jobs(true, channel_index);
+                        channel_job_count += jobs.size();
+                        _ready_jobs.insert(_ready_jobs.end(), jobs.begin(), jobs.end());
                     }
                 } else {
                     _ready_jobs.push_back({
-                        .channel_index = i,
+                        .channel_index = channel_index,
                         .unweight = true,
                         .batch_size = _config.batch_size,
                         .vegas_job_count = 0,
                     });
+                    ++channel_job_count;
                 }
             }
         } while (_ready_jobs.size() - job_count_before > 0);
@@ -175,15 +185,15 @@ void EventGenerator::generate() {
             auto& job = _running_jobs.at(*job_id);
             auto& channel = _channels.at(job.channel_index);
             auto& channel_job_count = _channel_job_counts.at(job.channel_index);
-            bool run_optim =
-                (channel->_vegas_optimizer || channel->_discrete_optimizer) &&
-                channel->_needs_optimization;
-            if (run_optim && channel_job_count == job.vegas_job_count) {
+            if (job.vegas_job_count > 0 && channel_job_count == job.vegas_job_count) {
                 channel->clear_events();
             }
             --channel_job_count;
+            --_context_job_counts.at(job.context_index);
 
-            channel->integrate_and_optimize(job, run_optim);
+            channel->integrate_and_optimize(
+                job, job.vegas_job_count > 0 && channel_job_count == 0
+            );
             update_integral();
             channel->update_max_weight(job.weights);
             channel->unweight_and_write(job.unweighted_events);
@@ -219,7 +229,6 @@ bool EventGenerator::start_jobs() {
             job.context_index = context_index;
             _channels.at(job.channel_index)->start_job(job);
             ++_job_id;
-            ++_channel_job_counts.at(job.channel_index);
             ++ready_index;
         }
         if (ready_index == _ready_jobs.size()) {
@@ -248,7 +257,7 @@ void EventGenerator::update_integral() {
         total_count_after_cuts_opt += channel->status().count_after_cuts_opt;
         total_integ_count += channel->_cross_section.count();
         iterations = std::max(channel->_status.iterations, iterations);
-        if (channel->_needs_optimization) {
+        if (!channel->status().optimized) {
             optimized = false;
         }
     }
@@ -263,6 +272,8 @@ void EventGenerator::update_integral() {
     _status.optimized = optimized;
     for (auto& channel : _channels) {
         channel->_integral_fraction = channel->_cross_section.mean() / total_mean;
+        channel->_status.count_target =
+            channel->_integral_fraction * _config.target_count;
     }
 }
 
@@ -272,7 +283,7 @@ void EventGenerator::update_counts() {
     for (auto& channel : _channels) {
         double chan_target = channel->_integral_fraction * _config.target_count;
         if (channel->_status.count_unweighted < chan_target) {
-            total_eff_count += _status.count_unweighted;
+            total_eff_count += channel->_status.count_unweighted;
             done = false;
         } else {
             total_eff_count += chan_target;
@@ -810,7 +821,7 @@ void EventGenerator::print_gen_init() {
         _pretty_box_lower = PrettyBox(
             "Individual channels",
             _channels.size() < 21 ? _channels.size() + 1 : 22,
-            {4, 16, 9, 9, 7, 7, 0}
+            {6, 16, 9, 9, 7, 6, 0}
         );
         _pretty_box_lower.set_row(
             0, {"#", "integral ↓", "RSD", "uweff", "N", "opt", "unweighted"}
@@ -930,7 +941,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
                         channel.count_unweighted / channel.count_target, 19
                     );
                 }
-                unw_str = std::format("{:<15} {:<19}", unw_count_str, progress);
+                unw_str = std::format("{:<14} {:<19}", unw_count_str, progress);
             }
             _pretty_box_lower.set_row(
                 row,
