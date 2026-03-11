@@ -10,14 +10,13 @@ ChannelEventGenerator::ChannelEventGenerator(
     const GeneratorConfig& config,
     std::size_t subprocess_index,
     const std::string& name,
-    const std::optional<ObservableHistograms>& histograms,
-    double integral_estimate
+    const std::optional<ObservableHistograms>& histograms
 ) :
     _contexts(contexts),
     _status{
         .subprocess = subprocess_index,
         .name = name,
-        .mean = integral_estimate,
+        .mean = 0.,
         .error = 0.,
         .rel_std_dev = 0.,
         .count = 0,
@@ -25,7 +24,7 @@ ChannelEventGenerator::ChannelEventGenerator(
         .count_after_cuts = 0,
         .count_after_cuts_opt = 0,
         .count_unweighted = 0.,
-        .count_target = 0.,
+        .count_target = 1.,
         .optimized = false,
         .done = false
     },
@@ -112,7 +111,7 @@ ChannelEventGenerator::ChannelEventGenerator(
     }
 }
 
-void ChannelEventGenerator::unweight_file(std::mt19937 rand_gen) {
+void ChannelEventGenerator::unweight_file(std::mt19937& rand_gen) {
     std::size_t buf_size = 1000000;
     std::uniform_real_distribution<double> rand_dist;
     EventBuffer buffer(0, 0, DataLayout::of<EventWeightRecord, EmptyParticleRecord>());
@@ -323,7 +322,7 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
 
     double w_sum = 0, w_prev = 0;
     double max_truncation = _config.max_overweight_truncation *
-        std::min(_integral_fraction * _config.target_count,
+        std::min(_status.count_target,
                  static_cast<double>(_config.freeze_max_weight_after));
     std::size_t count = 0;
     for (auto w : _large_weights) {
@@ -383,6 +382,5 @@ void ChannelEventGenerator::unweight_and_write(
     _event_file.write(event_buffer);
     _weight_file.write(weight_buffer);
     _status.count_unweighted += w_view.size();
-    _status.done =
-        _status.count_unweighted >= _integral_fraction * _config.target_count;
+    _status.done = _status.count_unweighted >= _status.count_target;
 }

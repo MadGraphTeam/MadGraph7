@@ -29,11 +29,28 @@ public:
         const GeneratorConfig& config,
         std::size_t subprocess_index,
         const std::string& name,
-        const std::optional<ObservableHistograms>& histograms,
-        double integral_estimate = 0.
+        const std::optional<ObservableHistograms>& histograms
     );
 
     const GeneratorStatus& status() const { return _status; }
+    const RunningIntegral& cross_section() const { return _cross_section; }
+    const std::vector<Histogram>& histograms() const { return _histograms; }
+    EventFile& event_file() { return _event_file; }
+    EventFile& weight_file() { return _weight_file; }
+    std::size_t max_weight() const { return _max_weight; }
+    bool needs_optimization() const {
+        return (_vegas_optimizer || _discrete_optimizer) && !_status.optimized;
+    }
+    void set_target_count(double target_count) { _status.count_target = target_count; }
+
+    void unweight_file(std::mt19937& rand_gen);
+    void integrate_and_optimize(const GeneratorBatchJob& job, bool run_optim);
+    double channel_weight_sum(std::size_t event_count);
+    void start_job(GeneratorBatchJob& job, ResultQueue& result_queue);
+    std::size_t next_vegas_batch_size();
+    void clear_events();
+    void update_max_weight(Tensor weights);
+    void unweight_and_write(const TensorVec& unweighted_events);
 
 private:
     struct ContextRuntimes {
@@ -43,14 +60,6 @@ private:
         RuntimePtr discrete_histogram;
         RuntimePtr observable_histograms;
     };
-    void unweight_file(std::mt19937 rand_gen);
-    void integrate_and_optimize(const GeneratorBatchJob& job, bool run_optim);
-    double channel_weight_sum(std::size_t event_count);
-    void start_job(GeneratorBatchJob& job, ResultQueue& result_queue);
-    std::size_t next_vegas_batch_size();
-    void clear_events();
-    void update_max_weight(Tensor weights);
-    void unweight_and_write(const TensorVec& unweighted_events);
 
     GeneratorStatus _status;
     GeneratorConfig _config;
@@ -64,13 +73,10 @@ private:
     RunningIntegral _cross_section;
     double _max_weight = 0.;
     std::size_t _unweighted_count = 0;
-    double _integral_fraction = 1.;
     std::size_t _iters_without_improvement = 0;
     double _best_rsd = std::numeric_limits<double>::max();
     std::vector<double> _large_weights;
     std::vector<Histogram> _histograms;
-
-    friend class EventGenerator;
 };
 
 } // namespace madspace

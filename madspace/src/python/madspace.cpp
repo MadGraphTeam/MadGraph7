@@ -1165,8 +1165,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const GeneratorConfig&,
                 std::size_t,
                 const std::string&,
-                const std::optional<ObservableHistograms>&,
-                double>(),
+                const std::optional<ObservableHistograms>&>(),
             py::arg("contexts"),
             py::arg("integrand"),
             py::arg("event_file"),
@@ -1174,8 +1173,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             py::arg("subprocess_index"),
             py::arg("name"),
-            py::arg("histograms"),
-            py::arg("integral_estimate") = 0.
+            py::arg("histograms")
         )
         .def_readonly_static(
             "integrand_flags", &ChannelEventGenerator::integrand_flags

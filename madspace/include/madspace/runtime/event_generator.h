@@ -63,6 +63,7 @@ private:
     std::size_t _job_id;
     std::vector<std::size_t> _channel_job_counts;
     std::vector<bool> _channel_optimizing;
+    std::vector<double> _channel_integral_fractions;
     std::vector<std::size_t> _context_job_counts;
     ResultQueue _result_queue;
 

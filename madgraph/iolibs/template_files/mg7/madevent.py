@@ -294,8 +294,7 @@ class MadgraphProcess:
                 config=self.event_generator_config,
                 subprocess_index=i,
                 name=f"{i}.{channel.name}",
-                histograms=subproc.histograms,
-                integral_estimate=0.,
+                histograms=subproc.histograms
             )
             for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces))
             for integrand, channel in zip(
@@ -423,7 +422,6 @@ class MadgraphProcess:
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces, "events")
-        self.event_generator.survey() #TODO: avoid
 
     def update_madnis_status_single(
         self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
