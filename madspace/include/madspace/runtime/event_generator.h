@@ -62,6 +62,7 @@ private:
     std::vector<GeneratorBatchJob> _ready_jobs;
     std::size_t _job_id;
     std::vector<std::size_t> _channel_job_counts;
+    std::vector<bool> _channel_optimizing;
     std::vector<std::size_t> _context_job_counts;
 
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
@@ -101,20 +102,20 @@ private:
     void print_survey_init();
     void print_survey_update(
         bool done,
-        std::size_t done_job_count,
-        std::size_t total_job_count,
+        std::size_t done_event_count,
+        std::size_t total_event_count,
         std::size_t iter
     );
     void print_survey_update_pretty(
         bool done,
-        std::size_t done_job_count,
-        std::size_t total_job_count,
+        std::size_t done_event_count,
+        std::size_t total_event_count,
         std::size_t iter
     );
     void print_survey_update_log(
         bool done,
-        std::size_t done_job_count,
-        std::size_t total_job_count,
+        std::size_t done_event_count,
+        std::size_t total_event_count,
         std::size_t iter
     );
 

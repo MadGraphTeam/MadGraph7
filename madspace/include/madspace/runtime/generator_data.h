@@ -57,7 +57,8 @@ struct GeneratorConfig {
     double survey_target_precision = 0.1;
     std::size_t optimization_patience = 3;
     double optimization_threshold = 0.99;
-    std::size_t batch_size = 1000;
+    std::size_t cpu_batch_size = 1000;
+    std::size_t gpu_batch_size = 64000;
     Verbosity verbosity = silent;
     bool write_live_data = false;
     int combine_thread_count = -1;
@@ -91,8 +92,8 @@ struct Histogram {
 struct GeneratorBatchJob {
     std::size_t channel_index;
     bool unweight;
-    std::size_t batch_size;
-    std::size_t vegas_job_count;
+    std::size_t vegas_batch_size;
+    std::size_t split_job_count;
     Tensor weights;
     TensorVec unweighted_events;
     TensorVec hists;

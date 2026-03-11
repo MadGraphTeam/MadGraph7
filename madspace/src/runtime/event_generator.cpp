@@ -50,6 +50,7 @@ EventGenerator::EventGenerator(
     _contexts(contexts),
     _job_id(0),
     _channel_job_counts(channels.size()),
+    _channel_optimizing(channels.size()),
     _context_job_counts(contexts.size()),
     _status_file(status_file) {}
 
@@ -64,15 +65,15 @@ void EventGenerator::survey() {
     for (auto& context : _contexts) {
         thread_pools.push_back(&context->thread_pool());
     }
-    MultiThreadPool multi_thread_pool(thread_pools);
+    // MultiThreadPool multi_thread_pool(thread_pools);
+    ThreadPool& multi_thread_pool = _contexts.at(0)->thread_pool();
 
-    std::size_t total_job_count = 0;
-    std::size_t done_job_count = 0;
+    std::size_t total_event_count = 0;
+    std::size_t done_event_count = 0;
     for (auto& channel : _channels) {
         std::size_t chan_batch_size = channel->_batch_size;
         for (std::size_t iter = channel->_status.iterations; iter < min_iters; ++iter) {
-            total_job_count +=
-                (chan_batch_size + _config.batch_size - 1) / _config.batch_size;
+            total_event_count += chan_batch_size;
             chan_batch_size = std::min(chan_batch_size * 2, _config.max_batch_size);
         }
     }
@@ -81,8 +82,7 @@ void EventGenerator::survey() {
     std::size_t iter = 0;
     for (; !done && iter < max_iters; ++iter) {
         std::size_t job_count_before = _running_jobs.size();
-        for (std::size_t i = 0;
-             auto [channel, channel_job_count] : zip(_channels, _channel_job_counts)) {
+        for (std::size_t i = 0; auto channel : _channels) {
             if (channel->status().iterations > iter) {
                 continue;
             }
@@ -90,29 +90,32 @@ void EventGenerator::survey() {
                 channel->_cross_section.rel_error() < target_precision) {
                 continue;
             }
-            auto jobs = channel->build_vegas_jobs(iter >= min_iters - 1, i);
-            channel_job_count += jobs.size();
-            _ready_jobs.insert(_ready_jobs.end(), jobs.begin(), jobs.end());
+            std::size_t vegas_batch_size = channel->next_vegas_batch_size();
+            _ready_jobs.push_back({
+                .channel_index = i,
+                .unweight = iter >= min_iters - 1,
+                .vegas_batch_size = vegas_batch_size,
+            });
+            total_event_count += vegas_batch_size;
             ++i;
         }
         start_jobs();
-        if (iter >= min_iters) {
-            total_job_count += _running_jobs.size() - job_count_before;
-        }
         done = true;
         while (auto job_id = multi_thread_pool.wait()) {
             _abort_check_function();
             auto& job = _running_jobs.at(*job_id);
             auto& channel = _channels.at(job.channel_index);
             auto& channel_job_count = _channel_job_counts.at(job.channel_index);
-            if (channel_job_count == job.vegas_job_count) {
+            if (channel_job_count == job.split_job_count) {
                 channel->clear_events();
             }
             --channel_job_count;
             --_context_job_counts.at(job.context_index);
-            ++done_job_count;
 
             channel->integrate_and_optimize(job, channel_job_count == 0);
+            if (channel_job_count == 0) {
+                done_event_count += job.vegas_batch_size;
+            }
             update_integral();
 
             if (iter >= min_iters - 1) {
@@ -128,10 +131,10 @@ void EventGenerator::survey() {
             }
             _running_jobs.erase(*job_id);
             start_jobs();
-            print_survey_update(false, done_job_count, total_job_count, iter);
+            print_survey_update(false, done_event_count, total_event_count, iter);
         }
     }
-    print_survey_update(true, done_job_count, total_job_count, iter - 1);
+    print_survey_update(true, done_event_count, total_event_count, iter - 1);
 }
 
 void EventGenerator::generate() {
@@ -144,7 +147,8 @@ void EventGenerator::generate() {
         thread_pools.push_back(&context->thread_pool());
         target_job_count += 2 * context->thread_pool().thread_count();
     }
-    MultiThreadPool multi_thread_pool(thread_pools);
+    // MultiThreadPool multi_thread_pool(thread_pools);
+    ThreadPool& multi_thread_pool = _contexts.at(0)->thread_pool();
     std::size_t channel_index = 0;
     while (true) {
         _abort_check_function();
@@ -156,26 +160,27 @@ void EventGenerator::generate() {
                  i < _channels.size() && _ready_jobs.size() < target_job_count;
                  ++i, channel_index = (channel_index + 1) % _channels.size()) {
                 auto& channel = _channels.at(channel_index);
-                auto& channel_job_count = _channel_job_counts.at(channel_index);
+                std::size_t& channel_job_count = _channel_job_counts.at(channel_index);
                 if (channel->_status.count_unweighted >=
                     channel->_integral_fraction * _config.target_count) {
                     continue;
                 }
                 if ((channel->_vegas_optimizer || channel->_discrete_optimizer) &&
                     !channel->_status.optimized) {
-                    if (channel_job_count == 0) {
-                        auto jobs = channel->build_vegas_jobs(true, channel_index);
-                        channel_job_count += jobs.size();
-                        _ready_jobs.insert(_ready_jobs.end(), jobs.begin(), jobs.end());
+                    if (!_channel_optimizing.at(channel_index)) {
+                        _channel_optimizing.at(channel_index) = true;
+                        _ready_jobs.push_back({
+                            .channel_index = channel_index,
+                            .unweight = true,
+                            .vegas_batch_size = channel->next_vegas_batch_size(),
+                        });
                     }
                 } else {
                     _ready_jobs.push_back({
                         .channel_index = channel_index,
                         .unweight = true,
-                        .batch_size = _config.batch_size,
-                        .vegas_job_count = 0,
+                        .vegas_batch_size = 0,
                     });
-                    ++channel_job_count;
                 }
             }
         } while (_ready_jobs.size() - job_count_before > 0);
@@ -185,15 +190,17 @@ void EventGenerator::generate() {
             auto& job = _running_jobs.at(*job_id);
             auto& channel = _channels.at(job.channel_index);
             auto& channel_job_count = _channel_job_counts.at(job.channel_index);
-            if (job.vegas_job_count > 0 && channel_job_count == job.vegas_job_count) {
+            if (job.vegas_batch_size > 0 && channel_job_count == job.split_job_count) {
                 channel->clear_events();
             }
             --channel_job_count;
             --_context_job_counts.at(job.context_index);
 
-            channel->integrate_and_optimize(
-                job, job.vegas_job_count > 0 && channel_job_count == 0
-            );
+            bool run_optim = job.vegas_batch_size > 0 && channel_job_count == 0;
+            channel->integrate_and_optimize(job, run_optim);
+            if (run_optim) {
+                _channel_optimizing.at(job.channel_index) = false;
+            }
             update_integral();
             channel->update_max_weight(job.weights);
             channel->unweight_and_write(job.unweighted_events);
@@ -213,23 +220,30 @@ void EventGenerator::generate() {
 }
 
 bool EventGenerator::start_jobs() {
-    std::size_t ready_index = 0;
-    std::size_t context_index = 0;
+    std::size_t ready_index = 0, context_index = 0;
     for (auto [context, job_count] : zip(_contexts, _context_job_counts)) {
         // fill the queue to twice the thread count to keep the worker threads busy
         std::size_t target_count = 2 * context->thread_pool().thread_count();
-        for (; job_count < target_count; ++job_count) {
-            if (ready_index == _ready_jobs.size()) {
-                break;
+        std::size_t batch_size = context->device()->device_type() == DeviceType::cpu
+            ? _config.cpu_batch_size
+            : _config.gpu_batch_size;
+        for (; job_count < target_count && ready_index < _ready_jobs.size();
+             ++ready_index) {
+            auto ready_job = _ready_jobs.at(ready_index);
+            std::size_t split_job_count = ready_job.vegas_batch_size != 0
+                ? (ready_job.vegas_batch_size + batch_size - 1) / batch_size
+                : 1;
+            for (std::size_t i = 0; i < split_job_count; ++i) {
+                auto& job =
+                    std::get<0>(_running_jobs.emplace(_job_id, ready_job))->second;
+                job.split_job_count = split_job_count;
+                job.job_id = _job_id;
+                job.context_index = context_index;
+                _channels.at(job.channel_index)->start_job(job);
+                ++_channel_job_counts.at(job.channel_index);
+                ++_job_id;
+                ++job_count;
             }
-            auto& job =
-                std::get<0>(_running_jobs.emplace(_job_id, _ready_jobs.at(ready_index)))
-                    ->second;
-            job.job_id = _job_id;
-            job.context_index = context_index;
-            _channels.at(job.channel_index)->start_job(job);
-            ++_job_id;
-            ++ready_index;
         }
         if (ready_index == _ready_jobs.size()) {
             break;
@@ -726,21 +740,27 @@ void EventGenerator::print_survey_init() {
 }
 
 void EventGenerator::print_survey_update(
-    bool done, std::size_t done_job_count, std::size_t total_job_count, std::size_t iter
+    bool done,
+    std::size_t done_event_count,
+    std::size_t total_event_count,
+    std::size_t iter
 ) {
     if (done) {
         add_timing_data("survey");
     }
     write_status("survey", done);
     if (_config.verbosity == GeneratorConfig::pretty) {
-        print_survey_update_pretty(done, done_job_count, total_job_count, iter);
+        print_survey_update_pretty(done, done_event_count, total_event_count, iter);
     } else if (_config.verbosity == GeneratorConfig::log) {
-        print_survey_update_log(done, done_job_count, total_job_count, iter);
+        print_survey_update_log(done, done_event_count, total_event_count, iter);
     }
 }
 
 void EventGenerator::print_survey_update_pretty(
-    bool done, std::size_t done_job_count, std::size_t total_job_count, std::size_t iter
+    bool done,
+    std::size_t done_event_count,
+    std::size_t total_event_count,
+    std::size_t iter
 ) {
     std::string int_str = format_with_error(_status.mean, _status.error);
     std::string count_str = std::format(
@@ -767,7 +787,7 @@ void EventGenerator::print_survey_update_pretty(
                  "{:<15} {}",
                  iter + 1,
                  format_progress(
-                     static_cast<double>(done_job_count) / total_job_count, 52
+                     static_cast<double>(done_event_count) / total_event_count, 52
                  )
              ),
              int_str,
@@ -782,7 +802,10 @@ void EventGenerator::print_survey_update_pretty(
 }
 
 void EventGenerator::print_survey_update_log(
-    bool done, std::size_t done_job_count, std::size_t total_job_count, std::size_t iter
+    bool done,
+    std::size_t done_event_count,
+    std::size_t total_event_count,
+    std::size_t iter
 ) {
     auto now = std::chrono::steady_clock::now();
     using namespace std::chrono_literals;

@@ -1125,7 +1125,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "optimization_threshold", &GeneratorConfig::optimization_threshold
         )
-        .def_readwrite("batch_size", &GeneratorConfig::batch_size)
+        .def_readwrite("cpu_batch_size", &GeneratorConfig::cpu_batch_size)
+        .def_readwrite("gpu_batch_size", &GeneratorConfig::gpu_batch_size)
         .def_readwrite("verbosity", &GeneratorConfig::verbosity)
         .def_readwrite("write_live_data", &GeneratorConfig::write_live_data)
         .def_readwrite("combine_thread_count", &GeneratorConfig::combine_thread_count);

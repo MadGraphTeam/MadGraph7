@@ -229,7 +229,13 @@ void ChannelEventGenerator::start_job(GeneratorBatchJob& job) {
     _contexts.at(job.context_index)->thread_pool().submit([this, &job]() {
         auto& runtimes = _runtimes.at(job.context_index);
         auto& context = _contexts.at(job.context_index);
-        TensorVec events = runtimes.integrand->run({Tensor({job.batch_size})});
+        std::size_t batch_size = context->device()->device_type() == DeviceType::cpu
+            ? _config.cpu_batch_size
+            : _config.gpu_batch_size;
+        if (job.vegas_batch_size > 0 && batch_size > job.vegas_batch_size) {
+            batch_size = job.vegas_batch_size;
+        }
+        TensorVec events = runtimes.integrand->run({Tensor({batch_size})});
         job.weights = events.at(0).cpu();
         if (job.unweight) {
             std::vector<Tensor> unweighter_args(events.begin(), events.begin() + 6);
@@ -246,7 +252,7 @@ void ChannelEventGenerator::start_job(GeneratorBatchJob& job) {
                 job.hists.push_back(item.cpu());
             }
         }
-        if (job.vegas_job_count > 0) {
+        if (job.vegas_batch_size != 0) {
             if (_vegas_optimizer) {
                 auto hist = runtimes.vegas_histogram->run({events.at(6), events.at(0)});
                 for (auto& item : hist) {
@@ -266,24 +272,10 @@ void ChannelEventGenerator::start_job(GeneratorBatchJob& job) {
     });
 }
 
-std::vector<GeneratorBatchJob>
-ChannelEventGenerator::build_vegas_jobs(bool unweight, std::size_t channel_index) {
-    std::size_t vegas_job_count =
-        (_batch_size + _config.batch_size - 1) / _config.batch_size;
-    std::vector<GeneratorBatchJob> jobs;
-    jobs.reserve(vegas_job_count);
-    for (std::size_t i = 0; i < vegas_job_count; ++i) {
-        std::size_t batch_size =
-            std::min(_config.batch_size, _batch_size - i * _config.batch_size);
-        jobs.push_back(
-            {.channel_index = channel_index,
-             .unweight = true,
-             .batch_size = batch_size,
-             .vegas_job_count = vegas_job_count}
-        );
-    }
+std::size_t ChannelEventGenerator::next_vegas_batch_size() {
+    std::size_t batch_size = _batch_size;
     _batch_size = std::min(_batch_size * 2, _config.max_batch_size);
-    return jobs;
+    return batch_size;
 }
 
 void ChannelEventGenerator::clear_events() {

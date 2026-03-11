@@ -47,8 +47,7 @@ private:
     void integrate_and_optimize(const GeneratorBatchJob& job, bool run_optim);
     double channel_weight_sum(std::size_t event_count);
     void start_job(GeneratorBatchJob& job);
-    std::vector<GeneratorBatchJob>
-    build_vegas_jobs(bool unweight, std::size_t channel_index);
+    std::size_t next_vegas_batch_size();
     void clear_events();
     void update_max_weight(Tensor weights);
     void unweight_and_write(const TensorVec& unweighted_events);

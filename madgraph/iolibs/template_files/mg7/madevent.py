@@ -255,7 +255,8 @@ class MadgraphProcess:
         cfg.survey_target_precision = gen_args["survey_target_precision"]
         cfg.optimization_patience = vegas_args["optimization_patience"]
         cfg.optimization_threshold = vegas_args["optimization_threshold"]
-        cfg.batch_size = gen_args["batch_size"]
+        cfg.cpu_batch_size = gen_args["cpu_batch_size"]
+        cfg.gpu_batch_size = gen_args["gpu_batch_size"]
         cfg.verbosity = run_args["verbosity"]
         self.event_generator_config = cfg
         self.event_generator = None
