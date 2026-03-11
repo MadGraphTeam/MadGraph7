@@ -128,6 +128,7 @@ public:
     bool global_exists(const std::string& name);
     std::vector<std::string> global_names() const;
     void delete_global(const std::string& name);
+    void copy_globals_from(Context& context);
     const MatrixElementApi& matrix_element(std::size_t index) const;
     void save(const std::string& file) const;
     void load(const std::string& file);
@@ -137,7 +138,7 @@ public:
 private:
     DevicePtr _device;
     std::unique_ptr<ThreadPool> _thread_pool;
-    std::unordered_map<std::string, std::tuple<Tensor, bool>> _globals;
+    std::unordered_map<std::string, std::pair<Tensor, bool>> _globals;
     std::vector<std::unique_ptr<MatrixElementApi>> _matrix_elements;
     std::vector<std::string> _param_card_paths;
 };

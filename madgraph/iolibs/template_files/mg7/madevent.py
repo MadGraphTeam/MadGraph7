@@ -420,6 +420,8 @@ class MadgraphProcess:
             subproc.train_madnis(phasespace, status_func)
             madnis_phasespaces.append(phasespace)
         self.phasespaces = madnis_phasespaces
+        for context in self.contexts[1:]:
+            context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces, "events")
         self.event_generator.survey() #TODO: avoid
 
@@ -933,10 +935,10 @@ class MadgraphSubprocess:
                 invert_spline=madnis_args["flow_invert_spline"],
             )
             if channel.adaptive_mapping is None:
-                flow.initialize_globals(self.process.context)
+                flow.initialize_globals(self.process.contexts[0])
             else:
                 flow.initialize_from_vegas(
-                    self.process.context, channel.adaptive_mapping.grid_name()
+                    self.process.contexts[0], channel.adaptive_mapping.grid_name()
                 )
             #cond_dim += flow_dim
 
@@ -951,7 +953,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_after.initialize_globals(self.process.context)
+                discrete_after.initialize_globals(self.process.contexts[0])
 
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
@@ -1020,7 +1022,7 @@ class MadgraphSubprocess:
             activation=self.activation(madnis_args["cwnet_activation"]),
             prefix=f"subproc{self.subproc_id}.cwnet",
         )
-        cwnet.initialize_globals(self.process.context)
+        cwnet.initialize_globals(self.process.contexts[0])
         return cwnet
 
     def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:
@@ -1127,7 +1129,7 @@ class MadgraphSubprocess:
             self.build_integrands(phasespace, MADNIS_INTEGRAND_FLAGS),
             phasespace,
             self.process.run_card["madnis"],
-            self.process.context,
+            self.process.contexts[0],
             status_func
         )
 

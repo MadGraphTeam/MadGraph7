@@ -218,6 +218,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("get_global", &Context::global, py::arg("name"))
         .def("global_requires_grad", &Context::global_requires_grad, py::arg("name"))
         .def("global_exists", &Context::global_exists, py::arg("name"))
+        .def("global_names", &Context::global_names)
+        .def("delete_global", &Context::delete_global, py::arg("name"))
+        .def("copy_globals_from", &Context::copy_globals_from, py::arg("context"))
         .def(
             "matrix_element",
             &Context::matrix_element,

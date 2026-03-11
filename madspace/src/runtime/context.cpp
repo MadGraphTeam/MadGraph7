@@ -129,7 +129,7 @@ Tensor Context::define_global(
 
 Tensor Context::global(const std::string& name) {
     if (auto search = _globals.find(name); search != _globals.end()) {
-        return std::get<0>(search->second);
+        return search->second.first;
     } else {
         throw std::invalid_argument(
             std::format("Context does not contain a global named {}", name)
@@ -143,7 +143,7 @@ bool Context::global_exists(const std::string& name) {
 
 bool Context::global_requires_grad(const std::string& name) {
     if (auto search = _globals.find(name); search != _globals.end()) {
-        return std::get<1>(search->second);
+        return search->second.second;
     } else {
         throw std::invalid_argument(
             std::format("Context does not contain a global named {}", name)
@@ -161,6 +161,34 @@ std::vector<std::string> Context::global_names() const {
 }
 
 void Context::delete_global(const std::string& name) { _globals.erase(name); }
+
+void Context::copy_globals_from(Context& context) {
+    for (auto& [name, value] : context._globals) {
+        Tensor other_tensor = value.first;
+        Tensor this_tensor;
+        if (auto search = _globals.find(name); search != _globals.end()) {
+            this_tensor = search->second.first;
+            if (this_tensor.dtype() != other_tensor.dtype()) {
+                throw std::runtime_error(
+                    std::format("Global {}: incompatible data type", name)
+                );
+            }
+            if (this_tensor.shape() != other_tensor.shape()) {
+                throw std::runtime_error(
+                    std::format("Global {}: incompatible shape", name)
+                );
+            }
+        } else {
+            this_tensor = define_global(
+                name,
+                other_tensor.dtype(),
+                {other_tensor.shape().begin() + 1, other_tensor.shape().end()},
+                value.second
+            );
+        }
+        this_tensor.copy_from(other_tensor);
+    }
+}
 
 const MatrixElementApi& Context::matrix_element(std::size_t index) const {
     if (index >= _matrix_elements.size()) {
