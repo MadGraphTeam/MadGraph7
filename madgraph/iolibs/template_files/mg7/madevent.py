@@ -130,6 +130,21 @@ class MadgraphProcess:
             except FileExistsError:
                 run_index += 1
 
+    def init_context(self) -> None:
+        device_names = self.run_card["run"]["devices"]
+        self.contexts = []
+        for device_name in device_names:
+            if device_name == "cuda":
+                device = ms.cuda_device()
+                pool_size = self.run_card["run"]["gpu_thread_pool_size"]
+            elif device_name == "hip":
+                device = ms.hip_device()
+                pool_size = self.run_card["run"]["gpu_thread_pool_size"]
+            else:
+                device = ms.cpu_device()
+                pool_size = self.run_card["run"]["cpu_thread_pool_size"]
+            self.contexts.append(ms.Context(device=device, thread_count=pool_size))
+
     def parse_observable(self, name: str, order_observable: str) -> dict:
         parts = name.split("-")
         sum_momenta = False
@@ -234,9 +249,10 @@ class MadgraphProcess:
 
         pdf_set = beam_args["pdf"]
         self.pdf_grid = ms.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
-        self.pdf_grid.initialize_globals(self.context)
         self.alphas_grid = ms.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
-        self.alphas_grid.initialize_globals(self.context)
+        for context in self.contexts:
+            self.pdf_grid.initialize_globals(context)
+            self.alphas_grid.initialize_globals(context)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
 
     def init_generator_config(self) -> None:
@@ -261,18 +277,6 @@ class MadgraphProcess:
         self.event_generator_config = cfg
         self.event_generator = None
 
-    def init_context(self) -> None:
-        device_name = self.run_card["run"]["device"]
-        if device_name == "cuda":
-            device = ms.cuda_device()
-        elif device_name == "hip":
-            device = ms.hip_device()
-        else:
-            device = ms.cpu_device()
-        self.context = ms.Context(
-            device=device, thread_count=self.run_card["run"]["thread_pool_size"]
-        )
-
     def init_subprocesses(self) -> None:
         self.subprocesses = []
         for subproc_id, meta in enumerate(self.subprocess_data):
@@ -283,7 +287,7 @@ class MadgraphProcess:
     ) -> ms.EventGenerator:
         channel_generators = [
             ms.ChannelEventGenerator(
-                contexts=[self.context],
+                contexts=self.contexts,
                 integrand=integrand,
                 event_file=f"events.{i}.{channel.name}.npy",
                 weight_file=f"weights.{i}.{channel.name}.npy",
@@ -300,7 +304,7 @@ class MadgraphProcess:
         ]
 
         return ms.EventGenerator(
-            contexts=[self.context],
+            contexts=self.contexts,
             channels=channel_generators,
             status_file=os.path.join(self.run_path, "info.json"),
             config=self.event_generator_config,
@@ -641,9 +645,10 @@ class MadgraphSubprocess:
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_element = None
         else:
-            self.matrix_element = self.process.context.load_matrix_element(
-                api_path, self.process.param_card_path
-            )
+            for context in self.process.contexts:
+                self.matrix_element = context.load_matrix_element(
+                    api_path, self.process.param_card_path
+                )
 
     def build_multi_channel_data(self) -> MultiChannelData:
         if self.multi_channel_data is not None:
@@ -977,7 +982,8 @@ class MadgraphSubprocess:
             self.process.run_card["vegas"]["bins"],
             prefix,
         )
-        vegas.initialize_globals(self.process.context)
+        for context in self.process.contexts:
+            vegas.initialize_globals(context)
         return vegas
 
     def build_discrete(
@@ -997,7 +1003,8 @@ class MadgraphSubprocess:
             discrete_after = ms.DiscreteSampler(
                 [flavor_count], f"{prefix}.discrete_after", [0]
             )
-            discrete_after.initialize_globals(self.process.context)
+            for context in self.process.contexts:
+                discrete_after.initialize_globals(context)
         else:
             discrete_after = None
 
