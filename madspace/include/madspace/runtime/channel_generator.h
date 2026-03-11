@@ -46,7 +46,7 @@ private:
     void unweight_file(std::mt19937 rand_gen);
     void integrate_and_optimize(const GeneratorBatchJob& job, bool run_optim);
     double channel_weight_sum(std::size_t event_count);
-    void start_job(GeneratorBatchJob& job);
+    void start_job(GeneratorBatchJob& job, ResultQueue& result_queue);
     std::size_t next_vegas_batch_size();
     void clear_events();
     void update_max_weight(Tensor weights);

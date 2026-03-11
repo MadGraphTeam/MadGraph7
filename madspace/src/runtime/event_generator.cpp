@@ -65,8 +65,6 @@ void EventGenerator::survey() {
     for (auto& context : _contexts) {
         thread_pools.push_back(&context->thread_pool());
     }
-    // MultiThreadPool multi_thread_pool(thread_pools);
-    ThreadPool& multi_thread_pool = _contexts.at(0)->thread_pool();
 
     std::size_t total_event_count = 0;
     std::size_t done_event_count = 0;
@@ -101,9 +99,10 @@ void EventGenerator::survey() {
         }
         start_jobs();
         done = true;
-        while (auto job_id = multi_thread_pool.wait()) {
+        while (_running_jobs.size() > 0) {
+            std::size_t job_id = _result_queue.wait();
             _abort_check_function();
-            auto& job = _running_jobs.at(*job_id);
+            auto& job = _running_jobs.at(job_id);
             auto& channel = _channels.at(job.channel_index);
             auto& channel_job_count = _channel_job_counts.at(job.channel_index);
             if (channel_job_count == job.split_job_count) {
@@ -129,7 +128,7 @@ void EventGenerator::survey() {
             } else {
                 done = false;
             }
-            _running_jobs.erase(*job_id);
+            _running_jobs.erase(job_id);
             start_jobs();
             print_survey_update(false, done_event_count, total_event_count, iter);
         }
@@ -147,8 +146,6 @@ void EventGenerator::generate() {
         thread_pools.push_back(&context->thread_pool());
         target_job_count += 2 * context->thread_pool().thread_count();
     }
-    // MultiThreadPool multi_thread_pool(thread_pools);
-    ThreadPool& multi_thread_pool = _contexts.at(0)->thread_pool();
     std::size_t channel_index = 0;
     while (true) {
         _abort_check_function();
@@ -186,8 +183,9 @@ void EventGenerator::generate() {
         } while (_ready_jobs.size() - job_count_before > 0);
         start_jobs();
 
-        if (auto job_id = multi_thread_pool.wait()) {
-            auto& job = _running_jobs.at(*job_id);
+        if (_running_jobs.size() > 0) {
+            std::size_t job_id = _result_queue.wait();
+            auto& job = _running_jobs.at(job_id);
             auto& channel = _channels.at(job.channel_index);
             auto& channel_job_count = _channel_job_counts.at(job.channel_index);
             if (job.vegas_batch_size > 0 && channel_job_count == job.split_job_count) {
@@ -206,7 +204,7 @@ void EventGenerator::generate() {
             channel->unweight_and_write(job.unweighted_events);
             update_counts();
             print_gen_update(false);
-            _running_jobs.erase(*job_id);
+            _running_jobs.erase(job_id);
         } else {
             if (_status.done) {
                 unweight_all();
@@ -239,7 +237,7 @@ bool EventGenerator::start_jobs() {
                 job.split_job_count = split_job_count;
                 job.job_id = _job_id;
                 job.context_index = context_index;
-                _channels.at(job.channel_index)->start_job(job);
+                _channels.at(job.channel_index)->start_job(job, _result_queue);
                 ++_channel_job_counts.at(job.channel_index);
                 ++_job_id;
                 ++job_count;

@@ -64,6 +64,7 @@ private:
     std::vector<std::size_t> _channel_job_counts;
     std::vector<bool> _channel_optimizing;
     std::vector<std::size_t> _context_job_counts;
+    ResultQueue _result_queue;
 
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;

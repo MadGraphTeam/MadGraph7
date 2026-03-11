@@ -128,10 +128,44 @@ void ThreadPool::thread_loop(std::size_t index) {
         _job_queue.pop_front();
         ++_busy_threads;
         lock.unlock();
-        std::size_t result = job();
+        std::optional<std::size_t> result = job();
         lock.lock();
         --_busy_threads;
-        _done_queue.push_back(result);
-        _cv_done.notify_one();
+        if (result) {
+            _done_queue.push_back(*result);
+            _cv_done.notify_one();
+        }
     }
+}
+
+void ResultQueue::push(std::size_t result) {
+    std::unique_lock<std::mutex> lock(_mutex);
+    _queue.push_back(result);
+    _cv.notify_one();
+}
+
+std::size_t ResultQueue::wait() {
+    fill_done_cache();
+    std::size_t result = _buffer.back();
+    _buffer.pop_back();
+    return result;
+}
+
+std::vector<std::size_t> ResultQueue::wait_multiple() {
+    fill_done_cache();
+    std::vector<std::size_t> ret(_buffer.rbegin(), _buffer.rend());
+    _buffer.clear();
+    return ret;
+}
+
+void ResultQueue::fill_done_cache() {
+    if (!_buffer.empty()) {
+        return;
+    }
+    std::unique_lock<std::mutex> lock(_mutex);
+    if (_queue.empty()) {
+        _cv.wait(lock, [&] { return !_queue.empty(); });
+    }
+    _buffer.insert(_buffer.begin(), _queue.rbegin(), _queue.rend());
+    _queue.clear();
 }

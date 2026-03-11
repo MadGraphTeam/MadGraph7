@@ -12,7 +12,7 @@ namespace madspace {
 
 class ThreadPool {
 public:
-    using JobFunc = std::function<std::size_t()>;
+    using JobFunc = std::function<std::optional<std::size_t>()>;
     ThreadPool(int thread_count = -1);
     ~ThreadPool();
     ThreadPool(const ThreadPool&) = delete;
@@ -45,6 +45,21 @@ private:
     std::size_t _busy_threads = 0;
     std::size_t _listener_id = 0;
     std::unordered_map<std::size_t, std::function<void(std::size_t)>> _listeners;
+};
+
+class ResultQueue {
+public:
+    void push(std::size_t result);
+    std::size_t wait();
+    std::vector<std::size_t> wait_multiple();
+
+private:
+    void fill_done_cache();
+
+    std::mutex _mutex;
+    std::condition_variable _cv;
+    std::deque<std::size_t> _queue;
+    std::vector<std::size_t> _buffer;
 };
 
 template <typename T>
