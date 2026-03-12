@@ -70,7 +70,7 @@ void EventGenerator::survey() {
     std::size_t total_event_count = 0;
     std::size_t done_event_count = 0;
     for (auto& channel : _channels) {
-        std::size_t chan_batch_size = _config.start_batch_size;
+        std::size_t chan_batch_size = channel->batch_size();
         for (std::size_t iter = channel->status().iterations; iter < min_iters;
              ++iter) {
             total_event_count += chan_batch_size;
@@ -84,10 +84,12 @@ void EventGenerator::survey() {
         std::size_t job_count_before = _running_jobs.size();
         for (std::size_t i = 0; auto channel : _channels) {
             if (channel->status().iterations > iter) {
+                ++i;
                 continue;
             }
             if (iter >= min_iters &&
                 channel->cross_section().rel_error() < target_precision) {
+                ++i;
                 continue;
             }
             std::size_t vegas_batch_size = channel->next_vegas_batch_size();

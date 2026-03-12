@@ -52,6 +52,7 @@ class Channel:
     channel_weight_indices: list[int] | None
     name: str
     active_flavors: list[int]
+    event_generator: ms.ChannelEventGenerator | None = None
 
 
 @dataclass
@@ -282,25 +283,24 @@ class MadgraphProcess:
         for subproc_id, meta in enumerate(self.subprocess_data):
             self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
 
-    def build_event_generator(
-        self, phasespaces: list[PhaseSpace], file: str
-    ) -> ms.EventGenerator:
-        channel_generators = [
-            ms.ChannelEventGenerator(
-                contexts=self.contexts,
-                integrand=integrand,
-                event_file=f"events.{i}.{channel.name}.npy",
-                weight_file=f"weights.{i}.{channel.name}.npy",
-                config=self.event_generator_config,
-                subprocess_index=i,
-                name=f"{i}.{channel.name}",
-                histograms=subproc.histograms
-            )
-            for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces))
+    def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
+        channel_generators = []
+        for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
             for integrand, channel in zip(
                 subproc.build_integrands(phasespace), phasespace.channels
-            )
-        ]
+            ):
+                if channel.event_generator is None:
+                    channel.event_generator = ms.ChannelEventGenerator(
+                        contexts=self.contexts,
+                        integrand=integrand,
+                        event_file=f"events.{i}.{channel.name}.npy",
+                        weight_file=f"weights.{i}.{channel.name}.npy",
+                        config=self.event_generator_config,
+                        subprocess_index=i,
+                        name=f"{i}.{channel.name}",
+                        histograms=subproc.histograms
+                    )
+                channel_generators.append(channel.event_generator)
 
         return ms.EventGenerator(
             contexts=self.contexts,
@@ -310,16 +310,12 @@ class MadgraphProcess:
         )
 
     def survey_phasespaces(
-        self, phasespaces: list[PhaseSpace | None], mode: str | None = None
+        self, phasespaces: list[PhaseSpace | None]
     ) -> ms.EventGenerator | None:
         ps_filtered = [ps for ps in phasespaces if ps is not None]
         if len(ps_filtered) == 0:
             return None
-
-        event_generator = self.build_event_generator(
-            ps_filtered, "events" if mode is None else f"events_{mode}"
-        )
-
+        event_generator = self.build_event_generator(ps_filtered)
         event_generator.survey()
         return event_generator
 
@@ -343,7 +339,7 @@ class MadgraphProcess:
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
-            evgen_multi = self.survey_phasespaces(phasespaces_multi, "multichannel")
+            evgen_multi = self.survey_phasespaces(phasespaces_multi)
 
             phasespaces_flat = [
                 subproc.build_flat_phasespace()
@@ -351,7 +347,7 @@ class MadgraphProcess:
                 None
                 for subproc in self.subprocesses
             ]
-            evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
+            #evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
 
             channel_status = evgen_multi.channel_status()
             cross_sections = []
@@ -372,11 +368,7 @@ class MadgraphProcess:
                     self.subprocesses, phasespaces_multi, phasespaces_flat, cross_sections
                 )
             ]
-
-            if not self.run_card["madnis"]["enable"]:
-                self.event_generator = self.build_event_generator(self.phasespaces, "events")
-                #TODO: avoid to run survey again
-                self.event_generator.survey()
+            self.event_generator = self.survey_phasespaces(self.phasespaces)
         else:
             raise ValueError("Unknown phasespace mode")
 
@@ -421,7 +413,7 @@ class MadgraphProcess:
         self.phasespaces = madnis_phasespaces
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])
-        self.event_generator = self.build_event_generator(madnis_phasespaces, "events")
+        self.event_generator = self.build_event_generator(madnis_phasespaces)
 
     def update_madnis_status_single(
         self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
@@ -880,6 +872,7 @@ class MadgraphSubprocess:
                 )),
                 name = channel.name,
                 active_flavors = channel.active_flavors,
+                event_generator = channel.event_generator,
             ))
 
         flat_channel = flat_phasespace.channels[0]
