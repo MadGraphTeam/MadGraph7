@@ -12,7 +12,7 @@ void Function::save(const std::string& file) const {
     std::ofstream f(file);
     json j;
     j = *this;
-    f << j.dump(2);
+    f << j.dump();
 }
 
 Function Function::load(const std::string& file) {

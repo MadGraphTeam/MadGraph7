@@ -3,6 +3,7 @@ import os
 import time
 from datetime import timedelta
 import glob
+import shutil
 import json
 import subprocess
 import logging
@@ -524,7 +525,7 @@ class MadgraphProcess:
             )
         else:
             raise ValueError("Unknown output format")
-        #self.save_gridpack()
+        self.save_gridpack()
 
     def build_lhe_completer(self):
         subproc_args = []
@@ -564,8 +565,63 @@ class MadgraphProcess:
 
     def save_gridpack(self) -> None:
         gridpack_path = os.path.join(self.run_path, "gridpack")
+        data_path = os.path.join(gridpack_path, "data")
+        events_path = os.path.join(gridpack_path, "Events")
         os.mkdir(gridpack_path)
-        self.context.save(os.path.join(gridpack_path, "context.json"))
+        os.mkdir(data_path)
+        os.mkdir(events_path)
+        self.contexts[0].save_globals(os.path.join(data_path, "globals"))
+
+        channel_path = os.path.join(data_path, "channels")
+        os.mkdir(channel_path)
+        channel_files = []
+        for channel in self.event_generator.channels():
+            file = f"channel{channel.status().name}.json"
+            channel_files.append(file)
+            channel.save(os.path.join(channel_path, file))
+
+        lib_path = os.path.join(data_path, "lib")
+        os.mkdir(lib_path)
+        matrix_elements = []
+        for subproc in self.subprocess_data:
+            me_path = subproc["me_path"]
+            shutil.copy(me_path, lib_path)
+            matrix_elements.append(me_path)
+
+        cards_path = os.path.join(gridpack_path, "Cards")
+        os.mkdir(cards_path)
+        shutil.copy(os.path.join("Cards", "param_card.dat"), cards_path)
+        device_list = ",".join(f'"{device}"' for device in self.run_card["run"]["devices"])
+        with open(os.path.join(cards_path, "run_card.toml"), "w") as f:
+            f.write(f"""[run]
+run_name = "{self.run_card["run"]["run_name"]}"
+devices = [{device_list}] # options: cpu, cuda
+# options:
+#   -1 to choose automatically
+#   on x86: 1, 4, 8
+#   on Apple silicon: 1, 2
+simd_vector_size = {self.run_card["run"]["simd_vector_size"]}
+# pool sizes: -1 sets count automatically based on number of CPUs
+cpu_thread_pool_size = {self.run_card["run"]["cpu_thread_pool_size"]}
+gpu_thread_pool_size = {self.run_card["run"]["gpu_thread_pool_size"]}
+combine_thread_pool_size = {self.run_card["run"]["combine_thread_pool_size"]}
+output_format = "{self.run_card["run"]["output_format"]}" # options: compact_npy, lhe_npy, lhe
+verbosity = "{self.run_card["run"]["verbosity"]}" # options: silent, pretty, log
+
+[generation]
+events = {self.run_card["generation"]["events"]}
+max_overweight_truncation = {self.run_card["generation"]["max_overweight_truncation"]}
+freeze_max_weight_after = {self.run_card["generation"]["freeze_max_weight_after"]}
+cpu_batch_size = {self.run_card["generation"]["cpu_batch_size"]}
+gpu_batch_size ={self.run_card["generation"]["gpu_batch_size"]}
+""")
+
+        data = {
+            "channels": channel_files,
+            "matrix_elements": matrix_elements,
+        }
+        with open(os.path.join(data_path, "data.json"), "w") as f:
+            json.dump(data, f)
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)

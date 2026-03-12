@@ -227,8 +227,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("index"),
             py::return_value_policy::reference_internal
         )
-        .def("save", &Context::save, py::arg("file"))
-        .def("load", &Context::load, py::arg("file"))
+        .def("save_globals", &Context::save_globals, py::arg("dir"))
+        .def("load_globals", &Context::load_globals, py::arg("dir"))
         .def("device", &Context::device, py::return_value_policy::reference);
     m.def("default_context", &default_context);
     m.def("default_cuda_context", &default_cuda_context);
@@ -1136,6 +1136,8 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<GeneratorStatus>(m, "GeneratorStatus")
         .def(py::init<>())
+        .def_readwrite("subprocess", &GeneratorStatus::subprocess)
+        .def_readwrite("name", &GeneratorStatus::name)
         .def_readwrite("mean", &GeneratorStatus::mean)
         .def_readwrite("error", &GeneratorStatus::error)
         .def_readwrite("rel_std_dev", &GeneratorStatus::rel_std_dev)
@@ -1146,6 +1148,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("count_unweighted", &GeneratorStatus::count_unweighted)
         .def_readwrite("count_target", &GeneratorStatus::count_target)
         .def_readwrite("iterations", &GeneratorStatus::iterations)
+        .def_readwrite("optimized", &GeneratorStatus::optimized)
         .def_readwrite("done", &GeneratorStatus::done);
 
     py::classh<Histogram>(m, "Histogram")
@@ -1156,6 +1159,15 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("bin_errors", &Histogram::bin_errors);
 
     py::classh<ChannelEventGenerator>(m, "ChannelEventGenerator")
+        .def_static(
+            "load",
+            &ChannelEventGenerator::load,
+            py::arg("channel_file"),
+            py::arg("contexts"),
+            py::arg("event_file"),
+            py::arg("weight_file"),
+            py::arg("config")
+        )
         .def(
             py::init<
                 const std::vector<ContextPtr>&,
@@ -1175,9 +1187,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("name"),
             py::arg("histograms")
         )
-        .def_readonly_static(
-            "integrand_flags", &ChannelEventGenerator::integrand_flags
-        );
+        .def_readonly_static("integrand_flags", &ChannelEventGenerator::integrand_flags)
+        .def("status", &ChannelEventGenerator::status)
+        .def("save", &ChannelEventGenerator::save, py::arg("save"));
 
     py::classh<EventGenerator>(m, "EventGenerator")
         .def_readonly_static("default_config", &EventGenerator::default_config)
@@ -1217,8 +1229,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)
+        .def("histograms", &EventGenerator::histograms)
         .def("used_globals", &EventGenerator::used_globals)
-        .def("histograms", &EventGenerator::histograms);
+        .def("channels", &EventGenerator::channels);
 
     py::classh<LHEHeader>(m, "LHEHeader")
         .def(

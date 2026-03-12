@@ -197,65 +197,32 @@ const MatrixElementApi& Context::matrix_element(std::size_t index) const {
     return *_matrix_elements.at(index).get();
 }
 
-void Context::save(const std::string& file) const {
+void Context::save_globals(const std::string& dir) const {
     namespace fs = std::filesystem;
-    fs::path parent_path = fs::path(file).parent_path();
-    fs::path global_path = parent_path / "globals";
-    fs::create_directory(global_path);
+    fs::path dir_path(dir);
+    fs::create_directory(dir_path);
 
-    json j_globals = json::array();
     for (auto& [name, tensor_and_grad] : _globals) {
         auto& [tensor, requires_grad] = tensor_and_grad;
-        fs::path tensor_file = global_path / name;
+        fs::path tensor_file = dir_path / name;
         tensor_file += ".npy";
         save_tensor(tensor_file, tensor);
-        j_globals.push_back({
-            {"name", name},
-            {"requires_grad", requires_grad},
-            {"file", fs::relative(tensor_file, parent_path)},
-        });
     }
-
-    json j_matrix_elements = json::array();
-    for (auto [api, param_card] : zip(_matrix_elements, _param_card_paths)) {
-        j_matrix_elements.push_back({
-            {"api", fs::absolute(api->file_name())},
-            {"param_card", fs::absolute(param_card)},
-        });
-    }
-
-    json j_context = {{"globals", j_globals}, {"matrix_elements", j_matrix_elements}};
-    std::ofstream f(file);
-    f << j_context.dump(2);
 }
 
-void Context::load(const std::string& file) {
+void Context::load_globals(const std::string& dir) {
     namespace fs = std::filesystem;
-    if (_matrix_elements.size() > 0) {
-        throw std::runtime_error(
-            "loading a context is only possible before loading any matrix elements"
-        );
-    }
-
-    std::ifstream f(file);
-    json j_context = json::parse(f);
-    fs::path parent_path = fs::path(file).parent_path();
-
-    for (auto j_matrix_element : j_context.at("matrix_elements")) {
-        load_matrix_element(
-            j_matrix_element.at("api").get<std::string>(),
-            j_matrix_element.at("param_card").get<std::string>()
-        );
-    }
-
-    for (auto j_global : j_context.at("globals")) {
-        Tensor tensor =
-            load_tensor(parent_path / j_global.at("file").get<std::string>());
+    for (auto& file : fs::directory_iterator(dir)) {
+        if (file.path().extension() != ".npy") {
+            continue;
+        }
+        std::string name = file.path().stem();
+        Tensor tensor = load_tensor(file.path());
         Tensor global_tensor = define_global(
-            j_global.at("name").get<std::string>(),
+            name,
             tensor.dtype(),
             {tensor.shape().begin() + 1, tensor.shape().end()},
-            j_global.at("requires_grad").get<bool>()
+            false
         );
         global_tensor.copy_from(tensor);
     }

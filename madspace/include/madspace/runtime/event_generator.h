@@ -41,6 +41,9 @@ public:
     std::vector<GeneratorStatus> channel_status() const;
     std::vector<Histogram> histograms() const;
     std::unordered_set<std::string> used_globals() const;
+    const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels() const {
+        return _channels;
+    };
 
 private:
     struct CombineChannelData {

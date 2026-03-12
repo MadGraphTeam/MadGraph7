@@ -130,8 +130,8 @@ public:
     void delete_global(const std::string& name);
     void copy_globals_from(Context& context);
     const MatrixElementApi& matrix_element(std::size_t index) const;
-    void save(const std::string& file) const;
-    void load(const std::string& file);
+    void save_globals(const std::string& dir) const;
+    void load_globals(const std::string& dir);
     DevicePtr device() { return _device; }
     ThreadPool& thread_pool() { return *_thread_pool; }
 

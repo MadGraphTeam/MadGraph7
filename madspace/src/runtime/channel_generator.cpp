@@ -1,6 +1,7 @@
 #include "madspace/runtime/channel_generator.h"
 
 using namespace madspace;
+using json = nlohmann::json;
 
 ChannelEventGenerator::ChannelEventGenerator(
     const std::vector<ContextPtr>& contexts,
@@ -43,27 +44,25 @@ ChannelEventGenerator::ChannelEventGenerator(
         EventFile::create,
         true
     ),
-    _batch_size(config.start_batch_size) {
+    _batch_size(config.start_batch_size),
+    _particle_count(integrand.particle_count()),
+    _integrand_function(integrand.function()),
+    _unweighter_function(Unweighter({integrand.return_types().begin(),
+                                     integrand.return_types().begin() + 6})
+                             .function()) {
     if (integrand.flags() != integrand_flags) {
         throw std::invalid_argument(
             "Integrand flags must be sample | return_momenta | return_random | "
             "return_discrete"
         );
     }
+    for (auto& item : _integrand_function.globals()) {
+        _used_globals.insert(item.first);
+    }
     for (auto& context : contexts) {
-        Function integ_func = integrand.function();
-        for (auto& item : integ_func.globals()) {
-            _used_globals.insert(item.first);
-        }
         _runtimes.push_back(
-            {.integrand = build_runtime(integ_func, context, false),
-             .unweighter = build_runtime(
-                 Unweighter({integrand.return_types().begin(),
-                             integrand.return_types().begin() + 6})
-                     .function(),
-                 context,
-                 false
-             )}
+            {.integrand = build_runtime(_integrand_function, context, false),
+             .unweighter = build_runtime(_unweighter_function, context, false)}
         );
     }
     if (const auto& grid_name = integrand.vegas_grid_name(); grid_name) {
@@ -97,11 +96,11 @@ ChannelEventGenerator::ChannelEventGenerator(
                 build_runtime(hist.function(), context, false);
         }
     }
-    RuntimePtr obs_histograms = nullptr;
     if (histograms) {
+        _histogram_function = histograms.value().function();
         for (auto [context, runtimes] : zip(contexts, _runtimes)) {
             runtimes.observable_histograms =
-                build_runtime(histograms.value().function(), context, false);
+                build_runtime(_histogram_function.value(), context, false);
         }
         for (auto& item : histograms.value().observables()) {
             _histograms.push_back({
@@ -111,6 +110,72 @@ ChannelEventGenerator::ChannelEventGenerator(
                 .bin_values = std::vector<double>(item.bin_count + 2),
                 .bin_errors = std::vector<double>(item.bin_count + 2),
             });
+        }
+    }
+}
+
+ChannelEventGenerator::ChannelEventGenerator(
+    const std::vector<ContextPtr>& contexts,
+    std::size_t particle_count,
+    const Function& integrand_function,
+    const Function& unweighter_function,
+    const std::optional<Function>& histogram_function,
+    const std::string& event_file,
+    const std::string& weight_file,
+    std::size_t subprocess_index,
+    const std::string& name,
+    const GeneratorConfig& config,
+    const std::vector<Histogram>& histograms
+) :
+    _contexts(contexts),
+    _status{
+        .subprocess = subprocess_index,
+        .name = name,
+        .mean = 0.,
+        .error = 0.,
+        .rel_std_dev = 0.,
+        .count = 0,
+        .count_opt = 0,
+        .count_after_cuts = 0,
+        .count_after_cuts_opt = 0,
+        .count_unweighted = 0.,
+        .count_target = 1.,
+        .optimized = false,
+        .done = false
+    },
+    _config(config),
+    _event_file(
+        event_file,
+        DataLayout::of<EventIndicesRecord, ParticleRecord>(),
+        particle_count,
+        EventFile::create,
+        true
+    ),
+    _weight_file(
+        weight_file,
+        DataLayout::of<EventWeightRecord, EmptyParticleRecord>(),
+        0,
+        EventFile::create,
+        true
+    ),
+    _batch_size(config.start_batch_size),
+    _particle_count(particle_count),
+    _integrand_function(integrand_function),
+    _unweighter_function(unweighter_function),
+    _histograms(histograms) {
+    for (auto& item : _integrand_function.globals()) {
+        _used_globals.insert(item.first);
+    }
+    for (auto& context : contexts) {
+        _runtimes.push_back(
+            {.integrand = build_runtime(_integrand_function, context, false),
+             .unweighter = build_runtime(_unweighter_function, context, false)}
+        );
+    }
+    if (histogram_function) {
+        for (auto [context, runtimes] : zip(contexts, _runtimes)) {
+            runtimes.observable_histograms =
+                build_runtime(_histogram_function.value(), context, false);
         }
     }
 }
@@ -387,4 +452,77 @@ void ChannelEventGenerator::unweight_and_write(
     _weight_file.write(weight_buffer);
     _status.count_unweighted += w_view.size();
     _status.done = _status.count_unweighted >= _status.count_target;
+}
+
+void ChannelEventGenerator::save(const std::string& file_name) const {
+    std::ofstream f(file_name);
+    json j;
+    j = *this;
+    f << j.dump();
+}
+
+ChannelEventGenerator ChannelEventGenerator::load(
+    const std::string& channel_file,
+    const std::vector<ContextPtr>& contexts,
+    const std::string& event_file,
+    const std::string& weight_file,
+    const GeneratorConfig& config
+) {
+    std::ifstream f(channel_file);
+    json channel = json::parse(f);
+    std::optional<Function> hist_function;
+    std::vector<Histogram> histograms;
+    if (channel.at("histogram_function")) {
+        for (json hist : channel.at("histograms")) {
+            std::size_t bin_count = hist.at("bin_count").get<std::size_t>();
+            histograms.push_back({
+                .name = hist.at("name").get<std::string>(),
+                .min = hist.at("min").get<double>(),
+                .max = hist.at("max").get<double>(),
+                .bin_values = std::vector<double>(bin_count + 2),
+                .bin_errors = std::vector<double>(bin_count + 2),
+            });
+        }
+    }
+
+    return ChannelEventGenerator(
+        contexts,
+        channel.at("particle_count").get<std::size_t>(),
+        channel.at("integrand_function").get<Function>(),
+        channel.at("unweighter_function").get<Function>(),
+        hist_function,
+        event_file,
+        weight_file,
+        channel.at("subprocess_index").get<std::size_t>(),
+        channel.at("name").get<std::string>(),
+        config,
+        histograms
+    );
+}
+
+void madspace::to_json(nlohmann::json& j, const ChannelEventGenerator& channel) {
+    json histograms = json::array();
+    json histogram_function;
+    if (channel._histogram_function) {
+        histogram_function = json(channel._histogram_function.value());
+        for (auto& hist : channel._histograms) {
+            histograms.push_back(
+                json{
+                    {"name", hist.name},
+                    {"min", hist.min},
+                    {"max", hist.max},
+                    {"bin_count", hist.bin_values.size() - 2},
+                }
+            );
+        }
+    }
+    j = json{
+        {"particle_count", channel._particle_count},
+        {"integrand_function", json(channel._integrand_function)},
+        {"unweighter_function", json(channel._unweighter_function)},
+        {"histogram_function", histogram_function},
+        {"subprocess_index", channel._status.subprocess},
+        {"name", channel._status.name},
+        {"histograms", histograms},
+    };
 }

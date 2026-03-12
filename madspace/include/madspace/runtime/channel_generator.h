@@ -4,6 +4,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "madspace/runtime/generator_data.h"
 
 #include "madspace/madcode.h"
@@ -21,6 +23,14 @@ public:
     static inline const int integrand_flags = Integrand::sample |
         Integrand::return_momenta | Integrand::return_indices |
         Integrand::return_random | Integrand::return_discrete;
+
+    static ChannelEventGenerator load(
+        const std::string& channel_file,
+        const std::vector<ContextPtr>& contexts,
+        const std::string& event_file,
+        const std::string& weight_file,
+        const GeneratorConfig& config
+    );
 
     ChannelEventGenerator(
         const std::vector<ContextPtr>& contexts,
@@ -56,14 +66,29 @@ public:
     void clear_events();
     void update_max_weight(Tensor weights);
     void unweight_and_write(const TensorVec& unweighted_events);
+    void save(const std::string& file_name) const;
 
 private:
+    ChannelEventGenerator(
+        const std::vector<ContextPtr>& contexts,
+        std::size_t particle_count,
+        const Function& integrand_function,
+        const Function& unweighter_function,
+        const std::optional<Function>& histogram_function,
+        const std::string& event_file,
+        const std::string& weight_file,
+        std::size_t subprocess_index,
+        const std::string& name,
+        const GeneratorConfig& config,
+        const std::vector<Histogram>& histograms
+    );
+
     struct ContextRuntimes {
-        RuntimePtr integrand;
-        RuntimePtr unweighter;
-        RuntimePtr vegas_histogram;
-        RuntimePtr discrete_histogram;
-        RuntimePtr observable_histograms;
+        RuntimePtr integrand = nullptr;
+        RuntimePtr unweighter = nullptr;
+        RuntimePtr vegas_histogram = nullptr;
+        RuntimePtr discrete_histogram = nullptr;
+        RuntimePtr observable_histograms = nullptr;
     };
 
     GeneratorStatus _status;
@@ -75,6 +100,10 @@ private:
     std::optional<VegasGridOptimizer> _vegas_optimizer;
     std::optional<DiscreteOptimizer> _discrete_optimizer;
     std::size_t _batch_size;
+    std::size_t _particle_count;
+    Function _integrand_function;
+    Function _unweighter_function;
+    std::optional<Function> _histogram_function;
     RunningIntegral _cross_section;
     double _max_weight = 0.;
     std::size_t _unweighted_count = 0;
@@ -83,6 +112,10 @@ private:
     std::vector<double> _large_weights;
     std::vector<Histogram> _histograms;
     std::unordered_set<std::string> _used_globals;
+
+    friend void to_json(nlohmann::json& j, const ChannelEventGenerator& channel);
 };
+
+void to_json(nlohmann::json& j, const ChannelEventGenerator& channel);
 
 } // namespace madspace
