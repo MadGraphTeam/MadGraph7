@@ -1410,6 +1410,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_index"),
             py::arg("helicity_index")
         )*/
+        .def("save", &LHECompleter::save, py::arg("file"))
+        .def_static("load", &LHECompleter::load, py::arg("file"))
         .def_property_readonly("max_particle_count", &LHECompleter::max_particle_count);
     py::classh<LHEFileWriter>(m, "LHEFileWriter")
         .def(

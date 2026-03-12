@@ -121,17 +121,15 @@ def main() -> None:
             os.path.join(run_path, "events.npy")
         )
     elif output_format == "lhe_npy":
-        raise NotImplementedError(":(")
-        #lhe_completer = self.build_lhe_completer()
-        #self.event_generator.combine_to_lhe_npy(
-        #    os.path.join(self.run_path, "events.npy"), lhe_completer
-        #)
+        lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
+        event_generator.combine_to_lhe_npy(
+            os.path.join(run_path, "events.npy"), lhe_completer
+        )
     elif output_format == "lhe":
-        raise NotImplementedError(":(")
-        #lhe_completer = self.build_lhe_completer()
-        #self.event_generator.combine_to_lhe(
-        #    os.path.join(self.run_path, "events.lhe"), lhe_completer
-        #)
+        lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
+        event_generator.combine_to_lhe(
+            os.path.join(run_path, "events.lhe"), lhe_completer
+        )
     else:
         raise ValueError("Unknown output format")
 

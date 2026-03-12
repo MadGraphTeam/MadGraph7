@@ -509,18 +509,19 @@ class MadgraphProcess:
         self.event_generator.generate()
         output_format = self.run_card["run"]["output_format"]
         if output_format == "compact_npy":
+            self.lhe_completer = None
             self.event_generator.combine_to_compact_npy(
                 os.path.join(self.run_path, "events.npy")
             )
         elif output_format == "lhe_npy":
-            lhe_completer = self.build_lhe_completer()
+            self.lhe_completer = self.build_lhe_completer()
             self.event_generator.combine_to_lhe_npy(
-                os.path.join(self.run_path, "events.npy"), lhe_completer
+                os.path.join(self.run_path, "events.npy"), self.lhe_completer
             )
         elif output_format == "lhe":
-            lhe_completer = self.build_lhe_completer()
+            self.lhe_completer = self.build_lhe_completer()
             self.event_generator.combine_to_lhe(
-                os.path.join(self.run_path, "events.lhe"), lhe_completer
+                os.path.join(self.run_path, "events.lhe"), self.lhe_completer
             )
         else:
             raise ValueError("Unknown output format")
@@ -633,6 +634,10 @@ gpu_batch_size = {self.run_card["generation"]["gpu_batch_size"]}
         }
         with open(os.path.join(data_path, "data.json"), "w") as f:
             json.dump(data, f)
+
+        if self.lhe_completer is None:
+            self.lhe_completer = self.build_lhe_completer()
+        self.lhe_completer.save(os.path.join(data_path, "lhe.json"))
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)

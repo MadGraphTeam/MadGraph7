@@ -7,6 +7,7 @@
 #include <span>
 
 using namespace madspace;
+using json = nlohmann::json;
 
 namespace {
 
@@ -479,6 +480,124 @@ void LHECompleter::complete_event_data(
             ++res_index;
         }
     }
+}
+
+void LHECompleter::save(const std::string& file) const {
+    std::ofstream f(file);
+    json j;
+    j = *this;
+    f << j.dump();
+}
+
+LHECompleter LHECompleter::load(const std::string& file) {
+    std::ifstream f(file);
+    LHECompleter lhe_completer;
+    from_json(json::parse(f), lhe_completer);
+    return lhe_completer;
+}
+
+void madspace::to_json(nlohmann::json& j, const LHECompleter& lhe_completer) {
+    json propagator_index_and_count = json::array();
+    for (auto& [key, value] : lhe_completer._propagator_index_and_count) {
+        propagator_index_and_count.push_back(json::array({key, value}));
+    }
+    j = json{
+        {"subproc_data", lhe_completer._subproc_data},
+        {"process_indices", lhe_completer._process_indices},
+        {"masses", lhe_completer._masses},
+        {"colors", lhe_completer._colors},
+        {"helicities", lhe_completer._helicities},
+        {"pdg_id_index_and_count", lhe_completer._pdg_id_index_and_count},
+        {"pdg_ids", lhe_completer._pdg_ids},
+        {"propagator_index_and_count", propagator_index_and_count},
+        {"propagators", lhe_completer._propagators},
+        {"propagator_colors", lhe_completer._propagator_colors},
+        {"bw_cutoff", lhe_completer._bw_cutoff},
+        {"max_particle_count", lhe_completer._max_particle_count},
+    };
+}
+
+void madspace::from_json(const nlohmann::json& j, LHECompleter& lhe_completer) {
+    lhe_completer._subproc_data =
+        j.at("subproc_data").get<std::vector<LHECompleter::SubprocData>>();
+    lhe_completer._process_indices = j.at("process_indices").get<std::vector<int>>();
+    lhe_completer._masses = j.at("masses").get<std::vector<double>>();
+    lhe_completer._colors = j.at("colors").get<std::vector<std::tuple<int, int>>>();
+    lhe_completer._helicities = j.at("helicities").get<std::vector<double>>();
+    lhe_completer._pdg_id_index_and_count =
+        j.at("pdg_id_index_and_count").get<std::vector<std::array<std::size_t, 3>>>();
+    lhe_completer._pdg_ids = j.at("pdg_ids").get<std::vector<int>>();
+    lhe_completer._propagator_index_and_count = {};
+    for (auto& item : j.at("propagator_index_and_count")) {
+        lhe_completer._propagator_index_and_count[item.at(0).get<std::size_t>()] =
+            item.at(1).get<std::array<std::size_t, 3>>();
+    }
+    lhe_completer._propagators =
+        j.at("propagators").get<std::vector<LHECompleter::PropagatorData>>();
+    lhe_completer._propagator_colors =
+        j.at("propagator_colors").get<std::vector<std::tuple<int, int>>>();
+    lhe_completer._bw_cutoff = j.at("bw_cutoff").get<double>();
+    lhe_completer._max_particle_count = j.at("max_particle_count").get<std::size_t>();
+}
+
+void madspace::to_json(
+    nlohmann::json& j, const LHECompleter::SubprocData& subproc_data
+) {
+    j = json{
+        subproc_data.process_id,
+        subproc_data.color_offset,
+        subproc_data.pdg_id_offset,
+        subproc_data.helicity_offset,
+        subproc_data.mass_offset,
+        subproc_data.particle_count,
+        subproc_data.color_count,
+        subproc_data.flavor_count,
+        subproc_data.matrix_flavor_count,
+        subproc_data.diagram_count,
+        subproc_data.helicity_count,
+    };
+}
+
+void madspace::from_json(
+    const nlohmann::json& j, LHECompleter::SubprocData& subproc_data
+) {
+    subproc_data = {
+        .process_id = j.at(0).get<int>(),
+        .color_offset = j.at(1).get<std::size_t>(),
+        .pdg_id_offset = j.at(2).get<std::size_t>(),
+        .helicity_offset = j.at(3).get<std::size_t>(),
+        .mass_offset = j.at(4).get<std::size_t>(),
+        .particle_count = j.at(5).get<std::size_t>(),
+        .color_count = j.at(6).get<std::size_t>(),
+        .flavor_count = j.at(7).get<std::size_t>(),
+        .matrix_flavor_count = j.at(8).get<std::size_t>(),
+        .diagram_count = j.at(9).get<std::size_t>(),
+        .helicity_count = j.at(10).get<std::size_t>(),
+    };
+}
+
+void madspace::to_json(
+    nlohmann::json& j, const LHECompleter::PropagatorData& prop_data
+) {
+    j = json{
+        prop_data.pdg_id,
+        prop_data.momentum_mask,
+        prop_data.child_prop_mask,
+        prop_data.mass,
+        prop_data.width,
+    };
+}
+
+void madspace::from_json(
+    const nlohmann::json& j, LHECompleter::PropagatorData& prop_data
+) {
+    prop_data = {
+        .pdg_id = j.at(0).get<int>(),
+        .momentum_mask = j.at(1).get<int>(),
+        .child_prop_mask = j.at(2).get<int>(),
+        .mass = j.at(3).get<double>(),
+        .width = j.at(4).get<double>(),
+    };
 }
 
 LHEFileWriter::LHEFileWriter(const std::string& file_name, const LHEMeta& meta) :

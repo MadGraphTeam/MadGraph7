@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "madspace/phasespace/topology.h"
 #include "madspace/runtime/thread_pool.h"
 #include "madspace/util.h"
@@ -88,6 +90,8 @@ public:
         std::mt19937& rand_gen
     );
     std::size_t max_particle_count() const { return _max_particle_count; }
+    void save(const std::string& file) const;
+    static LHECompleter load(const std::string& file);
 
 private:
     struct SubprocData {
@@ -115,7 +119,26 @@ private:
     std::vector<std::tuple<int, int>> _propagator_colors;
     double _bw_cutoff;
     std::size_t _max_particle_count;
+
+    LHECompleter() = default;
+    friend void to_json(nlohmann::json& j, const LHECompleter& lhe_completer);
+    friend void from_json(const nlohmann::json& j, LHECompleter& lhe_completer);
+    friend void
+    to_json(nlohmann::json& j, const LHECompleter::SubprocData& subproc_data);
+    friend void
+    from_json(const nlohmann::json& j, LHECompleter::SubprocData& subproc_data);
+    friend void
+    to_json(nlohmann::json& j, const LHECompleter::PropagatorData& prop_data);
+    friend void
+    from_json(const nlohmann::json& j, LHECompleter::PropagatorData& prop_data);
 };
+
+void to_json(nlohmann::json& j, const LHECompleter& lhe_completer);
+void from_json(const nlohmann::json& j, LHECompleter& lhe_completer);
+void to_json(nlohmann::json& j, const LHECompleter::SubprocData& subproc_data);
+void from_json(const nlohmann::json& j, LHECompleter::SubprocData& subproc_data);
+void to_json(nlohmann::json& j, const LHECompleter::PropagatorData& prop_data);
+void from_json(const nlohmann::json& j, LHECompleter::PropagatorData& prop_data);
 
 class LHEFileWriter {
 public:
