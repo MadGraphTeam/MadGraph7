@@ -162,9 +162,10 @@ void EventGenerator::generate() {
                  ++i, channel_index = (channel_index + 1) % _channels.size()) {
                 auto& channel = _channels.at(channel_index);
                 std::size_t& channel_job_count = _channel_job_counts.at(channel_index);
-                if (channel->status().count_unweighted >=
-                    _channel_integral_fractions.at(channel_index) *
-                        _config.target_count) {
+                double integral_frac = _channel_integral_fractions.at(channel_index);
+                if (integral_frac > 0 &&
+                    channel->status().count_unweighted >=
+                        integral_frac * _config.target_count) {
                     continue;
                 }
                 if (channel->needs_optimization()) {

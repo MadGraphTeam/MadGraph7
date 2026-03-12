@@ -472,7 +472,7 @@ ChannelEventGenerator ChannelEventGenerator::load(
     json channel = json::parse(f);
     std::optional<Function> hist_function;
     std::vector<Histogram> histograms;
-    if (channel.at("histogram_function")) {
+    if (!channel.at("histogram_function").is_null()) {
         for (json hist : channel.at("histograms")) {
             std::size_t bin_count = hist.at("bin_count").get<std::size_t>();
             histograms.push_back({

@@ -9,11 +9,7 @@ import subprocess
 import logging
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
-try:
-    import tomllib
-except ModuleNotFoundError:
-    # for versions before 3.11
-    import pip._vendor.tomli as tomllib
+import tomllib
 
 if "LHAPDF_DATA_PATH" in os.environ:
     PDF_PATH = os.environ["LHAPDF_DATA_PATH"]
@@ -564,6 +560,9 @@ class MadgraphProcess:
         )
 
     def save_gridpack(self) -> None:
+        if not self.run_card["run"]["save_gridpack"]:
+            return
+
         gridpack_path = os.path.join(self.run_path, "gridpack")
         data_path = os.path.join(gridpack_path, "data")
         events_path = os.path.join(gridpack_path, "Events")
@@ -574,13 +573,14 @@ class MadgraphProcess:
 
         channel_path = os.path.join(data_path, "channels")
         os.mkdir(channel_path)
-        channel_files = []
+        channel_files = {}
         for channel in self.event_generator.channels():
-            file = f"channel{channel.status().name}.json"
-            channel_files.append(file)
+            name = channel.status().name
+            file = f"channel{name}.json"
+            channel_files[name] = file
             channel.save(os.path.join(channel_path, file))
 
-        lib_path = os.path.join(data_path, "lib")
+        lib_path = os.path.join(gridpack_path, "lib")
         os.mkdir(lib_path)
         matrix_elements = []
         for subproc in self.subprocess_data:
@@ -613,8 +613,16 @@ events = {self.run_card["generation"]["events"]}
 max_overweight_truncation = {self.run_card["generation"]["max_overweight_truncation"]}
 freeze_max_weight_after = {self.run_card["generation"]["freeze_max_weight_after"]}
 cpu_batch_size = {self.run_card["generation"]["cpu_batch_size"]}
-gpu_batch_size ={self.run_card["generation"]["gpu_batch_size"]}
+gpu_batch_size = {self.run_card["generation"]["gpu_batch_size"]}
 """)
+
+        bin_path = os.path.join(gridpack_path, "bin")
+        os.mkdir(bin_path)
+        gen_events_file = os.path.join(bin_path, "generate_events")
+        shutil.copy(
+            os.path.join(os.path.dirname(__file__), "gridpack.py"), gen_events_file
+        )
+        os.chmod(gen_events_file, 0o755)
 
         data = {
             "channels": channel_files,
