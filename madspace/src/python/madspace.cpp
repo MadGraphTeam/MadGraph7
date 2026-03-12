@@ -188,7 +188,7 @@ PYBIND11_MODULE(_madspace_py, m) {
     );
 
     py::classh<MatrixElementApi>(m, "MatrixElementApi")
-        .def("device", &MatrixElementApi::device)
+        //.def("device", &MatrixElementApi::device)
         .def("particle_count", &MatrixElementApi::particle_count)
         .def("diagram_count", &MatrixElementApi::diagram_count)
         .def("helicity_count", &MatrixElementApi::helicity_count)

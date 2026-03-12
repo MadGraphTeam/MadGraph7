@@ -14,6 +14,7 @@ MatrixElementApi::MatrixElementApi(
     const std::string& file,
     const std::string& param_card,
     ThreadPool& thread_pool,
+    DevicePtr device,
     std::size_t index
 ) :
     _file_name(file), _index(index) {
@@ -65,10 +66,14 @@ MatrixElementApi::MatrixElementApi(
         );
     }
 
-    _instances = ThreadResource<InstanceType>(thread_pool, [&] {
+    _instances = ThreadResource<InstanceType>(thread_pool, [&, device] {
+        device->activate();
         void* instance;
         check_umami_status(_initialize(&instance, param_card.c_str()));
-        return InstanceType(instance, [this](void* proc) { _free(proc); });
+        return InstanceType(instance, [this, device](void* proc) {
+            device->activate();
+            _free(proc);
+        });
     });
 }
 
@@ -105,7 +110,7 @@ Context::load_matrix_element(const std::string& file, const std::string& param_c
     _param_card_paths.push_back(param_card);
     _matrix_elements.push_back(
         std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
-            file, param_card, *_thread_pool, _matrix_elements.size()
+            file, param_card, *_thread_pool, _device, _matrix_elements.size()
         ))
     );
     return *_matrix_elements.back().get();

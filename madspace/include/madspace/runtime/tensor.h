@@ -178,6 +178,7 @@ public:
     virtual const Device* device_ptr() const = 0;
     virtual void sync_barrier() const {}
     virtual DeviceType device_type() const = 0;
+    virtual void activate() const = 0;
 };
 
 using DevicePtr = const Device*;

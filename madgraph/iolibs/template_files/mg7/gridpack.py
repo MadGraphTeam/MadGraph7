@@ -76,10 +76,10 @@ def main() -> None:
             device_type = device_name
             device_index = 0
         device_types.append(device_type)
-        if device_name == "cuda":
+        if device_type == "cuda":
             device = ms.cuda_device(device_index)
             pool_size = args.gpu_thread_pool_size
-        elif device_name == "hip":
+        elif device_type == "hip":
             device = ms.hip_device(device_index)
             pool_size = args.gpu_thread_pool_size
         else:

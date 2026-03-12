@@ -34,6 +34,11 @@ inline void check_error() { check_error(gpuGetLastError()); }
 
 class GpuDevice : public Device {
 public:
+#ifdef __CUDACC__
+    static constexpr DeviceType gpu_device_type = DeviceType::cuda;
+#else
+    static constexpr DeviceType gpu_device_type = DeviceType::hip;
+#endif
     void* allocate(std::size_t size) const override;
     void free(void* ptr) const override;
     void memcpy(void* to, void* from, std::size_t size) const override;
@@ -43,14 +48,8 @@ public:
     void tensor_add(const Tensor& source, Tensor& target) const override;
     void tensor_cpu(const Tensor& source, Tensor& target) const override;
     DevicePtr device_ptr() const override { return this; }
-    DeviceType device_type() const override {
-#ifdef __CUDACC__
-        return DeviceType::cuda;
-#else
-        return DeviceType::hip;
-#endif
-    }
-    void activate() const { check_error(gpuSetDevice(_index)); }
+    DeviceType device_type() const override { return gpu_device_type; }
+    void activate() const override { check_error(gpuSetDevice(_index)); }
 
     GpuDevice(const GpuDevice&) = delete;
     GpuDevice& operator=(GpuDevice&) = delete;
@@ -77,7 +76,7 @@ private:
 
 class AsyncGpuDevice {
 public:
-    AsyncGpuDevice(GpuDevice& device, gpuStream_t stream) :
+    AsyncGpuDevice(const GpuDevice& device, gpuStream_t stream) :
         _device(device), _stream(stream) {}
 
     void* allocate(std::size_t size) const;
@@ -93,7 +92,7 @@ public:
     gpuStream_t stream() const { return _stream; }
 
 private:
-    GpuDevice& _device;
+    const GpuDevice& _device;
     gpuStream_t _stream;
 };
 

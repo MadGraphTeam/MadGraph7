@@ -25,19 +25,19 @@ void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
 
 void GpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
     activate();
-    AsyncGpuDevice(gpuStreamPerThread).tensor_copy(source, target);
+    AsyncGpuDevice(*this, gpuStreamPerThread).tensor_copy(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_zero(Tensor& tensor) const {
     activate();
-    AsyncGpuDevice(gpuStreamPerThread).tensor_zero(tensor);
+    AsyncGpuDevice(*this, gpuStreamPerThread).tensor_zero(tensor);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
     activate();
-    AsyncGpuDevice(gpuStreamPerThread).tensor_add(source, target);
+    AsyncGpuDevice(*this, gpuStreamPerThread).tensor_add(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 

@@ -107,8 +107,8 @@ void op_matrix_element(
         return;
     }
     auto& matrix_element = instruction.runtime.context().matrix_element(me_index);
-    if (matrix_element.device() != cpu_device()) {
-        throw std::runtime_error("Incompatible device");
+    if (matrix_element.device_type() != DeviceType::cpu) {
+        throw std::runtime_error("Matrix element has incompatible device");
     }
     device.sync_barrier();
 
@@ -694,6 +694,9 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         }
     ),
     _concurrent(concurrent) {
+    if (context->device()->device_type() != DeviceType::cpu) {
+        throw std::runtime_error("Context has incompatible device");
+    }
     std::size_t instr_count = function.instructions().size();
     std::vector<int> local_sources_backward(function.locals().size(), -1);
     std::vector<SizeVec> local_uses_backward(function.locals().size());

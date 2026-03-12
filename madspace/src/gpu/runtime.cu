@@ -94,8 +94,8 @@ void op_matrix_element(
         return;
     }
     auto& matrix_element = instruction.runtime.context().matrix_element(me_index);
-    if (matrix_element.device() != get_device()) {
-        throw std::runtime_error("Incompatible device");
+    if (matrix_element.device_type() != GpuDevice::gpu_device_type) {
+        throw std::runtime_error("Matrix element has incompatible device");
     }
     device.sync_barrier();
 
@@ -900,7 +900,10 @@ void op_histogram(
 
 GpuRuntime::GpuRuntime(const Function& function, ContextPtr context) :
     _context(context), input_count(function.inputs().size()) {
-    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    if (context->device()->device_type() != GpuDevice::gpu_device_type) {
+        throw std::runtime_error("Context has incompatible device");
+    }
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     gpu_device.activate();
     check_error(
         gpurandCreateGenerator(&_gpurand_generator, GPURAND_RNG_PSEUDO_DEFAULT)
@@ -998,7 +1001,7 @@ GpuRuntime::GpuRuntime(const Function& function, ContextPtr context) :
         std::visit(
             Overloaded{
                 [&](auto val) {
-                    Tensor tensor(val, &GpuDevice::instance());
+                    Tensor tensor(val, &gpu_device);
                     locals_init[local.local_index] = tensor;
                 },
                 [](std::monostate val) {}
@@ -1024,7 +1027,7 @@ GpuRuntime::~GpuRuntime() {
 }
 
 TensorVec GpuRuntime::run(const TensorVec& inputs) const {
-    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     gpu_device.activate();
     auto locals = locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
@@ -1055,7 +1058,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) const {
 std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) const {
-    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     gpu_device.activate();
     auto locals = locals_init;
     auto requires_grad = requires_grad_init;
@@ -1117,7 +1120,7 @@ GpuRuntime::run_backward(
     const TensorVec& stored_locals,
     const std::vector<bool>& eval_grad
 ) const {
-    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     gpu_device.activate();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);

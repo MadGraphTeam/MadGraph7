@@ -16,16 +16,16 @@ public:
     MatrixElementApi& operator=(MatrixElementApi&&) noexcept = default;
     MatrixElementApi(const MatrixElementApi&) = delete;
     MatrixElementApi& operator=(const MatrixElementApi&) = delete;
-    DevicePtr device() const {
+    DeviceType device_type() const {
         UmamiDevice dev;
         check_umami_status(_get_meta(UMAMI_META_DEVICE, &dev));
         switch (dev) {
         case UMAMI_DEVICE_CPU:
-            return cpu_device();
+            return DeviceType::cpu;
         case UMAMI_DEVICE_CUDA:
-            return cuda_device(0);
+            return DeviceType::cuda;
         case UMAMI_DEVICE_HIP:
-            return hip_device(0);
+            return DeviceType::hip;
         default:
             throw_error("matrix element device not known");
         }
@@ -83,6 +83,7 @@ private:
         const std::string& file,
         const std::string& param_card,
         ThreadPool& thread_pool,
+        DevicePtr device,
         std::size_t index = 0
     );
 
