@@ -47,14 +47,18 @@ def main() -> None:
     args = parser.parse_args()
 
     # initialize event directory
+    run_name = args.run_name
     os.makedirs("Events", exist_ok=True)
-    existing_run_dirs = glob.glob(f"Events/{args.run_name}_*")
+    run_dir_prefix = os.path.join("Events", f"{run_name}_")
+    existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
     run_index = 1
-    while f"Events/{args.run_name}_{run_index:02d}" in existing_run_dirs:
-        run_index += 1
+    for run_dir in existing_run_dirs:
+        run_index_str = run_dir[len(run_dir_prefix):]
+        if run_index_str.isnumeric():
+            run_index = max(run_index, int(run_index_str) + 1)
     while True:
         try:
-            run_path = f"Events/{args.run_name}_{run_index:02d}"
+            run_path = f"{run_dir_prefix}{run_index:02d}"
             os.mkdir(run_path)
             break
         except FileExistsError:
@@ -96,8 +100,8 @@ def main() -> None:
         ms.ChannelEventGenerator.load(
             os.path.join("data", "channels", file),
             contexts,
-            event_file=f"events.{name}.npy",
-            weight_file=f"weights.{name}.npy",
+            event_file=os.path.join(run_path, f"events.{name}.npy"),
+            weight_file=os.path.join(run_path, f"weights.{name}.npy"),
             config=config,
         )
         for name, file in madspace_data["channels"].items()

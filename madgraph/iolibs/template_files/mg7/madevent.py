@@ -116,13 +116,16 @@ class MadgraphProcess:
     def init_event_dir(self) -> None:
         run_name = self.run_card["run"]["run_name"]
         os.makedirs("Events", exist_ok=True)
-        existing_run_dirs = glob.glob(f"Events/{run_name}_*")
+        run_dir_prefix = os.path.join("Events", f"{run_name}_")
+        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
         run_index = 1
-        while f"Events/{run_name}_{run_index:02d}" in existing_run_dirs:
-            run_index += 1
+        for run_dir in existing_run_dirs:
+            run_index_str = run_dir[len(run_dir_prefix):]
+            if run_index_str.isnumeric():
+                run_index = max(run_index, int(run_index_str) + 1)
         while True:
             try:
-                self.run_path = f"Events/{run_name}_{run_index:02d}"
+                self.run_path = f"{run_dir_prefix}{run_index:02d}"
                 os.mkdir(self.run_path)
                 break
             except FileExistsError:
@@ -290,8 +293,8 @@ class MadgraphProcess:
                     channel.event_generator = ms.ChannelEventGenerator(
                         contexts=self.contexts,
                         integrand=integrand,
-                        event_file=f"events.{i}.{channel.name}.npy",
-                        weight_file=f"weights.{i}.{channel.name}.npy",
+                        event_file=os.path.join(self.run_path, f"events.{i}.{channel.name}.npy"),
+                        weight_file=os.path.join(self.run_path, f"weights.{i}.{channel.name}.npy"),
                         config=self.event_generator_config,
                         subprocess_index=i,
                         name=f"{i}.{channel.name}",
