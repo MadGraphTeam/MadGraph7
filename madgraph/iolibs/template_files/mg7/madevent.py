@@ -134,12 +134,20 @@ class MadgraphProcess:
     def init_context(self) -> None:
         device_names = self.run_card["run"]["devices"]
         self.contexts = []
+        self.device_types = []
         for device_name in device_names:
-            if device_name == "cuda":
-                device = ms.cuda_device()
+            if ":" in device_name:
+                device_type, device_index_str = device_name.split(":")
+                device_index = int(device_index_str)
+            else:
+                device_type = device_name
+                device_index = 0
+            self.device_types.append(device_type)
+            if device_type == "cuda":
+                device = ms.cuda_device(device_index)
                 pool_size = self.run_card["run"]["gpu_thread_pool_size"]
-            elif device_name == "hip":
-                device = ms.hip_device()
+            elif device_type == "hip":
+                device = ms.hip_device(device_index)
                 pool_size = self.run_card["run"]["gpu_thread_pool_size"]
             else:
                 device = ms.cpu_device()
@@ -666,13 +674,13 @@ class MadgraphSubprocess:
         self.multi_channel_data = None
 
         api_path = self.meta["me_path"]
-        if not os.path.isfile(api_path):
-            cwd = os.getcwd()
-            api_dir = os.path.dirname(api_path)
-            logger.info(f"Compiling subprocess {api_dir}")
-            os.chdir(api_dir)
-            subprocess.run(["make"])
-            os.chdir(cwd)
+        #if not os.path.isfile(api_path):
+        #    cwd = os.getcwd()
+        #    api_dir = os.path.dirname(api_path)
+        #    logger.info(f"Compiling subprocess {api_dir}")
+        #    os.chdir(api_dir)
+        #    subprocess.run(["make"])
+        #    os.chdir(cwd)
 
         self.incoming_masses = [
             self.process.get_mass(pid) for pid in clean_pids(self.meta["incoming"])
@@ -716,9 +724,11 @@ class MadgraphSubprocess:
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_element = None
         else:
-            for context in self.process.contexts:
+            for context, device_type in zip(
+                self.process.contexts, self.process.device_types
+            ):
                 self.matrix_element = context.load_matrix_element(
-                    api_path, self.process.param_card_path
+                    api_path.format(device=device_type), self.process.param_card_path
                 )
 
     def build_multi_channel_data(self) -> MultiChannelData:

@@ -7,33 +7,42 @@ using namespace madspace::gpu;
 using namespace madspace::kernels;
 
 void* GpuDevice::allocate(std::size_t size) const {
+    activate();
     void* ptr;
     check_error(gpuMalloc(&ptr, size));
     return ptr;
 }
 
-void GpuDevice::free(void* ptr) const { check_error(gpuFree(ptr)); }
+void GpuDevice::free(void* ptr) const {
+    activate();
+    check_error(gpuFree(ptr));
+}
 
 void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
+    activate();
     check_error(gpuMemcpy(to, from, size, gpuMemcpyDefault));
 }
 
 void GpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
+    activate();
     AsyncGpuDevice(gpuStreamPerThread).tensor_copy(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_zero(Tensor& tensor) const {
+    activate();
     AsyncGpuDevice(gpuStreamPerThread).tensor_zero(tensor);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
+    activate();
     AsyncGpuDevice(gpuStreamPerThread).tensor_add(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_cpu(const Tensor& source, Tensor& target) const {
+    activate();
     check_error(
         gpuMemcpy(target.data(), source.data(), source.byte_size(), gpuMemcpyDefault)
     );
@@ -92,4 +101,10 @@ void AsyncGpuDevice::tensor_cpu(const Tensor& source, Tensor& target) const {
     ));
 }
 
-extern "C" DevicePtr get_device() { return &GpuDevice::instance(); }
+extern "C" int device_count() {
+    int device_count;
+    check_error(gpuGetDeviceCount(&device_count));
+    return device_count;
+}
+
+extern "C" DevicePtr get_device(int index) { return &GpuDevice::instance(index); }

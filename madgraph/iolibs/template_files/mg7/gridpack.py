@@ -67,12 +67,20 @@ def main() -> None:
     # initialize context
     device_names = args.device if args.device else run_args["devices"]
     contexts = []
+    device_types = []
     for device_name in device_names:
+        if ":" in device_name:
+            device_type, device_index_str = device_name.split(":")
+            device_index = int(device_index_str)
+        else:
+            device_type = device_name
+            device_index = 0
+        device_types.append(device_type)
         if device_name == "cuda":
-            device = ms.cuda_device()
+            device = ms.cuda_device(device_index)
             pool_size = args.gpu_thread_pool_size
         elif device_name == "hip":
-            device = ms.hip_device()
+            device = ms.hip_device(device_index)
             pool_size = args.gpu_thread_pool_size
         else:
             device = ms.cpu_device()
@@ -90,10 +98,12 @@ def main() -> None:
 
     # set up contexts
     global_dir = os.path.join("data", "globals")
-    for context in contexts:
+    for context, device_type in zip(contexts, device_types):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
-            context.load_matrix_element(me_path, param_card_path)
+            context.load_matrix_element(
+                me_path.format(device=device_type), param_card_path
+            )
 
     # set up generators
     channel_generators = [

@@ -80,4 +80,5 @@ void AsyncCpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
     tensor_add_impl(source, target, *this);
 }
 
-extern "C" DevicePtr get_device() { return &CpuDevice::instance(); }
+extern "C" int device_count() { return 1; }
+extern "C" DevicePtr get_device(int index) { return &CpuDevice::instance(); }

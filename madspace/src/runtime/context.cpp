@@ -233,13 +233,13 @@ ContextPtr madspace::default_context() {
     return context;
 }
 
-ContextPtr madspace::default_cuda_context() {
-    static ContextPtr context = default_device_context(cuda_device());
+ContextPtr madspace::default_cuda_context(std::size_t index) {
+    static ContextPtr context = default_device_context(cuda_device(index));
     return context;
 }
 
-ContextPtr madspace::default_hip_context() {
-    static ContextPtr context = default_device_context(hip_device());
+ContextPtr madspace::default_hip_context(std::size_t index) {
+    static ContextPtr context = default_device_context(hip_device(index));
     return context;
 }
 

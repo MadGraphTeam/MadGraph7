@@ -900,6 +900,8 @@ void op_histogram(
 
 GpuRuntime::GpuRuntime(const Function& function, ContextPtr context) :
     _context(context), input_count(function.inputs().size()) {
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    gpu_device.activate();
     check_error(
         gpurandCreateGenerator(&_gpurand_generator, GPURAND_RNG_PSEUDO_DEFAULT)
     );
@@ -1022,11 +1024,13 @@ GpuRuntime::~GpuRuntime() {
 }
 
 TensorVec GpuRuntime::run(const TensorVec& inputs) const {
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    gpu_device.activate();
     auto locals = locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
 
     for (auto& instr : instructions) {
-        AsyncGpuDevice device(instr.stream);
+        AsyncGpuDevice device(gpu_device, instr.stream);
         for (auto event : instr.wait_events) {
             check_error(gpuStreamWaitEvent(instr.stream, event));
         }
@@ -1051,6 +1055,8 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) const {
 std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) const {
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    gpu_device.activate();
     auto locals = locals_init;
     auto requires_grad = requires_grad_init;
     std::vector<bool> store_local(locals.size());
@@ -1061,7 +1067,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     );
 
     for (auto [instr, instr_eval_grad] : zip(instructions, eval_grad)) {
-        AsyncGpuDevice device(instr.stream);
+        AsyncGpuDevice device(gpu_device, instr.stream);
         if (instr.differentiable) {
             for (auto input_index : instr.input_indices) {
                 if (requires_grad[input_index]) {
@@ -1111,6 +1117,8 @@ GpuRuntime::run_backward(
     const TensorVec& stored_locals,
     const std::vector<bool>& eval_grad
 ) const {
+    auto& gpu_device = *static_cast<const GpuDevice*>(_context.device());
+    gpu_device.activate();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);
     for (auto [index, grad] : zip(output_indices, output_grads)) {
@@ -1121,7 +1129,7 @@ GpuRuntime::run_backward(
         if (!instr_eval_grad) {
             continue;
         }
-        AsyncGpuDevice device(instr.backward_stream);
+        AsyncGpuDevice device(gpu_device, instr.backward_stream);
         for (auto [output_index, output_dtype] :
              zip(instr.output_indices, instr.output_dtypes)) {
             auto& grad = local_grads[output_index];

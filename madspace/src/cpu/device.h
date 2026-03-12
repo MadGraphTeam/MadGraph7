@@ -151,7 +151,8 @@ private:
     ThreadPool& _thread_pool;
 };
 
-extern "C" DevicePtr get_device();
+extern "C" int device_count();
+extern "C" DevicePtr get_device(int index);
 
 } // namespace cpu
 } // namespace madspace

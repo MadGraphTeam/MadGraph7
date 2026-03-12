@@ -31,8 +31,8 @@ using RuntimePtr = std::unique_ptr<Runtime>;
 RuntimePtr
 build_runtime(const Function& function, ContextPtr context, bool concurrent = true);
 DevicePtr cpu_device();
-DevicePtr cuda_device();
-DevicePtr hip_device();
+DevicePtr cuda_device(std::size_t index = 0);
+DevicePtr hip_device(std::size_t index = 0);
 void set_lib_path(const std::string& lib_path);
 void set_simd_vector_size(int vector_size);
 

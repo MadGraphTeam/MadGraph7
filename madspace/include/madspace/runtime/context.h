@@ -23,9 +23,9 @@ public:
         case UMAMI_DEVICE_CPU:
             return cpu_device();
         case UMAMI_DEVICE_CUDA:
-            return cuda_device();
+            return cuda_device(0);
         case UMAMI_DEVICE_HIP:
-            return hip_device();
+            return hip_device(0);
         default:
             throw_error("matrix element device not known");
         }
@@ -146,8 +146,8 @@ private:
 using ContextPtr = std::shared_ptr<Context>;
 
 ContextPtr default_context();
-ContextPtr default_cuda_context();
-ContextPtr default_hip_context();
+ContextPtr default_cuda_context(std::size_t index = 0);
+ContextPtr default_hip_context(std::size_t index = 0);
 ContextPtr default_device_context(DevicePtr device);
 
 inline std::string prefixed_name(const std::string& prefix, const std::string& name) {

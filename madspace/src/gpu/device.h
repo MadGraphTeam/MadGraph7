@@ -42,7 +42,7 @@ public:
     void tensor_zero(Tensor& tensor) const override;
     void tensor_add(const Tensor& source, Tensor& target) const override;
     void tensor_cpu(const Tensor& source, Tensor& target) const override;
-    DevicePtr device_ptr() const override { return &instance(); }
+    DevicePtr device_ptr() const override { return this; }
     DeviceType device_type() const override {
 #ifdef __CUDACC__
         return DeviceType::cuda;
@@ -50,21 +50,35 @@ public:
         return DeviceType::hip;
 #endif
     }
+    void activate() const { check_error(gpuSetDevice(_index)); }
 
     GpuDevice(const GpuDevice&) = delete;
     GpuDevice& operator=(GpuDevice&) = delete;
-    static const GpuDevice& instance() {
-        static GpuDevice device;
-        return device;
+
+    static const GpuDevice& instance(int index) {
+        static std::vector<GpuDevice*> devices = [] {
+            int device_count;
+            check_error(gpuGetDeviceCount(&device_count));
+            std::vector<GpuDevice*> ret;
+            ret.reserve(device_count);
+            for (int i = 0; i < device_count; ++i) {
+                ret.push_back(new GpuDevice(i));
+            }
+            return ret;
+        }();
+        return *devices.at(index);
     }
 
 private:
-    GpuDevice() = default;
+    GpuDevice(int index) : _index(index) {}
+
+    int _index;
 };
 
 class AsyncGpuDevice {
 public:
-    AsyncGpuDevice(gpuStream_t stream) : _stream(stream) {}
+    AsyncGpuDevice(GpuDevice& device, gpuStream_t stream) :
+        _device(device), _stream(stream) {}
 
     void* allocate(std::size_t size) const;
     void free(void* ptr) const;
@@ -74,15 +88,17 @@ public:
     void tensor_zero(Tensor& tensor) const;
     void tensor_add(const Tensor& source, Tensor& target) const;
     void tensor_cpu(const Tensor& source, Tensor& target) const;
-    DevicePtr device_ptr() const { return &GpuDevice::instance(); }
+    DevicePtr device_ptr() const { return &_device; }
     void sync_barrier() const {};
     gpuStream_t stream() const { return _stream; }
 
 private:
+    GpuDevice& _device;
     gpuStream_t _stream;
 };
 
-extern "C" DevicePtr get_device();
+extern "C" int device_count();
+extern "C" DevicePtr get_device(int index);
 
 } // namespace gpu
 } // namespace madspace

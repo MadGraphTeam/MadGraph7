@@ -29,6 +29,16 @@ struct LoadedRuntime {
                 std::format("Could not load shared object {}", file)
             );
         }
+        device_count = reinterpret_cast<decltype(device_count)>(
+            dlsym(shared_lib.get(), "device_count")
+        );
+        if (device_count == nullptr) {
+            throw std::runtime_error(
+                std::format(
+                    "Did not find symbol device_count in shared object {}", file
+                )
+            );
+        }
         get_device = reinterpret_cast<decltype(get_device)>(
             dlsym(shared_lib.get(), "get_device")
         );
@@ -48,11 +58,14 @@ struct LoadedRuntime {
             );
         }
 
-        device_runtimes[get_device()] = this;
+        for (int i = 0; i < device_count(); ++i) {
+            device_runtimes[get_device(i)] = this;
+        }
     }
 
     std::shared_ptr<void> shared_lib;
-    DevicePtr (*get_device)();
+    int (*device_count)();
+    DevicePtr (*get_device)(int);
     Runtime* (*build_runtime)(
         const Function& function, ContextPtr context, bool concurrent
     );
@@ -131,11 +144,15 @@ madspace::build_runtime(const Function& function, ContextPtr context, bool concu
     return RuntimePtr(runtime);
 }
 
-DevicePtr madspace::cpu_device() { return cpu_runtime().get_device(); }
+DevicePtr madspace::cpu_device() { return cpu_runtime().get_device(0); }
 
-DevicePtr madspace::cuda_device() { return cuda_runtime().get_device(); }
+DevicePtr madspace::cuda_device(std::size_t index) {
+    return cuda_runtime().get_device(index);
+}
 
-DevicePtr madspace::hip_device() { return hip_runtime().get_device(); }
+DevicePtr madspace::hip_device(std::size_t index) {
+    return hip_runtime().get_device(index);
+}
 
 void madspace::set_lib_path(const std::string& lib_path) {
     LoadedRuntime::lib_path = lib_path;

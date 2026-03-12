@@ -6,6 +6,8 @@
 #include <cuda_runtime.h>
 #include <curand.h>
 
+#define gpuGetDeviceCount cudaGetDeviceCount
+#define gpuSetDevice cudaSetDevice
 #define gpuMalloc cudaMalloc
 #define gpuMallocAsync cudaMallocAsync
 #define gpuFree cudaFree
@@ -59,6 +61,8 @@
 #include <rocblas/rocblas.h>
 #include <rocrand/rocrand.h>
 
+#define gpuGetDeviceCount hipGetDeviceCount
+#define gpuSetDevice hipSetDevice
 #define gpuMalloc hipMalloc
 #define gpuMallocAsync hipMallocAsync
 #define gpuFree hipFree
