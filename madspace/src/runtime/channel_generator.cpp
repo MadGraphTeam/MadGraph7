@@ -51,8 +51,12 @@ ChannelEventGenerator::ChannelEventGenerator(
         );
     }
     for (auto& context : contexts) {
+        Function integ_func = integrand.function();
+        for (auto& item : integ_func.globals()) {
+            _used_globals.insert(item.first);
+        }
         _runtimes.push_back(
-            {.integrand = build_runtime(integrand.function(), context, false),
+            {.integrand = build_runtime(integ_func, context, false),
              .unweighter = build_runtime(
                  Unweighter({integrand.return_types().begin(),
                              integrand.return_types().begin() + 6})

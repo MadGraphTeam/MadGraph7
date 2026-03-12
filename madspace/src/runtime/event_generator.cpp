@@ -525,6 +525,14 @@ void EventGenerator::unweight_all() {
     _status.done = done;
 }
 
+std::unordered_set<std::string> EventGenerator::used_globals() const {
+    std::unordered_set<std::string> ret;
+    for (auto& channel : _channels) {
+        ret.insert(channel->used_globals().begin(), channel->used_globals().end());
+    }
+    return ret;
+}
+
 std::vector<GeneratorStatus> EventGenerator::channel_status() const {
     std::vector<GeneratorStatus> status;
     for (auto& channel : _channels) {

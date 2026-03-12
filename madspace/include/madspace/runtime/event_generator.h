@@ -40,6 +40,7 @@ public:
     GeneratorStatus status() const { return _status; }
     std::vector<GeneratorStatus> channel_status() const;
     std::vector<Histogram> histograms() const;
+    std::unordered_set<std::string> used_globals() const;
 
 private:
     struct CombineChannelData {
@@ -83,7 +84,6 @@ private:
     void add_timing_data(const std::string& key);
     std::string format_run_time(const std::string& key) const;
     void unweight_all();
-    std::size_t max_particle_count();
     std::tuple<std::vector<CombineChannelData>, std::size_t, double> init_combine();
     void read_and_combine(
         std::vector<CombineChannelData>& channel_data,

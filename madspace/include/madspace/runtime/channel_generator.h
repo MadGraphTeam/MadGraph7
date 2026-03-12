@@ -1,6 +1,7 @@
 #pragma once
 
 #include <random>
+#include <unordered_set>
 #include <vector>
 
 #include "madspace/runtime/generator_data.h"
@@ -43,6 +44,9 @@ public:
         return (_vegas_optimizer || _discrete_optimizer) && !_status.optimized;
     }
     void set_target_count(double target_count) { _status.count_target = target_count; }
+    const std::unordered_set<std::string>& used_globals() const {
+        return _used_globals;
+    }
 
     void unweight_file(std::mt19937& rand_gen);
     void integrate_and_optimize(const GeneratorBatchJob& job, bool run_optim);
@@ -78,6 +82,7 @@ private:
     double _best_rsd = std::numeric_limits<double>::max();
     std::vector<double> _large_weights;
     std::vector<Histogram> _histograms;
+    std::unordered_set<std::string> _used_globals;
 };
 
 } // namespace madspace

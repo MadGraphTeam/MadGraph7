@@ -1217,6 +1217,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)
+        .def("used_globals", &EventGenerator::used_globals)
         .def("histograms", &EventGenerator::histograms);
 
     py::classh<LHEHeader>(m, "LHEHeader")

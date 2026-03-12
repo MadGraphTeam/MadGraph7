@@ -302,12 +302,19 @@ class MadgraphProcess:
                     )
                 channel_generators.append(channel.event_generator)
 
-        return ms.EventGenerator(
+        event_generator = ms.EventGenerator(
             contexts=self.contexts,
             channels=channel_generators,
             status_file=os.path.join(self.run_path, "info.json"),
             config=self.event_generator_config,
         )
+        unused_globals = (
+            set(self.contexts[0].global_names()) - event_generator.used_globals()
+        )
+        for context in self.contexts:
+            for global_name in unused_globals:
+                context.delete_global(global_name)
+        return event_generator
 
     def survey_phasespaces(
         self, phasespaces: list[PhaseSpace | None]
