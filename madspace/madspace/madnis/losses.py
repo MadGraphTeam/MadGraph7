@@ -10,6 +10,10 @@ def dtype_epsilon(tensor: torch.Tensor) -> float:
     return torch.finfo(tensor.dtype).eps
 
 
+def softclip(x: torch.Tensor, threshold: torch.Tensor = 30.0):
+    return threshold * torch.arcsinh(x / threshold)
+
+
 SingleChannelLoss = Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
 MultiChannelLoss = Callable[
     [torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None], torch.Tensor
@@ -89,18 +93,47 @@ def stratified_variance(
         abs_integral += torch.mean(fi.detach().abs() / qsi)
     return (stddev_sum / abs_integral) ** 2
 
-    # variances = []
-    # abs_integrals = []
-    # for i in channels.unique():
-    #    mask = channels == i
-    #    fi, qti, qsi = f_true[mask], q_test[mask], q_sample[mask]
-    #    variances.append(_variance(fi, qti, qsi) + dtype_epsilon(f_true))
-    #    abs_integrals.append(torch.mean(fi.abs() / qsi))
-    # abs_integral_tot = sum(abs_integrals)
-    # return sum(
-    #    abs_integral / abs_integral_tot * variance
-    #    for abs_integral, variance in zip(abs_integrals, variances)
-    # ) / abs_integral_tot.detach().square()
+
+def stratified_variance_softclip(
+    f_true: torch.Tensor,
+    q_test: torch.Tensor,
+    q_sample: torch.Tensor | None = None,
+    channels: torch.Tensor | None = None,
+    threshold: torch.Tensor = 30.0,
+):
+    """
+    Computes the stratified variance as introduced in [2311.01548] for two given sets of
+    probabilities, ``f_true`` and ``q_test``. It uses importance sampling with a sampling
+    probability specified by ``q_sample``. A soft clipping function is applied to the
+    sample weights.
+
+    Args:
+        f_true: normalized integrand values
+        q_test: estimated function/probability
+        q_sample: sampling probability
+        channels: channel indices or None in the single-channel case
+        threshold: approximate point of transition between linear and logarithmic behavior
+    Returns:
+        computed stratified variance
+    """
+    if q_sample is None:
+        q_sample = q_test
+    if channels is None:
+        norm = torch.mean(f_true.detach().abs() / q_sample)
+        f_true = softclip(f_true / q_sample / norm) * q_sample * norm
+        abs_integral = torch.mean(f_true.detach().abs() / q_sample)
+        return _variance(f_true, q_test, q_sample) / abs_integral.square()
+
+    stddev_sum = 0
+    abs_integral = 0
+    for i in channels.unique():
+        mask = channels == i
+        fi, qti, qsi = f_true[mask], q_test[mask], q_sample[mask]
+        norm = torch.mean(fi.detach().abs() / qsi)
+        fi = softclip(fi / qsi / norm) * qsi * norm
+        stddev_sum += torch.sqrt(_variance(fi, qti, qsi) + dtype_epsilon(f_true))
+        abs_integral += torch.mean(fi.detach().abs() / qsi)
+    return (stddev_sum / abs_integral) ** 2
 
 
 @multi_channel_loss
@@ -162,25 +195,30 @@ def kl_divergence(
 
 
 @multi_channel_loss
-def rkl_divergence(
-    f_true: torch.Tensor, q_test: torch.Tensor, q_sample: torch.Tensor
+def kl_divergence_softclip(
+    f_true: torch.Tensor,
+    q_test: torch.Tensor,
+    q_sample: torch.Tensor,
+    threshold: torch.Tensor = 30.0,
 ) -> torch.Tensor:
     """
-    Computes the reverse Kullback-Leibler divergence for two given sets of probabilities, ``f_true``
-    and ``q_test``. It uses importance sampling, i.e. the estimator is divided by an additional
-    factor of ``q_sample``.
+    Computes the Kullback-Leibler divergence for two given sets of probabilities, ``f_true`` and
+    ``q_test``. It uses importance sampling, i.e. the estimator is divided by an additional factor
+    of ``q_sample``. A soft clipping function is applied to the sample weights.
 
     Args:
         f_true: normalized integrand values
         q_test: estimated function/probability
         q_sample: sampling probability
         channels: channel indices or None in the single-channel case
+        threshold: approximate point of transition between linear and logarithmic behavior
     Returns:
         computed KL divergence
     """
     f_true = f_true.detach().abs()
-    f_true /= torch.mean(f_true / q_sample)
-    ratio = q_test / q_sample
+    weight = f_true / q_sample
+    weight /= weight.abs().mean()
+    clipped_weight = softclip(weight, threshold)
     log_q = torch.log(q_test)
-    log_f = torch.log(f_true + dtype_epsilon(f_true))
-    return torch.mean(ratio * (log_q - log_f))
+    log_f = torch.log(clipped_weight * q_sample + dtype_epsilon(f_true))
+    return torch.mean(clipped_weight * (log_f - log_q))

@@ -5,8 +5,9 @@ from madspace.madnis import (
     ChannelGrouping,
     Integrator,
     stratified_variance,
+    stratified_variance_softclip,
     kl_divergence,
-    rkl_divergence,
+    kl_divergence_softclip,
     build_madnis_integrand,
     MADNIS_INTEGRAND_FLAGS,
 )
@@ -28,8 +29,9 @@ def train_madnis(
 
     loss = {
         "stratified_variance": stratified_variance,
+        "stratified_variance_softclip": stratified_variance,
         "kl_divergence": kl_divergence,
-        "rkl_divergence": rkl_divergence,
+        "kl_divergence_softclip": kl_divergence,
     }[madnis_args["loss"]]
 
     def build_scheduler(optimizer):
