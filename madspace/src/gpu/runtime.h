@@ -45,15 +45,15 @@ public:
     gpurandGenerator_t gpurand_generator() { return _gpurand_generator; }
 
 private:
-    std::vector<Instruction> instructions;
-    SizeVec output_indices;
-    std::size_t input_count;
-    TensorVec locals_init;
-    std::vector<bool> requires_grad_init;
-    std::vector<std::tuple<std::string, std::size_t>> grad_global_indices;
+    std::vector<Instruction> _instructions;
+    SizeVec _output_indices;
+    std::size_t _input_count;
+    TensorVec _locals_init;
+    std::vector<bool> _requires_grad_init;
+    std::vector<std::tuple<std::string, std::size_t>> _grad_global_indices;
     ContextPtr _context;
-    std::vector<gpuStream_t> streams;
-    std::vector<gpuEvent_t> events;
+    std::vector<gpuStream_t> _streams;
+    std::vector<gpuEvent_t> _events;
     gpublasHandle_t _gpublas_handle;
     gpurandGenerator_t _gpurand_generator;
 };

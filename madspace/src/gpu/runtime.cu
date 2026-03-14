@@ -295,11 +295,14 @@ void op_nonzero(
         thrust::device_pointer_cast(static_cast<me_int_t*>(indices_tmp.data()));
     auto output_ptr =
         thrust::device_pointer_cast(static_cast<me_int_t*>(output_tmp.data()));
-    check_error(gpuStreamSynchronize(device.stream()));
     auto count = thrust::copy_if(
-                     indices_ptr, indices_ptr + batch_size, output_ptr, NotMinusOne()
+                     thrust_par.on(device.stream()),
+                     indices_ptr,
+                     indices_ptr + batch_size,
+                     output_ptr,
+                     NotMinusOne()
                  ) -
-        output_ptr;
+        output_ptr; // TODO: use stream
     output = output_tmp.slice(0, 0, count);
     indices_tmp.reset(device);
     output_tmp.reset(device);
@@ -577,13 +580,17 @@ void op_unweight(
     );
 
     Tensor indices_compacted(DataType::dt_int, {batch_size}, device);
-    check_error(gpuStreamSynchronize(stream));
     auto ptr_all =
         thrust::device_pointer_cast(static_cast<me_int_t*>(indices_tmp.data()));
     auto ptr_compacted =
         thrust::device_pointer_cast(static_cast<me_int_t*>(indices_compacted.data()));
-    auto ptr_compacted_end =
-        thrust::copy_if(ptr_all, ptr_all + batch_size, ptr_compacted, NotMinusOne());
+    auto ptr_compacted_end = thrust::copy_if(
+        thrust_par.on(device.stream()),
+        ptr_all,
+        ptr_all + batch_size,
+        ptr_compacted,
+        NotMinusOne()
+    );
 
     std::size_t count = ptr_compacted_end - ptr_compacted;
     indices = indices_compacted.slice(0, 0, count);
@@ -899,7 +906,7 @@ void op_histogram(
 } // namespace
 
 GpuRuntime::GpuRuntime(const Function& function, ContextPtr context) :
-    _context(context), input_count(function.inputs().size()) {
+    _context(context), _input_count(function.inputs().size()) {
     if (context->device()->device_type() != GpuDevice::gpu_device_type) {
         throw std::runtime_error("Context has incompatible device");
     }
@@ -921,7 +928,7 @@ GpuRuntime::GpuRuntime(const Function& function, ContextPtr context) :
 
     gpuStream_t new_stream;
     check_error(gpuStreamCreate(&new_stream));
-    streams.push_back(new_stream);
+    _streams.push_back(new_stream);
 
     // std::vector<int> forward_streams;
     // std::vector<int> backward_streams;
@@ -1018,10 +1025,10 @@ GpuRuntime::GpuRuntime(const Function& function, ContextPtr context) :
 GpuRuntime::~GpuRuntime() {
     check_error(gpurandDestroyGenerator(_gpurand_generator));
     check_error(gpublasDestroy(_gpublas_handle));
-    for (auto event : events) {
+    for (auto event : _events) {
         check_error(gpuEventDestroy(event));
     }
-    for (auto stream : streams) {
+    for (auto stream : _streams) {
         check_error(gpuStreamDestroy(stream));
     }
 }
@@ -1051,7 +1058,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) const {
     for (auto index : output_indices) {
         outputs.push_back(locals[index]);
     }
-    check_error(gpuDeviceSynchronize());
+    check_error(gpuStreamSynchronize(_streams.at(0)));
     return outputs;
 }
 
@@ -1110,7 +1117,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     for (auto index : output_indices) {
         outputs.push_back(locals[index]);
     }
-    check_error(gpuDeviceSynchronize());
+    check_error(gpuStreamSynchronize(_streams.at(0)));
     return {outputs, locals, eval_grad};
 }
 
@@ -1157,7 +1164,7 @@ GpuRuntime::run_backward(
     for (auto& [name, index] : grad_global_indices) {
         global_grads.push_back({name, local_grads[index]});
     }
-    check_error(gpuDeviceSynchronize());
+    check_error(gpuStreamSynchronize(_streams.at(0)));
     return {{local_grads.begin(), local_grads.begin() + input_count}, global_grads};
 }
 

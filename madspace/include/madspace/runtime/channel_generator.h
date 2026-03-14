@@ -65,7 +65,7 @@ public:
     std::size_t next_vegas_batch_size();
     void clear_events();
     void update_max_weight(Tensor weights);
-    void unweight_and_write(const TensorVec& unweighted_events);
+    void unweight_and_write(const TensorVec& unweighted_events, double job_max_weight);
     void save(const std::string& file_name) const;
 
 private:

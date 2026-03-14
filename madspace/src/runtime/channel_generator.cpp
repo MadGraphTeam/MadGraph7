@@ -296,6 +296,7 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
 void ChannelEventGenerator::start_job(
     GeneratorBatchJob& job, ResultQueue& result_queue
 ) {
+    job.max_weight = _max_weight;
     _contexts.at(job.context_index)
         ->thread_pool()
         .submit([this, &job, &result_queue]() {
@@ -311,7 +312,7 @@ void ChannelEventGenerator::start_job(
             job.weights = events.at(0).cpu();
             if (job.unweight) {
                 std::vector<Tensor> unweighter_args(events.begin(), events.begin() + 6);
-                unweighter_args.push_back(Tensor(_max_weight, context->device()));
+                unweighter_args.push_back(Tensor(job.max_weight, context->device()));
                 TensorVec unw_events = runtimes.unweighter->run(unweighter_args);
                 for (auto& item : unw_events) {
                     job.unweighted_events.push_back(item.cpu());
@@ -414,7 +415,7 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
 }
 
 void ChannelEventGenerator::unweight_and_write(
-    const std::vector<Tensor>& unweighted_events
+    const std::vector<Tensor>& unweighted_events, double job_max_weight
 ) {
     auto w_view = unweighted_events.at(0).view<double, 1>();
     auto mom_view = unweighted_events.at(1).view<double, 3>();
@@ -450,7 +451,8 @@ void ChannelEventGenerator::unweight_and_write(
     }
     _event_file.write(event_buffer);
     _weight_file.write(weight_buffer);
-    _status.count_unweighted += w_view.size();
+    _status.count_unweighted +=
+        w_view.size() * (job_max_weight > 0 ? job_max_weight / _max_weight : 1);
     _status.done = _status.count_unweighted >= _status.count_target;
 }
 
