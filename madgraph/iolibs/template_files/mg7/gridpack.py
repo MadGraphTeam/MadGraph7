@@ -40,7 +40,7 @@ def main() -> None:
         choices=["lhe", "lhe_npy", "compact_npy"]
     )
     parser.add_argument("--events", type=int, default=gen_args["events"])
-    parser.add_argument("--max_overweight_truncation", type=int, default=gen_args["max_overweight_truncation"])
+    parser.add_argument("--max_overweight_truncation", type=float, default=gen_args["max_overweight_truncation"])
     parser.add_argument("--freeze_max_weight_after", type=int, default=gen_args["freeze_max_weight_after"])
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
