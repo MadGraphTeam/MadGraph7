@@ -123,7 +123,7 @@ void EventGenerator::survey() {
 
             if (iter >= min_iters - 1) {
                 channel->update_max_weight(job.weights);
-                channel->unweight_and_write(job.unweighted_events);
+                channel->unweight_and_write(job.unweighted_events, job.max_weight);
                 update_counts();
                 if (channel_job_count == 0 &&
                     channel->cross_section().rel_error() < target_precision) {
@@ -206,7 +206,7 @@ void EventGenerator::generate() {
             }
             update_integral();
             channel->update_max_weight(job.weights);
-            channel->unweight_and_write(job.unweighted_events);
+            channel->unweight_and_write(job.unweighted_events, job.max_weight);
             update_counts();
             print_gen_update(false);
             _running_jobs.erase(job_id);

@@ -101,6 +101,7 @@ struct GeneratorBatchJob {
     TensorVec discrete_hist;
     std::size_t context_index;
     std::size_t job_id;
+    double max_weight;
 };
 
 void to_json(nlohmann::json& j, const GeneratorStatus& status);
