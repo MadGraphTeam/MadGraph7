@@ -31,7 +31,7 @@ jobs:
       - name: Run code generator
         run: |
           cd ${GITHUB_WORKSPACE}
-          ./bin/mg5_aMC test/processes/${{ matrix.process }}/output.mg5
+          ./bin/mg5_aMC tests/processes/${{ matrix.process }}/output.mg5
       
       - name: Check code format with clang-format
         id: clang-format-check
