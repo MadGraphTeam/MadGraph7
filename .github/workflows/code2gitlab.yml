@@ -1,0 +1,156 @@
+name: Generate code, check format and push to generated processes repo
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  generate-and-check:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        process: [pp_ttx, pp_ttxj]
+
+    env:
+      PROC_DIR: PROC_${{ matrix.process }}
+    
+    steps:
+      - name: Checkout codegen repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      
+      - name: Run code generator
+        run: |
+          cd ${GITHUB_WORKSPACE}
+          if [ ! -e MG5aMC/mg5amcnlo/PLUGIN/CUDACPP_SA_OUTPUT ] ; then pushd MG5aMC/mg5amcnlo/PLUGIN/ && ln -s ../../../epochX/cudacpp/CODEGEN/PLUGIN/CUDACPP_SA_OUTPUT && popd ; fi
+          ./MG5aMC/mg5amcnlo/bin/mg5_aMC test/processes/${{ matrix.process }}/output.mg5
+      
+      - name: Check code format with clang-format
+        id: clang-format-check
+        run: |
+          chmod +x ${GITHUB_WORKSPACE}/.github/workflows/check-formatting.sh
+          cd ${GITHUB_WORKSPACE}/${{ env.PROC_DIR }}
+          ${GITHUB_WORKSPACE}/.github/workflows/check-formatting.sh
+          files2format=$(cat files2format)
+          echo "files2format=$files2format" >> $GITHUB_OUTPUT
+
+          if [ "$files2format" -eq 0 ]; then
+            echo "✅ clang-format check passed."
+          else
+            echo "❌ clang-format check failed."
+          fi
+
+      - name: Generate GitHub App token
+        if: ${{ steps.clang-format-check.outputs.files2format == '0' }}
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          repositories: madgraph4gpu-generated-processes
+
+      - name: Commit to target repository
+        if: ${{ steps.clang-format-check.outputs.files2format == '0' }}
+        env:
+          TARGET_REPO: roiser/madgraph4gpu-generated-processes
+        run: |
+          # Configure git
+
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+          
+          # Clone target repo
+          cd ${GITHUB_WORKSPACE}
+          git clone https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${TARGET_REPO}.git
+          cd ${GITHUB_WORKSPACE}/madgraph4gpu-generated-processes
+          
+          # Create branch based on PR number
+          BRANCH_NAME="codegen-pr-${{ github.event.pull_request.number }}"
+          git checkout -b ${BRANCH_NAME}
+          
+          # Copy generated files (adjust paths as needed)
+          cp -r ${GITHUB_WORKSPACE}/${{ env.PROC_DIR }} .
+
+          # Commit and push
+          git add .
+          git commit -m "Code generated from PR #${{ github.event.pull_request.number }}" \
+                     -m "Source PR: ${{ github.event.pull_request.html_url }}"
+
+          git push -f origin ${BRANCH_NAME}
+          
+          echo "✅ Pushed to ${TARGET_REPO} on branch ${BRANCH_NAME}"
+      
+      - name: Set up Python
+        if: ${{ steps.commit_to_target_repository.outcome == 'success' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Update README.md
+        if: ${{ steps.commit_to_target_repository.outcome == 'success' }}
+        run: |
+          cd ${GITHUB_WORKSPACE}/madgraph4gpu-generated-processes
+          git checkout main
+
+          python ${GITHUB_WORKSPACE}/.github/workflows/update_readme.py \
+            --title "${{ github.event.pull_request.title }}" \
+            --url "${{ github.event.pull_request.html_url }}" \
+            --pr_num "${{ github.event.pull_request.number }}" \
+            --created "${{ github.event.pull_request.created_at }}" \
+            --last_updated "${{ github.event.pull_request.updated_at }}" \
+            --wip "${{ github.event.pull_request.draft }}" \
+            --num_commits "${{ github.event.pull_request.commits }}" \
+            --author "${{ github.event.pull_request.user.login }}"
+
+          git add .
+          git commit -m "Update README for PR #${{ github.event.pull_request.number }}"
+          git push -f origin main
+          
+          echo "✅ Pushed to ${TARGET_REPO} on branch main"
+
+      - name: Read patch file
+        if: ${{ steps.clang-format-check.outputs.files2format != '0' }}
+        run: |
+          {
+            echo "patch_file_content<<EOF"
+            cat ${{ env.PROC_DIR }}/format-changes.patch
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Comment on PR with format issues
+        if: ${{ steps.clang-format-check.outputs.files2format != '0' }}
+        uses: actions/github-script@v7
+        env:
+          FILES2FORMAT: ${{ steps.clang-format-check.outputs.files2format }}
+        with:
+          script: |
+
+            const fs = require('fs');
+            const filesToFormat = parseInt(process.env.FILES2FORMAT);
+            const patchContent = fs.readFileSync(`${process.env.PROC_DIR}/format-changes.patch`, 'utf8');
+
+            const comment = `## ❌ Code Format Check Failed
+            
+            The generated code does not conform to clang-format rules. 
+
+            Please update your code generator to produce properly formatted code.
+            ${filesToFormat} files need formatting.
+            
+            Note: The CI is setup so it fails early, if formatting issues are detected for any of the processes. 
+                  The report below is for process **${process.env.PROC_DIR}** with backend **${process.env.BACKEND}**.
+            
+            See attached patch for details:`;
+            
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `${comment} \n \`\`\` \n ${patchContent} \n \`\`\``
+            });
+
+      - name: Fail if format check failed
+        if: ${{ steps.clang-format-check.outputs.files2format != '0' }}
+        run: exit 1
