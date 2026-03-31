@@ -28,8 +28,7 @@ jobs:
       - name: Run code generator
         run: |
           cd ${GITHUB_WORKSPACE}
-          if [ ! -e MG5aMC/mg5amcnlo/PLUGIN/CUDACPP_SA_OUTPUT ] ; then pushd MG5aMC/mg5amcnlo/PLUGIN/ && ln -s ../../../epochX/cudacpp/CODEGEN/PLUGIN/CUDACPP_SA_OUTPUT && popd ; fi
-          ./MG5aMC/mg5amcnlo/bin/mg5_aMC test/processes/${{ matrix.process }}/output.mg5
+          ./bin/mg5_aMC test/processes/${{ matrix.process }}/output.mg5
       
       - name: Check code format with clang-format
         id: clang-format-check
