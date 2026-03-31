@@ -3,14 +3,10 @@ name: Generate code, check format and push to generated processes repo
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
-    branches:
-      - gen4gitlab # fixme
 
 jobs:
   generate-and-check:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         process: [pp_ttx, pp_ttxj]
