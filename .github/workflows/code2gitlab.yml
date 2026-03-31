@@ -14,6 +14,9 @@ jobs:
 
     env:
       PROC_DIR: PROC_${{ matrix.process }}
+      TARGET_HOST: gitlab.cern.ch
+      TARGET_DIR: Madgraph7GenCode
+      TARGET_REPO: MadgraphTeam/${TARGET_DIR}
     
     steps:
       - name: Checkout codegen repo
@@ -42,20 +45,9 @@ jobs:
           else
             echo "❌ clang-format check failed."
           fi
-
-      - name: Generate GitHub App token
-        if: ${{ steps.clang-format-check.outputs.files2format == '0' }}
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.GH_APP_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          repositories: madgraph4gpu-generated-processes
-
       - name: Commit to target repository
         if: ${{ steps.clang-format-check.outputs.files2format == '0' }}
-        env:
-          TARGET_REPO: roiser/madgraph4gpu-generated-processes
+        id: commit_to_target_repository
         run: |
           # Configure git
 
@@ -64,8 +56,8 @@ jobs:
           
           # Clone target repo
           cd ${GITHUB_WORKSPACE}
-          git clone https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${TARGET_REPO}.git
-          cd ${GITHUB_WORKSPACE}/madgraph4gpu-generated-processes
+          git clone https://oauth2:${{ secrets.GITLAB_ACCESS_TOKEN }}@${TARGET_HOST}/${TARGET_REPO}.git
+          cd ${GITHUB_WORKSPACE}/${TARGET_DIR}
           
           # Create branch based on PR number
           BRANCH_NAME="codegen-pr-${{ github.event.pull_request.number }}"
@@ -92,7 +84,7 @@ jobs:
       - name: Update README.md
         if: ${{ steps.commit_to_target_repository.outcome == 'success' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/madgraph4gpu-generated-processes
+          cd ${GITHUB_WORKSPACE}/${TARGET_DIR}
           git checkout main
 
           python ${GITHUB_WORKSPACE}/.github/workflows/update_readme.py \

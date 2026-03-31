@@ -13,7 +13,7 @@ class UpdateReadme:
         self.wip = wip
         self.num_commits = num_commits
         self.author = author
-        self.remote_repo_url = "https://github.com/roiser/madgraph4gpu-generated-processes/"
+        self.remote_repo_url = "https://gitlab.cern.ch/MadGraphTeam/Madgraph7GenCode/"
 
     def update_json(self):
         fh = open('readme_data.json', 'r')
