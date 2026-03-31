@@ -1,0 +1,6 @@
+launch PROC_pp_ttxj
+set vector_size 32
+set nevents 25k
+set sde_strategy 1
+set gridpack True
+
