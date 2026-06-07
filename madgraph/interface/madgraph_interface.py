@@ -2295,6 +2295,11 @@ This will take effect only in a NEW terminal
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
+        elif self._export_format == 'NLO_SA':
+            name_dir = lambda i: 'PROC_FKS_%s_%s' % \
+                                    (self._curr_model['name'], i)
+            auto_path = lambda i: pjoin(self.writing_dir,
+                                               name_dir(i))
         elif self._export_format in ['mg7', 'mg7_v5']:
             # mg7 is the default output format, so it takes the plain PROC_
             # prefix.  This deliberately shares a namespace with madevent
