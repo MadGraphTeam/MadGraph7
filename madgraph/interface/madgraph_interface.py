@@ -540,6 +540,15 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > --nb_run=0  Masking check: skip the timing table and instead")
         logger.info("                print the matrix-element value per flavor after N SMATRIX calls.")
         logger.info("")
+        logger.info("Launch on FKS Born building-block standalone output (output standalone --fks):",'$MG:BOLD')
+        logger.info(" o Example: launch PROC_FKS_sm_0 --energy=500",'$MG:color:GREEN')
+        logger.info(" > Builds and runs 'check_fks', printing the Born, spin-correlated Born")
+        logger.info("   and color/charge-linked Borns for one phase-space point.")
+        logger.info(" > You will be asked whether you want to edit the param_card, unless")
+        logger.info("   the -f option is specified.")
+        logger.info(" > --energy=E   sqrt(s) of the phase-space point (default: built-in)")
+        logger.info(" > --timings=N --nb_run=Y   time N Born re-evaluations over Y runs")
+        logger.info("")
         logger.info("Launch on aMC@NLO output:",'$MG:BOLD')
         logger.info(" > launch <dir_path> <mode> <options>",'$MG:color:BLUE')
         logger.info(" o Example: launch MyProc aMC@NLO -f -p",'$MG:color:GREEN')
@@ -8989,39 +8998,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             os.environ['LHAPDF_DATA_PATH'] = os.pathsep.join(search)
         if lhapdf.config:
             os.environ['MADGRAPH_LHAPDF_CONFIG'] = lhapdf.config
-
-    def launch_fks_standalone(self, me_dir):
-        """Build and run the lightweight Born 'check_fks' executable produced
-        by 'output standalone_fortran --fks'. Compiles the Source libraries,
-        then for
-        each born subprocess directory builds 'check_fks' and runs it, echoing
-        the Born / spin-correlated Born / linked-Born values for one
-        phase-space point."""
-        me_dir = os.path.abspath(me_dir)
-        sourcedir = pjoin(me_dir, 'Source')
-        subprocdir = pjoin(me_dir, 'SubProcesses')
-
-        logger.info('Compiling Source libraries for the FKS standalone check...')
-        misc.compile(cwd=sourcedir)
-
-        born_dirs = sorted(os.path.dirname(f) for f in
-                           glob.glob(pjoin(subprocdir, 'P*', 'check_sa_fks.f')))
-        if not born_dirs:
-            raise self.InvalidCmd(
-                'No FKS standalone born directory found in %s' % subprocdir)
-
-        for born_path in born_dirs:
-            pdir = os.path.basename(born_path)
-            logger.info('Building check_fks in %s ...' % pdir)
-            misc.compile(['check_fks'], cwd=born_path)
-            logger.info('==== %s ====' % pdir)
-            output = misc.Popen(['./check_fks'], stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, cwd=born_path
-                                ).communicate()[0]
-            if isinstance(output, bytes):
-                output = output.decode(errors='replace')
-            logger.info(output)
-
     def do_launch(self, line):
         """Main commands: Ask for editing the parameter and then
         Execute the code (madevent/standalone/...)
@@ -9039,7 +9015,17 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # args is now MODE PATH
 
         if args[0] == 'amcatnlo_fks_sa':
-            self.launch_fks_standalone(args[1])
+            # the FKS Born building-block check: ExtLauncher.run() first offers
+            # to edit the param_card (skipped under -f), then launch_program()
+            # builds and runs the lightweight check_fks (honouring --energy /
+            # --timings / --nb_run).
+            ext_program = launch_ext.FKSSALauncher(self, args[1],
+                                            options=self.options, **options)
+            ext_program.run()
+            os.chdir(start_cwd) #ensure to go to the initial path
+            # ensure that MG options are not changed!
+            for key, value in current_options.items():
+                self.options[key] = value
             return
 
         if args[0] == 'standalone':
@@ -13185,6 +13171,8 @@ _launch_parser.add_option("", "--timings", default=0, type='int',
                             help="[standalone_fortran] Number of SMATRIX calls per flavor per run for timing analysis (0=disabled)")
 _launch_parser.add_option("", "--nb_run", default=1, type='int',
                             help="[standalone_fortran] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
+_launch_parser.add_option("", "--energy", default=0, type='float',
+                            help="[FKS standalone] sqrt(s) of the phase-space point (0=built-in default)")
 
 #===============================================================================
 # Interface for customize question.
