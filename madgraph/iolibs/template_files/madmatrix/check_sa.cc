@@ -24,6 +24,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "CPPProcess.h"
+#include "coloramps.h" // mgOnGpu::nchannels and mgOnGpu::hostChannel2iconfig (for the UMAMI_IN_CHANNEL_INDEX example)
 #include "GpuAbstraction.h"
 #include "GpuRuntime.h"
 #include "MemoryAccessMomenta.h"
@@ -275,6 +276,10 @@ namespace
     // Buffers for the UMAMI_IN_INVARIANT_MASS_SQ self-test (see below)
     std::vector<double> umamiMEs2( nevt );
     std::vector<double> umamiMij( (std::size_t)CPPProcess::npar * CPPProcess::npar * nevt );
+    // Buffers for the UMAMI_IN_CHANNEL_INDEX example/self-test (see below)
+    std::vector<unsigned int> umamiChannel( nevt );
+    std::vector<double> umamiMEsChan( nevt );
+    std::vector<double> umamiMEsChanSum( nevt );
 #endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
@@ -371,6 +376,48 @@ namespace
           umami_free( umami_handle );
           return 4;
         }
+      }
+    }
+
+    // Step 3'' - example + self-test of the UMAMI_IN_CHANNEL_INDEX (multichannel) path.
+    // Passing a channel index makes sigmaKin multiply the matrix element by
+    // numerator(channel)/denominator. Since the denominator is the sum over channels
+    // of the per-channel numerators, summing the matrix element over all channels must
+    // recover the full (unweighted) matrix element. Loop over all valid channels,
+    // accumulate the per-channel matrix elements, and check that identity.
+    for( std::size_t ievt = 0; ievt < nevt; ++ievt ) umamiMEsChanSum[ievt] = 0.;
+    for( unsigned int chan = 0; chan < mgOnGpu::nchannels; ++chan )
+    {
+      if( mgOnGpu::hostChannel2iconfig[chan] <= 0 ) continue; // skip channels with no associated iconfig
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+        umamiChannel[ievt] = chan; // external 0-based channel index (must be uniform within a SIMD page)
+      UmamiInputKey in_keysC[2] = { UMAMI_IN_MOMENTA, UMAMI_IN_CHANNEL_INDEX };
+      const void* inputsC[2] = { umamiMomenta.data(), umamiChannel.data() };
+      UmamiOutputKey out_keysC[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+      void* outputsC[1] = { umamiMEsChan.data() };
+      UmamiStatus stC = umami_matrix_element( umami_handle, nevt, nevt, 0, 2, in_keysC, inputsC, 1, out_keysC, outputsC );
+      if( stC != UMAMI_SUCCESS )
+      {
+        std::cerr << "ERROR! umami_matrix_element (channel " << chan << ") failed (status=" << stC << ")" << std::endl;
+        umami_free( umami_handle );
+        return 5;
+      }
+      if( chan == 0 && verbose )
+        std::cout << "UMAMI_IN_CHANNEL_INDEX example: weighted ME(channel 0, ievt 0)=" << umamiMEsChan[0]
+                  << ", full ME(ievt 0)=" << umamiMEs[0] << std::endl;
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+        if( std::isfinite( umamiMEsChan[ievt] ) ) umamiMEsChanSum[ievt] += umamiMEsChan[ievt];
+    }
+    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+    {
+      const double full = umamiMEs[ievt];
+      const double sum = umamiMEsChanSum[ievt];
+      if( std::isfinite( full ) && full > 0. && std::abs( sum - full ) / full > 1e-6 )
+      {
+        std::cerr << "ERROR! UMAMI_IN_CHANNEL_INDEX self-test mismatch at ievt=" << ievt
+                  << ": sum over channels ME=" << sum << " full ME=" << full << std::endl;
+        umami_free( umami_handle );
+        return 6;
       }
     }
 #endif

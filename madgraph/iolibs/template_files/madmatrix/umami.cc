@@ -278,6 +278,7 @@ extern "C"
     const double* random_diagram_in = nullptr;
     const int* diagram_in = nullptr; // TODO: unused
     const double* mij_in = nullptr;  // optional per-event invariant mass^2 matrix (npar x npar)
+    const unsigned int* channel_in = nullptr; // optional per-event channel index (multichannel weight)
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -306,6 +307,9 @@ extern "C"
           return UMAMI_ERROR_UNSUPPORTED_INPUT;
         case UMAMI_IN_DIAGRAM_INDEX:
           diagram_in = static_cast<const int*>( input );
+          break;
+        case UMAMI_IN_CHANNEL_INDEX:
+          channel_in = static_cast<const unsigned int*>( input );
           break;
         case UMAMI_IN_INVARIANT_MASS_SQ:
           mij_in = static_cast<const double*>( input );
@@ -487,6 +491,22 @@ extern "C"
     HostBufferBase<fptype, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
+    // Optional per-event channel index for the multichannel single-diagram enhancement:
+    // when provided, sigmaKin multiplies the matrix element by numerator(channel)/denominator.
+    // NB: the external channel index is 0-based; the internal channelId is 1-based. cudacpp
+    // requires all events in a SIMD page to share the same channelId (asserted in getChannelId).
+    HostBufferBase<unsigned int, false> channel_ids( rounded_count );
+    const unsigned int* allChannelIds_ptr = nullptr;
+    bool mulChannelWeight = false;
+    if( channel_in != nullptr )
+    {
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+        channel_ids[i_event] = channel_in[i_event + offset] + 1;
+      for( std::size_t i_event = count; i_event < rounded_count; ++i_event )
+        channel_ids[i_event] = ( count > 0 ) ? channel_ids[count - 1] : 1; // pad to keep SIMD pages uniform
+      allChannelIds_ptr = channel_ids.data();
+      mulChannelWeight = true;
+    }
     // Optional per-event invariant mass^2 matrix (npar x npar) for offshell propagators;
     // when not provided, mij_ptr stays null and the propagators recompute p^2 from momenta.
     HostBufferBase<fptype, false> mij( rounded_count * CPPProcess::npar * CPPProcess::npar );
@@ -533,7 +553,7 @@ extern "C"
       flavor_indices.data(),
       helicity_random.data(),
       color_random.data(),
-      nullptr,
+      allChannelIds_ptr,
       diagram_random.data(),
       matrix_elements.data(),
       helicity_index.data(),
@@ -541,7 +561,7 @@ extern "C"
       numerators.data(),
       denominators.data(),
       diagram_index.data(),
-      false,
+      mulChannelWeight,
       rounded_count,
       mij_ptr );
 
