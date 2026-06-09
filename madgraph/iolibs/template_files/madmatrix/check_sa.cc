@@ -385,17 +385,22 @@ namespace
     // of the per-channel numerators, summing the matrix element over all channels must
     // recover the full (unweighted) matrix element. Loop over all valid channels,
     // accumulate the per-channel matrix elements, and check that identity.
+    // We ALSO pass m_ij here: the FFV routines use the (exact) invariant mass only for
+    // the propagators of the channelId diagram, so the per-channel ME (and the sum)
+    // must be unchanged. This additionally checks that each propagator gets the m_ij
+    // entry of its OWN external pair: a wrong index would feed a different p^2 and
+    // break the sum == full identity. (umamiMij was filled by the m_ij self-test above.)
     for( std::size_t ievt = 0; ievt < nevt; ++ievt ) umamiMEsChanSum[ievt] = 0.;
     for( unsigned int chan = 0; chan < mgOnGpu::nchannels; ++chan )
     {
       if( mgOnGpu::hostChannel2iconfig[chan] <= 0 ) continue; // skip channels with no associated iconfig
       for( std::size_t ievt = 0; ievt < nevt; ++ievt )
         umamiChannel[ievt] = chan; // external 0-based channel index (must be uniform within a SIMD page)
-      UmamiInputKey in_keysC[2] = { UMAMI_IN_MOMENTA, UMAMI_IN_CHANNEL_INDEX };
-      const void* inputsC[2] = { umamiMomenta.data(), umamiChannel.data() };
+      UmamiInputKey in_keysC[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_CHANNEL_INDEX, UMAMI_IN_INVARIANT_MASS_SQ };
+      const void* inputsC[3] = { umamiMomenta.data(), umamiChannel.data(), umamiMij.data() };
       UmamiOutputKey out_keysC[1] = { UMAMI_OUT_MATRIX_ELEMENT };
       void* outputsC[1] = { umamiMEsChan.data() };
-      UmamiStatus stC = umami_matrix_element( umami_handle, nevt, nevt, 0, 2, in_keysC, inputsC, 1, out_keysC, outputsC );
+      UmamiStatus stC = umami_matrix_element( umami_handle, nevt, nevt, 0, 3, in_keysC, inputsC, 1, out_keysC, outputsC );
       if( stC != UMAMI_SUCCESS )
       {
         std::cerr << "ERROR! umami_matrix_element (channel " << chan << ") failed (status=" << stC << ")" << std::endl;

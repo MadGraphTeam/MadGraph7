@@ -1780,6 +1780,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
   calculate_jamps( int ihel,
                    const fptype* allmomenta,          // input: momenta[nevt*npar*4]
                    const fptype* allMij,              // input: invariant mass^2 matrix[nevt*npar*npar] for offshell propagators (nullptr => recompute p^2 from momenta)
+                   const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (gates which propagators use allMij); nullptr => m_ij unused
                    const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,    // input: indices of the flavor combinations
 #ifdef MGONGPUCPP_GPUIMPL
@@ -2350,6 +2351,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       // CUDA kernels take input/output buffers with momenta/MEs for all events
       const fptype* momenta = allmomenta;
       const fptype* mij = allMij; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
+      const unsigned int channelId = getChannelId( allChannelIds ); // 0 if no channel (=> m_ij unused)
       const fptype* COUPs[nxcoup];
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
@@ -2359,6 +2361,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
       const fptype* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
       const fptype* mij = ( allMij != nullptr ) ? MIJ_ACCESS::ieventAccessRecordConst( allMij, ievt0 ) : nullptr; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
+      const unsigned int channelId = getChannelId( allChannelIds, ievt0, false ); // 0 if no channel (=> m_ij unused)
       const fptype* COUPs[nxcoup];
       for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
         COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
@@ -2395,6 +2398,35 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                                    idiag in multi_channel_map[config]], [])]
             diag_to_config[amp[0]] = config
         ###misc.sprint(diag_to_config)
+        # OM - build the per-wavefunction FIXP2 (offshell-propagator virtuality)
+        # expressions. For an offshell current that is the fusion of exactly two
+        # external legs (i,j), the caller-supplied invariant mass^2 m_ij[i][j] (via the
+        # umami UMAMI_IN_INVARIANT_MASS_SQ input) is used ONLY when the current
+        # channelId selects a diagram that contains this propagator; otherwise the
+        # routine recomputes p^2 from the momenta. Here channelId == diagram number
+        # (numerators_sv[channelId-1] is the numerator of diagram channelId); a
+        # propagator can belong to several channel diagrams, hence the OR on channelId.
+        wf_channels = {} # wavefunction number -> set of channel diagram numbers containing it
+        for config in sorted(multi_channel_map.keys()):
+            for idiag in multi_channel_map[config]:
+                channel_diagnum = diagrams[idiag].get('number')
+                for wf_num in self._collect_diagram_wf_numbers(diagrams[idiag]):
+                    wf_channels.setdefault(wf_num, set()).add(channel_diagnum)
+        self.wf_fixp2_map = {}
+        for diagram in diagrams:
+            for wf in diagram.get('wavefunctions'):
+                num = wf.get('number')
+                if num in self.wf_fixp2_map: continue
+                mothers = wf.get('mothers')
+                if len(mothers) == 2 and not mothers[0].get('mothers') \
+                                     and not mothers[1].get('mothers'):
+                    chans = sorted(wf_channels.get(num, []))
+                    if chans:
+                        i = mothers[0].get('number_external') - 1
+                        j = mothers[1].get('number_external') - 1
+                        cond = ' || '.join('channelId == %d' % c for c in chans)
+                        self.wf_fixp2_map[num] = \
+                            '( mij != nullptr && ( %s ) ? MIJ_ACCESS::kernelAccessConst( mij, %d, %d ) : fptype_sv{0} )' % (cond, i, j)
         id_amp = 0
         for diagram in matrix_element.get('diagrams'):
             ###print('DIAGRAM %3d: #wavefunctions=%3d, #diagrams=%3d' %
@@ -2529,6 +2561,28 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                                 wf.get('me_id')-1,
                                 wf.get('number_external')-1))
 
+    # OM - per-wavefunction value of the FIXP2 (offshell-propagator virtuality)
+    # argument. The map is populated in super_get_matrix_element_calls; the default
+    # 'fptype_sv{0}' makes the routine recompute p^2 from the momenta.
+    def get_fixp2_arg(self, wf):
+        return getattr(self, 'wf_fixp2_map', {}).get(wf.get('number'), 'fptype_sv{0}')
+
+    # OM - collect the numbers of all wavefunctions appearing in (the topology of) a
+    # given helas diagram, by recursing through the mothers of its amplitude(s). NB a
+    # propagator wavefunction is reused across diagrams, so it shows up in every
+    # diagram whose amplitude can reach it.
+    @staticmethod
+    def _collect_diagram_wf_numbers(diagram):
+        acc = set()
+        def recurse( wf ):
+            acc.add( wf.get('number') )
+            for mother in wf.get('mothers'):
+                recurse( mother )
+        for amp in diagram.get('amplitudes'):
+            for mother in amp.get('mothers'):
+                recurse( mother )
+        return acc
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (vectorize w_sv and amp_sv)
     def generate_helas_call(self, argument):
         """Routine for automatic generation of C++ Helas calls
@@ -2626,24 +2680,19 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     arg['mass'] = 'm_pars->%(M)s, m_pars->%(W)s, '
                 # OM - standard offshell propagator routines (ending in _1/_2/_3)
                 # take an extra FIXP2 argument (see MadMatrixALOHAWriter.use_fixp2),
-                # a per-event SIMD vector. When this offshell current is the fusion
-                # of exactly two external legs (i,j), feed the caller-supplied
-                # invariant mass^2 m_ij[i][j] (via the umami UMAMI_IN_INVARIANT_MASS_SQ
-                # input); otherwise pass a zero vector so the routine recomputes
-                # p^2 from the momenta. A null 'mij' (no input, or the GPU path)
-                # also falls back to recomputing. A falsy 'propagator' covers both
-                # the standard and the massless (P0) propagators; custom/polarization
-                # propagators and loop wavefunctions keep the old signature.
+                # a per-event SIMD vector. Its value is PER-WAVEFUNCTION (it depends on
+                # the wavefunction's external mothers and on which channel diagrams
+                # contain this propagator), and the call string is cached per spin-
+                # structure call key (which does NOT distinguish the external mothers),
+                # so it must NOT be baked here: it is injected at call time through the
+                # '%(fixp2arg)s' placeholder (see get_fixp2_arg / wf_fixp2_map). A falsy
+                # 'propagator' covers both the standard and the massless (P0)
+                # propagators; custom/polarization propagators and loop wavefunctions
+                # keep the old signature.
                 if not argument.get('is_loop') and \
                    not argument.get('polarization') and \
                    not argument.get('particle').get('propagator'):
-                    arg['fixp2'] = 'fptype_sv{0}, '
-                    mothers = argument.get('mothers')
-                    if len(mothers) == 2 and \
-                       not mothers[0].get('mothers') and not mothers[1].get('mothers'):
-                        i = mothers[0].get('number_external') - 1
-                        j = mothers[1].get('number_external') - 1
-                        arg['fixp2'] = '( mij != nullptr ? MIJ_ACCESS::kernelAccessConst( mij, %d, %d ) : fptype_sv{0} ), ' % (i, j)
+                    arg['fixp2'] = '%(fixp2arg)s, '
             else:
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'
@@ -2652,9 +2701,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     arg['out'] = arg['out'] + ", &amp_tmp_fp[0]"
                 arg['mass'] = ''
             call = call % arg
-            # Now we have a line correctly formatted
-            call_function = lambda wf: self.format_coupling(
-                                         call % wf.get_helas_call_dict(index=0))
+            # Now we have a line correctly formatted. The FIXP2 argument (if the call
+            # has a '%(fixp2arg)s' placeholder) is filled per-wavefunction, see
+            # get_fixp2_arg / wf_fixp2_map.
+            def call_function( wf, call=call ):
+                d = wf.get_helas_call_dict( index=0 )
+                d['fixp2arg'] = self.get_fixp2_arg( wf )
+                return self.format_coupling( call % d )
         # Add the constructed function to wavefunction or amplitude dictionary
         if isinstance(argument, helas_objects.HelasWavefunction):
             self.add_wavefunction(argument.get_call_key(), call_function)
