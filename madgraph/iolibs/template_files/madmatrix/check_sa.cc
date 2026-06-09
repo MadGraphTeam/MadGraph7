@@ -272,6 +272,9 @@ namespace
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt );
+    // Buffers for the UMAMI_IN_INVARIANT_MASS_SQ self-test (see below)
+    std::vector<double> umamiMEs2( nevt );
+    std::vector<double> umamiMij( (std::size_t)CPPProcess::npar * CPPProcess::npar * nevt );
 #endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
@@ -307,6 +310,69 @@ namespace
 #else
     for( std::size_t ievt = 0; ievt < nevt; ++ievt )
       aosoa_to_umami_one( hstMomenta.data(), umamiMomenta.data(), ievt, nevt );
+#endif
+
+#ifndef MGONGPUCPP_GPUIMPL
+    // Self-test of the UMAMI_IN_INVARIANT_MASS_SQ (FIXP2) path on the shared PS point.
+    // First compute a reference ME from the momenta alone, then fill
+    // m_ij[i][j] = ( eta_i p_i + eta_j p_j )^2 from the SAME momenta (eta=-1 for initial
+    // legs, +1 for final legs, i.e. the all-outgoing convention used by the
+    // wavefunctions), feed it as the offshell-propagator virtuality, and check that the
+    // matrix element is unchanged (identity p^2 = s_ij/t_ij). This exercises the full
+    // umami -> sigmaKin -> FFV path end to end.
+    {
+      // Reference ME without m_ij (momenta only, default flavor).
+      UmamiInputKey in_keys1[1] = { UMAMI_IN_MOMENTA };
+      const void* inputs1[1] = { umamiMomenta.data() };
+      UmamiOutputKey out_keys1[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+      void* outputs1[1] = { umamiMEs.data() };
+      UmamiStatus st1 = umami_matrix_element( umami_handle, nevt, nevt, 0, 1, in_keys1, inputs1, 1, out_keys1, outputs1 );
+      if( st1 != UMAMI_SUCCESS )
+      {
+        std::cerr << "ERROR! umami_matrix_element (m_ij self-test reference) failed (status=" << st1 << ")" << std::endl;
+        umami_free( umami_handle );
+        return 3;
+      }
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+      {
+        for( int i = 0; i < CPPProcess::npar; ++i )
+        {
+          const double eta_i = ( i < CPPProcess::npari ) ? -1. : 1.;
+          for( int j = 0; j < CPPProcess::npar; ++j )
+          {
+            const double eta_j = ( j < CPPProcess::npari ) ? -1. : 1.;
+            double s[4];
+            for( int ip4 = 0; ip4 < 4; ++ip4 )
+              s[ip4] = eta_i * MemoryAccessMomenta::ieventAccessIp4IparConst( hstMomenta.data(), ievt, ip4, i ) + eta_j * MemoryAccessMomenta::ieventAccessIp4IparConst( hstMomenta.data(), ievt, ip4, j );
+            umamiMij[(std::size_t)( i * CPPProcess::npar + j ) * nevt + ievt] = s[0] * s[0] - s[1] * s[1] - s[2] * s[2] - s[3] * s[3];
+          }
+        }
+      }
+      UmamiInputKey in_keys2[2] = { UMAMI_IN_MOMENTA, UMAMI_IN_INVARIANT_MASS_SQ };
+      const void* inputs2[2] = { umamiMomenta.data(), umamiMij.data() };
+      UmamiOutputKey out_keys2[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+      void* outputs2[1] = { umamiMEs2.data() };
+      UmamiStatus st2 = umami_matrix_element( umami_handle, nevt, nevt, 0, 2, in_keys2, inputs2, 1, out_keys2, outputs2 );
+      if( st2 != UMAMI_SUCCESS )
+      {
+        std::cerr << "ERROR! umami_matrix_element (m_ij self-test) failed (status=" << st2 << ")" << std::endl;
+        umami_free( umami_handle );
+        return 3;
+      }
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+      {
+        const double a = umamiMEs[ievt];
+        const double b = umamiMEs2[ievt];
+        const double denom = std::max( std::abs( a ), std::abs( b ) );
+        if( denom > 0. && std::abs( a - b ) / denom > 1e-6 )
+        {
+          std::cerr << "ERROR! UMAMI_IN_INVARIANT_MASS_SQ self-test mismatch at ievt=" << ievt
+                    << ": ME(no m_ij)=" << a << " ME(m_ij)=" << b << std::endl;
+          umami_free( umami_handle );
+          return 4;
+        }
+      }
+    }
 #endif
 
     if( verbose )

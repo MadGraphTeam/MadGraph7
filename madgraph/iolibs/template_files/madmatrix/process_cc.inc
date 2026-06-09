@@ -24,6 +24,7 @@
 #include "MemoryAccessCouplingsFixed.h"
 #include "MemoryAccessGs.h"
 #include "MemoryAccessMatrixElements.h"
+#include "MemoryAccessMij.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h"

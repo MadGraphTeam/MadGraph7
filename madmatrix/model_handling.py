@@ -1779,6 +1779,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
   __global__ void /* clang-format off */
   calculate_jamps( int ihel,
                    const fptype* allmomenta,          // input: momenta[nevt*npar*4]
+                   const fptype* allMij,              // input: invariant mass^2 matrix[nevt*npar*npar] for offshell propagators (nullptr => recompute p^2 from momenta)
                    const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,    // input: indices of the flavor combinations
 #ifdef MGONGPUCPP_GPUIMPL
@@ -1802,6 +1803,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 #ifdef MGONGPUCPP_GPUIMPL
     using namespace mg5amcGpu;
     using M_ACCESS = DeviceAccessMomenta;         // non-trivial access: buffer includes all events
+    using MIJ_ACCESS = MemoryAccessMij;           // per-event invariant mass^2 matrix for offshell propagators (nullptr => recompute)
     using W_ACCESS = DeviceAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using A_ACCESS = DeviceAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using CD_ACCESS = DeviceAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
@@ -1812,6 +1814,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 #else
     using namespace mg5amcCpu;
     using M_ACCESS = HostAccessMomenta;         // non-trivial access: buffer includes all events
+    using MIJ_ACCESS = MemoryAccessMij;         // per-event invariant mass^2 matrix for offshell propagators (nullptr => recompute)
     using W_ACCESS = HostAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using A_ACCESS = HostAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using CD_ACCESS = HostAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
@@ -2346,6 +2349,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
 #endif
       // CUDA kernels take input/output buffers with momenta/MEs for all events
       const fptype* momenta = allmomenta;
+      const fptype* mij = allMij; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
       const fptype* COUPs[nxcoup];
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
@@ -2354,6 +2358,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
 #else
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
       const fptype* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
+      const fptype* mij = ( allMij != nullptr ) ? MIJ_ACCESS::ieventAccessRecordConst( allMij, ievt0 ) : nullptr; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
       const fptype* COUPs[nxcoup];
       for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
         COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
@@ -2621,15 +2626,24 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     arg['mass'] = 'm_pars->%(M)s, m_pars->%(W)s, '
                 # OM - standard offshell propagator routines (ending in _1/_2/_3)
                 # take an extra FIXP2 argument (see MadMatrixALOHAWriter.use_fixp2),
-                # a per-event SIMD vector. Hardcode it to a zero vector for now so
-                # the routine recomputes p^2 from the momenta; a falsy 'propagator'
-                # covers both the standard and the massless (P0) propagators.
-                # Custom/polarization propagators and loop wavefunctions keep the
-                # old signature.
+                # a per-event SIMD vector. When this offshell current is the fusion
+                # of exactly two external legs (i,j), feed the caller-supplied
+                # invariant mass^2 m_ij[i][j] (via the umami UMAMI_IN_INVARIANT_MASS_SQ
+                # input); otherwise pass a zero vector so the routine recomputes
+                # p^2 from the momenta. A null 'mij' (no input, or the GPU path)
+                # also falls back to recomputing. A falsy 'propagator' covers both
+                # the standard and the massless (P0) propagators; custom/polarization
+                # propagators and loop wavefunctions keep the old signature.
                 if not argument.get('is_loop') and \
                    not argument.get('polarization') and \
                    not argument.get('particle').get('propagator'):
                     arg['fixp2'] = 'fptype_sv{0}, '
+                    mothers = argument.get('mothers')
+                    if len(mothers) == 2 and \
+                       not mothers[0].get('mothers') and not mothers[1].get('mothers'):
+                        i = mothers[0].get('number_external') - 1
+                        j = mothers[1].get('number_external') - 1
+                        arg['fixp2'] = '( mij != nullptr ? MIJ_ACCESS::kernelAccessConst( mij, %d, %d ) : fptype_sv{0} ), ' % (i, j)
             else:
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'

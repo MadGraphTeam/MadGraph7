@@ -32,7 +32,8 @@ namespace
 #endif
     fptype* numerators,
     fptype* denominators,
-    std::size_t count )
+    std::size_t count,
+    const fptype* mij )
   {
     bool is_good_hel[CPPProcess::ncomb];
     sigmaKin_getGoodHel(
@@ -41,7 +42,8 @@ namespace
       color_jamps,
 #endif
       is_good_hel,
-      count );
+      count,
+      mij );
     sigmaKin_setGoodHel( is_good_hel );
     return nullptr;
   }
@@ -56,7 +58,8 @@ namespace
 #endif
     fptype* numerators,
     fptype* denominators,
-    std::size_t count )
+    std::size_t count,
+    const fptype* mij )
   {
     // static local initialization is called exactly once in a thread-safe way
     static void* dummy = initialize_impl( momenta, couplings, flavor_indices, matrix_elements,
@@ -65,7 +68,8 @@ namespace
 #endif
                                           numerators,
                                           denominators,
-                                          count );
+                                          count,
+                                          mij );
   }
 
 #ifdef MGONGPUCPP_GPUIMPL
@@ -87,6 +91,27 @@ namespace
       }
     }
   }
+
+#ifndef MGONGPUCPP_GPUIMPL
+  // Transpose the per-event invariant mass^2 matrix from the UMAMI [i][j][ievt]
+  // layout into the AOSOA[ipagM][i*npar+j][neppM] expected by MemoryAccessMij.
+  // (CPU only for now: the GPU path passes a null m_ij buffer.)
+  void transpose_mij( const double* mij_in, fptype* mij_out, std::size_t i_event, std::size_t stride )
+  {
+    std::size_t page_size = MemoryAccessMomentaBase::neppM;
+    std::size_t i_page = i_event / page_size;
+    std::size_t i_vector = i_event % page_size;
+    constexpr std::size_t npar = CPPProcess::npar;
+
+    for( std::size_t i = 0; i < npar; ++i )
+    {
+      for( std::size_t j = 0; j < npar; ++j )
+      {
+        mij_out[i_page * npar * npar * page_size + ( i * npar + j ) * page_size + i_vector] = mij_in[stride * ( npar * i + j ) + i_event];
+      }
+    }
+  }
+#endif
 
 #ifdef MGONGPUCPP_GPUIMPL
 
@@ -252,6 +277,7 @@ extern "C"
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
     const int* diagram_in = nullptr; // TODO: unused
+    const double* mij_in = nullptr;  // optional per-event invariant mass^2 matrix (npar x npar)
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -280,6 +306,9 @@ extern "C"
           return UMAMI_ERROR_UNSUPPORTED_INPUT;
         case UMAMI_IN_DIAGRAM_INDEX:
           diagram_in = static_cast<const int*>( input );
+          break;
+        case UMAMI_IN_INVARIANT_MASS_SQ:
+          mij_in = static_cast<const double*>( input );
           break;
         default:
           return UMAMI_ERROR_UNSUPPORTED_INPUT;
@@ -379,7 +408,7 @@ extern "C"
     if( !instance->initialized )
     {
       initialize(
-        momenta, couplings, flavor_indices, matrix_elements, color_jamps, numerators, denominators, rounded_count );
+        momenta, couplings, flavor_indices, matrix_elements, color_jamps, numerators, denominators, rounded_count, nullptr ); // GPU: m_ij not wired yet
       instance->initialized = true;
     }
 
@@ -458,6 +487,17 @@ extern "C"
     HostBufferBase<fptype, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
+    // Optional per-event invariant mass^2 matrix (npar x npar) for offshell propagators;
+    // when not provided, mij_ptr stays null and the propagators recompute p^2 from momenta.
+    HostBufferBase<fptype, false> mij( rounded_count * CPPProcess::npar * CPPProcess::npar );
+    const fptype* mij_ptr = nullptr;
+    if( mij_in != nullptr )
+    {
+      for( std::size_t k = 0; k < rounded_count * CPPProcess::npar * CPPProcess::npar; ++k ) mij[k] = 0; // zero the padding lanes
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+        transpose_mij( &mij_in[offset], mij.data(), i_event, stride );
+      mij_ptr = mij.data();
+    }
     for( std::size_t i_event = 0; i_event < count; ++i_event )
     {
       transpose_momenta( &momenta_in[offset], momenta.data(), i_event, stride );
@@ -482,7 +522,8 @@ extern "C"
         matrix_elements.data(),
         numerators.data(),
         denominators.data(),
-        rounded_count );
+        rounded_count,
+        mij_ptr );
       instance->initialized = true;
     }
 
@@ -501,7 +542,8 @@ extern "C"
       denominators.data(),
       diagram_index.data(),
       false,
-      rounded_count );
+      rounded_count,
+      mij_ptr );
 
     std::size_t page_size = MemoryAccessMomentaBase::neppM;
     for( std::size_t i_event = 0; i_event < count; ++i_event )

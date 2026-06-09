@@ -88,7 +88,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      ]),
                      'SubProcesses': relative_path_list(madmatrix_templates, ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h', 'color_sum.cc',
                                       'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',
-                                      'MemoryAccessMatrixElements.h', 'MemoryAccessMomenta.h',
+                                      'MemoryAccessMatrixElements.h', 'MemoryAccessMij.h', 'MemoryAccessMomenta.h',
                                       'MemoryAccessRandomNumbers.h', 'MemoryAccessWeights.h',
                                       'MemoryAccessAmplitudes.h', 'MemoryAccessWavefunctions.h',
                                       'MemoryAccessGs.h', 'MemoryAccessCouplingsFixed.h',
@@ -102,7 +102,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     to_link_in_P = ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h',
                     'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',
-                    'MemoryAccessMatrixElements.h', 'MemoryAccessMomenta.h',
+                    'MemoryAccessMatrixElements.h', 'MemoryAccessMij.h', 'MemoryAccessMomenta.h',
                     'MemoryAccessRandomNumbers.h', 'MemoryAccessWeights.h',
                     'MemoryAccessAmplitudes.h', 'MemoryAccessWavefunctions.h',
                     'MemoryAccessGs.h', 'MemoryAccessCouplingsFixed.h',

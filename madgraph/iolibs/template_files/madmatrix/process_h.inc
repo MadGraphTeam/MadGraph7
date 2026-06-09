@@ -57,7 +57,8 @@ namespace mg5amcCpu
                        fptype* allDenominators,        // output: multichannel denominators[nevt], running_sum_over_helicities
                        fptype_sv* allJamps,            // output: jamp[ncolor*2*nevt]
                        bool* isGoodHel,                // output: isGoodHel[ncomb] - device array (GPU device implementation)
-                       const int nevt );               // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       const int nevt,                 // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       const fptype* allMij = nullptr );// input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #else
   void
   sigmaKin_getGoodHel( const fptype* allmomenta,       // input: momenta[nevt*npar*4]
@@ -67,7 +68,8 @@ namespace mg5amcCpu
                        fptype* allNumerators,          // output: multichannel numerators[nevt], running_sum_over_helicities
                        fptype* allDenominators,        // output: multichannel denominators[nevt], running_sum_over_helicities
                        bool* isGoodHel,                // output: isGoodHel[ncomb] - host array (C++ implementation)
-                       const int nevt );               // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       const int nevt,                 // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       const fptype* allMij = nullptr );// input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #endif /* clang-format on */
 
   //--------------------------------------------------------------------------
@@ -100,7 +102,8 @@ namespace mg5amcCpu
             gpuBlasHandle_t* pBlasHandle,       // input: cuBLAS/hipBLAS handle
             gpuStream_t* ghelStreams,           // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
             const int gpublocks,                // input: cuda gpublocks
-            const int gputhreads );             // input: cuda gputhreads
+            const int gputhreads,               // input: cuda gputhreads
+            const fptype* allMij = nullptr );   // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #else
   void
   sigmaKin( const fptype* allmomenta,           // input: momenta[nevt*npar*4]
@@ -117,7 +120,8 @@ namespace mg5amcCpu
             fptype* allDenominators,            // tmp: multichannel denominators[nevt], running_sum_over_helicities
             unsigned int* allDiagramIdsOut,     // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,              // if true, multiply channel weight to ME output
-            const int nevt );                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+            const int nevt,                     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+            const fptype* allMij = nullptr );   // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #endif /* clang-format on */
 
   //--------------------------------------------------------------------------
