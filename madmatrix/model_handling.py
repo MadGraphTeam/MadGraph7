@@ -95,10 +95,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     def use_fixp2(self):
         """The offshell propagator routines (those ending in _1/_2/_3 that build
         an outgoing wavefunction from a standard Breit-Wigner propagator) take an
-        extra FIXP2 argument. When FIXP2 is non-zero the routine uses it in place
-        of the computed p^2 in the propagator denominator. It is restricted to
-        the standard denominator: custom propagators (self.routine.denominator)
-        and the P1N numerator variant are excluded.
+        extra FIXP2 argument. FIXP2 is a per-event quantity (a SIMD fptype_sv):
+        for the entries where it is non-zero the routine uses it in place of the
+        computed p^2 in the propagator denominator. It is restricted to the
+        standard denominator: custom propagators (self.routine.denominator) and
+        the P1N numerator variant are excluded.
 
         NB: ALOHAWriterForGPU disables this for the cudacpp plugin (whose
         helas-call writer does not pass the argument); here we re-enable it
@@ -114,7 +115,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         call_arg = aloha_writers.WriteALOHA.define_argument_list(self, couplings)
         if self.use_fixp2():
-            extra = ('double', 'FIXP2')
+            # FIXP2 is a per-event quantity (the invariant mass of the offshell
+            # current for that phase-space point), so it is a SIMD vector.
+            extra = ('double_v', 'FIXP2')
             call_arg.append(extra)
             self.declaration.add(extra)
             self.call_arg = call_arg
@@ -640,22 +643,17 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                             mydict['denom'] = self.routine.denominator
                             out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( %(denom)s );\n' % mydict) # AV
                     elif self.use_fixp2():
-                        # OM - FIXP2 (when non-zero) replaces the p^2 recomputed
+                        # OM - FIXP2 (where non-zero) replaces the p^2 recomputed
                         # from the momenta in the propagator denominator. FIXP2 is a
-                        # scalar (so that 'FIXP2 == 0' is a scalar condition, not a
-                        # SIMD vector one) and is hardcoded to zero by
-                        # MadMatrixUFOHelasCallWriter for now, so the recomputed-p^2
-                        # branch is the one that is actually taken. The selected p^2
-                        # is kept in a fptype_sv (P2fix) so that the denominator
-                        # keeps its vector type even for unit-coupling (P0)
-                        # propagators; 'FIXP2 + 0 * P[0]' broadcasts the scalar
-                        # FIXP2 to the SIMD vector type (the clang-format-safe
-                        # equivalent of the codebase's 'fptype_sv{} + FIXP2' idiom).
+                        # per-event SIMD vector, so the choice is made element-wise
+                        # with fpternary: P2fix = ( FIXP2 == 0 ? p^2 : FIXP2 ).
+                        # MadMatrixUFOHelasCallWriter hardcodes FIXP2 to zero for
+                        # now, so the recomputed-p^2 value is the one actually used.
                         mydict['zero'] = self.change_number_format(0)
                         mydict['ftype'] = self.type2def['double_v']
                         mydict['p2'] = '( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] )' % mydict
                         mydict['massterm'] = 'M%(i)s * ( M%(i)s - cI * W%(i)s )' % mydict
-                        out.write('    const %(ftype)s P2fix%(i)s = ( FIXP2 == %(zero)s ? %(p2)s : FIXP2 + %(zero)s * P%(i)s[0] );\n' % mydict) # OM
+                        out.write('    const %(ftype)s P2fix%(i)s = fpternary( FIXP2 == %(zero)s, ( %(p2)s ), FIXP2 );\n' % mydict) # OM
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( P2fix%(i)s - %(massterm)s );\n' % mydict) # OM
                     else:
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - M%(i)s * ( M%(i)s - cI * W%(i)s ) );\n' % mydict) # AV
@@ -669,7 +667,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         mydict['ftype'] = self.type2def['double_v']
                         mydict['p2'] = '( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] *P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] )' % mydict
                         mydict['massterm'] = '( M%(i)s * M%(i)s )' % mydict
-                        out.write('    const %(ftype)s P2fix%(i)s = ( FIXP2 == %(zero)s ? %(p2)s : FIXP2 + %(zero)s * P%(i)s[0] );\n' % mydict) # OM
+                        out.write('    const %(ftype)s P2fix%(i)s = fpternary( FIXP2 == %(zero)s, ( %(p2)s ), FIXP2 );\n' % mydict) # OM
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( P2fix%(i)s - %(massterm)s );\n' % mydict) # OM
                     else:
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] *P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - ( M%(i)s * M%(i)s ) );\n' % mydict) # AV
@@ -2622,15 +2620,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 else:
                     arg['mass'] = 'm_pars->%(M)s, m_pars->%(W)s, '
                 # OM - standard offshell propagator routines (ending in _1/_2/_3)
-                # take an extra FIXP2 argument (see MadMatrixALOHAWriter.use_fixp2).
-                # Hardcode it to zero so the routine recomputes p^2 from the
-                # momenta; a falsy 'propagator' covers both the standard and the
-                # massless (P0) propagators. Custom/polarization propagators and
-                # loop wavefunctions keep the old signature.
+                # take an extra FIXP2 argument (see MadMatrixALOHAWriter.use_fixp2),
+                # a per-event SIMD vector. Hardcode it to a zero vector for now so
+                # the routine recomputes p^2 from the momenta; a falsy 'propagator'
+                # covers both the standard and the massless (P0) propagators.
+                # Custom/polarization propagators and loop wavefunctions keep the
+                # old signature.
                 if not argument.get('is_loop') and \
                    not argument.get('polarization') and \
                    not argument.get('particle').get('propagator'):
-                    arg['fixp2'] = '0., '
+                    arg['fixp2'] = 'fptype_sv{0}, '
             else:
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'
