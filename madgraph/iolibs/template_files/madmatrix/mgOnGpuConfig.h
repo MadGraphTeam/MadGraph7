@@ -225,13 +225,16 @@ namespace mgOnGpu
   typedef fptype2 fptype_vertex;
 #endif
 
-  // fptype_denom: for denominator variables in vertex functions
+  // fptype_denom: for denominator variables in vertex functions. Defaults to fptype2 (the
+  // color-algebra precision, float in a mixed FPTYPE=m build) so that the precision
+  // experiment keeps momenta/polarization/invmass/fptype in double while the propagator
+  // denominator (and vertex/amp/colour) run in float.
 #if defined MGONGPU_FPTYPE_DENOM_DOUBLE
   typedef double fptype_denom;
 #elif defined MGONGPU_FPTYPE_DENOM_FLOAT
   typedef float fptype_denom;
 #else
-  typedef fptype fptype_denom;
+  typedef fptype2 fptype_denom;
 #endif
 
   // fptype_amp: for amplitude/jamp variables

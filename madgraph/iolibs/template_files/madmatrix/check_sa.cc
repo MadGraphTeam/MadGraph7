@@ -413,11 +413,12 @@ namespace
       for( std::size_t ievt = 0; ievt < nevt; ++ievt )
         if( std::isfinite( umamiMEsChan[ievt] ) ) umamiMEsChanSum[ievt] += umamiMEsChan[ievt];
     }
-    // The sum-over-channels == full-ME identity holds in exact arithmetic, but in a pure
-    // FP32 build (FPTYPE=f) the accumulation rounds to ~1e-6, which is at the edge of the
-    // tolerance below. Skip the comparison for float builds (it is a precision artefact,
-    // not a logic error); the channel example above is still exercised.
-#ifndef MGONGPU_FPTYPE_FLOAT
+    // The sum-over-channels == full-ME identity holds in exact arithmetic. The multichannel
+    // denominator is accumulated in fptype_amp (the color/amplitude precision fptype2); when
+    // that is float (FPTYPE=f or the mixed FPTYPE=m) the accumulation rounds to ~1e-6, at the
+    // edge of the tolerance below. Skip the comparison whenever fptype2 is float (it is a
+    // precision artefact, not a logic error); the channel example above is still exercised.
+#ifndef MGONGPU_FPTYPE2_FLOAT
     for( std::size_t ievt = 0; ievt < nevt; ++ievt )
     {
       const double full = umamiMEs[ievt];
@@ -432,7 +433,7 @@ namespace
     }
 #else
     if( verbose )
-      std::cout << "UMAMI_IN_CHANNEL_INDEX sum-over-channels self-test skipped (FPTYPE=f: sub-1e-6 identity is below FP32 precision)" << std::endl;
+      std::cout << "UMAMI_IN_CHANNEL_INDEX sum-over-channels self-test skipped (fptype2=float: sub-1e-6 identity is below FP32 amplitude precision)" << std::endl;
 #endif
 #endif
 

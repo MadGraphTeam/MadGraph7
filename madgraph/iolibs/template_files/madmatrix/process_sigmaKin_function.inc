@@ -30,14 +30,14 @@
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
       MEs_sv = fptype_sv{ 0 };
       fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
-      fptype_denom* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
+      fptype_amp* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
       fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      fptype_denom_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
+      fptype_amp_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
       for( int i = 0; i < processConfig::ndiagrams; ++i )
       {
         numerators_sv[i] = fptype_sv{ 0 };
       }
-      denominators_sv = fptype_denom_sv{ 0 };
+      denominators_sv = fptype_amp_sv{ 0 };
     }
 #endif
 
@@ -56,7 +56,7 @@
       const int ihel = cGoodHel[ighel];
       fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
       fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * processConfig::ndiagrams;
-      fptype_denom* hAllDenominators = ghelAllDenominators + ighel * nevt;
+      fptype_amp* hAllDenominators = ghelAllDenominators + ighel * nevt;
       bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
       gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allMij, allChannelIds, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt );
     }
@@ -292,9 +292,9 @@
       {
         const unsigned int channelId = getChannelId( allChannelIds, ievt0, false );
         fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
-        fptype_denom* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
+        fptype_amp* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
         fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-        fptype_denom_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
+        fptype_amp_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
         MEs_sv *= numerators_sv[channelId - 1] / denominators_sv;
       }
       //for( int ieppV = 0; ieppV < neppV; ieppV++ )

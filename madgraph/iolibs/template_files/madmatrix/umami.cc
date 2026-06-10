@@ -31,7 +31,7 @@ namespace
     fptype_amp* color_jamps,
 #endif
     fptype* numerators,
-    fptype* denominators,
+    fptype_amp* denominators,
     std::size_t count,
     const fptype_invmass* mij )
   {
@@ -57,7 +57,7 @@ namespace
     fptype_amp* color_jamps,
 #endif
     fptype* numerators,
-    fptype* denominators,
+    fptype_amp* denominators,
     std::size_t count,
     const fptype_invmass* mij )
   {
@@ -144,7 +144,7 @@ namespace
   }
 
   __global__ void copy_outputs(
-    fptype* denominators,
+    fptype_amp* denominators,
     fptype* numerators,
     fptype* matrix_elements,
     unsigned int* diagram_index,
@@ -364,7 +364,8 @@ extern "C"
     std::size_t rounded_count = n_blocks * n_threads;
 
     fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
-    fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements;
+    fptype *matrix_elements, *numerators, *ghel_matrix_elements;
+    fptype_amp* denominators;
     fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
@@ -381,7 +382,7 @@ extern "C"
     gpuMallocAsync( &diagram_index, rounded_count * sizeof( unsigned int ), gpu_stream );
     gpuMallocAsync( &color_jamps, rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp ), gpu_stream );
     gpuMallocAsync( &numerators, rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &denominators, rounded_count * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
+    gpuMallocAsync( &denominators, rounded_count * CPPProcess::ncomb * sizeof( fptype_amp ), gpu_stream );
     gpuMallocAsync( &helicity_index, rounded_count * sizeof( int ), gpu_stream );
     gpuMallocAsync( &color_index, rounded_count * sizeof( int ), gpu_stream );
     gpuMallocAsync( &ghel_matrix_elements, rounded_count * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
@@ -489,7 +490,7 @@ extern "C"
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
     HostBufferBase<fptype, false> numerators( rounded_count * CPPProcess::ndiagrams );
-    HostBufferBase<fptype, false> denominators( rounded_count );
+    HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
     // Optional per-event channel index for the multichannel single-diagram enhancement:
