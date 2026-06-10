@@ -33,7 +33,7 @@ namespace
     fptype* numerators,
     fptype* denominators,
     std::size_t count,
-    const fptype* mij )
+    const fptype_invmass* mij )
   {
     bool is_good_hel[CPPProcess::ncomb];
     sigmaKin_getGoodHel(
@@ -59,7 +59,7 @@ namespace
     fptype* numerators,
     fptype* denominators,
     std::size_t count,
-    const fptype* mij )
+    const fptype_invmass* mij )
   {
     // static local initialization is called exactly once in a thread-safe way
     static void* dummy = initialize_impl( momenta, couplings, flavor_indices, matrix_elements,
@@ -96,7 +96,7 @@ namespace
   // Transpose the per-event invariant mass^2 matrix from the UMAMI [i][j][ievt]
   // layout into the AOSOA[ipagM][i*npar+j][neppM] expected by MemoryAccessMij.
   // (CPU only for now: the GPU path passes a null m_ij buffer.)
-  void transpose_mij( const double* mij_in, fptype* mij_out, std::size_t i_event, std::size_t stride )
+  void transpose_mij( const double* mij_in, fptype_invmass* mij_out, std::size_t i_event, std::size_t stride )
   {
     std::size_t page_size = MemoryAccessMomentaBase::neppM;
     std::size_t i_page = i_event / page_size;
@@ -509,8 +509,8 @@ extern "C"
     }
     // Optional per-event invariant mass^2 matrix (npar x npar) for offshell propagators;
     // when not provided, mij_ptr stays null and the propagators recompute p^2 from momenta.
-    HostBufferBase<fptype, false> mij( rounded_count * CPPProcess::npar * CPPProcess::npar );
-    const fptype* mij_ptr = nullptr;
+    HostBufferBase<fptype_invmass, false> mij( rounded_count * CPPProcess::npar * CPPProcess::npar );
+    const fptype_invmass* mij_ptr = nullptr;
     if( mij_in != nullptr )
     {
       for( std::size_t k = 0; k < rounded_count * CPPProcess::npar * CPPProcess::npar; ++k ) mij[k] = 0; // zero the padding lanes

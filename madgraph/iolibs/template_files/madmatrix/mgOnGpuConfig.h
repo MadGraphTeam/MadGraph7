@@ -178,6 +178,33 @@ namespace mgOnGpu
   typedef float fptype2; // single precision (4 bytes, fp32)
 #endif
 
+  // --- Multi-precision stage-specific floating point types (madmatrix precision experiment)
+  // These let selected stages of the calculation run in a different precision than the
+  // global fptype. Each DEFAULTS TO double (independent of FPTYPE), so that a build with
+  // FPTYPE=f keeps these stages in double while everything else is float. They can be
+  // overridden via their own macros. NB: a stage type that differs from fptype is only
+  // supported in scalar builds (cppnone or CUDA/HIP); a static_assert below rejects it in
+  // SIMD builds (where mixed-width SIMD lanes are not supported).
+
+  // fptype_polarization: precision of the ixxxxx/vxxxxx polarization (wavefunction) computation
+#if defined MGONGPU_FPTYPE_POLARIZATION_DOUBLE
+  typedef double fptype_polarization;
+#elif defined MGONGPU_FPTYPE_POLARIZATION_FLOAT
+  typedef float fptype_polarization;
+#else
+  typedef double fptype_polarization; // default: double
+#endif
+
+  // fptype_invmass: precision of the offshell-propagator virtuality (m_ij / FIXP2) and of the
+  // propagator denominator computed from it
+#if defined MGONGPU_FPTYPE_INVMASS_DOUBLE
+  typedef double fptype_invmass;
+#elif defined MGONGPU_FPTYPE_INVMASS_FLOAT
+  typedef float fptype_invmass;
+#else
+  typedef double fptype_invmass; // default: double
+#endif
+
   // --- Platform-specific software implementation details
 
   // Maximum number of blocks per grid
@@ -201,6 +228,8 @@ namespace mgOnGpu
 // Expose typedefs and operators outside the namespace
 using mgOnGpu::fptype;
 using mgOnGpu::fptype2;
+using mgOnGpu::fptype_polarization;
+using mgOnGpu::fptype_invmass;
 
 // Undefine ARM_NEON (hack for cppnone on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
@@ -242,6 +271,17 @@ using mgOnGpu::fptype2;
 #endif
 #else // C++ "none" i.e. no SIMD
 #undef MGONGPU_CPPSIMD
+#endif
+
+// Multi-precision stage types are only supported in scalar builds (cppnone or CUDA/HIP).
+// In a SIMD build a stage type that differs from fptype would require mixed-width SIMD
+// lanes (e.g. a double-precision polarization vector alongside a float momenta vector),
+// which is not supported here. Reject it loudly. (sizeof equality <=> same float/double type.)
+#ifdef MGONGPU_CPPSIMD
+static_assert( sizeof( fptype_polarization ) == sizeof( fptype ),
+               "fptype_polarization must equal fptype in SIMD builds: use BACKEND=cppnone (or CUDA), or define MGONGPU_FPTYPE_POLARIZATION_FLOAT" );
+static_assert( sizeof( fptype_invmass ) == sizeof( fptype ),
+               "fptype_invmass must equal fptype in SIMD builds: use BACKEND=cppnone (or CUDA), or define MGONGPU_FPTYPE_INVMASS_FLOAT" );
 #endif
 
 /* clang-format off */

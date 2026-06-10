@@ -39,8 +39,8 @@ namespace mg5amcCpu
     static constexpr int nmij = npar * npar; // #components of the m_ij matrix
 
     // Locate the event record (page) base pointer for event ievt (component 0,0)
-    static __host__ __device__ inline const fptype*
-    ieventAccessRecordConst( const fptype* buffer,
+    static __host__ __device__ inline const fptype_invmass*
+    ieventAccessRecordConst( const fptype_invmass* buffer,
                              const int ievt )
     {
       const int ipagM = ievt / neppM; // #event "M-page"
@@ -50,12 +50,14 @@ namespace mg5amcCpu
 
     // Access element (i,j) of the m_ij matrix within an event record (page),
     // returning the SIMD vector (C++) or scalar (GPU/no-SIMD) of values.
-    static __host__ __device__ inline fptype_sv
-    kernelAccessConst( const fptype* record,
+    // The buffer element type is fptype_invmass (the offshell-propagator virtuality
+    // precision); in SIMD builds fptype_invmass==fptype (enforced in mgOnGpuConfig.h).
+    static __host__ __device__ inline fptype_invmass_sv
+    kernelAccessConst( const fptype_invmass* record,
                        const int i,
                        const int j )
     {
-      const fptype& out = record[( i * npar + j ) * neppM]; // AOSOA[ipagM][i*npar+j][0]
+      const fptype_invmass& out = record[( i * npar + j ) * neppM]; // AOSOA[ipagM][i*npar+j][0]
 #ifndef MGONGPU_CPPSIMD
       return out;
 #else

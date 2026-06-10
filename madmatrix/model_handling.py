@@ -78,6 +78,12 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     type2def['double_v'] = 'fptype_sv'
     type2def['complex_v'] = 'cxtype_sv'
 
+    # OM - multi-precision stage types for the offshell-propagator virtuality (m_ij / FIXP2):
+    # the invariant-mass^2 path runs in fptype_invmass (default double), the denominator is then
+    # down-cast to fptype for the rest of the arithmetic. See use_fixp2()/the denominator codegen.
+    type2def['invmass_v'] = 'fptype_invmass_sv'
+    type2def['complex_invmass_v'] = 'cxtype_invmass_sv'
+
     type2def['aloha_ref'] = '&'
 
     # AV - modify C++ code from aloha_writers.ALOHAWriterForGPU
@@ -116,8 +122,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         call_arg = aloha_writers.WriteALOHA.define_argument_list(self, couplings)
         if self.use_fixp2():
             # FIXP2 is a per-event quantity (the invariant mass of the offshell
-            # current for that phase-space point), so it is a SIMD vector.
-            extra = ('double_v', 'FIXP2')
+            # current for that phase-space point), so it is a SIMD vector. It is
+            # typed fptype_invmass_sv (the offshell-propagator virtuality precision,
+            # default double) so the propagator denominator keeps the m_ij precision.
+            extra = ('invmass_v', 'FIXP2')
             call_arg.append(extra)
             self.declaration.add(extra)
             self.call_arg = call_arg
@@ -649,12 +657,17 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         # with fpternary: P2fix = ( FIXP2 == 0 ? p^2 : FIXP2 ).
                         # MadMatrixUFOHelasCallWriter hardcodes FIXP2 to zero for
                         # now, so the recomputed-p^2 value is the one actually used.
+                        # OM - the offshell-propagator virtuality (FIXP2/m_ij) and the
+                        # denominator subtraction P2fix - massterm run in fptype_invmass
+                        # (default double, see use_fixp2/define_argument_list). The result
+                        # is then down-cast to cxtype_sv so the numerator division and the
+                        # rest of the arithmetic stay in fptype (float when FPTYPE=f).
                         mydict['zero'] = self.change_number_format(0)
-                        mydict['ftype'] = self.type2def['double_v']
+                        mydict['ftype'] = self.type2def['invmass_v'] # fptype_invmass_sv
                         mydict['p2'] = '( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] )' % mydict
-                        mydict['massterm'] = 'M%(i)s * ( M%(i)s - cI * W%(i)s )' % mydict
-                        out.write('    const %(ftype)s P2fix%(i)s = fpternary( FIXP2 == %(zero)s, ( %(p2)s ), FIXP2 );\n' % mydict) # OM
-                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( P2fix%(i)s - %(massterm)s );\n' % mydict) # OM
+                        mydict['massterm'] = 'static_cast<fptype_invmass>( M%(i)s ) * ( static_cast<fptype_invmass>( M%(i)s ) - cxtype_invmass( 0, 1 ) * static_cast<fptype_invmass>( W%(i)s ) )' % mydict
+                        out.write('    const %(ftype)s P2fix%(i)s = fpternary( FIXP2 == %(zero)s, static_cast<%(ftype)s>( %(p2)s ), FIXP2 );\n' % mydict) # OM
+                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / static_cast<cxtype_sv>( P2fix%(i)s - ( %(massterm)s ) );\n' % mydict) # OM
                     else:
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - M%(i)s * ( M%(i)s - cI * W%(i)s ) );\n' % mydict) # AV
                 else:
@@ -663,12 +676,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.use_fixp2():
                         # OM - see the FIXP2 comment above (complex-mass scheme).
+                        # OM - complex-mass scheme: same as above but the (complex) mass
+                        # term is M*M with M complex; cast to cxtype_invmass for the
+                        # double-precision denominator, then down-cast to cxtype_sv.
                         mydict['zero'] = self.change_number_format(0)
-                        mydict['ftype'] = self.type2def['double_v']
+                        mydict['ftype'] = self.type2def['invmass_v'] # fptype_invmass_sv
                         mydict['p2'] = '( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] *P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] )' % mydict
-                        mydict['massterm'] = '( M%(i)s * M%(i)s )' % mydict
-                        out.write('    const %(ftype)s P2fix%(i)s = fpternary( FIXP2 == %(zero)s, ( %(p2)s ), FIXP2 );\n' % mydict) # OM
-                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( P2fix%(i)s - %(massterm)s );\n' % mydict) # OM
+                        mydict['massterm'] = 'static_cast<cxtype_invmass>( M%(i)s ) * static_cast<cxtype_invmass>( M%(i)s )' % mydict
+                        out.write('    const %(ftype)s P2fix%(i)s = fpternary( FIXP2 == %(zero)s, static_cast<%(ftype)s>( %(p2)s ), FIXP2 );\n' % mydict) # OM
+                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / static_cast<cxtype_sv>( P2fix%(i)s - ( %(massterm)s ) );\n' % mydict) # OM
                     else:
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] *P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - ( M%(i)s * M%(i)s ) );\n' % mydict) # AV
                 ###self.declaration.add(('complex','denom')) # AV moved earlier (or simply removed)
@@ -1779,7 +1795,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
   __global__ void /* clang-format off */
   calculate_jamps( int ihel,
                    const fptype* allmomenta,          // input: momenta[nevt*npar*4]
-                   const fptype* allMij,              // input: invariant mass^2 matrix[nevt*npar*npar] for offshell propagators (nullptr => recompute p^2 from momenta)
+                   const fptype_invmass* allMij,      // input: invariant mass^2 matrix[nevt*npar*npar] for offshell propagators (nullptr => recompute p^2 from momenta)
                    const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (gates which propagators use allMij); nullptr => m_ij unused
                    const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,    // input: indices of the flavor combinations
@@ -2350,7 +2366,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
 #endif
       // CUDA kernels take input/output buffers with momenta/MEs for all events
       const fptype* momenta = allmomenta;
-      const fptype* mij = allMij; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
+      const fptype_invmass* mij = allMij; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
       const unsigned int channelId = getChannelId( allChannelIds ); // 0 if no channel (=> m_ij unused)
       const fptype* COUPs[nxcoup];
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
@@ -2360,7 +2376,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
 #else
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
       const fptype* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
-      const fptype* mij = ( allMij != nullptr ) ? MIJ_ACCESS::ieventAccessRecordConst( allMij, ievt0 ) : nullptr; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
+      const fptype_invmass* mij = ( allMij != nullptr ) ? MIJ_ACCESS::ieventAccessRecordConst( allMij, ievt0 ) : nullptr; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
       const unsigned int channelId = getChannelId( allChannelIds, ievt0, false ); // 0 if no channel (=> m_ij unused)
       const fptype* COUPs[nxcoup];
       for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
@@ -2426,7 +2442,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                         j = mothers[1].get('number_external') - 1
                         cond = ' || '.join('channelId == %d' % c for c in chans)
                         self.wf_fixp2_map[num] = \
-                            '( mij != nullptr && ( %s ) ? MIJ_ACCESS::kernelAccessConst( mij, %d, %d ) : fptype_sv{0} )' % (cond, i, j)
+                            '( mij != nullptr && ( %s ) ? MIJ_ACCESS::kernelAccessConst( mij, %d, %d ) : fptype_invmass_sv{0} )' % (cond, i, j)
         id_amp = 0
         for diagram in matrix_element.get('diagrams'):
             ###print('DIAGRAM %3d: #wavefunctions=%3d, #diagrams=%3d' %

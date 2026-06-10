@@ -458,7 +458,7 @@ namespace mg5amcCpu
                        fptype_sv* allJamps,            // tmp: jamp[ncolor*2*nevt] _for one helicity_ (reused in the getGoodHel helicity loop)
                        bool* isGoodHel,                // output: isGoodHel[ncomb] - host array
                        const int nevt,                 // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
-                       const fptype* allMij )          // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
+                       const fptype_invmass* allMij )          // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
   { /* clang-format on */
     const int maxtry0 = 16;
     fptype hstMEs[maxtry0];
@@ -499,7 +499,7 @@ namespace mg5amcCpu
                        fptype* allDenominators,        // output: multichannel denominators[nevt], running_sum_over_helicities
                        bool* isGoodHel,                // output: isGoodHel[ncomb] - host array
                        const int nevt,                 // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
-                       const fptype* allMij )          // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
+                       const fptype_invmass* allMij )          // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
   {
     //assert( (size_t)(allmomenta) %% mgOnGpu::cppAlign == 0 ); // SANITY CHECK: require SIMD-friendly alignment [COMMENT OUT TO TEST MISALIGNED ACCESS]
     //assert( (size_t)(allMEs) %% mgOnGpu::cppAlign == 0 ); // SANITY CHECK: require SIMD-friendly alignment [COMMENT OUT TO TEST MISALIGNED ACCESS]
@@ -822,7 +822,7 @@ namespace mg5amcCpu
             gpuStream_t* ghelStreams,           // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
             const int gpublocks,                // input: cuda gpublocks
             const int gputhreads,               // input: cuda gputhreads
-            const fptype* allMij                // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
+            const fptype_invmass* allMij                // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #else
             int* allselcol,                     // output: helicity selection[nevt]
             fptype* allNumerators,              // output: multichannel numerators[nevt], running_sum_over_helicities
@@ -830,7 +830,7 @@ namespace mg5amcCpu
             unsigned int* allDiagramIdsOut,     // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,              // if true, multiply channel weight to ME output
             const int nevt,                     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
-            const fptype* allMij                // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
+            const fptype_invmass* allMij                // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #endif
             ) /* clang-format on */
   {

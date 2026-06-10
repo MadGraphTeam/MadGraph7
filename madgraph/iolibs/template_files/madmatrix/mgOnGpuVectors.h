@@ -650,8 +650,26 @@ namespace mg5amcCpu
     return ( mask ? a : b );
   }
 
+  // Multi-precision overload: used e.g. for fptype_invmass (FIXP2). Kept alongside the
+  // non-template fptype version so that existing calls with mismatched literal arguments
+  // (e.g. fpternary(mask, 0, fptype_val)) still resolve to the non-template overload,
+  // while exact double/float stage-type calls resolve to this template.
+  template<typename FP>
+  inline FP
+  fpternary( const bool& mask, const FP& a, const FP& b )
+  {
+    return ( mask ? a : b );
+  }
+
   inline cxtype
   cxternary( const bool& mask, const cxtype& a, const cxtype& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  template<typename CX>
+  inline CX
+  cxternary( const bool& mask, const CX& a, const CX& b )
   {
     return ( mask ? a : b );
   }
@@ -867,8 +885,23 @@ namespace mg5amcCpu
     return ( mask ? a : b );
   }
 
+  // Multi-precision overload (see the non-GPU version above for the rationale).
+  template<typename FP>
+  inline __host__ __device__ FP
+  fpternary( const bool& mask, const FP& a, const FP& b )
+  {
+    return ( mask ? a : b );
+  }
+
   inline __host__ __device__ cxtype
   cxternary( const bool& mask, const cxtype& a, const cxtype& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  template<typename CX>
+  inline __host__ __device__ CX
+  cxternary( const bool& mask, const CX& a, const CX& b )
   {
     return ( mask ? a : b );
   }
@@ -891,6 +924,11 @@ namespace mg5amcCpu
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
+  // Multi-precision stage types: scalar on GPU
+  typedef fptype_polarization fptype_polarization_sv;
+  typedef fptype_invmass fptype_invmass_sv;
+  typedef cxtype_polarization cxtype_polarization_sv;
+  typedef cxtype_invmass cxtype_invmass_sv;
 #elif defined MGONGPU_CPPSIMD
   typedef bool_v bool_sv;
   typedef fptype_v fptype_sv;
@@ -898,6 +936,12 @@ namespace mg5amcCpu
   typedef uint_v uint_sv;
   typedef cxtype_v cxtype_sv;
   typedef cxtype_v_ref cxtype_sv_ref;
+  // Multi-precision stage types: in SIMD builds the stage type equals fptype (enforced by the
+  // static_assert in mgOnGpuConfig.h), so the stage _sv types simply alias the vector types.
+  typedef fptype_sv fptype_polarization_sv;
+  typedef fptype_sv fptype_invmass_sv;
+  typedef cxtype_sv cxtype_polarization_sv;
+  typedef cxtype_sv cxtype_invmass_sv;
 #else
   typedef bool bool_sv;
   typedef fptype fptype_sv;
@@ -905,6 +949,11 @@ namespace mg5amcCpu
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
+  // Multi-precision stage types: scalar in cppnone
+  typedef fptype_polarization fptype_polarization_sv;
+  typedef fptype_invmass fptype_invmass_sv;
+  typedef cxtype_polarization cxtype_polarization_sv;
+  typedef cxtype_invmass cxtype_invmass_sv;
 #endif
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++

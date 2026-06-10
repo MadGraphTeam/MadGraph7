@@ -320,6 +320,13 @@ namespace mg5amcCpu
 #endif
 #endif
 
+  // --- Multi-precision stage-specific complex types (see fptype_polarization/fptype_invmass).
+  // Always cxsmpl-based: cxsmpl<FP> provides the templated cxsmpl<FP>-to-cxsmpl<FP2> conversion
+  // operator used to down-cast a double-precision stage result to the (float) cxtype. They are
+  // only used in scalar builds; in SIMD builds the corresponding _sv types alias cxtype_sv.
+  typedef cxsmpl<fptype_polarization> cxtype_polarization;
+  typedef cxsmpl<fptype_invmass> cxtype_invmass;
+
   // SANITY CHECK: memory access may be based on casts of fptype[2] to cxtype (e.g. for wavefunctions)
   static_assert( sizeof( cxtype ) == mgOnGpu::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
 }
