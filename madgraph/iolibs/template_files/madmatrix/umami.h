@@ -36,7 +36,7 @@ extern "C"
    * Minor version number of the UMAMI interface. Between minor versions, new keys for
    * errors, devices, metadata, inputs and outputs can be added.
    */
-  const inline int UMAMI_MINOR_VERSION = 0;
+  const inline int UMAMI_MINOR_VERSION = 1;
 
   typedef enum
   {
@@ -75,6 +75,14 @@ extern "C"
     UMAMI_IN_RANDOM_DIAGRAM,
     UMAMI_IN_HELICITY_INDEX,
     UMAMI_IN_DIAGRAM_INDEX,
+    /** externally selected channel index, type: `unsigned int`, shape: `()` */
+    UMAMI_IN_CHANNEL_INDEX,
+    /** matrix of (signed) invariant mass squared of the external leg pairs, used as
+     * the offshell propagator virtuality p^2 = m_ij[i][j] for a current built from
+     * the external legs i and j (the caller provides the correct s-/t-channel sign).
+     * Optional: if omitted, every propagator recomputes p^2 from the momenta.
+     * type: `double`, shape: `(particle count, particle count)` */
+    UMAMI_IN_INVARIANT_MASS_SQ,
   } UmamiInputKey;
 
   typedef enum
