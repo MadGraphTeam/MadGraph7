@@ -28,7 +28,7 @@ namespace
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
-    fptype* color_jamps,
+    fptype_amp* color_jamps,
 #endif
     fptype* numerators,
     fptype* denominators,
@@ -54,7 +54,7 @@ namespace
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
-    fptype* color_jamps,
+    fptype_amp* color_jamps,
 #endif
     fptype* numerators,
     fptype* denominators,
@@ -363,8 +363,9 @@ extern "C"
     std::size_t n_blocks = ( count + n_threads - 1 ) / n_threads;
     std::size_t rounded_count = n_blocks * n_threads;
 
-    fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random, *color_jamps;
-    fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements, *ghel_jamps;
+    fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
+    fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements;
+    fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
 
@@ -378,13 +379,13 @@ extern "C"
     gpuMallocAsync( &diagram_random, rounded_count * sizeof( fptype ), gpu_stream );
     gpuMallocAsync( &matrix_elements, rounded_count * sizeof( fptype ), gpu_stream );
     gpuMallocAsync( &diagram_index, rounded_count * sizeof( unsigned int ), gpu_stream );
-    gpuMallocAsync( &color_jamps, rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype ), gpu_stream );
+    gpuMallocAsync( &color_jamps, rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp ), gpu_stream );
     gpuMallocAsync( &numerators, rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
     gpuMallocAsync( &denominators, rounded_count * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
     gpuMallocAsync( &helicity_index, rounded_count * sizeof( int ), gpu_stream );
     gpuMallocAsync( &color_index, rounded_count * sizeof( int ), gpu_stream );
     gpuMallocAsync( &ghel_matrix_elements, rounded_count * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &ghel_jamps, rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype ), gpu_stream );
+    gpuMallocAsync( &ghel_jamps, rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp ), gpu_stream );
 
     copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       momenta_in,

@@ -144,6 +144,16 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             shutil.move(os.path.join(self.dir_path, "src", "Makefile"), os.path.join(self.dir_path, "src", "makefile"))
         if self.template_Sub_make:
             shutil.move(os.path.join(self.dir_path, "SubProcesses", "Makefile"), os.path.join(self.dir_path, "SubProcesses", "makefile"))
+        # Copy Arithmetics headers for the double-word expansion (FPTYPE=e)
+        arithmetics_src = pjoin(self.madmatrix_templates, 'Arithmetics')
+        if os.path.isdir(arithmetics_src):
+            arithmetics_dst = pjoin(self.dir_path, 'src', 'Arithmetics')
+            try:
+                os.makedirs(arithmetics_dst, exist_ok=True)
+            except os.error:
+                pass
+            for f in ['Double.h', 'basicOPs.h', 'errorFreeOPs.h']:
+                files.cp(pjoin(arithmetics_src, f), arithmetics_dst)
 
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):

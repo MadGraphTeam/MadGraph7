@@ -37,8 +37,8 @@ namespace mg5amcCpu
     // --- This is relevant to ensure coalesced access to momenta in global memory
     // --- Note that neppR is hardcoded and may differ from neppM and neppV on some platforms
     // -----------------------------------------------------------------------------------------------
-    //static constexpr int neppM = 64/sizeof(fptype); // 2x 32-byte GPU cache lines (512 bits): 8 (DOUBLE) or 16 (FLOAT)
-    static constexpr int neppM = 32/sizeof(fptype); // (DEFAULT) 32-byte GPU cache line (256 bits): 4 (DOUBLE) or 8 (FLOAT)
+    //static constexpr int neppM = 64/sizeof(fptype_momenta); // 2x 32-byte GPU cache lines (512 bits): 8 (DOUBLE) or 16 (FLOAT)
+    static constexpr int neppM = 32/sizeof(fptype_momenta); // (DEFAULT) 32-byte GPU cache line (256 bits): 4 (DOUBLE) or 8 (FLOAT)
     //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 1.03E9 instead of 1.11E9 in eemumu)
 #else
     // -----------------------------------------------------------------------------------------------
@@ -49,8 +49,8 @@ namespace mg5amcCpu
     // -----------------------------------------------------------------------------------------------
 #ifdef MGONGPU_CPPSIMD
     static constexpr int neppM = MGONGPU_CPPSIMD; // (DEFAULT) neppM=neppV for optimal performance
-    //static constexpr int neppM = 64/sizeof(fptype); // maximum CPU vector width (512 bits): 8 (DOUBLE) or 16 (FLOAT)
-    //static constexpr int neppM = 32/sizeof(fptype); // lower CPU vector width (256 bits): 4 (DOUBLE) or 8 (FLOAT)
+    //static constexpr int neppM = 64/sizeof(fptype_momenta); // maximum CPU vector width (512 bits): 8 (DOUBLE) or 16 (FLOAT)
+    //static constexpr int neppM = 32/sizeof(fptype_momenta); // lower CPU vector width (256 bits): 4 (DOUBLE) or 8 (FLOAT)
     //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 4.66E6 instead of 5.09E9 in eemumu)
     //static constexpr int neppM = MGONGPU_CPPSIMD*2; // FOR TESTS
 #else
@@ -63,9 +63,9 @@ namespace mg5amcCpu
 
   private:
 
-    friend class MemoryAccessHelper<MemoryAccessMomentaBase>;
-    friend class KernelAccessHelper<MemoryAccessMomentaBase, true>;
-    friend class KernelAccessHelper<MemoryAccessMomentaBase, false>;
+    friend class MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>;
+    friend class KernelAccessHelper<MemoryAccessMomentaBase, true, fptype_momenta>;
+    friend class KernelAccessHelper<MemoryAccessMomentaBase, false, fptype_momenta>;
 
     // The number of components of a 4-momentum
     static constexpr int np4 = CPPProcess::np4;
@@ -79,9 +79,9 @@ namespace mg5amcCpu
     //--------------------------------------------------------------------------
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (non-const) ===> fptype* ieventAccessRecord( fptype* buffer, const int ievt ) <===]
-    static __host__ __device__ inline fptype*
-    ieventAccessRecord( fptype* buffer,
+    // [Signature (non-const) ===> fptype_momenta* ieventAccessRecord( fptype_momenta* buffer, const int ievt ) <===]
+    static __host__ __device__ inline fptype_momenta*
+    ieventAccessRecord( fptype_momenta* buffer,
                         const int ievt )
     {
       const int ipagM = ievt / neppM; // #event "M-page"
@@ -94,10 +94,10 @@ namespace mg5amcCpu
     //--------------------------------------------------------------------------
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (non-const) ===> fptype& decodeRecord( fptype* buffer, Ts... args ) <===]
+    // [Signature (non-const) ===> fptype_momenta& decodeRecord( fptype_momenta* buffer, Ts... args ) <===]
     // [NB: expand variadic template "Ts... args" to "const int ip4, const int ipar" and rename "Field" as "Ip4Ipar"]
-    static __host__ __device__ inline fptype&
-    decodeRecord( fptype* buffer,
+    static __host__ __device__ inline fptype_momenta&
+    decodeRecord( fptype_momenta* buffer,
                   const int ip4,
                   const int ipar )
     {
@@ -116,44 +116,44 @@ namespace mg5amcCpu
   public:
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (non-const) ===> fptype* ieventAccessRecord( fptype* buffer, const int ievt ) <===]
-    static constexpr auto ieventAccessRecord = MemoryAccessHelper<MemoryAccessMomentaBase>::ieventAccessRecord;
+    // [Signature (non-const) ===> fptype_momenta* ieventAccessRecord( fptype_momenta* buffer, const int ievt ) <===]
+    static constexpr auto ieventAccessRecord = MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>::ieventAccessRecord;
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (const) ===> const fptype* ieventAccessRecordConst( const fptype* buffer, const int ievt ) <===]
-    static constexpr auto ieventAccessRecordConst = MemoryAccessHelper<MemoryAccessMomentaBase>::ieventAccessRecordConst;
+    // [Signature (const) ===> const fptype_momenta* ieventAccessRecordConst( const fptype_momenta* buffer, const int ievt ) <===]
+    static constexpr auto ieventAccessRecordConst = MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>::ieventAccessRecordConst;
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (non-const) ===> fptype& decodeRecord( fptype* buffer, const int ipar, const int ipar ) <===]
-    static constexpr auto decodeRecordIp4Ipar = MemoryAccessHelper<MemoryAccessMomentaBase>::decodeRecord;
+    // [Signature (non-const) ===> fptype_momenta& decodeRecord( fptype_momenta* buffer, const int ipar, const int ipar ) <===]
+    static constexpr auto decodeRecordIp4Ipar = MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>::decodeRecord;
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (const) ===> const fptype& decodeRecordConst( const fptype* buffer, const int ipar, const int ipar ) <===]
+    // [Signature (const) ===> const fptype_momenta& decodeRecordConst( const fptype_momenta* buffer, const int ipar, const int ipar ) <===]
     static constexpr auto decodeRecordIp4IparConst =
-      MemoryAccessHelper<MemoryAccessMomentaBase>::template decodeRecordConst<int, int>;
+      MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>::template decodeRecordConst<int, int>;
 
     // Locate a field (output) in a memory buffer (input) from the given event number (input) and the given field indexes (input)
-    // [Signature (non-const) ===> fptype& ieventAccessIp4Ipar( fptype* buffer, const ievt, const int ipar, const int ipar ) <===]
+    // [Signature (non-const) ===> fptype_momenta& ieventAccessIp4Ipar( fptype_momenta* buffer, const ievt, const int ipar, const int ipar ) <===]
     static constexpr auto ieventAccessIp4Ipar =
-      MemoryAccessHelper<MemoryAccessMomentaBase>::template ieventAccessField<int, int>;
+      MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>::template ieventAccessField<int, int>;
 
     // Locate a field (output) in a memory buffer (input) from the given event number (input) and the given field indexes (input)
-    // [Signature (const) ===> const fptype& ieventAccessIp4IparConst( const fptype* buffer, const ievt, const int ipar, const int ipar ) <===]
+    // [Signature (const) ===> const fptype_momenta& ieventAccessIp4IparConst( const fptype_momenta* buffer, const ievt, const int ipar, const int ipar ) <===]
     // DEFAULT VERSION
     static constexpr auto ieventAccessIp4IparConst =
-      MemoryAccessHelper<MemoryAccessMomentaBase>::template ieventAccessFieldConst<int, int>;
+      MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>::template ieventAccessFieldConst<int, int>;
 
     /*
     // Locate a field (output) in a memory buffer (input) from the given event number (input) and the given field indexes (input)
-    // [Signature (const) ===> const fptype& ieventAccessIp4IparConst( const fptype* buffer, const ievt, const int ipar, const int ipar ) <===]
+    // [Signature (const) ===> const fptype_momenta& ieventAccessIp4IparConst( const fptype_momenta* buffer, const ievt, const int ipar, const int ipar ) <===]
     // DEBUG VERSION WITH PRINTOUTS
-    static __host__ __device__ inline const fptype&
-    ieventAccessIp4IparConst( const fptype* buffer,
+    static __host__ __device__ inline const fptype_momenta&
+    ieventAccessIp4IparConst( const fptype_momenta* buffer,
                                             const int ievt,
                                             const int ip4,
                                             const int ipar )
     {
-      const fptype& out = MemoryAccessHelper<MemoryAccessMomentaBase>::template ieventAccessFieldConst<int, int>( buffer, ievt, ip4, ipar );
+      const fptype_momenta& out = MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>::template ieventAccessFieldConst<int, int>( buffer, ievt, ip4, ipar );
       printf( "ipar=%2d ip4=%2d ievt=%8d out=%8.3f\n", ipar, ip4, ievt, out );
       return out;
     }
@@ -173,41 +173,41 @@ namespace mg5amcCpu
     static constexpr auto ieventAccessRecordConst = MemoryAccessMomenta::ieventAccessRecordConst;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (non-const, SCALAR) ===> fptype& kernelAccessIp4Ipar( fptype* buffer, const int ipar, const int ipar ) <===]
+    // [Signature (non-const, SCALAR) ===> fptype_momenta& kernelAccessIp4Ipar( fptype_momenta* buffer, const int ipar, const int ipar ) <===]
     static constexpr auto kernelAccessIp4Ipar =
-      KernelAccessHelper<MemoryAccessMomentaBase, onDevice>::template kernelAccessField<int, int>;
+      KernelAccessHelper<MemoryAccessMomentaBase, onDevice, fptype_momenta>::template kernelAccessField<int, int>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (const, SCALAR) ===> const fptype& kernelAccessIp4IparConst( const fptype* buffer, const int ipar, const int ipar ) <===]
+    // [Signature (const, SCALAR) ===> const fptype_momenta& kernelAccessIp4IparConst( const fptype_momenta* buffer, const int ipar, const int ipar ) <===]
     // DEFAULT VERSION
     static constexpr auto kernelAccessIp4IparConst_s =
-      KernelAccessHelper<MemoryAccessMomentaBase, onDevice>::template kernelAccessFieldConst<int, int>;
+      KernelAccessHelper<MemoryAccessMomentaBase, onDevice, fptype_momenta>::template kernelAccessFieldConst<int, int>;
 
     /*
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (const, SCALAR) ===> const fptype& kernelAccessIp4IparConst( const fptype* buffer, const int ipar, const int ipar ) <===]
+    // [Signature (const, SCALAR) ===> const fptype_momenta& kernelAccessIp4IparConst( const fptype_momenta* buffer, const int ipar, const int ipar ) <===]
     // DEBUG VERSION WITH PRINTOUTS
-    static __host__ __device__ inline const fptype&
-    kernelAccessIp4IparConst_s( const fptype* buffer,
+    static __host__ __device__ inline const fptype_momenta&
+    kernelAccessIp4IparConst_s( const fptype_momenta* buffer,
                                 const int ip4,
                                 const int ipar )
     {
-      const fptype& out = KernelAccessHelper<MemoryAccessMomentaBase, onDevice>::template kernelAccessFieldConst<int, int>( buffer, ip4, ipar );
+      const fptype_momenta& out = KernelAccessHelper<MemoryAccessMomentaBase, onDevice, fptype_momenta>::template kernelAccessFieldConst<int, int>( buffer, ip4, ipar );
       printf( "ipar=%2d ip4=%2d ievt='kernel' out=%8.3f\n", ipar, ip4, out );
       return out;
     }
     */
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (const, SCALAR OR VECTOR) ===> fptype_sv kernelAccessIp4IparConst( const fptype* buffer, const int ipar, const int ipar ) <===]
+    // [Signature (const, SCALAR OR VECTOR) ===> fptype_momenta_sv kernelAccessIp4IparConst( const fptype_momenta* buffer, const int ipar, const int ipar ) <===]
     // FIXME? Eventually return by const reference and support aligned arrays only?
     // FIXME? Currently return by value to support also unaligned and arbitrary arrays
-    static __host__ __device__ inline fptype_sv
-    kernelAccessIp4IparConst( const fptype* buffer,
+    static __host__ __device__ inline fptype_momenta_sv
+    kernelAccessIp4IparConst( const fptype_momenta* buffer,
                               const int ip4,
                               const int ipar )
     {
-      const fptype& out = kernelAccessIp4IparConst_s( buffer, ip4, ipar );
+      const fptype_momenta& out = kernelAccessIp4IparConst_s( buffer, ip4, ipar );
 #ifndef MGONGPU_CPPSIMD
       return out;
 #else
@@ -248,7 +248,7 @@ namespace mg5amcCpu
         // This does not even require AOSOA with neppM>=neppV and neppM%neppV==0 (e.g. can be used with AOS neppM==1)
         constexpr int ievt0 = 0; // just make it explicit in the code that buffer refers to a given ievt0 and decoderIeppV fetches event ievt0+ieppV
         auto decoderIeppv = [buffer, ip4, ipar]( int ieppV )
-          -> const fptype&
+          -> const fptype_momenta&
         { return MemoryAccessMomenta::ieventAccessIp4IparConst( buffer, ievt0 + ieppV, ip4, ipar ); };
         return mg5amcCpu::fptypevFromArbitraryArray( decoderIeppv ); // iterate over ieppV in neppV (no SIMD)
       }

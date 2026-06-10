@@ -38,7 +38,7 @@ ifneq ($(words $(filter $(BACKEND), $(SUPPORTED_BACKENDS))),1)
   $(error Invalid backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
 endif
 
-override SUPPORTED_FPTYPES = d f m
+override SUPPORTED_FPTYPES = d f m e
 ifneq ($(words $(filter $(FPTYPE), $(SUPPORTED_FPTYPES))),1)
   $(error Invalid fptype FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
@@ -595,8 +595,11 @@ else ifeq ($(FPTYPE),f)
 else ifeq ($(FPTYPE),m)
   CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+else ifeq ($(FPTYPE),e)
+  CXXFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
 else
-  $(error Unknown FPTYPE='$(FPTYPE)': only 'd', 'f' and 'm' are supported)
+  $(error Unknown FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
 
 # Set the build flags appropriate to each HELINL choice (example: "make HELINL=1")

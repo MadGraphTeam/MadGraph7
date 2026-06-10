@@ -345,7 +345,7 @@ namespace mg5amcGpu
       throw std::runtime_error( sstr.str() );
     }
     // Create the "one-helicity" jamp buffer that will be used for helicity filtering
-    m_pHelJamps.reset( new DeviceBufferSimple( CPPProcess::ncolor * mgOnGpu::nx2 * this->nevt() ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( CPPProcess::ncolor * mgOnGpu::nx2 * this->nevt() ) );
     // Create the "one-helicity" numerator and denominator buffers that will be used for helicity filtering
     m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * CPPProcess::ndiagrams ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( this->nevt() ) );
@@ -436,7 +436,7 @@ namespace mg5amcGpu
     // ... 0d1. Compute good helicity mask (a host variable) on the device
     gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_gs.data(), m_couplings.data() );
     const int nevt = m_gpublocks * m_gputhreads;
-    sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelJamps->data(), m_pHelNumerators->data(), m_pHelDenominators->data(), hstIsGoodHel.data(), nevt );
+    sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), m_pHelJamps->data(), hstIsGoodHel.data(), nevt );
     // ... 0d3. Set good helicity list in host static memory
     int nGoodHel = sigmaKin_setGoodHel( hstIsGoodHel.data() );
     assert( nGoodHel > 0 ); // SANITY CHECK: there should be at least one good helicity
@@ -458,7 +458,7 @@ namespace mg5amcGpu
     m_pHelMEs.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelJamps.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
     // ... Create the "many-helicity" super-buffers of nGoodHel numerator and denominator buffers (dynamically allocated)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
     m_pHelNumerators.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ndiagrams * nevt ) );

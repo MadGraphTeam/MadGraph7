@@ -35,17 +35,18 @@ namespace mg5amcCpu
 {
 
   // ALOHA-style object for easy flavor consolidation and non-template API
+
   struct ALOHAOBJ {
 
       static constexpr int np4 = 4; // dimensions of 4-momenta (E,px,py,pz)
       static constexpr int nw6 = %(nwave)d; // dimensions of each wavefunction (notice, this is +1 in case of FD gauge)
-      fptype_sv * pvec;
-      fptype * w;
+      fptype_momenta_sv * pvec;
+      fptype_vertex * w;
       int flv_index;
 
       __host__ __device__ ALOHAOBJ() {}
-      __host__ __device__ ALOHAOBJ(fptype_sv * pvec_sv, cxtype_sv * w_sv, int flv = -1)
-          : pvec(pvec_sv), w(reinterpret_cast<fptype*>(w_sv)), flv_index(flv) {}
+      __host__ __device__ ALOHAOBJ(fptype_momenta_sv * pvec_sv, cxtype_vertex_sv * w_sv, int flv = -1)
+          : pvec(pvec_sv), w(reinterpret_cast<fptype_vertex*>(w_sv)), flv_index(flv) {}
   };
 
   struct FLV_COUPLING_VIEW {

@@ -38,9 +38,9 @@ namespace mg5amcCpu
 
   private:
 
-    friend class MemoryAccessHelper<MemoryAccessAmplitudesBase>;
-    friend class KernelAccessHelper<MemoryAccessAmplitudesBase, true>;
-    friend class KernelAccessHelper<MemoryAccessAmplitudesBase, false>;
+    friend class MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>;
+    friend class KernelAccessHelper<MemoryAccessAmplitudesBase, true, fptype_amp>;
+    friend class KernelAccessHelper<MemoryAccessAmplitudesBase, false, fptype_amp>;
 
     // The number of floating point components of a complex number
     static constexpr int nx2 = mgOnGpu::nx2;
@@ -51,9 +51,9 @@ namespace mg5amcCpu
     //--------------------------------------------------------------------------
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (non-const) ===> fptype* ieventAccessRecord( fptype* buffer, const int ievt ) <===]
-    static __host__ __device__ inline fptype*
-    ieventAccessRecord( fptype* buffer,
+    // [Signature (non-const) ===> fptype_amp* ieventAccessRecord( fptype_amp* buffer, const int ievt ) <===]
+    static __host__ __device__ inline fptype_amp*
+    ieventAccessRecord( fptype_amp* buffer,
                         const int ievt )
     {
       const int ipagA = ievt / neppA; // #event "A-page"
@@ -65,10 +65,10 @@ namespace mg5amcCpu
     //--------------------------------------------------------------------------
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (non-const) ===> fptype& decodeRecord( fptype* buffer, Ts... args ) <===]
+    // [Signature (non-const) ===> fptype_amp& decodeRecord( fptype_amp* buffer, Ts... args ) <===]
     // [NB: expand variadic template "Ts... args" to "const int ix2" and rename "Field" as "Ix2"]
-    static __host__ __device__ inline fptype&
-    decodeRecord( fptype* buffer,
+    static __host__ __device__ inline fptype_amp&
+    decodeRecord( fptype_amp* buffer,
                   const int ix2 )
     {
       constexpr int ipagA = 0;
@@ -86,31 +86,31 @@ namespace mg5amcCpu
   public:
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (non-const) ===> fptype* ieventAccessRecord( fptype* buffer, const int ievt ) <===]
-    static constexpr auto ieventAccessRecord = MemoryAccessHelper<MemoryAccessAmplitudesBase>::ieventAccessRecord;
+    // [Signature (non-const) ===> fptype_amp* ieventAccessRecord( fptype_amp* buffer, const int ievt ) <===]
+    static constexpr auto ieventAccessRecord = MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>::ieventAccessRecord;
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (const) ===> const fptype* ieventAccessRecordConst( const fptype* buffer, const int ievt ) <===]
-    static constexpr auto ieventAccessRecordConst = MemoryAccessHelper<MemoryAccessAmplitudesBase>::ieventAccessRecordConst;
+    // [Signature (const) ===> const fptype_amp* ieventAccessRecordConst( const fptype_amp* buffer, const int ievt ) <===]
+    static constexpr auto ieventAccessRecordConst = MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>::ieventAccessRecordConst;
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (non-const) ===> fptype& decodeRecord( fptype* buffer, const int ix2 ) <===]
-    static constexpr auto decodeRecordIx2 = MemoryAccessHelper<MemoryAccessAmplitudesBase>::decodeRecord;
+    // [Signature (non-const) ===> fptype_amp& decodeRecord( fptype_amp* buffer, const int ix2 ) <===]
+    static constexpr auto decodeRecordIx2 = MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>::decodeRecord;
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (const) ===> const fptype& decodeRecordConst( const fptype* buffer, const int ix2 ) <===]
+    // [Signature (const) ===> const fptype_amp& decodeRecordConst( const fptype_amp* buffer, const int ix2 ) <===]
     static constexpr auto decodeRecordIx2Const =
-      MemoryAccessHelper<MemoryAccessAmplitudesBase>::template decodeRecordConst<int>;
+      MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>::template decodeRecordConst<int>;
 
     // Locate a field (output) in a memory buffer (input) from the given event number (input) and the given field indexes (input)
-    // [Signature (non-const) ===> fptype& ieventAccessIx2( fptype* buffer, const ievt, const int ix2 ) <===]
+    // [Signature (non-const) ===> fptype_amp& ieventAccessIx2( fptype_amp* buffer, const ievt, const int ix2 ) <===]
     static constexpr auto ieventAccessIx2 =
-      MemoryAccessHelper<MemoryAccessAmplitudesBase>::template ieventAccessField<int>;
+      MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>::template ieventAccessField<int>;
 
     // Locate a field (output) in a memory buffer (input) from the given event number (input) and the given field indexes (input)
-    // [Signature (const) ===> const fptype& ieventAccessIx2Const( const fptype* buffer, const ievt, const int ix2 ) <===]
+    // [Signature (const) ===> const fptype_amp& ieventAccessIx2Const( const fptype_amp* buffer, const ievt, const int ix2 ) <===]
     static constexpr auto ieventAccessIx2Const =
-      MemoryAccessHelper<MemoryAccessAmplitudesBase>::template ieventAccessFieldConst<int>;
+      MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>::template ieventAccessFieldConst<int>;
   };
 
 #endif // #ifndef MGONGPU_TRIVIAL_AMPLITUDES
@@ -127,27 +127,27 @@ namespace mg5amcCpu
 #ifndef MGONGPU_TRIVIAL_AMPLITUDES
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (non-const) ===> fptype& kernelAccessIx2( fptype* buffer, const int ix2 ) <===]
+    // [Signature (non-const) ===> fptype_amp& kernelAccessIx2( fptype_amp* buffer, const int ix2 ) <===]
     static constexpr auto kernelAccessIx2 =
-      KernelAccessHelper<MemoryAccessAmplitudesBase, onDevice>::template kernelAccessField<int>;
+      KernelAccessHelper<MemoryAccessAmplitudesBase, onDevice, fptype_amp>::template kernelAccessField<int>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (const) ===> const fptype& kernelAccessIx2Const( const fptype* buffer, const int ix2 ) <===]
+    // [Signature (const) ===> const fptype_amp& kernelAccessIx2Const( const fptype_amp* buffer, const int ix2 ) <===]
     static constexpr auto kernelAccessIx2Const =
-      KernelAccessHelper<MemoryAccessAmplitudesBase, onDevice>::template kernelAccessFieldConst<int>;
+      KernelAccessHelper<MemoryAccessAmplitudesBase, onDevice, fptype_amp>::template kernelAccessFieldConst<int>;
 
 #else
 
-    static __host__ __device__ inline cxtype_sv*
-    kernelAccess( fptype* buffer )
+    static __host__ __device__ inline cxtype_amp_sv*
+    kernelAccess( fptype_amp* buffer )
     {
-      return reinterpret_cast<cxtype_sv*>( buffer );
+      return reinterpret_cast<cxtype_amp_sv*>( buffer );
     }
 
-    static __host__ __device__ inline const cxtype_sv*
-    kernelAccessConst( const fptype* buffer )
+    static __host__ __device__ inline const cxtype_amp_sv*
+    kernelAccessConst( const fptype_amp* buffer )
     {
-      return reinterpret_cast<const cxtype_sv*>( buffer );
+      return reinterpret_cast<const cxtype_amp_sv*>( buffer );
     }
 
 #endif // #ifndef MGONGPU_TRIVIAL_AMPLITUDES

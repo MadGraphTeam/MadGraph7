@@ -178,13 +178,22 @@ namespace mgOnGpu
   typedef float fptype2; // single precision (4 bytes, fp32)
 #endif
 
-  // --- Multi-precision stage-specific floating point types (madmatrix precision experiment)
-  // These let selected stages of the calculation run in a different precision than the
-  // global fptype. Each DEFAULTS TO double (independent of FPTYPE), so that a build with
-  // FPTYPE=f keeps these stages in double while everything else is float. They can be
-  // overridden via their own macros. NB: a stage type that differs from fptype is only
-  // supported in scalar builds (cppnone or CUDA/HIP); a static_assert below rejects it in
-  // SIMD builds (where mixed-width SIMD lanes are not supported).
+  // --- Multi-precision stage-specific types (madmatrix precision experiment) ---
+  // Each stage of the calculation can run in a different precision than the global
+  // fptype. fptype_polarization and fptype_invmass DEFAULT TO double so that a build
+  // with FPTYPE=f keeps the ixxxxx/vxxxxx polarization and the offshell-propagator
+  // virtuality (m_ij/FIXP2) in double while everything else is float. The remaining
+  // stage types default to fptype/fptype2 (backward compatible). Each is overridable
+  // via its own macro.
+
+  // fptype_momenta: for momenta storage and polarization vector inputs
+#if defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
+  typedef double fptype_momenta;
+#elif defined MGONGPU_FPTYPE_MOMENTA_FLOAT
+  typedef float fptype_momenta;
+#else
+  typedef fptype fptype_momenta;
+#endif
 
   // fptype_polarization: precision of the ixxxxx/vxxxxx polarization (wavefunction) computation
 #if defined MGONGPU_FPTYPE_POLARIZATION_DOUBLE
@@ -192,11 +201,13 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_POLARIZATION_FLOAT
   typedef float fptype_polarization;
 #else
-  typedef double fptype_polarization; // default: double
+  typedef double fptype_polarization; // default: double (madmatrix precision experiment)
 #endif
 
   // fptype_invmass: precision of the offshell-propagator virtuality (m_ij / FIXP2) and of the
-  // propagator denominator computed from it
+  // propagator denominator computed from it. Default double. NB: unlike the other stage
+  // types this one is only wired for scalar builds (cppnone / CUDA); in a SIMD build it must
+  // equal fptype (a static_assert at the end of this file enforces it).
 #if defined MGONGPU_FPTYPE_INVMASS_DOUBLE
   typedef double fptype_invmass;
 #elif defined MGONGPU_FPTYPE_INVMASS_FLOAT
@@ -204,6 +215,36 @@ namespace mgOnGpu
 #else
   typedef double fptype_invmass; // default: double
 #endif
+
+  // fptype_vertex: for VVF vertex function (FFV1_0, FFV1P0_3) internal computation
+#if defined MGONGPU_FPTYPE_VERTEX_DOUBLE
+  typedef double fptype_vertex;
+#elif defined MGONGPU_FPTYPE_VERTEX_FLOAT
+  typedef float fptype_vertex;
+#else
+  typedef fptype2 fptype_vertex;
+#endif
+
+  // fptype_denom: for denominator variables in vertex functions
+#if defined MGONGPU_FPTYPE_DENOM_DOUBLE
+  typedef double fptype_denom;
+#elif defined MGONGPU_FPTYPE_DENOM_FLOAT
+  typedef float fptype_denom;
+#else
+  typedef fptype fptype_denom;
+#endif
+
+  // fptype_amp: for amplitude/jamp variables
+#if defined MGONGPU_FPTYPE_AMP_DOUBLE
+  typedef double fptype_amp;
+#elif defined MGONGPU_FPTYPE_AMP_FLOAT
+  typedef float fptype_amp;
+#else
+  typedef fptype2 fptype_amp;
+#endif
+
+  // fptype_colour: for color algebra (alias for fptype2)
+  typedef fptype2 fptype_colour;
 
   // --- Platform-specific software implementation details
 
@@ -228,8 +269,13 @@ namespace mgOnGpu
 // Expose typedefs and operators outside the namespace
 using mgOnGpu::fptype;
 using mgOnGpu::fptype2;
+using mgOnGpu::fptype_momenta;
 using mgOnGpu::fptype_polarization;
 using mgOnGpu::fptype_invmass;
+using mgOnGpu::fptype_vertex;
+using mgOnGpu::fptype_denom;
+using mgOnGpu::fptype_amp;
+using mgOnGpu::fptype_colour;
 
 // Undefine ARM_NEON (hack for cppnone on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
@@ -273,15 +319,19 @@ using mgOnGpu::fptype_invmass;
 #undef MGONGPU_CPPSIMD
 #endif
 
-// Multi-precision stage types are only supported in scalar builds (cppnone or CUDA/HIP).
-// In a SIMD build a stage type that differs from fptype would require mixed-width SIMD
-// lanes (e.g. a double-precision polarization vector alongside a float momenta vector),
-// which is not supported here. Reject it loudly. (sizeof equality <=> same float/double type.)
+// fptype_invmass (the m_ij / FIXP2 offshell-propagator virtuality) is only wired for scalar
+// builds (cppnone or CUDA/HIP). In a SIMD build it would need a double-width SIMD lane
+// alongside the float momenta lanes, which is not implemented for this stage. Reject it
+// loudly. (sizeof equality <=> same float/double type.) NB: the other stage types
+// (polarization, vertex, amp, ...) DO support SIMD via their _v vector types.
 #ifdef MGONGPU_CPPSIMD
-static_assert( sizeof( fptype_polarization ) == sizeof( fptype ),
-               "fptype_polarization must equal fptype in SIMD builds: use BACKEND=cppnone (or CUDA), or define MGONGPU_FPTYPE_POLARIZATION_FLOAT" );
 static_assert( sizeof( fptype_invmass ) == sizeof( fptype ),
                "fptype_invmass must equal fptype in SIMD builds: use BACKEND=cppnone (or CUDA), or define MGONGPU_FPTYPE_INVMASS_FLOAT" );
+// fptype_polarization_v aliases fptype_v in SIMD, so the polarization stage must share
+// fptype's width here (a double-precision polarization in a float SIMD build would need
+// mixed-width lanes). The double-precision polarization experiment runs in cppnone/CUDA.
+static_assert( sizeof( fptype_polarization ) == sizeof( fptype ),
+               "fptype_polarization must equal fptype in SIMD builds: use BACKEND=cppnone (or CUDA), or define MGONGPU_FPTYPE_POLARIZATION_FLOAT" );
 #endif
 
 /* clang-format off */
