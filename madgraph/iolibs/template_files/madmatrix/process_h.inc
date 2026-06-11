@@ -49,7 +49,7 @@ namespace mg5amcCpu
 
 #ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
   void
-  sigmaKin_getGoodHel( const fptype_momenta* allmomenta,       // input: momenta[nevt*npar*4]
+  sigmaKin_getGoodHel( const fptype* allmomenta,       // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,     // input: couplings[nevt*ndcoup*2]
                        const unsigned int* iflavorVec, // input: index of the flavor combination
                        fptype* allMEs,                 // output: allMEs[nevt], |M|^2 final_avg_over_helicities
@@ -61,7 +61,7 @@ namespace mg5amcCpu
                        const fptype_invmass* allMij = nullptr );// input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #else
   void
-  sigmaKin_getGoodHel( const fptype_momenta* allmomenta,       // input: momenta[nevt*npar*4]
+  sigmaKin_getGoodHel( const fptype* allmomenta,       // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,     // input: couplings[nevt*ndcoup*2]
                        const unsigned int* iflavorVec, // input: index of the flavor combination
                        fptype* allMEs,                 // output: allMEs[nevt], |M|^2 final_avg_over_helicities
@@ -81,7 +81,7 @@ namespace mg5amcCpu
 
 #ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
   void
-  sigmaKin( const fptype_momenta* allmomenta,           // input: momenta[nevt*npar*4]
+  sigmaKin( const fptype* allmomenta,           // input: momenta[nevt*npar*4]
             const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
             const unsigned int* iflavorVec,     // input: index of the flavor combination
             const fptype* allrndhel,            // input: random numbers[nevt] for helicity selection
@@ -106,7 +106,7 @@ namespace mg5amcCpu
             const fptype_invmass* allMij = nullptr );   // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)
 #else
   void
-  sigmaKin( const fptype_momenta* allmomenta,           // input: momenta[nevt*npar*4]
+  sigmaKin( const fptype* allmomenta,           // input: momenta[nevt*npar*4]
             const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
             const unsigned int* iflavorVec,     // input: index of the flavor combination
             const fptype* allrndhel,            // input: random numbers[nevt] for helicity selection

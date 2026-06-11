@@ -350,20 +350,20 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   // A base class encapsulating a memory buffer for momenta
-  typedef BufferBase<fptype_momenta> BufferMomenta;
+  typedef BufferBase<fptype> BufferMomenta;
 
   // The size (number of elements) per event in a memory buffer for momenta
   constexpr size_t sizePerEventMomenta = MemoryBuffers::np4 * MemoryBuffers::npar;
 
 #ifndef MGONGPUCPP_GPUIMPL
   // A class encapsulating a C++ host buffer for momenta
-  typedef HostBuffer<fptype_momenta, sizePerEventMomenta, HostBufferALIGNED> HostBufferMomenta;
-  //typedef HostBuffer<fptype_momenta, sizePerEventMomenta, HostBufferMISALIGNED> HostBufferMomenta; // TEST MISALIGNMENT!
+  typedef HostBuffer<fptype, sizePerEventMomenta, HostBufferALIGNED> HostBufferMomenta;
+  //typedef HostBuffer<fptype, sizePerEventMomenta, HostBufferMISALIGNED> HostBufferMomenta; // TEST MISALIGNMENT!
 #else
   // A class encapsulating a CUDA pinned host buffer for momenta
-  typedef PinnedHostBuffer<fptype_momenta, sizePerEventMomenta> PinnedHostBufferMomenta;
+  typedef PinnedHostBuffer<fptype, sizePerEventMomenta> PinnedHostBufferMomenta;
   // A class encapsulating a CUDA device buffer for momenta
-  typedef DeviceBuffer<fptype_momenta, sizePerEventMomenta> DeviceBufferMomenta;
+  typedef DeviceBuffer<fptype, sizePerEventMomenta> DeviceBufferMomenta;
 #endif
 
   //--------------------------------------------------------------------------

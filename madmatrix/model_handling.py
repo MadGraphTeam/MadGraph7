@@ -1876,7 +1876,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
   // *** NB: in C++, calculate_jamps accepts a SCALAR channelId because it is GUARANTEED that all events in a SIMD vector have the same channelId #898
   __global__ void /* clang-format off */
   calculate_jamps( int ihel,
-                   const fptype_momenta* allmomenta,  // input: momenta[nevt*npar*4]
+                   const fptype* allmomenta,  // input: momenta[nevt*npar*4]
                    const fptype_invmass* allMij,      // input: invariant mass^2 matrix[nevt*npar*npar] for offshell propagators (nullptr => recompute p^2 from momenta)
                    const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (gates which propagators use allMij); nullptr => m_ij unused
                    const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
@@ -2447,7 +2447,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
 #pragma nv_diagnostic pop
 #endif
       // CUDA kernels take input/output buffers with momenta/MEs for all events
-      const fptype_momenta* momenta = allmomenta;
+      const fptype* momenta = allmomenta;
       const fptype_invmass* mij = allMij; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
       const unsigned int channelId = getChannelId( allChannelIds ); // 0 if no channel (=> m_ij unused)
       const fptype* COUPs[nxcoup];
@@ -2457,7 +2457,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       fptype_amp* denominators = allDenominators;
 #else
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
-      const fptype_momenta* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
+      const fptype* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
       const fptype_invmass* mij = ( allMij != nullptr ) ? MIJ_ACCESS::ieventAccessRecordConst( allMij, ievt0 ) : nullptr; // per-event invariant mass^2 matrix (nullptr => recompute p^2)
       const unsigned int channelId = getChannelId( allChannelIds, ievt0, false ); // 0 if no channel (=> m_ij unused)
       const fptype* COUPs[nxcoup];
