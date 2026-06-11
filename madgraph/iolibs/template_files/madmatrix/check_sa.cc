@@ -169,23 +169,27 @@ namespace
        << "Random number generation    = COMMON RANDOM HOST" << std::endl;
   }
 
-  void print_momenta_table( std::ostream& os, const fptype* aosoa, unsigned int ievt )
+  // Print the momenta of one event. `precision` is the number of digits after the decimal
+  // point (default 7, as in matrix mode); pass 16 to match the 17-significant-digit matrix
+  // element format (e.g. in the perf-mode verbose dump, so momenta can be copied back exactly).
+  void print_momenta_table( std::ostream& os, const fptype* aosoa, unsigned int ievt, int precision = 7 )
   {
     constexpr int npar = CPPProcess::npar;
+    const int w = precision + 9; // field width that fits a signed scientific value at this precision
     os << std::string( SEP79, '-' ) << std::endl
-       << " n        E             px             py              pz" << std::endl;
+       << " n" << std::setw( w ) << "E" << std::setw( w ) << "px" << std::setw( w ) << "py" << std::setw( w ) << "pz" << std::endl;
     for( int ipar = 0; ipar < npar; ++ipar )
     {
       double E  = (double)MemoryAccessMomenta::ieventAccessIp4IparConst( aosoa, ievt, 0, ipar );
       double px = (double)MemoryAccessMomenta::ieventAccessIp4IparConst( aosoa, ievt, 1, ipar );
       double py = (double)MemoryAccessMomenta::ieventAccessIp4IparConst( aosoa, ievt, 2, ipar );
       double pz = (double)MemoryAccessMomenta::ieventAccessIp4IparConst( aosoa, ievt, 3, ipar );
-      os << std::scientific << std::setprecision( 7 )
+      os << std::scientific << std::setprecision( precision )
          << std::setw( 2 ) << ipar + 1
-         << std::setw( 16 ) << E
-         << std::setw( 16 ) << px
-         << std::setw( 16 ) << py
-         << std::setw( 16 ) << pz
+         << std::setw( w ) << E
+         << std::setw( w ) << px
+         << std::setw( w ) << py
+         << std::setw( w ) << pz
          << std::endl
          << std::defaultfloat;
     }
@@ -209,23 +213,28 @@ namespace
 #else
     const std::vector<double>& umamiMomenta,
     const std::vector<unsigned int>& flvVec,
-    std::vector<double>& umamiMEs
+    std::vector<double>& umamiMEs,
+    const double* umamiMij = nullptr // optional: per-event m_ij (FIXP2). If non-null, also pass
+                                     // UMAMI_IN_INVARIANT_MASS_SQ so the ME uses the m_ij path.
 #endif
   )
   {
-    constexpr unsigned int UmamiInKeyNum = 2;
     timermap.start( "3a SigmaKin" );
-    UmamiInputKey in_keys[UmamiInKeyNum] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
     UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
 #ifdef MGONGPUCPP_GPUIMPL
-    const void* inputs[UmamiInKeyNum] = { devUmamiMomenta.data(), devFlv.data() };
+    UmamiInputKey in_keys[2] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
+    const void* inputs[2] = { devUmamiMomenta.data(), devFlv.data() };
     void* outputs[1] = { devUmamiMEs.data() };
-#else
-    const void* inputs[UmamiInKeyNum] = { umamiMomenta.data(), flvVec.data() };
-    void* outputs[1] = { umamiMEs.data() };
-#endif
     UmamiStatus st = umami_matrix_element(
-      handle, nevt, nevt, 0, UmamiInKeyNum, in_keys, inputs, 1, out_keys, outputs );
+      handle, nevt, nevt, 0, 2, in_keys, inputs, 1, out_keys, outputs );
+#else
+    const unsigned int nIn = ( umamiMij != nullptr ) ? 3 : 2; // add UMAMI_IN_INVARIANT_MASS_SQ if m_ij given
+    UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_INVARIANT_MASS_SQ };
+    const void* inputs[3] = { umamiMomenta.data(), flvVec.data(), umamiMij };
+    void* outputs[1] = { umamiMEs.data() };
+    UmamiStatus st = umami_matrix_element(
+      handle, nevt, nevt, 0, nIn, in_keys, inputs, 1, out_keys, outputs );
+#endif
     wavetime += timermap.stop();
     if( st != UMAMI_SUCCESS )
     {
@@ -521,6 +530,8 @@ namespace
     HostBufferWeights hstWeights( nevt );
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
+    // m_ij (UMAMI_IN_INVARIANT_MASS_SQ / FIXP2) input, so the ME is computed via the m_ij path
+    std::vector<double> umamiMij( (std::size_t)CPPProcess::npar * CPPProcess::npar * nevt );
     std::vector<unsigned int> flvVec( nevt, flavorID );
 #endif
 
@@ -586,12 +597,31 @@ namespace
 #endif
       rambtime += timermap.stop();
 
+#ifndef MGONGPUCPP_GPUIMPL
+      // Build the per-event m_ij[i][j] = ( eta_i p_i + eta_j p_j )^2 from the momenta (eta=-1
+      // initial / +1 final, the all-outgoing convention) and pass it to run_umami below, so the
+      // matrix element is computed through the m_ij (UMAMI_IN_INVARIANT_MASS_SQ / FIXP2) path.
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+        for( int i = 0; i < CPPProcess::npar; ++i )
+        {
+          const double eta_i = ( i < CPPProcess::npari ) ? -1. : 1.;
+          for( int j = 0; j < CPPProcess::npar; ++j )
+          {
+            const double eta_j = ( j < CPPProcess::npari ) ? -1. : 1.;
+            double s[4];
+            for( int ip4 = 0; ip4 < 4; ++ip4 )
+              s[ip4] = eta_i * MemoryAccessMomenta::ieventAccessIp4IparConst( hstMomenta.data(), ievt, ip4, i ) + eta_j * MemoryAccessMomenta::ieventAccessIp4IparConst( hstMomenta.data(), ievt, ip4, j );
+            umamiMij[(std::size_t)( i * CPPProcess::npar + j ) * nevt + ievt] = s[0] * s[0] - s[1] * s[1] - s[2] * s[2] - s[3] * s[3];
+          }
+        }
+#endif
+
       double wavetime = 0;
       if( !run_umami( umami_handle, nevt, timermap, wavetime,
 #ifdef MGONGPUCPP_GPUIMPL
                       devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs
 #else
-                      umamiMomenta, flvVec, umamiMEs
+                      umamiMomenta, flvVec, umamiMEs, umamiMij.data()
 #endif
                       ) )
       {
@@ -608,6 +638,7 @@ namespace
       }
       const double* mes = hstUmamiMEs.data();
 #else
+      // umamiMEs now holds the ME computed through the m_ij (FIXP2) path (see run_umami call above)
       const double* mes = umamiMEs.data();
 #endif
 
@@ -637,7 +668,7 @@ namespace
         for( unsigned int ievt = 0; ievt < nevt; ++ievt )
         {
           std::cout << "Event #" << ievt + 1 << std::endl;
-          print_momenta_table( std::cout, hstMomenta.data(), ievt );
+          print_momenta_table( std::cout, hstMomenta.data(), ievt, 16 ); // 17 significant digits, as for the ME
           std::cout << " Matrix element = " << std::scientific << std::setprecision( 16 )
                     << mes[ievt] << " GeV^" << kMEGeVExponent << std::endl
                     << std::defaultfloat
