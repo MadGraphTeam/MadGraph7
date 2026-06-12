@@ -192,7 +192,7 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_MOMENTA_FLOAT
   typedef float fptype_momenta;
 #else
-  typedef fptype fptype_momenta;
+  typedef fptype2 fptype_momenta;
 #endif
 
   // fptype_polarization: precision of the ixxxxx/vxxxxx polarization (wavefunction) computation
