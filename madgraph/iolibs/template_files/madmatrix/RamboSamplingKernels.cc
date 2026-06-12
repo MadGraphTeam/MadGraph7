@@ -11,6 +11,7 @@
 #include "MemoryAccessRandomNumbers.h"
 #include "MemoryAccessWeights.h"
 #include "MemoryBuffers.h"
+#include "classic_rambo.h" // inline classic (massive) RAMBO, ported from standalone_cpp
 #include "rambo.h" // inline implementation of RAMBO algorithms and kernels
 
 #include <sstream>
@@ -87,6 +88,67 @@ namespace mg5amcCpu
       fptype* ievtMomenta = MemoryAccessMomenta::ieventAccessRecord( m_momenta.data(), ievt );
       fptype* ievtWeights = MemoryAccessWeights::ieventAccessRecord( m_weights.data(), ievt );
       getMomentaFinal( m_energy, ievtRndmom, ievtMomenta, ievtWeights );
+    }
+    // ** END LOOP ON IEVT **
+  }
+
+  //--------------------------------------------------------------------------
+
+  ClassicRamboSamplingKernelHost::ClassicRamboSamplingKernelHost( const fptype energy,               // input: energy
+                                                                  const BufferRndNumMomenta& rndmom, // input: random [0,1] UNUSED
+                                                                  const std::vector<fptype>& masses, // input: external-leg masses
+                                                                  const int ninitial,                // input: #initial-state particles
+                                                                  const size_t nevt,                 // input: #events
+                                                                  BufferMomenta& momenta,            // output: momenta
+                                                                  BufferWeights& weights )           // output: weights
+    : SamplingKernelBase( energy, rndmom, momenta, weights )
+    , NumberOfEvents( nevt )
+    , m_masses( masses.begin(), masses.end() )
+    , m_ninitial( ninitial )
+  {
+    if( m_momenta.isOnDevice() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: momenta must be a host array" );
+    if( m_weights.isOnDevice() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: weights must be a host array" );
+    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: nevt mismatch with momenta" );
+    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: nevt mismatch with weights" );
+
+    constexpr int neppM = MemoryAccessMomenta::neppM; // AOSOA layout
+
+    static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
+    if( nevt % neppM != 0 )
+    {
+      std::ostringstream sstr;
+      sstr << "ClassicRamboSamplingKernelHost: nevt should be a multiple of neppM=" << neppM;
+      throw std::runtime_error( sstr.str() );
+    }
+  }
+
+  //--------------------------------------------------------------------------
+
+  void
+  ClassicRamboSamplingKernelHost::getMomentaInitial()
+  {
+     // NOOP
+  }
+
+  //--------------------------------------------------------------------------
+
+  void
+  ClassicRamboSamplingKernelHost::getMomentaFinal()
+  {
+    const int npar = (int)m_masses.size();
+    // ** START LOOP ON IEVT **
+    for( size_t ievt = 0; ievt < nevt(); ++ievt )
+    {
+      // Clas. RAMBO returns [E,px,py,pz] vector per ex. particle
+      // own RNG, intial final once
+      // For reproducibility betwn fptype = FP32/FP64 generation in FP64
+      double wgt = 0.;
+      const std::vector<std::vector<double>> point =
+        classic_rambo::get_momenta( m_ninitial, (double)m_energy, m_masses, wgt );
+      for( int ipar = 0; ipar < npar; ++ipar )
+        for( int ip4 = 0; ip4 < 4; ++ip4 )
+          MemoryAccessMomenta::ieventAccessIp4Ipar( m_momenta.data(), ievt, ip4, ipar ) = (fptype)point[ipar][ip4];
+      MemoryAccessWeights::ieventAccess( m_weights.data(), ievt ) = (fptype)wgt;
     }
     // ** END LOOP ON IEVT **
   }

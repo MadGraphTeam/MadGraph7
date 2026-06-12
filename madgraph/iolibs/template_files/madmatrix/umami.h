@@ -47,6 +47,7 @@ extern "C"
     UMAMI_ERROR_UNSUPPORTED_OUTPUT,
     UMAMI_ERROR_UNSUPPORTED_META,
     UMAMI_ERROR_MISSING_INPUT,
+    UMAMI_ERROR_UNINITIALIZED_META,
   } UmamiStatus;
 
   typedef enum
@@ -63,6 +64,8 @@ extern "C"
     UMAMI_META_DIAGRAM_COUNT,
     UMAMI_META_HELICITY_COUNT,
     UMAMI_META_COLOR_COUNT,
+    /** `double` array of length particle count: the external-leg masses (GeV) */
+    UMAMI_META_MASSES,
   } UmamiMetaKey;
 
   typedef enum

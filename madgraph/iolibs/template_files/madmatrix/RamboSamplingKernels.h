@@ -11,6 +11,8 @@
 
 #include "MemoryBuffers.h"
 
+#include <vector>
+
 #ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
 #else
@@ -90,6 +92,42 @@ namespace mg5amcCpu
 
     // Is this a host or device kernel?
     bool isOnDevice() const override final { return false; }
+  };
+
+  //--------------------------------------------------------------------------
+
+  // Compability port mirroring the massless momenta implementation
+  // For now own RNG internally (or keep to match Fortran) TODO 
+  // rndmom just for interface (maybe delete later) TODO
+  class ClassicRamboSamplingKernelHost final : public SamplingKernelBase, public NumberOfEvents
+  {
+  public:
+
+    ClassicRamboSamplingKernelHost( const fptype energy,                  // input: energy
+                                    const BufferRndNumMomenta& rndmom,    // input: random [0,1] UNUSED 
+                                    const std::vector<fptype>& masses,    // input: external-leg masses 
+                                    const int ninitial,                   // input: #n initial-state particles
+                                    const size_t nevt,                    // input: #n events
+                                    BufferMomenta& momenta,               // output: momenta
+                                    BufferWeights& weights);              // output: weights
+
+    virtual ~ClassicRamboSamplingKernelHost() {}
+
+    // No-op, kept to match the massless
+    void getMomentaInitial() override final;
+
+    // All the magic here
+    void getMomentaFinal() override final;
+
+    bool isOnDevice() const override final { return false; }
+
+  private:
+
+    // The EXTERNAL masses 
+    std::vector<double> m_masses;
+
+    // The number of inital particles
+    const int m_ninitial;
   };
 
   //--------------------------------------------------------------------------

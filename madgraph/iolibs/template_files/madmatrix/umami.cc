@@ -12,6 +12,7 @@
 #include "MemoryBuffers.h"
 
 #include <cmath>
+#include <vector>
 
 #ifdef MGONGPUCPP_GPUIMPL
 using namespace mg5amcGpu;
@@ -186,6 +187,8 @@ namespace
 #endif
   };
 
+  std::vector<double> g_externalMasses;
+
 }
 
 extern "C"
@@ -219,6 +222,14 @@ extern "C"
         break;
       case UMAMI_META_COLOR_COUNT:
         return UMAMI_ERROR_UNSUPPORTED_META;
+      case UMAMI_META_MASSES:
+      {
+        if( g_externalMasses.size() != (size_t)CPPProcess::npar ) return UMAMI_ERROR_UNINITIALIZED_META;
+
+        for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+          static_cast<double*>( result )[ipar] = g_externalMasses[ipar];
+        break;
+      }
       default:
         return UMAMI_ERROR_UNSUPPORTED_META;
     }
@@ -229,6 +240,10 @@ extern "C"
   {
     CPPProcess process;
     process.initProc( param_card_path );
+
+    const std::vector<fptype>& masses = process.getMasses();
+    g_externalMasses.assign( masses.begin(), masses.end() );
+
     auto instance = new InterfaceInstance();
     *handle = instance;
 #ifdef MGONGPUCPP_GPUIMPL
