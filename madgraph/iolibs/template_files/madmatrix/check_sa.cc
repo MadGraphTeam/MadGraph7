@@ -253,6 +253,81 @@ namespace
     return true;
   }
 
+#ifndef MGONGPUCPP_GPUIMPL
+  // --------------------------------------------------------------------------
+  // Multichannel combination (the job MadEvent would otherwise do).
+  //
+  // For a shared set of momenta and one flavor, loop over every valid channel c and
+  // call umami with UMAMI_IN_CHANNEL_INDEX = c. With a channel index set, sigmaKin
+  // multiplies the matrix element by the single-diagram-enhancement weight
+  //     alpha_c = numerator_c / denominator,   denominator = sum_c numerator_c
+  // so each call returns the *weighted* ME_c = alpha_c * |M|^2(c):
+  //   - UMAMI_OUT_MATRIX_ELEMENT -> ME_c            (already weighted)
+  //   - UMAMI_OUT_DIAGRAM_AMP2   -> all alpha_i;    alpha_c is entry [c]
+  // Outputs (all sized [nchannels*nevt] except the per-event ones):
+  //   meChannel[c*nevt+ievt] = ME_c            (weighted matrix element of channel c)
+  //   weight  [c*nevt+ievt]  = alpha_c         (channel weight)
+  //   combinedME[ievt]       = sum_c ME_c      (= the stored matrix element)
+  //   weightSum [ievt]       = sum_c alpha_c   (must be 1 in exact arithmetic)
+  bool run_umami_multichannel(
+    UmamiHandle handle,
+    unsigned int nevt,
+    const std::vector<double>& umamiMomenta,
+    const std::vector<unsigned int>& flvVec,
+    const double* umamiMij, // optional per-event m_ij (FIXP2); nullptr disables the m_ij path
+    std::vector<double>& meChannel,
+    std::vector<double>& weight,
+    std::vector<double>& combinedME,
+    std::vector<double>& weightSum )
+  {
+    const unsigned int nChan = mgOnGpu::nchannels;
+    std::vector<unsigned int> chanIdx( nevt );
+    std::vector<double> meC( nevt );
+    std::vector<double> amp2( (std::size_t)CPPProcess::ndiagrams * nevt );
+
+    std::fill( combinedME.begin(), combinedME.end(), 0. );
+    std::fill( weightSum.begin(), weightSum.end(), 0. );
+
+    for( unsigned int c = 0; c < nChan; ++c )
+    {
+      // Channels with no associated iconfig contribute neither ME nor weight.
+      if( mgOnGpu::hostChannel2iconfig[c] <= 0 )
+      {
+        for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+        {
+          meChannel[(std::size_t)c * nevt + ievt] = 0.;
+          weight[(std::size_t)c * nevt + ievt] = 0.;
+        }
+        continue;
+      }
+      // External 0-based channel index; must be uniform within a SIMD page (#898).
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt ) chanIdx[ievt] = c;
+
+      UmamiInputKey in_keys[4] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_CHANNEL_INDEX, UMAMI_IN_INVARIANT_MASS_SQ };
+      const void* inputs[4] = { umamiMomenta.data(), flvVec.data(), chanIdx.data(), umamiMij };
+      const unsigned int nIn = ( umamiMij != nullptr ) ? 4 : 3;
+      UmamiOutputKey out_keys[2] = { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_DIAGRAM_AMP2 };
+      void* outputs[2] = { meC.data(), amp2.data() };
+      UmamiStatus st = umami_matrix_element( handle, nevt, nevt, 0, nIn, in_keys, inputs, 2, out_keys, outputs );
+      if( st != UMAMI_SUCCESS )
+      {
+        std::cerr << "ERROR! umami_matrix_element (channel " << c << ") failed (status=" << st << ")" << std::endl;
+        return false;
+      }
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+      {
+        const double me_c = meC[ievt];
+        const double alpha_c = amp2[(std::size_t)c * nevt + ievt]; // amp2 stride is nevt (see umami.cc)
+        meChannel[(std::size_t)c * nevt + ievt] = me_c;
+        weight[(std::size_t)c * nevt + ievt] = alpha_c;
+        if( std::isfinite( me_c ) ) combinedME[ievt] += me_c;
+        if( std::isfinite( alpha_c ) ) weightSum[ievt] += alpha_c;
+      }
+    }
+    return true;
+  }
+#endif // !MGONGPUCPP_GPUIMPL
+
   // --------------------------------------------------------------------------
   // matrix mode: same PS point fed to every flavor combination, print event 0.
   // --------------------------------------------------------------------------
@@ -292,6 +367,11 @@ namespace
     std::vector<unsigned int> umamiChannel( nevt );
     std::vector<double> umamiMEsChan( nevt );
     std::vector<double> umamiMEsChanSum( nevt );
+    // Buffers for the per-flavor multichannel combination (nChannels MEs + weights)
+    std::vector<double> meChannel( (std::size_t)mgOnGpu::nchannels * nevt );
+    std::vector<double> chanWeight( (std::size_t)mgOnGpu::nchannels * nevt );
+    std::vector<double> combinedME( nevt );
+    std::vector<double> weightSum( nevt );
 #endif
 
     UmamiHandle umami_handle = nullptr;
@@ -467,33 +547,58 @@ namespace
     for( unsigned int iflav = 0; iflav < nFlavors; ++iflav )
     {
       std::fill( flvVec.begin(), flvVec.end(), iflav );
-#ifdef MGONGPUCPP_GPUIMPL
-      gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
-#endif
-      double wavetime = 0;
-      if( !run_umami( umami_handle, nevt, timermap, wavetime,
-#ifdef MGONGPUCPP_GPUIMPL
-                      devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs
-#else
-                      umamiMomenta, flvVec, umamiMEs
-#endif
-                      ) )
-      {
-        umami_free( umami_handle );
-        return 3;
-      }
-#ifdef MGONGPUCPP_GPUIMPL
-      const double* mes = hstUmamiMEs.data();
-#else
-      const double* mes = umamiMEs.data();
-#endif
 
       std::cout << " PDG";
       for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
         std::cout << std::setw( 12 ) << CPPProcess::flavorPDG( iflav, ipar );
-      std::cout << std::endl
-                << " Matrix element = " << std::scientific << std::setprecision( 16 )
-                << mes[0] << " GeV^" << kMEGeVExponent << std::endl
+      std::cout << std::endl;
+
+#ifdef MGONGPUCPP_GPUIMPL
+      // GPU: channel/multichannel weighting is not wired on device; report the full ME.
+      gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+      double wavetime = 0;
+      if( !run_umami( umami_handle, nevt, timermap, wavetime,
+                      devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs ) )
+      {
+        umami_free( umami_handle );
+        return 3;
+      }
+      const double storedME = hstUmamiMEs[0];
+#else
+      // CPU: compute the matrix element as the multichannel sum  ME = sum_c alpha_c * ME_c.
+      // Also compute the full (unweighted) ME for cross-checking in verbose mode.
+      double wavetime = 0;
+      if( !run_umami( umami_handle, nevt, timermap, wavetime, umamiMomenta, flvVec, umamiMEs ) )
+      {
+        umami_free( umami_handle );
+        return 3;
+      }
+      if( !run_umami_multichannel( umami_handle, nevt, umamiMomenta, flvVec, nullptr,
+                                   meChannel, chanWeight, combinedME, weightSum ) )
+      {
+        umami_free( umami_handle );
+        return 3;
+      }
+      const double storedME = combinedME[0];
+      if( verbose )
+      {
+        for( unsigned int c = 0; c < mgOnGpu::nchannels; ++c )
+        {
+          if( mgOnGpu::hostChannel2iconfig[c] <= 0 ) continue;
+          std::cout << "   channel " << std::setw( 3 ) << c
+                    << " : alpha = " << std::scientific << std::setprecision( 6 )
+                    << chanWeight[(std::size_t)c * nevt]
+                    << "   alpha*ME = " << meChannel[(std::size_t)c * nevt]
+                    << std::defaultfloat << std::endl;
+        }
+        std::cout << "   sum of weights = " << std::setprecision( 12 ) << weightSum[0]
+                  << " (expected 1)   |   full ME = " << std::scientific << std::setprecision( 16 )
+                  << umamiMEs[0] << std::defaultfloat << std::endl;
+      }
+#endif
+
+      std::cout << " Matrix element = " << std::scientific << std::setprecision( 16 )
+                << storedME << " GeV^" << kMEGeVExponent << std::endl
                 << std::defaultfloat
                 << std::string( SEP79, '-' ) << std::endl;
     }
@@ -542,6 +647,12 @@ namespace
     // m_ij (UMAMI_IN_INVARIANT_MASS_SQ / FIXP2) input, so the ME is computed via the m_ij path
     std::vector<double> umamiMij( (std::size_t)CPPProcess::npar * CPPProcess::npar * nevt );
     std::vector<unsigned int> flvVec( nevt, flavorID );
+    // Per-event multichannel buffers: nChannels weighted MEs + weights, the combined
+    // ME = sum_c alpha_c * ME_c (stored/printed), and the per-event sum of weights.
+    std::vector<double> meChannel( (std::size_t)mgOnGpu::nchannels * nevt );
+    std::vector<double> chanWeight( (std::size_t)mgOnGpu::nchannels * nevt );
+    std::vector<double> combinedME( nevt );
+    std::vector<double> weightSum( nevt );
 #endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
@@ -667,19 +778,14 @@ namespace
 #endif
 
       double wavetime = 0;
-      if( !run_umami( umami_handle, nevt, timermap, wavetime,
 #ifdef MGONGPUCPP_GPUIMPL
-                      devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs
-#else
-                      umamiMomenta, flvVec, umamiMEs, umamiMij.data()
-#endif
-                      ) )
+      // GPU: channel/multichannel weighting is not wired on device; report the full ME.
+      if( !run_umami( umami_handle, nevt, timermap, wavetime,
+                      devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs ) )
       {
         umami_free( umami_handle );
         return 3;
       }
-
-#ifdef MGONGPUCPP_GPUIMPL
       if( verbose )
       {
         timermap.start( "3c CpDTHmom" );
@@ -688,8 +794,17 @@ namespace
       }
       const double* mes = hstUmamiMEs.data();
 #else
-      // umamiMEs now holds the ME computed through the m_ij (FIXP2) path (see run_umami call above)
-      const double* mes = umamiMEs.data();
+      // CPU: the matrix element is the multichannel sum  ME = sum_c alpha_c * ME_c,
+      // each channel computed through the m_ij (FIXP2) path.
+      timermap.start( "3a SigmaKin" );
+      if( !run_umami_multichannel( umami_handle, nevt, umamiMomenta, flvVec, umamiMij.data(),
+                                   meChannel, chanWeight, combinedME, weightSum ) )
+      {
+        umami_free( umami_handle );
+        return 3;
+      }
+      wavetime += timermap.stop();
+      const double* mes = combinedME.data();
 #endif
 
       timermap.start( "4@ UpdtStat" );
