@@ -18,7 +18,7 @@
     gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype_amp ) );
     gpuMemset( colAllJamp2s, 0, ncolor * nevt * sizeof( fptype_amp ) );
     gpuMemset( ghelAllNumerators, 0, cNGoodHel * processConfig::ndiagrams * nevt * sizeof( fptype ) );
-    gpuMemset( ghelAllDenominators, 0, cNGoodHel * nevt * sizeof( fptype_denom ) );
+    gpuMemset( ghelAllDenominators, 0, cNGoodHel * nevt * sizeof( fptype_amp ) );
     gpuMemset( ghelAllMEs, 0, cNGoodHel * nevt * sizeof( fptype ) );
 #else
     // *** PART 0b - C++ ***

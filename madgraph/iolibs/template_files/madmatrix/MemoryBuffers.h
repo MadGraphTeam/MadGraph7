@@ -314,19 +314,20 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   // A base class encapsulating a memory buffer for denominators (of the multichannel single-diagram enhancement factors)
-  typedef BufferBase<fptype_denom> BufferDenominators;
+  // NB: these are amplitude-squared running sums, so they use fptype_amp (unrelated to fptype_denom, the propagator precision)
+  typedef BufferBase<fptype_amp> BufferDenominators;
 
   // The size (number of elements) per event in a memory buffer for denominators
   constexpr size_t sizePerEventDenominators = 1;
 
 #ifndef MGONGPUCPP_GPUIMPL
   // A class encapsulating a C++ host buffer for denominators
-  typedef HostBuffer<fptype_denom, sizePerEventDenominators, HostBufferALIGNED> HostBufferDenominators;
+  typedef HostBuffer<fptype_amp, sizePerEventDenominators, HostBufferALIGNED> HostBufferDenominators;
 #else
   // A class encapsulating a CUDA pinned host buffer for denominators
-  typedef PinnedHostBuffer<fptype_denom, sizePerEventDenominators> PinnedHostBufferDenominators;
+  typedef PinnedHostBuffer<fptype_amp, sizePerEventDenominators> PinnedHostBufferDenominators;
   // A class encapsulating a CUDA device buffer for denominators
-  typedef DeviceBuffer<fptype_denom, sizePerEventDenominators> DeviceBufferDenominators;
+  typedef DeviceBuffer<fptype_amp, sizePerEventDenominators> DeviceBufferDenominators;
 #endif
 
   //--------------------------------------------------------------------------
