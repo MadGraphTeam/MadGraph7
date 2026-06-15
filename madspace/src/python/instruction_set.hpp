@@ -117,6 +117,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("scale_transverse_mass", &FunctionBuilder::scale_transverse_mass, py::arg("momenta"));
     fb.def("scale_half_transverse_mass", &FunctionBuilder::scale_half_transverse_mass, py::arg("momenta"));
     fb.def("scale_partonic_energy", &FunctionBuilder::scale_partonic_energy, py::arg("momenta"));
+    fb.def("mlm_clustering_hadronic", &FunctionBuilder::mlm_clustering_hadronic, py::arg("momenta"), py::arg("state_machine"));
     fb.def("chili_forward", &FunctionBuilder::chili_forward, py::arg("r"), py::arg("e_cm"), py::arg("m_out"), py::arg("pt_min"), py::arg("y_max"));
     fb.def("chili_inverse", &FunctionBuilder::chili_inverse, py::arg("p_ext"), py::arg("e_cm"), py::arg("m_out"), py::arg("pt_min"), py::arg("y_max"));
     fb.def("matrix_element", &FunctionBuilder::matrix_element, py::arg("args"));

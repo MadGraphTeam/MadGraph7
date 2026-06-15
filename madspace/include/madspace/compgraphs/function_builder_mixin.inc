@@ -461,6 +461,11 @@ Value scale_partonic_energy(Value momenta) {
     return instruction("scale_partonic_energy", {momenta})[0];
 }
 
+std::array<Value, 5> mlm_clustering_hadronic(Value momenta, Value state_machine) {
+    auto output_vector = instruction("mlm_clustering_hadronic", {momenta, state_machine});
+    return {output_vector[0], output_vector[1], output_vector[2], output_vector[3], output_vector[4]};
+}
+
 std::array<Value, 2> chili_forward(Value r, Value e_cm, Value m_out, Value pt_min, Value y_max) {
     auto output_vector = instruction("chili_forward", {r, e_cm, m_out, pt_min, y_max});
     return {output_vector[0], output_vector[1]};

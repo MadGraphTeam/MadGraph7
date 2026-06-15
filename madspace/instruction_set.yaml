@@ -1947,6 +1947,31 @@ scale_partonic_energy:
       type: [float]
       desc:
 
+mlm_clustering_hadronic:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc:
+    - name: state_machine
+      type: [int, m]
+      desc:
+  outputs:
+    - name: ren_scale
+      type: [float]
+      desc:
+    - name: fact_scale1
+      type: [float]
+      desc:
+    - name: fact_scale2
+      type: [float]
+      desc:
+    - name: cluster_history
+      type: [int, n-3]
+      desc:
+    - name: cluster_scales
+      type: [float, n-3]
+      desc:
+
 ---
 title: Chili
 

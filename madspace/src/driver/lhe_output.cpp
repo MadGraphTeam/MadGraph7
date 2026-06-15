@@ -165,6 +165,8 @@ LHECompleter::LHECompleter(
                              std::span(permutation.begin() + 2, permutation.end()))) {
                         e_min.at(index) = mass;
                         momentum_masks.at(index) = 1 << perm_index;
+                        // TODO: is this correct or is the permutation the wrong way
+                        // around?
                         for (std::size_t i = 0; std::size_t color_index : colors) {
                             prop_colors.at(colors.size() * index + i) =
                                 args.color_flows.at(matrix_flavor_index)
