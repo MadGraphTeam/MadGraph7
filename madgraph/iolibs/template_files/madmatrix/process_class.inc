@@ -28,8 +28,12 @@
     // Retrieve the compiler that was used to build this module
     static const std::string getCompiler();
 
+    // PDG id for a given flavor combination index and particle index (0-based).
+    // Useful for tools that need to enumerate flavor combinations without going through UMAMI.
+    static short flavorPDG( int iflavor, int ipar );
+
     // Other methods of this instance (???)
-    //const std::vector<fptype>& getMasses() const { return m_masses; }
+    const std::vector<fptype>& getMasses() const { return m_masses; }
     //virtual int code() const{ return 1; }
     //void setInitial( int inid1, int inid2 ){ id1 = inid1; id2 = inid2; }
     //int getDim() const { return dim; }

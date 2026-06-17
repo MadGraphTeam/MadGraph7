@@ -4,6 +4,7 @@
 # Further modified by: S. Hageboeck, O. Mattelaer, S. Roiser, J. Teig, A. Valassi, Z. Wettersten (2021-2024).
 # Integrated with the MadGraph7 project in Feb 2026.
 
+import shutil
 import os
 import sys
 import subprocess
@@ -96,7 +97,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                       'CrossSectionKernels.cc', 'CrossSectionKernels.h',
                                       'MatrixElementKernels.cc', 'MatrixElementKernels.h',
                                       'EventStatistics.h',
-                                      'umami.h', 'umami.cc']),
+                                      'umami.h', 'umami.cc', 'rambo.h']),
                      'Cards': relative_path_list(mg7_templates, ["run_card.toml"])}
 
     to_link_in_P = ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h',
@@ -112,7 +113,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                     'EventStatistics.h',
                     'MemoryBuffers.h', # this is generated from a template in Subprocesses but we still link it in P1
                     'MemoryAccessCouplings.h', # this is generated from a template in Subprocesses but we still link it in P1
-                    'umami.h', 'umami.cc']
+                    'umami.h', 'umami.cc', 'rambo.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
     template_Sub_make = pjoin(madmatrix_templates, 'madmatrix.mk')
@@ -138,6 +139,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     def copy_template(self, model):
         misc.sprint('Entering ProcessExporterMadMatrix.copy_template (initialise the directory)')
         super().copy_template(model)
+        # Rename Makefile to makefile
+        if self.template_src_make:
+            shutil.move(os.path.join(self.dir_path, "src", "Makefile"), os.path.join(self.dir_path, "src", "makefile"))
+        if self.template_Sub_make:
+            shutil.move(os.path.join(self.dir_path, "SubProcesses", "Makefile"), os.path.join(self.dir_path, "SubProcesses", "makefile"))
 
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
@@ -180,7 +186,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                                'RamboSamplingKernels.cc', 'RamboSamplingKernels.h',
                                'CommonRandomNumberKernel.cc', 'CommonRandomNumbers.h',
                                'RandomNumberKernels.h',
-                               'rambo.h', 'timer.h', 'timermap.h']
+                               'massless_rambo.h', 'timer.h', 'timermap.h']
 
     from_template = dict(ProcessExporterMadMatrix.from_template)
     from_template['SubProcesses'] = (ProcessExporterMadMatrix.from_template['SubProcesses']

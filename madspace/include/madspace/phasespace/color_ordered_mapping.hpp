@@ -44,6 +44,11 @@ private:
     // True iff exactly one of (set1, set2) has size 1 (and the other >= 2).
     // In that case the central block is DoubleT instead of 2->2.
     bool _use_double_t;
+    // True iff one of (set1, set2) is empty, i.e. particles 0 and 1 are
+    // adjacent in the color order and all outgoing particles sit on one side.
+    // In that case there is no central block at all: the full final state is
+    // produced as a single t-channel chain seeded directly off the beams.
+    bool _use_single_chain;
 
     Invariant _uniform_invariant;
     TwoToTwoParticleScattering _com_scattering;

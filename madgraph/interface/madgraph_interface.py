@@ -1936,6 +1936,11 @@ This will take effect only in a NEW terminal
                                     (self._curr_model['name'], i)
                 auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
+            elif self._export_format == 'standalone_mg7':
+                name_dir = lambda i: 'PROCMG7_SA_%s_%s' % \
+                                    (self._curr_model['name'], i)
+                auto_path = lambda i: pjoin(self.writing_dir,
+                                               name_dir(i))
             else:
                 name_dir = lambda i: 'PROC_SA_%s_%s' % \
                                     (self._curr_model['name'], i)

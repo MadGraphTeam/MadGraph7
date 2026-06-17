@@ -175,7 +175,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     list_arg = '[]' # AV from cxtype_sv to fptype array (running alphas #373)
                     point = self.type2def['pointer_coup']
                 args.append('%s %s%s%s'% (type, point, argname, list_arg))
-                coeff_n = re.search(r"\d?+$", argname).group()
+                coeff_n = re.search(r"\d*$", argname).group()
                 args.append('double Ccoeff%s'% coeff_n) # OM for 'unary minus' #628
             else:
                 args.append('%s %s%s'% (type, argname, list_arg))
@@ -199,11 +199,12 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                      'aloha_ref': self.type2def['aloha_ref'], 
                      'id': self.outgoing}
             if combined:
-                output = output + ', ' + '\n%(indent)s%(doublec)s %(aloha_ref)s %(spin)stmp%' % {
-                                                                                    'doublec': self.type2def[alohatype],
-                                                                                    'spin': self.particles[self.outgoing -1],
-                                                                                    'aloha_ref': self.type2def['aloha_ref'], 
-                                                                                    'indent': indent}
+                    output = output + ', ' + '\n{indent}{doublec} {aloha_ref} {spin}tmp'.format(
+                        doublec=self.type2def[alohatype],
+                        aloha_ref= self.type2def['aloha_ref'],
+                        spin=self.particles[self.outgoing -1],
+                        indent=indent,
+                    )
             ###self.declaration.add(('list_complex', output)) # AV BUG FIX - THIS IS NOT NEEDED AND IS WRONG (adds name 'cxtype_sv V3[]')
             comment_output = 'wavefunction \'%s%d[6]\'' % ( self.particles[self.outgoing -1], self.outgoing ) # AV (wavefuncsize=6)
             template = 'template<class W_ACCESS, class C_ACCESS>'
@@ -479,7 +480,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 outgoing = self.outgoing
                 out.write('    int flv_index%i = F%i.flv_index;\n' % (incoming, incoming))
                 out.write('    if(flv_index%i == -1) {\n' %(incoming))
-                out.write('      for(int i=0; i<F%i.np4; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
+                out.write('      for(int i=0; i<F%i.nw6; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
@@ -490,7 +491,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     for i in range(2,nb_coupling+1):
                         out.write('    if(flv_index2 == -1){flv_index2 = MCOUP%i.partner1[flv_index%i];}' %(i, incoming)) 
                 out.write('    if(flv_index2 == -1){\n')
-                out.write('      for(int i=0; i<F%i.np4; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
+                out.write('      for(int i=0; i<F%i.nw6; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
@@ -499,7 +500,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 outgoing = self.outgoing
                 out.write('    int flv_index%i = F%i.flv_index;\n' % (incoming,incoming))
                 out.write('    if(flv_index%i == -1){\n' %(incoming))
-                out.write('      for(int i=0; i<F%i.np4; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
+                out.write('      for(int i=0; i<F%i.nw6; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
@@ -510,7 +511,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     for i in range(2,nb_coupling+1):
                         out.write('    if(flv_index1 == -1) { flv_index1 = MCOUP%i.partner2[flv_index%i]; }' %(i, incoming))
                 out.write('    if(flv_index1 == -1){\n')
-                out.write('      for(int i=0; i<F%i.np4; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
+                out.write('      for(int i=0; i<F%i.nw6; i++) { wF%i[i] = cxzero_sv(); }\n' % (outgoing, outgoing))
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
@@ -622,7 +623,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             else:
                 coeff = 'COUP'
             shift = 1 - 1 #to correspond to the shift in fortran indicies with -1 for C++
-            if fd_gauge and self.outname[0] == "S":
+            if fd_gauge and "S" in self.outname:
                 shift = 5 - 1 #to correspond to the shift in fortran indicies with -1 for C++
             for ind in numerator.listindices():
                 # This affects 'V1[2] = ' and 'F1[2] = ' in HelAmps_sm.cc
@@ -679,6 +680,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             return '%s[%s]' % (match.group('var'), int(match.group('num')) + shift) 
         else:
             shift =  -1
+            if fd_gauge and match.group('var').startswith('S'):
+                shift += 4
             return 'w%s[%s]' % (match.group('var'), int(match.group('num')) + shift)
 
     # OM - overload aloha_writers.WriteALOHA and ALOHAWriterForCPP methods (handle 'unary minus' #628)
@@ -782,7 +785,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # how to call the routine
         argument = [name for format, name in self.define_argument_list(new_couplings)]
         index = argument.index('COUP1')
-        data['before_coup'] = ','.join('all' + arg for arg in argument[:index])
+        data['before_coup'] = ','.join(' ' + arg for arg in argument[:index])
         data['after_coup'] = ','.join(argument[index + len(lor_names) + 1:])
         if data['after_coup']:
             data['after_coup'] = ',' + data['after_coup']
@@ -795,26 +798,30 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         # names of functions to be combined
         lor_list = (self.routine.name,) + lor_names
-        line = "    %(name)s%(addon)s%(access)s(%(before_coup)s,%(coup)s,%(ccoef)s%(after_coup)s,all%(out)s);\n"
+        line = "    %(name)s%(addon)s%(access)s(%(before_coup)s,%(coup)s,%(ccoef)s%(after_coup)s,%(out)s);\n"
         main = '%(spin)s%(id)d' % {'spin': self.particles[self.offshell - 1],
                                    'id': self.outgoing}
         for i, name in enumerate(lor_list):
             data['name'] = name
-            data['coup'] = 'allCOUP%d' % (i + 1)
+            if 'M' in data['addon']:
+                data['coup'] = 'MCOUP%d' % (i + 1)
+            else:
+                data['coup'] = 'allCOUP%d' % (1+i)
 
             if i == 0:
                 if not offshell:
-                    data['out'] = 'vertexes'
+                    data['out'] = 'allvertexes'
                 else:
                     data['out'] = main
             elif i == 1:
                 if self.offshell:
                     type = self.particles[self.offshell - 1]
                     self.declaration.add(('list_complex', '%stmp' % type))
+                    data['out'] = '%stmp' % type
                 else:
                     type = ''
                     self.declaration.add(('complex', '%stmp' % type))
-                data['out'] = '%stmp' % type
+                    data['out'] = 'all%stmp' % type
             data['ccoef'] = 'Ccoeff%d' % (i + 1)
             routine.write(line % data)
             if i:
@@ -829,7 +836,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     routine.write('   //unrolled upstream while\n')
                     for index in range(self.momentum_size,
                                        self.momentum_size + size):  # unrolling the upstream loop -1 for cpp
-                        routine.write('    %(main)s[%(index)d] = %(main)s[%(index)d] + %(tmp)s[%(index)d];\n' % \
+                        routine.write('    w%(main)s[%(index)d] = w%(main)s[%(index)d] + w%(tmp)s[%(index)d];\n' % \
                                       {'main': main, 'tmp': data['out'], 'index': index})
                     self.declaration.add(('int', 'i'))
         self.declaration.discard(('complex', 'COUP'))
@@ -1119,10 +1126,10 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         params_indep = [ line.replace('aS, ','')
                          for line in self.write_parameters(self.params_indep).split('\n') ]
         replace_dict['independent_parameters'] = '// Model parameters independent of aS\n    //double aS; // now retrieved event-by-event (as G) from Fortran (running alphas #373)\n' + '\n'.join( params_indep )
-        replace_dict['independent_couplings'] = '// Model couplings independent of aS\n' + self.write_parameters(self.coups_indep)
+        replace_dict['independent_couplings'] = '// Model couplings independent of aS\n' + self.write_parameters(self.coups_indep).replace('cxsmpl<double>', 'cxtype')
         params_dep = [ '    //' + line[4:] + ' // now computed event-by-event (running alphas #373)' for line in self.write_parameters(self.params_dep).split('\n') ]
         replace_dict['dependent_parameters'] = '// Model parameters dependent on aS\n' + '\n'.join( params_dep )
-        coups_dep = [ '    //' + line[4:] + ' // now computed event-by-event (running alphas #373)' for line in self.write_parameters(list(self.coups_dep.values())).split('\n') ]
+        coups_dep = [ '    //' + line[4:] + ' // now computed event-by-event (running alphas #373)' for line in self.write_parameters(list(self.coups_dep.values())).replace('cxsmpl<double>', 'cxtype').split('\n') ]
         replace_dict['dependent_couplings'] = '// Model couplings dependent on aS\n' + '\n'.join( coups_dep )
         replace_dict['flavor_independent_couplings'] = \
                                     "// Model flavor couplings independent of aS\n" + \
@@ -1163,12 +1170,12 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         hrd_params_indep = [ line.replace('constexpr','//constexpr') + ' // now retrieved event-by-event (as G) from Fortran (running alphas #373)' if 'aS =' in line else line for line in self.write_hardcoded_parameters(self.params_indep, {**bsmparam_indep_real_used, **bsmparam_indep_complex_used}).split('\n') if line != '' ] # use bsmparam_indep_real_used + bsmparam_indep_complex_used as deviceparams (dictionary merge as in https://stackoverflow.com/a/26853961)
         replace_dict['hardcoded_independent_parameters'] = '\n'.join( hrd_params_indep ) + self.super_write_set_parameters_onlyfixMajorana( hardcoded=True ) # add fixes for Majorana particles only in the aS-indep parameters #622
         ###misc.sprint(self.coups_indep) # for debugging
-        replace_dict['hardcoded_independent_couplings'] = self.write_hardcoded_parameters(self.coups_indep)
+        replace_dict['hardcoded_independent_couplings'] = self.write_hardcoded_parameters(self.coups_indep).replace('cxsmpl<double>', 'cxtype')
         ###misc.sprint(self.params_dep) # for debugging
         hrd_params_dep = [ line.replace('constexpr ','//constexpr ') + ' // now computed event-by-event (running alphas #373)' if line != '' else line for line in self.write_hardcoded_parameters(self.params_dep).split('\n') ]
         replace_dict['hardcoded_dependent_parameters'] = '\n'.join( hrd_params_dep )
         ###misc.sprint(self.coups_dep) # for debugging
-        hrd_coups_dep = [ line.replace('constexpr','//constexpr') + ' // now computed event-by-event (running alphas #373)' if line != '' else line for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') ]
+        hrd_coups_dep = [ line.replace('constexpr','//constexpr') + ' // now computed event-by-event (running alphas #373)' if line != '' else line for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).replace('cxsmpl<double>', 'cxtype').split('\n') ]
         replace_dict['hardcoded_dependent_couplings'] = '\n'.join( hrd_coups_dep )
         replace_dict['nicoup'] = len( self.coups_indep )
         if len( self.coups_indep ) > 0 :
@@ -1388,7 +1395,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         file_h = '\n'.join( file_h_lines[:-3]) # skip the trailing '//---'
         file_h += file_cc # append the contents of HelAmps_sm.cc directly to HelAmps_sm.h!
         file_h = file_h[:-1] # skip the trailing empty line
-        writers.CPPWriter(model_h_file).writelines(file_h)
+        writers.CPPWriter(model_h_file).writelines(file_h, formatting=False)
         logger.info('Created file %s in directory %s' \
                     % (os.path.split(model_h_file)[-1], os.path.split(model_h_file)[0] ) )
 
@@ -1725,7 +1732,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    fptype* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel
                    fptype* colAllJamp2s,              // output: allJamp2s[ncolor][nevt] super-buffer, sum over col/hel (nullptr to disable)
-                   const int nevt                     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                   const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                   const bool processAllHelicities    // input: if true, use blockIdx.y to index helicities
 #else
                    cxtype_sv* allJamp_sv,             // output: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for this helicity
                    bool storeChannelWeights,
@@ -1767,6 +1775,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     //const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
     //debug = ( ievt == 0 );
     //if( debug ) printf( \"calculate_jamps: ievt=%6d ihel=%2d\\n\", ievt, ihel );
+    if (processAllHelicities) {
+      int ighel = blockIdx.y;
+      ihel = dcGoodHel[ighel];
+      allJamps = allJamps + ighel * nevt;
+      allNumerators = allNumerators + ighel * nevt * processConfig::ndiagrams;
+      allDenominators = allDenominators + ighel * nevt;
+    }
 #endif /* clang-format on */""")
             nwavefuncs = self.matrix_elements[0].get_number_of_wavefunctions()
             ret_lines.append("""
@@ -1855,7 +1870,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         super().generate_process_files()
         # NB: symlink of cudacpp.mk to makefile is overwritten by madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
-        files.ln(pjoin(self.path, "..", "Makefile"), self.path, "Makefile")
+        files.ln(pjoin(self.path, "..", "makefile"), self.path, "makefile")
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -2079,7 +2094,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     def get_flavor_matrix(self, matrix_element):
         """Return the flavor matrix definition lines for this matrix element"""
-        flavor_line = '    static constexpr short flavors[nmaxflavor][npar] = {\n      '; # (this is tFlavors)
+        # Emitted at namespace scope (file-local linkage), so the host-side table
+        # is visible to both the CPPProcess constructor and CPPProcess::flavorPDG.
+        flavor_line = '  static constexpr short flavors[nmaxflavor][npar] = {\n    '; # (this is tFlavors)
         flavor_line_list = []
         for flavors in matrix_element.get_external_flavors_with_iden():
             # get only the index 0 one because the other ones have same matrix element
@@ -2087,7 +2104,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # so we need to subtract 1 because FORTRAN indices starts from 1, and C++ from zero
             cpp_flavors = list(map(lambda f: f-1, flavors[0]))
             flavor_line_list.append( '{ ' + ', '.join(['%d'] * len(cpp_flavors)) % tuple(cpp_flavors) + ' }' )
-        return flavor_line + ',\n      '.join(flavor_line_list) + ' };'
+        return flavor_line + ',\n    '.join(flavor_line_list) + ' };'
 
     def get_reset_jamp_lines(self, color_amplitudes):
         """Get lines to reset jamps"""
@@ -2121,7 +2138,18 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         self.wanted_ordered_indep_couplings = []
         self.wanted_ordered_flv_couplings = []
 
+        # the following is based on the fact that model = args[0]
+        # builds a map FLV_Coupling name : value to be used when writing
+        # the HELAS
+        model = args[0]
         self.flv_couplings_map = {}
+        for interaction in model.interactions:
+            all_couplings = interaction["couplings"]
+            for coupling in all_couplings.values():
+                if not isinstance(coupling, base_objects.FLV_Coupling):
+                    continue
+                self.flv_couplings_map[coupling.name] = coupling
+
         super().__init__(*args,**opts)
 
 
@@ -2515,7 +2543,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 if isinstance(coup, base_objects.FLV_Coupling):
                     if usesdepcoupl is None: usesdepcoupl = False
                     elif usesdepcoupl: raise Exception('PANIC! this call seems to use both aS-dependent and aS-independent couplings?')
-                    self.flv_couplings_map[coup.name] = coup
                     continue
                 if coup.startswith('-'): 
                     coup = coup[1:]

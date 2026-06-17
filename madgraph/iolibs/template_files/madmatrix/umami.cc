@@ -12,6 +12,9 @@
 #include "MemoryBuffers.h"
 
 #include <cmath>
+#include <vector>
+#include <array>
+#include <utility>
 
 #ifdef MGONGPUCPP_GPUIMPL
 using namespace mg5amcGpu;
@@ -72,18 +75,18 @@ namespace
   __device__
 #endif
     void
-    transpose_momenta( const double* momenta_in, fptype* momenta_out, std::size_t i_event, std::size_t stride )
+    transpose_momenta( const double* momenta_in, fptype* momenta_out, std::size_t i_event_in, std::size_t i_event_out, std::size_t stride )
   {
     std::size_t page_size = MemoryAccessMomentaBase::neppM;
-    std::size_t i_page = i_event / page_size;
-    std::size_t i_vector = i_event % page_size;
+    std::size_t i_page = i_event_out / page_size;
+    std::size_t i_vector = i_event_out % page_size;
 
     for( std::size_t i_part = 0; i_part < CPPProcess::npar; ++i_part )
     {
       for( std::size_t i_mom = 0; i_mom < 4; ++i_mom )
       {
         momenta_out[i_page * CPPProcess::npar * 4 * page_size +
-                    i_part * 4 * page_size + i_mom * page_size + i_vector] = momenta_in[stride * ( CPPProcess::npar * i_mom + i_part ) + i_event];
+                    i_part * 4 * page_size + i_mom * page_size + i_vector] = momenta_in[stride * ( CPPProcess::npar * i_mom + i_part ) + i_event_in];
       }
     }
   }
@@ -110,7 +113,7 @@ namespace
     std::size_t i_event = blockDim.x * blockIdx.x + threadIdx.x;
     if( i_event >= count ) return;
 
-    transpose_momenta( &momenta_in[offset], momenta, i_event, stride );
+    transpose_momenta( &momenta_in[offset], momenta, i_event, i_event, stride );
     diagram_random[i_event] = diagram_random_in ? diagram_random_in[i_event + offset] : 0.5;
     helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_event + offset] : 0.5;
     color_random[i_event] = color_random_in ? color_random_in[i_event + offset] : 0.5;
@@ -156,10 +159,9 @@ namespace
   struct InterfaceInstance
   {
     bool initialized = false;
-#ifdef MGONGPUCPP_GPUIMPL
-    gpuStream_t hel_streams[CPPProcess::ncomb];
-#endif
   };
+
+  std::vector<double> g_externalMasses;
 
 }
 
@@ -194,6 +196,14 @@ extern "C"
         break;
       case UMAMI_META_COLOR_COUNT:
         return UMAMI_ERROR_UNSUPPORTED_META;
+      case UMAMI_META_MASSES:
+      {
+        if( g_externalMasses.size() != (size_t)CPPProcess::npar ) return UMAMI_ERROR_UNINITIALIZED_META;
+
+        for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+          static_cast<double*>( result )[ipar] = g_externalMasses[ipar];
+        break;
+      }
       default:
         return UMAMI_ERROR_UNSUPPORTED_META;
     }
@@ -204,31 +214,29 @@ extern "C"
   {
     CPPProcess process;
     process.initProc( param_card_path );
+
+    const std::vector<fptype>& masses = process.getMasses();
+    g_externalMasses.assign( masses.begin(), masses.end() );
+
     auto instance = new InterfaceInstance();
     *handle = instance;
-#ifdef MGONGPUCPP_GPUIMPL
-    for( int ihel = 0; ihel < CPPProcess::ncomb; ihel++ )
-    {
-      gpuStreamCreate( &instance->hel_streams[ihel] );
-    }
-#endif
     return UMAMI_SUCCESS;
   }
 
   UmamiStatus umami_set_parameter(
-    UmamiHandle handle,
-    char const* name,
-    double parameter_real,
-    double parameter_imag )
+    [[maybe_unused]] UmamiHandle handle,
+    [[maybe_unused]] char const* name,
+    [[maybe_unused]] double parameter_real,
+    [[maybe_unused]] double parameter_imag )
   {
     return UMAMI_ERROR_NOT_IMPLEMENTED;
   }
 
   UmamiStatus umami_get_parameter(
-    UmamiHandle handle,
-    char const* name,
-    double* parameter_real,
-    double* parameter_imag )
+    [[maybe_unused]] UmamiHandle handle,
+    [[maybe_unused]] char const* name,
+    [[maybe_unused]] double* parameter_real,
+    [[maybe_unused]] double* parameter_imag )
   {
     return UMAMI_ERROR_NOT_IMPLEMENTED;
   }
@@ -251,7 +259,7 @@ extern "C"
     const double* random_color_in = nullptr;
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
-    const int* diagram_in = nullptr; // TODO: unused
+    [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -336,22 +344,39 @@ extern "C"
     unsigned int *flavor_indices, *diagram_index;
 
     std::size_t n_coup = mg5amcGpu::Parameters_dependentCouplings::ndcoup;
-    gpuMallocAsync( &momenta, rounded_count * CPPProcess::npar * 4 * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &couplings, rounded_count * n_coup * 2 * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &g_s, rounded_count * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &flavor_indices, rounded_count * sizeof( unsigned int ), gpu_stream );
-    gpuMallocAsync( &helicity_random, rounded_count * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &color_random, rounded_count * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &diagram_random, rounded_count * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &matrix_elements, rounded_count * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &diagram_index, rounded_count * sizeof( unsigned int ), gpu_stream );
-    gpuMallocAsync( &color_jamps, rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &numerators, rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &denominators, rounded_count * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &helicity_index, rounded_count * sizeof( int ), gpu_stream );
-    gpuMallocAsync( &color_index, rounded_count * sizeof( int ), gpu_stream );
-    gpuMallocAsync( &ghel_matrix_elements, rounded_count * CPPProcess::ncomb * sizeof( fptype ), gpu_stream );
-    gpuMallocAsync( &ghel_jamps, rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype ), gpu_stream );
+    std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
+        {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
+        {reinterpret_cast<void**>(&flavor_indices), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&helicity_random), rounded_count * sizeof( fptype )},
+        {reinterpret_cast<void**>(&color_random), rounded_count * sizeof( fptype )},
+        {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
+        {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
+        {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype )},
+        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
+        {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
+        {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
+        {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
+        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
+    }};
+    std::size_t total_size = 0;
+    constexpr std::size_t MAX_SIZE = std::max(sizeof(fptype), sizeof(int));
+    for (auto [ptr, size] : ptrs_and_sizes) {
+        std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
+        total_size += aligned_size;
+    }
+    uint8_t* buffer;
+    // we can consider caching this between matrix element calls
+    gpuMallocAsync( &buffer, total_size, gpu_stream );
+    std::size_t buf_offset = 0;
+    for (auto [ptr, size] : ptrs_and_sizes) {
+        std::size_t aligned_size = (size + 7) / 8 * 8;
+        *ptr = buffer + buf_offset;
+        buf_offset += aligned_size;
+    }
 
     copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       momenta_in,
@@ -371,9 +396,6 @@ extern "C"
       offset );
     computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( g_s, couplings );
     checkGpu( gpuPeekAtLastError() );
-    // TODO: make things fully async (requires using events instead of synchronize in
-    //       the sigmaKin implementation)
-    gpuStreamSynchronize( gpu_stream );
 
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     if( !instance->initialized )
@@ -403,7 +425,8 @@ extern "C"
       ghel_jamps,
       nullptr,
       nullptr,
-      instance->hel_streams,
+      &gpu_stream,
+      true,
       n_blocks,
       n_threads );
 
@@ -424,31 +447,49 @@ extern "C"
       offset );
     checkGpu( gpuPeekAtLastError() );
 
-    gpuFreeAsync( momenta, gpu_stream );
-    gpuFreeAsync( couplings, gpu_stream );
-    gpuFreeAsync( flavor_indices, gpu_stream );
-    gpuFreeAsync( g_s, gpu_stream );
-    gpuFreeAsync( helicity_random, gpu_stream );
-    gpuFreeAsync( color_random, gpu_stream );
-    gpuFreeAsync( diagram_random, gpu_stream );
-    gpuFreeAsync( matrix_elements, gpu_stream );
-    gpuFreeAsync( diagram_index, gpu_stream );
-    gpuFreeAsync( color_jamps, gpu_stream );
-    gpuFreeAsync( numerators, gpu_stream );
-    gpuFreeAsync( denominators, gpu_stream );
-    gpuFreeAsync( helicity_index, gpu_stream );
-    gpuFreeAsync( color_index, gpu_stream );
-    gpuFreeAsync( ghel_matrix_elements, gpu_stream );
-    gpuFreeAsync( ghel_jamps, gpu_stream );
+    gpuFreeAsync( buffer, gpu_stream );
 #else  // MGONGPUCPP_GPUIMPL
+    constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
     // need to round to round to double page size for some reason
-    std::size_t page_size2 = 2 * MemoryAccessMomentaBase::neppM;
-    std::size_t rounded_count = ( count + page_size2 - 1 ) / page_size2 * page_size2;
+    constexpr std::size_t page_size2 = 2 * vector_size;
+    std::vector<std::size_t> permutation;
+    std::size_t rounded_count;
+
+    constexpr std::size_t flavor_count = CPPProcess::nmaxflavor;
+    HostBufferBase<unsigned int, false> flavor_indices( ((count + page_size2 - 1) / page_size2 + flavor_count) * page_size2 );
+    bool sort_flavors = vector_size > 1 && flavor_count > 1 && flavor_indices_in;
+    if ( sort_flavors ) 
+    {
+      permutation.resize(count);
+      std::size_t voffset = 0;
+      std::size_t vector_indices[flavor_count] = {};
+      std::size_t vector_counts[flavor_count] = {};
+      // determine permutation of inputs such that all entries in a SIMD vector
+      // have the same flavor index
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      {
+        unsigned int flav = flavor_indices_in[i_event + offset];
+        auto& vcount = vector_counts[flav];
+        auto& vindex = vector_indices[flav];
+        if ( vcount == 0 )
+        {
+          vindex = voffset * page_size2;
+          for ( std::size_t i = 0; i < page_size2; ++i) {
+            flavor_indices[voffset * page_size2 + i] = flav;
+          }
+          voffset += 1;
+        }
+        permutation[i_event] = vindex + vcount;
+        vcount = (vcount + 1) % page_size2;
+      }
+      rounded_count = voffset * page_size2;
+    } else {
+      rounded_count = ( count + page_size2 - 1 ) / page_size2 * page_size2;
+    }
 
     HostBufferBase<fptype, false> momenta( rounded_count * CPPProcess::npar * 4 );
     HostBufferBase<fptype, false> couplings( rounded_count * mg5amcCpu::Parameters_dependentCouplings::ndcoup * 2 );
     HostBufferBase<fptype, false> g_s( rounded_count );
-    HostBufferBase<unsigned int, false> flavor_indices( rounded_count );
     HostBufferBase<fptype, false> helicity_random( rounded_count );
     HostBufferBase<fptype, false> color_random( rounded_count );
     HostBufferBase<fptype, false> diagram_random( rounded_count );
@@ -458,17 +499,29 @@ extern "C"
     HostBufferBase<fptype, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
-    for( std::size_t i_event = 0; i_event < count; ++i_event )
-    {
-      transpose_momenta( &momenta_in[offset], momenta.data(), i_event, stride );
-      helicity_random[i_event] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-      color_random[i_event] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-      diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-      g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-      flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
-    }
-    for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
-      flavor_indices[i_event] = 0;
+    if ( sort_flavors ) {
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      {
+        std::size_t i_sorted = permutation[i_event];
+        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_sorted, stride );
+        helicity_random[i_sorted] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
+        color_random[i_sorted] = random_color_in ? random_color_in[i_event + offset] : 0.5;
+        diagram_random[i_sorted] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
+        g_s[i_sorted] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+      }
+    } else {
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      {
+        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_event, stride );
+        helicity_random[i_event] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
+        color_random[i_event] = random_color_in ? random_color_in[i_event + offset] : 0.5;
+        diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
+        g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+        flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
+      }
+      for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
+        flavor_indices[i_event] = 0;
+      }
     }
     computeDependentCouplings( g_s.data(), couplings.data(), rounded_count );
 
@@ -503,35 +556,71 @@ extern "C"
       false,
       rounded_count );
 
-    std::size_t page_size = MemoryAccessMomentaBase::neppM;
-    for( std::size_t i_event = 0; i_event < count; ++i_event )
+    if ( sort_flavors )
     {
-      std::size_t i_page = i_event / page_size;
-      std::size_t i_vector = i_event % page_size;
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      {
+        std::size_t i_sorted = permutation[i_event];
+        std::size_t page_size = MemoryAccessMomentaBase::neppM;
+        std::size_t i_page = i_sorted / page_size;
+        std::size_t i_vector = i_sorted % page_size; // vector lane
 
-      double denominator = denominators[i_event];
-      if( m2_out != nullptr )
-      {
-        m2_out[i_event + offset] = matrix_elements[i_event];
-      }
-      if( amp2_out != nullptr )
-      {
-        for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
+        double denominator = denominators[i_sorted];
+        if( m2_out != nullptr )
         {
-          amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+          m2_out[i_event + offset] = matrix_elements[i_sorted];
+        }
+        if( amp2_out != nullptr )
+        {
+          for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
+          {
+            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+          }
+        }
+        if( diagram_out != nullptr )
+        {
+          diagram_out[i_event + offset] = diagram_index[i_sorted] - 1;
+        }
+        if( color_out != nullptr )
+        {
+          color_out[i_event + offset] = color_index[i_sorted] - 1;
+        }
+        if( helicity_out != nullptr )
+        {
+          helicity_out[i_event + offset] = helicity_index[i_sorted] - 1;
         }
       }
-      if( diagram_out != nullptr )
+    } else {
+      std::size_t page_size = MemoryAccessMomentaBase::neppM;
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
       {
-        diagram_out[i_event + offset] = diagram_index[i_event] - 1;
-      }
-      if( color_out != nullptr )
-      {
-        color_out[i_event + offset] = color_index[i_event] - 1;
-      }
-      if( helicity_out != nullptr )
-      {
-        helicity_out[i_event + offset] = helicity_index[i_event] - 1;
+        std::size_t i_page = i_event / page_size;
+        std::size_t i_vector = i_event % page_size;
+
+        double denominator = denominators[i_event];
+        if( m2_out != nullptr )
+        {
+          m2_out[i_event + offset] = matrix_elements[i_event];
+        }
+        if( amp2_out != nullptr )
+        {
+          for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
+          {
+            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+          }
+        }
+        if( diagram_out != nullptr )
+        {
+          diagram_out[i_event + offset] = diagram_index[i_event] - 1;
+        }
+        if( color_out != nullptr )
+        {
+          color_out[i_event + offset] = color_index[i_event] - 1;
+        }
+        if( helicity_out != nullptr )
+        {
+          helicity_out[i_event + offset] = helicity_index[i_event] - 1;
+        }
       }
     }
 #endif // MGONGPUCPP_GPUIMPL
@@ -541,12 +630,6 @@ extern "C"
   UmamiStatus umami_free( UmamiHandle handle )
   {
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
-#ifdef MGONGPUCPP_GPUIMPL
-    for( int ihel = 0; ihel < CPPProcess::ncomb; ihel++ )
-    {
-      if( instance->hel_streams[ihel] ) gpuStreamDestroy( instance->hel_streams[ihel] );
-    }
-#endif
     delete instance;
     return UMAMI_SUCCESS;
   }

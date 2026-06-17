@@ -11,6 +11,8 @@
 
 #include "MemoryBuffers.h"
 
+#include <vector>
+
 #ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
 #else
@@ -68,19 +70,19 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   // A class encapsulating RAMBO phase space sampling on a CPU host
-  class RamboSamplingKernelHost final : public SamplingKernelBase, public NumberOfEvents
+  class MasslessRamboSamplingKernelHost final : public SamplingKernelBase, public NumberOfEvents
   {
   public:
 
     // Constructor from existing input and output buffers
-    RamboSamplingKernelHost( const fptype energy,               // input: energy
+    MasslessRamboSamplingKernelHost( const fptype energy,               // input: energy
                              const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
                              BufferMomenta& momenta,            // output: momenta
                              BufferWeights& weights,            // output: weights
                              const size_t nevt );
 
     // Destructor
-    virtual ~RamboSamplingKernelHost() {}
+    virtual ~MasslessRamboSamplingKernelHost() {}
 
     // Get momenta of initial state particles
     void getMomentaInitial() override final;
@@ -94,14 +96,50 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
+  // Compability port mirroring the massless momenta implementation
+  // For now own RNG internally (or keep to match Fortran) TODO 
+  // rndmom just for interface (maybe delete later) TODO
+  class RamboSamplingKernelHost final : public SamplingKernelBase, public NumberOfEvents
+  {
+  public:
+
+    RamboSamplingKernelHost( const fptype energy,                  // input: energy
+                                    const BufferRndNumMomenta& rndmom,    // input: random [0,1] UNUSED 
+                                    const std::vector<fptype>& masses,    // input: external-leg masses 
+                                    const int ninitial,                   // input: #n initial-state particles
+                                    const size_t nevt,                    // input: #n events
+                                    BufferMomenta& momenta,               // output: momenta
+                                    BufferWeights& weights);              // output: weights
+
+    virtual ~RamboSamplingKernelHost() {}
+
+    // No-op, kept to match the massless
+    void getMomentaInitial() override final;
+
+    // All the magic here
+    void getMomentaFinal() override final;
+
+    bool isOnDevice() const override final { return false; }
+
+  private:
+
+    // The EXTERNAL masses 
+    std::vector<double> m_masses;
+
+    // The number of inital particles
+    const int m_ninitial;
+  };
+
+  //--------------------------------------------------------------------------
+
 #ifdef MGONGPUCPP_GPUIMPL
   // A class encapsulating RAMBO phase space sampling on a GPU device
-  class RamboSamplingKernelDevice final : public SamplingKernelBase, public NumberOfEvents
+  class MasslessRamboSamplingKernelDevice final : public SamplingKernelBase, public NumberOfEvents
   {
   public:
 
     // Constructor from existing input and output buffers
-    RamboSamplingKernelDevice( const fptype energy,               // input: energy
+    MasslessRamboSamplingKernelDevice( const fptype energy,               // input: energy
                                const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
                                BufferMomenta& momenta,            // output: momenta
                                BufferWeights& weights,            // output: weights
@@ -109,7 +147,7 @@ namespace mg5amcCpu
                                const size_t gputhreads );
 
     // Destructor
-    virtual ~RamboSamplingKernelDevice() {}
+    virtual ~MasslessRamboSamplingKernelDevice() {}
 
     // Get momenta of initial state particles
     void getMomentaInitial() override final;

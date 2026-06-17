@@ -223,6 +223,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("index") = 0,
         py::return_value_policy::reference
     );
+    m.def("available_backends", &available_backends);
 
     py::classh<MatrixElementApi>(m, "MatrixElementApi")
         //.def("device", &MatrixElementApi::device)

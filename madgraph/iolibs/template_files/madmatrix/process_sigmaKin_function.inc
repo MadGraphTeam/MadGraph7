@@ -51,23 +51,27 @@
     // Use CUDA/HIP streams to process different helicities in parallel (one good helicity per stream)
     // (1) First, within each helicity stream, compute the QCD partial amplitudes jamp's for each helicity
     // In multichannel mode, also compute the running sums over helicities of numerators, denominators and squared jamp2s
-    for( int ighel = 0; ighel < cNGoodHel; ighel++ )
-    {
-      const int ihel = cGoodHel[ighel];
-      fptype* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
-      fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * processConfig::ndiagrams;
-      fptype* hAllDenominators = ghelAllDenominators + ighel * nevt;
-      bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-      gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt );
+    bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
+    if (async) {
+      gpuLaunchKernel2D( calculate_jamps, gpublocks, cNGoodHel, gputhreads, ghelStreams[0], 0, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, true );
+      color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, true );
+    } else {
+      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+      {
+        const int ihel = cGoodHel[ighel];
+        fptype* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
+        fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * processConfig::ndiagrams;
+        fptype* hAllDenominators = ghelAllDenominators + ighel * nevt;
+        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt, false );
+      }
+      // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
+      color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, false );
+      checkGpu( gpuDeviceSynchronize() ); // do not start helicity/color selection until the loop over helicities has completed
+      // (3) Wait for all helicity streams to complete, then finally compute the ME sum over all helicities and choose one helicity and one color
     }
-    // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
-    color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads );
-    checkGpu( gpuDeviceSynchronize() ); // do not start helicity/color selection until the loop over helicities has completed
-    // (3) Wait for all helicity streams to complete, then finally compute the ME sum over all helicities and choose one helicity and one color
     // Event-by-event random choice of helicity #403 and ME sum over helicities (defer this after the helicity loop to avoid breaking streams parallelism)
     gpuLaunchKernel( add_and_select_hel, gpublocks, gputhreads, allselhel, allrndhel, ghelAllMEs, allMEs, gpublocks * gputhreads );
 
-    bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
     gpuLaunchKernel( normalise_output, gpublocks, gputhreads, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
 
     // Event-by-event random choice of color and diagram #402

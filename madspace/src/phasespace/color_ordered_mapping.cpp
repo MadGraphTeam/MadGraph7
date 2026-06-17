@@ -47,11 +47,11 @@ split_sets_from_color_order(const std::vector<std::size_t>& color_order) {
         if (p <= 1) throw std::invalid_argument("invalid color_order");
         set2.push_back(p - 2);
     }
-    if (set1.empty() || set2.empty()) {
-        throw std::invalid_argument(
-            "ColorOrderedMapping requires both sets to be non-empty "
-            "(particles 0 and 1 must not be adjacent in the color order)"
-        );
+    // An empty set is allowed: it means particles 0 and 1 are adjacent in the
+    // color order, so every outgoing particle sits on a single side. With n >= 4
+    // (>= 2 outgoing) at most one of the two sets can be empty.
+    if (set1.empty() && set2.empty()) {
+        throw std::invalid_argument("ColorOrderedMapping: at least one set must be non-empty");
     }
     return {set1, set2};
 }
@@ -77,13 +77,15 @@ ColorOrderedMapping::ColorOrderedMapping(
         "ColorOrderedMapping",
         [&] {
             auto [s1, s2] = split_sets_from_color_order(color_order);
-            bool use_double_t = (s1.size() == 1) != (s2.size() == 1);
+            bool use_single_chain = s1.empty() || s2.empty();
+            bool use_double_t = !use_single_chain && ((s1.size() == 1) != (s2.size() == 1));
+            // single chain: 0 set-masses + 0 central randoms (mass is e_cm, no central block).
             // DoubleT branch: 0 set-masses + 3 central randoms.
             // Standard branch: 1 set-mass per multi-particle side + 2 central randoms.
-            std::size_t n_set_masses = use_double_t
+            std::size_t n_set_masses = (use_single_chain || use_double_t)
                 ? 0u
                 : (s1.size() >= 2 ? 1u : 0u) + (s2.size() >= 2 ? 1u : 0u);
-            std::size_t n_central = use_double_t ? 3u : 2u;
+            std::size_t n_central = use_single_chain ? 0u : (use_double_t ? 3u : 2u);
             std::size_t n_intermediate_masses =
                 n_intermediate_masses_for_set_size(s1.size())
               + n_intermediate_masses_for_set_size(s2.size());
@@ -123,11 +125,12 @@ ColorOrderedMapping::ColorOrderedMapping(
     auto [s1, s2] = split_sets_from_color_order(color_order);
     _set1 = s1;
     _set2 = s2;
-    _use_double_t = (s1.size() == 1) != (s2.size() == 1);
-    std::size_t n_set_masses = _use_double_t
+    _use_single_chain = s1.empty() || s2.empty();
+    _use_double_t = !_use_single_chain && ((s1.size() == 1) != (s2.size() == 1));
+    std::size_t n_set_masses = (_use_single_chain || _use_double_t)
         ? 0u
         : (s1.size() >= 2 ? 1u : 0u) + (s2.size() >= 2 ? 1u : 0u);
-    std::size_t n_central = _use_double_t ? 3u : 2u;
+    std::size_t n_central = _use_single_chain ? 0u : (_use_double_t ? 3u : 2u);
     std::size_t n_intermediate_masses =
         n_intermediate_masses_for_set_size(s1.size())
       + n_intermediate_masses_for_set_size(s2.size());
@@ -148,47 +151,45 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
     auto next_random = [&]() { return *(r++); };
     ValueVec dets;
 
-    // Phase 1a: pre-sample set composite masses.
-    // DoubleT branch defers the multi-particle side's mass until after Phase 2.
+    // Phase 1a + Phase 2: set composite masses and the central block.
+    // Three topologies:
+    //   * single chain: one set empty -> no central block; the full final
+    //     state (mass e_cm) is a single t-channel chain seeded off the beams.
+    //   * DoubleT: exactly one set has size 1; defers the multi-particle
+    //     side's mass until after the central block.
+    //   * standard: both sets non-empty -> central 2->2 scattering.
+    auto [pa, pb] = fb.com_p_in(e_cm);
     Value m_set1, m_set2;
+    Value P_set1, P_set2;
     auto masses_of = [&](const std::vector<std::size_t>& idxs) {
         ValueVec v; v.reserve(idxs.size());
         for (auto i : idxs) v.push_back(m_out.at(i));
         return fb.sum(v);
     };
-    Value mass_sum_set1 = masses_of(_set1);
-    Value mass_sum_set2 = masses_of(_set2);
-    if (_use_double_t) {
-        if (_set1.size() == 1) m_set1 = m_out.at(_set1[0]);
-        if (_set2.size() == 1) m_set2 = m_out.at(_set2[0]);
-    } else {
-        if (_set1.size() >= 2) {
-            auto s_min = fb.square(mass_sum_set1);
-            auto s_max = fb.square(fb.sub(e_cm, mass_sum_set2));
-            auto res = _uniform_invariant.build_forward(fb, {next_random()}, {s_min, s_max});
-            m_set1 = fb.sqrt(res["invariant"]);
-            dets.push_back(res["det"]);
+    if (_use_single_chain) {
+        // No mass is sampled (the full system mass is fixed at e_cm) and no
+        // central block runs. The empty set's composite momentum is the zero
+        // four-vector, so the usual R_b = beam - P_other below reduces to the
+        // bare opposite beam, exactly seeding a single t-channel chain.
+        Value zero4 = fb.sub(pa, pa);
+        Value P_full = fb.add(pa, pb);
+        if (_set2.empty()) {
+            m_set1 = e_cm;
+            P_set1 = P_full;
+            P_set2 = zero4;
         } else {
-            m_set1 = m_out.at(_set1[0]);
+            m_set2 = e_cm;
+            P_set2 = P_full;
+            P_set1 = zero4;
         }
-        if (_set2.size() >= 2) {
-            auto s_min = fb.square(mass_sum_set2);
-            auto s_max = fb.square(fb.sub(e_cm, m_set1));
-            auto res = _uniform_invariant.build_forward(fb, {next_random()}, {s_min, s_max});
-            m_set2 = fb.sqrt(res["invariant"]);
-            dets.push_back(res["det"]);
-        } else {
-            m_set2 = m_out.at(_set2[0]);
-        }
-    }
-
-    // Phase 2: central block producing (P_set1, P_set2).
-    auto [pa, pb] = fb.com_p_in(e_cm);
-    Value P_set1, P_set2;
-    if (_use_double_t) {
+    } else if (_use_double_t) {
         // DoubleT: pa, pb -> (single, recoil). The single particle's mass
         // is m_single (fixed); the recoil mass must be >= mir_min (sum of
         // recoil-side outgoing masses).
+        Value mass_sum_set1 = masses_of(_set1);
+        Value mass_sum_set2 = masses_of(_set2);
+        if (_set1.size() == 1) m_set1 = m_out.at(_set1[0]);
+        if (_set2.size() == 1) m_set2 = m_out.at(_set2[0]);
         bool single_is_set1 = (_set1.size() == 1);
         Value m_single = single_is_set1 ? m_set1 : m_set2;
         Value mir_min = single_is_set1 ? mass_sum_set2 : mass_sum_set1;
@@ -219,6 +220,26 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
             m_set1 = fb.sqrt(m2);
         }
     } else {
+        Value mass_sum_set1 = masses_of(_set1);
+        Value mass_sum_set2 = masses_of(_set2);
+        if (_set1.size() >= 2) {
+            auto s_min = fb.square(mass_sum_set1);
+            auto s_max = fb.square(fb.sub(e_cm, mass_sum_set2));
+            auto res = _uniform_invariant.build_forward(fb, {next_random()}, {s_min, s_max});
+            m_set1 = fb.sqrt(res["invariant"]);
+            dets.push_back(res["det"]);
+        } else {
+            m_set1 = m_out.at(_set1[0]);
+        }
+        if (_set2.size() >= 2) {
+            auto s_min = fb.square(mass_sum_set2);
+            auto s_max = fb.square(fb.sub(e_cm, m_set1));
+            auto res = _uniform_invariant.build_forward(fb, {next_random()}, {s_min, s_max});
+            m_set2 = fb.sqrt(res["invariant"]);
+            dets.push_back(res["det"]);
+        } else {
+            m_set2 = m_out.at(_set2[0]);
+        }
         auto central = _com_scattering.build_forward(
             fb,
             {next_random(), next_random(), m_set1, m_set2},
@@ -264,8 +285,11 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
         return res;
     };
 
-    ValueVec rest_masses_set1 = sample_intermediate_masses(_set1, m_set1);
-    ValueVec rest_masses_set2 = sample_intermediate_masses(_set2, m_set2);
+    // Empty set (single-chain case) contributes no intermediate masses; its
+    // m_set is never assigned, so skip the call rather than pass it through.
+    ValueVec rest_masses_set1, rest_masses_set2;
+    if (!_set1.empty()) rest_masses_set1 = sample_intermediate_masses(_set1, m_set1);
+    if (!_set2.empty()) rest_masses_set2 = sample_intermediate_masses(_set2, m_set2);
 
     // Phase 3: peel-off walks
     ValueVec p_out(_n_out);
@@ -323,8 +347,8 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
         p_out[s[k - 1]] = fb.add(R_a, R_b);
     };
 
-    walk(_set1, P_set1, R_b_for_set1, rest_masses_set1);
-    walk(_set2, P_set2, R_b_for_set2, rest_masses_set2);
+    if (!_set1.empty()) walk(_set1, P_set1, R_b_for_set1, rest_masses_set1);
+    if (!_set2.empty()) walk(_set2, P_set2, R_b_for_set2, rest_masses_set2);
 
     // Assemble outputs: momentum0, momentum1 = beams; momentum_{2+i} = outgoing i.
     ValueVec p_ext;
@@ -400,20 +424,24 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
         }
         return p;
     };
-    Value P_set1 = sum_momenta(_set1);
-    Value P_set2 = sum_momenta(_set2);
+    // An empty set (single-chain case) has zero composite momentum, so that
+    // R_b = beam - P_other below reduces to the bare opposite beam.
+    Value P_set1 = _set1.empty() ? fb.sub(pa, pa) : sum_momenta(_set1);
+    Value P_set2 = _set2.empty() ? fb.sub(pa, pa) : sum_momenta(_set2);
 
-    // Phase 1a inverse: recover set-mass randoms (none for DoubleT).
-    // m_set values come from invariants_from_momenta for multi-particle sides.
+    // Phase 1a inverse: recover set-mass randoms (none for DoubleT or single
+    // chain). m_set values come from invariants_from_momenta for multi-particle
+    // sides.
     Value m_set1, m_set2;
     auto masses_of = [&](const std::vector<std::size_t>& idxs) {
         ValueVec v; v.reserve(idxs.size());
         for (auto i : idxs) v.push_back(m_out.at(i));
         return fb.sum(v);
     };
-    Value mass_sum_set1 = masses_of(_set1);
-    Value mass_sum_set2 = masses_of(_set2);
-    if (_use_double_t) {
+    if (_use_single_chain) {
+        // Full-system mass is fixed at e_cm; no set-mass random to recover.
+        if (_set2.empty()) m_set1 = e_cm; else m_set2 = e_cm;
+    } else if (_use_double_t) {
         if (_set1.size() == 1) {
             m_set1 = m_out.at(_set1[0]);
             m_set2 = fb.sqrt(invariants.at(idx_m2_set2));
@@ -422,6 +450,8 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
             m_set1 = fb.sqrt(invariants.at(idx_m2_set1));
         }
     } else {
+        Value mass_sum_set1 = masses_of(_set1);
+        Value mass_sum_set2 = masses_of(_set2);
         if (_set1.size() >= 2) {
             auto s_min = fb.square(mass_sum_set1);
             auto s_max = fb.square(fb.sub(e_cm, mass_sum_set2));
@@ -448,12 +478,15 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
 
     // Phase 2 inverse: central block. Comes before Phase 1b because the
     // forward emits central randoms first (so multi-side m_set is known by 1b).
-    if (_use_double_t) {
+    // Single chain has no central block and emits no central randoms.
+    if (_use_single_chain) {
+        // nothing to recover
+    } else if (_use_double_t) {
         bool single_is_set1 = (_set1.size() == 1);
         Value p_single = single_is_set1 ? P_set1 : P_set2;
         Value p_recoil = single_is_set1 ? P_set2 : P_set1;
         Value m_single = single_is_set1 ? m_set1 : m_set2;
-        Value mir_min = single_is_set1 ? mass_sum_set2 : mass_sum_set1;
+        Value mir_min = single_is_set1 ? masses_of(_set2) : masses_of(_set1);
         auto central = _double_t.build_inverse(
             fb,
             {p_single, p_recoil},
@@ -497,8 +530,8 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
         }
     };
 
-    recover_intermediate_masses(_set1, m_set1, idx_rest_set1_start);
-    recover_intermediate_masses(_set2, m_set2, idx_rest_set2_start);
+    if (!_set1.empty()) recover_intermediate_masses(_set1, m_set1, idx_rest_set1_start);
+    if (!_set2.empty()) recover_intermediate_masses(_set2, m_set2, idx_rest_set2_start);
 
     Value R_b_for_set1 = fb.sub(pb, P_set2);
     Value R_b_for_set2 = fb.sub(pa, P_set1);
@@ -547,8 +580,8 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
         }
     };
 
-    walk_inverse(_set1, P_set1, R_b_for_set1);
-    walk_inverse(_set2, P_set2, R_b_for_set2);
+    if (!_set1.empty()) walk_inverse(_set1, P_set1, R_b_for_set1);
+    if (!_set2.empty()) walk_inverse(_set2, P_set2, R_b_for_set2);
 
     return {{input_types().keys(), random_out}, fb.product(dets)};
 }

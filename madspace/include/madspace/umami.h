@@ -43,6 +43,8 @@ typedef enum {
     /** the provided output key is not supported by this matrix element implementation
      */
     UMAMI_ERROR_UNSUPPORTED_OUTPUT,
+    /** the meta_key was not yet initialized */
+    UMAMI_ERROR_UNINITIALIZED_META,
     /** the provided metadata key is not supported by this matrix element implementation
      */
     UMAMI_ERROR_UNSUPPORTED_META,
@@ -67,6 +69,8 @@ typedef enum {
     UMAMI_META_HELICITY_COUNT,
     /** `int` specifying the number of colors */
     UMAMI_META_COLOR_COUNT,
+    /** `double` array of length particle count: the external-leg masses (GeV) */
+    UMAMI_META_MASSES,
 } UmamiMetaKey;
 
 typedef enum {
