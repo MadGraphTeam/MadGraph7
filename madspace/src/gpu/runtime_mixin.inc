@@ -314,7 +314,7 @@ case 103:
     batch_foreach<tensor_foreach<kernel_scale_partonic_energy<GpuTypes>, 1, 1, 1>, 1, 1>(instr, locals, device);
     break;
 case 104:
-    batch_foreach<tensor_foreach<kernel_mlm_clustering_hadronic<GpuTypes>, 2, 5, 1>, 2, 5>(instr, locals, device);
+    batch_foreach<tensor_foreach<kernel_mlm_clustering_hadronic<GpuTypes>, 5, 5, 1>, 5, 5>(instr, locals, device);
     break;
 case 105:
     batch_foreach<tensor_foreach<kernel_chili_forward<GpuTypes>, 5, 2, 1>, 5, 2>(instr, locals, device);

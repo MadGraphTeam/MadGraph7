@@ -1952,8 +1952,17 @@ mlm_clustering_hadronic:
     - name: momenta
       type: [float, n, 4]
       desc:
+    - name: random
+      type: [float]
+      desc:
     - name: state_machine
-      type: [int, m]
+      type: [int, single, m]
+      desc:
+    - name: masses
+      type: [double, single, k]
+      desc:
+    - name: widths
+      type: [double, single, k]
       desc:
   outputs:
     - name: ren_scale
@@ -1965,12 +1974,13 @@ mlm_clustering_hadronic:
     - name: fact_scale2
       type: [float]
       desc:
-    - name: cluster_history
-      type: [int, n-3]
+    - name: outgoing_scales
+      type: [float, n-2]
       desc:
-    - name: cluster_scales
-      type: [float, n-3]
+    - name: diagram_index
+      type: [int]
       desc:
+  vectorized: False
 
 ---
 title: Chili

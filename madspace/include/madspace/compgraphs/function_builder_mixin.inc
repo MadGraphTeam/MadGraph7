@@ -461,8 +461,8 @@ Value scale_partonic_energy(Value momenta) {
     return instruction("scale_partonic_energy", {momenta})[0];
 }
 
-std::array<Value, 5> mlm_clustering_hadronic(Value momenta, Value state_machine) {
-    auto output_vector = instruction("mlm_clustering_hadronic", {momenta, state_machine});
+std::array<Value, 5> mlm_clustering_hadronic(Value momenta, Value random, Value state_machine, Value masses, Value widths) {
+    auto output_vector = instruction("mlm_clustering_hadronic", {momenta, random, state_machine, masses, widths});
     return {output_vector[0], output_vector[1], output_vector[2], output_vector[3], output_vector[4]};
 }
 
