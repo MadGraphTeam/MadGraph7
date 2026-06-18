@@ -1,3 +1,4 @@
+#include <cmath>
 ! Copyright (C) 2010 The ALOHA Development team and Contributors.
 ! Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
 ! Created by: J. Alwall (Sep 2010) for the MG5aMC CPP backend.
@@ -5,7 +6,7 @@
 ! Copyright (C) 2020-2026 CERN and UCLouvain.
 ! Licensed under the GNU Lesser General Public License (version 3 or later).
 ! Modified originally by: O. Mattelaer (Mar 2020) for the MG5aMC CUDACPP plugin.
-! Further modified by: D. Massaro, O. Mattelaer, A. Thete, A. Valassi (2020-2024).
+! Further modified by: F.Stloukal, D. Massaro, O. Mattelaer, A. Thete, A. Valassi (2020-2024).
 ! Integrated with the MadGraph7 project in Feb 2026.
 !==========================================================================
 
@@ -283,7 +284,12 @@
 #else
       const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                           fptype_sv{ 0 },
-                                          fpsqrt( fpmax( pvec0 + pvec3, 0. ) ) * (fptype)nsf );
+                                          fpsqrt( 
+						  fpmax(  
+							  fpternary( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)),
+							  0. ) ) * (fptype)nsf );
       const cxtype_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -(fptype)nhel * fpsqrt( 2. * pvec0 ), 0. ) : cxmake( (fptype)nh * pvec1, pvec2 ) / sqp0p3 ) };
 #endif
@@ -724,9 +730,15 @@
                                            cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ),
                                            cxmake( (fptype)nh * pvec1, -pvec2 ) / (const fptype_sv)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
 #else
-      const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. ) and ( pvec2 == 0. ) and ( pvec3 < 0. ),
-                                          0,
-                                          fpsqrt( fpmax( pvec0 + pvec3, 0. ) ) * (fptype)nsf );
+      const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
+                                          fptype_sv{ 0 },
+                                          fpsqrt( 
+						  fpmax(  
+							  fpternary( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)),
+							  0. ) ) * (fptype)nsf );
+      
       const cxtype_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ) : cxmake( (fptype)nh * pvec1, -pvec2 ) / sqp0p3 ) };
 #endif

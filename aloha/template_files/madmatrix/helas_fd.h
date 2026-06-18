@@ -309,7 +309,12 @@
 #else
       const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                           fptype_sv{ 0 },
-                                          fpsqrt( fpmax( pvec0 + pvec3, 0. ) ) * (fptype)nsf );
+                                          fpsqrt(
+						  fpmax(  
+							  fpternary( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)),
+							  0. ) ) * (fptype)nsf );
       const cxtype_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -(fptype)nhel * fpsqrt( 2. * pvec0 ), 0. ) : cxmake( (fptype)nh * pvec1, pvec2 ) / sqp0p3 ) };
 #endif
@@ -838,9 +843,14 @@
                                            cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ),
                                            cxmake( (fptype)nh * pvec1, -pvec2 ) / (const fptype_sv)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
 #else
-      const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. ) and ( pvec2 == 0. ) and ( pvec3 < 0. ),
-                                          0,
-                                          fpsqrt( fpmax( pvec0 + pvec3, 0. ) ) * (fptype)nsf );
+      const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
+                                          fptype_sv{ 0 },
+                                          fpsqrt( 
+						  fpmax(  
+							  fpternary( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)),
+							  0. ) ) * (fptype)nsf );
       const cxtype_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ) : cxmake( (fptype)nh * pvec1, -pvec2 ) / sqp0p3 ) };
 #endif
