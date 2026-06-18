@@ -107,6 +107,29 @@ t_inv_min_max(FVal<T> s, FVal<T> ma_2, FVal<T> mb_2, FVal<T> m1_2, FVal<T> m2_2)
 }
 
 template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>>
+t1_inv_min_max_doublet(FVal<T> s, FVal<T> m1_2, FVal<T> mir_min_2) {
+    // |t1| bounds for pa+pb -> p_i + p_ir with massless pa,pb, fixed m_i,
+    // and m_ir >= mir_min. Same shape as standard t bounds with
+    // ma=mb=0, m2=mir_min.
+    return t_inv_min_max<T>(s, 0., 0., m1_2, mir_min_2);
+}
+
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>>
+t2_inv_min_max_doublet(FVal<T> s, FVal<T> m1_2, FVal<T> mir_min_2, FVal<T> t1_abs) {
+    // |t2| bounds given fixed s, m_i, mir_min, |t1|.
+    // Derivation (abs-value convention): from the signed-t formulas in the
+    // Fortran double_t, flip both signs.
+    auto denom = m1_2 + t1_abs + EPS;
+    auto t2_min_raw = m1_2 * (s - t1_abs - m1_2) / denom;
+    auto t2_max_raw = s - t1_abs - m1_2 - mir_min_2;
+    auto t2_min = max(t2_min_raw, 0.);
+    auto t2_max = where(t2_max_raw > t2_min, t2_max_raw, t2_min + EPS);
+    return {t2_min, t2_max};
+}
+
+template <typename T>
 KERNELSPEC FVal<T> lsquare(FourMom<T> p) {
     return p[0] * p[0] - p[1] * p[1] - p[2] * p[2] - p[3] * p[3];
 }
@@ -194,6 +217,77 @@ KERNELSPEC FourMom<T> rotate_inverse(FourMom<T> p, FourMom<T> q) {
         where(mask_deg, r_deg[1], r_gen[1]),
         where(mask_deg, r_deg[2], r_gen[2]),
         where(mask_deg, r_deg[3], r_gen[3]),
+    };
+}
+
+template <typename T>
+KERNELSPEC FourMom<T>
+rotate_two_ref(FourMom<T> p, FourMom<T> q_z, FourMom<T> q_x) {
+    // Forward rotation: take p from a canonical frame
+    //   (e_z along q_z, e_x in the plane spanned by q_z and q_x with positive
+    //    component along q_x's perpendicular part)
+    // into the lab frame. Energy unchanged.
+    //
+    // Used by kernel_two_to_three_particle_scattering: q_z = pa_com,
+    // q_x = p3 boosted into the p_12 rest frame. Picks a unique azimuth
+    // so that the (q_z, q_x) plane is the phi=0 half-plane.
+
+    // z_hat = q_z / |q_z|
+    auto qz_n2 = q_z[1]*q_z[1] + q_z[2]*q_z[2] + q_z[3]*q_z[3];
+    auto qz_n = sqrt(max(qz_n2, EPS2));
+    auto zx = q_z[1] / qz_n, zy = q_z[2] / qz_n, zz = q_z[3] / qz_n;
+
+    // x_hat = (q_x perp to z_hat) / |...|
+    auto qx_dot_z = q_x[1]*zx + q_x[2]*zy + q_x[3]*zz;
+    auto rx = q_x[1] - qx_dot_z*zx;
+    auto ry = q_x[2] - qx_dot_z*zy;
+    auto rz = q_x[3] - qx_dot_z*zz;
+    auto rn2 = rx*rx + ry*ry + rz*rz;
+    auto rn = sqrt(max(rn2, EPS2));
+    auto xx = rx / rn, xy = ry / rn, xz = rz / rn;
+
+    // y_hat = z_hat x x_hat
+    auto yx = zy*xz - zz*xy;
+    auto yy = zz*xx - zx*xz;
+    auto yz = zx*xy - zy*xx;
+
+    // world spatial = p[1]*x_hat + p[2]*y_hat + p[3]*z_hat
+    return FourMom<T>{
+        p[0],
+        p[1]*xx + p[2]*yx + p[3]*zx,
+        p[1]*xy + p[2]*yy + p[3]*zy,
+        p[1]*xz + p[2]*yz + p[3]*zz,
+    };
+}
+
+template <typename T>
+KERNELSPEC FourMom<T>
+rotate_two_ref_inverse(FourMom<T> p, FourMom<T> q_z, FourMom<T> q_x) {
+    // Inverse of rotate_two_ref: take a vector p from the lab frame into the
+    // canonical frame defined by (q_z, q_x). Energy unchanged.
+
+    auto qz_n2 = q_z[1]*q_z[1] + q_z[2]*q_z[2] + q_z[3]*q_z[3];
+    auto qz_n = sqrt(max(qz_n2, EPS2));
+    auto zx = q_z[1] / qz_n, zy = q_z[2] / qz_n, zz = q_z[3] / qz_n;
+
+    auto qx_dot_z = q_x[1]*zx + q_x[2]*zy + q_x[3]*zz;
+    auto rx = q_x[1] - qx_dot_z*zx;
+    auto ry = q_x[2] - qx_dot_z*zy;
+    auto rz = q_x[3] - qx_dot_z*zz;
+    auto rn2 = rx*rx + ry*ry + rz*rz;
+    auto rn = sqrt(max(rn2, EPS2));
+    auto xx = rx / rn, xy = ry / rn, xz = rz / rn;
+
+    auto yx = zy*xz - zz*xy;
+    auto yy = zz*xx - zx*xz;
+    auto yz = zx*xy - zy*xx;
+
+    // canonical components = world spatial . (x_hat, y_hat, z_hat)
+    return FourMom<T>{
+        p[0],
+        p[1]*xx + p[2]*xy + p[3]*xz,
+        p[1]*yx + p[2]*yy + p[3]*yz,
+        p[1]*zx + p[2]*zy + p[3]*zz,
     };
 }
 
@@ -411,6 +505,93 @@ KERNELSPEC void kernel_invariants_from_momenta(
         }
         invariants[i] = lsquare<T>(p_sum);
     }
+}
+
+template <typename T>
+KERNELSPEC void kernel_t1_inv_min_max_doublet(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto bounds = t1_inv_min_max_doublet<T>(s, m1 * m1, mir_min * mir_min);
+    t_min = bounds.first;
+    t_max = bounds.second;
+}
+
+template <typename T>
+KERNELSPEC void kernel_t1_inv_value_and_min_max_doublet(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 1> p1,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FOut<T, 0> t_abs,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    FourMom<T> pa1, p_tot;
+    for (int i = 0; i < 4; ++i) {
+        pa1[i] = pa[i] - p1[i];
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto bounds = t1_inv_min_max_doublet<T>(s, m1 * m1, mir_min * mir_min);
+    t_min = bounds.first;
+    t_max = bounds.second;
+    t_abs = -lsquare<T>(pa1);
+}
+
+template <typename T>
+KERNELSPEC void kernel_t2_inv_min_max_doublet(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FIn<T, 0> t1_abs,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto bounds =
+        t2_inv_min_max_doublet<T>(s, m1 * m1, mir_min * mir_min, t1_abs);
+    t_min = bounds.first;
+    t_max = bounds.second;
+}
+
+template <typename T>
+KERNELSPEC void kernel_t2_inv_value_and_min_max_doublet(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 1> p1,
+    FIn<T, 0> m1,   
+    FIn<T, 0> mir_min,
+    FIn<T, 0> t1_abs,
+    FOut<T, 0> t_abs,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    FourMom<T> pb1, p_tot;
+    for (int i = 0; i < 4; ++i) {
+        pb1[i] = pb[i] - p1[i];
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto bounds = t2_inv_min_max_doublet<T>(s, m1 * m1, mir_min * mir_min, t1_abs);
+    t_min = bounds.first;
+    t_max = bounds.second;
+    t_abs = -lsquare<T>(pb1);
 }
 
 template <typename T>

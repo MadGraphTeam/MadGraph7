@@ -136,6 +136,29 @@ const LoadedBackend& hip_backend() {
 
 } // namespace
 
+std::vector<std::string> madspace::available_backends() {
+    std::vector<std::string> backends{"cpu_scalar"};
+#if defined(__aarch64__) || defined(_M_ARM64)
+    backends.push_back("cpu_vec128");
+#elif defined(__x86_64__) || defined(_M_X64)
+    if (__builtin_cpu_supports("sse4.2")) {
+        backends.push_back("cpu_vec128");
+    }
+    if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
+        backends.push_back("cpu_vec256");
+    }
+    if (__builtin_cpu_supports("avx512f")) {
+        backends.push_back("cpu_vec512");
+    }
+    if (__builtin_cpu_supports("avx512vl")) {
+        backends.push_back("cpu_vec512y");
+    }
+#else
+#error "Compiling for unsupported platform"
+#endif
+    return backends;
+}
+
 RuntimePtr
 madspace::build_runtime(const Function& function, ContextPtr context, bool concurrent) {
     auto& loaded_backend = LoadedBackend::device_backends.at(context->device());

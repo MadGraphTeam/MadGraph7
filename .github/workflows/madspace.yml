@@ -66,6 +66,7 @@ jobs:
             CIBW_TEST_REQUIRES: >
               pytest
               numpy
+              scipy
               --extra-index-url https://download.pytorch.org/whl/cpu
               torch
             CIBW_TEST_COMMAND: pytest {project}/madspace/tests

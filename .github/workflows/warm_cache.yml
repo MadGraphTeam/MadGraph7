@@ -6,6 +6,10 @@ permissions:
   contents: read
 on:
   push:
+    paths:
+      - '.github/workflows/warm_cache.yml'
+      - '.github/actions/restore_heptools/**'
+      - '.github/actions/restore_heptools_*/**'
   schedule:
     - cron: '0 3 * * 0'    # every Sunday 3am
   workflow_dispatch:         
@@ -22,10 +26,11 @@ env:
 jobs:
 
   delete-cache:
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-24.04]
 #
     steps:
       - uses: actions/checkout@v5
@@ -53,10 +58,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   rebuild-numpy-cache:
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-24.04]
     needs: delete-cache
     steps:
       - name: Set cache key
@@ -69,48 +75,55 @@ jobs:
           path: ~/.cache/pip-packages
           key: pip-numpy-${{ env.CACHE_KEY }}
 
-      - name: Install numpy into cache dir (if not cached)
+      - name: Install numpy (+ meson/ninja for f2py) into cache dir (if not cached)
         if: steps.cache-pip.outputs.cache-hit != 'true'
-        run: pip install --target ~/.cache/pip-packages numpy
+        # meson + ninja are required by numpy>=1.26's f2py meson backend (used on
+        # ubuntu-24 / py3.12 to compile the Fortran matrix-element wrappers, e.g.
+        # all_matrix2py.so for MadSpin/reweight). restore-pip-cache puts this
+        # dir on PYTHONPATH and its bin/ on PATH, so the meson/ninja executables
+        # are then found wherever the pip cache is restored.
+        run: pip install --target ~/.cache/pip-packages --ignore-installed numpy meson ninja
 
   ufo_cache:
-     runs-on: ubuntu-latest
-     needs: delete-cache
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ubuntu-24.04
+    needs: delete-cache
 
     # Steps represent a sequence of tasks that will be executed as part of the job
-     steps:
-       - name: Cache UFO MODEL
-         id: cache-ufo
-         uses: actions/cache@v5
-         with:
-           path: ~/.cache/UFOMODEL
-           key: ufomodel
+    steps:
+     - name: Cache UFO MODEL
+       id: cache-ufo
+       uses: actions/cache@v5
+       with:
+         path: ~/.cache/UFOMODEL
+         key: ufomodel
 
-       - uses: actions/checkout@v5
-         if: steps.cache-ufo.outputs.cache-hit != 'true'
+     - uses: actions/checkout@v5
+       if: steps.cache-ufo.outputs.cache-hit != 'true'
 
-       - name: Install UFO model
-         if: steps.cache-ufo.outputs.cache-hit != 'true'
-         run: |
-           mkdir -p /home/runner/.cache/UFOMODEL
-           echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/UFOMODEL" >> $GITHUB_ENV
-           echo "import model 2HDM" >> cmd
-           ./bin/mg5_aMC cmd
+     - name: Install UFO model
+       if: steps.cache-ufo.outputs.cache-hit != 'true'
+       run: |
+         mkdir -p /home/runner/.cache/UFOMODEL
+         echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/UFOMODEL" >> $GITHUB_ENV
+         echo "import model 2HDM" >> cmd
+         ./bin/mg5_aMC cmd
 
-       - name: move UFO model to cache
-         if: steps.cache-ufo.outputs.cache-hit != 'true'
-         run: |
-           cp -r models/2HDM /home/runner/.cache/UFOMODEL
+     - name: move UFO model to cache
+       if: steps.cache-ufo.outputs.cache-hit != 'true'
+       run: |
+         cp -r models/2HDM /home/runner/.cache/UFOMODEL
            
   lhapdf_cache:
-     needs: delete-cache
-     runs-on: ${{ matrix.os }}
-     strategy:
-       matrix:
-         os: [ubuntu-22.04, ubuntu-24.04]
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    needs: delete-cache
+    runs-on: ${{ matrix.os }}
+    strategy:
+     matrix:
+       os: [ubuntu-24.04]
 
      # Steps represent a sequence of tasks that will be executed as part of the job
-     steps:
+    steps:
 
        - name: Set cache key
          run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
@@ -140,19 +153,23 @@ jobs:
          run: |
                cd /home/runner/.cache/HEPtools/lhapdf6_py3/share/LHAPDF
                wget https://lhapdfsets.web.cern.ch/current/NNPDF23_nlo_as_0118_qed.tar.gz
-               tar -xzpvf NNPDF23_nlo_as_0118_qed.tar.gz           
+               tar -xzpvf NNPDF23_nlo_as_0118_qed.tar.gz
                wget https://lhapdfsets.web.cern.ch/lhapdfsets/current/cteq6l1.tar.gz
-               tar -xzpvf cteq6l1.tar.gz           
+               tar -xzpvf cteq6l1.tar.gz
+               # LO set used by the mg7 run_card.toml default (madspace integration)
+               wget https://lhapdfsets.web.cern.ch/current/NNPDF23_lo_as_0130_qed.tar.gz
+               tar -xzpvf NNPDF23_lo_as_0130_qed.tar.gz
                
   pythia8_cache:
-     runs-on: ${{ matrix.os }}
-     needs: lhapdf_cache
-     strategy:
-       matrix:
-         os: [ubuntu-22.04, ubuntu-24.04]
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ${{ matrix.os }}
+    needs: lhapdf_cache
+    strategy:
+     matrix:
+       os: [ubuntu-24.04]
 
      # Steps represent a sequence of tasks that will be executed as part of the job
-     steps:
+    steps:
 
        - name: Set cache key
          run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
@@ -171,25 +188,43 @@ jobs:
          if: steps.cache-pythia8.outputs.cache-hit != 'true'
          uses: ./.github/actions/restore_heptools_lhapdf
 
-       - name: Install pythia8 into cache dir (in top of lhapdf cache) 
+       - name: Install pythia8 into cache dir (in top of lhapdf cache)
          if: steps.cache-pythia8.outputs.cache-hit != 'true'
+         # Compile pythia8 (and its hepmc dependency) in parallel across the
+         # runner's vCPUs; MAKEFLAGS is inherited by every make the installer
+         # spawns. Same speed-up as the contur build.
+         env:
+           MAKEFLAGS: "-j4"
          run: |
                mkdir -p /home/runner/.cache/HEPtools
                cd $GITHUB_WORKSPACE
                echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install pythia8" > cmd
-               ./bin/mg5_aMC cmd  
+               ./bin/mg5_aMC cmd
+
+       - name: Verify pythia8 landed in the cache
+         if: steps.cache-pythia8.outputs.cache-hit != 'true'
+         run: |
+               # mg5_aMC exits 0 even when "install pythia8" fails (e.g. a network
+               # timeout while downloading hepmc/pythia8 from the download server),
+               # so guard the cache here. Without Pythia.h, MG5 nullifies
+               # pythia8_path at startup, leaving the parton shower unavailable and
+               # breaking the rivet/contur acceptance tests. Fail loudly instead of
+               # saving a pythia8-less heptools cache.
+               test -f /home/runner/.cache/HEPtools/pythia8/include/Pythia8/Pythia.h
+               test -x /home/runner/.cache/HEPtools/pythia8/bin/pythia8-config
 
   emela_cache:
-     runs-on: ${{ matrix.os }}
-     needs: lhapdf_cache
-     strategy:
-       matrix:
-         os: [ubuntu-22.04, ubuntu-24.04]
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ${{ matrix.os }}
+    needs: lhapdf_cache
+    strategy:
+     matrix:
+       os: [ubuntu-24.04]
 
      # Steps represent a sequence of tasks that will be executed as part of the job
-     steps:
+    steps:
 
        - name: Set cache key
          run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
@@ -225,7 +260,7 @@ jobs:
 #       - emela_cache
 #     strategy:
 #       matrix:
-#         os: [ubuntu-22.04, ubuntu-24.04]
+#         os: [ubuntu-24.04]
 #     steps:
 #       - name: Set cache key                  
 #         run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
@@ -236,14 +271,15 @@ jobs:
 #             GH_TOKEN: ${{ github.token }}
 
   contur_cache:
-     runs-on: ${{ matrix.os }}
-     needs: pythia8_cache
-     strategy:
-       matrix:
-         os: [ubuntu-22.04, ubuntu-24.04]
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ${{ matrix.os }}
+    needs: pythia8_cache
+    strategy:
+     matrix:
+       os: [ubuntu-24.04]
 
      # Steps represent a sequence of tasks that will be executed as part of the job
-     steps:
+    steps:
        - name: Set cache key
          run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
        - name: check Cache rivet/contur packages
@@ -261,9 +297,21 @@ jobs:
          if: steps.cache-contur.outputs.cache-hit != 'true'
          uses: ./.github/actions/restore_heptools_pythia8
 
-       - name: Install contur into cache dir 
+       - name: Install contur into cache dir
          if: steps.cache-contur.outputs.cache-hit != 'true'
+         # rivet is the long pole of the whole cache build (~36 min, single
+         # threaded). MAKEFLAGS is inherited by every make the installer spawns,
+         # so an unqualified "make" becomes a parallel build across the runner's
+         # vCPUs. Harmless if a sub-build pins its own -j.
+         env:
+           MAKEFLAGS: "-j4"
          run: |
+               # YODA's python extension build needs Cython (no longer shipped by
+               # default on the GitHub runner image); without it rivet aborts at
+               # YODA, before FastJet is installed, leaving NLO builds broken.
+               # Install into the same interpreter mg5_aMC/YODA use (no sudo, so
+               # the system Python is left untouched for other steps).
+               python3 -m pip install Cython
                mkdir -p /home/runner/.cache/HEPtools
                cd $GITHUB_WORKSPACE
                echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
@@ -272,6 +320,15 @@ jobs:
                echo "install contur" >> cmd
                ./bin/mg5_aMC cmd
 
+       - name: Verify rivet/fastjet landed in the cache
+         if: steps.cache-contur.outputs.cache-hit != 'true'
+         run: |
+               # mg5_aMC exits 0 even when "install rivet" fails, so guard the
+               # cache here: a missing fastjet-config means NLO subprocesses cannot
+               # compile (fastjet/ClusterSequence.hh). Fail loudly instead of
+               # saving an incomplete heptools cache.
+               test -x /home/runner/.cache/HEPtools/fastjet/bin/fastjet-config
+
        #- name: Delete pythia8 cache (include in contur cache)
        #  run: |
        #      gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
@@ -279,63 +336,64 @@ jobs:
        #     GH_TOKEN: ${{ github.token }}
 
   looptools_cache:
-     runs-on: ${{ matrix.os }}
-     strategy:
-      matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
-     needs:
-       - delete-cache
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ${{ matrix.os }}
+    strategy:
+     matrix:
+       os: [ubuntu-24.04]
+    needs:
+    - delete-cache
 
-     # Steps represent a sequence of tasks that will be executed as part of the job
-     steps:
-       - name: Set cache key
-         run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
-       - name: Cache loop packages (iregi/cutools)
-         id: cache-nlo
-         uses: actions/cache@v5
-         with:
-           path: ~/.cache/HEPtools
-           key: looptools-${{ env.CACHE_KEY }} # key to change if not final step
-       
-       - name: get mg5
-         if: steps.cache-nlo.outputs.cache-hit != 'true'
-         uses: actions/checkout@v5
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+     - name: Set cache key
+       run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
+     - name: Cache loop packages (iregi/cutools)
+       id: cache-nlo
+       uses: actions/cache@v5
+       with:
+         path: ~/.cache/HEPtools
+         key: looptools-${{ env.CACHE_KEY }} # key to change if not final step
+      
+     - name: get mg5
+       if: steps.cache-nlo.outputs.cache-hit != 'true'
+       uses: actions/checkout@v5
 
-       - name: Install cuttools/iregi into cache dir
-         if: steps.cache-nlo.outputs.cache-hit != 'true'
-         run: |
-               mkdir -p /home/runner/.cache/HEPtools/CutTools/lib
-               mkdir -p /home/runner/.cache/HEPtools/IREGI/src
-               cd $GITHUB_WORKSPACE
-               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
-               cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
-               cd vendor/IREGI/src
-               make
-               cd ../../CutTools
-               make
-               cd ../../
-               cp -r vendor/IREGI/src/libiregi.a /home/runner/.cache/HEPtools/IREGI/src/
-               cp -r vendor/./CutTools/includects/libcts.a /home/runner/.cache/HEPtools/CutTools/lib
-               cp -r vendor/./CutTools/includects/mpmodule.mod /home/runner/.cache/HEPtools/CutTools/lib
+     - name: Install cuttools/iregi into cache dir
+       if: steps.cache-nlo.outputs.cache-hit != 'true'
+       run: |
+             mkdir -p /home/runner/.cache/HEPtools/CutTools/lib
+             mkdir -p /home/runner/.cache/HEPtools/IREGI/src
+             cd $GITHUB_WORKSPACE
+             echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
+             cd vendor/IREGI/src
+             make
+             cd ../../CutTools
+             make
+             cd ../../
+             cp -r vendor/IREGI/src/libiregi.a /home/runner/.cache/HEPtools/IREGI/src/
+             cp -r vendor/./CutTools/includects/libcts.a /home/runner/.cache/HEPtools/CutTools/lib
+             cp -r vendor/./CutTools/includects/mpmodule.mod /home/runner/.cache/HEPtools/CutTools/lib
 
-       - name: Install ninja/collier into cache dir 
-         if: steps.cache-nlo.outputs.cache-hit != 'true'
-         run: |
-               mkdir -p ~/.cache/HEPtools
-               cd $GITHUB_WORKSPACE
-               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
-               cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
-               echo "install collier " > cmd
-               echo "install ninja " >> cmd
-               ./bin/mg5_aMC cmd
+     - name: Install ninja/collier into cache dir 
+       if: steps.cache-nlo.outputs.cache-hit != 'true'
+       run: |
+             mkdir -p ~/.cache/HEPtools
+             cd $GITHUB_WORKSPACE
+             echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
+             echo "install collier " > cmd
+             echo "install ninja " >> cmd
+             ./bin/mg5_aMC cmd
 
   heptools_cache:
+    if: always() && (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ${{ matrix.os }}       
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-24.04]
     needs: [lhapdf_cache, pythia8_cache, emela_cache, looptools_cache, contur_cache]
-    if: always()   # 👈 runs even if a dependency failed
     steps:
       - name: Set cache key
         run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
@@ -374,7 +432,21 @@ jobs:
           path: ~/.cache/HEPtools
           key: looptools-${{ env.CACHE_KEY }}
 
+      # GitHub Actions caches are immutable: actions/cache/save is a silent
+      # no-op when the key already exists (it logs "Unable to reserve cache
+      # ... another job may be creating this cache" and the freshly rebuilt
+      # combined cache is discarded). Outside the Sunday cron / reset_heptools
+      # the old heptools-$KEY therefore never gets replaced. Delete it first so
+      # the new content is actually saved. Only do this (and the save) once all
+      # sub-caches succeeded, so a partial rebuild never replaces a good cache.
+      - name: Delete previous combined cache (so the fresh one can be saved)
+        if: needs.pythia8_cache.result == 'success' && needs.emela_cache.result == 'success' && needs.contur_cache.result == 'success' && needs.looptools_cache.result == 'success'
+        run: gh cache delete heptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - uses: actions/cache/save@v5
+        if: needs.pythia8_cache.result == 'success' && needs.emela_cache.result == 'success' && needs.contur_cache.result == 'success' && needs.looptools_cache.result == 'success'
         with:
           path: ~/.cache/HEPtools
           key: heptools-${{ env.CACHE_KEY }}

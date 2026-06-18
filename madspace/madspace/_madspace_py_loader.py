@@ -57,7 +57,7 @@ def _init():
         if len(outputs) == 1:
             return outputs[0]
         else:
-            return self.ret_tuple(outputs)
+            return self.ret_tuple(*outputs)
 
     def function_generator_call(self, *args, **kwargs):
         if not hasattr(self, "runtime"):
@@ -71,7 +71,7 @@ def _init():
         if len(outputs) == 1:
             return outputs[0]
         else:
-            return self.ret_tuple(outputs)
+            return self.ret_tuple(*outputs)
 
     def map_forward(self, inputs=[], conditions=[], **kwargs):
         if not hasattr(self, "forward_runtime"):

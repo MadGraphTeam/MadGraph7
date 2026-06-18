@@ -14,7 +14,7 @@ KERNELSPEC FVal<T> transverse_mass(FIn<T, 2> momenta) {
         auto p = momenta[i];
         mt_sum = mt_sum + sqrt(max(0., p[0] * p[0] - p[3] * p[3]));
     }
-    return mt_sum * mt_sum;
+    return mt_sum;
 }
 
 // Kernels

@@ -47,4 +47,31 @@ private:
     Invariant _invariant;
 };
 
+class DoubleT : public Mapping {
+public:
+    DoubleT(
+        double t1_invariant_power = 0,
+        double t1_mass = 0,
+        double t1_width = 0,
+        double t2_invariant_power = 0,
+        double t2_mass = 0,
+        double t2_width = 0
+    );
+
+private:
+    Result build_forward_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    Result build_inverse_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+
+    Invariant _t1_invariant;
+    Invariant _t2_invariant;
+};
+
 } // namespace madspace

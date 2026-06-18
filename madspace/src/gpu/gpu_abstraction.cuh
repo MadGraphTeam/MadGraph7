@@ -57,6 +57,7 @@
 #define GPURAND_RNG_PSEUDO_DEFAULT CURAND_RNG_PSEUDO_DEFAULT
 
 #define thrust_par thrust::cuda::par
+namespace gpu_std = cuda::std;
 
 #elif defined __HIPCC__
 
@@ -116,5 +117,6 @@
 
 #define thrust_par thrust::hip_rocprim::par
 namespace cub = hipcub;
+namespace gpu_std = hip::std;
 
 #endif

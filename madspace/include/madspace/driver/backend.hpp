@@ -29,6 +29,7 @@ private:
 using RuntimePtr = std::unique_ptr<Runtime>;
 RuntimePtr
 build_runtime(const Function& function, ContextPtr context, bool concurrent = true);
+std::vector<std::string> available_backends();
 DevicePtr cpu_device();
 DevicePtr cuda_device(std::size_t index = 0);
 DevicePtr hip_device(std::size_t index = 0);

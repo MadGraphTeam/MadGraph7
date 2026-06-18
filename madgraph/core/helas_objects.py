@@ -5497,6 +5497,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         final_len = len(self.get('diagrams'))
         if final_len < initial_len:
             logger.info('removed %d diagrams which were incompatible with flavor restriction: remain %d'%(initial_len - final_len, final_len))
+            for i, diag in enumerate(self.get('diagrams')):
+                diag.set('number', i+1)
 
         # reset wfct numbers for those dropped
         for i,wfct in enumerate(self.get_all_wavefunctions()):

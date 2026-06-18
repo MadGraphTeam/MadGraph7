@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kinematics.hpp"
+#include "lup_det.hpp"
 
 namespace madspace {
 namespace kernels {
@@ -183,9 +184,8 @@ KERNELSPEC FVal<T> bk_V(
     FVal<T> t2,
     FVal<T> s12
 ) {
-    // Determinant of the 3x3 V-matrix,
-    // see Eq.(11) in 10.1103/PhysRev.187.2008.
-    // Note: expects the absolute value of t1
+    // Matrix from Byckling-Kajantie eq.(11), 10.1103/PhysRev.187.2008.
+    // Asymmetric (a22 = a33 = 0; a12 = a21 but a13 != a31, a23 != a32).
     auto a11 = 2.0 * s12;
     auto a12 = ma_2 + s12 - t2;
     auto a13 = s12 + m1_2 - m2_2;
@@ -194,8 +194,18 @@ KERNELSPEC FVal<T> bk_V(
     auto a31 = m0_2 + s12 - m3_2;
     auto a32 = m0_2 + ma_2 - mb_2;
 
-    // Computes the determinant of the 3x3 V-matrix (hard-coded because easier)
-    auto det = a12 * a23 * a31 + a12 * a13 * a32 - a11 * a23 * a32 - a13 * a22 * a31;
+    // Polynomial fallback (the previous implementation), used by the LU
+    // helper if the matrix's leading pivots are below the LU tolerance.
+    // Expansion along row 3, using a22 = a33 = 0 and a21 = a12.
+    auto poly_det = a31 * (a12 * a23 - a13 * a22)
+                  + a32 * (a12 * a13 - a11 * a23);
+
+    auto det = lup_det3_general<T>(
+        a11, a12, a13,
+        a12, a22, a23,
+        a31, a32, FVal<T>(0.0),
+        poly_det
+    );
     return -det / 8.0;
 }
 
@@ -212,12 +222,10 @@ KERNELSPEC FVal<T> bk_gram4(
     FVal<T> s12,
     FVal<T> s23
 ) {
-    // omputes the 4x4 Gram determinant,
-    // see Eq.(B6) in 10.1103/PhysRev.187.2008.
-    // Note: expects the absolute value of t1
+    // 4x4 Gram determinant, see Eq.(B6) in 10.1103/PhysRev.187.2008.
+    // Note: expects the absolute value of t1.
 
-    // Get upper triangular matrix components which are non-zero
-    // as the Gram matrix is symmetric, i.e. (a_{ij} = a_{ji})
+    // Upper-triangular entries of the symmetric Gram matrix.
     auto a11 = 2.0 * ma_2;
     auto a12 = ma_2 - t1_abs - m1_2;
     auto a13 = ma_2 + t2 - s12;
@@ -229,14 +237,28 @@ KERNELSPEC FVal<T> bk_gram4(
     auto a34 = t2 + mb_2 - m3_2;
     auto a44 = 2.0 * mb_2;
 
-    // Computes the determinant of the 4x4 Gram matrix (hard-coded because easier)
-    auto det = a14 * a23 * a14 * a23 + a13 * a24 * a13 * a24 + a12 * a34 * a12 * a34 -
-        a14 * a14 * a22 * a33 - a13 * a13 * a22 * a44 - a12 * a12 * a33 * a44 -
-        a23 * a23 * a11 * a44 - a24 * a24 * a11 * a33 - a34 * a34 * a11 * a22 +
-        2 * a11 * a23 * a24 * a34 + 2 * a12 * a13 * a23 * a44 +
-        2 * a12 * a14 * a24 * a33 + 2 * a13 * a14 * a22 * a34 -
-        2 * a12 * a13 * a24 * a34 - 2 * a12 * a14 * a23 * a34 -
-        2 * a13 * a14 * a23 * a24 + a11 * a22 * a33 * a44;
+    // Polynomial fallback (the previous "hard-coded because easier" expansion),
+    // re-organized to keep the inner 2x2 minors as their own subexpressions.
+    // Used by the LU helper if any pivot is below tolerance.
+    auto poly_det = a14 * a14 * (a23 * a23 - a22 * a33)
+                  + a13 * a13 * (a24 * a24 - a22 * a44)
+                  + a12 * a12 * (a34 * a34 - a33 * a44)
+                  - a23 * a23 * a11 * a44
+                  - a24 * a24 * a11 * a33
+                  - a34 * a34 * a11 * a22
+                  + a11 * a22 * a33 * a44
+                  + 2.0 * a11 * a23 * a24 * a34
+                  + 2.0 * a12 * a13 * (a23 * a44 - a24 * a34)
+                  + 2.0 * a12 * a14 * (a24 * a33 - a23 * a34)
+                  + 2.0 * a13 * a14 * (a22 * a34 - a23 * a24);
+
+    auto det = lup_det4<T>(
+        a11, a12, a13, a14,
+             a22, a23, a24,
+                  a33, a34,
+                       a44,
+        poly_det
+    );
     return det / 16.0;
 }
 
@@ -252,9 +274,6 @@ KERNELSPEC FVal<T> bk_sqrt_g3i_g3im1(
     FVal<T> t2,
     FVal<T> s12
 ) {
-    // This is the squaet root of the product of the two 3x3 Gram determinants g3i and
-    // g3im1, as in Eq.(11) in 10.1103/PhysRev.187.2008. Note: expects the absolute
-    // value of t1
     auto a11 = 2 * s12;
     auto a12 = s12 + ma_2 - t2;
     auto a13 = s12 + m0_2 - m3_2;
@@ -265,12 +284,28 @@ KERNELSPEC FVal<T> bk_sqrt_g3i_g3im1(
     auto a33 = 2 * m0_2;
     auto b33 = 2 * m1_2;
 
-    // Calculate the two gramm determinants g3i and g3im1
-    // (ard-coded because easier)
-    auto g3i = a11 * a22 * a33 + 2 * a12 * a23 * a13 - a11 * a23 * a23 -
-        a22 * a13 * a13 - a33 * a12 * a12;
-    auto g3im1 = a11 * a22 * b33 + 2 * a12 * b23 * b13 - a11 * b23 * b23 -
-        a22 * b13 * b13 - b33 * a12 * a12;
+    // Polynomial fallback for each 3x3 Gram (cofactor expansion). Used by the
+    // LU helper independently per matrix if its pivots are below tolerance.
+    auto poly_g3i = a11 * (a22 * a33 - a23 * a23)
+                  - a12 * (a12 * a33 - a13 * a23)
+                  + a13 * (a12 * a23 - a13 * a22);
+    auto poly_g3im1 = a11 * (a22 * b33 - b23 * b23)
+                    - a12 * (a12 * b33 - b13 * b23)
+                    + b13 * (a12 * b23 - b13 * a22);
+
+    auto g3i = lup_det3<T>(
+        a11, a12, a13,
+             a22, a23,
+                  a33,
+        poly_g3i
+    );
+    auto g3im1 = lup_det3<T>(
+        a11, a12, b13,
+             a22, b23,
+                  b33,
+        poly_g3im1
+    );
+
     return sqrt(g3i * g3im1) / 8.0;
 }
 
@@ -567,7 +602,8 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     auto p1_com = scatter_out.first;
     auto gram4 = bk_gram4<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12, s23);
     auto det_2to3 = 1 / (8 * sqrt(max(-gram4, EPS2)));
-    auto p1_rot = rotate<T>(p1_com, pa_com);
+    auto p3_p12 = boost<T>(load_mom<T>(p3), p_12, -1.);
+    auto p1_rot = rotate_two_ref<T>(p1_com, pa_com, p3_p12);
     auto p1_lab = boost<T>(p1_rot, p_12, 1.);
     store_mom<T>(p1, p1_lab);
     for (int i = 0; i < 4; ++i) {
@@ -605,7 +641,8 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
 
     auto pa_com = boost<T>(load_mom<T>(pa), p_12, -1.);
     auto p1_com = boost<T>(load_mom<T>(p1), p_12, -1.);
-    auto p1_rot = rotate_inverse<T>(p1_com, pa_com);
+    auto p3_p12 = boost<T>(load_mom<T>(p3), p_12, -1.);
+    auto p1_rot = rotate_two_ref_inverse<T>(p1_com, pa_com, p3_p12);
 
     auto m1_2 = lsquare<T>(load_mom<T>(p1));
     auto m2_2 = lsquare<T>(load_mom<T>(p2));

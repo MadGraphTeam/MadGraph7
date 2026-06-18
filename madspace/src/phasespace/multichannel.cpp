@@ -12,7 +12,7 @@ MultiChannelMapping::MultiChannelMapping(
         [&] {
             auto condition_types = mappings.at(0)->condition_types();
             condition_types.push_back(
-                "batch_sizes", multichannel_batch_size(_mappings.size())
+                "return_batch_sizes", multichannel_batch_size(_mappings.size())
             );
             return condition_types;
         }()
@@ -86,7 +86,8 @@ Mapping::Result MultiChannelMapping::build_impl(
 }
 
 MultiChannelFunction::MultiChannelFunction(
-    const std::vector<std::shared_ptr<FunctionGenerator>>& functions
+    const std::vector<std::shared_ptr<FunctionGenerator>>& functions,
+    bool return_batch_sizes
 ) :
     FunctionGenerator(
         "MultiChannelFunction",
@@ -109,9 +110,18 @@ MultiChannelFunction::MultiChannelFunction(
             );
             return arg_types;
         }(),
-        functions.at(0)->return_types()
+        [&] {
+            NamedVector<Type> ret_types = functions.at(0)->return_types();
+            if (return_batch_sizes) {
+                ret_types.push_back(
+                    "batch_sizes", multichannel_batch_size(functions.size())
+                );
+            }
+            return ret_types;
+        }()
     ),
-    _functions(functions) {
+    _functions(functions),
+    _return_batch_sizes(return_batch_sizes) {
     auto& first_function = functions.at(0);
     std::size_t arg_count = first_function->arg_types().size();
     std::size_t return_count = first_function->return_types().size();
@@ -142,7 +152,7 @@ NamedVector<Value> MultiChannelFunction::build_function_impl(
         }
     }
 
-    std::vector<ValueVec> split_outputs(return_types().size());
+    std::vector<ValueVec> split_outputs(return_types().size() - _return_batch_sizes);
     std::size_t index = 0;
     for (auto& func : _functions) {
         ValueVec func_args;
@@ -158,9 +168,18 @@ NamedVector<Value> MultiChannelFunction::build_function_impl(
     }
     fb.set_current_stream(0);
     ValueVec cat_outputs;
+    Value sizes_out;
+    bool first = true;
     for (auto& output : split_outputs) {
-        auto [cat, _] = fb.batch_cat(output);
+        auto [cat, cat_sizes] = fb.batch_cat(output);
         cat_outputs.push_back(cat);
+        if (first && _return_batch_sizes) {
+            sizes_out = cat_sizes;
+        }
+        first = false;
+    }
+    if (_return_batch_sizes) {
+        cat_outputs.push_back(sizes_out);
     }
     return {return_types().keys(), cat_outputs};
 }

@@ -34,8 +34,8 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("div", &FunctionBuilder::div, py::arg("in1"), py::arg("in2"));
     fb.def("reduce_sum", &FunctionBuilder::reduce_sum, py::arg("in1"));
     fb.def("reduce_sum_vector", &FunctionBuilder::reduce_sum_vector, py::arg("in1"));
-    fb.def("batch_reduce_mean", &FunctionBuilder::batch_reduce_mean, py::arg("in"));
-    fb.def("batch_reduce_mean_keepdim", &FunctionBuilder::batch_reduce_mean_keepdim, py::arg("in"));
+    fb.def("batch_reduce_mean", &FunctionBuilder::batch_reduce_mean, py::arg("in1"));
+    fb.def("batch_reduce_mean_keepdim", &FunctionBuilder::batch_reduce_mean_keepdim, py::arg("in1"));
     fb.def("reduce_product", &FunctionBuilder::reduce_product, py::arg("in1"));
     fb.def("sqrt", &FunctionBuilder::sqrt, py::arg("in1"));
     fb.def("square", &FunctionBuilder::square, py::arg("in1"));
@@ -74,12 +74,18 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("two_to_two_particle_scattering_inverse", &FunctionBuilder::two_to_two_particle_scattering_inverse, py::arg("p1"), py::arg("p2"), py::arg("pa"), py::arg("pb"));
     fb.def("two_to_three_particle_scattering", &FunctionBuilder::two_to_three_particle_scattering, py::arg("phi_choice"), py::arg("pa"), py::arg("pb"), py::arg("p3"), py::arg("s23"), py::arg("t1_abs"), py::arg("m1"), py::arg("m2"));
     fb.def("two_to_three_particle_scattering_inverse", &FunctionBuilder::two_to_three_particle_scattering_inverse, py::arg("p1"), py::arg("p2"), py::arg("p3"), py::arg("pa"), py::arg("pb"), py::arg("t1_abs"), py::arg("s23"));
+    fb.def("double_t_scattering", &FunctionBuilder::double_t_scattering, py::arg("r_phi"), py::arg("pa"), py::arg("pb"), py::arg("t1_abs"), py::arg("t2_abs"), py::arg("m1"));
+    fb.def("double_t_scattering_inverse", &FunctionBuilder::double_t_scattering_inverse, py::arg("p1"), py::arg("p2"), py::arg("pa"), py::arg("pb"));
     fb.def("three_body_decay_com", &FunctionBuilder::three_body_decay_com, py::arg("r_e1"), py::arg("r_e2"), py::arg("r_phi"), py::arg("r_cos_theta"), py::arg("r_beta"), py::arg("m0"), py::arg("m1"), py::arg("m2"), py::arg("m3"));
     fb.def("three_body_decay_com_inverse", &FunctionBuilder::three_body_decay_com_inverse, py::arg("p1"), py::arg("p2"), py::arg("p3"));
     fb.def("three_body_decay", &FunctionBuilder::three_body_decay, py::arg("r_e1"), py::arg("r_e2"), py::arg("r_phi"), py::arg("r_cos_theta"), py::arg("r_beta"), py::arg("m0"), py::arg("m1"), py::arg("m2"), py::arg("m3"), py::arg("p0"));
     fb.def("three_body_decay_inverse", &FunctionBuilder::three_body_decay_inverse, py::arg("p1"), py::arg("p2"), py::arg("p3"));
     fb.def("t_inv_min_max", &FunctionBuilder::t_inv_min_max, py::arg("pa"), py::arg("pb"), py::arg("m1"), py::arg("m2"));
     fb.def("t_inv_value_and_min_max", &FunctionBuilder::t_inv_value_and_min_max, py::arg("pa"), py::arg("pb"), py::arg("p1"), py::arg("p2"));
+    fb.def("t1_inv_min_max_doublet", &FunctionBuilder::t1_inv_min_max_doublet, py::arg("pa"), py::arg("pb"), py::arg("m1"), py::arg("mir_min"));
+    fb.def("t1_inv_value_and_min_max_doublet", &FunctionBuilder::t1_inv_value_and_min_max_doublet, py::arg("pa"), py::arg("pb"), py::arg("p1"), py::arg("m1"), py::arg("mir_min"));
+    fb.def("t2_inv_min_max_doublet", &FunctionBuilder::t2_inv_min_max_doublet, py::arg("pa"), py::arg("pb"), py::arg("m1"), py::arg("mir_min"), py::arg("t1_abs"));
+    fb.def("t2_inv_value_and_min_max_doublet", &FunctionBuilder::t2_inv_value_and_min_max_doublet, py::arg("pa"), py::arg("pb"), py::arg("p1"), py::arg("m1"), py::arg("mir_min"), py::arg("t1_abs"));
     fb.def("s23_min_max", &FunctionBuilder::s23_min_max, py::arg("pa"), py::arg("pb"), py::arg("p3"), py::arg("t1_abs"), py::arg("m1"), py::arg("m2"));
     fb.def("s23_value_and_min_max", &FunctionBuilder::s23_value_and_min_max, py::arg("pa"), py::arg("pb"), py::arg("p3"), py::arg("t1_abs"), py::arg("p1"), py::arg("p2"));
     fb.def("invariants_from_momenta", &FunctionBuilder::invariants_from_momenta, py::arg("p_ext"), py::arg("factors"));
@@ -142,6 +148,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("select", &FunctionBuilder::select, py::arg("input"), py::arg("indices"));
     fb.def("select_vector", &FunctionBuilder::select_vector, py::arg("input"), py::arg("indices"));
     fb.def("argsort", &FunctionBuilder::argsort, py::arg("input"));
+    fb.def("quantile", &FunctionBuilder::quantile, py::arg("input"), py::arg("q"));
     fb.def("one_hot", &FunctionBuilder::one_hot, py::arg("index"), py::arg("option_count"));
     fb.def("madnis_abs_weight", &FunctionBuilder::madnis_abs_weight, py::arg("f"), py::arg("q"));
     fb.def("madnis_softclip", &FunctionBuilder::madnis_softclip, py::arg("f"), py::arg("q"), py::arg("norm"), py::arg("threshold"));
@@ -152,6 +159,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("batch_gather", &FunctionBuilder::batch_gather, py::arg("indices"), py::arg("values"));
     fb.def("batch_scatter", &FunctionBuilder::batch_scatter, py::arg("indices"), py::arg("target"), py::arg("source"));
     fb.def("random", &FunctionBuilder::random, py::arg("batch_size"), py::arg("count"));
+    fb.def("random_int", &FunctionBuilder::random_int, py::arg("batch_size"), py::arg("max"));
     fb.def("unweight", &FunctionBuilder::unweight, py::arg("weights"), py::arg("max_weight"));
     fb.def("vegas_forward", &FunctionBuilder::vegas_forward, py::arg("input"), py::arg("grid"));
     fb.def("vegas_inverse", &FunctionBuilder::vegas_inverse, py::arg("input"), py::arg("grid"));

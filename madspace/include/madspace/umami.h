@@ -24,12 +24,12 @@ extern "C" {
  * Major version number of the UMAMI interface. If the major version is the same
  * between caller and implementation, binary compatibility is ensured.
  */
-const inline int UMAMI_MAJOR_VERSION = 1;
+#define UMAMI_MAJOR_VERSION 1
 /**
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
  */
-const inline int UMAMI_MINOR_VERSION = 1;
+#define UMAMI_MINOR_VERSION 1
 
 typedef enum {
     /** operation was executed successfully */
@@ -88,7 +88,7 @@ typedef enum {
     UMAMI_IN_RANDOM_DIAGRAM,
     /** externally selected helicity index, type: `int`, shape: `()` */
     UMAMI_IN_HELICITY_INDEX,
-    /** externally selected diagram index, type: `int`, shape: `()` */
+    /** externally selected diagram index, type: `unsigned int`, shape: `()` */
     UMAMI_IN_DIAGRAM_INDEX,
     /** externally selected channel index, type: `unsigned int`, shape: `()` */
     UMAMI_IN_CHANNEL_INDEX,

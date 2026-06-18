@@ -101,6 +101,7 @@ namespace mg5amcCpu
             fptype_colour* ghelAllBlasTmp,            // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities
             gpuBlasHandle_t* pBlasHandle,       // input: cuBLAS/hipBLAS handle
             gpuStream_t* ghelStreams,           // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
+            const bool async,                   // input: if true, run everything asynchronously in first stream in ghelStreams
             const int gpublocks,                // input: cuda gpublocks
             const int gputhreads,               // input: cuda gputhreads
             const fptype_invmass* allMij = nullptr );   // input: invariant mass^2 matrix[nevt*npar*npar] (nullptr => recompute p^2)

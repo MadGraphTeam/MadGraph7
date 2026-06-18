@@ -568,6 +568,40 @@ void op_offset_indices(
 }
 
 template <typename D>
+void op_quantile(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    auto& input = locals[instruction.input_indices[0]];
+    auto& q = locals[instruction.input_indices[1]];
+    auto& output = locals[instruction.output_indices[0]];
+    if (input.size(0) == 0) {
+        output = Tensor(0., device);
+        return;
+    }
+
+    output = Tensor(DataType::dt_float, {1}, device);
+    device.foreach (
+        input.size(0),
+        [&](std::size_t count, std::size_t offset) {
+            std::size_t batch_size = input.size(0);
+            auto input_view = input.view<double, 1>();
+            double q_val = q.view<double, 1>()[0];
+            std::size_t q_index = std::min(
+                static_cast<std::size_t>(std::max(q_val, 0.0) * batch_size),
+                batch_size - 1
+            );
+            std::vector<std::size_t> indices(batch_size);
+            std::iota(indices.begin(), indices.end(), 0);
+            std::sort(indices.begin(), indices.end(), [&](auto i, auto j) {
+                return input_view[i] < input_view[j];
+            });
+            output.view<double, 1>()[0] = input_view[indices.at(q_index)];
+        },
+        true
+    );
+}
+
+template <typename D>
 void op_random(
     const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
 ) {
@@ -582,6 +616,29 @@ void op_random(
         [flat_view, &runtime](std::size_t count, std::size_t offset) mutable {
             auto output_view = TensorView<double, 1>(flat_view);
             std::uniform_real_distribution<double> dist;
+            auto& rand_gen = runtime.rand_gen();
+            for (std::size_t i = offset; i < offset + count; ++i) {
+                output_view[i] = dist(rand_gen);
+            }
+        }
+    );
+}
+
+template <typename D>
+void op_random_int(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    auto batch_size = locals[instruction.input_indices[0]].batch_sizes()[0];
+    auto max_val = locals[instruction.input_indices[1]].batch_sizes()[0];
+    auto& output = locals[instruction.output_indices[0]];
+    output = Tensor(DataType::dt_float, {batch_size}, device);
+    auto flat_view = output.flat_view<me_int_t, 1>(0);
+    auto& runtime = instruction.runtime;
+    device.foreach (
+        flat_view.shape[0],
+        [flat_view, max_val, &runtime](std::size_t count, std::size_t offset) mutable {
+            auto output_view = TensorView<me_int_t, 1>(flat_view);
+            std::uniform_int_distribution<me_int_t> dist(0, max_val - 1);
             auto& rand_gen = runtime.rand_gen();
             for (std::size_t i = offset; i < offset + count; ++i) {
                 output_view[i] = dist(rand_gen);

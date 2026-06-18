@@ -46,6 +46,7 @@
 #define gpuLaunchKernel( kernel, blocks, threads, ... ) kernel<<<blocks, threads>>>( __VA_ARGS__ )
 //#define gpuLaunchKernelSharedMem( kernel, blocks, threads, sharedMem, ... ) kernel<<<blocks, threads, sharedMem>>>( __VA_>
 #define gpuLaunchKernelStream( kernel, blocks, threads, stream, ... ) kernel<<<blocks, threads, 0, stream>>>( __VA_ARGS__ )
+#define gpuLaunchKernel2D( kernel, blocks_x, blocks_y, threads, stream, ... ) kernel<<<dim3(blocks_x, blocks_y, 1), dim3(threads, 1, 1), 0, stream>>>( __VA_ARGS__ )
 
 #define gpuStream_t cudaStream_t
 #define gpuStreamCreate( pStream ) checkGpu( cudaStreamCreate( pStream ) )
@@ -113,6 +114,7 @@
 #define gpuLaunchKernel( kernel, blocks, threads, ... ) kernel<<<blocks, threads>>>( __VA_ARGS__ )
 //#define gpuLaunchKernelSharedMem( kernel, blocks, threads, sharedMem, ... ) kernel<<<blocks, threads, sharedMem>>>( __VA_>
 #define gpuLaunchKernelStream( kernel, blocks, threads, stream, ... ) kernel<<<blocks, threads, 0, stream>>>( __VA_ARGS__ )
+#define gpuLaunchKernel2D( kernel, blocks_x, blocks_y, threads, stream, ... ) kernel<<<dim3(blocks_x, blocks_y, 1), dim3(threads, 1, 1), 0, stream>>>( __VA_ARGS__ )
 
 #define gpuStream_t hipStream_t
 #define gpuStreamCreate( pStream ) checkGpu( hipStreamCreate( pStream ) )

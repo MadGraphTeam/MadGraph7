@@ -97,7 +97,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                       'CrossSectionKernels.cc', 'CrossSectionKernels.h',
                                       'MatrixElementKernels.cc', 'MatrixElementKernels.h',
                                       'EventStatistics.h',
-                                      'umami.h', 'umami.cc', 'classic_rambo.h']),
+                                      'umami.h', 'umami.cc', 'rambo.h']),
                      'Cards': relative_path_list(mg7_templates, ["run_card.toml"])}
 
     to_link_in_P = ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h',
@@ -113,7 +113,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                     'EventStatistics.h',
                     'MemoryBuffers.h', # this is generated from a template in Subprocesses but we still link it in P1
                     'MemoryAccessCouplings.h', # this is generated from a template in Subprocesses but we still link it in P1
-                    'umami.h', 'umami.cc', 'classic_rambo.h']
+                    'umami.h', 'umami.cc', 'rambo.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
     template_Sub_make = pjoin(madmatrix_templates, 'madmatrix.mk')
@@ -196,7 +196,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                                'RamboSamplingKernels.cc', 'RamboSamplingKernels.h',
                                'CommonRandomNumberKernel.cc', 'CommonRandomNumbers.h',
                                'RandomNumberKernels.h',
-                               'rambo.h', 'timer.h', 'timermap.h']
+                               'massless_rambo.h', 'timer.h', 'timermap.h']
 
     from_template = dict(ProcessExporterMadMatrix.from_template)
     from_template['SubProcesses'] = (ProcessExporterMadMatrix.from_template['SubProcesses']

@@ -87,12 +87,12 @@ Value reduce_sum_vector(Value in1) {
     return instruction("reduce_sum_vector", {in1})[0];
 }
 
-Value batch_reduce_mean(Value in) {
-    return instruction("batch_reduce_mean", {in})[0];
+Value batch_reduce_mean(Value in1) {
+    return instruction("batch_reduce_mean", {in1})[0];
 }
 
-Value batch_reduce_mean_keepdim(Value in) {
-    return instruction("batch_reduce_mean_keepdim", {in})[0];
+Value batch_reduce_mean_keepdim(Value in1) {
+    return instruction("batch_reduce_mean_keepdim", {in1})[0];
 }
 
 Value reduce_product(Value in1) {
@@ -260,6 +260,16 @@ std::array<Value, 4> two_to_three_particle_scattering_inverse(Value p1, Value p2
     return {output_vector[0], output_vector[1], output_vector[2], output_vector[3]};
 }
 
+std::array<Value, 3> double_t_scattering(Value r_phi, Value pa, Value pb, Value t1_abs, Value t2_abs, Value m1) {
+    auto output_vector = instruction("double_t_scattering", {r_phi, pa, pb, t1_abs, t2_abs, m1});
+    return {output_vector[0], output_vector[1], output_vector[2]};
+}
+
+std::array<Value, 2> double_t_scattering_inverse(Value p1, Value p2, Value pa, Value pb) {
+    auto output_vector = instruction("double_t_scattering_inverse", {p1, p2, pa, pb});
+    return {output_vector[0], output_vector[1]};
+}
+
 std::array<Value, 4> three_body_decay_com(Value r_e1, Value r_e2, Value r_phi, Value r_cos_theta, Value r_beta, Value m0, Value m1, Value m2, Value m3) {
     auto output_vector = instruction("three_body_decay_com", {r_e1, r_e2, r_phi, r_cos_theta, r_beta, m0, m1, m2, m3});
     return {output_vector[0], output_vector[1], output_vector[2], output_vector[3]};
@@ -287,6 +297,26 @@ std::array<Value, 2> t_inv_min_max(Value pa, Value pb, Value m1, Value m2) {
 
 std::array<Value, 3> t_inv_value_and_min_max(Value pa, Value pb, Value p1, Value p2) {
     auto output_vector = instruction("t_inv_value_and_min_max", {pa, pb, p1, p2});
+    return {output_vector[0], output_vector[1], output_vector[2]};
+}
+
+std::array<Value, 2> t1_inv_min_max_doublet(Value pa, Value pb, Value m1, Value mir_min) {
+    auto output_vector = instruction("t1_inv_min_max_doublet", {pa, pb, m1, mir_min});
+    return {output_vector[0], output_vector[1]};
+}
+
+std::array<Value, 3> t1_inv_value_and_min_max_doublet(Value pa, Value pb, Value p1, Value m1, Value mir_min) {
+    auto output_vector = instruction("t1_inv_value_and_min_max_doublet", {pa, pb, p1, m1, mir_min});
+    return {output_vector[0], output_vector[1], output_vector[2]};
+}
+
+std::array<Value, 2> t2_inv_min_max_doublet(Value pa, Value pb, Value m1, Value mir_min, Value t1_abs) {
+    auto output_vector = instruction("t2_inv_min_max_doublet", {pa, pb, m1, mir_min, t1_abs});
+    return {output_vector[0], output_vector[1]};
+}
+
+std::array<Value, 3> t2_inv_value_and_min_max_doublet(Value pa, Value pb, Value p1, Value m1, Value mir_min, Value t1_abs) {
+    auto output_vector = instruction("t2_inv_value_and_min_max_doublet", {pa, pb, p1, m1, mir_min, t1_abs});
     return {output_vector[0], output_vector[1], output_vector[2]};
 }
 
@@ -565,6 +595,10 @@ Value argsort(Value input) {
     return instruction("argsort", {input})[0];
 }
 
+Value quantile(Value input, Value q) {
+    return instruction("quantile", {input, q})[0];
+}
+
 Value one_hot(Value index, Value option_count) {
     return instruction("one_hot", {index, option_count})[0];
 }
@@ -603,6 +637,10 @@ Value batch_scatter(Value indices, Value target, Value source) {
 
 Value random(Value batch_size, Value count) {
     return instruction("random", {batch_size, count})[0];
+}
+
+Value random_int(Value batch_size, Value max) {
+    return instruction("random_int", {batch_size, max})[0];
 }
 
 std::array<Value, 2> unweight(Value weights, Value max_weight) {

@@ -1886,8 +1886,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    bool storeChannelWeights,
                    fptype* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype_amp* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel
-                    fptype_amp* colAllJamp2s,              // output: allJamp2s[ncolor][nevt] super-buffer, sum over col/hel (nullptr to disable)
-                   const int nevt                     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                   fptype_amp* colAllJamp2s,              // output: allJamp2s[ncolor][nevt] super-buffer, sum over col/hel (nullptr to disable)
+                   const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                   const bool processAllHelicities    // input: if true, use blockIdx.y to index helicities
 #else
                    cxtype_amp_sv* allJamp_sv,             // output: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for this helicity
                    bool storeChannelWeights,
@@ -1931,6 +1932,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     //const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
     //debug = ( ievt == 0 );
     //if( debug ) printf( \"calculate_jamps: ievt=%6d ihel=%2d\\n\", ievt, ihel );
+    if (processAllHelicities) {
+      int ighel = blockIdx.y;
+      ihel = dcGoodHel[ighel];
+      allJamps = allJamps + ighel * nevt;
+      allNumerators = allNumerators + ighel * nevt * processConfig::ndiagrams;
+      allDenominators = allDenominators + ighel * nevt;
+    }
 #endif /* clang-format on */""")
             nwavefuncs = self.matrix_elements[0].get_number_of_wavefunctions()
             ret_lines.append("""
@@ -2481,10 +2489,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       // Scalar iflavor for the current event
       // for GPU it is an int
       // for SIMD it is also an int, since it is constant across the SIMD vector
-      const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavorVec );
 #ifdef MGONGPUCPP_GPUIMPL
-      const unsigned int iflavor = iflavor_sv;
+      const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
 #else
+      const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
+      const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
       const unsigned int iflavor = reinterpret_cast<const unsigned int*>(&iflavor_sv)[0];
 #endif
 """)

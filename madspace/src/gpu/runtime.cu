@@ -728,6 +728,75 @@ void op_offset_indices(
     }
 }
 
+__global__ void kernel_gather_quantile(
+    std::size_t batch_size,
+    GpuTensorView<double, 1, true> q,
+    GpuTensorView<double, 1, true> input,
+    GpuTensorView<double, 1, true> output
+) {
+    std::size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i == 0) {
+        double q_scaled = q[0] < 0. ? 0. : q[0] * batch_size;
+        std::size_t q_index = static_cast<std::size_t>(q_scaled);
+        if (q_index >= batch_size) {
+            q_index = batch_size - 1;
+        }
+        output[0] = input[q_index];
+    }
+}
+
+void op_quantile(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    auto& input = locals[instruction.input_indices[0]];
+    auto batch_size = input.size(0);
+    auto& q = locals[instruction.input_indices[1]];
+    auto& output = locals[instruction.output_indices[0]];
+
+    if (batch_size == 0) {
+        output = Tensor(0., device, instruction.output_alloc_hints[0]);
+        return;
+    }
+
+    Tensor tmp(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
+    tmp.copy_from(input, device);
+    std::size_t temp_storage_bytes;
+    cub::DeviceMergeSort::SortKeys(
+        nullptr,
+        temp_storage_bytes,
+        static_cast<double*>(tmp.data()),
+        batch_size,
+        gpu_std::less<double>{},
+        device.stream()
+    );
+    Tensor tmp_sort(
+        DataType::dt_float, {(temp_storage_bytes + 7) / 8}, device, AllocHint::temporary
+    );
+    cub::DeviceMergeSort::SortKeys(
+        tmp_sort.data(),
+        temp_storage_bytes,
+        static_cast<double*>(tmp.data()),
+        batch_size,
+        gpu_std::less<double>{},
+        device.stream()
+    );
+    tmp_sort.reset(device);
+
+    output = Tensor(DataType::dt_float, {1}, device, instruction.output_alloc_hints[0]);
+    launch_kernel(
+        kernel_gather_quantile,
+        1,
+        device.stream(),
+        batch_size,
+        q.view<double, 1>(),
+        tmp.view<double, 1>(),
+        output.view<double, 1>()
+    );
+    tmp.reset(device);
+}
+
 void op_random(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
@@ -744,6 +813,52 @@ void op_random(
     check_error(gpurandGenerateUniformDouble(
         generator, static_cast<double*>(output.data()), batch_size * dim
     ));
+}
+
+__global__ void kernel_double_to_int_range(
+    std::size_t batch_size,
+    me_int_t max_val,
+    GpuTensorView<double, 1, true> double_in,
+    GpuTensorView<me_int_t, 1, true> int_out
+) {
+    me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= batch_size) {
+        return;
+    }
+    me_int_t rand_int = double_in[i] * max_val;
+    if (rand_int >= max_val) {
+        rand_int = max_val - 1;
+    }
+    int_out[i] = rand_int;
+}
+
+void op_random_int(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    auto batch_size = locals[instruction.input_indices[0]].batch_sizes()[0];
+    auto max_val = locals[instruction.input_indices[1]].batch_sizes()[0];
+    auto& output = locals[instruction.output_indices[0]];
+    Tensor tmp(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
+    output = Tensor(
+        DataType::dt_int, {batch_size}, device, instruction.output_alloc_hints[0]
+    );
+    gpurandGenerator_t generator = instruction.runtime.gpurand_generator();
+    check_error(gpurandSetStream(generator, device.stream()));
+    check_error(gpurandGenerateUniformDouble(
+        generator, static_cast<double*>(tmp.data()), batch_size
+    ));
+    launch_kernel(
+        kernel_double_to_int_range,
+        batch_size,
+        device.stream(),
+        batch_size,
+        max_val,
+        tmp.view<double, 1>(),
+        output.view<me_int_t, 1>()
+    );
+    tmp.reset(device);
 }
 
 __global__ void kernel_unweight(
@@ -777,6 +892,13 @@ void op_unweight(
     auto& uw_weights = locals[instruction.output_indices[1]];
     auto batch_size = weights.size(0);
     gpuStream_t stream = device.stream();
+
+    if (batch_size == 0) {
+        indices = Tensor(DataType::dt_float, {0}, device, instruction.output_alloc_hints[0]);
+        uw_weights =
+            Tensor(DataType::dt_float, {0}, device, instruction.output_alloc_hints[1]);
+        return;
+    }
 
     Tensor rand(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
     gpurandGenerator_t generator = instruction.runtime.gpurand_generator();

@@ -110,6 +110,7 @@ inline Type single_int_array_2d(int count1, int count2) {
 }
 
 const BatchSize batch_size = BatchSize("batch_size");
+Type batch_size_array(int count);
 Type multichannel_batch_size(int count);
 const Type batch_float{DataType::dt_float, batch_size, {}};
 const Type batch_int{DataType::dt_int, batch_size, {}};

@@ -223,6 +223,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("index") = 0,
         py::return_value_policy::reference
     );
+    m.def("available_backends", &available_backends);
 
     py::classh<MatrixElementApi>(m, "MatrixElementApi")
         //.def("device", &MatrixElementApi::device)
@@ -438,6 +439,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("width") = 0.
         );
 
+    py::classh<DoubleT, Mapping>(m, "DoubleT")
+        .def(
+            py::init<double, double, double, double, double, double>(),
+            py::arg("t1_invariant_power") = 0.,
+            py::arg("t1_mass") = 0.,
+            py::arg("t1_width") = 0.,
+            py::arg("t2_invariant_power") = 0.,
+            py::arg("t2_mass") = 0.,
+            py::arg("t2_width") = 0.
+        );
+
     py::classh<ThreeBodyDecay, Mapping>(m, "ThreeBodyDecay")
         .def(py::init<bool>(), py::arg("com"));
 
@@ -474,7 +486,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<std::vector<std::size_t>, double>(),
             py::arg("integration_order"),
             py::arg("invariant_power") = 0.
-        );
+        )
+        .def("random_dim", &TPropagatorMapping::random_dim);
+
+    py::classh<ColorOrderedMapping, Mapping>(m, "ColorOrderedMapping")
+        .def(
+            py::init<std::vector<std::size_t>, double, double>(),
+            py::arg("color_order"),
+            py::arg("t_invariant_power") = 0.,
+            py::arg("s_invariant_power") = 0.
+        )
+        .def("random_dim", &ColorOrderedMapping::random_dim);
 
     py::classh<VegasHistogram, FunctionGenerator>(m, "VegasHistogram")
         .def(
@@ -721,6 +743,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"random_diagram_in", MatrixElement::random_diagram_in},
             {"helicity_in", MatrixElement::helicity_in},
             {"diagram_in", MatrixElement::diagram_in},
+            {"channel_in", MatrixElement::channel_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
@@ -1411,81 +1434,6 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("bin_values", &Histogram::bin_values)
         .def_readonly("bin_errors", &Histogram::bin_errors);
 
-    py::classh<ChannelEventGenerator>(m, "ChannelEventGenerator")
-        .def_static(
-            "load",
-            &ChannelEventGenerator::load,
-            py::arg("channel_file"),
-            py::arg("contexts"),
-            py::arg("event_file"),
-            py::arg("weight_file"),
-            py::arg("config")
-        )
-        .def(
-            py::init<
-                const std::vector<ContextPtr>&,
-                const Integrand&,
-                const std::string&,
-                const std::string&,
-                const GeneratorConfig&,
-                std::size_t,
-                const std::string&,
-                const std::optional<ObservableHistograms>&>(),
-            py::arg("contexts"),
-            py::arg("integrand"),
-            py::arg("event_file"),
-            py::arg("weight_file"),
-            py::arg("config"),
-            py::arg("subprocess_index"),
-            py::arg("name"),
-            py::arg("histograms")
-        )
-        .def_readonly_static("integrand_flags", &ChannelEventGenerator::integrand_flags)
-        .def("status", &ChannelEventGenerator::status)
-        .def("save", &ChannelEventGenerator::save, py::arg("save"));
-
-    py::classh<EventGenerator>(m, "EventGenerator")
-        .def_readonly_static("default_config", &EventGenerator::default_config)
-        .def(
-            py::init<
-                const std::vector<ContextPtr>&,
-                const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
-                const std::string&,
-                const GeneratorConfig&>(),
-            py::arg("contexts"),
-            py::arg("channels"),
-            py::arg("status_file") = "",
-            py::arg_v(
-                "config",
-                EventGenerator::default_config,
-                "EventGenerator.default_config"
-            )
-        )
-        .def("survey", &EventGenerator::survey)
-        .def("generate", &EventGenerator::generate)
-        .def(
-            "combine_to_compact_npy",
-            &EventGenerator::combine_to_compact_npy,
-            py::arg("file_name")
-        )
-        .def(
-            "combine_to_lhe_npy",
-            &EventGenerator::combine_to_lhe_npy,
-            py::arg("file_name"),
-            py::arg("lhe_completer")
-        )
-        .def(
-            "combine_to_lhe",
-            &EventGenerator::combine_to_lhe,
-            py::arg("file_name"),
-            py::arg("lhe_completer")
-        )
-        .def("status", &EventGenerator::status)
-        .def("channel_status", &EventGenerator::channel_status)
-        .def("histograms", &EventGenerator::histograms)
-        .def("used_globals", &EventGenerator::used_globals)
-        .def("channels", &EventGenerator::channels);
-
     py::classh<LHEHeader>(m, "LHEHeader")
         .def(
             py::init<std::string, std::string, bool>(),
@@ -1704,6 +1652,81 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("print_first", &PrettyBox::print_first)
         .def("print_update", &PrettyBox::print_update)
         .def_property_readonly("line_count", &PrettyBox::line_count);
+
+    py::classh<ChannelEventGenerator>(m, "ChannelEventGenerator")
+        .def_static(
+            "load",
+            &ChannelEventGenerator::load,
+            py::arg("channel_file"),
+            py::arg("contexts"),
+            py::arg("event_file"),
+            py::arg("weight_file"),
+            py::arg("config")
+        )
+        .def(
+            py::init<
+                const std::vector<ContextPtr>&,
+                const Integrand&,
+                const std::string&,
+                const std::string&,
+                const GeneratorConfig&,
+                std::size_t,
+                const std::string&,
+                const std::optional<ObservableHistograms>&>(),
+            py::arg("contexts"),
+            py::arg("integrand"),
+            py::arg("event_file"),
+            py::arg("weight_file"),
+            py::arg("config"),
+            py::arg("subprocess_index"),
+            py::arg("name"),
+            py::arg("histograms")
+        )
+        .def_readonly_static("integrand_flags", &ChannelEventGenerator::integrand_flags)
+        .def("status", &ChannelEventGenerator::status)
+        .def("save", &ChannelEventGenerator::save, py::arg("save"));
+
+    py::classh<EventGenerator>(m, "EventGenerator")
+        .def_readonly_static("default_config", &EventGenerator::default_config)
+        .def(
+            py::init<
+                const std::vector<ContextPtr>&,
+                const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
+                const std::string&,
+                const GeneratorConfig&>(),
+            py::arg("contexts"),
+            py::arg("channels"),
+            py::arg("status_file") = "",
+            py::arg_v(
+                "config",
+                EventGenerator::default_config,
+                "EventGenerator.default_config"
+            )
+        )
+        .def("survey", &EventGenerator::survey)
+        .def("generate", &EventGenerator::generate)
+        .def(
+            "combine_to_compact_npy",
+            &EventGenerator::combine_to_compact_npy,
+            py::arg("file_name")
+        )
+        .def(
+            "combine_to_lhe_npy",
+            &EventGenerator::combine_to_lhe_npy,
+            py::arg("file_name"),
+            py::arg("lhe_completer")
+        )
+        .def(
+            "combine_to_lhe",
+            &EventGenerator::combine_to_lhe,
+            py::arg("file_name"),
+            py::arg("lhe_completer")
+        )
+        .def("status", &EventGenerator::status)
+        .def("channel_status", &EventGenerator::channel_status)
+        .def("histograms", &EventGenerator::histograms)
+        .def("used_globals", &EventGenerator::used_globals)
+        .def("channels", &EventGenerator::channels);
 
     py::classh<Logger> logger(m, "Logger");
     add_enum<Logger::LogLevel>(

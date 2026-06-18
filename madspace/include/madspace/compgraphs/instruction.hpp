@@ -199,6 +199,13 @@ public:
     TypeVec signature(const ValueVec& args) const override;
 };
 
+class RandomIntInstruction : public Instruction {
+public:
+    RandomIntInstruction(int opcode, bool differentiable) :
+        Instruction("random_int", opcode, differentiable) {}
+    TypeVec signature(const ValueVec& args) const override;
+};
+
 class UnweightInstruction : public Instruction {
 public:
     UnweightInstruction(int opcode, bool differentiable) :

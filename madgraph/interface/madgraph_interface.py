@@ -8864,7 +8864,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self.check_set(args)
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
 
-    def set2_store_rwgt_info(args, log=True):
+    def set2_store_rwgt_info(self,args, log=True):
         """Set whether the code should generate systematics information in the output LHE file at NLO
         Default is set to False.
         Example: set store_rwgt_info True

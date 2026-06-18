@@ -15,6 +15,7 @@ public:
         random_helicity_in,
         random_diagram_in,
         helicity_in,
+        channel_in,
         diagram_in
     };
 

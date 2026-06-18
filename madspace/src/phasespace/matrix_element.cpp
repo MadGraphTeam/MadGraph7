@@ -50,6 +50,9 @@ MatrixElement::MatrixElement(
                 case diagram_in:
                     arg_types.push_back("diagram", batch_int);
                     break;
+                case channel_in:
+                    arg_types.push_back("channel", batch_int);
+                    break;
                 default:
                     throw std::invalid_argument("unknown input type");
                 }
@@ -141,6 +144,9 @@ NamedVector<Value> MatrixElement::build_function_impl(
             break;
         case diagram_in:
             input_key = UMAMI_IN_DIAGRAM_INDEX;
+            break;
+        case channel_in:
+            input_key = UMAMI_IN_CHANNEL_INDEX;
             break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));

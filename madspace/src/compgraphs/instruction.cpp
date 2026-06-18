@@ -760,6 +760,25 @@ TypeVec RandomInstruction::signature(const ValueVec& args) const {
     return {{DataType::dt_float, batch_size_type.batch_size_list.at(0), {count}}};
 }
 
+TypeVec RandomIntInstruction::signature(const ValueVec& args) const {
+    check_arg_count(args, 2);
+    auto& batch_size_type = args.at(0).type;
+    auto& max_type = args.at(1).type;
+    if (batch_size_type.dtype != DataType::batch_sizes ||
+        batch_size_type.batch_size_list.size() != 1) {
+        throw std::invalid_argument(
+            std::format("{}, argument 1: expected single batch size", name())
+        );
+    }
+    if (max_type.dtype != DataType::batch_sizes ||
+        max_type.batch_size_list.size() != 1) {
+        throw std::invalid_argument(
+            std::format("{}, argument 2: expected single batch size", name())
+        );
+    }
+    return {{DataType::dt_int, batch_size_type.batch_size_list.at(0), {}}};
+}
+
 TypeVec UnweightInstruction::signature(const ValueVec& args) const {
     check_arg_count(args, 2);
     auto& weights_type = args.at(0).type;
@@ -848,6 +867,7 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_IN_FLAVOR_INDEX:
         case UMAMI_IN_HELICITY_INDEX:
         case UMAMI_IN_DIAGRAM_INDEX:
+        case UMAMI_IN_CHANNEL_INDEX:
             if (input_type.dtype != DataType::dt_int || input_type.shape.size() != 0) {
                 throw std::invalid_argument(
                     std::format(

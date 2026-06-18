@@ -5,10 +5,11 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "madspace"
 version = "0.1.3"
-description="Fast and flexible phase space mappings"
+description="Fast and flexible phase-space mappings"
 readme = "README.md"
 authors = [
   { name = "Theo Heimel", email = "theo.heimel@uclouvain.be" },
+  { name = "Ramon Winterhalder", email = "ramon.winterhalder@unimi.it" },
 ]
 requires-python = ">=3.11"
 classifiers = [
@@ -17,6 +18,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = []
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "numpy",
+    "scipy",
+    "torch",
+]
 
 [tool.scikit-build]
 wheel.expand-macos-universal-tags = true

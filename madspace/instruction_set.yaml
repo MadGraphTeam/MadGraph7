@@ -255,7 +255,7 @@ reduce_sum_vector:
 
 batch_reduce_mean:
   inputs:
-    - name: in
+    - name: in1
       type: [float]
       desc:
   outputs:
@@ -267,7 +267,7 @@ batch_reduce_mean:
 
 batch_reduce_mean_keepdim:
   inputs:
-    - name: in
+    - name: in1
       type: [float]
       desc:
   outputs:
@@ -964,6 +964,59 @@ two_to_three_particle_scattering_inverse:
       type: [float]
       desc:
 
+double_t_scattering:
+  inputs:
+    - name: r_phi
+      type: [float]
+      desc:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: t1_abs
+      type: [float]
+      desc:
+    - name: t2_abs
+      type: [float]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+  outputs:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: p2
+      type: [float, 4]
+      desc:
+    - name: det
+      type: [float]
+      desc:
+
+double_t_scattering_inverse:
+  inputs:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: p2
+      type: [float, 4]
+      desc:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+  outputs:
+    - name: r_phi
+      type: [float]
+      desc:
+    - name: det
+      type: [float]
+      desc:
+
 three_body_decay_com:
   inputs:
     - name: r_e1
@@ -1177,6 +1230,112 @@ t_inv_value_and_min_max:
       desc:
     - name: p2
       type: [float, 4]
+      desc:
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t1_inv_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+  outputs:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t1_inv_value_and_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t2_inv_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+    - name: t1_abs
+      type: [float]
+      desc:
+  outputs:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t2_inv_value_and_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+    - name: t1_abs
+      type: [float]
       desc:
   outputs:
     - name: t_abs
@@ -2292,6 +2451,20 @@ argsort:
       desc:
   vectorized: False
 
+quantile:
+  inputs:
+    - name: input
+      type: [float]
+      desc:
+    - name: q
+      type: [float, single]
+      desc:
+  outputs:
+    - name: output
+      type: [float, single]
+      desc:
+  custom_op: True
+
 one_hot:
   inputs:
     - name: index
@@ -2440,6 +2613,18 @@ random:
     - name: output
       desc:
   class: RandomInstruction
+  custom_op: True
+
+random_int:
+  inputs:
+    - name: batch_size
+      desc:
+    - name: max
+      desc:
+  outputs:
+    - name: output
+      desc:
+  class: RandomIntInstruction
   custom_op: True
 
 unweight:

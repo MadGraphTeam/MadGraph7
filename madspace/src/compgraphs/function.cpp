@@ -299,6 +299,8 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
                     "{}, argument {}: undefined value", instruction->name(), arg_index
                 )
             );
+        } else if (std::holds_alternative<TensorValue>(arg.literal_value)) {
+            ++variable_args;
         }
     }
 

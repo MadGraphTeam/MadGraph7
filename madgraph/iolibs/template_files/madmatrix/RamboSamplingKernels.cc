@@ -11,8 +11,8 @@
 #include "MemoryAccessRandomNumbers.h"
 #include "MemoryAccessWeights.h"
 #include "MemoryBuffers.h"
-#include "classic_rambo.h" // inline classic (massive) RAMBO, ported from standalone_cpp
-#include "rambo.h" // inline implementation of RAMBO algorithms and kernels
+#include "rambo.h" // inline classic (massive) RAMBO, ported from standalone_cpp
+#include "massless_rambo.h" // inline implementation of massless RAMBO algorithms and kernels
 
 #include <sstream>
 
@@ -24,7 +24,7 @@ namespace mg5amcCpu
 {
   //--------------------------------------------------------------------------
 
-  RamboSamplingKernelHost::RamboSamplingKernelHost( const fptype energy,               // input: energy
+  MasslessRamboSamplingKernelHost::MasslessRamboSamplingKernelHost( const fptype energy,               // input: energy
                                                     const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
                                                     BufferMomenta& momenta,            // output: momenta
                                                     BufferWeights& weights,            // output: weights
@@ -32,19 +32,19 @@ namespace mg5amcCpu
     : SamplingKernelBase( energy, rndmom, momenta, weights )
     , NumberOfEvents( nevt )
   {
-    if( m_rndmom.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelHost: rndmom must be a host array" );
-    if( m_momenta.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelHost: momenta must be a host array" );
-    if( m_weights.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelHost: weights must be a host array" );
-    if( this->nevt() != m_rndmom.nevt() ) throw std::runtime_error( "RamboSamplingKernelHost: nevt mismatch with rndmom" );
-    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "RamboSamplingKernelHost: nevt mismatch with momenta" );
-    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "RamboSamplingKernelHost: nevt mismatch with weights" );
+    if( m_rndmom.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelHost: rndmom must be a host array" );
+    if( m_momenta.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelHost: momenta must be a host array" );
+    if( m_weights.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelHost: weights must be a host array" );
+    if( this->nevt() != m_rndmom.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelHost: nevt mismatch with rndmom" );
+    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelHost: nevt mismatch with momenta" );
+    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelHost: nevt mismatch with weights" );
     // Sanity checks for memory access (momenta buffer)
     constexpr int neppM = MemoryAccessMomenta::neppM; // AOSOA layout
     static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
     if( nevt % neppM != 0 )
     {
       std::ostringstream sstr;
-      sstr << "RamboSamplingKernelHost: nevt should be a multiple of neppM=" << neppM;
+      sstr << "MasslessRamboSamplingKernelHost: nevt should be a multiple of neppM=" << neppM;
       throw std::runtime_error( sstr.str() );
     }
     // Sanity checks for memory access (random number buffer)
@@ -53,7 +53,7 @@ namespace mg5amcCpu
     if( nevt % neppR != 0 )
     {
       std::ostringstream sstr;
-      sstr << "RamboSamplingKernelHost: nevt should be a multiple of neppR=" << neppR;
+      sstr << "MasslessRamboSamplingKernelHost: nevt should be a multiple of neppR=" << neppR;
       throw std::runtime_error( sstr.str() );
     }
   }
@@ -61,9 +61,9 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   void
-  RamboSamplingKernelHost::getMomentaInitial()
+  MasslessRamboSamplingKernelHost::getMomentaInitial()
   {
-    constexpr auto getMomentaInitial = ramboGetMomentaInitial<HostAccessMomenta>;
+    constexpr auto getMomentaInitial = massless_rambo::ramboGetMomentaInitial<HostAccessMomenta>;
     // ** START LOOP ON IEVT **
     for( size_t ievt = 0; ievt < nevt(); ++ievt )
     {
@@ -77,9 +77,9 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   void
-  RamboSamplingKernelHost::getMomentaFinal()
+  MasslessRamboSamplingKernelHost::getMomentaFinal()
   {
-    constexpr auto getMomentaFinal = ramboGetMomentaFinal<HostAccessRandomNumbers, HostAccessMomenta, HostAccessWeights>;
+    constexpr auto getMomentaFinal = massless_rambo::ramboGetMomentaFinal<HostAccessRandomNumbers, HostAccessMomenta, HostAccessWeights>;
     // ** START LOOP ON IEVT **
     for( size_t ievt = 0; ievt < nevt(); ++ievt )
     {
@@ -94,7 +94,7 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-  ClassicRamboSamplingKernelHost::ClassicRamboSamplingKernelHost( const fptype energy,               // input: energy
+  RamboSamplingKernelHost::RamboSamplingKernelHost( const fptype energy,               // input: energy
                                                                   const BufferRndNumMomenta& rndmom, // input: random [0,1] UNUSED
                                                                   const std::vector<fptype>& masses, // input: external-leg masses
                                                                   const int ninitial,                // input: #initial-state particles
@@ -106,10 +106,10 @@ namespace mg5amcCpu
     , m_masses( masses.begin(), masses.end() )
     , m_ninitial( ninitial )
   {
-    if( m_momenta.isOnDevice() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: momenta must be a host array" );
-    if( m_weights.isOnDevice() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: weights must be a host array" );
-    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: nevt mismatch with momenta" );
-    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "ClassicRamboSamplingKernelHost: nevt mismatch with weights" );
+    if( m_momenta.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelHost: momenta must be a host array" );
+    if( m_weights.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelHost: weights must be a host array" );
+    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "RamboSamplingKernelHost: nevt mismatch with momenta" );
+    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "RamboSamplingKernelHost: nevt mismatch with weights" );
 
     constexpr int neppM = MemoryAccessMomenta::neppM; // AOSOA layout
 
@@ -117,7 +117,7 @@ namespace mg5amcCpu
     if( nevt % neppM != 0 )
     {
       std::ostringstream sstr;
-      sstr << "ClassicRamboSamplingKernelHost: nevt should be a multiple of neppM=" << neppM;
+      sstr << "RamboSamplingKernelHost: nevt should be a multiple of neppM=" << neppM;
       throw std::runtime_error( sstr.str() );
     }
   }
@@ -125,7 +125,7 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   void
-  ClassicRamboSamplingKernelHost::getMomentaInitial()
+  RamboSamplingKernelHost::getMomentaInitial()
   {
      // NOOP
   }
@@ -133,7 +133,7 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   void
-  ClassicRamboSamplingKernelHost::getMomentaFinal()
+  RamboSamplingKernelHost::getMomentaFinal()
   {
     const int npar = (int)m_masses.size();
     // ** START LOOP ON IEVT **
@@ -144,7 +144,7 @@ namespace mg5amcCpu
       // For reproducibility betwn fptype = FP32/FP64 generation in FP64
       double wgt = 0.;
       const std::vector<std::vector<double>> point =
-        classic_rambo::get_momenta( m_ninitial, (double)m_energy, m_masses, wgt );
+        rambo::get_momenta( m_ninitial, (double)m_energy, m_masses, wgt );
       for( int ipar = 0; ipar < npar; ++ipar )
         for( int ip4 = 0; ip4 < 4; ++ip4 )
           MemoryAccessMomenta::ieventAccessIp4Ipar( m_momenta.data(), ievt, ip4, ipar ) = (fptype)point[ipar][ip4];
@@ -156,7 +156,7 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
 #ifdef MGONGPUCPP_GPUIMPL
-  RamboSamplingKernelDevice::RamboSamplingKernelDevice( const fptype energy,               // input: energy
+  MasslessRamboSamplingKernelDevice::MasslessRamboSamplingKernelDevice( const fptype energy,               // input: energy
                                                         const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
                                                         BufferMomenta& momenta,            // output: momenta
                                                         BufferWeights& weights,            // output: weights
@@ -167,21 +167,21 @@ namespace mg5amcCpu
     , m_gpublocks( gpublocks )
     , m_gputhreads( gputhreads )
   {
-    if( !m_rndmom.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelDevice: rndmom must be a device array" );
-    if( !m_momenta.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelDevice: momenta must be a device array" );
-    if( !m_weights.isOnDevice() ) throw std::runtime_error( "RamboSamplingKernelDevice: weights must be a device array" );
-    if( m_gpublocks == 0 ) throw std::runtime_error( "RamboSamplingKernelDevice: gpublocks must be > 0" );
-    if( m_gputhreads == 0 ) throw std::runtime_error( "RamboSamplingKernelDevice: gputhreads must be > 0" );
-    if( this->nevt() != m_rndmom.nevt() ) throw std::runtime_error( "RamboSamplingKernelDevice: nevt mismatch with rndmom" );
-    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "RamboSamplingKernelDevice: nevt mismatch with momenta" );
-    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "RamboSamplingKernelDevice: nevt mismatch with weights" );
+    if( !m_rndmom.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: rndmom must be a device array" );
+    if( !m_momenta.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: momenta must be a device array" );
+    if( !m_weights.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: weights must be a device array" );
+    if( m_gpublocks == 0 ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: gpublocks must be > 0" );
+    if( m_gputhreads == 0 ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: gputhreads must be > 0" );
+    if( this->nevt() != m_rndmom.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: nevt mismatch with rndmom" );
+    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: nevt mismatch with momenta" );
+    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: nevt mismatch with weights" );
     // Sanity checks for memory access (momenta buffer)
     constexpr int neppM = MemoryAccessMomenta::neppM; // AOSOA layout
     static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
     if( m_gputhreads % neppM != 0 )
     {
       std::ostringstream sstr;
-      sstr << "RamboSamplingKernelHost: gputhreads should be a multiple of neppM=" << neppM;
+      sstr << "MasslessRamboSamplingKernelHost: gputhreads should be a multiple of neppM=" << neppM;
       throw std::runtime_error( sstr.str() );
     }
     // Sanity checks for memory access (random number buffer)
@@ -190,7 +190,7 @@ namespace mg5amcCpu
     if( m_gputhreads % neppR != 0 )
     {
       std::ostringstream sstr;
-      sstr << "RamboSamplingKernelDevice: gputhreads should be a multiple of neppR=" << neppR;
+      sstr << "MasslessRamboSamplingKernelDevice: gputhreads should be a multiple of neppR=" << neppR;
       throw std::runtime_error( sstr.str() );
     }
   }
@@ -203,7 +203,7 @@ namespace mg5amcCpu
   getMomentaInitialDevice( const fptype energy,
                            fptype* momenta )
   {
-    constexpr auto getMomentaInitial = ramboGetMomentaInitial<DeviceAccessMomenta>;
+    constexpr auto getMomentaInitial = massless_rambo::ramboGetMomentaInitial<DeviceAccessMomenta>;
     return getMomentaInitial( energy, momenta );
   }
 #endif
@@ -212,7 +212,7 @@ namespace mg5amcCpu
 
 #ifdef MGONGPUCPP_GPUIMPL
   void
-  RamboSamplingKernelDevice::getMomentaInitial()
+  MasslessRamboSamplingKernelDevice::getMomentaInitial()
   {
     gpuLaunchKernel( getMomentaInitialDevice, m_gpublocks, m_gputhreads, m_energy, m_momenta.data() );
   }
@@ -227,7 +227,7 @@ namespace mg5amcCpu
                          fptype* momenta,
                          fptype* wgts )
   {
-    constexpr auto getMomentaFinal = ramboGetMomentaFinal<DeviceAccessRandomNumbers, DeviceAccessMomenta, DeviceAccessWeights>;
+    constexpr auto getMomentaFinal = massless_rambo::ramboGetMomentaFinal<DeviceAccessRandomNumbers, DeviceAccessMomenta, DeviceAccessWeights>;
     return getMomentaFinal( energy, rndmom, momenta, wgts );
   }
 #endif
@@ -236,7 +236,7 @@ namespace mg5amcCpu
 
 #ifdef MGONGPUCPP_GPUIMPL
   void
-  RamboSamplingKernelDevice::getMomentaFinal()
+  MasslessRamboSamplingKernelDevice::getMomentaFinal()
   {
     gpuLaunchKernel( getMomentaFinalDevice, m_gpublocks, m_gputhreads, m_energy, m_rndmom.data(), m_momenta.data(), m_weights.data() );
   }

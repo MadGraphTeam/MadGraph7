@@ -275,5 +275,76 @@ KERNELSPEC void kernel_two_to_two_particle_scattering_inverse(
     r_phi = phi / PI / 2. + 0.5;
 }
 
+template <typename T>
+KERNELSPEC void kernel_double_t_scattering(
+    FIn<T, 0> r_phi,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> t2_abs,
+    FIn<T, 0> m1,
+    FOut<T, 1> p1,
+    FOut<T, 1> p2,
+    FOut<T, 0> det
+) {
+    // pa + pb -> p1 + p2 with |t1| = -(pa-p1)^2, |t2| = -(pb-p1)^2, phi.
+    // Assumes pa, pb massless. m1 fixed; m2 derived.
+    //
+    // Canonical frame: (pa+pb) rest frame, with pa along +z. The formulas:
+    //   E1   = (t1_abs + t2_abs + 2 m1^2) / (2 sqrt(s))
+    //   pz1  = (t2_abs - t1_abs)          / (2 sqrt(s))
+    //   pt^2 = (t1_abs t2_abs + (t1_abs + t2_abs) m1^2 + m1^4 - s m1^2) / s
+    // Then rotate so canonical-z aligns with pa_com, boost back to lab.
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto pa_com = boost<T>(load_mom<T>(pa), p_tot, -1.);
+    auto s = lsquare<T>(p_tot);
+    auto sqrts = sqrt(max(s, EPS2));
+    auto m1_2 = m1 * m1;
+
+    auto e1  = ( t1_abs + t2_abs + 2. * m1_2) / (2. * sqrts);
+    auto pz1 = ( t2_abs - t1_abs)              / (2. * sqrts);
+    auto pt2_raw =
+        (t1_abs * t2_abs + (t1_abs + t2_abs) * m1_2 + m1_2 * m1_2 - s * m1_2) / s;
+    auto pt2 = max(pt2_raw, 0.);
+    auto pt  = sqrt(pt2);
+    auto phi = PI * (2. * r_phi - 1.);
+
+    FourMom<T> p1_canon{e1, pt * cos(phi), pt * sin(phi), pz1};
+
+    auto p1_rot = rotate<T>(p1_canon, pa_com);
+    auto p1_lab = boost<T>(p1_rot, p_tot, 1.);
+    store_mom<T>(p1, p1_lab);
+    for (int i = 0; i < 4; ++i) {
+        p2[i] = p_tot[i] - p1_lab[i];
+    }
+
+    det = PI / (2. * max(s, EPS));
+}
+
+template <typename T>
+KERNELSPEC void kernel_double_t_scattering_inverse(
+    FIn<T, 1> p1,
+    FIn<T, 1> p2,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FOut<T, 0> r_phi,
+    FOut<T, 0> det
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto pa_com = boost<T>(load_mom<T>(pa), p_tot, -1.);
+    auto p1_com = boost<T>(load_mom<T>(p1), p_tot, -1.);
+    auto p1_canon = rotate_inverse<T>(p1_com, pa_com);
+    auto phi = atan2(p1_canon[2], p1_canon[1]);
+    r_phi = phi / PI / 2. + 0.5;
+    auto s = lsquare(p_tot);
+    det = 2. * max(s, EPS) / PI;
+}
+
 } // namespace kernels
 } // namespace madspace

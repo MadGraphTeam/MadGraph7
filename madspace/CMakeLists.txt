@@ -131,12 +131,14 @@ add_library(
     src/compgraphs/optimizer.cpp
     src/compgraphs/instruction_set_mixin.inc
     src/phasespace/base.cpp
+    src/phasespace/batch_sampler.cpp
     src/phasespace/invariants.cpp
     src/phasespace/two_particle.cpp
     src/phasespace/three_particle.cpp
     src/phasespace/luminosity.cpp
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
+    src/phasespace/color_ordered_mapping.cpp
     src/phasespace/phasespace.cpp
     src/phasespace/multichannel.cpp
     src/phasespace/madnis.cpp
@@ -146,6 +148,7 @@ add_library(
     src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
     src/phasespace/integrand.cpp
+    src/phasespace/unweighter.cpp
     src/phasespace/vegas.cpp
     src/phasespace/mlp.cpp
     src/phasespace/flow.cpp
@@ -183,12 +186,14 @@ add_library(
     include/madspace/compgraphs/optimizer.hpp
     include/madspace/phasespace.hpp
     include/madspace/phasespace/base.hpp
+    include/madspace/phasespace/batch_sampler.hpp
     include/madspace/phasespace/invariants.hpp
     include/madspace/phasespace/two_particle.hpp
     include/madspace/phasespace/three_particle.hpp
     include/madspace/phasespace/luminosity.hpp
     include/madspace/phasespace/topology.hpp
     include/madspace/phasespace/t_propagator_mapping.hpp
+    include/madspace/phasespace/color_ordered_mapping.hpp
     include/madspace/phasespace/phasespace.hpp
     include/madspace/phasespace/multichannel.hpp
     include/madspace/phasespace/madnis.hpp
@@ -198,6 +203,7 @@ add_library(
     include/madspace/phasespace/histograms.hpp
     include/madspace/phasespace/chili.hpp
     include/madspace/phasespace/integrand.hpp
+    include/madspace/phasespace/unweighter.hpp
     include/madspace/phasespace/vegas.hpp
     include/madspace/phasespace/mlp.hpp
     include/madspace/phasespace/flow.hpp

@@ -40,7 +40,8 @@ private:
 class MultiChannelFunction : public FunctionGenerator {
 public:
     MultiChannelFunction(
-        const std::vector<std::shared_ptr<FunctionGenerator>>& functions
+        const std::vector<std::shared_ptr<FunctionGenerator>>& functions,
+        bool return_batch_sizes = false
     );
 
 private:
@@ -49,6 +50,7 @@ private:
     ) const override;
 
     std::vector<std::shared_ptr<FunctionGenerator>> _functions;
+    bool _return_batch_sizes;
 };
 
 } // namespace madspace
