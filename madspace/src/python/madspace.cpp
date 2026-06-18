@@ -1543,19 +1543,22 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("spin", &LHEParticle::spin);
     py::classh<LHEEvent>(m, "LHEEvent")
         .def(
-            py::init<int, double, double, double, double, std::vector<LHEParticle>>(),
+            py::init<
+                int, double, double, double, double, int, std::vector<LHEParticle>>(),
             py::arg("process_id") = 0,
             py::arg("weight") = 0.,
             py::arg("scale") = 0.,
             py::arg("alpha_qed") = 0.,
             py::arg("alpha_qcd") = 0.,
+            py::arg("sde_channel") = -1,
             py::arg("particles") = std::vector<LHEParticle>{}
         )
         .def_readwrite("process_id", &LHEEvent::process_id)
         .def_readwrite("weight", &LHEEvent::weight)
         .def_readwrite("scale", &LHEEvent::scale)
         .def_readwrite("alpha_qed", &LHEEvent::alpha_qed)
-        .def_readwrite("alpha_qcd", &LHEEvent::process_id)
+        .def_readwrite("alpha_qcd", &LHEEvent::alpha_qcd)
+        .def_readwrite("sde_channel", &LHEEvent::sde_channel)
         .def_readwrite("particles", &LHEEvent::particles);
     py::classh<LHECompleter::SubprocArgs>(m, "SubprocArgs")
         .def(
@@ -1672,7 +1675,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const GeneratorConfig&,
                 std::size_t,
                 const std::string&,
-                const std::optional<ObservableHistograms>&>(),
+                const std::optional<ObservableHistograms>&,
+                int>(),
             py::arg("contexts"),
             py::arg("integrand"),
             py::arg("event_file"),
@@ -1680,7 +1684,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             py::arg("subprocess_index"),
             py::arg("name"),
-            py::arg("histograms")
+            py::arg("histograms"),
+            py::arg("sde_channel") = -1
         )
         .def_readonly_static("integrand_flags", &ChannelEventGenerator::integrand_flags)
         .def("status", &ChannelEventGenerator::status)

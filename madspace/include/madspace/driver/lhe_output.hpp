@@ -59,6 +59,7 @@ struct LHEEvent {
     double scale;
     double alpha_qed;
     double alpha_qcd;
+    int sde_channel = -1; // single-diagram-enhanced channel diagram number (-1 if none)
     std::vector<LHEParticle> particles;
 
     void format_to(std::string& buffer) const;

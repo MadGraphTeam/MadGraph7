@@ -53,6 +53,9 @@ void LHEEvent::format_to(std::string& buffer) const {
             particle.spin
         );
     }
+    if (sde_channel >= 0) {
+        std::format_to(insert_iter, "# SDE_channel {}\n", sde_channel);
+    }
     buffer += "</event>\n";
 }
 

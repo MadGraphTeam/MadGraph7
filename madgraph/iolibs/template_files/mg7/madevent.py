@@ -306,6 +306,13 @@ class MadgraphProcess:
                 subproc.build_integrands(phasespace), phasespace.channels
             ):
                 if channel.event_generator is None:
+                    # SDE channel: the diagram number enhanced by this channel (-1 for
+                    # the flat/ground channels, whose name is not a plain channel id)
+                    sde_channel = -1
+                    if channel.name.isdigit():
+                        diagrams = subproc.meta["channels"][int(channel.name)]["diagrams"]
+                        if diagrams:
+                            sde_channel = diagrams[0]["diagram"]
                     channel.event_generator = ms.ChannelEventGenerator(
                         contexts=self.contexts,
                         integrand=integrand,
@@ -314,7 +321,8 @@ class MadgraphProcess:
                         config=self.event_generator_config,
                         subprocess_index=i,
                         name=f"{i}.{channel.name}",
-                        histograms=subproc.histograms
+                        histograms=subproc.histograms,
+                        sde_channel=sde_channel,
                     )
                 channel_generators.append(channel.event_generator)
 

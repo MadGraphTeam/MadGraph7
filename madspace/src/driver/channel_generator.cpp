@@ -11,12 +11,14 @@ ChannelEventGenerator::ChannelEventGenerator(
     const GeneratorConfig& config,
     std::size_t subprocess_index,
     const std::string& name,
-    const std::optional<ObservableHistograms>& histograms
+    const std::optional<ObservableHistograms>& histograms,
+    int sde_channel
 ) :
     _contexts(contexts),
     _status{
         .subprocess = subprocess_index,
         .name = name,
+        .sde_channel = sde_channel,
         .mean = 0.,
         .error = 0.,
         .rel_std_dev = 0.,
@@ -133,12 +135,14 @@ ChannelEventGenerator::ChannelEventGenerator(
     std::size_t subprocess_index,
     const std::string& name,
     const GeneratorConfig& config,
-    const std::vector<Histogram>& histograms
+    const std::vector<Histogram>& histograms,
+    int sde_channel
 ) :
     _contexts(contexts),
     _status{
         .subprocess = subprocess_index,
         .name = name,
+        .sde_channel = sde_channel,
         .mean = 0.,
         .error = 0.,
         .rel_std_dev = 0.,
@@ -520,7 +524,8 @@ ChannelEventGenerator ChannelEventGenerator::load(
         channel.at("subprocess_index").get<std::size_t>(),
         channel.at("name").get<std::string>(),
         config,
-        histograms
+        histograms,
+        channel.value("sde_channel", -1)
     );
 }
 
@@ -547,6 +552,7 @@ void madspace::to_json(nlohmann::json& j, const ChannelEventGenerator& channel) 
         {"histogram_function", histogram_function},
         {"subprocess_index", channel._status.subprocess},
         {"name", channel._status.name},
+        {"sde_channel", channel._status.sde_channel},
         {"histograms", histograms},
     };
 }

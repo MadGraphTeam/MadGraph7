@@ -53,17 +53,22 @@ struct ParticleRecord {
 constexpr int record_weight = 1;
 constexpr int record_subproc_index = 2;
 constexpr int record_indices = 4;
+constexpr int record_sde_channel = 8;
 
 template <int fields>
 struct EventRecord {
     static constexpr std::size_t size = (fields & record_weight ? 8 : 0) +
-        (fields & record_subproc_index ? 4 : 0) + (fields & record_indices ? 16 : 0);
+        (fields & record_subproc_index ? 4 : 0) + (fields & record_indices ? 16 : 0) +
+        (fields & record_sde_channel ? 4 : 0);
     static constexpr std::size_t subproc_index_offset = fields & record_weight ? 8 : 0;
     static constexpr std::size_t indices_offset =
         subproc_index_offset + (fields & record_subproc_index ? 4 : 0);
+    static constexpr std::size_t sde_channel_offset =
+        indices_offset + (fields & record_indices ? 16 : 0);
 
     static constexpr std::size_t field_count = (fields & record_weight ? 1 : 0) +
-        (fields & record_subproc_index ? 1 : 0) + (fields & record_indices ? 4 : 0);
+        (fields & record_subproc_index ? 1 : 0) + (fields & record_indices ? 4 : 0) +
+        (fields & record_sde_channel ? 1 : 0);
     static constexpr std::array<FieldLayout, field_count> layout = [] {
         std::array<FieldLayout, field_count> layout;
         std::size_t offset = 0;
@@ -82,6 +87,10 @@ struct EventRecord {
             layout[offset + 3] = {"helicity_index", "<i4"};
             offset += 4;
         }
+        if (fields & record_sde_channel) {
+            layout[offset] = {"sde_channel", "<i4"};
+            offset += 1;
+        }
         return layout;
     }();
 
@@ -91,14 +100,15 @@ struct EventRecord {
     UnalignedRef<int> color_index() { return &data[indices_offset + 4]; }
     UnalignedRef<int> flavor_index() { return &data[indices_offset + 8]; }
     UnalignedRef<int> helicity_index() { return &data[indices_offset + 12]; }
+    UnalignedRef<int> sde_channel() { return &data[sde_channel_offset + 0]; }
 
     char* data;
 };
 
 using EventWeightRecord = EventRecord<record_weight>;
 using EventIndicesRecord = EventRecord<record_indices>;
-using EventFullRecord =
-    EventRecord<record_weight | record_subproc_index | record_indices>;
+using EventFullRecord = EventRecord<
+    record_weight | record_subproc_index | record_indices | record_sde_channel>;
 
 struct EmptyParticleRecord {
     static constexpr std::size_t size = 0;

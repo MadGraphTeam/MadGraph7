@@ -40,7 +40,8 @@ public:
         const GeneratorConfig& config,
         std::size_t subprocess_index,
         const std::string& name,
-        const std::optional<ObservableHistograms>& histograms
+        const std::optional<ObservableHistograms>& histograms,
+        int sde_channel = -1
     );
 
     const GeneratorStatus& status() const { return _status; }
@@ -82,7 +83,8 @@ private:
         std::size_t subprocess_index,
         const std::string& name,
         const GeneratorConfig& config,
-        const std::vector<Histogram>& histograms
+        const std::vector<Histogram>& histograms,
+        int sde_channel = -1
     );
 
     struct ContextRuntimes {

@@ -627,6 +627,7 @@ void EventGenerator::read_and_combine(
         auto event_out = buffer.event<EventFullRecord>(event_index);
         event_out.weight() = std::max(1., weight / channel->max_weight()) * norm_factor;
         event_out.subprocess_index() = channel->status().subprocess;
+        event_out.sde_channel() = channel->status().sde_channel;
         event_out.diagram_index() = event_in.diagram_index();
         event_out.color_index() = event_in.color_index();
         event_out.flavor_index() = event_in.flavor_index();
@@ -663,6 +664,7 @@ void EventGenerator::fill_lhe_event(
 ) {
     EventRecord event_in = buffer.event<EventFullRecord>(event_index);
     lhe_event.weight = event_in.weight();
+    lhe_event.sde_channel = event_in.sde_channel();
     lhe_event.process_id = 0;
     lhe_event.scale = 0; // TODO: populate these
     lhe_event.alpha_qed = 0;

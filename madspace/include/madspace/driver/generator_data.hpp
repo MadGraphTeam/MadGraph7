@@ -66,6 +66,7 @@ struct GeneratorConfig {
 struct GeneratorStatus {
     std::size_t subprocess;
     std::string name;
+    int sde_channel = -1; // diagram number of the single-diagram-enhanced channel (-1 if none)
     double mean;
     double error;
     double rel_std_dev;
