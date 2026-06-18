@@ -78,3 +78,6 @@ nsqso_born.inc
 docs/build/
 tests/input_files/IOTestsComparison_BackUp/
 tests/input_files/IOTestsComparison/**/*.BackUp
+
+# Standalone process output directory
+/DEVELOP/
