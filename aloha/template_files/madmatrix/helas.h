@@ -1,3 +1,4 @@
+#include <cmath>
 ! Copyright (C) 2010 The ALOHA Development team and Contributors.
 ! Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
 ! Created by: J. Alwall (Sep 2010) for the MG5aMC CPP backend.
@@ -287,7 +288,7 @@
 #else
       const fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                           fptype_sv{ 0 },
-                                          fpsqrt<fptype_polarization>( fpmax<fptype_polarization>( pvec0 + pvec3, 0. ) ) * (fptype_polarization)nsf );
+                                          fpsqrt<fptype_polarization>( fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( std::signbit( pvec0 ) == std::signbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0. ) ) * (fptype_polarization)nsf );
       const cxtype_polarization_sv chi[2] = { cxmake<fptype_polarization>( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake<fptype_polarization>( -(fptype_polarization)nhel * fpsqrt<fptype_polarization>( 2. * pvec0 ), 0. ) : cxmake<fptype_polarization>( (fptype)nh * pvec1, pvec2 ) / sqp0p3 ) };
 #endif
@@ -750,7 +751,7 @@
 #else
       const fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. ) and ( pvec2 == 0. ) and ( pvec3 < 0. ),
                                           0,
-                                          fpsqrt<fptype_polarization>( fpmax<fptype_polarization>( pvec0 + pvec3, 0. ) ) * (fptype_polarization)nsf );
+                                          fpsqrt<fptype_polarization>( fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( std::signbit( pvec0 ) == std::signbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0. ) ) * (fptype_polarization)nsf );
       const cxtype_polarization_sv chi[2] = { cxmake<fptype_polarization>( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake<fptype_polarization>( -nhel, 0. ) * fpsqrt<fptype_polarization>( 2. * pvec0 ) : cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1, -pvec2 ) / sqp0p3 ) };
 #endif
