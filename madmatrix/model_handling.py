@@ -2510,16 +2510,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         # external legs (i,j), the caller-supplied invariant mass^2 m_ij[i][j] (via the
         # umami UMAMI_IN_INVARIANT_MASS_SQ input) is used ONLY when the current
         # channelId selects a diagram that contains this propagator; otherwise the
-        # routine recomputes p^2 from the momenta. The condition is on the channelId
-        # (== the config id; numerators_sv[channelId-1] is its numerator), NOT on the raw
-        # MG5 diagram number: when diagrams are pruned (QCD/gauge restrictions) the diagram
-        # numbers and the contiguous channelIds differ. A propagator can belong to several
-        # channels, hence the OR on channelId.
-        wf_channels = {} # wavefunction number -> set of channelIds (config ids) containing it
+        # routine recomputes p^2 from the momenta. The condition is on the channelId,
+        # which == the MG5 diagram number (numerators_sv[channelId-1] is its numerator),
+        # matching MadSpace's channel numbering. A propagator can belong to several
+        # channel diagrams, hence the OR on channelId.
+        wf_channels = {} # wavefunction number -> set of channel diagram numbers containing it
         for config in sorted(multi_channel_map.keys()):
             for idiag in multi_channel_map[config]:
+                channel_diagnum = diagrams[idiag].get('number')
                 for wf_num in self._collect_diagram_wf_numbers(diagrams[idiag]):
-                    wf_channels.setdefault(wf_num, set()).add(config)
+                    wf_channels.setdefault(wf_num, set()).add(channel_diagnum)
         self.wf_fixp2_map = {}
         for diagram in diagrams:
             for wf in diagram.get('wavefunctions'):
@@ -2532,7 +2532,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     if chans:
                         i = mothers[0].get('number_external') - 1
                         j = mothers[1].get('number_external') - 1
-                        cond = ' || '.join('channelId == %d' % (c+1) for c in chans) # channelId is 1-based (config+1)
+                        cond = ' || '.join('channelId == %d' % c for c in chans) # channelId == MG5 diagram number
                         self.wf_fixp2_map[num] = \
                             '( mij != nullptr && ( %s ) ? MIJ_ACCESS::kernelAccessConst( mij, %d, %d ) : fptype_invmass_sv{0} )' % (cond, i, j)
         id_amp = 0
@@ -2553,14 +2553,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 if id_amp in diag_to_config:
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % diag_to_config[id_amp]) # BUG #472
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % id_amp) # wrong fix for BUG #472
-                    # Index numerators_sv by the config id (== channelId, what numerators_sv[channelId-1]
-                    # in the ME rescaling expects), NOT by the raw MG5 diagram number. With pruned diagrams
-                    # the surviving diagram numbers (e.g. 1,4) exceed ndiagrams and would read/write out of
-                    # bounds and corrupt the multichannel weights.
-                    config = diag_to_config[id_amp] # 0-based config id (== channelId-1)
+                    # Index numerators_sv by the MG5 diagram number (channelId == diagram number,
+                    # matching MadSpace's channel numbering and the m_ij gating above). The buffer is
+                    # ndiagrams-wide so diagnum-1 is in range; this keeps the no-m_ij (MadEvent) path and
+                    # the m_ij path consistent.
+                    diagnum = diagram.get('number')
                     res.append("if( storeChannelWeights )")
                     res.append("{")
-                    res.append("  numerators_sv[%i] += cxabs2( amp_sv[0] );" % config)
+                    res.append("  numerators_sv[%i] += cxabs2( amp_sv[0] );" % (diagnum-1))
                     res.append("  denominators_sv += cxabs2( amp_sv[0] );")
                     res.append("}")
                 for njamp, coeff in color[namp].items():

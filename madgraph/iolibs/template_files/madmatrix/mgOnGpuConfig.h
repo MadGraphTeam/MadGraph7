@@ -192,7 +192,7 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_MOMENTA_FLOAT
   typedef float fptype_momenta;
 #else
-  typedef fptype2 fptype_momenta;
+  typedef fptype fptype_momenta;
 #endif
 
   // fptype_polarization: precision of the ixxxxx/vxxxxx polarization (wavefunction) computation
@@ -201,7 +201,7 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_POLARIZATION_FLOAT
   typedef float fptype_polarization;
 #else
-  typedef double fptype_polarization; // default: double (madmatrix precision experiment)
+  typedef fptype fptype_polarization; // default: double (madmatrix precision experiment)
 #endif
 
   // fptype_invmass: precision of the offshell-propagator virtuality (m_ij / FIXP2) and of the
@@ -213,7 +213,7 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_INVMASS_FLOAT
   typedef float fptype_invmass;
 #else
-  typedef double fptype_invmass; // default: double
+  typedef fptype fptype_invmass; // default: double
 #endif
 
   // fptype_vertex: for VVF vertex function (FFV1_0, FFV1P0_3) internal computation
@@ -222,7 +222,7 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_VERTEX_FLOAT
   typedef float fptype_vertex;
 #else
-  typedef fptype2 fptype_vertex;
+  typedef fptype fptype_vertex;
 #endif
 
   // fptype_denom: for denominator variables in vertex functions. Defaults to fptype2 (the
@@ -234,7 +234,7 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_DENOM_FLOAT
   typedef float fptype_denom;
 #else
-  typedef fptype2 fptype_denom;
+  typedef fptype fptype_denom;
 #endif
 
   // fptype_amp: for amplitude/jamp variables
@@ -243,7 +243,7 @@ namespace mgOnGpu
 #elif defined MGONGPU_FPTYPE_AMP_FLOAT
   typedef float fptype_amp;
 #else
-  typedef fptype2 fptype_amp;
+  typedef fptype fptype_amp;
 #endif
 
   // fptype_colour: for color algebra (alias for fptype2)
