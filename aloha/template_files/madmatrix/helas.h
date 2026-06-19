@@ -226,7 +226,11 @@
         fptype omega[2] = { fpsqrt( pvec0 + pp ), 0. };
         omega[1] = fmass / omega[0];
         const fptype sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype pp3 = fpmax( pp + pvec3, 0. );
+        const fptype pp3 = fpmax(
+				 fpternary(std::signbit(pvec3), 
+				 	   (pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+				 	   pp + pvec3),
+				  0.);
         const cxtype chi[2] = { cxmake( fpsqrt( pp3 * (fptype)0.5 / pp ), 0. ),
                                 ( pp3 == 0. ? cxmake( -nh, 0. ) : cxmake( nh * pvec1, pvec2 ) / fpsqrt( 2. * pp * pp3 ) ) };
         w[0] = sfomega[0] * chi[im];
@@ -249,7 +253,11 @@
       fptype_v omega[2] = { fpsqrt( pvec0 + pp ), 0 };
       omega[1] = fmass / omega[0];
       const fptype_v sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-      const fptype_v pp3 = fpmax( pp + pvec3, 0 );
+      const fptype pp3 = fpmax(
+				 fpternary(std::signbit(pvec3), 
+				 	   (pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+				 	   pp + pvec3),
+				  0.);
       volatile fptype_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
       volatile fptype_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
       volatile fptype_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
@@ -272,7 +280,9 @@
     else
     {
 #ifdef MGONGPU_CPPSIMD
-      volatile fptype_sv p0p3 = fpmax( pvec0 + pvec3, 0 ); // volatile fixes #736
+      volatile fptype_sv p0p3 = fpmax( fpternary( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)), 0 ); // volatile fixes #736
       volatile fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
                                              fpsqrt( p0p3 ) * (fptype)nsf );
@@ -667,7 +677,11 @@
         const int ip = ( 1 + nh ) / 2; // NB: Fortran is (3+nh)/2 because omega(2) has indexes 1,2 and not 0,1
         const int im = ( 1 - nh ) / 2; // NB: Fortran is (3-nh)/2 because omega(2) has indexes 1,2 and not 0,1
         const fptype sfomeg[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype pp3 = fpmax( pp + pvec3, 0. );
+        const fptype pp3 = fpmax(
+				 fpternary(std::signbit(pvec3), 
+				 	   (pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+				 	   pp + pvec3),
+				  0.);
         const cxtype chi[2] = { cxmake( fpsqrt( pp3 * (fptype)0.5 / pp ), 0. ),
                                 ( ( pp3 == 0. ) ? cxmake( -nh, 0. )
                                                 : cxmake( nh * pvec1, -pvec2 ) / fpsqrt( 2. * pp * pp3 ) ) };
@@ -697,7 +711,11 @@
       const int ipB = ( 1 + nh ) / 2;
       const int imB = ( 1 - nh ) / 2;
       const fptype_v sfomeg[2] = { sf[0] * omega[ipB], sf[1] * omega[imB] };
-      const fptype_v pp3 = fpmax( pp + pvec3, 0. );
+      const fptype pp3 = fpmax(
+				 fpternary(std::signbit(pvec3), 
+				 	   (pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+				 	   pp + pvec3),
+				  0.);
       volatile fptype_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
       volatile fptype_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
       volatile fptype_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
@@ -720,7 +738,9 @@
     else
     {
 #ifdef MGONGPU_CPPSIMD
-      volatile fptype_sv p0p3 = fpmax( pvec0 + pvec3, 0 ); // volatile fixes #736
+      volatile fptype_sv p0p3 = fpmax( fpternary( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)), 0 ); // volatile fixes #736
       volatile fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
                                              fpsqrt( p0p3 ) * (fptype)nsf );
@@ -738,7 +758,6 @@
 								  pvec0 + pvec3,
 								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)),
 							  0. ) ) * (fptype)nsf );
-      
       const cxtype_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ) : cxmake( (fptype)nh * pvec1, -pvec2 ) / sqp0p3 ) };
 #endif
