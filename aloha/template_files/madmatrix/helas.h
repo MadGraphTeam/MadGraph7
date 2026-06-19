@@ -239,7 +239,12 @@
         fptype_polarization omega[2] = { fpsqrt<fptype_polarization>( pvec0 + pp ), 0. };
         omega[1] = fmass / omega[0];
         const fptype_polarization sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype_polarization pp3 = fpmax<fptype_polarization>( pp + pvec3, 0. );
+       const fptype_polarization pp3 = fpmax<fptype_polarization>( 	
+						fpternary<fptype_polarization_sv>( std::signbit(pvec3), 
+							(pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+							pp + pvec3),
+						 0.);
+
         const cxtype_polarization chi[2] = { cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( pp3 * (fptype_polarization)0.5 / pp ), 0. ),
                                 ( pp3 == 0. ? cxmake<fptype_polarization>( -nh, 0. ) : cxmake<fptype_polarization>( nh * pvec1, pvec2 ) / fpsqrt<fptype_polarization>( 2. * pp * pp3 ) ) };
         w[0] = static_cast<cxtype_vertex_sv>( sfomega[0] * chi[im]);
@@ -262,7 +267,12 @@
       fptype_v omega[2] = { fpsqrt<fptype_polarization>( pvec0 + pp ), 0 };
       omega[1] = fmass / omega[0];
       const fptype_polarization_v sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-      const fptype_polarization_v pp3 = fpmax<fptype_polarization>( pp + pvec3, 0 );
+      const fptype_polarization pp3 = fpmax<fptype_polarization>( 	
+						fpternary<fptype_polarization_sv>( std::signbit(pvec3), 
+							(pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+							pp + pvec3),
+						 0.);
+
       volatile fptype_polarization_v ppDENOM = fpternary<fptype_polarization_sv>( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
       volatile fptype_polarization_v pp3DENOM = fpternary<fptype_polarization_sv>( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
       volatile fptype_polarization_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
@@ -285,7 +295,9 @@
     else
     {
 #ifdef MGONGPU_CPPSIMD
-      volatile fptype_polarization_sv p0p3 = fpmax<fptype_polarization>( pvec0 + pvec3, 0 ); // volatile fixes #736
+      volatile fptype_polarization_sv p0p3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)), 0 ); // volatile fixes #736
       volatile fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
                                              fpsqrt<fptype_polarization>( p0p3 ) * (fptype_polarization)nsf );
@@ -700,7 +712,11 @@
         const int ip = ( 1 + nh ) / 2; // NB: Fortran is (3+nh)/2 because omega(2) has indexes 1,2 and not 0,1
         const int im = ( 1 - nh ) / 2; // NB: Fortran is (3-nh)/2 because omega(2) has indexes 1,2 and not 0,1
         const fptype_polarization sfomeg[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype_polarization pp3 = fpmax<fptype_polarization>( pp + pvec3, 0. );
+        const fptype_polarization pp3 = fpmax<fptype_polarization>( 	
+						fpternary<fptype_polarization_sv>( std::signbit(pvec3), 
+							(pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+							pp + pvec3),
+						 0.);
         const cxtype_polarization chi[2] = { cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( pp3 * (fptype_polarization)0.5 / pp ), 0. ),
                                 ( ( pp3 == 0. ) ? cxmake<fptype_polarization>( -nh, 0. )
                                                 : cxmake<fptype_polarization>( nh * pvec1, -pvec2 ) / fpsqrt<fptype_polarization>( 2. * pp * pp3 ) ) };
@@ -730,7 +746,11 @@
       const int ipB = ( 1 + nh ) / 2;
       const int imB = ( 1 - nh ) / 2;
       const fptype_polarization_v sfomeg[2] = { sf[0] * omega[ipB], sf[1] * omega[imB] };
-      const fptype_polarization_v pp3 = fpmax<fptype_polarization>( pp + pvec3, 0. );
+      const fptype_polarization pp3 = fpmax<fptype_polarization>( 	
+						fpternary<fptype_polarization_sv>( std::signbit(pvec3), 
+							(pvec0*pvec0 + pvec2*pvec2)/(pp - pvec3),
+							pp + pvec3),
+						 0.);
       volatile fptype_polarization_v ppDENOM = fpternary<fptype_polarization_sv>( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
       volatile fptype_polarization_v pp3DENOM = fpternary<fptype_polarization_sv>( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
       volatile fptype_polarization_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
@@ -753,7 +773,9 @@
     else
     {
 #ifdef MGONGPU_CPPSIMD
-      volatile fptype_polarization_sv p0p3 = fpmax<fptype_polarization>( pvec0 + pvec3, 0 ); // volatile fixes #736
+      volatile fptype_polarization_sv p0p3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( std::signbit(pvec0) == std::signbit(pvec3), 
+								  pvec0 + pvec3,
+								  (pvec1*pvec1 + pvec2*pvec2)/(pvec0 - pvec3)), 0 ); // volatile fixes #736
       volatile fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
                                              fpsqrt<fptype_polarization>( p0p3 ) * (fptype_polarization)nsf );
