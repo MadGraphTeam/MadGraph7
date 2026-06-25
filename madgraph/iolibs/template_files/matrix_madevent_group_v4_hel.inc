@@ -50,6 +50,16 @@ C
         REAL*8 R,SUMHEL,TS(NCOMB)
         INTEGER I,IDEN
         INTEGER FLAVOR(NEXTERNAL)
+        INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
+C       Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
+C       table above can collapse distinct same-flavor / different-flavor
+C       leshouche rows that share the same coupling group; BROKEN_SYM needs
+C       row-level information to apply the identical-particle correction.
+        INTEGER FLAVOR_ROW(NEXTERNAL,%(max_flavor_row)s)
+        %(get_flavor_row_matrix)s
+        INTEGER IPSEL
+        COMMON /SUBPROC/ IPSEL
+        INTEGER BROKEN_SYM%(proc_id)s
         REAL*8 XTOT
         INTEGER  J, JJ
       double precision get_channel_cut
@@ -152,7 +162,12 @@ c         Set right sign for ANS, based on sign of chosen helicity
 	        stop 1
         ENDIF
     ENDIF
-    ANS=ANS/DBLE(IDEN)
+    IF (IPSEL.GE.1.AND.IPSEL.LE.%(max_flavor_row)s) THEN
+       FLAVOR_FOR_SYM(:) = FLAVOR_ROW(:, IPSEL)
+    ELSE
+       FLAVOR_FOR_SYM(:) = FLAVOR(:)
+    ENDIF
+    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR_FOR_SYM)
 
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
 
@@ -227,6 +242,7 @@ C
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
     DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
+%(flavor_mask_decl)s
 
 	%(fake_width_declaration)s
 	logical first
@@ -262,6 +278,7 @@ if (first) then
 	first=.false.
 	%(fake_width_definitions)s
 endif
+%(flavor_mask_setup)s
     AMP(:,:) = (0d0,0d0)
 ${helas_calls}
 
@@ -308,3 +325,6 @@ ${jamp_lines}
     	    i =1
     return
     end
+
+
+%(broken_sym_function)s

@@ -1,7 +1,9 @@
 import argparse
 import os
+import sys
 import time
 from datetime import timedelta
+from pathlib import Path
 import glob
 import shutil
 import json
@@ -13,6 +15,28 @@ from typing import Literal, NamedTuple
 import tomllib
 import resource
 
+# Locate the madspace installation bundled alongside MadGraph.
+# madgraph/__init__.py lives one level below the MadGraph root, so .parents[1]
+# reaches the root and then "madspace/install" is the local install prefix.
+import madgraph as _mg_pkg
+import importlib.util as _importlib_util
+_MADSPACE_DIR = Path(_mg_pkg.__file__).parents[1] / "madspace"
+_INSTALL_DIR = _MADSPACE_DIR / "install"
+# Run the bundled installer only if madspace is neither installed in the local
+# prefix nor already importable (e.g. via `pip install . --user`).
+if not (_INSTALL_DIR / "madspace").is_dir() and \
+        _importlib_util.find_spec("madspace") is None:
+    print()
+    print("You don't have madspace installed for this madgraph instance")
+    print("Running interactive madspace installation script")
+    print()
+
+    _result = subprocess.run([sys.executable, str(_MADSPACE_DIR / "install.py")])
+    if _result.returncode != 0:
+        raise RuntimeError("madspace installation failed — see output above")
+if str(_INSTALL_DIR) not in sys.path:
+    sys.path.insert(0, str(_INSTALL_DIR))
+
 if "LHAPDF_DATA_PATH" in os.environ:
     PDF_PATH = os.environ["LHAPDF_DATA_PATH"]
 else:
@@ -21,7 +45,11 @@ else:
         lhapdf.setVerbosity(0)
         PDF_PATH = lhapdf.paths()[0]
     except ImportError:
-        raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
+        # Do not abort at import time: lhapdf is only needed when a PDF grid is
+        # actually loaded (see PdfGrid/AlphaSGrid below). Leave PDF_PATH unset
+        # so that code paths which do not require an external PDF still work;
+        # the missing-lhapdf error is raised lazily at the point of use.
+        PDF_PATH = None
 
 import madspace as ms
 from models.check_param_card import ParamCard
@@ -265,6 +293,8 @@ class MadgraphProcess:
         )
 
         pdf_set = beam_args["pdf"]
+        if PDF_PATH is None:
+            raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
         self.pdf_grid = ms.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
         self.alphas_grid = ms.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
         for context in self.contexts:
@@ -291,6 +321,9 @@ class MadgraphProcess:
         cfg.cpu_batch_size = gen_args["cpu_batch_size"]
         cfg.gpu_batch_size = gen_args["gpu_batch_size"]
         cfg.verbosity = run_args["verbosity"]
+        cfg.combine_thread_count = run_args["combine_thread_pool_size"]
+        cfg.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
+        cfg.max_cut_repetitions = gen_args["max_cut_repetitions"]
         self.event_generator_config = cfg
         self.event_generator = None
 
@@ -452,25 +485,17 @@ class MadgraphProcess:
         config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
         config.fixed_cwnet_fraction = madnis_args["fixed_cwnet_fraction"]
         config.softclip_threshold = madnis_args["softclip_threshold"]
-        madnis_integrand_flags = (
-            ms.Integrand.sample
-            | ms.Integrand.return_latent
-            | ms.Integrand.return_channel
-            | ms.Integrand.return_chan_weights
-            | ms.Integrand.return_cwnet_input
-            | ms.Integrand.return_discrete_latent
-            | ms.Integrand.exclude_adaptive_and_chan_weight
-        )
-        if madnis_args["drop_zero_integrands"]:
-            madnis_integrand_flags |= ms.Integrand.drop_cuts_and_rescale
-
         madnis_phasespaces = []
         integrands = []
         cwnets = []
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
-            integrands.append(subproc.build_integrands(phasespace, madnis_integrand_flags))
+            integrands.append(subproc.build_integrands(
+                phasespace,
+                madnis_training=True,
+                drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
+            ))
             cwnets.append(phasespace.cwnet)
 
         gen_context = self.contexts[0]
@@ -743,6 +768,8 @@ max_overweight_truncation = {self.run_card["generation"]["max_overweight_truncat
 freeze_max_weight_after = {self.run_card["generation"]["freeze_max_weight_after"]}
 cpu_batch_size = {self.run_card["generation"]["cpu_batch_size"]}
 gpu_batch_size = {self.run_card["generation"]["gpu_batch_size"]}
+cut_efficiency_threshold = {self.run_card["generation"]["cut_efficiency_threshold"]}
+max_cut_repetitions = {self.run_card["generation"]["max_cut_repetitions"]}
 """)
 
         bin_path = os.path.join(gridpack_path, "bin")
@@ -1268,7 +1295,8 @@ class MadgraphSubprocess:
     def build_integrands(
         self,
         phasespace: PhaseSpace,
-        flags: int = ms.ChannelEventGenerator.integrand_flags
+        madnis_training: bool = False,
+        drop_cuts_and_rescale: bool = False
     ) -> list[ms.Integrand]:
         flavors = []
         flavor_remap = []
@@ -1294,24 +1322,20 @@ class MadgraphSubprocess:
                 self.meta["diagram_count"],
                 True,
             )
-        pdf_grid = (
-            None
-            if len(flavors) > 1 or self.process.leptonic
-            else self.process.pdf_grid
-        )
+        pdf_grid = None if self.process.leptonic else self.process.pdf_grid
+        pdf_arg = None if self.process.leptonic else ms.CachedPdf()
         cross_section = ms.DifferentialCrossSection(
             matrix_element=matrix_element,
             cm_energy=self.process.e_cm,
-            running_coupling=self.process.running_coupling,
-            energy_scale=self.scale,
+            running_coupling=None,
+            energy_scale=ms.CachedScale(),
             pid_options=flavors,
-            has_pdf1=not self.process.leptonic,
-            has_pdf2=not self.process.leptonic,
-            pdf_grid1=pdf_grid,
-            pdf_grid2=pdf_grid,
+            pdf1=pdf_arg,
+            pdf2=pdf_arg,
             has_mirror=self.meta["has_mirror_process"],
             input_momentum_fraction=True,
         )
+        partial_weights = self.process.run_card["generation"]["systematics"]
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -1320,14 +1344,17 @@ class MadgraphSubprocess:
                 channel.adaptive_mapping,
                 channel.discrete_before,
                 channel.discrete_after,
-                self.process.pdf_grid,
+                pdf_grid,
+                self.process.running_coupling,
                 self.scale,
                 phasespace.prop_chan_weights,
                 phasespace.subchan_weights,
                 phasespace.cwnet,
                 phasespace.chan_weight_remap,
                 len(phasespace.symfact),
-                flags,
+                madnis_training,
+                drop_cuts_and_rescale,
+                partial_weights,
                 channel.channel_weight_indices,
                 channel.active_flavors,
                 flavor_remap,
@@ -1339,9 +1366,9 @@ class MadgraphSubprocess:
 
     def train_madnis(self, phasespace: PhaseSpace, status_func) -> None:
         # do import here to make pytorch and MadNIS optional dependencies
-        from .train_madnis import train_madnis, MADNIS_INTEGRAND_FLAGS
+        from .train_madnis import train_madnis
         train_madnis(
-            self.build_integrands(phasespace, MADNIS_INTEGRAND_FLAGS),
+            self.build_integrands(phasespace, madnis_training=True),
             phasespace,
             self.process.run_card["madnis"],
             self.process.contexts[0],
