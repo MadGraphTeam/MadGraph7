@@ -22,7 +22,8 @@ class ChannelEventGenerator {
 public:
     static inline const int integrand_flags = Integrand::sample |
         Integrand::return_momenta | Integrand::return_indices |
-        Integrand::return_random | Integrand::return_discrete;
+        Integrand::return_random | Integrand::return_discrete |
+        Integrand::return_channel;
 
     static ChannelEventGenerator load(
         const std::string& channel_file,
@@ -41,7 +42,10 @@ public:
         std::size_t subprocess_index,
         const std::string& name,
         const std::optional<ObservableHistograms>& histograms,
-        int sde_channel = -1
+        int sde_channel = -1,
+        int channel_number = -1,
+        const std::vector<int>& diagram_group = {},
+        int channel_base = -1
     );
 
     const GeneratorStatus& status() const { return _status; }
@@ -84,7 +88,10 @@ private:
         const std::string& name,
         const GeneratorConfig& config,
         const std::vector<Histogram>& histograms,
-        int sde_channel = -1
+        int sde_channel = -1,
+        int channel_number = -1,
+        const std::vector<int>& diagram_group = {},
+        int channel_base = -1
     );
 
     struct ContextRuntimes {

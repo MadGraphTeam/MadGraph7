@@ -67,6 +67,9 @@ struct GeneratorStatus {
     std::size_t subprocess;
     std::string name;
     int sde_channel = -1; // diagram number of the single-diagram-enhanced channel (-1 if none)
+    int channel_number = -1; // MadSpace channel/group number (-1 if none)
+    std::vector<int> diagram_group; // diagram numbers grouped under this channel
+    int channel_base = -1; // first internal channel-weight index of this channel
     double mean;
     double error;
     double rel_std_dev;

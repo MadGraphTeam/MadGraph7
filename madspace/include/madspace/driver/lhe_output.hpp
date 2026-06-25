@@ -60,6 +60,9 @@ struct LHEEvent {
     double alpha_qed;
     double alpha_qcd;
     int sde_channel = -1; // single-diagram-enhanced channel diagram number (-1 if none)
+    int channel_number = -1; // MadSpace channel/group number (-1 if none)
+    std::vector<int> diagram_group; // diagram numbers grouped under this channel
+    int selected_channel = -1; // per-event sampled diagram from the group (-1 if none)
     std::vector<LHEParticle> particles;
 
     void format_to(std::string& buffer) const;

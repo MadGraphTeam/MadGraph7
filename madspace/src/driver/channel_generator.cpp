@@ -12,13 +12,19 @@ ChannelEventGenerator::ChannelEventGenerator(
     std::size_t subprocess_index,
     const std::string& name,
     const std::optional<ObservableHistograms>& histograms,
-    int sde_channel
+    int sde_channel,
+    int channel_number,
+    const std::vector<int>& diagram_group,
+    int channel_base
 ) :
     _contexts(contexts),
     _status{
         .subprocess = subprocess_index,
         .name = name,
         .sde_channel = sde_channel,
+        .channel_number = channel_number,
+        .diagram_group = diagram_group,
+        .channel_base = channel_base,
         .mean = 0.,
         .error = 0.,
         .rel_std_dev = 0.,
@@ -53,17 +59,21 @@ ChannelEventGenerator::ChannelEventGenerator(
         Unweighter([&] {
             auto& ret_types = integrand.return_types();
             auto keys = ret_types.keys();
-            return NamedVector<Type>(
+            // keep weight, momenta and the four indices, plus the sampled
+            // phase-space channel (channel_index) for the LHE output
+            NamedVector<Type> types(
                 {keys.begin(), keys.begin() + 6},
                 {ret_types.begin(), ret_types.begin() + 6}
             );
+            types.push_back("channel_index", ret_types.at("channel_index"));
+            return types;
         }())
             .function()
     ) {
     if (integrand.flags() != integrand_flags) {
         throw std::invalid_argument(
-            "Integrand flags must be sample | return_momenta | return_random | "
-            "return_discrete"
+            "Integrand flags must be sample | return_momenta | return_indices | "
+            "return_random | return_discrete | return_channel"
         );
     }
     for (auto& item : _integrand_function.globals()) {
@@ -136,13 +146,19 @@ ChannelEventGenerator::ChannelEventGenerator(
     const std::string& name,
     const GeneratorConfig& config,
     const std::vector<Histogram>& histograms,
-    int sde_channel
+    int sde_channel,
+    int channel_number,
+    const std::vector<int>& diagram_group,
+    int channel_base
 ) :
     _contexts(contexts),
     _status{
         .subprocess = subprocess_index,
         .name = name,
         .sde_channel = sde_channel,
+        .channel_number = channel_number,
+        .diagram_group = diagram_group,
+        .channel_base = channel_base,
         .mean = 0.,
         .error = 0.,
         .rel_std_dev = 0.,
@@ -338,7 +354,9 @@ void ChannelEventGenerator::start_job(
                     }
                 }
                 if (_discrete_optimizer) {
-                    TensorVec args{job.events.begin() + 7, job.events.end()};
+                    // discrete latents (channel_index_in_group, ...) start at 8:
+                    // output 6 is "random", output 7 is "channel_index"
+                    TensorVec args{job.events.begin() + 8, job.events.end()};
                     args.push_back(job.events.at(0));
                     auto hist = runtimes.discrete_histogram->run(args);
                     for (auto& item : hist) {
@@ -363,6 +381,10 @@ void ChannelEventGenerator::start_unweight_job(
             std::vector<Tensor> unweighter_args(
                 job.events.begin(), job.events.begin() + 6
             );
+            // channel_index is integrand output 7 (after the 6 kept outputs and
+            // "random"); keep it for the unweighter so the sampled phase-space
+            // channel survives into write_events / the LHE
+            unweighter_args.push_back(job.events.at(7));
             unweighter_args.push_back(Tensor(job.max_weight, context->device()));
             TensorVec unw_events = runtimes.unweighter->run(unweighter_args);
             for (auto& item : unw_events) {
@@ -449,6 +471,8 @@ void ChannelEventGenerator::write_events(
     auto helicities_view = unweighted_events.at(3).view<me_int_t, 1>();
     auto diagrams_view = unweighted_events.at(4).view<me_int_t, 1>();
     auto flavors_view = unweighted_events.at(5).view<me_int_t, 1>();
+    // sampled phase-space channel (selected permutation within the diagram group)
+    auto selected_view = unweighted_events.at(6).view<me_int_t, 1>();
 
     EventBuffer event_buffer(
         w_view.size(),
@@ -465,6 +489,16 @@ void ChannelEventGenerator::write_events(
         event.color_index() = colors_view[i];
         event.flavor_index() = flavors_view[i];
         event.helicity_index() = helicities_view[i];
+        // map the sampled internal channel-weight index to its diagram number:
+        // _channel_indices is the contiguous range [channel_base, base+group_size)
+        int selected = selected_view[i];
+        if (_status.channel_base >= 0) {
+            int pos = selected - _status.channel_base;
+            if (pos >= 0 && pos < static_cast<int>(_status.diagram_group.size())) {
+                selected = _status.diagram_group[pos];
+            }
+        }
+        event.selected_channel() = selected;
         auto event_mom = mom_view[i];
         for (std::size_t j = 0; j < event_mom.size(); ++j) {
             auto particle_mom = event_mom[j];
@@ -525,7 +559,10 @@ ChannelEventGenerator ChannelEventGenerator::load(
         channel.at("name").get<std::string>(),
         config,
         histograms,
-        channel.value("sde_channel", -1)
+        channel.value("sde_channel", -1),
+        channel.value("channel_number", -1),
+        channel.value("diagram_group", std::vector<int>{}),
+        channel.value("channel_base", -1)
     );
 }
 
@@ -553,6 +590,9 @@ void madspace::to_json(nlohmann::json& j, const ChannelEventGenerator& channel) 
         {"subprocess_index", channel._status.subprocess},
         {"name", channel._status.name},
         {"sde_channel", channel._status.sde_channel},
+        {"channel_number", channel._status.channel_number},
+        {"diagram_group", channel._status.diagram_group},
+        {"channel_base", channel._status.channel_base},
         {"histograms", histograms},
     };
 }

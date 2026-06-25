@@ -1,8 +1,10 @@
 #include "madspace/driver/event_generator.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <numeric>
 #include <ranges>
 
 #include "madspace/driver/logger.hpp"
@@ -41,7 +43,18 @@ EventGenerator::EventGenerator(
     _channel_optimizing(channels.size()),
     _channel_integral_fractions(channels.size(), 1.),
     _context_job_counts(contexts.size()),
-    _status_file(status_file) {}
+    _status_file(status_file) {
+    // index static channel info by the (unique) sde_channel diagram so the LHE
+    // writer can recover the channel number and diagram group per event
+    for (auto& channel : _channels) {
+        auto& status = channel->status();
+        if (status.sde_channel >= 0) {
+            _channel_info_by_sde[status.sde_channel] = {
+                status.channel_number, status.diagram_group
+            };
+        }
+    }
+}
 
 void EventGenerator::survey() {
     reset_start_time();
@@ -553,11 +566,43 @@ EventGenerator::init_combine() {
     std::size_t count_sum = 0;
     std::size_t particle_count = 0;
     double weight_sum = 0.;
-    for (auto [channel, integral_fraction] :
-         zip(_channels, _channel_integral_fractions)) {
+
+    // Apportion target_count across channels with largest-remainder (Hamilton)
+    // rounding so the per-channel integer counts sum *exactly* to target_count.
+    // Rounding each share independently (std::round) lets the rounding errors
+    // accumulate, so the total could come out a few events short of / over the
+    // request (e.g. 99999 instead of 100000).
+    std::vector<std::size_t> counts(_channels.size());
+    {
+        std::vector<double> remainders(_channels.size());
+        std::size_t floor_sum = 0;
+        for (std::size_t i = 0; i < _channels.size(); ++i) {
+            double exact = _channel_integral_fractions[i] * _config.target_count;
+            double floored = std::floor(exact);
+            counts[i] = static_cast<std::size_t>(floored);
+            remainders[i] = exact - floored;
+            floor_sum += counts[i];
+        }
+        // Hand out the leftover events to the channels with the largest
+        // fractional remainders (one each, largest remainder first).
+        std::size_t leftover =
+            (_config.target_count > floor_sum) ? _config.target_count - floor_sum : 0;
+        std::vector<std::size_t> order(_channels.size());
+        std::iota(order.begin(), order.end(), std::size_t{0});
+        std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+            return remainders[a] > remainders[b];
+        });
+        for (std::size_t k = 0; k < leftover && k < order.size(); ++k) {
+            ++counts[order[k]];
+        }
+    }
+
+    for (std::size_t channel_index = 0; channel_index < _channels.size();
+         ++channel_index) {
+        auto& channel = _channels[channel_index];
         particle_count =
             std::max(particle_count, channel->event_file().particle_count());
-        std::size_t count = std::round(integral_fraction * _config.target_count);
+        std::size_t count = counts[channel_index];
         count_sum += count;
         channel->event_file().seek(0);
         weight_sum += channel->channel_weight_sum(count);
@@ -628,6 +673,7 @@ void EventGenerator::read_and_combine(
         event_out.weight() = std::max(1., weight / channel->max_weight()) * norm_factor;
         event_out.subprocess_index() = channel->status().subprocess;
         event_out.sde_channel() = channel->status().sde_channel;
+        event_out.selected_channel() = event_in.selected_channel();
         event_out.diagram_index() = event_in.diagram_index();
         event_out.color_index() = event_in.color_index();
         event_out.flavor_index() = event_in.flavor_index();
@@ -665,6 +711,14 @@ void EventGenerator::fill_lhe_event(
     EventRecord event_in = buffer.event<EventFullRecord>(event_index);
     lhe_event.weight = event_in.weight();
     lhe_event.sde_channel = event_in.sde_channel();
+    lhe_event.selected_channel = event_in.selected_channel();
+    lhe_event.channel_number = -1;
+    lhe_event.diagram_group.clear();
+    if (auto it = _channel_info_by_sde.find(event_in.sde_channel());
+        it != _channel_info_by_sde.end()) {
+        lhe_event.channel_number = it->second.first;
+        lhe_event.diagram_group = it->second.second;
+    }
     lhe_event.process_id = 0;
     lhe_event.scale = 0; // TODO: populate these
     lhe_event.alpha_qed = 0;

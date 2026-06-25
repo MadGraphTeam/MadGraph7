@@ -36,7 +36,7 @@ void LHEEvent::format_to(std::string& buffer) const {
     for (auto particle : particles) {
         std::format_to(
             insert_iter,
-            "{:4} {:4} {:4} {:4} {:4} {:4} {:+.10e} {:+.10e} {:+.10e} {:.10e} {:.10e} "
+            "{:4} {:4} {:4} {:4} {:4} {:4} {:+.16e} {:+.16e} {:+.16e} {:.16e} {:.16e} "
             "{:.4e} {:+.4e}\n",
             particle.pdg_id,
             particle.status_code,
@@ -54,7 +54,18 @@ void LHEEvent::format_to(std::string& buffer) const {
         );
     }
     if (sde_channel >= 0) {
-        std::format_to(insert_iter, "# SDE_channel {}\n", sde_channel);
+        std::format_to(insert_iter, "# SDE_channel {}", channel_number);
+        if (!diagram_group.empty()) {
+            buffer += " diagrams";
+            for (int diagram : diagram_group) {
+                std::format_to(insert_iter, " {}", diagram);
+            }
+        }
+        std::format_to(
+            insert_iter,
+            " selected {}\n",
+            selected_channel >= 0 ? selected_channel : sde_channel
+        );
     }
     buffer += "</event>\n";
 }

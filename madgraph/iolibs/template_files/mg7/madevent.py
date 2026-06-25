@@ -307,10 +307,20 @@ class MadgraphProcess:
             ):
                 if channel.event_generator is None:
                     # SDE channel: the diagram number enhanced by this channel (-1 for
-                    # the flat/ground channels, whose name is not a plain channel id)
+                    # the flat/ground channels, whose name is not a plain channel id).
+                    # channel_number is the MadSpace channel/group index and
+                    # diagram_group is the full set of diagrams it enhances.
                     sde_channel = -1
+                    channel_number = -1
+                    diagram_group = []
+                    # base internal channel-weight index: the per-event sampled
+                    # channel comes out in this internal numbering, so we subtract
+                    # the base to recover the position within diagram_group
+                    channel_base = channel.channel_weight_indices[0] if channel.channel_weight_indices else -1
                     if channel.name.isdigit():
-                        diagrams = subproc.meta["channels"][int(channel.name)]["diagrams"]
+                        channel_number = int(channel.name)
+                        diagrams = subproc.meta["channels"][channel_number]["diagrams"]
+                        diagram_group = [d["diagram"] for d in diagrams]
                         if diagrams:
                             sde_channel = diagrams[0]["diagram"]
                     channel.event_generator = ms.ChannelEventGenerator(
@@ -323,6 +333,9 @@ class MadgraphProcess:
                         name=f"{i}.{channel.name}",
                         histograms=subproc.histograms,
                         sde_channel=sde_channel,
+                        channel_number=channel_number,
+                        diagram_group=diagram_group,
+                        channel_base=channel_base,
                     )
                 channel_generators.append(channel.event_generator)
 

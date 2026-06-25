@@ -79,6 +79,8 @@ private:
     PrettyBox _pretty_box_lower;
     std::string _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
+    // sde_channel diagram -> (channel number, diagram group) for LHE output
+    std::unordered_map<int, std::pair<int, std::vector<int>>> _channel_info_by_sde;
 
     bool start_jobs();
     void update_integral();
