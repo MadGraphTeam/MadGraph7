@@ -3699,12 +3699,30 @@ class HelasDiagram(base_objects.PhysicsObject):
 
         #flavor_status = {}
         #pdg_for_number = {}
-        # remove the information from previous check
-        for wfct in self['wavefunctions'] + self['amplitudes']:
+        # remove the information from previous check.
+        # NB: self['wavefunctions'] only lists the wavefunctions *introduced*
+        # by this diagram.  In a HELAS-optimised matrix element a diagram also
+        # reuses wavefunctions (and their sub-trees) introduced by earlier
+        # diagrams; those appear here only as mothers.  If we cleared the tag
+        # for self['wavefunctions'] alone, such shared mothers would keep a
+        # stale flavortag computed for a *different* flavor, and
+        # propagate_flavor_tag would silently reuse it instead of recomputing
+        # it -- wrongly rejecting (or accepting) this diagram depending on the
+        # order in which flavors are checked.  Clear the whole ancestor closure
+        # of every wavefunction and amplitude instead.
+        _seen_clear = set()
+        def _clear_flavor_tag(wf):
+            if id(wf) in _seen_clear:
+                return
+            _seen_clear.add(id(wf))
             try:
-                del wfct['flavortag']
-            except:
+                del wf['flavortag']
+            except Exception:
                 pass
+            for m in wf.get('mothers'):
+                _clear_flavor_tag(m)
+        for wfct in self['wavefunctions'] + self['amplitudes']:
+            _clear_flavor_tag(wfct)
 
         # In decay-chain diagrams, a wavefunction may have external mothers
         # (wavefunctions with no mothers) that do not appear in
