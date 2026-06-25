@@ -140,6 +140,16 @@ KERNELSPEC FVal<T> esquare(FourMom<T> p) {
 }
 
 template <typename T>
+KERNELSPEC FVal<T> ldot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[0] * p2[0] - p1[1] * p2[1] - p1[2] * p2[2] - p1[3] * p2[3];
+}
+
+template <typename T>
+KERNELSPEC FVal<T> edot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[1] * p2[1] + p1[2] * p2[2] + p1[3] * p2[3];
+}
+
+template <typename T>
 KERNELSPEC FourMom<T> rotate(FourMom<T> p, FourMom<T> q) {
     auto qt2 = q[1] * q[1] + q[2] * q[2];
     auto qq2 = qt2 + q[3] * q[3];
