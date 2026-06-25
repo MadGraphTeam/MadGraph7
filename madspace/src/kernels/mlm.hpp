@@ -18,7 +18,7 @@ KERNELSPEC FVal<T> djb_clus(FourMom<T> p, bool hadronic) {
 
 // kt/Durham clustering measure for two partons.
 // mass1/mass2 are the tracked clustering masses kept in a separate array and updated by
-// update_momenta — NOT the Lorentz-invariant masses computed from the 4-momentum.
+// update_momenta - NOT the Lorentz-invariant masses computed from the 4-momentum.
 // jet_radius is the jet-radius parameter (Fortran common /to_dj/D).
 // based on dj_clus from Template/NLO/SubProcesses/cluster.f
 template <typename T>
@@ -84,8 +84,8 @@ KERNELSPEC FVal<T> dj_clus(
 // based on cluster_scale from Template/NLO/SubProcesses/cluster.f
 template <typename T>
 KERNELSPEC FVal<T> compute_scale(
-    FourMom<T> momentum1,
-    FourMom<T> momentum2,
+    const FourMom<T>& momentum1,
+    const FourMom<T>& momentum2,
     FVal<T> mass1,
     FVal<T> mass2,
     bool resonant,
@@ -148,14 +148,14 @@ KERNELSPEC FVal<T> compute_scale(
 template <typename T>
 KERNELSPEC void update_momenta(
     int n_part,
-    FourMom<T> momenta[N_EXT_MAX],
-    FVal<T> masses[N_EXT_MAX],
-    bool alive[N_EXT_MAX],
+    FourMom<T>* momenta,
+    FVal<T>* masses,
+    int& alive,
     int i_remove,
     int j_keep,
-    bool is_bw
+    bool resonant
 ) {
-    alive[i_remove] = false;
+    alive &= ~(1 << i_remove);
 
     if (j_keep < 2) {
         // initial-state clustering
@@ -165,10 +165,9 @@ KERNELSPEC void update_momenta(
         }
 
         // mass: take max if exactly one daughter is massive, else 0
-        bool m0 = (masses[j_keep] > 0.0);
-        bool m1 = (masses[i_remove] > 0.0);
-        masses[j_keep] =
-            (m0 != m1) ? max(masses[j_keep], masses[i_remove]) : FVal<T>(0.0);
+        masses[j_keep] = (masses[j_keep] > 0.0) != (masses[i_remove] > 0.0)
+            ? max(masses[j_keep], masses[i_remove])
+            : FVal<T>(0.0);
 
         // CM boost vector: (E_tot, -px_tot, -py_tot, -pz_tot) of the two beam particles
         FourMom<T> pcmsp = {
@@ -183,11 +182,10 @@ KERNELSPEC void update_momenta(
             // particles
             auto jkeep_cm = boost<T>(momenta[j_keep], pcmsp, 1.0);
             for (int j = 0; j < n_part; ++j) {
-                if (!alive[j]) {
-                    continue;
+                if (alive & (1 << j)) {
+                    momenta[j] =
+                        rotate_inverse<T>(boost<T>(momenta[j], pcmsp, 1.0), jkeep_cm);
                 }
-                momenta[j] =
-                    rotate_inverse<T>(boost<T>(momenta[j], pcmsp, 1.0), jkeep_cm);
             }
         }
 
@@ -197,7 +195,7 @@ KERNELSPEC void update_momenta(
             momenta[j_keep][k] += momenta[i_remove][k];
         }
 
-        if (is_bw) {
+        if (resonant) {
             masses[j_keep] = sqrt(max(lsquare<T>(momenta[j_keep]), 0.0));
         } else {
             masses[j_keep] = max(masses[j_keep], masses[i_remove]);
@@ -210,8 +208,10 @@ KERNELSPEC void mlm_clustering(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
     IIn<T, 1> state_machine,
-    FIn<T, 1> masses,
-    FIn<T, 1> widths,
+    FIn<T, 1> external_masses,
+    FIn<T, 1> bw_masses,
+    FIn<T, 1> bw_widths,
+    FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
@@ -220,14 +220,16 @@ KERNELSPEC void mlm_clustering(
     IOut<T, 0> diagram_index,
     bool hadronic
 ) {
+    // we do not support SIMD for now, so we can assume simple types
     static_assert(std::is_same_v<IVal<T>, int>);
     static_assert(std::is_same_v<FVal<T>, double>);
+
     int state = 0, cluster_count = 0;
     int cluster_max = momenta.size() - 3;
     int n_part = momenta.size();
     FourMom<T> momenta_tmp[N_EXT_MAX];
     FVal<T> masses_tmp[N_EXT_MAX];
-    bool alive[N_EXT_MAX];
+    int alive = 0xFFFFFF;
     int cluster_history[N_EXT_MAX - 3];
     FVal<T> cluster_scales[N_EXT_MAX - 3];
 
@@ -235,11 +237,11 @@ KERNELSPEC void mlm_clustering(
         for (int j = 0; j < 4; ++j) {
             momenta_tmp[i][j] = momenta[i][j];
         }
-        masses_tmp[i] = masses[i];
-        alive[i] = true;
+        masses_tmp[i] = external_masses[i];
     }
 
     int win_next_state = -1, win_data = 0;
+    bool win_resonant = false;
     FVal<T> win_scale = 1e308;
     while (cluster_count < cluster_max) {
         int data = state_machine[state];
@@ -252,34 +254,50 @@ KERNELSPEC void mlm_clustering(
         bool massive_out2 = (data >> 26) & 1;
         bool is_last = (data >> 28) & 1;
         bool is_initial = (particle2 < 2);
-        bool resonant = (mass_index != 0) && (widths[mass_index] > 0.0);
+
+        bool resonant = false;
+        if (mass_index != 0) {
+            FourMom<T> mom_sum{
+                momenta_tmp[particle1][0] + momenta_tmp[particle2][0],
+                momenta_tmp[particle1][1] + momenta_tmp[particle2][1],
+                momenta_tmp[particle1][2] + momenta_tmp[particle2][2],
+                momenta_tmp[particle1][3] + momenta_tmp[particle2][3],
+            };
+            FVal<T> prop_m2 = lsquare<T>(mom_sum);
+            FVal<T> mass = bw_masses[mass_index - 1];
+            FVal<T> width = bw_widths[mass_index - 1];
+            FVal<T> m_min = mass - width;
+            FVal<T> m_max = mass + width;
+            resonant = (prop_m2 >= m_min * m_min) && (prop_m2 <= m_max * m_max);
+        }
 
         FVal<T> scale = compute_scale<T>(
             momenta_tmp[particle1],
             momenta_tmp[particle2],
             masses_tmp[particle1],
             masses_tmp[particle2],
-            masses[mass_index],
-            widths[mass_index],
             resonant,
             is_initial,
             massive_in,
             massive_out1,
             massive_out2,
-            true,
+            hadronic,
             jet_radius
         );
 
-        if (scale < win_scale) {
+        // The MG5 fortran code extracted the resonance structure from the integration
+        // channel. This is not always possible in MG7, so prefer resonant configs
+        // over non-resonant ones
+        if ((!win_resonant && resonant) ||
+            (win_resonant == resonant && scale < win_scale)) {
             win_next_state = next_state;
             win_scale = scale;
             win_data = data;
+            win_resonant = resonant;
         }
         if (is_last) {
             int p1_win = win_data & 0xFF;
             int p2_win = (win_data >> 8) & 0xFF;
-            int mi_win = (win_data >> 16) & 0xFF;
-            bool win_resonant = (mi_win != 0) && (widths[mi_win] > 0.0);
             update_momenta<T>(
                 n_part, momenta_tmp, masses_tmp, alive, p1_win, p2_win, win_resonant
             );
@@ -332,12 +350,14 @@ KERNELSPEC void mlm_clustering(
 }
 
 template <typename T>
-KERNELSPEC void mlm_clustering_hadronic(
+KERNELSPEC void kernel_mlm_clustering_hadronic(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
     IIn<T, 1> state_machine,
-    FIn<T, 1> masses,
-    FIn<T, 1> widths,
+    FIn<T, 1> external_masses,
+    FIn<T, 1> bw_masses,
+    FIn<T, 1> bw_widths,
+    FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
@@ -345,12 +365,14 @@ KERNELSPEC void mlm_clustering_hadronic(
     FOut<T, 1> outgoing_scales,
     IOut<T, 0> diagram_index
 ) {
-    mlm_clustering(
+    mlm_clustering<T>(
         momenta,
         random,
         state_machine,
-        masses,
-        widths,
+        external_masses,
+        bw_masses,
+        bw_widths,
+        bw_cutoff,
         jet_radius,
         ren_scale,
         fact_scale1,
@@ -362,12 +384,14 @@ KERNELSPEC void mlm_clustering_hadronic(
 }
 
 template <typename T>
-KERNELSPEC void mlm_clustering_leptonic(
+KERNELSPEC void kernel_mlm_clustering_leptonic(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
     IIn<T, 1> state_machine,
-    FIn<T, 1> masses,
-    FIn<T, 1> widths,
+    FIn<T, 1> external_masses,
+    FIn<T, 1> bw_masses,
+    FIn<T, 1> bw_widths,
+    FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
@@ -375,12 +399,14 @@ KERNELSPEC void mlm_clustering_leptonic(
     FOut<T, 1> outgoing_scales,
     IOut<T, 0> diagram_index
 ) {
-    mlm_clustering(
+    mlm_clustering<T>(
         momenta,
         random,
         state_machine,
-        masses,
-        widths,
+        external_masses,
+        bw_masses,
+        bw_widths,
+        bw_cutoff,
         jet_radius,
         ren_scale,
         fact_scale1,

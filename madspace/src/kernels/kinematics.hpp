@@ -12,7 +12,7 @@ constexpr double INV_GEV2_TO_PB = 0.38937937217186e9;
 template <typename T>
 struct FourMom {
     KERNELSPEC FVal<T>& operator[](int i) { return p[i]; }
-    KERNELSPEC FVal<T>& operator[](int i) const { return p[i]; }
+    KERNELSPEC const FVal<T>& operator[](int i) const { return p[i]; }
     FVal<T> p[4];
 };
 

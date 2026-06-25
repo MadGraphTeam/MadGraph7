@@ -302,6 +302,7 @@ set(
     src/kernels/rambo.hpp
     src/kernels/cuts.hpp
     src/kernels/chili.hpp
+    src/kernels/mlm.hpp
     src/kernels/nn.hpp
     src/kernels/observables.hpp
     src/kernels/discrete.hpp
