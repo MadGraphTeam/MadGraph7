@@ -84,8 +84,8 @@ std::vector<double> Cuts::pt_min() const {
                 continue;
             }
             double& limit = pt_min.at(index - 2);
-            if (limit < item.max) {
-                limit = item.max;
+            if (limit < item.min) {
+                limit = item.min;
             }
         }
     }

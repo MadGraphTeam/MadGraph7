@@ -8,6 +8,7 @@ import madspace as ms
 # Fixtures
 # ----------------------------
 
+
 @pytest.fixture
 def rng():
     return np.random.default_rng(1234)
@@ -40,15 +41,15 @@ def _mass_sets_for(n_out):
 
 # Each entry: (color_order, int_order_for_old_class, topology_label).
 TOPOLOGIES = [
-    ([0, 2, 3, 1, 4],            [0, 1],            "n=5: set1={2,3}, set2={4}"),
-    ([0, 1, 2, 3, 4],            [0, 1],            "n=5: set1={}, set2={2,3,4}"),
-    ([0, 2, 3, 4, 1, 5],         [0, 1, 2],         "n=6: set1={2,3,4}, set2={5}"),
-    ([0, 2, 3, 1, 4, 5],         [0, 1, 2],         "n=6: set1={2,3}, set2={4,5}"),
-    ([0, 1, 2, 3, 4, 5],         [0, 1, 2],         "n=6: set1={}, set2={2,3,4,5}"),
-    ([0, 2, 3, 4, 1, 5, 6],      [0, 1, 2, 3],      "n=7: set1={2,3,4}, set2={5,6}"),
-    ([0, 2, 3, 4, 5, 1, 6],      [0, 1, 2, 3],      "n=7: set1={2,3,4,5}, set2={6}"),
-    ([0, 2, 3, 4, 5, 6, 1, 7],   [0, 1, 2, 3, 4],   "n=8: set1={2,3,4,5,6}, set2={7}"),
-    ([0, 2, 3, 4, 5, 6, 7, 1],   [0, 1, 2, 3, 4],   "n=8: set1={2,3,4,5,6,7}, set2={}"),
+    ([0, 2, 3, 1, 4], [0, 1], "n=5: set1={2,3}, set2={4}"),
+    ([0, 1, 2, 3, 4], [0, 1], "n=5: set1={}, set2={2,3,4}"),
+    ([0, 2, 3, 4, 1, 5], [0, 1, 2], "n=6: set1={2,3,4}, set2={5}"),
+    ([0, 2, 3, 1, 4, 5], [0, 1, 2], "n=6: set1={2,3}, set2={4,5}"),
+    ([0, 1, 2, 3, 4, 5], [0, 1, 2], "n=6: set1={}, set2={2,3,4,5}"),
+    ([0, 2, 3, 4, 1, 5, 6], [0, 1, 2, 3], "n=7: set1={2,3,4}, set2={5,6}"),
+    ([0, 2, 3, 4, 5, 1, 6], [0, 1, 2, 3], "n=7: set1={2,3,4,5}, set2={6}"),
+    ([0, 2, 3, 4, 5, 6, 1, 7], [0, 1, 2, 3, 4], "n=8: set1={2,3,4,5,6}, set2={7}"),
+    ([0, 2, 3, 4, 5, 6, 7, 1], [0, 1, 2, 3, 4], "n=8: set1={2,3,4,5,6,7}, set2={}"),
 ]
 
 
@@ -82,9 +83,11 @@ def _filter_physical(det, p_ext):
         pytest.fail(f"No physical events out of {len(det)}")
     return mask, [p[mask] for p in p_ext], det[mask]
 
+
 # ----------------------------
 # Tests
 # ----------------------------
+
 
 @pytest.mark.parametrize("color_order,_int_order,masses,_label", CASES, ids=CASE_IDS)
 def test_momentum_conservation(rng, color_order, _int_order, masses, _label):
@@ -115,11 +118,8 @@ def test_on_shell_masses(rng, color_order, _int_order, masses, _label):
 
     for i, m in enumerate(masses):
         p = p_ext[i + 2]
-        m_check = np.sqrt(np.maximum(0,
-            p[:, 0] ** 2 - np.sum(p[:, 1:] ** 2, axis=1)
-        ))
-        assert m_check == approx(m, abs=1e-2, rel=1e-3), \
-            f"particle {i} mass off"
+        m_check = np.sqrt(np.maximum(0, p[:, 0] ** 2 - np.sum(p[:, 1:] ** 2, axis=1)))
+        assert m_check == approx(m, abs=1e-2, rel=1e-3), f"particle {i} mass off"
 
 
 @pytest.mark.parametrize("color_order,_int_order,masses,_label", CASES, ids=CASE_IDS)
@@ -132,7 +132,7 @@ def test_inverse(rng, color_order, _int_order, masses, _label):
     drop the bottom 0.1% by |det| (genuine boundary events, near-zero
     weight in any MC integral) and check the rest.
     """
-    n_events = N 
+    n_events = N
     mapping = ms.ColorOrderedMapping(color_order)
     r = rng.random((n_events, mapping.random_dim()))
     e_cm = np.full(n_events, CM_ENERGY)
@@ -202,7 +202,7 @@ def test_phase_space_volume_matches_old(rng, color_order, int_order, masses, _la
     mean_new, mean_old = np.mean(det_new), np.mean(det_old)
     err_new = np.std(det_new) / np.sqrt(len(det_new))
     err_old = np.std(det_old) / np.sqrt(len(det_old))
-    err = np.sqrt(err_new ** 2 + err_old ** 2)
+    err = np.sqrt(err_new**2 + err_old**2)
 
     diff = abs(mean_new - mean_old)
     assert diff < 5 * err, (

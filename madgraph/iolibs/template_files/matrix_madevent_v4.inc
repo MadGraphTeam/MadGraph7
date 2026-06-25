@@ -59,6 +59,16 @@ C
     REAL     XRAN1
     EXTERNAL XRAN1
     INTEGER FLAVOR(NEXTERNAL)
+    INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
+C   Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
+C   table above can collapse distinct same-flavor / different-flavor
+C   leshouche rows that share the same coupling group; BROKEN_SYM needs
+C   row-level information to apply the identical-particle correction.
+    INTEGER FLAVOR_ROW(NEXTERNAL,%(max_flavor_row)s)
+    %(get_flavor_row_matrix)s
+    INTEGER IPSEL
+    COMMON /SUBPROC/ IPSEL
+    INTEGER BROKEN_SYM%(proc_id)s
 
 C
 C GLOBAL VARIABLES
@@ -187,7 +197,12 @@ c          WRITE(HEL_BUFF,'(20i5)')(NHEL(II,I),II=1,NEXTERNAL)
             stop 1
         ENDIF
     ENDIF
-    ANS=ANS/DBLE(IDEN)
+    IF (IPSEL.GE.1.AND.IPSEL.LE.%(max_flavor_row)s) THEN
+       FLAVOR_FOR_SYM(:) = FLAVOR_ROW(:, IPSEL)
+    ELSE
+       FLAVOR_FOR_SYM(:) = FLAVOR(:)
+    ENDIF
+    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR_FOR_SYM)
 
     CALL SELECT_COLOR(RCOL, JAMP2, ICONFIG, 1,  SELECTED_COL, IVEC)
 
@@ -218,7 +233,6 @@ c for the point with external lines W(0:6,NEXTERNAL)
 C  
 %(process_lines)s
 C  
-    use model_object
     IMPLICIT NONE
 C  
 C CONSTANTS
@@ -261,6 +275,7 @@ C
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
     DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
+%(flavor_mask_decl)s
 
     %(fake_width_declaration)s
     logical first
@@ -291,6 +306,8 @@ if (first) then
     %(fake_width_definitions)s
 endif
 
+%(flavor_mask_setup)s
+AMP(:) = (0d0,0d0)
 %(helas_calls)s
 %(jamp_lines)s
 
@@ -324,3 +341,6 @@ endif
     Enddo
 
     END
+
+
+%(broken_sym_function)s

@@ -60,6 +60,15 @@ C
         REAL*8 R,SUMHEL,TS(NCOMB)
         INTEGER I,IDEN
         INTEGER FLAVOR(NEXTERNAL)
+        INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
+C       Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
+C       table above can collapse distinct same-flavor / different-flavor
+C       leshouche rows that share the same coupling group; BROKEN_SYM needs
+C       row-level information to apply the identical-particle correction.
+        INTEGER FLAVOR_ROW(NEXTERNAL,%(max_flavor_row)s)
+        %(get_flavor_row_matrix)s
+        INTEGER IPSEL
+        COMMON /SUBPROC/ IPSEL
         REAL*8 HWGT, XTOT, XTRY, XREJ, XR, YFRAC(0:NCOMB)
         INTEGER NGOOD
         INTEGER J, JJ
@@ -70,7 +79,7 @@ C
         external get_channel_cut
 	
 c
-C       This is just to temporarily store the reference grid for helicity of the DiscreteSampler so as to obtain its number of entries with ref_helicity_grid%%n_tot_entries
+C       This is just to temporarily store the reference grid for helicity of the DiscreteSampler so as to obtain its number of entries with ref_helicity_grid%n_tot_entries
 	    type(SampledDimension) ref_helicity_grid
 C  
 C GLOBAL VARIABLES
@@ -157,7 +166,7 @@ C ----------
 		  hel_jacobian   = 1.0d0
 !         We don't want to re-update the helicity grid if it was already updated by another matrix<i>, so we make sure that the reference grid is empty.
           ref_helicity_grid = DS_get_dimension(ref_grid,'Helicity')
-		  IF((DS_get_dim_status('Helicity').eq.1).and.(ref_helicity_grid%%n_tot_entries.eq.0)) then 
+		  IF((DS_get_dim_status('Helicity').eq.1).and.(ref_helicity_grid%n_tot_entries.eq.0)) then 
 !           If we finished the initialization we can update the grid so as to start sampling over it.
 !           However the grid will now be filled by dsample with different kind of weights (including pdf, flux, etc...) so by setting the grid_mode of the reference grid to 'initialization' we make sure it will be overwritten (as opposed to 'combined') by the running grid at the next update.
             CALL DS_UPDATE_GRID('Helicity')
@@ -237,7 +246,12 @@ c         Set right sign for ANS, based on sign of chosen helicity
 	    endif
         ENDIF
     ENDIF
-    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR)
+    IF (IPSEL.GE.1.AND.IPSEL.LE.%(max_flavor_row)s) THEN
+       FLAVOR_FOR_SYM(:) = FLAVOR_ROW(:, IPSEL)
+    ELSE
+       FLAVOR_FOR_SYM(:) = FLAVOR(:)
+    ENDIF
+    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR_FOR_SYM)
 
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
 
@@ -311,6 +325,7 @@ C
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
     DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
+%(flavor_mask_decl)s
 
 	%(fake_width_declaration)s
 	logical first
@@ -358,6 +373,8 @@ if (first) then
 endif
 
 
+%(flavor_mask_setup)s
+AMP(:) = (0d0,0d0)
 %(helas_calls)s
 
 JAMP(:,:) = (0d0,0d0) 
@@ -443,44 +460,4 @@ JAMP(:,:) = (0d0,0d0)
     end
     
 
-    INTEGER FUNCTION BROKEN_SYM%(proc_id)s(FLAV)
-       implicit none
-       include 'nexternal.inc'
-       INTEGER FLAV(NEXTERNAL)
-       INTEGER PID(NINCOMING+1:NEXTERNAL)
-       INTEGER I,J
-       INTEGER N_BROK, N_TOT
-       INTEGER OLD_FACTOR
-       %(get_pid)s
-
-c     get old symmetry factor
-       OLD_FACTOR = 1
-       do I=NINCOMING+1, NEXTERNAL
-          if (PID(I).eq.0) cycle
-          N_tot=1
-          do J = I+1,NEXTERNAL
-             if (PID(I).eq.PID(J))then
-               PID(J) = 0
-               N_TOT = N_TOT+1
-               OLD_FACTOR = OLD_FACTOR*N_TOT
-             endif
-          enddo
-       enddo
-
-            %(get_pid)s
-c     get new symmetry factor
-       do I=NINCOMING+1, NEXTERNAL
-          if (PID(I).eq.0) cycle
-          N_TOT=1
-          do J = I+1,NEXTERNAL
-             if (PID(I).eq.PID(J).and.FLAV(I).EQ.FLAV(J))then
-                PID(J) = 0
-                N_TOT = N_TOT + 1
-                OLD_FACTOR = OLD_FACTOR/N_TOT
-             endif
-         enddo
-     enddo
-    BROKEN_SYM%(proc_id)s = OLD_FACTOR
-
-    return
-    end
+%(broken_sym_function)s
