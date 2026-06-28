@@ -7,6 +7,7 @@ namespace madspace {
 namespace kernels {
 
 constexpr int N_EXT_MAX = 12;
+constexpr double ONE_PLUS_TINY = 1.000001;
 
 // mT^2 = E^2 - pz^2 (hadronic) or E^2 (lepton collider).
 // based on djb_clus from Template/NLO/SubProcesses/cluster.f
@@ -30,7 +31,6 @@ KERNELSPEC FVal<T> dj_clus(
     bool hadronic,
     FVal<T> jet_radius
 ) {
-    constexpr double one_plus_tiny = 1.0 + 1e-6;
     if (!hadronic) {
         // Durham e+e- measure: 2*min(E1^2, E2^2)*(1 - cos_theta)
         auto p1a = sqrt(esquare<T>(p1));
@@ -41,15 +41,17 @@ KERNELSPEC FVal<T> dj_clus(
         auto costh = edot<T>(p1, p2) / (p1a * p2a);
         return 2.0 * min(p1[0] * p1[0], p2[0] * p2[0]) * max(1.0 - costh, 0.0);
     }
+
     // hadronic: massless+massive pair clusters to the lighter parton's mT^2
     bool massive1 = (mass1 > 0.0);
     bool massive2 = (mass2 > 0.0);
     if (!massive1 && massive2) {
-        return djb_clus<T>(p1, true) * one_plus_tiny;
+        return djb_clus<T>(p1, true) * ONE_PLUS_TINY;
     }
     if (massive1 && !massive2) {
-        return djb_clus<T>(p2, true) * one_plus_tiny;
+        return djb_clus<T>(p2, true) * ONE_PLUS_TINY;
     }
+
     // both massless or both massive: generalised kt measure in (eta, phi)
     auto pt1_sq = p1[1] * p1[1] + p1[2] * p1[2];
     auto pt2_sq = p2[1] * p2[1] + p2[2] * p2[2];
@@ -86,6 +88,7 @@ template <typename T>
 KERNELSPEC FVal<T> compute_scale(
     const FourMom<T>& momentum1,
     const FourMom<T>& momentum2,
+    const FourMom<T>& momentum_sum,
     FVal<T> mass1,
     FVal<T> mass2,
     bool resonant,
@@ -96,55 +99,33 @@ KERNELSPEC FVal<T> compute_scale(
     bool hadronic,
     FVal<T> jet_radius
 ) {
-    constexpr double one_plus_tiny = 1.000001;
 
     if (is_initial) {
         // scale = mT of the final-state parton
         // small penalty when it goes against the beam
         auto scale = sqrt(djb_clus<T>(momentum1, hadronic));
         if ((momentum1[3] < 0.0) != (momentum2[3] < 0.0)) {
-            scale = scale * one_plus_tiny;
+            scale = scale * ONE_PLUS_TINY;
         }
         return scale;
     }
-
-    FourMom<T> sum = {
-        momentum1[0] + momentum2[0],
-        momentum1[1] + momentum2[1],
-        momentum1[2] + momentum2[2],
-        momentum1[3] + momentum2[3]
-    };
-
     if (resonant) {
-        return sqrt(max(lsquare<T>(sum), 0.0));
+        return sqrt(max(lsquare<T>(momentum_sum), 0.0));
     }
-
-    // Map massive_in/out1/out2 to Fortran get_clustering_type itypes:
     if (!massive_in && massive_out1 && !massive_out2) {
-        return sqrt(fabs(ldot<T>(momentum2, sum))) / 2.0;
+        return sqrt(fabs(ldot<T>(momentum2, momentum_sum))) / 2.0;
     }
     if (!massive_in && !massive_out1 && massive_out2) {
-        return sqrt(fabs(ldot<T>(momentum1, sum))) / 2.0;
+        return sqrt(fabs(ldot<T>(momentum1, momentum_sum))) / 2.0;
     }
     if (massive_in && !massive_out1 && !massive_out2) {
-        return sqrt(max(lsquare<T>(sum), 0.0));
+        return sqrt(max(lsquare<T>(momentum_sum), 0.0));
     }
     return sqrt(dj_clus<T>(momentum1, momentum2, mass1, mass2, hadronic, jet_radius));
 }
 
 // Update momenta and the separately-tracked masses after one clustering step.
-// Uses boost<T> and rotate_inverse<T> from kinematics.hpp.
-//
-// i_remove : final-state particle absorbed into the combination (always >= 2,
-// 0-indexed) j_keep   : particle kept with the combined momentum (0/1 = initial state,
-// else final) is_bw    : BW resonance — combined mass = invariant mass of sum; else max
-// of daughters
-//
-// Mass update rules mirror Fortran update_momenta (cluster.f:871):
-//   Final non-BW     : mass[j_keep] = max(mass[j_keep], mass[i_remove])
-//   Final BW         : mass[j_keep] = sqrt((pi + pj)^2)
-//   Initial, one massive: mass[j_keep] = max(mass[j_keep], mass[i_remove])
-//   Initial, same    : mass[j_keep] = 0
+// Based on update_momenta from Template/NLO/SubProcesses/cluster.f
 template <typename T>
 KERNELSPEC void update_momenta(
     int n_part,
@@ -152,53 +133,49 @@ KERNELSPEC void update_momenta(
     FVal<T>* masses,
     int& alive,
     int i_remove,
-    int j_keep,
+    int i_keep,
     bool resonant
 ) {
     alive &= ~(1 << i_remove);
 
-    if (j_keep < 2) {
-        // initial-state clustering
-        int j_other = 1 - j_keep;
+    if (i_keep < 2) { // initial-state clustering
+        int j_other = 1 - i_keep;
         for (int k = 0; k < 4; ++k) {
-            momenta[j_keep][k] -= momenta[i_remove][k];
+            momenta[i_keep][k] -= momenta[i_remove][k];
         }
 
         // mass: take max if exactly one daughter is massive, else 0
-        masses[j_keep] = (masses[j_keep] > 0.0) != (masses[i_remove] > 0.0)
-            ? max(masses[j_keep], masses[i_remove])
-            : FVal<T>(0.0);
+        masses[i_keep] = (masses[i_keep] > 0.0) != (masses[i_remove] > 0.0)
+            ? max(masses[i_keep], masses[i_remove])
+            : 0.0;
 
-        // CM boost vector: (E_tot, -px_tot, -py_tot, -pz_tot) of the two beam particles
-        FourMom<T> pcmsp = {
-            momenta[j_keep][0] + momenta[j_other][0],
-            -(momenta[j_keep][1] + momenta[j_other][1]),
-            -(momenta[j_keep][2] + momenta[j_other][2]),
-            -(momenta[j_keep][3] + momenta[j_other][3])
+        FourMom<T> com_boost_vector = {
+            momenta[i_keep][0] + momenta[j_other][0],
+            -(momenta[i_keep][1] + momenta[j_other][1]),
+            -(momenta[i_keep][2] + momenta[j_other][2]),
+            -(momenta[i_keep][3] + momenta[j_other][3]),
         };
-
-        if (lsquare<T>(pcmsp) > 100.0) {
-            // boost j_keep to CM to define the rotation axis, then apply to all alive
-            // particles
-            auto jkeep_cm = boost<T>(momenta[j_keep], pcmsp, 1.0);
+        if (lsquare<T>(com_boost_vector) > 100.0) {
+            // boost j_keep to COM frame to define the rotation axis, then apply to all
+            // alive particles
+            auto jkeep_cm = boost<T>(momenta[i_keep], com_boost_vector, 1.0);
             for (int j = 0; j < n_part; ++j) {
                 if (alive & (1 << j)) {
-                    momenta[j] =
-                        rotate_inverse<T>(boost<T>(momenta[j], pcmsp, 1.0), jkeep_cm);
+                    momenta[j] = rotate_inverse<T>(
+                        boost<T>(momenta[j], com_boost_vector, 1.0), jkeep_cm
+                    );
                 }
             }
         }
-
-    } else {
-        // final-state clustering
+    } else { // final-state clustering
         for (int k = 0; k < 4; ++k) {
-            momenta[j_keep][k] += momenta[i_remove][k];
+            momenta[i_keep][k] += momenta[i_remove][k];
         }
 
         if (resonant) {
-            masses[j_keep] = sqrt(max(lsquare<T>(momenta[j_keep]), 0.0));
+            masses[i_keep] = sqrt(max(lsquare<T>(momenta[i_keep]), 0.0));
         } else {
-            masses[j_keep] = max(masses[j_keep], masses[i_remove]);
+            masses[i_keep] = max(masses[i_keep], masses[i_remove]);
         }
     }
 }
@@ -255,15 +232,16 @@ KERNELSPEC void mlm_clustering(
         bool is_last = (data >> 28) & 1;
         bool is_initial = (particle2 < 2);
 
+        FourMom<T> momentum_sum{
+            momenta_tmp[particle1][0] + momenta_tmp[particle2][0],
+            momenta_tmp[particle1][1] + momenta_tmp[particle2][1],
+            momenta_tmp[particle1][2] + momenta_tmp[particle2][2],
+            momenta_tmp[particle1][3] + momenta_tmp[particle2][3],
+        };
+
         bool resonant = false;
         if (mass_index != 0) {
-            FourMom<T> mom_sum{
-                momenta_tmp[particle1][0] + momenta_tmp[particle2][0],
-                momenta_tmp[particle1][1] + momenta_tmp[particle2][1],
-                momenta_tmp[particle1][2] + momenta_tmp[particle2][2],
-                momenta_tmp[particle1][3] + momenta_tmp[particle2][3],
-            };
-            FVal<T> prop_m2 = lsquare<T>(mom_sum);
+            FVal<T> prop_m2 = lsquare<T>(momentum_sum);
             FVal<T> mass = bw_masses[mass_index - 1];
             FVal<T> width = bw_widths[mass_index - 1];
             FVal<T> m_min = mass - width;
@@ -274,6 +252,7 @@ KERNELSPEC void mlm_clustering(
         FVal<T> scale = compute_scale<T>(
             momenta_tmp[particle1],
             momenta_tmp[particle2],
+            momentum_sum,
             masses_tmp[particle1],
             masses_tmp[particle2],
             resonant,
