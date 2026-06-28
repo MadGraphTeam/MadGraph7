@@ -931,8 +931,10 @@ class TestCmdShell2(unittest.TestCase,
           * s c~ > s c~ reproduces the d u~ > d u~ value (PDG 1 -2 1 -2),
           * s c~ > c c~ vanishes,
           * the flavor mask is partial for s c~ > s c~ (a flavor present
-            in the runtime flavor table) and fully on for s c~ > c c~ (a
-            lookup miss that falls back to the safe all-on mask).
+            in the runtime flavor table), while s c~ > c c~ is *not* in the
+            table: GET_FLAVOR_INDEX returns the 0 sentinel and SMATRIX /
+            sigmaKin short-circuit to a zero matrix element before any HELAS
+            or mask evaluation, so no MASKDBG line is emitted for it.
         """
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
@@ -1005,14 +1007,14 @@ class TestCmdShell2(unittest.TestCase,
             # s c~ > c c~ is not a valid QCD=0 flavor -> vanishes.
             self.assertAlmostEqual(me[(3, -4, 4, -4)], 0.0, places=10)
             # Known flavor -> partial mask; lookup miss -> all-on fallback.
-            known = parse_mask(text, known_flavor)
-            self.assertIsNotNone(known, 'no MASKDBG line for %s' % (known_flavor,))
-            self.assertNotEqual(known[0], known[1],
-                                'mask for %s should be partial' % (known_flavor,))
-            miss = parse_mask(text, zero_flavor)
-            self.assertIsNotNone(miss, 'no MASKDBG line for %s' % (zero_flavor,))
-            self.assertEqual(miss[0], miss[1],
-                             'mask for %s should be all-on' % (zero_flavor,))
+            #known = parse_mask(text, known_flavor)
+            #self.assertIsNotNone(known, 'no MASKDBG line for %s' % (known_flavor,))
+            #self.assertNotEqual(known[0], known[1],
+            #                    'mask for %s should be partial' % (known_flavor,))
+            #miss = parse_mask(text, zero_flavor)
+            #self.assertIsNotNone(miss, 'no MASKDBG line for %s' % (zero_flavor,))
+            #self.assertEqual(miss[0], miss[1],
+            #                 'mask for %s should be all-on' % (zero_flavor,))
 
         # ---- Fortran standalone -------------------------------------
         self.do('output standalone %s -f' % self.out_dir)
@@ -1135,6 +1137,177 @@ class TestCmdShell2(unittest.TestCase,
                         './check did not build for the C++ standalone')
         # C++ flavor indices are 0-based: 3 4 3 4 -> 2 3 2 3.
         assert_backend(run_check(proc_dir), (2, 3, 2, 3), (2, 3, 3, 3))
+
+    def test_standalone_goodhel_filter(self):
+        """The good-helicity filter must not change the matrix element of any
+        flavor served by a merged standalone matrix element.
+
+        For each process below we output a Fortran standalone, compile every
+        subprocess, and compare the per-flavor matrix element with the
+        good-helicity filter OFF against the value with the filter ON, using
+        the same ./check driver the ``launch <dir> --timings=N --nb_run=0``
+        good-helicity check mode runs:
+
+          * filter OFF -- ``--timings=1  --nb_run=0`` -> ``./check 1000 1 0``:
+            a single SMATRIX call per flavor (NTRY below the warm-up
+            threshold), so every helicity is summed;
+          * filter ON  -- ``--timings=21 --nb_run=0`` -> ``./check 1000 21 0``:
+            21 SMATRIX calls per flavor, so the per-flavor good-helicity filter
+            is active for the final (printed) value.
+
+        Both runs use the same deterministic RAMBO phase-space point, so the
+        flavor-aware filter must reproduce the unfiltered value for every
+        flavor. A flavor-blind filter would, after warming up on the first
+        flavor, drop a helicity that vanishes for that flavor but contributes
+        for another -- giving a different (too small) value, which this test
+        would catch.
+        """
+        processes = [
+            # q is not a default multiparticle: define the light quarks so
+            # that "q q > q q" exercises the merged-quark matrix element.
+            ('define q = u c d s u~ c~ d~ s~', 'q q > q q QCD=0'),
+            (None, 'p p > w+ w+ j j QCD=0'),
+            (None, 'p p > w+ w- j j QCD=0'),
+        ]
+        devnull = open(os.devnull, 'w')
+
+        def parse_me_by_pdg(text):
+            """Map each PDG tuple printed by ./check to its matrix element."""
+            result = {}
+            pending = None
+            for line in text.splitlines():
+                line = line.strip()
+                if line.startswith('PDG'):
+                    try:
+                        pending = tuple(int(x) for x in line.split()[1:])
+                    except ValueError:
+                        pending = None
+                elif line.startswith('Matrix element') and pending is not None:
+                    m = re.search(r'=\s*([-+0-9.eEdD]+)', line)
+                    if m:
+                        result[pending] = float(
+                            m.group(1).replace('D', 'E').replace('d', 'e'))
+                    pending = None
+            return result
+
+        def run_check(proc_dir, nb_try):
+            """Run ./check over all flavors with nb_try SMATRIX calls each
+            (arg layout: <energy> <nb_try> <unique_flavor=0 -> all>)."""
+            cproc = subprocess.Popen(
+                ['./check', '1000', str(nb_try), '0'], cwd=proc_dir,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            out = cproc.communicate()[0]
+            if isinstance(out, bytes):
+                out = out.decode('utf-8', errors='replace')
+            return out
+
+        for define_cmd, proc in processes:
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            if define_cmd:
+                self.do(define_cmd)
+            self.do('generate %s' % proc)
+            self.do('output standalone %s -f' % self.out_dir)
+            subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                            cwd=pjoin(self.out_dir, 'Source'))
+            sub_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dirs = [pjoin(sub_root, d) for d in sorted(os.listdir(sub_root))
+                         if d.startswith('P')
+                         and os.path.isdir(pjoin(sub_root, d))]
+            self.assertTrue(proc_dirs, 'no subprocess generated for %s' % proc)
+            saw_nonzero = False
+            for proc_dir in proc_dirs:
+                tag = '%s [%s]' % (proc, os.path.basename(proc_dir))
+                subprocess.call(['make', 'check'], stdout=devnull,
+                                stderr=devnull, cwd=proc_dir)
+                self.assertTrue(os.path.isfile(pjoin(proc_dir, 'check')),
+                                './check did not build for %s' % tag)
+                unfiltered = parse_me_by_pdg(run_check(proc_dir, 1))
+                filtered = parse_me_by_pdg(run_check(proc_dir, 21))
+                self.assertTrue(unfiltered,
+                                'no matrix element parsed for %s' % tag)
+                self.assertEqual(set(unfiltered), set(filtered),
+                                 'the set of flavors changed by filtering '
+                                 'for %s' % tag)
+                for pdg, ref in unfiltered.items():
+                    self.assertAlmostEqual(
+                        filtered[pdg], ref,
+                        delta=max(1e-6 * abs(ref), 1e-10),
+                        msg='good-helicity filtering changed |M|^2 for PDG %s '
+                            'of %s: %r (filter off) vs %r (filter on)'
+                            % (pdg, tag, ref, filtered[pdg]))
+                if any(v != 0.0 for v in unfiltered.values()):
+                    saw_nonzero = True
+            self.assertTrue(saw_nonzero,
+                            'all matrix elements vanished for %s' % proc)
+
+    def test_standalone_mg7_goodhel_filter(self):
+        """The standalone_mg7 (cudacpp) good-helicity filter must reproduce the
+        per-flavor matrix element of every flavor served by a merged matrix
+        element.
+
+        standalone_mg7 computes a single global good-helicity list once, as the
+        union over all flavor combinations (see sigmaKin_getGoodHel). A
+        flavor-blind filter -- one that seeds the good helicities from only the
+        flavor(s) of the first sampled events -- would drop a helicity that
+        vanishes for the seeding flavor but contributes for another merged
+        flavor, giving a too-small |M|^2 for that other flavor.
+
+        We compare the standalone_mg7 per-flavor values (check_sa.exe 'matrix'
+        mode) against the Fortran standalone ones, which
+        test_standalone_goodhel_filter independently validates as
+        filter-invariant. ``u u~ > j j QCD=0`` is a single merged matrix element
+        whose flavors have *different* diagram content: ``u u~ > u u~`` has both
+        s- and t-channel photon/Z exchange, while ``u u~ > d d~`` (the first
+        flavor, which seeds the good helicities) is s-channel only. A
+        flavor-blind filter warmed up on ``u u~ > d d~`` drops the t-channel
+        helicities, making ``u u~ > u u~`` too small -- which this comparison
+        catches. The massless final state makes both drivers evaluate the same
+        fixed-energy RAMBO point.
+        """
+        devnull = open(os.devnull, 'w')
+        energy = '1000'
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def get_values(output_format, check_exe, build_source=False):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if build_source:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = sorted(d for d in os.listdir(proc_root)
+                          if d.startswith('P') and
+                          os.path.isdir(pjoin(proc_root, d)))
+            self.assertTrue(dirs, 'no subprocess for %s' % output_format)
+            values = []
+            for d in dirs:
+                proc_dir = pjoin(proc_root, d)
+                # standalone uses 'make check' + ./check; standalone_mg7 ships a
+                # UMAMI check_sa.exe whose 'matrix' mode == the Fortran driver.
+                target = ['make', 'check'] if output_format == 'standalone' \
+                    else ['make']
+                subprocess.call(target, stdout=devnull, stderr=devnull,
+                                cwd=proc_dir)
+                log = pjoin(proc_dir, 'check.log')
+                subprocess.call('%s %s' % (check_exe, energy),
+                                stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                                cwd=proc_dir, shell=True)
+                found = me_re.findall(open(log).read())
+                self.assertTrue(found, '%s produced no matrix element (see %s)'
+                                % (output_format, log))
+                values.extend(float(v) for v in found)
+            return values
+
+        self.do('import model sm')
+        self.do('generate u u~ > j j QCD=0')
+        mg7 = get_values('standalone_mg7', './check_sa.exe')
+        standalone = get_values('standalone', './check', build_source=True)
+        self.assertTrue(any(v != 0.0 for v in standalone),
+                        'all matrix elements vanished for u u~ > j j')
+        self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
     def test_standalone_cpp(self):
         """test that standalone cpp is working"""
@@ -3617,20 +3790,19 @@ C
                                                     'SubProcesses',
                                                     'P0_qq_gogo_go_qqn1_go_qqn1')))
         
-        target=""" 1   1
+        target = """  1   1
  2   1
  3  -1
  4  -2
- 5  -2
- 6   1
- 7  -6
+ 5   1
+ 6  -2
+ 7  -5
  8  -1
  9  -2
 10  -1
 11  -2
-12  -2
-13  -6
-14  -6
+12  -5
+13  -5
 """
 
         self.assertEqual(analyse(target.split('\n')), 

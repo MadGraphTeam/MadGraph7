@@ -303,6 +303,11 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_flavor_mask test_standalone_wwjj test_standalone_cpp_output test_standalone_merged_flavor_uq_zuq -pA -t0 -l INFO
 
+      - name: test test_standalone_goodhel_filter (good-helicity filter is flavor-aware)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_goodhel_filter -pA -t0 -l INFO
+
 
 
   acceptancetest_32:
