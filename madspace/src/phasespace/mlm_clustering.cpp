@@ -17,6 +17,8 @@ struct StateItem {
     bool massive_out1;
     bool massive_out2;
     bool is_qcd;
+    bool is_jet1;
+    bool is_jet2;
 };
 
 void find_clusterings(
@@ -209,7 +211,8 @@ MLMClustering::MLMClustering(
                     (item.particle1 << 0) + (item.particle2 << 8) +
                     (item.mass_index << 16) + (item.massive_in << 24) +
                     (item.massive_out1 << 25) + (item.massive_out2 << 26) +
-                    (item.is_qcd << 27) + ((&item == &state.back()) << 28)
+                    (item.is_qcd << 27) + (item.is_jet1 << 28) + (item.is_jet2 << 29) +
+                    ((&item == &state.back()) << 30)
                 );
                 _cluster_state_machine.push_back(first_indices.at(item.next_state));
             }

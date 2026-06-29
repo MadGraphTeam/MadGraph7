@@ -144,7 +144,6 @@ KERNELSPEC void update_momenta(
             momenta[i_keep][k] -= momenta[i_remove][k];
         }
 
-        // mass: take max if exactly one daughter is massive, else 0
         masses[i_keep] = (masses[i_keep] > 0.0) != (masses[i_remove] > 0.0)
             ? max(masses[i_keep], masses[i_remove])
             : 0.0;
@@ -229,7 +228,7 @@ KERNELSPEC void mlm_clustering(
         bool massive_in = (data >> 24) & 1;
         bool massive_out1 = (data >> 25) & 1;
         bool massive_out2 = (data >> 26) & 1;
-        bool is_last = (data >> 28) & 1;
+        bool is_last = (data >> 30) & 1;
         bool is_initial = (particle2 < 2);
 
         FourMom<T> momentum_sum{
@@ -305,11 +304,31 @@ KERNELSPEC void mlm_clustering(
         }
     }
 
+    for (int i = 0; i < n_part - 2; ++i) {
+        outgoing_scales[i] = 0.0;
+    }
     FVal<T> ren_scale_val = 1.0;
+    int is_last_cluster = 0b11111111'11111111'11111100;
     for (int i = 0; i < cluster_max; ++i) {
         FVal<T> scale = cluster_scales[i];
-        bool is_qcd = (cluster_history[i] >> 27) & 1;
-        ren_scale_val *= is_qcd ? scale : max_scale;
+        int data = cluster_history[i];
+        int particle1 = data & 0xFF;
+        int particle2 = (data >> 8) & 0xFF;
+        bool is_qcd = (data >> 27) & 1;
+        bool is_jet1 = (data >> 28) & 1;
+        bool is_jet2 = (data >> 29) & 1;
+        if (is_qcd) {
+            if (is_jet1 && is_last_cluster & (1 << particle1)) {
+                outgoing_scales[particle1 - 2] = scale;
+            }
+            if (is_jet2 && is_last_cluster & (1 << particle2)) {
+                outgoing_scales[particle2 - 2] = scale;
+            }
+            ren_scale_val *= scale;
+        } else {
+            ren_scale_val *= max_scale;
+        }
+        is_last_cluster &= ~((1 << particle1) | (1 << particle2));
     }
     ren_scale_val = pow(ren_scale_val, 1.0 / cluster_max);
     if (fac_scale > ren_scale_val) {
