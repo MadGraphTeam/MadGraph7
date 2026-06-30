@@ -1251,7 +1251,7 @@ namespace
                   << "Iteration #" << iiter + 1 << " of " << niter << std::endl;
         for( unsigned int ievt = 0; ievt < nreal; ++ievt )
         {
-          std::cout << "Event #" << ievt + 1 << std::endl;
+          std::cout << "Event #" << (std::size_t)iiter * nevt + ievt + 1 << std::endl;
           print_momenta_table( std::cout, hstMomenta.data(), ievt, 16 ); // 17 significant digits, as for the ME
           std::cout << " Matrix element = " << std::scientific << std::setprecision( 16 )
                     << mes[ievt] << " GeV^" << kMEGeVExponent << std::endl
