@@ -1173,6 +1173,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     std::monostate,
                     PdfGrid,
                     DifferentialCrossSection::CachedPdf>&,
+                bool,
                 bool>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
@@ -1181,9 +1182,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf1") = std::monostate{},
             py::arg("pdf2") = std::monostate{},
+            py::arg("has_mirror") = false,
             py::arg("input_momentum_fraction") = true
         )
         .def("pid_options", &DifferentialCrossSection::pid_options)
+        .def("has_mirror", &DifferentialCrossSection::has_mirror)
         .def("matrix_element", &DifferentialCrossSection::matrix_element);
 
     py::classh<Unweighter, FunctionGenerator>(m, "Unweighter")
@@ -1210,8 +1213,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
-                const std::vector<double>&,
-                const std::vector<bool>&>(),
+                const std::vector<double>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -1231,8 +1233,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("channel_indices") = std::vector<std::size_t>{},
             py::arg("active_flavors") = std::vector<std::size_t>{},
             py::arg("flavor_remap") = std::vector<std::size_t>{},
-            py::arg("flavor_factors") = std::vector<double>{},
-            py::arg("flavor_mirror") = std::vector<bool>{}
+            py::arg("flavor_factors") = std::vector<double>{}
         )
         .def("particle_count", &Integrand::particle_count)
         .def("madnis_training", &Integrand::madnis_training)

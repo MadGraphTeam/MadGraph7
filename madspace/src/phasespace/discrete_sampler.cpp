@@ -40,7 +40,7 @@ NamedVector<Value> DiscreteHistogram::build_function_impl(
         results.push_back(values);
         results.push_back(counts);
     }
-    return {return_types().keys(), results};
+    return {arg_types().keys(), results};
 }
 
 DiscreteSampler::DiscreteSampler(

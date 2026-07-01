@@ -2275,7 +2275,7 @@ sample_discrete:
       type: [float]
       desc:
     - name: option_count
-      type: [int]
+      type: [int, single]
       desc:
   outputs:
     - name: output

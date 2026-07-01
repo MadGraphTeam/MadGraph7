@@ -187,16 +187,8 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     sign = -1 if part_id < 0 else 1
                     pdg_color_types[sign * pdg] = sign * self.model.get_particle(part_id).get_color()
 
-        has_mirror_all = self.matrix_element.get("has_mirror_process")
-        same_initial_multiparticle = self.incoming[0] == self.incoming[1]
         flavors = [
-            {
-                "index": index,
-                "options": options,
-                "mirror": has_mirror_all or (
-                    same_initial_multiparticle and options[0][0] != options[0][1]
-                )
-            }
+            {"index": index, "options": options}
             for index, options in self.all_flavors_same_initial
         ]
         return {
@@ -210,4 +202,5 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             "pdg_color_types": pdg_color_types,
             "diagram_count": len(self.diagrams),
             "helicities": list(self.matrix_element.get_helicity_matrix()),
+            "has_mirror_process": self.matrix_element.get("has_mirror_process"),
         }
