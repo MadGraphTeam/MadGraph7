@@ -7960,21 +7960,10 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             flavors = me.get_external_flavors_with_iden()
             process = me.get('processes')[0]
 
-            same_initial_multiparticle = (
-                process.get_ninitial() == 2 and
-                get_initial_leg_signature(process, 1) ==
-                get_initial_leg_signature(process, 2)
-            )
             if me.get('has_mirror_process'):
                 lines.append("DATA (MIRRORPROCS(%i,I),I=1,%d)/%s/" % \
                             (i+1, len(flavors),
                       ",".join(['.true.' for flv in flavors])))
-            elif same_initial_multiparticle:
-                # If the two initial legs come from the same multiparticle
-                # definition, only mixed concrete flavors need mirror calls.
-                lines.append("DATA (MIRRORPROCS(%i,I),I=1,%d)/%s/" % \
-                            (i+1, len(flavors),
-                      ",".join([bool_dict[(flv[0][0] != flv[0][1])] for flv in flavors])))
             else:
                 lines.append("DATA (MIRRORPROCS(%i,I),I=1,%d)/%s/" % \
                         (i+1, len(flavors),

@@ -5369,7 +5369,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             for i in range(ninit):
                 pdg[i] = -pdg[i]
             init, final = pdg[:ninit], pdg[ninit:]
-            init.sort()
             final.sort()
             pdg = tuple(init + final)
             # check if we already computed this one
