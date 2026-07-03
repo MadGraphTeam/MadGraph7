@@ -279,6 +279,29 @@ namespace
     os << std::string( SEP79, '-' ) << std::endl;
   }
 
+  // Pretty-print the npar x npar invariant-mass-squared matrix m_ij of one event.
+  // Layout matches the umamiMij buffer built in perf mode: mij[(i*npar+j)*nevt + ievt].
+  // Entry [i][j] = ( eta_i p_i + eta_j p_j )^2 (eta = -1 initial / +1 final), i.e. the
+  // signed invariant mass squared used as the offshell-propagator virtuality (FIXP2).
+  void print_mij_matrix( std::ostream& os, const double* mij, unsigned int ievt, unsigned int nevt )
+  {
+    constexpr int npar = CPPProcess::npar;
+    os << "m_ij matrix [GeV^2] (event " << ievt << "):" << std::endl
+       << std::string( SEP79, '-' ) << std::endl
+       << "   j ->";
+    for( int j = 0; j < npar; ++j ) os << std::setw( 23 ) << ( j + 1 );
+    os << std::endl;
+    for( int i = 0; i < npar; ++i )
+    {
+      os << " i=" << std::setw( 2 ) << ( i + 1 );
+      for( int j = 0; j < npar; ++j )
+        os << std::scientific << std::setprecision( 14 )
+           << std::setw( 23 ) << mij[(std::size_t)( i * npar + j ) * nevt + ievt];
+      os << std::endl << std::defaultfloat;
+    }
+    os << std::string( SEP79, '-' ) << std::endl;
+  }
+
   // Run sigmaKin via UMAMI for `nevt` events and copy back the MEs.
   // Both the momenta (UMAMI SoA layout) and the per-event flavor buffer must be set
   // by the caller. On GPU the buffers are device pointers and `hstMEs` receives the
@@ -1167,6 +1190,27 @@ namespace
 #endif
       }
 
+      // ----------------------------------------------------------------------
+      // DEBUG: hard-code a specific phase-space point. Uncomment the block and
+      // fill dbg_p with one { E, px, py, pz } row per external leg; it overwrites
+      // event dbg_ievt of this batch in hstMomenta, here (after generation/LHE
+      // read) and before the momenta are consumed (AOSOA->UMAMI on CPU, copy to
+      // the device on GPU). On GPU the copyDeviceFromHost above already ran, so
+      // re-copy after editing: copyDeviceFromHost( devMomenta, hstMomenta );
+      /*
+      {
+        const double dbg_p[CPPProcess::npar][4] = {
+          // { E, px, py, pz },
+          // ... one row per external leg (CPPProcess::npar rows) ...
+        };
+        const unsigned int dbg_ievt = 0;
+        for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+          for( int ip4 = 0; ip4 < 4; ++ip4 )
+            MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), dbg_ievt, ip4, ipar ) = (fptype)dbg_p[ipar][ip4];
+      }
+      */
+      // ----------------------------------------------------------------------
+
       timermap.start( "2d Aosoa2U " );
 #ifdef MGONGPUCPP_GPUIMPL
       gpuLaunchKernel( aosoa_to_umami_kernel, gpublocks, gputhreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
@@ -1194,6 +1238,10 @@ namespace
             umamiMij[(std::size_t)( i * CPPProcess::npar + j ) * nevt + ievt] = s[0] * s[0] - s[1] * s[1] - s[2] * s[2] - s[3] * s[3];
           }
         }
+
+      // DEBUG: pretty-print the m_ij matrix of the first event (first batch only).
+      if( verbose && iiter == 0 )
+        print_mij_matrix( std::cout, umamiMij.data(), 0, nevt );
 #endif
 
       double wavetime = 0;
@@ -1223,6 +1271,29 @@ namespace
         return 3;
       }
       wavetime += timermap.stop();
+      // DEBUG: per-channel contributions for the first event (first batch only):
+      // alpha_c = numerator_c/denominator (channel weight) and alpha_c*|M|^2(c);
+      // their sums recover 1 and the combined (stored) matrix element respectively.
+      if( verbose && iiter == 0 )
+      {
+        std::cout << "Channel contributions (event 0):" << std::endl
+                  << std::string( SEP79, '-' ) << std::endl;
+        double sumW = 0., sumMEc = 0.;
+        for( unsigned int c = 0; c < mgOnGpu::nchannels; ++c )
+        {
+          if( mgOnGpu::hostChannel2iconfig[c] <= 0 ) continue; // skip channels with no SDE iconfig
+          sumW += chanWeight[(std::size_t)c * nevt];
+          sumMEc += meChannel[(std::size_t)c * nevt];
+          std::cout << "   channel " << std::setw( 3 ) << c
+                    << " : alpha = " << std::scientific << std::setprecision( 6 ) << chanWeight[(std::size_t)c * nevt]
+                    << "   alpha*ME = " << std::setprecision( 16 ) << meChannel[(std::size_t)c * nevt]
+                    << std::defaultfloat << std::endl;
+        }
+        std::cout << "   sum alpha = " << std::setprecision( 12 ) << sumW
+                  << "   sum alpha*ME (= combined ME) = " << std::scientific << std::setprecision( 16 ) << sumMEc
+                  << std::defaultfloat << std::endl
+                  << std::string( SEP79, '-' ) << std::endl;
+      }
       const double* mes = combinedME.data();
 #endif
 

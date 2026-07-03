@@ -300,6 +300,28 @@
         fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
         fptype_amp_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
         MEs_sv *= numerators_sv[channelId - 1] / denominators_sv;
+#ifdef MGONGPU_CHANNEL_DEBUG
+        // DEBUG: per-channel single-diagram-enhancement contributions for the first event.
+        // numerators_sv[c] is the |amp|^2 numerator (summed over helicities) of channel/diagram
+        // c, denominators_sv their sum over channels; the SDE channel weight is the ratio.
+        // Enable with -DMGONGPU_CHANNEL_DEBUG. (reinterpret_cast extracts SIMD lane 0.)
+        if( ievt0 == 0 )
+        {
+          const fptype_amp_sv den_sv = denominators_sv;
+          const double den = (double)reinterpret_cast<const fptype_amp*>( &den_sv )[0];
+          printf( "\n[CPPProcess::sigmaKin] first event: selected channelId=%%u (iflavor=%%u), %%d diagrams\n",
+                  channelId, (unsigned int)iflavorVec[ievt0], processConfig::ndiagrams );
+          for( int c = 0; c < processConfig::ndiagrams; ++c )
+          {
+            const fptype_sv num_sv = numerators_sv[c];
+            const double num = (double)reinterpret_cast<const fptype*>( &num_sv )[0];
+            printf( "  channel %%3d : numerator = %%+.16e   weight = %%+.16e%%s\n",
+                    c + 1, num, ( den != 0. ? num / den : 0. ),
+                    ( (unsigned int)( c + 1 ) == channelId ? "  <== current channel" : "" ) );
+          }
+          printf( "  denominator (sum over channels) = %%+.16e\n", den );
+        }
+#endif
       }
       //for( int ieppV = 0; ieppV < neppV; ieppV++ )
       //{
