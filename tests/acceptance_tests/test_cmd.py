@@ -3895,19 +3895,20 @@ C
                                                     'SubProcesses',
                                                     'P0_qq_gogo_go_qqn1_go_qqn1')))
         
-        target = """  1   1
+        target=""" 1   1
  2   1
  3  -1
  4  -2
- 5   1
- 6  -2
- 7  -5
+ 5  -2
+ 6   1
+ 7  -6
  8  -1
  9  -2
 10  -1
 11  -2
-12  -5
-13  -5
+12  -2
+13  -6
+14  -6
 """
 
         self.assertEqual(analyse(target.split('\n')), 
