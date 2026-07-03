@@ -87,19 +87,21 @@ void find_clusterings(
 
             if (new_masks.size() == 3) {
                 auto& current_states = states.at(index);
-                for (int diag_index : new_diags) {
-                    current_states.push_back({
-                        .next_state = diag_index,
-                        .particle1 = 0,
-                        .particle2 = 0,
-                        .mass_index = 0,
-                        .massive_in = false,
-                        .massive_out1 = false,
-                        .massive_out2 = false,
-                        .is_qcd = false,
-                        .is_jet1 = false,
-                        .is_jet2 = false,
-                    });
+                if (current_states.size() == 0) {
+                    for (int diag_index : new_diags) {
+                        current_states.push_back({
+                            .next_state = diag_index,
+                            .particle1 = 0,
+                            .particle2 = 0,
+                            .mass_index = 0,
+                            .massive_in = false,
+                            .massive_out1 = false,
+                            .massive_out2 = false,
+                            .is_qcd = false,
+                            .is_jet1 = false,
+                            .is_jet2 = false,
+                        });
+                    }
                 }
             } else {
                 find_clusterings(

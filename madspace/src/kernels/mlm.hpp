@@ -12,7 +12,7 @@ constexpr double ONE_PLUS_TINY = 1.000001;
 // mT^2 = E^2 - pz^2 (hadronic) or E^2 (lepton collider).
 // based on djb_clus from Template/NLO/SubProcesses/cluster.f
 template <typename T>
-KERNELSPEC FVal<T> djb_clus(FourMom<T> p, bool hadronic) {
+KERNELSPEC FVal<T> djb_clus(const FourMom<T>& p, bool hadronic) {
     auto r = hadronic ? (p[0] - p[3]) * (p[0] + p[3]) : p[0] * p[0];
     return max(r, 0.0);
 }
@@ -24,8 +24,8 @@ KERNELSPEC FVal<T> djb_clus(FourMom<T> p, bool hadronic) {
 // based on dj_clus from Template/NLO/SubProcesses/cluster.f
 template <typename T>
 KERNELSPEC FVal<T> dj_clus(
-    FourMom<T> p1,
-    FourMom<T> p2,
+    const FourMom<T>& p1,
+    const FourMom<T>& p2,
     FVal<T> mass1,
     FVal<T> mass2,
     bool hadronic,
@@ -99,11 +99,10 @@ KERNELSPEC FVal<T> compute_scale(
     bool hadronic,
     FVal<T> jet_radius
 ) {
-
     if (is_initial) {
         // scale = mT of the final-state parton
         // small penalty when it goes against the beam
-        auto scale = sqrt(djb_clus<T>(momentum1, hadronic));
+        auto scale = sqrt(djb_clus<T>(momentum2, hadronic));
         if ((momentum1[3] < 0.0) != (momentum2[3] < 0.0)) {
             scale = scale * ONE_PLUS_TINY;
         }
@@ -229,7 +228,7 @@ KERNELSPEC void mlm_clustering(
         bool massive_out1 = (data >> 25) & 1;
         bool massive_out2 = (data >> 26) & 1;
         bool is_last = (data >> 30) & 1;
-        bool is_initial = (particle2 < 2);
+        bool is_initial = (particle1 < 2);
 
         FourMom<T> momentum_sum{
             momenta_tmp[particle1][0] + momenta_tmp[particle2][0],
@@ -285,7 +284,7 @@ KERNELSPEC void mlm_clustering(
             ++cluster_count;
             win_scale = 1e308;
         } else {
-            ++state;
+            state += 2;
         }
     }
 
