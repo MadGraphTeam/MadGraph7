@@ -952,6 +952,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initialize_globals", &DiscreteFlow::initialize_globals, py::arg("context")
         );
 
+    py::classh<MLMClustering, FunctionGenerator>(m, "MLMClustering")
+        .def(
+            py::init<
+                std::vector<Topology>,
+                nested_vector3<std::size_t>,
+                nested_vector2<std::size_t>,
+                double,
+                double,
+                bool>(),
+            py::arg("topologies"),
+            py::arg("permutations"),
+            py::arg("diagram_indices"),
+            py::arg("bw_cutoff") = 15.,
+            py::arg("jet_radius") = 0.4,
+            py::arg("hadronic") = true
+        );
+
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
         .def(
             "add_data",

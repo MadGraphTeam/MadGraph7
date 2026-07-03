@@ -64,7 +64,7 @@ void find_clusterings(
                 key = {new_masks, new_diags};
             }
             int index;
-            if (auto search = state_map.find(key); search == state_map.end()) {
+            if (auto search = state_map.find(key); search != state_map.end()) {
                 index = search->second;
             } else {
                 index = states.size();
@@ -80,7 +80,9 @@ void find_clusterings(
                     .massive_in = false,
                     .massive_out1 = false,
                     .massive_out2 = false,
-                    .is_qcd = false,
+                    .is_qcd = true,
+                    .is_jet1 = true,
+                    .is_jet2 = true,
                 });
 
             if (new_masks.size() == 3) {
@@ -95,6 +97,8 @@ void find_clusterings(
                         .massive_out1 = false,
                         .massive_out2 = false,
                         .is_qcd = false,
+                        .is_jet1 = false,
+                        .is_jet2 = false,
                     });
                 }
             } else {
@@ -111,7 +115,10 @@ void find_clusterings(
 MLMClustering::MLMClustering(
     std::vector<Topology> topologies,
     nested_vector3<std::size_t> permutations,
-    nested_vector2<std::size_t> diagram_indices
+    nested_vector2<std::size_t> diagram_indices,
+    double bw_cutoff,
+    double jet_radius,
+    bool hadronic
 ) :
     FunctionGenerator(
         "MLMClustering",
@@ -120,15 +127,26 @@ MLMClustering::MLMClustering(
         {{"ren_scale", batch_float},
          {"fact_scale1", batch_float},
          {"fact_scale2", batch_float},
-         {"cluster_history",
-          batch_int_array(topologies.at(0).outgoing_masses().size() - 1)},
-         {"cluster_scales",
-          batch_float_array(topologies.at(0).outgoing_masses().size() - 1)}}
-    ) {
-    std::size_t n_ext = topologies.at(0).outgoing_masses().size() + 2;
+         {"outgoing_scales",
+          batch_float_array(topologies.at(0).outgoing_masses().size())},
+         {"diagram_index", batch_int}}
+    ),
+    _bw_cutoff(bw_cutoff),
+    _jet_radius(jet_radius),
+    _hadronic(hadronic) {
+    auto& incoming_masses = topologies.at(0).incoming_masses();
+    auto& outgoing_masses = topologies.at(0).outgoing_masses();
+    std::size_t n_ext = outgoing_masses.size() + 2;
     nested_vector2<int> valid_diags(1 << n_ext);
     std::vector<int> particle_masks;
     std::vector<int> all_diags;
+
+    _external_masses.insert(
+        _external_masses.end(), incoming_masses.begin(), incoming_masses.end()
+    );
+    _external_masses.insert(
+        _external_masses.end(), outgoing_masses.begin(), outgoing_masses.end()
+    );
 
     // create a list of all diagram indices that are possible for a given clustering,
     // where a binary encoding of the clustering is used
@@ -138,7 +156,7 @@ MLMClustering::MLMClustering(
             all_diags.push_back(diag_index);
             particle_masks.assign(topo.decays().size(), 0);
             for (std::size_t i = 2; i < permutation.size(); ++i) {
-                particle_masks.at(topo.outgoing_indices().at(permutation.at(i))) = 1
+                particle_masks.at(topo.outgoing_indices().at(permutation.at(i) - 2)) = 1
                     << i;
             }
 
@@ -223,6 +241,30 @@ MLMClustering::MLMClustering(
 NamedVector<Value> MLMClustering::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    auto mlm_out = fb.mlm_clustering_hadronic(args.at(0), _cluster_state_machine);
+    std::array<Value, 5> mlm_out;
+    Value random = fb.squeeze(fb.random(fb.batch_size(args.values()), 1));
+    if (_hadronic) {
+        mlm_out = fb.mlm_clustering_hadronic(
+            args.at(0),
+            random,
+            _cluster_state_machine,
+            _external_masses,
+            _bw_masses,
+            _bw_widths,
+            _bw_cutoff,
+            _jet_radius
+        );
+    } else {
+        mlm_out = fb.mlm_clustering_leptonic(
+            args.at(0),
+            random,
+            _cluster_state_machine,
+            _external_masses,
+            _bw_masses,
+            _bw_widths,
+            _bw_cutoff,
+            _jet_radius
+        );
+    }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};
 }
