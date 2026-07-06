@@ -115,7 +115,7 @@ public:
     // clustering data
     UnalignedRef<double> cluster_scale() { return &_data[_offsets[0] + 0]; }
 
-    void from_lhe_particle(const LHEParticle& particle) {
+    void from_lhe_particle(const LHEParticle& particle, bool has_clustering = false) {
         lhe_pdg_id() = particle.pdg_id;
         lhe_status_code() = particle.status_code;
         lhe_mother1() = particle.mother1;
@@ -129,6 +129,9 @@ public:
         lhe_mass() = particle.mass;
         lhe_lifetime() = particle.lifetime;
         lhe_spin() = particle.spin;
+        if (has_clustering) {
+            cluster_scale() = particle.cluster_scale;
+        }
     }
 
 private:

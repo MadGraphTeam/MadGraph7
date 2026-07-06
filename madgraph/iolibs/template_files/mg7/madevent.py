@@ -1306,10 +1306,19 @@ class MadgraphSubprocess:
             flavor_remap.append(flav["index"])
             flavor_factors.append(len(flav["options"]))
             flavor_mirror.append(flav["mirror"])
+        if self.scale.is_mlm():
+            me_inputs = [
+                ms.MatrixElement.diagram_in
+                if inp == ms.MatrixElement.random_diagram_in
+                else inp
+                for inp in ms.Integrand.matrix_element_inputs
+            ]
+        else:
+            me_inputs = ms.Integrand.matrix_element_inputs
         if self.matrix_element:
             matrix_element = ms.MatrixElement(
                 self.matrix_element,
-                ms.Integrand.matrix_element_inputs,
+                me_inputs,
                 ms.Integrand.matrix_element_outputs,
                 True,
             )
@@ -1317,7 +1326,7 @@ class MadgraphSubprocess:
             matrix_element = ms.MatrixElement(
                 0xBADCAFE,
                 self.particle_count,
-                ms.Integrand.matrix_element_inputs,
+                me_inputs,
                 ms.Integrand.matrix_element_outputs,
                 self.meta["diagram_count"],
                 True,

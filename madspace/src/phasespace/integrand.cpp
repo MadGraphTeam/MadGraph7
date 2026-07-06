@@ -94,6 +94,12 @@ Integrand::Integrand(
                         ret_types.push_back("partial_weight_product", batch_float);
                     }
                 }
+                if (energy_scale && energy_scale->is_mlm()) {
+                    ret_types.push_back(
+                        "cluster_scales",
+                        batch_float_array(mapping.particle_count() - 2)
+                    );
+                }
                 ret_types.push_back("random", batch_float_array(mapping.random_dim()));
                 if (mapping.channel_count() > 1 &&
                     !std::holds_alternative<std::monostate>(discrete_before)) {
@@ -259,6 +265,11 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
                 ret.push_back(std::format("fact_scale{}", i + 1), acc_float);
             }
         }
+    }
+
+    if (_energy_scale && _energy_scale->is_mlm()) {
+        ret.push_back("cluster_scales_acc", acc_float_array(particle_count - 2));
+        ret.push_back("scale_diagram_index_acc", acc_int);
     }
 
     return ret;
@@ -547,6 +558,11 @@ NamedVector<Value> Integrand::build_channel_part(
         out.push_back("fact_scale2", scales.at(2));
     }
 
+    if (_energy_scale && _energy_scale->is_mlm()) {
+        out.push_back("cluster_scales_acc", scales.at("outgoing_scales"));
+        out.push_back("scale_diagram_index_acc", scales.at("diagram_index"));
+    }
+
     return out;
 }
 
@@ -597,6 +613,9 @@ NamedVector<Value> Integrand::build_common_part(
         momenta_acc,
         _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
     };
+    if (_energy_scale && _energy_scale->is_mlm()) {
+        xs_args.push_back(args.at("scale_diagram_index_acc"));
+    }
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
     xs_args.push_back(flavor_id);
@@ -776,6 +795,16 @@ NamedVector<Value> Integrand::build_common_part(
                     scatter_or_drop(zeros_float, fb.product(pdf_vals))
                 );
             }
+        }
+        if (_energy_scale && _energy_scale->is_mlm()) {
+            auto outgoing_count = static_cast<me_int_t>(_mapping.particle_count() - 2);
+            outputs.push_back(
+                "cluster_scales",
+                scatter_or_drop(
+                    fb.full({0., batch_size_val, outgoing_count}),
+                    args.at("cluster_scales_acc")
+                )
+            );
         }
         outputs.push_back("random", optional_cut(args.at("r")));
         if (has_permutations &&

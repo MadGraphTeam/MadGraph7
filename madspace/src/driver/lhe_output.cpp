@@ -55,15 +55,15 @@ void LHEEvent::format_to(std::string& buffer) const {
     }
     if (has_cluster_scales) {
         std::format_to(insert_iter, "<scales");
-        for (std::size_t i = 2; i < particles.size(); ++i) {
-            std::format_to(
-                insert_iter,
-                " pt_clust_{}=\"{:.5f}\"",
-                i + 1,
-                particles.at(i).cluster_scale
-            );
+        for (std::size_t i = 1; auto& particle : particles) {
+            if (particle.status_code == 1) {
+                std::format_to(
+                    insert_iter, " pt_clust_{}=\"{:.5f}\"", i, particle.cluster_scale
+                );
+            }
+            ++i;
         }
-        std::format_to(insert_iter, "></scales>");
+        std::format_to(insert_iter, "></scales>\n");
     }
     buffer += "</event>\n";
 }
