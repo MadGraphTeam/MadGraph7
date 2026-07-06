@@ -275,18 +275,22 @@ class MadgraphProcess:
             "half_transverse_mass": ms.EnergyScale.half_transverse_mass,
             "partonic_energy": ms.EnergyScale.partonic_energy,
         }
-        if beam_args["dynamical_scale_choice"] in dynamical_scales:
+        if beam_args["dynamical_scale_choice"] == "mlm":
+            self.mlm_clustering = True
+            self.scale_kwargs = {}
+        elif beam_args["dynamical_scale_choice"] in dynamical_scales:
             dynamical_scale_type = dynamical_scales[beam_args["dynamical_scale_choice"]]
+            self.mlm_clustering = False
+            self.scale_kwargs = dict(
+                dynamical_scale_type=dynamical_scale_type,
+                ren_scale_fixed=beam_args["fixed_ren_scale"],
+                fact_scale_fixed=beam_args["fixed_fact_scale"],
+                ren_scale=beam_args["ren_scale"],
+                fact_scale1=beam_args["fact_scale1"],
+                fact_scale2=beam_args["fact_scale2"],
+            )
         else:
             raise ValueError("Unknown dynamical scale choice")
-        self.scale_kwargs = dict(
-            dynamical_scale_type=dynamical_scale_type,
-            ren_scale_fixed=beam_args["fixed_ren_scale"],
-            fact_scale_fixed=beam_args["fixed_fact_scale"],
-            ren_scale=beam_args["ren_scale"],
-            fact_scale1=beam_args["fact_scale1"],
-            fact_scale2=beam_args["fact_scale2"],
-        )
 
         pdf_set = beam_args["pdf"]
         if PDF_PATH is None:
@@ -851,9 +855,20 @@ class MadgraphSubprocess:
             else None
         )
 
-        self.scale = ms.EnergyScale(
-            particle_count=self.particle_count, **self.process.scale_kwargs
-        )
+        if self.process.mlm_clustering:
+            mc_data = self.build_multi_channel_data()
+            self.scale = ms.EnergyScale(ms.MLMClustering(
+                topologies = [topo[0] for topo in mc_data.topologies],
+                permutations = mc_data.permutations,
+                diagram_indices = mc_data.diagram_indices,
+                bw_cutoff = self.process.run_card["phasespace"]["bw_cutoff"],
+                jet_radius = self.process.run_card["beam"]["jet_radius"],
+                hadronic = not self.process.leptonic,
+            ))
+        else:
+            self.scale = ms.EnergyScale(
+                particle_count=self.particle_count, **self.process.scale_kwargs
+            )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_element = None

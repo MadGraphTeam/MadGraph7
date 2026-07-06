@@ -1,6 +1,7 @@
 #pragma once
 
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/mlm_clustering.hpp"
 
 namespace madspace {
 
@@ -36,6 +37,7 @@ public:
         double fact_scale1,
         double fact_scale2
     );
+    EnergyScale(const MLMClustering& clustering);
 
 private:
     NamedVector<Value> build_function_impl(
@@ -48,6 +50,7 @@ private:
     double _ren_scale;
     double _fact_scale1;
     double _fact_scale2;
+    std::optional<MLMClustering> _clustering;
 };
 
 } // namespace madspace

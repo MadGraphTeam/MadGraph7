@@ -1185,7 +1185,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
             py::arg("fact_scale2")
-        );
+        )
+        .def(py::init<const MLMClustering&>(), py::arg("clustering"));
 
     py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());
     py::classh<DifferentialCrossSection::CachedScale>(m, "CachedScale")

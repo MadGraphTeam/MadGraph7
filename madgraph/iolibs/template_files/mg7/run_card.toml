@@ -26,8 +26,9 @@ fixed_fact_scale = true
 ren_scale = 91.188
 fact_scale1 = 91.188
 fact_scale2 = 91.188
-# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy
+# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm
 dynamical_scale_choice = "half_transverse_mass"
+jet_radius = 0.4
 
 [generation]
 events = 100000
