@@ -53,6 +53,18 @@ void LHEEvent::format_to(std::string& buffer) const {
             particle.spin
         );
     }
+    if (has_cluster_scales) {
+        std::format_to(insert_iter, "<scales");
+        for (std::size_t i = 2; i < particles.size(); ++i) {
+            std::format_to(
+                insert_iter,
+                " pt_clust_{}=\"{:.5f}\"",
+                i + 1,
+                particles.at(i).cluster_scale
+            );
+        }
+        std::format_to(insert_iter, "></scales>");
+    }
     buffer += "</event>\n";
 }
 

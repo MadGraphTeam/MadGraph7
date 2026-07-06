@@ -39,6 +39,8 @@ public:
     );
     EnergyScale(const MLMClustering& clustering);
 
+    bool is_mlm() const { return _clustering.has_value(); }
+
 private:
     NamedVector<Value> build_function_impl(
         FunctionBuilder& fb, const NamedVector<Value>& args
