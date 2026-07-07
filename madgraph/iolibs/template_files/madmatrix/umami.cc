@@ -61,14 +61,18 @@ namespace
     fptype* denominators,
     std::size_t count )
   {
-    // static local initialization is called exactly once in a thread-safe way
-    static void* dummy = initialize_impl( momenta, couplings, flavor_indices, matrix_elements,
+    // Good-helicity filtering must run once PER INSTANCE, not once per process.
+    // MadSpace creates a separate Umami handle per device (context.cpp, via
+    // ThreadResource) and activates that device before use, so a per-instance
+    // init uploads dcGoodHel/dcNGoodHel to every device's constant memory.
+    // Removed the static-local guard.
+    (void)initialize_impl( momenta, couplings, flavor_indices, matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
-                                          color_jamps,
+                           color_jamps,
 #endif
-                                          numerators,
-                                          denominators,
-                                          count );
+                           numerators,
+                           denominators,
+                           count );
   }
 
 #ifdef MGONGPUCPP_GPUIMPL
