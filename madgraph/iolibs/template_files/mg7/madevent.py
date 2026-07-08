@@ -1419,20 +1419,71 @@ class MadgraphSubprocess:
         )
 
 
-def ask_edit_cards() -> None:
-    #TODO: these imports break when trying to generate flame graphs, so do them locally for now
+def load_mg5_options() -> dict:
+    """Read the tool paths from the MG5aMC configuration so the launcher knows
+    which optional programs (Pythia8/Delphes/MadSpin/reweight/analysis) are
+    available.  Relative *_path entries are resolved against the MG5aMC root."""
+
+    import madgraph
+    mg5dir = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+
+    options = {
+        'pythia-pgs_path': None, 'pythia8_path': None, 'madanalysis_path': None,
+        'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
+        'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
+        'lhapdf': None, 'timeout': 0,
+    }
+    config_files = [os.path.join(mg5dir, 'input', 'mg5_configuration.txt')]
+    home = os.environ.get('HOME')
+    if home:
+        config_files.append(os.path.join(home, '.mg5', 'mg5_configuration.txt'))
+        config_files.append(os.path.join(
+            os.environ.get('XDG_CONFIG_HOME', os.path.join(home, '.config')),
+            'mg5_configuration.txt'))
+    for cfg in config_files:
+        if not os.path.exists(cfg):
+            continue
+        with open(cfg) as fsock:
+            for line in fsock:
+                line = line.split('#', 1)[0]
+                if '=' not in line:
+                    continue
+                name, value = (x.strip() for x in line.split('=', 1))
+                if name not in options or value in ('', 'None'):
+                    continue
+                if name.endswith('_path') and value.startswith('.'):
+                    value = os.path.join(mg5dir, value)
+                options[name] = value
+    options['mg5_path'] = mg5dir  # enables MadSpin/reweight
+    return options
+
+
+def build_selector_cmd():
+    """Build the (monkey-patched) mother command + merged switch/card selector
+    used by the mg7 output.  Returns the selector *class* and a mother instance
+    understood by AskRun/AskforEditCard."""
+
     from madgraph.interface.common_run_interface import CommonRunCmd, AskforEditCard
     from madgraph.interface.extended_cmd import Cmd
+    from madgraph.interface.madevent_interface import AskRunEditCard
 
-    #TODO: some rather disgusting monkey-patching to make editing cards work
     class MG7Cmd(Cmd):
         def __init__(self):
             super().__init__(".", {})
-            self.proc_characteristics = None
+            self.me_dir = "."
+            self.options = load_mg5_options()
+            self.plugin_path = []
+            self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
+        def keep_cards(self, need_card=[], ignore=[]):
+            return CommonRunCmd.keep_cards(self, need_card, ignore)
         def do_open(self, line):
             CommonRunCmd.do_open(self, line)
         def check_open(self, args):
             CommonRunCmd.check_open(self, args)
+
+    # The mg7 run_card is a TOML file. Teach the generic card editor to treat it
+    # as such: point the run paths at run_card.toml (+ its default), load it as a
+    # RunCardMG7 so "set <param>" works, and add the madevent-style shortcuts.
     old_define_paths = AskforEditCard.define_paths
     def define_paths(self, **opt):
         old_define_paths(self, **opt)
@@ -1513,20 +1564,93 @@ def ask_edit_cards() -> None:
         return old_do_set(self, line, *args, **kwargs)
     AskforEditCard.do_set = do_set
 
-    cmd = MG7Cmd()
-    CommonRunCmd.ask_edit_card_static(
-        ["param_card.dat", "run_card.toml"],
-        pwd=".",
-        ask=cmd.ask,
-        plot=False
-    )
+    class MG7Selector(AskRunEditCard):
+        # param_card + the TOML run_card are always offered; the run_card is
+        # edited through the monkey-patched define_paths/init_run/do_set above.
+        always_cards = ['param_card.dat', 'run_card.toml']
+        optional_cards = []
+
+    return MG7Selector, MG7Cmd()
+
+
+def ask_edit_cards() -> dict:
+    """Single (MadDM-style) question letting the user both pick which programs
+    to run after generation and edit the associated cards.  Returns the switch
+    dict describing the selected tools."""
+
+    selector_class, mother = build_selector_cmd()
+    switch, _ = mother.ask('', '0', [], ask_class=selector_class,
+                           mode='auto', line_args=[], force=False,
+                           return_instance=True)
+    return dict(switch)
+
+
+def _find_event_file(run_path):
+    """Locate the LHE event file produced by generate_events (if any)."""
+    for name in ("events.lhe", "events.lhe.gz"):
+        path = os.path.join(run_path, name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _run_madspin(lhe_path, log):
+    """Run MadSpin on the generated LHE file using Cards/madspin_card.dat.
+    Reuses the standard MadSpin interface (LHE + card driven)."""
+    card = os.path.join("Cards", "madspin_card.dat")
+    if not os.path.exists(card):
+        log.warning("MadSpin selected but Cards/madspin_card.dat is missing.")
+        return
+    try:
+        import MadSpin.interface_madspin as interface_madspin
+        madspin_cmd = interface_madspin.MadSpinInterface(lhe_path)
+        madspin_cmd.import_command_file(card)
+        log.info("MadSpin finished on %s", lhe_path)
+    except Exception as error:
+        log.warning("MadSpin post-processing failed: %s", error)
+
+
+def run_selected_tools(switch, process) -> None:
+    """Run the optional post-processing programs selected in the merged
+    question on the generated events.
+
+    The mg7 output produces an LHE file; MadSpin operates directly on it and is
+    run here.  The parton-shower based tools (Pythia8/Delphes/analysis) and the
+    reweighting still need the mg7 event pipeline to expose a full LHE banner so
+    the standard MG5aMC runners can be reused; until then they are reported so
+    the user can run them through the standard flow.
+    """
+    log = logging.getLogger("madevent")
+
+    active = {k: v for k, v in switch.items()
+              if v not in ("OFF", "Not Avail.", "Not Avail. (numpy missing)")}
+    if not active:
+        return
+
+    lhe_path = _find_event_file(process.run_path)
+    if lhe_path is None:
+        log.warning("No LHE event file in %s; cannot run %s.",
+                    process.run_path, ", ".join(sorted(active)))
+        return
+
+    if switch.get("madspin", "OFF") != "OFF":
+        _run_madspin(lhe_path, log)
+
+    pending = [k for k in ("reweight", "shower", "detector", "analysis")
+               if switch.get(k, "OFF") not in ("OFF", "Not Avail.")]
+    if pending:
+        log.info("Selected post-processing tools %s are enabled; run them on %s "
+                 "through the standard MG5aMC interface.",
+                 ", ".join(pending), lhe_path)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
     args = parser.parse_args()
+    switch = {}
     if args.ask_edit_cards:
-        ask_edit_cards()
+        switch = ask_edit_cards()
 
     # Remove soft limit on number of open files as it can be quite low on some systems
     soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -1536,3 +1660,8 @@ def main() -> None:
     process.survey()
     process.train_madnis()
     process.generate_events()
+
+    # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)
+    # selected in the merged question above on the generated events.
+    if switch:
+        run_selected_tools(switch, process)

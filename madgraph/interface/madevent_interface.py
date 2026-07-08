@@ -936,7 +936,43 @@ class AskRun(cmd.ControlSwitch):
         elif value in ['OFF']:
             return [] #if reweight=OFF, we do not create a reweight_card.dat
         else:
-            return 
+            return
+
+
+class AskRunEditCard(common_run.AskforEditCardWithSwitch, AskRun,
+                     common_run.AskforEditCard):
+    """Single question merging the choice of programs to run (shower, detector,
+    analysis, madspin, reweight) with the edition of the associated cards."""
+
+    switch_class = AskRun
+    always_cards = ['param_card.dat', 'run_card.dat']
+    optional_cards = ['MadLoopParams.dat']
+    switch_cards = [
+        {'card': 'pythia8_card.dat', 'key': 'shower',
+         'on': lambda s: s['shower'] == 'Pythia8', 'set': 'Pythia8'},
+        {'card': 'pythia_card.dat', 'key': 'shower',
+         'on': lambda s: s['shower'] == 'Pythia6', 'set': 'Pythia6'},
+        {'card': 'pgs_card.dat', 'key': 'detector',
+         'on': lambda s: s['detector'] in ('PGS', 'DELPHES+PGS'), 'set': 'PGS'},
+        {'card': 'delphes_card.dat', 'key': 'detector',
+         'on': lambda s: s['detector'] in ('Delphes', 'DELPHES+PGS'),
+         'set': 'Delphes'},
+        {'card': 'madspin_card.dat', 'key': 'madspin',
+         'on': lambda s: s['madspin'] not in ('OFF', 'Not Avail.'),
+         'set': 'ON'},
+        {'card': 'reweight_card.dat', 'key': 'reweight',
+         'on': lambda s: s['reweight'] not in ('OFF', 'Not Avail.'),
+         'set': 'ON'},
+        {'card': 'madanalysis5_parton_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'MadAnalysis5', 'set': 'MadAnalysis5'},
+        {'card': 'madanalysis5_hadron_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'MadAnalysis5' and s['shower'] != 'OFF',
+         'set': 'MadAnalysis5'},
+        {'card': 'plot_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'MadAnalysis4', 'set': 'MadAnalysis4'},
+        {'card': 'rivet_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'Rivet', 'set': 'Rivet'},
+    ]
 
 #===============================================================================
 # CheckValidForCmd
@@ -6864,32 +6900,37 @@ tar -czf split_$1.tar.gz split_$1
 
 
     action_switcher = AskRun
+    action_editcard = AskRunEditCard
     ############################################################################
     def ask_run_configuration(self, mode=None, args=[]):
-        """Ask the question when launching generate_events/multi_run"""
+        """Ask the question when launching generate_events/multi_run.
+
+        A single (MadDM-style) question lets the user both select which
+        programs to run (shower/detector/analysis/madspin/reweight) and edit
+        the associated cards.  The card-setup commands implied by the switches
+        are applied on the fly (see AskforEditCardWithSwitch.set_switch)."""
 
         passing_cmd = []
         if '-R' in args or '--reweight' in args:
             passing_cmd.append('reweight=ON')
         if '-M' in args or '--madspin' in args:
             passing_cmd.append('madspin=ON')
-        
-        switch, cmd_switch = self.ask('', '0', [], ask_class = self.action_switcher,
-                              mode=mode, line_args=args, force=self.force,
-                              first_cmd=passing_cmd, return_instance=True)
+
+        switch = self.ask('', '0', [], ask_class=self.action_editcard,
+                          mode=mode, line_args=args, force=self.force,
+                          first_cmd=passing_cmd)
         #
-        self.switch = switch # store the value of the switch for plugin purpose 
+        self.switch = switch # store the value of the switch for plugin purpose
         if 'dynamical' in switch:
             mode = 'auto'
-        
-        # Now that we know in which mode we are check that all the card
-        #exists (copy default if needed)
-    
+
+        # Determine the final set of cards from the chosen switches so that the
+        # cards of the tools that were *not* selected are cleaned away.
         cards = ['param_card.dat', 'run_card.dat']
         if switch['shower'] == 'Pythia6':
             cards.append('pythia_card.dat')
         if switch['shower'] == 'Pythia8':
-            cards.append('pythia8_card.dat')            
+            cards.append('pythia8_card.dat')
         if switch['detector'] in  ['PGS','DELPHES+PGS']:
             cards.append('pgs_card.dat')
         if switch['detector'] in ['Delphes', 'DELPHES+PGS']:
@@ -6912,23 +6953,12 @@ tar -czf split_$1.tar.gz split_$1
             cards.append('rivet_card.dat')
 
         self.keep_cards(cards)
-        
-        first_cmd = cmd_switch.get_cardcmd()
-        
-        if os.path.isfile(pjoin(self.me_dir,'Cards','MadLoopParams.dat')):
-            cards.append('MadLoopParams.dat')
-        
+
         if self.force:
             self.check_param_card(pjoin(self.me_dir,'Cards','param_card.dat' ))
-            return switch
-        
 
-        if 'dynamical' in switch and switch['dynamical']:
-            self.ask_edit_cards(cards, plot=False, mode='auto', first_cmd=first_cmd)
-        else:
-            self.ask_edit_cards(cards, plot=False, first_cmd=first_cmd)
         return switch
-    
+
     ############################################################################
     def ask_pythia_run_configuration(self, mode=None, pythia_version=6, banner=None):
         """Ask the question when launching pythia"""
