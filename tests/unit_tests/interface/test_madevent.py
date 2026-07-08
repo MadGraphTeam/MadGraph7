@@ -46,6 +46,13 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertEqual(detect(pjoin(root_path, 'input_files','run_card_matching.dat')),
                          'run_card.dat')
 
+        # mg7 run_card (TOML format): concrete card + template
+        self.assertEqual(detect(pjoin(root_path, 'input_files','mg7_run_card.toml')),
+                         'run_card.toml')
+        self.assertEqual(detect(pjoin(root_path,'..','madgraph','iolibs',
+                                      'template_files','mg7','run_card.toml')),
+                         'run_card.toml')
+
         # PYTHIA_CARD
         self.assertEqual(detect(pjoin(card_dir, 'pythia_card_default.dat')),
                          'pythia_card.dat')

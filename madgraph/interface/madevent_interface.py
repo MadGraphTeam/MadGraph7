@@ -868,13 +868,27 @@ class AskRun(cmd.ControlSwitch):
             
     def get_cardcmd_for_madspin(self, value):
         """set some command to run before allowing the user to modify the cards."""
-        
+
         if value in ['onshell', 'madspin', 'full', 'PA', 'none',
                      'madspin_v1', 'onshell_v1']:
             return ["edit madspin_card --replace_line='set spinmode' --before_line='decay' set spinmode %s" % value ]
         else:
             return []
-        
+
+    def switch_value_from_card_madspin(self):
+        """re-derive the madspin switch from the spinmode written in
+        madspin_card.dat (called after the user has edited the cards)."""
+
+        path = pjoin(self.me_dir, 'Cards', 'madspin_card.dat')
+        if not os.path.exists(path):
+            return None
+        for line in open(path):
+            line = line.split('#', 1)[0]
+            match = re.match(r'\s*set\s+spinmode\s+(\S+)', line, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return 'ON'  # card present but no explicit spinmode
+
 #
 #   ReWeight handling
 #
@@ -937,6 +951,18 @@ class AskRun(cmd.ControlSwitch):
             return [] #if reweight=OFF, we do not create a reweight_card.dat
         else:
             return
+
+    def switch_value_from_card_reweight(self):
+        """re-derive the reweight switch (ON vs density) from the content of
+        reweight_card.dat (called after the user has edited the cards)."""
+
+        path = pjoin(self.me_dir, 'Cards', 'reweight_card.dat')
+        if not os.path.exists(path):
+            return None
+        with open(path) as fsock:
+            if 'change particle_in_density_matrix' in fsock.read():
+                return 'density'
+        return 'ON'
 
 
 class AskRunEditCard(common_run.AskforEditCardWithSwitch, AskRun,
