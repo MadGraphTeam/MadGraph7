@@ -44,32 +44,13 @@ env:
 
 jobs:
   # Build madspace once (content-addressed cache), shared by every section job.
-  # Mirrors the build_madspace job in acceptancetest_mg7.yml.
+  # The build logic lives in the build_madspace composite action so it stays in
+  # sync with acceptancetest_mg7.yml.
   build_madspace:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: madspace cache key
-        run: echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Cache madspace install
-        id: cache-madspace
-        uses: actions/cache@v5
-        with:
-          path: madspace/install
-          key: madspace-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
-
-      - name: Build and install madspace (only on cache miss)
-        if: steps.cache-madspace.outputs.cache-hit != 'true'
-        run: |
-          cd $GITHUB_WORKSPACE
-          python3 -m pip install --upgrade pip packaging
-          python3 -m pip install ./madspace \
-            -Ccmake.define.ENABLE_OPENBLAS=ON \
-            --target="$GITHUB_WORKSPACE/madspace/install"
-        shell: bash
+      - uses: ./.github/actions/build_madspace
 
   check_xsec_processes:
     needs: build_madspace
