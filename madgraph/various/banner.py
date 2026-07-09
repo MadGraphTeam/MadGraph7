@@ -67,6 +67,7 @@ class Banner(dict):
     """ """
 
     ordered_items = ['mgversion', 'mg5proccard', 'mgproccard', 'mgruncard',
+                     'mg7runcard',
                      'slha','initrwgt','mggenerationinfo', 'mgpythiacard', 'mgpgscard',
                      'mgdelphescard', 'mgdelphestrigger','mgshowercard', 'foanalyse',
                      'ma5card_parton','ma5card_hadron','run_settings']
@@ -76,6 +77,7 @@ class Banner(dict):
             'mg5proccard': 'MG5ProcCard',
             'mgproccard': 'MGProcCard',
             'mgruncard': 'MGRunCard',
+            'mg7runcard': 'MG7RunCard',
             'ma5card_parton' : 'MA5Card_parton',
             'ma5card_hadron' : 'MA5Card_hadron',            
             'mggenerationinfo': 'MGGenerationInfo',
@@ -118,6 +120,7 @@ class Banner(dict):
 
     tag_to_file={'slha':'param_card.dat',
       'mgruncard':'run_card.dat',
+      'mg7runcard':'run_card.toml',
       'mgpythiacard':'pythia_card.dat',
       'mgpgscard' : 'pgs_card.dat',
       'mgdelphescard':'delphes_card.dat',      
@@ -537,8 +540,12 @@ class Banner(dict):
             self.param_card = param_card_reader.ParamCard(param_card)
             return self.param_card
         elif tag == 'mgruncard':
-            with misc.TMP_variable(RunCard, 'allow_scan', True):
-                self.run_card = RunCard(self[tag], consistency=False, unknown_warning=False)
+            if 'mg7runcard' in self:
+                # mg7 events embed the TOML run_card under <MG7RunCard>
+                self.run_card = RunCardMG7(self['mg7runcard'], consistency=False)
+            else:
+                with misc.TMP_variable(RunCard, 'allow_scan', True):
+                    self.run_card = RunCard(self[tag], consistency=False, unknown_warning=False)
             return self.run_card
         elif tag == 'mg5proccard':
             proc_card = self[tag].split('\n')
@@ -6482,6 +6489,23 @@ class RunCardMG7(RunCard):
         self.add_toml_param('generation', 'max_cut_repetitions', 1000, gridpack=True)
         self.add_toml_param('generation', 'systematics', False)
 
+        # ------------------------- [postprocessing] -------------------
+        # LHE-level post-processing of the generated event file (only applied
+        # when output_format = "lhe"); mirrors what madevent drives from the
+        # legacy run_card (add_time_of_flight and systematics.py).
+        self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
+            comment="threshold (in mm) below which the invariant livetime is not written (-1 means not written)")
+        self.add_toml_param('postprocessing', 'systematics', True,
+            comment="compute scale/PDF systematic uncertainties on the events (systematics.py)")
+        self.add_toml_param('postprocessing', 'systematics_muf', [0.5, 1.0, 2.0], typelist=float,
+            comment="factorisation scale variation factors")
+        self.add_toml_param('postprocessing', 'systematics_mur', [0.5, 1.0, 2.0], typelist=float,
+            comment="renormalisation scale variation factors")
+        self.add_toml_param('postprocessing', 'systematics_pdf', ['errorset'], typelist=str,
+            comment="PDF sets/uncertainties (e.g. 'errorset', 'central', a lhaid)")
+        self.add_toml_param('postprocessing', 'systematics_str_options', "",
+            comment="extra raw options forwarded to systematics.py (e.g. '--together=mur,muf')")
+
         # ----------------------------- [vegas] ------------------------
         self.add_toml_param('vegas', 'enable', True)
         self.add_toml_param('vegas', 'bins', 64)
@@ -6585,9 +6609,92 @@ class RunCardMG7(RunCard):
                 return self.dynamic_sections[lname]
             if lname in self.toml_sections:
                 return TOMLSectionView(self, lname)
+            if lname in self.legacy_compat_keys:
+                return self._legacy_compat(lname)
         return super(RunCardMG7, self).__getitem__(name)
 
     get = __getitem__
+
+    # ------------------------------------------------------------------
+    # legacy run_card compatibility
+    # ------------------------------------------------------------------
+    # keys that tools reading the run_card from an LHE banner (systematics.py)
+    # expect from a legacy run_card.dat; mapped here to the TOML equivalents.
+    legacy_compat_keys = {
+        'pdlabel', 'pdlabel1', 'pdlabel2', 'lpp1', 'lpp2', 'ebeam1', 'ebeam2',
+        'nb_proton1', 'nb_proton2', 'nb_neutron1', 'nb_neutron2', 'use_syst',
+        'store_rwgt_info', 'scalefact', 'mur_over_ref', 'muf_over_ref', 'ickkw',
+        'ievo_eva', 'evaorder', 'event_norm', 'dynamical_scale_choice',
+    }
+
+    # mg7 dynamical_scale_choice name -> legacy integer code
+    # NOTE: mapping to confirm; only relevant for a dynamical-scale run (fixed
+    # scales, the mg7 default, are handled through the event scale directly).
+    _dyn_scale_legacy = {
+        'partonic_energy': 4,
+        'transverse_mass': 2,
+        'half_transverse_mass': 3,
+        'transverse_energy': 3,
+    }
+
+    def _legacy_compat(self, key):
+        beam = self['beam']
+        leptonic = bool(beam['leptonic'])
+        half_e = float(beam['e_cm']) / 2.
+        if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
+            # hadronic beams use LHAPDF; leptonic beams have no PDF
+            return 'none' if leptonic else 'lhapdf'
+        if key in ('lpp1', 'lpp2'):
+            return 0 if leptonic else 1
+        if key in ('ebeam1', 'ebeam2'):
+            return half_e
+        if key in ('nb_proton1', 'nb_proton2'):
+            return 0 if leptonic else 1
+        if key in ('nb_neutron1', 'nb_neutron2'):
+            return 0
+        if key == 'use_syst':
+            return True
+        if key == 'store_rwgt_info':
+            return True
+        if key in ('scalefact', 'mur_over_ref', 'muf_over_ref'):
+            return 1.0
+        if key in ('ickkw', 'ievo_eva', 'evaorder'):
+            return 0
+        if key == 'event_norm':
+            return 'average'
+        if key == 'dynamical_scale_choice':
+            if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
+                return -1  # fixed scale: no dynamical-scale variation
+            return self._dyn_scale_legacy.get(beam['dynamical_scale_choice'], -1)
+        raise KeyError(key)
+
+    def get_lhapdf_id(self):
+        """Central LHAPDF id of the beam PDF set, read from the set's .info
+        (SetIndex) so it does not depend on lhapdf being able to resolve the
+        set by name; falls back to lhapdf.getPDFSet, then 0."""
+        name = self['beam']['pdf']
+        if not name:
+            return 0
+        search = []
+        if os.environ.get('LHAPDF_DATA_PATH'):
+            search += os.environ['LHAPDF_DATA_PATH'].split(os.pathsep)
+        try:
+            import lhapdf
+            search += list(lhapdf.paths())
+        except Exception:
+            pass
+        for base in search:
+            info = os.path.join(base, name, '%s.info' % name)
+            if os.path.exists(info):
+                with open(info) as fsock:
+                    for line in fsock:
+                        if line.strip().startswith('SetIndex:'):
+                            return int(line.split(':', 1)[1].strip())
+        try:
+            import lhapdf
+            return lhapdf.getPDFSet(name).lhapdfID
+        except Exception:
+            return 0
 
     # ------------------------------------------------------------------
     # reading TOML

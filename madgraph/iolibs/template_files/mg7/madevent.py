@@ -696,7 +696,8 @@ class MadgraphProcess:
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
             self.event_generator.combine_to_lhe(
-                os.path.join(self.run_path, "events.lhe"), self.lhe_completer
+                os.path.join(self.run_path, "events.lhe"), self.lhe_completer,
+                self.build_lhe_meta(),
             )
         else:
             raise ValueError("Unknown output format")
@@ -729,6 +730,66 @@ class MadgraphProcess:
         except Exception as err:
             logger.warning("could not extract observable means: %s", err)
         return result
+
+    def _beam_info(self):
+        """Return (beam_pdg_ids, beam_energies) for the LHE <init> block.
+
+        `incoming` holds the *partonic* initial state (e.g. gluons), not the
+        beam particle, so hadronic beams are protons (2212); leptonic beams are
+        the incoming leptons themselves."""
+        half_e = float(self.e_cm) / 2.
+        if not self.leptonic:
+            # hadronic collider: proton beams (p-pbar is not distinguished)
+            return [2212, 2212], [half_e, half_e]
+        data = self.subprocess_data[0]
+        incoming = data["incoming"]
+        flavor0 = data["flavors"][0]["options"][0]
+        init_pdgs = flavor0[:len(incoming)]
+        beam_pdgs = [pdg if abs(code) in (81, 82) else code
+                     for code, pdg in zip(incoming, init_pdgs)]
+        return beam_pdgs, [half_e, half_e]
+
+    def _lhapdf_id(self):
+        """Central LHAPDF id of the beam PDF set (read from its .info SetIndex),
+        or -1 for a leptonic beam (no PDF)."""
+        if self.leptonic:
+            return -1
+        pdf_set = self.run_card["beam"]["pdf"]
+        info = os.path.join(PDF_PATH or "", pdf_set, "%s.info" % pdf_set)
+        try:
+            for line in open(info):
+                if line.strip().startswith("SetIndex:"):
+                    return int(line.split(":", 1)[1].strip())
+        except Exception as err:
+            logger.warning("could not read LHAPDF id from %s: %s", info, err)
+        return -1
+
+    def build_lhe_meta(self):
+        """Build the LHE header/<init> metadata: the param_card (<slha>) and the
+        run_card.toml (<MG7RunCard>) headers plus the beam/PDF/cross-section info
+        needed by downstream tools (systematics, MadSpin, ...)."""
+        beam_pdgs, energies = self._beam_info()
+        lhaid = self._lhapdf_id()
+        pdf_group = -1 if self.leptonic else 0
+        status = self.event_generator.status()
+        xsec, err = status.mean, status.error
+        with open(self.param_card_path) as f:
+            param_text = f.read()
+        with open(os.path.join("Cards", "run_card.toml")) as f:
+            run_text = f.read()
+        return ms.LHEMeta(
+            beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
+            beam1_energy=energies[0], beam2_energy=energies[1],
+            beam1_pdf_authors=pdf_group, beam2_pdf_authors=pdf_group,
+            beam1_pdf_id=lhaid, beam2_pdf_id=lhaid,
+            weight_mode=3,
+            # positional: the pybind arg name for max_weight is non-kwarg-safe
+            processes=[ms.LHEProcess(xsec, err, xsec, 1)],
+            headers=[
+                ms.LHEHeader(name="slha", content=param_text),
+                ms.LHEHeader(name="MG7RunCard", content=run_text),
+            ],
+        )
 
     def build_lhe_completer(self):
         subproc_args = []
@@ -1696,6 +1757,125 @@ def run_selected_tools(switch, process) -> None:
                  ", ".join(pending), lhe_path)
 
 
+def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
+    """Add invariant-lifetime (vtim) information to the LHE events, drawing each
+    unstable particle's decay length from its width (in mm). Mirrors
+    common_run_interface.CommonRunCmd.do_add_time_of_flight but reads the widths
+    from the local param_card instead of the LHE banner."""
+    import random
+    try:
+        import madgraph.various.lhe_parser as lhe_parser
+    except ImportError:
+        import internal.lhe_parser as lhe_parser
+    from models import check_param_card as param_card_mod
+    from madgraph.various import misc as _misc
+    import madgraph.iolibs.files as files
+
+    need_zip = lhe_path.endswith('.gz')
+    if need_zip:
+        _misc.gunzip(lhe_path)
+        lhe_path = lhe_path[:-3]
+
+    param_card = param_card_mod.ParamCard(param_card_path)
+    cst = 6.58211915e-25   # hbar in GeV s
+    c = 299792458000       # speed of light in mm/s
+    log.info('Adding time of flight information on %s', lhe_path)
+    lhe = lhe_parser.EventFile(lhe_path)
+    out = open('%s_2vertex.lhe' % lhe_path, 'w')
+    out.write(lhe.banner)
+    for event in lhe:
+        for particle in event:
+            # default=0 -> particles without a decay entry are treated as stable
+            width = param_card['decay'].get((abs(particle.pid),), 0.).value
+            if width:
+                vtim = c * random.expovariate(width / cst)
+                if vtim > threshold:
+                    particle.vtim = vtim
+        out.write(str(event))
+    out.write('</LesHouchesEvents>\n')
+    out.close()
+    lhe.close()
+    files.mv('%s_2vertex.lhe' % lhe_path, lhe_path)
+    if need_zip:
+        _misc.gzip(lhe_path)
+
+
+def _lhapdf_config_path():
+    """Best-effort path to lhapdf-config so systematics can import the python
+    lhapdf module (required to compute PDF/scale variations)."""
+    cfg = os.environ.get("MADGRAPH_LHAPDF_CONFIG")
+    if cfg and os.path.exists(cfg):
+        return cfg
+    if PDF_PATH:
+        # PDF_PATH is <prefix>/share/LHAPDF -> <prefix>/bin/lhapdf-config
+        cand = os.path.join(os.path.dirname(os.path.dirname(PDF_PATH)),
+                            "bin", "lhapdf-config")
+        if os.path.exists(cand):
+            return cand
+    import shutil
+    return shutil.which("lhapdf-config")
+
+
+def _run_systematics(lhe_path, cfg, log):
+    """Run systematics.py (scale/PDF variations) on the LHE file, reusing the
+    exact worker madevent uses (systematics.call_systematics)."""
+    try:
+        import madgraph.various.systematics as systematics
+    except ImportError:
+        import internal.systematics as systematics
+
+    def fmt(vals):
+        return ','.join(str(v) for v in vals)
+
+    opts = []
+    if cfg.get('systematics_mur'):
+        opts.append('--mur=%s' % fmt(cfg['systematics_mur']))
+    if cfg.get('systematics_muf'):
+        opts.append('--muf=%s' % fmt(cfg['systematics_muf']))
+    if cfg.get('systematics_pdf'):
+        opts.append('--pdf=%s' % fmt(cfg['systematics_pdf']))
+    extra = cfg.get('systematics_str_options', '')
+    if extra:
+        opts.extend(extra.split())
+    # tell systematics where to find lhapdf (so it can link the python module)
+    if not any(o.startswith('--lhapdf_config') for o in opts):
+        lhapdf_config = _lhapdf_config_path()
+        if lhapdf_config:
+            opts.append('--lhapdf_config=%s' % lhapdf_config)
+
+    log.info('Running systematics on %s %s', lhe_path, ' '.join(opts))
+    systematics.call_systematics([lhe_path, lhe_path] + opts,
+                                 log=lambda x: log.info(str(x)))
+
+
+def run_lhe_postprocessing(process) -> None:
+    """Run the LHE-level post-processings configured in the run_card
+    [postprocessing] section on the generated event file (displaced-vertex
+    time-of-flight and systematics). Only applies when an LHE file exists."""
+    lhe_path = _find_event_file(process.run_path)
+    if lhe_path is None:
+        return
+    # process.run_card is a RunCardMG7; the section view exposes .get(key, def)
+    try:
+        cfg = process.run_card["postprocessing"]
+    except Exception:
+        return
+    log = logging.getLogger('madevent')
+
+    if cfg.get('systematics'):
+        try:
+            _run_systematics(lhe_path, cfg, log)
+        except Exception as error:
+            log.warning('systematics computation failed: %s', error)
+
+    tof = cfg.get('time_of_flight', -1.0)
+    try:
+        if tof is not None and float(tof) >= 0:
+            _add_time_of_flight(lhe_path, float(tof), process.param_card_path, log)
+    except Exception as error:
+        log.warning('add_time_of_flight failed: %s', error)
+
+
 def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat")) -> None:
     """Fill any width set to ``auto`` in the param_card, using mg5_aMC and the
     model stored at output time (``SubProcesses/model.txt``), and write the
@@ -1765,13 +1945,15 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             pass
 
 
-def run_single() -> "MadgraphProcess":
+def run_single(switch=None) -> "MadgraphProcess":
     """Run a single generation and return the process (for its result)."""
     compute_auto_widths()
     process = MadgraphProcess()
     process.survey()
     process.train_madnis()
     process.generate_events()
+    # run_card-driven LHE post-processing (displaced vertex + systematics)
+    run_lhe_postprocessing(process)
     # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)
     # selected in the merged question above on the generated events.
     if switch:
@@ -1805,7 +1987,7 @@ def detect_param_scan(param_card_path):
     return None
 
 
-def run_scan(iterator, card_path) -> None:
+def run_scan(iterator, card_path, switch=None) -> None:
     """Iterate over all scan points, running a full generation for each and
     accumulating the results, then write the scan summary. Works for both the
     run_card (RunCardIterator) and the param_card (ParamCardIterator); their
@@ -1824,7 +2006,7 @@ def run_scan(iterator, card_path) -> None:
         for i, point in enumerate(iterator):
             point.write(card_path)
             logger.info("=== scan point %d ===", i + 1)
-            process = run_single()
+            process = run_single(switch)
             # use the run directory the process actually created, so the
             # per-point params.dat written by write_summary has a home
             name = os.path.basename(process.run_path)
@@ -1843,7 +2025,7 @@ def run_scan(iterator, card_path) -> None:
         shutil.move(backup, card_path)
 
 
-def run_generation() -> None:
+def run_generation(switch=None) -> None:
     """Run the generation, expanding a scan over the run_card or the param_card
     when one is present (scanning both simultaneously is not allowed)."""
     run_card_path = os.path.join("Cards", "run_card.toml")
@@ -1855,11 +2037,11 @@ def run_generation() -> None:
             "Scanning simultaneously over the run_card and the param_card is "
             "not allowed. Please keep the scan:[...] entries in only one card.")
     if run_iter:
-        run_scan(run_iter, run_card_path)
+        run_scan(run_iter, run_card_path, switch)
     elif param_iter:
-        run_scan(param_iter, param_card_path)
+        run_scan(param_iter, param_card_path, switch)
     else:
-        run_single()
+        run_single(switch)
 
 
 def main() -> None:
@@ -1874,4 +2056,4 @@ def main() -> None:
     soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (hard_lim, hard_lim))
 
-    run_generation()
+    run_generation(switch)

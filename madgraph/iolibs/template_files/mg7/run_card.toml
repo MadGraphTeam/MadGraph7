@@ -46,6 +46,14 @@ cut_efficiency_threshold = %(generation.cut_efficiency_threshold)s
 max_cut_repetitions = %(generation.max_cut_repetitions)s
 systematics = %(generation.systematics)s
 
+[postprocessing]
+time_of_flight = %(postprocessing.time_of_flight)s # threshold (in mm) below which the invariant livetime is not written (-1 means not written)
+systematics = %(postprocessing.systematics)s
+systematics_muf = %(postprocessing.systematics_muf)s
+systematics_mur = %(postprocessing.systematics_mur)s
+systematics_pdf = %(postprocessing.systematics_pdf)s
+systematics_str_options = %(postprocessing.systematics_str_options)s
+
 [vegas]
 enable = %(vegas.enable)s
 bins = %(vegas.bins)s

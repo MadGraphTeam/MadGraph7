@@ -167,7 +167,7 @@ class Systematics(object):
         self.orig_ion_pdf = False
         self.ion_scaling = ion_scaling
         self.only_beam = only_beam 
-        if isinstance(self.banner.run_card, banner_mod.RunCardLO):
+        if self.banner.run_card.LO:  # RunCardLO and the mg7 RunCardMG7 are LO
             self.is_lo = True
             if not self.banner.run_card['use_syst']:
                 raise SystematicsError('The events have not been generated with use_syst=True. Cannot evaluate systematics error on these events.')
@@ -933,6 +933,12 @@ class Systematics(object):
         pdf is a lhapdf object!"""
         
         loinfo = event.parse_lo_weight()
+        if loinfo is None:
+            raise SystematicsError(
+                "The event file does not contain the per-event reweighting "
+                "information (<mgrwt>: scales, x1/x2, parton PDGs and the "
+                "alpha_s power) required to compute LO systematics. The mg7 "
+                "output does not write it yet.")
         if dyn == -1:
             mur = loinfo['ren_scale']
             if self.b1 != 0 and loinfo['pdf_pdg_code1']:
