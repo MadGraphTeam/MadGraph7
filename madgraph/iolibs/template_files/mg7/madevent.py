@@ -1526,6 +1526,7 @@ def load_mg5_options() -> dict:
         'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
         'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
         'lhapdf': None, 'timeout': 0,
+        'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
     }
     config_files = [os.path.join(mg5dir, 'input', 'mg5_configuration.txt')]
     home = os.environ.get('HOME')
@@ -1737,6 +1738,85 @@ def _run_madspin(lhe_path, log):
                         os.path.dirname(lhe_path))
 
 
+def _run_pythia8(lhe_path, log):
+    """Shower the generated LHE with Pythia8 through the MG5aMC_PY8 interface,
+    writing a HepMC file next to the LHE. Mirrors the core of
+    MadEventCmd.do_pythia8 (single sub-run, HepMC output)."""
+    try:
+        from madgraph.various import banner as banner_mod
+        from madgraph.various import misc as _misc
+        import io as _io
+
+        options = load_mg5_options()
+        py8_iface = options.get("mg5amc_py8_interface_path")
+        exe = os.path.join(py8_iface, "MG5aMC_PY8_interface") if py8_iface else None
+        if not exe or not os.path.exists(exe):
+            log.warning("Pythia8 selected but the MG5aMC_PY8 interface is not "
+                        "available (set mg5amc_py8_interface_path). Skipping shower.")
+            return
+        card = os.path.join("Cards", "pythia8_card.dat")
+        default = os.path.join("Cards", "pythia8_card_default.dat")
+        if not os.path.exists(card):
+            log.warning("Pythia8 selected but Cards/pythia8_card.dat is missing.")
+            return
+
+        run_dir = os.path.abspath(os.path.dirname(lhe_path))
+        lhe_name = os.path.basename(lhe_path)
+        hepmc_name = "events_pythia8.hepmc"
+
+        py8 = banner_mod.PY8Card(default)
+        py8.read(card, setter="user")
+        py8.subruns[0].systemSet("Beams:LHEF", lhe_name)
+        py8.MadGraphSet("HEPMCoutput:file", hepmc_name, force=True)
+        py8.MadGraphSet("JetMatching:setMad", False)
+        # mg7 is fixed-order LO: no MLM/CKKW merging, so drop the merging/matching
+        # "auto" sentinels (-1) that Pythia8 would otherwise reject.
+        for param in ("JetMatching:qCut", "JetMatching:nJetMax",
+                      "JetMatching:doShowerKt", "Merging:TMS", "Merging:nJetMax",
+                      "Merging:Process", "SysCalc:qWeed", "SysCalc:qCutList"):
+            try:
+                py8.vetoParamWriteOut(param)
+            except Exception:
+                pass
+        # Pythia8 needs a concrete number of events to shower
+        if py8["Main:numberOfEvents"] in (0, -1):
+            try:
+                from madgraph.various import lhe_parser as _lhe
+                nb_evt = len(_lhe.EventFile(lhe_path))
+            except Exception:
+                nb_evt = 0
+            if nb_evt > 0:
+                py8.userSet("Main:numberOfEvents", nb_evt)
+
+        buf = _io.StringIO()
+        py8.write(buf, default, direct_pythia_input=True, use_mg5amc_py8_interface=True)
+        cmd_name = "pythia8.cmd"
+        with open(os.path.join(run_dir, cmd_name), "w") as fsock:
+            fsock.write(buf.getvalue())
+
+        # make sure the locally installed HEPTools libraries are picked up
+        heptools = options.get("heptools_install_dir") or \
+            os.path.abspath(os.path.join(py8_iface, os.pardir))
+        preamble = _misc.get_HEPTools_location_setter(heptools, "lib")
+        wrapper = os.path.join(run_dir, "run_shower.sh")
+        with open(wrapper, "w") as fsock:
+            fsock.write("#!/usr/bin/env bash\n%s%s %s\n" % (preamble, exe, cmd_name))
+        os.chmod(wrapper, 0o755)
+
+        log_path = os.path.join(run_dir, "pythia8.log")
+        log.info("Running Pythia8 shower on %s (log: %s)", lhe_name, log_path)
+        with open(log_path, "w") as logf:
+            ret = subprocess.call([wrapper], stdout=logf,
+                                  stderr=subprocess.STDOUT, cwd=run_dir)
+        if ret != 0:
+            raise RuntimeError("Pythia8 shower returned code %d; see %s"
+                               % (ret, log_path))
+        log.info("Pythia8 finished; HepMC output: %s",
+                 os.path.join(run_dir, hepmc_name))
+    except Exception as error:
+        _report_failure(log, "Pythia8 shower", error, os.path.dirname(lhe_path))
+
+
 def run_selected_tools(switch, process) -> None:
     """Run the optional post-processing programs selected in the merged
     question on the generated events.
@@ -1763,7 +1843,10 @@ def run_selected_tools(switch, process) -> None:
     if switch.get("madspin", "OFF") != "OFF":
         _run_madspin(lhe_path, log)
 
-    pending = [k for k in ("reweight", "shower", "detector", "analysis")
+    if switch.get("shower") == "Pythia8":
+        _run_pythia8(lhe_path, log)
+
+    pending = [k for k in ("reweight", "detector", "analysis")
                if switch.get(k, "OFF") not in ("OFF", "Not Avail.")]
     if pending:
         log.info("Selected post-processing tools %s are enabled; run them on %s "
