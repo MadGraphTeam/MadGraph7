@@ -6625,6 +6625,7 @@ class RunCardMG7(RunCard):
         'nb_proton1', 'nb_proton2', 'nb_neutron1', 'nb_neutron2', 'use_syst',
         'store_rwgt_info', 'scalefact', 'mur_over_ref', 'muf_over_ref', 'ickkw',
         'ievo_eva', 'evaorder', 'event_norm', 'dynamical_scale_choice',
+        'nevents',
     }
 
     # mg7 dynamical_scale_choice name -> legacy integer code
@@ -6641,6 +6642,8 @@ class RunCardMG7(RunCard):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
         half_e = float(beam['e_cm']) / 2.
+        if key == 'nevents':
+            return self['generation']['events']
         if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
             # hadronic beams use LHAPDF; leptonic beams have no PDF
             return 'none' if leptonic else 'lhapdf'

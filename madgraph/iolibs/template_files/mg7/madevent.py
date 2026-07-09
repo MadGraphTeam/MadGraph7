@@ -777,6 +777,14 @@ class MadgraphProcess:
             param_text = f.read()
         with open(os.path.join("Cards", "run_card.toml")) as f:
             run_text = f.read()
+        headers = []
+        # generation commands (model + process): read by MadSpin/reweight/...
+        proc_card = os.path.join("Cards", "proc_card_mg5.dat")
+        if os.path.exists(proc_card):
+            with open(proc_card) as f:
+                headers.append(ms.LHEHeader(name="MG5ProcCard", content=f.read()))
+        headers.append(ms.LHEHeader(name="slha", content=param_text))
+        headers.append(ms.LHEHeader(name="MG7RunCard", content=run_text))
         return ms.LHEMeta(
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
@@ -785,10 +793,7 @@ class MadgraphProcess:
             weight_mode=3,
             # positional: the pybind arg name for max_weight is non-kwarg-safe
             processes=[ms.LHEProcess(xsec, err, xsec, 1)],
-            headers=[
-                ms.LHEHeader(name="slha", content=param_text),
-                ms.LHEHeader(name="MG7RunCard", content=run_text),
-            ],
+            headers=headers,
         )
 
     def build_lhe_completer(self):
@@ -1552,7 +1557,7 @@ def build_selector_cmd():
     used by the mg7 output.  Returns the selector *class* and a mother instance
     understood by AskRun/AskforEditCard."""
 
-    from madgraph.interface.common_run_interface import CommonRunCmd, AskforEditCard
+    from madgraph.interface.common_run_interface import CommonRunCmd
     from madgraph.interface.extended_cmd import Cmd
     from madgraph.interface.madevent_interface import AskRunEditCard
 
@@ -1586,102 +1591,93 @@ def build_selector_cmd():
             # small-width treatment, which mg7 does not apply.
             return {}
 
-    # The mg7 run_card is a TOML file. Teach the generic card editor to treat it
-    # as such: point the run paths at run_card.toml (+ its default), load it as a
-    # RunCardMG7 so "set <param>" works, and add the madevent-style shortcuts.
-    old_define_paths = AskforEditCard.define_paths
-    def define_paths(self, **opt):
-        old_define_paths(self, **opt)
-        self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
-        self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
-        # the TOML run_card uses its own default file (concrete defaults written
-        # at output time); this powers "set <param> default".
-        self.paths["run_default"] = os.path.join(self.me_dir, "Cards", "run_card_default.toml")
-    AskforEditCard.define_paths = define_paths
-
-    # Make sure the run_card is loaded as a RunCardMG7 regardless of whether the
-    # generic editor recognised run_card.toml (older common_run_interface, an
-    # unexpected me_dir, ...). Without this self.run_card can stay {} and every
-    # "set <param>" is rejected as an invalid command.
     from madgraph.various import banner as _banner_mod
     from madgraph.various import misc as _misc
-    old_init_run = AskforEditCard.init_run
-    def init_run(self, cards):
-        out = old_init_run(self, cards)
-        if not isinstance(getattr(self, "run_card", None), RunCardMG7):
-            toml_path = self.paths.get("run") or os.path.join(
-                self.me_dir, "Cards", "run_card.toml")
-            if os.path.exists(toml_path):
-                try:
-                    # allow_scan so a run_card that already holds scan:[...]
-                    # values loads instead of failing the type conversion
-                    with _misc.TMP_variable(_banner_mod.RunCard, "allow_scan", True):
-                        self.run_card = RunCardMG7(toml_path, consistency="warning")
-                    self.run_set = list(self.run_card.keys())
-                except Exception as err:
-                    logger.warning("could not load %s: %s", toml_path, err)
-        # let "set <param> scan:[...]" be accepted for the toml run_card
-        if isinstance(getattr(self, "run_card", None), RunCardMG7):
-            self.run_card.allow_scan = True
-        return getattr(self, "run_set", out)
-    AskforEditCard.init_run = init_run
-
-    # Extra "set" handling for the TOML run_card: madevent-style shortcuts
-    # (lhc/lep/fixed_scale/no_parton_cut), cut editing, energy units and
-    # arithmetic/mass expressions. The generic editor only knows the fixed
-    # [section] parameters, so these are intercepted before delegating.
-    old_do_set = AskforEditCard.do_set
-    def do_set(self, line, *args, **kwargs):
-        targs = self.split_arg(line)
-        run_card = getattr(self, "run_card", None)
-        if isinstance(run_card, RunCardMG7) and targs:
-            start = 1 if targs[0] == "run_card" else 0
-            if len(targs) > start:
-                name = targs[start]
-                nlow = name.lower()
-                rest = " ".join(targs[start + 1:]).split("#")[0].strip()
-                masses = run_card.get_mass_shortcuts(getattr(self, "param_card", None))
-
-                # --- shortcuts ---
-                if nlow in ("no_parton_cut", "nocut", "no_cut"):
-                    run_card.remove_all_cut()
-                    logger.info("removing all cuts from the run_card.toml")
-                    self.modified_card.add("run")
-                    return
-                if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
-                    ecm = run_card.set_collider(nlow, rest, masses)
-                    logger.info("set %s collider: e_cm = %s GeV", nlow, ecm)
-                    self.modified_card.add("run")
-                    return
-                if nlow == "fixed_scale" and rest:
-                    val = run_card.set_fixed_scale(rest, masses)
-                    logger.info("set fixed scales to %s GeV", val)
-                    self.modified_card.add("run")
-                    return
-
-                # --- cut editing (with units/math/mass) ---
-                if rest and run_card.is_cut_name(name):
-                    cut, bound, val = run_card.set_cut(name, run_card.evaluate(rest, masses))
-                    logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
-                    self.modified_card.add("run")
-                    return
-
-                # --- numeric params: resolve units/arithmetic/masses ---
-                if rest and nlow in [k.lower() for k in run_card.keys()]:
-                    current = run_card[nlow]
-                    if isinstance(current, (int, float)) and not isinstance(current, bool):
-                        resolved = run_card.evaluate(rest, masses)
-                        if not isinstance(resolved, str):
-                            prefix = "run_card " if start == 1 else ""
-                            line = "%s%s %s" % (prefix, name, resolved)
-        return old_do_set(self, line, *args, **kwargs)
-    AskforEditCard.do_set = do_set
 
     class MG7Selector(AskRunEditCard):
-        # param_card + the TOML run_card are always offered; the run_card is
-        # edited through the monkey-patched define_paths/init_run/do_set above.
+        """Merged switch/card question for the mg7 output.
+
+        The mg7 run_card is a TOML file, so define_paths/init_run/do_set are
+        overridden *on this class* (not globally on AskforEditCard) to treat it
+        as such. Scoping them here is important: MadSpin/reweight spawn their own
+        legacy madevent runs in the same process, and a global patch would break
+        their (run_card.dat based) card editing."""
+
+        # param_card + the TOML run_card are always offered
         always_cards = ['param_card.dat', 'run_card.toml']
         optional_cards = []
+
+        def define_paths(self, **opt):
+            super().define_paths(**opt)
+            self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            # the TOML run_card uses its own default file (concrete defaults
+            # written at output time); this powers "set <param> default".
+            self.paths["run_default"] = os.path.join(self.me_dir, "Cards", "run_card_default.toml")
+
+        def init_run(self, cards):
+            # Make sure the run_card is loaded as a RunCardMG7 (the generic
+            # editor does not recognise run_card.toml), else "set <param>" fails.
+            out = super().init_run(cards)
+            if not isinstance(getattr(self, "run_card", None), RunCardMG7):
+                toml_path = self.paths.get("run") or os.path.join(
+                    self.me_dir, "Cards", "run_card.toml")
+                if os.path.exists(toml_path):
+                    try:
+                        # allow_scan so a run_card holding scan:[...] values loads
+                        with _misc.TMP_variable(_banner_mod.RunCard, "allow_scan", True):
+                            self.run_card = RunCardMG7(toml_path, consistency="warning")
+                        self.run_set = list(self.run_card.keys())
+                    except Exception as err:
+                        logger.warning("could not load %s: %s", toml_path, err)
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                self.run_card.allow_scan = True
+            return getattr(self, "run_set", out)
+
+        def do_set(self, line, *args, **kwargs):
+            # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
+            # editing, energy units and arithmetic/mass expressions on the TOML
+            # run_card, intercepted before delegating to the generic editor.
+            targs = self.split_arg(line)
+            run_card = getattr(self, "run_card", None)
+            if isinstance(run_card, RunCardMG7) and targs:
+                start = 1 if targs[0] == "run_card" else 0
+                if len(targs) > start:
+                    name = targs[start]
+                    nlow = name.lower()
+                    rest = " ".join(targs[start + 1:]).split("#")[0].strip()
+                    masses = run_card.get_mass_shortcuts(getattr(self, "param_card", None))
+
+                    if nlow in ("no_parton_cut", "nocut", "no_cut"):
+                        run_card.remove_all_cut()
+                        logger.info("removing all cuts from the run_card.toml")
+                        self.modified_card.add("run")
+                        return
+                    if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
+                        ecm = run_card.set_collider(nlow, rest, masses)
+                        logger.info("set %s collider: e_cm = %s GeV", nlow, ecm)
+                        self.modified_card.add("run")
+                        return
+                    if nlow == "fixed_scale" and rest:
+                        val = run_card.set_fixed_scale(rest, masses)
+                        logger.info("set fixed scales to %s GeV", val)
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and run_card.is_cut_name(name):
+                        cut, bound, val = run_card.set_cut(name, run_card.evaluate(rest, masses))
+                        logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and nlow in [k.lower() for k in run_card.keys()]:
+                        current = run_card[nlow]
+                        if isinstance(current, (int, float)) and not isinstance(current, bool):
+                            resolved = run_card.evaluate(rest, masses)
+                            if not isinstance(resolved, str):
+                                prefix = "run_card " if start == 1 else ""
+                                line = "%s%s %s" % (prefix, name, resolved)
+            return super().do_set(line, *args, **kwargs)
 
     return MG7Selector, MG7Cmd()
 
@@ -1707,6 +1703,23 @@ def _find_event_file(run_path):
     return None
 
 
+def _report_failure(log, what, error, directory=None):
+    """Log a post-processing failure and write the full traceback to a file
+    (whose path is printed) so the problem can be investigated."""
+    import traceback
+    if not directory or not os.path.isdir(directory):
+        directory = os.getcwd()
+    path = os.path.join(directory, "%s_crash.log" % what.replace(" ", "_"))
+    try:
+        with open(path, "w") as fsock:
+            fsock.write(traceback.format_exc())
+    except Exception:
+        path = None
+    log.warning("%s failed: %s", what, error)
+    if path:
+        log.warning("full traceback written to: %s", path)
+
+
 def _run_madspin(lhe_path, log):
     """Run MadSpin on the generated LHE file using Cards/madspin_card.dat.
     Reuses the standard MadSpin interface (LHE + card driven)."""
@@ -1720,7 +1733,8 @@ def _run_madspin(lhe_path, log):
         madspin_cmd.import_command_file(card)
         log.info("MadSpin finished on %s", lhe_path)
     except Exception as error:
-        log.warning("MadSpin post-processing failed: %s", error)
+        _report_failure(log, "MadSpin post-processing", error,
+                        os.path.dirname(lhe_path))
 
 
 def run_selected_tools(switch, process) -> None:
@@ -1866,14 +1880,16 @@ def run_lhe_postprocessing(process) -> None:
         try:
             _run_systematics(lhe_path, cfg, log)
         except Exception as error:
-            log.warning('systematics computation failed: %s', error)
+            _report_failure(log, "systematics computation", error,
+                            os.path.dirname(lhe_path))
 
     tof = cfg.get('time_of_flight', -1.0)
     try:
         if tof is not None and float(tof) >= 0:
             _add_time_of_flight(lhe_path, float(tof), process.param_card_path, log)
     except Exception as error:
-        log.warning('add_time_of_flight failed: %s', error)
+        _report_failure(log, "add_time_of_flight", error,
+                        os.path.dirname(lhe_path))
 
 
 def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat")) -> None:
@@ -2044,6 +2060,25 @@ def run_generation(switch=None) -> None:
         run_single(switch)
 
 
+def force_lhe_output_if_needed(switch) -> None:
+    """Any post-processing tool (shower/detector/madspin/reweight/analysis)
+    operates on an LHE file, so make sure the events are written in that format
+    when one of them is enabled."""
+    if not switch:
+        return
+    if not any(switch.get(k, "OFF") not in ("OFF", "Not Avail.")
+               for k in ("shower", "detector", "madspin", "reweight", "analysis")):
+        return
+    from madgraph.various.banner import RunCardMG7
+    path = os.path.join("Cards", "run_card.toml")
+    run_card = RunCardMG7(path, consistency=False)
+    if run_card["run"]["output_format"] != "lhe":
+        run_card["run"]["output_format"] = "lhe"
+        run_card.write(path)
+        logging.getLogger("madevent").info(
+            "output_format set to 'lhe' (required by the selected post-processing).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
@@ -2051,6 +2086,7 @@ def main() -> None:
     switch = {}
     if args.ask_edit_cards:
         switch = ask_edit_cards()
+        force_lhe_output_if_needed(switch)
 
     # Remove soft limit on number of open files as it can be quite low on some systems
     soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)

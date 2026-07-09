@@ -3270,6 +3270,15 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # process-dependent defaults (mirrors the LO run_card.dat logic).
         self.create_run_card(matrix_elements, history)
 
+        # Record the generation commands (proc_card_mg5.dat) so that the model
+        # and process end up in the LHE banner (needed by MadSpin/reweight/...).
+        try:
+            if history:
+                history.write(os.path.join(self.dir_path, 'Cards',
+                                           'proc_card_mg5.dat'))
+        except Exception as error:
+            logger.warning('could not write proc_card_mg5.dat: %s', error)
+
         # we don't call super().finalize() since it would call ProcessExporterCPP.finalize()
         # which would compile the model in src/, and we don't want that
 
