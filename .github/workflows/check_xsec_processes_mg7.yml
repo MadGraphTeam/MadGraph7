@@ -10,25 +10,27 @@ name: systematic cross-section tests (mg7)
 # stays below `tolerance` for every process in the section.
 
 on:
+  # Triggers the workflow on push or pull request events but only in some situations
+  push:
+    paths-ignore:
+      - 'docs/**'
+#      - '.github/**'
+
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
     inputs:
+      message:
+        description: 'running cross section check test'
+        required: true
       tolerance:
         description: 'Max allowed relative difference (e.g. 0.01 = 1%)'
         required: false
         default: '0.01'
       events:
         description: 'Events per process (reference used 1M; reduced here for CI)'
-        required: false
-        default: '100000'
-  # Also run on demand from other workflows if ever needed.
-  workflow_call:
-    inputs:
-      tolerance:
-        type: string
-        required: false
-        default: '0.01'
-      events:
-        type: string
         required: false
         default: '100000'
 
