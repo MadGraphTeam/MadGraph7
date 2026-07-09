@@ -159,7 +159,47 @@ class VirtualExporter(object):
            Please do not modify any object of the interface from the exporter.
         """
         return
-    
+
+    def expand_merged_particle_legs(self, proc_defs):
+        """Return a copy of the process definitions in which merged-flavor beam
+        PDG codes (81/82/83 = _quark/_lepton/_neutrino, and their conjugates)
+        are expanded to the concrete signed flavour PDGs, using the model's
+        ``merged_particles`` map.
+
+        Tools that reverse-map a process leg's ids to a multiparticle name
+        (e.g. MadAnalysis5) do not understand the merged codes, which is why
+        they must be expanded before the process is handed to them."""
+        if not proc_defs:
+            return proc_defs
+        try:
+            merged = proc_defs[0].get('model').get('merged_particles') or {}
+        except Exception:
+            merged = {}
+        if not merged:
+            return proc_defs
+
+        import copy
+        # deep-copy the definitions but keep the (large) model object shared
+        memo = {}
+        try:
+            model = proc_defs[0].get('model')
+            memo[id(model)] = model
+        except Exception:
+            pass
+        proc_defs = copy.deepcopy(proc_defs, memo)
+        for procdef in proc_defs:
+            for leg in procdef.get('legs'):
+                expanded = []
+                for pid in leg.get('ids'):
+                    base = abs(pid)
+                    if base in merged:
+                        sign = 1 if pid > 0 else -1
+                        expanded.extend(sign * real for real in merged[base])
+                    else:
+                        expanded.append(pid)
+                leg.set('ids', sorted(set(expanded)))
+        return proc_defs
+
     def modify_grouping(self, matrix_element):
         return False, matrix_element
            
@@ -793,6 +833,9 @@ C
             return
         if MA5_interpreter is None:
             return
+
+        # expand merged-flavor beam codes (81/82/...) so MA5 recognises the legs
+        proc_defs = self.expand_merged_particle_legs(proc_defs)
 
         MA5_main = MA5_interpreter.main
         for lvl in ['parton','hadron']:

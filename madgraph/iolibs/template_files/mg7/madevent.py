@@ -1817,6 +1817,64 @@ def _run_pythia8(lhe_path, log):
         _report_failure(log, "Pythia8 shower", error, os.path.dirname(lhe_path))
 
 
+def _run_madanalysis5(inputs, mode, log):
+    """Run MadAnalysis5 (mode='parton' on the LHE, 'hadron' on the HepMC) on the
+    given input files, reusing the standard MA5 interpreter and the card-driven
+    command generation (MadAnalysis5Card.get_MA5_cmds + CommonRunCmd.runMA5)."""
+    inputs = [os.path.abspath(i) for i in inputs]
+    run_dir = os.path.dirname(inputs[0])
+    try:
+        import madgraph
+        from madgraph.various import banner as banner_mod
+        from madgraph.interface.common_run_interface import CommonRunCmd
+
+        ma5_path = load_mg5_options().get("madanalysis5_path")
+        if not ma5_path:
+            log.warning("MadAnalysis5 selected but madanalysis5_path is not set; "
+                        "skipping %s-level analysis.", mode)
+            return
+        card = os.path.join("Cards", "madanalysis5_%s_card.dat" % mode)
+        if not os.path.exists(card):
+            log.warning("MadAnalysis5 %s selected but %s is missing.", mode, card)
+            return
+
+        ma5_card = banner_mod.MadAnalysis5Card(card, mode=mode)
+        if ma5_card._skip_analysis:
+            log.info("MadAnalysis5 %s-level analysis skipped (per card).", mode)
+            return
+
+        analysis_dir = os.path.abspath("MA5_%s_ANALYSIS" % mode.upper())
+        # mg7 does not ship a UFO model directory; SM is built into MA5
+        cmds_list = ma5_card.get_MA5_cmds(inputs, analysis_dir,
+                                          run_dir_path=run_dir,
+                                          UFO_model_path=None, run_tag="mg7")
+
+        mg5_path = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+        ma5 = CommonRunCmd.get_MadAnalysis5_interpreter(
+            mg5_path, ma5_path, logstream=sys.stdout, loglevel=100,
+            forced=True, compilation=True)
+        if ma5 is None:
+            log.warning("Could not start MadAnalysis5; skipping %s analysis.", mode)
+            return
+
+        log.info("Running MadAnalysis5 %s-level analysis on %s", mode,
+                 ", ".join(os.path.basename(i) for i in inputs))
+        for runtag, cmds in cmds_list:
+            ma5.setLogLevel(100)
+            if mode == "hadron":
+                ma5.init_reco()
+            else:
+                ma5.init_parton()
+            log_path = os.path.join(run_dir, "MA5_%s_%s.log" % (mode, runtag))
+            if not CommonRunCmd.runMA5(ma5, cmds, runtag, log_path):
+                log.warning("MadAnalysis5 %s run '%s' failed (see %s).",
+                            mode, runtag, log_path)
+                return
+        log.info("MadAnalysis5 %s-level analysis done: %s", mode, analysis_dir)
+    except Exception as error:
+        _report_failure(log, "MadAnalysis5 %s" % mode, error, run_dir)
+
+
 def run_selected_tools(switch, process) -> None:
     """Run the optional post-processing programs selected in the merged
     question on the generated events.
@@ -1846,7 +1904,14 @@ def run_selected_tools(switch, process) -> None:
     if switch.get("shower") == "Pythia8":
         _run_pythia8(lhe_path, log)
 
-    pending = [k for k in ("reweight", "detector", "analysis")
+    if switch.get("analysis") == "MadAnalysis5":
+        # parton-level on the LHE, then hadron-level on the Pythia8 HepMC (if any)
+        _run_madanalysis5([lhe_path], "parton", log)
+        hepmc = os.path.join(os.path.dirname(lhe_path), "events_pythia8.hepmc")
+        if os.path.exists(hepmc):
+            _run_madanalysis5([hepmc], "hadron", log)
+
+    pending = [k for k in ("reweight", "detector")
                if switch.get(k, "OFF") not in ("OFF", "Not Avail.")]
     if pending:
         log.info("Selected post-processing tools %s are enabled; run them on %s "
