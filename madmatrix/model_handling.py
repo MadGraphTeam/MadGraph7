@@ -2475,7 +2475,12 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CD_ACCESS so
       // get_coupling_def reads dpf_value with the right per-flavor stride (CD_ACCESS::flv_stride).
       constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CD_ACCESS::flv_stride : 1 );
+#ifndef MGONGPUCPP_GPUIMPL
+      // cppAlign is only defined for SIMD
       alignas( mgOnGpu::cppAlign ) fptype dpf_value[ndpfbuf]{};
+#else
+      fptype dpf_value[ndpfbuf]{};
+#endif
       for( int idpf = 0; idpf < nDPF; idpf++ )
         for( int imf = 0; imf < nMF; imf++ )
         {
