@@ -1,0 +1,97 @@
+name: systematic cross-section tests (mg7)
+
+# Regression test that MadGraph7 reproduces the reference cross-sections
+# recorded in CLAUDE.md / tests/check_xsec_processes/reference.json.
+#
+# For every process the workflow generates it, runs the mg7 (madspace)
+# integrator with the run_card.toml defaults (fixed scale mu = 91.188 GeV,
+# e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed) and compares the resulting
+# cross-section to the reference. A run passes only if the relative difference
+# stays below `tolerance` for every process in the section.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tolerance:
+        description: 'Max allowed relative difference (e.g. 0.01 = 1%)'
+        required: false
+        default: '0.01'
+      events:
+        description: 'Events per process (reference used 1M; reduced here for CI)'
+        required: false
+        default: '100000'
+  # Also run on demand from other workflows if ever needed.
+  workflow_call:
+    inputs:
+      tolerance:
+        type: string
+        required: false
+        default: '0.01'
+      events:
+        type: string
+        required: false
+        default: '100000'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Defaults for push/other triggers where inputs are absent.
+  MG7_XSEC_TOLERANCE: ${{ inputs.tolerance || '0.01' }}
+  MG7_XSEC_EVENTS: ${{ inputs.events || '100000' }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # Build madspace once (content-addressed cache), shared by every section job.
+  # Mirrors the build_madspace job in acceptancetest_mg7.yml.
+  build_madspace:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: madspace cache key
+        run: echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Cache madspace install
+        id: cache-madspace
+        uses: actions/cache@v5
+        with:
+          path: madspace/install
+          key: madspace-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
+
+      - name: Build and install madspace (only on cache miss)
+        if: steps.cache-madspace.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          python3 -m pip install --upgrade pip packaging
+          python3 -m pip install ./madspace \
+            -Ccmake.define.ENABLE_OPENBLAS=ON \
+            --target="$GITHUB_WORKSPACE/madspace/install"
+        shell: bash
+
+  check_xsec_processes:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # One job per section of CLAUDE.md. Each job runs every process in the
+        # section sequentially and fails if any exceeds the tolerance.
+        section: [3jets, ttx1j, ttx2j, ttx_decay, dy1j, dy2j]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools_lhapdf
+      - name: run systematic cross-section test (${{ matrix.section }})
+        run: |
+          cd $GITHUB_WORKSPACE
+          # make the cached lhapdf-config / NNPDF grid resolvable
+          export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+          python3 tests/check_xsec_processes/run_check_xsec_processes.py \
+            --section "${{ matrix.section }}" \
+            --events "${MG7_XSEC_EVENTS}" \
+            --tolerance "${MG7_XSEC_TOLERANCE}"
