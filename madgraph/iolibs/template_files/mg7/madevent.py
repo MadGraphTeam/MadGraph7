@@ -1726,6 +1726,38 @@ def _off(value) -> bool:
     return value in (None, "OFF", "Not Avail.", "Not Avail. (numpy missing)")
 
 
+_TOOL_LOGGING_READY = False
+
+
+def _setup_tool_logging():
+    """Make the reused madevent tool drivers' progress visible on screen.
+
+    The drivers already narrate what they do through logger.info /
+    update_status ("Running Pythia8 [arXiv:...]", "Splitting .lhe event
+    file...", the live Idle/Running/Completed job counters, "Running
+    MadSpin", ...), but the standalone mg7 launcher never attaches a handler
+    to the 'madgraph'/'madevent' loggers, so all of it is swallowed. Attach a
+    colored INFO console handler to them (idempotent)."""
+    global _TOOL_LOGGING_READY
+    if _TOOL_LOGGING_READY:
+        return
+    try:
+        import madgraph.interface.coloring_logging  # registers ColorFormatter
+        formatter = logging.ColorFormatter("%(message)s")
+    except Exception:
+        formatter = logging.Formatter("%(message)s")
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    handler._mg7_tool_handler = True
+    for name in ("madgraph", "madevent", "cmdprint"):
+        lg = logging.getLogger(name)
+        if not any(getattr(h, "_mg7_tool_handler", False) for h in lg.handlers):
+            lg.addHandler(handler)
+        lg.setLevel(logging.INFO)
+        lg.propagate = False
+    _TOOL_LOGGING_READY = True
+
+
 def run_selected_tools(switch, process) -> None:
     """Run the optional post-processing programs selected in the merged
     question on the generated events.
@@ -1751,8 +1783,23 @@ def run_selected_tools(switch, process) -> None:
                     process.run_path, ", ".join(sorted(active)))
         return
 
+    # surface the reused madevent drivers' own progress messages on screen
+    _setup_tool_logging()
+
     run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
     run_dir = os.path.dirname(os.path.abspath(lhe_path))
+
+    tools = [t for t, on in (
+        ("reweighting", not _off(switch.get("reweight"))),
+        ("MadSpin", not _off(switch.get("madspin"))),
+        ("MadAnalysis5 (parton level)", switch.get("analysis") == "MadAnalysis5"),
+        ("Pythia8 shower", switch.get("shower") == "Pythia8"),
+        ("Delphes", switch.get("detector") == "Delphes"),
+        ("MadAnalysis5 (hadron level)", switch.get("analysis") == "MadAnalysis5"),
+        ("Rivet", switch.get("analysis") == "Rivet"),
+    ) if on]
+    log.info("")
+    log.info("Post-processing the generated events with: %s", ", ".join(tools))
 
     try:
         from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
@@ -1763,11 +1810,18 @@ def run_selected_tools(switch, process) -> None:
         return
 
     def run(tool, command):
+        bar = "=" * 60
+        log.info("")
+        log.info(bar)
+        log.info("  post-processing step: %s", tool)
+        log.info(bar)
+        start = time.time()
         try:
-            log.info("=== mg7 post-processing: %s ===", tool)
             cmd.exec_cmd(command, postcmd=False, printcmd=False)
         except Exception as error:
             _report_failure(log, tool, error, run_dir)
+        else:
+            log.info("  -> %s done (%.1fs)", tool, time.time() - start)
 
     # Same order as MadEventCmd.do_launch. The commands take no run name and so
     # act on cmd.run_name: reweight runs on the generated events, then
