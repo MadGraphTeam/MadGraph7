@@ -1789,13 +1789,18 @@ def run_selected_tools(switch, process) -> None:
     run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
     run_dir = os.path.dirname(os.path.abspath(lhe_path))
 
+    # MadAnalysis5 hadron level analyses the shower/detector output, so it only
+    # makes sense when a shower ran (mirrors madevent's card gating:
+    # analysis == 'MadAnalysis5' and shower != 'OFF').
+    ma5 = switch.get("analysis") == "MadAnalysis5"
+    showered = not _off(switch.get("shower"))
     tools = [t for t, on in (
         ("reweighting", not _off(switch.get("reweight"))),
         ("MadSpin", not _off(switch.get("madspin"))),
-        ("MadAnalysis5 (parton level)", switch.get("analysis") == "MadAnalysis5"),
+        ("MadAnalysis5 (parton level)", ma5),
         ("Pythia8 shower", switch.get("shower") == "Pythia8"),
         ("Delphes", switch.get("detector") == "Delphes"),
-        ("MadAnalysis5 (hadron level)", switch.get("analysis") == "MadAnalysis5"),
+        ("MadAnalysis5 (hadron level)", ma5 and showered),
         ("Rivet", switch.get("analysis") == "Rivet"),
     ) if on]
     log.info("")
@@ -1832,13 +1837,15 @@ def run_selected_tools(switch, process) -> None:
         run("reweight", "reweight -from_cards")
     if not _off(switch.get("madspin")):
         run("MadSpin", "decay_events -from_cards")
-    if switch.get("analysis") == "MadAnalysis5":
+    if ma5:
         run("MadAnalysis5 (parton)", "madanalysis5_parton --no_default")
     if switch.get("shower") == "Pythia8":
         run("Pythia8 shower", "shower --no_default")
     if switch.get("detector") == "Delphes":
         run("Delphes", "delphes --no_default")
-    if switch.get("analysis") == "MadAnalysis5":
+    # hadron-level MA5 needs the shower/detector output: only run it if a shower
+    # was requested (otherwise there is no hadron-level event file to analyse).
+    if ma5 and showered:
         run("MadAnalysis5 (hadron)", "madanalysis5_hadron --no_default")
     if switch.get("analysis") == "Rivet":
         run("Rivet", "rivet --no_default")
