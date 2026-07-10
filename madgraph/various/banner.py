@@ -6441,6 +6441,11 @@ class RunCardMG7(RunCard):
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
 
+        # run_tag: not part of the TOML card (so it is never written to it),
+        # but declared here so the post-processing tools and the results
+        # database can read/set run_card['run_tag'] like a legacy run_card.
+        self.add_param('run_tag', 'tag_1', include=False)
+
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
         self.add_toml_param('run', 'devices', ["cppnone"], typelist=str, gridpack=True,
@@ -6626,6 +6631,11 @@ class RunCardMG7(RunCard):
         'store_rwgt_info', 'scalefact', 'mur_over_ref', 'muf_over_ref', 'ickkw',
         'ievo_eva', 'evaorder', 'event_norm', 'dynamical_scale_choice',
         'nevents',
+        # keys read by the reused madevent post-processing tools (shower, ...).
+        # mg7 does no MLM/CKKW merging, so these all take their "no merging"
+        # value, which keeps the tools on the plain (unmatched) code path.
+        'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
+        'dparameter', 'lhaid', 'iseed', 'python_seed',
     }
 
     # mg7 dynamical_scale_choice name -> legacy integer code
@@ -6669,6 +6679,25 @@ class RunCardMG7(RunCard):
             if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
                 return -1  # fixed scale: no dynamical-scale variation
             return self._dyn_scale_legacy.get(beam['dynamical_scale_choice'], -1)
+        # --- merging / matching: mg7 does none, keep the "off" values ---
+        if key in ('ktdurham', 'ptlund'):
+            return -1.0          # <=0 => no CKKW / no MLM shower matching
+        if key in ('xqcut', 'sys_matchscale'):
+            return 0.0
+        if key == 'maxjetflavor':
+            return 5
+        if key == 'dparameter':
+            return 0.4           # only used by the (unused) matching machinery
+        # --- run / seed bookkeeping ---
+        if key == 'lhaid':
+            return self.get_lhapdf_id()
+        if key == 'iseed':
+            try:
+                return int(self['generation']['seed'])
+            except (KeyError, TypeError, ValueError):
+                return 0
+        if key == 'python_seed':
+            return -2            # -2: reuse iseed for the python RNG
         raise KeyError(key)
 
     def get_lhapdf_id(self):

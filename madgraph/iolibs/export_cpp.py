@@ -3270,6 +3270,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # process-dependent defaults (mirrors the LO run_card.dat logic).
         self.create_run_card(matrix_elements, history)
 
+        # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
+        # post-processing driver (get_characteristics) so that the madevent
+        # tool interface can run on this directory.
+        self.create_proc_characteristics(matrix_elements)
+
+        # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
+        # Point it at the MG5 install so tool paths (pythia8, etc.) and the
+        # cluster/run-mode settings resolve from the central configuration.
+        try:
+            with open(pjoin(self.dir_path, 'Cards',
+                            'me5_configuration.txt'), 'w') as fsock:
+                fsock.write('# configuration for the mg7 post-processing tools\n'
+                            'mg5_path = %s\n' % MG5DIR)
+        except Exception as error:
+            logger.warning('could not write me5_configuration.txt: %s', error)
+
         # MadAnalysis5 default analysis cards, tailored to this process. This
         # must run *before* history.write() below: writing the proc_card cleans
         # the history in place (dropping the multiparticle 'define' lines that
@@ -3383,6 +3399,47 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # can offer "set <param> default" (mirrors run_card_default.dat at LO).
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.toml'),
                        template=template)
+
+    def create_proc_characteristics(self, matrix_elements):
+        """Populate and write SubProcesses/proc_characteristics. This is the
+        file CommonRunCmd.get_characteristics() reads to learn ninitial /
+        nexternal / initial-state PDGs, so that the reused madevent tool
+        interface can drive post-processing on this (C++/madspace) output."""
+        pc = self.proc_characteristic
+
+        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+            me_list = [me for megroup in matrix_elements
+                       for me in megroup['matrix_elements']]
+        elif matrix_elements:
+            me_list = list(matrix_elements['matrix_elements'])
+        else:
+            me_list = []
+
+        procs = []
+        for me in me_list:
+            if not me.get('processes'):
+                continue
+            nexternal, ninitial = me.get_nexternal_ninitial()
+            pc['nexternal'] = max(pc['nexternal'], nexternal)
+            pc['ninitial'] = ninitial
+            procs.extend(me.get('processes'))
+
+        if procs:
+            pc['pdg_initial1'] = [p.get_initial_pdg(1) for p in procs
+                                  if p.get_initial_pdg(1)]
+            pc['pdg_initial2'] = [p.get_initial_pdg(2) for p in procs
+                                  if p.get_initial_pdg(2)]
+            model = procs[0].get('model')
+            colored = set(abs(p.get('pdg_code')) for p in model.get('particles')
+                          if p.get('color') > 1)
+            pc['colored_pdgs'] = sorted(colored)
+            # ISR/FSR presence drives (e.g.) the shower's initial/final radiation
+            pc['has_isr'] = any(abs(pid) in colored
+                                for pid in pc['pdg_initial1'] + pc['pdg_initial2'])
+            pc['has_fsr'] = any(abs(fid) in colored
+                                for p in procs for fid in p.get_final_ids())
+
+        pc.write(pjoin(self.dir_path, 'SubProcesses', 'proc_characteristics'))
 
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     """ Determine which Export class is required. cmd is the command 

@@ -1721,174 +1721,27 @@ def _report_failure(log, what, error, directory=None):
         log.warning("full traceback written to: %s", path)
 
 
-def _run_madspin(lhe_path, log):
-    """Run MadSpin on the generated LHE file using Cards/madspin_card.dat.
-    Reuses the standard MadSpin interface (LHE + card driven)."""
-    card = os.path.join("Cards", "madspin_card.dat")
-    if not os.path.exists(card):
-        log.warning("MadSpin selected but Cards/madspin_card.dat is missing.")
-        return
-    try:
-        import MadSpin.interface_madspin as interface_madspin
-        madspin_cmd = interface_madspin.MadSpinInterface(lhe_path)
-        madspin_cmd.import_command_file(card)
-        log.info("MadSpin finished on %s", lhe_path)
-    except Exception as error:
-        _report_failure(log, "MadSpin post-processing", error,
-                        os.path.dirname(lhe_path))
-
-
-def _run_pythia8(lhe_path, log):
-    """Shower the generated LHE with Pythia8 through the MG5aMC_PY8 interface,
-    writing a HepMC file next to the LHE. Mirrors the core of
-    MadEventCmd.do_pythia8 (single sub-run, HepMC output)."""
-    try:
-        from madgraph.various import banner as banner_mod
-        from madgraph.various import misc as _misc
-        import io as _io
-
-        options = load_mg5_options()
-        py8_iface = options.get("mg5amc_py8_interface_path")
-        exe = os.path.join(py8_iface, "MG5aMC_PY8_interface") if py8_iface else None
-        if not exe or not os.path.exists(exe):
-            log.warning("Pythia8 selected but the MG5aMC_PY8 interface is not "
-                        "available (set mg5amc_py8_interface_path). Skipping shower.")
-            return
-        card = os.path.join("Cards", "pythia8_card.dat")
-        default = os.path.join("Cards", "pythia8_card_default.dat")
-        if not os.path.exists(card):
-            log.warning("Pythia8 selected but Cards/pythia8_card.dat is missing.")
-            return
-
-        run_dir = os.path.abspath(os.path.dirname(lhe_path))
-        lhe_name = os.path.basename(lhe_path)
-        hepmc_name = "events_pythia8.hepmc"
-
-        py8 = banner_mod.PY8Card(default)
-        py8.read(card, setter="user")
-        py8.subruns[0].systemSet("Beams:LHEF", lhe_name)
-        py8.MadGraphSet("HEPMCoutput:file", hepmc_name, force=True)
-        py8.MadGraphSet("JetMatching:setMad", False)
-        # mg7 is fixed-order LO: no MLM/CKKW merging, so drop the merging/matching
-        # "auto" sentinels (-1) that Pythia8 would otherwise reject.
-        for param in ("JetMatching:qCut", "JetMatching:nJetMax",
-                      "JetMatching:doShowerKt", "Merging:TMS", "Merging:nJetMax",
-                      "Merging:Process", "SysCalc:qWeed", "SysCalc:qCutList"):
-            try:
-                py8.vetoParamWriteOut(param)
-            except Exception:
-                pass
-        # Pythia8 needs a concrete number of events to shower
-        if py8["Main:numberOfEvents"] in (0, -1):
-            try:
-                from madgraph.various import lhe_parser as _lhe
-                nb_evt = len(_lhe.EventFile(lhe_path))
-            except Exception:
-                nb_evt = 0
-            if nb_evt > 0:
-                py8.userSet("Main:numberOfEvents", nb_evt)
-
-        buf = _io.StringIO()
-        py8.write(buf, default, direct_pythia_input=True, use_mg5amc_py8_interface=True)
-        cmd_name = "pythia8.cmd"
-        with open(os.path.join(run_dir, cmd_name), "w") as fsock:
-            fsock.write(buf.getvalue())
-
-        # make sure the locally installed HEPTools libraries are picked up
-        heptools = options.get("heptools_install_dir") or \
-            os.path.abspath(os.path.join(py8_iface, os.pardir))
-        preamble = _misc.get_HEPTools_location_setter(heptools, "lib")
-        wrapper = os.path.join(run_dir, "run_shower.sh")
-        with open(wrapper, "w") as fsock:
-            fsock.write("#!/usr/bin/env bash\n%s%s %s\n" % (preamble, exe, cmd_name))
-        os.chmod(wrapper, 0o755)
-
-        log_path = os.path.join(run_dir, "pythia8.log")
-        log.info("Running Pythia8 shower on %s (log: %s)", lhe_name, log_path)
-        with open(log_path, "w") as logf:
-            ret = subprocess.call([wrapper], stdout=logf,
-                                  stderr=subprocess.STDOUT, cwd=run_dir)
-        if ret != 0:
-            raise RuntimeError("Pythia8 shower returned code %d; see %s"
-                               % (ret, log_path))
-        log.info("Pythia8 finished; HepMC output: %s",
-                 os.path.join(run_dir, hepmc_name))
-    except Exception as error:
-        _report_failure(log, "Pythia8 shower", error, os.path.dirname(lhe_path))
-
-
-def _run_madanalysis5(inputs, mode, log):
-    """Run MadAnalysis5 (mode='parton' on the LHE, 'hadron' on the HepMC) on the
-    given input files, reusing the standard MA5 interpreter and the card-driven
-    command generation (MadAnalysis5Card.get_MA5_cmds + CommonRunCmd.runMA5)."""
-    inputs = [os.path.abspath(i) for i in inputs]
-    run_dir = os.path.dirname(inputs[0])
-    try:
-        import madgraph
-        from madgraph.various import banner as banner_mod
-        from madgraph.interface.common_run_interface import CommonRunCmd
-
-        ma5_path = load_mg5_options().get("madanalysis5_path")
-        if not ma5_path:
-            log.warning("MadAnalysis5 selected but madanalysis5_path is not set; "
-                        "skipping %s-level analysis.", mode)
-            return
-        card = os.path.join("Cards", "madanalysis5_%s_card.dat" % mode)
-        if not os.path.exists(card):
-            log.warning("MadAnalysis5 %s selected but %s is missing.", mode, card)
-            return
-
-        ma5_card = banner_mod.MadAnalysis5Card(card, mode=mode)
-        if ma5_card._skip_analysis:
-            log.info("MadAnalysis5 %s-level analysis skipped (per card).", mode)
-            return
-
-        analysis_dir = os.path.abspath("MA5_%s_ANALYSIS" % mode.upper())
-        # mg7 does not ship a UFO model directory; SM is built into MA5
-        cmds_list = ma5_card.get_MA5_cmds(inputs, analysis_dir,
-                                          run_dir_path=run_dir,
-                                          UFO_model_path=None, run_tag="mg7")
-
-        mg5_path = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
-        ma5 = CommonRunCmd.get_MadAnalysis5_interpreter(
-            mg5_path, ma5_path, logstream=sys.stdout, loglevel=100,
-            forced=True, compilation=True)
-        if ma5 is None:
-            log.warning("Could not start MadAnalysis5; skipping %s analysis.", mode)
-            return
-
-        log.info("Running MadAnalysis5 %s-level analysis on %s", mode,
-                 ", ".join(os.path.basename(i) for i in inputs))
-        for runtag, cmds in cmds_list:
-            ma5.setLogLevel(100)
-            if mode == "hadron":
-                ma5.init_reco()
-            else:
-                ma5.init_parton()
-            log_path = os.path.join(run_dir, "MA5_%s_%s.log" % (mode, runtag))
-            if not CommonRunCmd.runMA5(ma5, cmds, runtag, log_path):
-                log.warning("MadAnalysis5 %s run '%s' failed (see %s).",
-                            mode, runtag, log_path)
-                return
-        log.info("MadAnalysis5 %s-level analysis done: %s", mode, analysis_dir)
-    except Exception as error:
-        _report_failure(log, "MadAnalysis5 %s" % mode, error, run_dir)
+def _off(value) -> bool:
+    """True when a switch value means the tool was not selected."""
+    return value in (None, "OFF", "Not Avail.", "Not Avail. (numpy missing)")
 
 
 def run_selected_tools(switch, process) -> None:
     """Run the optional post-processing programs selected in the merged
     question on the generated events.
 
-    The mg7 output produces an LHE file; MadSpin operates directly on it and is
-    run here.  The parton-shower based tools (Pythia8/Delphes/analysis) and the
-    reweighting still need the mg7 event pipeline to expose a full LHE banner so
-    the standard MG5aMC runners can be reused; until then they are reported so
-    the user can run them through the standard flow.
+    All the tools are driven through :class:`MG7RunCmd`, a thin adapter around
+    the standard madevent run interface (``MadEventCmd``). This means the mg7
+    output reuses the *exact* madevent tool drivers -- in particular Pythia8 is
+    showered in parallel over the cluster/multicore backend, identically to a
+    madevent run -- instead of re-implementing each tool here. The command
+    sequence mirrors ``MadEventCmd.do_launch`` (reweight, MadSpin, MA5 parton,
+    shower, Delphes, MA5 hadron, Rivet); each tool checks its own card, so a
+    tool is invoked only when its switch is on.
     """
     log = logging.getLogger("madevent")
 
-    active = {k: v for k, v in switch.items()
-              if v not in ("OFF", "Not Avail.", "Not Avail. (numpy missing)")}
+    active = {k: v for k, v in switch.items() if not _off(v)}
     if not active:
         return
 
@@ -1898,25 +1751,42 @@ def run_selected_tools(switch, process) -> None:
                     process.run_path, ", ".join(sorted(active)))
         return
 
-    if switch.get("madspin", "OFF") != "OFF":
-        _run_madspin(lhe_path, log)
+    run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
+    run_dir = os.path.dirname(os.path.abspath(lhe_path))
 
-    if switch.get("shower") == "Pythia8":
-        _run_pythia8(lhe_path, log)
+    try:
+        from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+        cmd = MG7RunCmd(os.getcwd(), load_mg5_options(), run_name, lhe_path)
+        cmd.set_run_name(run_name, None, "parton")
+    except Exception as error:
+        _report_failure(log, "post-processing setup", error, run_dir)
+        return
 
+    def run(tool, command):
+        try:
+            log.info("=== mg7 post-processing: %s ===", tool)
+            cmd.exec_cmd(command, postcmd=False, printcmd=False)
+        except Exception as error:
+            _report_failure(log, tool, error, run_dir)
+
+    # Same order as MadEventCmd.do_launch. Each command is gated on the switch
+    # value; the underlying driver still guards on its card being present.
+    if not _off(switch.get("reweight")):
+        run("reweight", "reweight %s -from_cards" % run_name)
+    if not _off(switch.get("madspin")):
+        run("MadSpin", "decay_events -from_cards")
     if switch.get("analysis") == "MadAnalysis5":
-        # parton-level on the LHE, then hadron-level on the Pythia8 HepMC (if any)
-        _run_madanalysis5([lhe_path], "parton", log)
-        hepmc = os.path.join(os.path.dirname(lhe_path), "events_pythia8.hepmc")
-        if os.path.exists(hepmc):
-            _run_madanalysis5([hepmc], "hadron", log)
-
-    pending = [k for k in ("reweight", "detector")
-               if switch.get(k, "OFF") not in ("OFF", "Not Avail.")]
-    if pending:
-        log.info("Selected post-processing tools %s are enabled; run them on %s "
-                 "through the standard MG5aMC interface.",
-                 ", ".join(pending), lhe_path)
+        run("MadAnalysis5 (parton)",
+            "madanalysis5_parton --no_default %s" % run_name)
+    if switch.get("shower") == "Pythia8":
+        run("Pythia8 shower", "shower --no_default %s" % run_name)
+    if switch.get("detector") == "Delphes":
+        run("Delphes", "delphes %s --no_default" % run_name)
+    if switch.get("analysis") == "MadAnalysis5":
+        run("MadAnalysis5 (hadron)",
+            "madanalysis5_hadron --no_default %s" % run_name)
+    if switch.get("analysis") == "Rivet":
+        run("Rivet", "rivet --no_default %s" % run_name)
 
 
 def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
