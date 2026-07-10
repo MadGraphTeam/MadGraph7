@@ -68,12 +68,11 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      # Provides the NNPDF23 grid + LHAPDF_DATA_PATH the mg7 runtime needs.
+      - uses: ./.github/actions/install_lhapdf_pdfset
       - name: run systematic cross-section test (${{ matrix.section }})
         run: |
           cd $GITHUB_WORKSPACE
-          # make the cached lhapdf-config / NNPDF grid resolvable
-          export PATH="$HOME/.cache/HEPtools/bin:$PATH"
           python3 tests/check_xsec_processes/run_check_xsec_processes.py \
             --section "${{ matrix.section }}" \
             --events "${MG7_XSEC_EVENTS}" \
