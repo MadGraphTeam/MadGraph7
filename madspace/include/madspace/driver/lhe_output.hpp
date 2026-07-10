@@ -120,6 +120,42 @@ private:
     double _bw_cutoff;
     std::size_t _max_particle_count;
 
+    std::size_t append_helicities(const SubprocArgs& args);
+    std::size_t append_colors(const SubprocArgs& args, std::size_t particle_count);
+    void append_pdg_ids(const SubprocArgs& args, std::size_t particle_count);
+    void append_masses(const Topology& first_topo);
+    std::size_t build_propagators(std::size_t subproc_index, const SubprocArgs& args);
+    void init_propagator_data(
+        const Topology& topo,
+        const SubprocArgs& args,
+        std::size_t matrix_flavor_index,
+        const std::vector<std::size_t>& colors,
+        const std::vector<std::size_t>& permutation,
+        std::vector<double>& e_min,
+        std::vector<int>& momentum_masks,
+        std::vector<std::tuple<int, int>>& prop_colors,
+        std::vector<int>& resonant_prop_indices
+    ) const;
+    void find_resonant_propagators(
+        const Topology& topo,
+        const SubprocArgs& args,
+        const std::vector<std::size_t>& colors,
+        std::size_t prop_offset,
+        std::vector<double>& e_min,
+        std::vector<int>& momentum_masks,
+        std::vector<std::tuple<int, int>>& prop_colors,
+        std::vector<int>& resonant_prop_indices
+    );
+    void record_propagator_colors(
+        std::size_t subproc_index,
+        std::size_t diag_index,
+        std::size_t matrix_flavor_index,
+        const std::vector<std::size_t>& colors,
+        std::size_t prop_offset,
+        const std::vector<std::tuple<int, int>>& prop_colors,
+        const std::vector<int>& resonant_prop_indices
+    );
+
     LHECompleter() = default;
     friend void to_json(nlohmann::json& j, const LHECompleter& lhe_completer);
     friend void from_json(const nlohmann::json& j, LHECompleter& lhe_completer);
