@@ -45,7 +45,7 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
     def __init__(self, me_dir, options, run_name, lhe_path):
         self._mg7_run_name = run_name
         self._mg7_lhe_path = os.path.abspath(lhe_path)
-        self._mg7_banner_cache = None
+        self._mg7_banner_cache = {}
         # Seed the full madevent default option set (run_mode, nb_core,
         # cluster_*, tool paths, ...) before layering the caller's options on
         # top: CommonRunCmd only fills these defaults when it receives an empty
@@ -83,21 +83,33 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         self.last_mode = ''
         return self.results
 
-    def _mg7_banner(self):
-        """The banner carried by the mg7 LHE (slha + MG7RunCard + init + proc
-        card), parsed once."""
-        if self._mg7_banner_cache is None:
-            lhe = lhe_parser.EventFile(self._mg7_lhe_path)
-            self._mg7_banner_cache = banner_mod.Banner(lhe.banner)
-        return self._mg7_banner_cache
+    def _event_file_for_run(self, name):
+        """The LHE of run ``name``; falls back to the original mg7 LHE. Lets a
+        run created downstream (e.g. ``<run>_decayed_1`` from MadSpin) provide
+        its own events/banner so the shower runs on the decayed events."""
+        run_dir = pjoin(self.me_dir, 'Events', name)
+        for fname in ('unweighted_events.lhe.gz', 'unweighted_events.lhe',
+                      'events.lhe.gz', 'events.lhe'):
+            path = pjoin(run_dir, fname)
+            if os.path.exists(path):
+                return path
+        return self._mg7_lhe_path
+
+    def _banner_for_run(self, name):
+        """Banner (slha + MG7RunCard + init + proc card) of run ``name``,
+        parsed once per run."""
+        if name not in self._mg7_banner_cache:
+            lhe = lhe_parser.EventFile(self._event_file_for_run(name))
+            self._mg7_banner_cache[name] = banner_mod.Banner(lhe.banner)
+        return self._mg7_banner_cache[name]
 
     def set_run_name(self, name, tag=None, level='parton', reload_card=False,
                      allow_new_tag=True):
         """mg7 flavour of :meth:`MadEventCmd.set_run_name`.
 
-        Loads the run card from the TOML card and takes the banner from the mg7
-        LHE, then registers the run with the results database so the standard
-        tool drivers (which store their output there) work unchanged.
+        Loads the run card from the TOML card and takes the banner from the
+        run's own LHE, then registers the run with the results database so the
+        standard tool drivers (which store their output there) work unchanged.
         """
         self.run_name = name
         self.run_card = banner_mod.RunCardMG7(
@@ -110,7 +122,7 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         else:
             self.results.def_current(name, self.run_tag)
 
-        self.banner = self._mg7_banner()
+        self.banner = self._banner_for_run(name)
         return None
 
     def configure_directory(self, html_opening=True):

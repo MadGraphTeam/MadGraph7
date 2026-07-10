@@ -1769,24 +1769,25 @@ def run_selected_tools(switch, process) -> None:
         except Exception as error:
             _report_failure(log, tool, error, run_dir)
 
-    # Same order as MadEventCmd.do_launch. Each command is gated on the switch
-    # value; the underlying driver still guards on its card being present.
+    # Same order as MadEventCmd.do_launch. The commands take no run name and so
+    # act on cmd.run_name: reweight runs on the generated events, then
+    # decay_events (MadSpin) repoints cmd.run_name to the "<run>_decayed_i" run,
+    # so the shower and the analyses that follow act on the decayed events --
+    # exactly as a madevent run does. Each driver still guards on its own card.
     if not _off(switch.get("reweight")):
-        run("reweight", "reweight %s -from_cards" % run_name)
+        run("reweight", "reweight -from_cards")
     if not _off(switch.get("madspin")):
         run("MadSpin", "decay_events -from_cards")
     if switch.get("analysis") == "MadAnalysis5":
-        run("MadAnalysis5 (parton)",
-            "madanalysis5_parton --no_default %s" % run_name)
+        run("MadAnalysis5 (parton)", "madanalysis5_parton --no_default")
     if switch.get("shower") == "Pythia8":
-        run("Pythia8 shower", "shower --no_default %s" % run_name)
+        run("Pythia8 shower", "shower --no_default")
     if switch.get("detector") == "Delphes":
-        run("Delphes", "delphes %s --no_default" % run_name)
+        run("Delphes", "delphes --no_default")
     if switch.get("analysis") == "MadAnalysis5":
-        run("MadAnalysis5 (hadron)",
-            "madanalysis5_hadron --no_default %s" % run_name)
+        run("MadAnalysis5 (hadron)", "madanalysis5_hadron --no_default")
     if switch.get("analysis") == "Rivet":
-        run("Rivet", "rivet --no_default %s" % run_name)
+        run("Rivet", "rivet --no_default")
 
 
 def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
