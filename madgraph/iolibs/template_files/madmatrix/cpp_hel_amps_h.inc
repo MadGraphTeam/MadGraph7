@@ -22,7 +22,7 @@
 #include "Parameters.h"
 
 #include <cassert>
-//#include <cmath>
+#include <cmath>
 //#include <cstdlib>
 //#include <iomanip>
 //#include <iostream>
