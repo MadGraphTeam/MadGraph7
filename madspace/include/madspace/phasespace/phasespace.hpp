@@ -23,7 +23,8 @@ public:
         double invariant_power = 0.8,
         TChannelMode t_channel_mode = propagator,
         const std::optional<Cuts>& cuts = std::nullopt,
-        const std::vector<std::vector<std::size_t>>& permutations = {}
+        const std::vector<std::vector<std::size_t>>& permutations = {},
+        bool produce_virtuality = false
     );
 
     PhaseSpaceMapping(
@@ -42,6 +43,7 @@ public:
         return _topology.outgoing_masses().size() + 2;
     }
     std::size_t channel_count() const { return _permutations.size(); }
+    bool produce_virtuality() const { return _produce_virtuality; }
 
 private:
     Result build_forward_impl(
@@ -66,6 +68,22 @@ private:
         _t_mapping;
     std::vector<std::variant<TwoBodyDecay, ThreeBodyDecay, FastRamboMapping>> _s_decays;
     nested_vector2<me_int_t> _permutations;
+
+    // Virtuality passthrough: when enabled, build_forward additionally outputs a
+    // flattened (npar x npar) real matrix v[i][j] = p^2 - M^2 for every s-channel
+    // propagator that is the fusion of exactly two external legs (i,j), taken from the
+    // numerically clean *sampled* invariant s (not recomputed from the momenta). Entries
+    // that are not such a propagator in the sampled channel are left at 0, which the ME
+    // treats as "recompute from momenta". See UMAMI_IN_VIRTUALITY / wf_fixp2_map.
+    bool _produce_virtuality;
+    // for each 2-external-leg propagator k: the decay index (to read its sampled p^2 =
+    // mass2) and the propagator mass squared M^2
+    std::vector<std::size_t> _virt_decay_index;
+    std::vector<double> _virt_mass2;
+    // _virt_slot_of_pos[i * npar + j][channel] = index k of the propagator feeding output
+    // position (i,j) in that channel (permutation), or _virt_decay_index.size() (sentinel)
+    // if no propagator sits there. Used with select() to scatter the values per event.
+    nested_vector2<me_int_t> _virt_slot_of_pos;
 };
 
 } // namespace madspace

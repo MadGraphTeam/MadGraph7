@@ -88,7 +88,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double invariant_power,
     TChannelMode t_channel_mode,
     const std::optional<Cuts>& cuts,
-    const std::vector<std::vector<std::size_t>>& permutations
+    const std::vector<std::vector<std::size_t>>& permutations,
+    bool produce_virtuality
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -96,9 +97,18 @@ PhaseSpaceMapping::PhaseSpaceMapping(
           batch_float_array(
               3 * topology.outgoing_masses().size() - (leptonic ? 4 : 2)
           )}},
-        {{"momenta", batch_four_vec_array(topology.outgoing_masses().size() + 2)},
-         {"x1", batch_float},
-         {"x2", batch_float}},
+        [&] {
+            std::size_t npar = topology.outgoing_masses().size() + 2;
+            NamedVector<Type> out{
+                {"momenta", batch_four_vec_array(npar)},
+                {"x1", batch_float},
+                {"x2", batch_float}
+            };
+            if (produce_virtuality) {
+                out.push_back("virtuality", batch_float_array(npar * npar));
+            }
+            return out;
+        }(),
         permutations.size() > 1
             ? NamedVector<Type>{{"permutation_index", batch_int}}
             : NamedVector<Type>{}
@@ -115,7 +125,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         (_topology.t_propagator_count() == 0 ||
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
-    _t_mapping(std::monostate{}) {
+    _t_mapping(std::monostate{}),
+    _produce_virtuality(produce_virtuality) {
     bool has_t_channel = _topology.t_propagator_count() > 0;
     struct DecayInfo {
         double m_min, pt_min, eta_max;
@@ -200,6 +211,65 @@ PhaseSpaceMapping::PhaseSpaceMapping(
 
     for (auto& perm : permutations) {
         _permutations.emplace_back(perm.begin(), perm.end());
+    }
+
+    // Precompute the virtuality-passthrough tables (see _produce_virtuality).
+    if (_produce_virtuality) {
+        std::size_t npar = _topology.outgoing_masses().size() + 2;
+        // external position of each leaf (outgoing) decay: incoming legs occupy 0, 1 and
+        // outgoing legs 2..npar-1 in the order given by outgoing_indices (matching
+        // Topology::propagator_momentum_terms, which the channel selection relies on).
+        std::vector<std::size_t> leaf_ext_pos(_topology.decays().size());
+        std::size_t ord = 0;
+        for (std::size_t decay_index : _topology.outgoing_indices()) {
+            leaf_ext_pos.at(decay_index) = ord + 2;
+            ++ord;
+        }
+        // collect s-channel propagators that are the fusion of exactly two external legs
+        // (both children are outgoing leaves). These are exactly the ones the ME can take
+        // the virtuality for (see model_handling.py wf_fixp2_map).
+        std::vector<std::array<std::size_t, 2>> props;
+        for (auto& decay : _topology.decays()) {
+            if (decay.index == 0 || decay.child_indices.size() != 2) {
+                continue;
+            }
+            std::size_t c0 = decay.child_indices.at(0);
+            std::size_t c1 = decay.child_indices.at(1);
+            if (!_topology.decays().at(c0).child_indices.empty() ||
+                !_topology.decays().at(c1).child_indices.empty()) {
+                continue; // a child is itself a propagator -> more than two external legs
+            }
+            _virt_decay_index.push_back(decay.index);
+            _virt_mass2.push_back(decay.mass * decay.mass);
+            props.push_back({leaf_ext_pos.at(c0), leaf_ext_pos.at(c1)});
+        }
+        std::size_t prop_count = props.size();
+        std::size_t channel_count = std::max<std::size_t>(_permutations.size(), 1);
+        // sentinel index prop_count into the (prop_count + 1)-length source vector -> 0
+        _virt_slot_of_pos.assign(
+            npar * npar,
+            std::vector<me_int_t>(channel_count, static_cast<me_int_t>(prop_count))
+        );
+        for (std::size_t c = 0; c < channel_count; ++c) {
+            // inverse permutation: output position of the leg sitting in topology slot s
+            std::vector<std::size_t> inv(npar);
+            if (_permutations.empty()) {
+                for (std::size_t i = 0; i < npar; ++i) {
+                    inv.at(i) = i;
+                }
+            } else {
+                auto& perm = _permutations.at(c);
+                for (std::size_t i = 0; i < npar; ++i) {
+                    inv.at(static_cast<std::size_t>(perm.at(i))) = i;
+                }
+            }
+            for (std::size_t k = 0; k < prop_count; ++k) {
+                std::size_t i = inv.at(props.at(k).at(0));
+                std::size_t j = inv.at(props.at(k).at(1));
+                _virt_slot_of_pos.at(i * npar + j).at(c) = static_cast<me_int_t>(k);
+                _virt_slot_of_pos.at(j * npar + i).at(c) = static_cast<me_int_t>(k);
+            }
+        }
     }
 }
 
@@ -407,7 +477,33 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     auto p_ext_lab = _map_luminosity ? fb.boost_beam(p_ext_stack, x1, x2) : p_ext_stack;
     dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
-    return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
+
+    NamedVector<Value> outputs{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}};
+    if (_produce_virtuality) {
+        // Build the real virtuality matrix v[i][j] = p^2 - M^2 from the numerically clean
+        // sampled invariants (data.mass2 == p^2). Source vector holds one value per
+        // 2-external-leg propagator plus a trailing 0 sentinel; per event we select the
+        // value for each (i,j) position of the sampled channel via a precomputed table.
+        std::size_t npar = _topology.outgoing_masses().size() + 2;
+        Value batch = fb.batch_size({p_ext_lab});
+        ValueVec src_vals;
+        for (std::size_t k = 0; k < _virt_decay_index.size(); ++k) {
+            Value p2 = decay_data.at(_virt_decay_index.at(k)).mass2.value();
+            src_vals.push_back(fb.sub(p2, Value(_virt_mass2.at(k))));
+        }
+        src_vals.push_back(fb.full({0., batch})); // sentinel -> 0
+        Value src = fb.stack(src_vals);
+        Value chan_index = _permutations.size() > 1
+            ? conditions.at(0)
+            : fb.full({static_cast<me_int_t>(0), batch});
+        ValueVec pos_slots;
+        for (std::size_t p = 0; p < npar * npar; ++p) {
+            pos_slots.push_back(fb.gather_int(chan_index, _virt_slot_of_pos.at(p)));
+        }
+        Value virtuality = fb.select(src, fb.stack(pos_slots));
+        outputs.push_back("virtuality", virtuality);
+    }
+    return {outputs, ps_weight};
 }
 
 Mapping::Result PhaseSpaceMapping::build_inverse_impl(

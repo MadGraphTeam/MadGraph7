@@ -221,6 +221,9 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     // outputs after cuts
     ret.push_back("indices_acc", Type(DataType::dt_int, acc_batch_size, {}));
     ret.push_back("momenta_acc", acc_four_vec_array(particle_count));
+    if (_mapping.produce_virtuality()) {
+        ret.push_back("virtuality_acc", acc_float_array(particle_count * particle_count));
+    }
     ret.push_back("x1_acc", acc_float);
     ret.push_back("x2_acc", acc_float);
     ret.push_back("flavor_id", acc_int);
@@ -363,6 +366,10 @@ NamedVector<Value> Integrand::build_channel_part(
     }
     Value indices_acc = fb.nonzero(weight_before_cuts);
     Value momenta_acc = fb.batch_gather(indices_acc, momenta);
+    Value virtuality_acc;
+    if (_mapping.produce_virtuality()) {
+        virtuality_acc = fb.batch_gather(indices_acc, mapping_result["virtuality"]);
+    }
     std::array<Value, 2> x_acc{
         {fb.batch_gather(indices_acc, x0), fb.batch_gather(indices_acc, x1)}
     };
@@ -495,6 +502,9 @@ NamedVector<Value> Integrand::build_channel_part(
     // outputs after cuts
     out.push_back("indices_acc", indices_acc);
     out.push_back("momenta_acc", momenta_acc);
+    if (_mapping.produce_virtuality()) {
+        out.push_back("virtuality_acc", virtuality_acc);
+    }
     out.push_back("x1_acc", x_acc.at(0));
     out.push_back("x2_acc", x_acc.at(1));
     out.push_back("flavor_id", flavor_id);
@@ -566,6 +576,11 @@ NamedVector<Value> Integrand::build_common_part(
         momenta_acc,
         _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
     };
+    // real virtuality matrix v[i][j] = p^2 - M^2 (UMAMI_IN_VIRTUALITY), placed right after
+    // the matrix element's momenta/flavor inputs to match its external_inputs() order.
+    if (_mapping.produce_virtuality()) {
+        xs_args.push_back(args.at("virtuality_acc"));
+    }
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
     xs_args.push_back(flavor_id);

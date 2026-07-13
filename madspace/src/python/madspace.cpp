@@ -696,14 +696,16 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
-                const nested_vector2<std::size_t>&>(),
+                const nested_vector2<std::size_t>&,
+                bool>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
-            py::arg("permutations") = std::vector<Topology>{}
+            py::arg("permutations") = std::vector<Topology>{},
+            py::arg("produce_virtuality") = false
         )
         .def(
             py::init<
@@ -722,7 +724,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("random_dim", &PhaseSpaceMapping::random_dim)
         .def("particle_count", &PhaseSpaceMapping::particle_count)
-        .def("channel_count", &PhaseSpaceMapping::channel_count);
+        .def("channel_count", &PhaseSpaceMapping::channel_count)
+        .def("produce_virtuality", &PhaseSpaceMapping::produce_virtuality);
 
     py::classh<MultiChannelFunction, FunctionGenerator>(m, "MultiChannelFunction")
         .def(
@@ -744,6 +747,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"helicity_in", MatrixElement::helicity_in},
             {"diagram_in", MatrixElement::diagram_in},
             {"channel_in", MatrixElement::channel_in},
+            {"virtuality_in", MatrixElement::virtuality_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(

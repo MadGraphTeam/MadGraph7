@@ -1000,6 +1000,10 @@ class MadgraphSubprocess:
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
+                    # pass the numerically clean sampled propagator virtuality p^2 - M^2
+                    # directly to the matrix element (UMAMI_IN_VIRTUALITY) instead of
+                    # letting it recompute p^2 from the momenta. Opt-in via env var.
+                    produce_virtuality=os.environ.get("MADSPACE_PASS_VIRTUALITY", "") == "1",
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -1306,10 +1310,19 @@ class MadgraphSubprocess:
             flavor_remap.append(flav["index"])
             flavor_factors.append(len(flav["options"]))
         flavor_remap
+        # keep the matrix element's inputs consistent with the phase-space mappings: if
+        # the mappings supply the propagator virtuality, the ME must declare virtuality_in
+        # so DifferentialCrossSection expects and forwards it (UMAMI_IN_VIRTUALITY).
+        me_inputs = list(ms.Integrand.matrix_element_inputs)
+        if any(
+            channel.phasespace_mapping.produce_virtuality()
+            for channel in phasespace.channels
+        ):
+            me_inputs.append(ms.MatrixElement.virtuality_in)
         if self.matrix_element:
             matrix_element = ms.MatrixElement(
                 self.matrix_element,
-                ms.Integrand.matrix_element_inputs,
+                me_inputs,
                 ms.Integrand.matrix_element_outputs,
                 True,
             )
@@ -1317,7 +1330,7 @@ class MadgraphSubprocess:
             matrix_element = ms.MatrixElement(
                 0xBADCAFE,
                 self.particle_count,
-                ms.Integrand.matrix_element_inputs,
+                me_inputs,
                 ms.Integrand.matrix_element_outputs,
                 self.meta["diagram_count"],
                 True,
