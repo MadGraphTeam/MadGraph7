@@ -1303,15 +1303,15 @@ class MadgraphSubprocess:
     def build_discrete(
         self, permutation_count: int, flavor_count: int, prefix: str
     ) -> tuple[ms.DiscreteSampler | None, ms.DiscreteSampler | None]:
-        discrete_before = None
-        #if permutation_count > 1:
-        #    discrete_before = ms.DiscreteSampler(
-        #        [permutation_count], f"{prefix}.discrete_before"
-        #    )
-        #    for context in self.process.contexts:
-        #        discrete_before.initialize_globals(context)
-        #else:
-        #    discrete_before = None
+        is_adaptive = self.process.run_card["phasespace"]["adaptive_symmetry_sampling"]
+        if is_adaptive and permutation_count > 1:
+            discrete_before = ms.DiscreteSampler(
+                [permutation_count], f"{prefix}.discrete_before"
+            )
+            for context in self.process.contexts:
+                discrete_before.initialize_globals(context)
+        else:
+            discrete_before = None
 
         if flavor_count > 1:
             discrete_after = ms.DiscreteSampler(

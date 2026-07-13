@@ -4,6 +4,50 @@ from collections import defaultdict
 
 from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 from madgraph.iolibs import export_cpp
+from madgraph.iolibs.group_subprocs import IdentifyConfigTag
+from madgraph.core.diagram_generation import DiagramTag
+
+class IdentifyJetTag(IdentifyConfigTag):
+    """ Like IndentifyConfigTag, but ignores spin and color """
+
+    @staticmethod
+    def link_from_leg(leg, model):
+        (leg_num1, _, mass, width, _), leg_num2 = super(
+            IdentifyJetTag, IdentifyJetTag
+        ).link_from_leg(leg, model)[0]
+        return [((leg_num1, mass, width), leg_num2)]
+
+    @staticmethod
+    def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
+        vertex = super(IdentifyJetTag, IdentifyJetTag).vertex_id_from_vertex(
+            vertex, last_vertex, model, ninitial
+        )
+        if len(vertex) == 1:
+            return ((0,),)
+        (_, mass, width), _ = vertex
+        return ((mass, width), 0)
+
+
+class IdentifySGJetTag(IdentifySGConfigTag):
+    """ Like IndentifySGConfigTag, but ignores spin, color and charge """
+
+    @staticmethod
+    def link_from_leg(leg, model):
+        (state, _, _, _, mass, width), leg_num = super(
+            IdentifySGJetTag, IdentifySGJetTag
+        ).link_from_leg(leg, model)[0]
+        return [((state, mass, width), leg_num)]
+
+    @staticmethod
+    def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
+        vertex = super(IdentifySGJetTag, IdentifySGJetTag).vertex_id_from_vertex(
+            vertex, last_vertex, model, ninitial
+        )
+        if len(vertex) == 1:
+            return ((0,),)
+        (_, mass, width, qcd, onshell), = vertex
+        return ((mass, width, qcd, onshell),)
+
 
 class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
@@ -13,15 +57,25 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.name = f"P{matrix_element.get('processes')[0].shell_string()}"
         self.model = self.matrix_element.get("processes")[0].get("model")
         self.amplitude = self.matrix_element.get("base_amplitude")
-        self.sym_indices, self.sym_perms, _ = find_symmetry(
-            self.matrix_element, lambda diag: IdentifySGConfigTag(diag, self.model)
-        )
+        merge_jets = True
+        if merge_jets:
+            self.sym_indices, self.sym_perms, _ = find_symmetry(
+                self.matrix_element,
+                lambda diag: IdentifySGJetTag(diag, self.model),
+                skip_identical_check=True
+            )
+        else:
+            self.sym_indices, self.sym_perms, _ = find_symmetry(
+                self.matrix_element, lambda diag: IdentifySGConfigTag(diag, self.model)
+            )
+
         self.diagrams = self.amplitude.get("diagrams")
         self.helas_diagrams = self.matrix_element.get("diagrams")
         self.all_flavors, self.all_flavors_pdgs = self.matrix_element.get_external_flavors_with_iden(return_pdgs=True)
         self.process = self.amplitude.get("process")
         self.legs = self.process.get("legs_with_decays")
         self.color_basis = self.matrix_element.get("color_basis")
+        self.set_subprocess_class()
         self.set_topology()
         self.set_flavor_indices()
         self.set_active_flavors()
@@ -29,6 +83,25 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
     def generate_process_files(self):
         super().generate_process_files()
+
+    def set_subprocess_class(self):
+        is_parts = [
+            self.model.get_particle(l.get("id"))
+            for l in self.process.get("legs")
+            if not l.get("state")
+        ]
+        fs_parts = [
+            self.model.get_particle(l.get("id"))
+            for l in self.process.get("legs")
+            if l.get("state")
+        ]
+        self.subprocess_class = (
+            tuple(
+                (p.get("mass"), l.get("onshell"))
+                for (p, l) in zip(is_parts + fs_parts, self.process.get("legs"))
+            ),
+            self.process.get("id"),
+        )
 
     def set_topology(self):
         self.edge_names = {}
@@ -76,15 +149,12 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 for diag_tuple in self.color_basis[col_basis_elem]:
                     diag_jamps[diag_tuple[0]].append(ijamp)
 
-        sym_indices, sym_perms, _ = find_symmetry(
-            self.matrix_element, lambda diag: IdentifySGConfigTag(diag, self.model)
-        )
-
         self.channels = []
-        self.channel_indices = []
-        for diagram_index, (sym_index, sym_perm) in enumerate(zip(sym_indices, sym_perms)):
+        channel_indices = []
+        self.diagram_tags = []
+        for diagram_index, (sym_index, sym_perm) in enumerate(zip(self.sym_indices, self.sym_perms)):
             if sym_index == 0:
-                self.channel_indices.append(-1)
+                channel_indices.append(-1)
                 continue
 
             active_colors = diag_jamps[diagram_index] if self.color_basis else [0]
@@ -93,8 +163,13 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 raise RuntimeError(
                     f"no valid flavor configurations found for diagram {diagram_index+1}"
                 )
+            diagram = self.diagrams[diagram_index]
             if sym_index < 0:
-                self.channels[self.channel_indices[-sym_index - 1]]["diagrams"].append(
+                chan_index = channel_indices[-sym_index - 1]
+                self.diagram_tags[chan_index].append(
+                    IdentifyJetTag(diagram, self.model),
+                )
+                self.channels[chan_index]["diagrams"].append(
                     {
                         "diagram": diagram_index,
                         "permutation": sym_perm,
@@ -102,10 +177,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                         "active_colors": active_colors,
                     }
                 )
-                self.channel_indices.append(-1)
+                channel_indices.append(-1)
                 continue
 
-            diagram = self.diagrams[diagram_index]
             vertices = []
             propagators = []
             on_shell_propagators = []
@@ -129,7 +203,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                         on_shell_propagators.append(prop_index)
                 vertices.append(vertex_props)
 
-            self.channel_indices.append(len(self.channels))
+            chan_index = len(self.channels)
+            self.diagram_tags.append([IdentifyJetTag(diagram, self.model)])
+            channel_indices.append(chan_index)
             self.channels.append(
                 {
                     "propagators": propagators,
@@ -211,15 +287,20 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             }
             for index, options in self.all_flavors_same_initial
         ]
-        return {
-            "incoming": self.incoming,
-            "outgoing": self.outgoing,
-            "channels": self.channels,
-            "me_path": lib_me_path,
-            "path": proc_dir,
-            "flavors": flavors,
-            "color_flows": color_flows,
-            "pdg_color_types": pdg_color_types,
-            "diagram_count": len(self.diagrams),
-            "helicities": list(self.matrix_element.get_helicity_matrix()),
-        }
+
+        return (
+            {
+                "incoming": self.incoming,
+                "outgoing": self.outgoing,
+                "channels": self.channels,
+                "me_path": lib_me_path,
+                "path": proc_dir,
+                "flavors": flavors,
+                "color_flows": color_flows,
+                "pdg_color_types": pdg_color_types,
+                "diagram_count": len(self.diagrams),
+                "helicities": list(self.matrix_element.get_helicity_matrix()),
+            },
+            self.diagram_tags,
+            self.subprocess_class,
+        )
