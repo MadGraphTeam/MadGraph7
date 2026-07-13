@@ -578,8 +578,20 @@ NamedVector<Value> Integrand::build_common_part(
     };
     // real virtuality matrix v[i][j] = p^2 - M^2 (UMAMI_IN_VIRTUALITY), placed right after
     // the matrix element's momenta/flavor inputs to match its external_inputs() order.
+    // The matrix element (shared across channels) may declare virtuality_in even when this
+    // channel's mapping does not sample it (e.g. a flat/rambo channel in "both" mode): in
+    // that case supply an all-zero matrix so the ME recomputes p^2 from the momenta.
+    auto& me_inputs = _diff_xs.matrix_element().inputs();
+    bool me_wants_virtuality =
+        std::find(me_inputs.begin(), me_inputs.end(), MatrixElement::virtuality_in) !=
+        me_inputs.end();
     if (_mapping.produce_virtuality()) {
         xs_args.push_back(args.at("virtuality_acc"));
+    } else if (me_wants_virtuality) {
+        auto npar = static_cast<me_int_t>(_mapping.particle_count());
+        xs_args.push_back(
+            fb.full({0., fb.batch_size({momenta_acc}), npar * npar})
+        );
     }
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
