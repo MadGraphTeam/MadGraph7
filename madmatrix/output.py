@@ -98,7 +98,20 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                       'MatrixElementKernels.cc', 'MatrixElementKernels.h',
                                       'EventStatistics.h',
                                       'umami.h', 'umami.cc', 'rambo.h']),
-                     'Cards': relative_path_list(mg7_templates, ["run_card.toml"])}
+                     # run_card.toml is generated in finalize() (ProcessExporterMG7.create_run_card)
+                     # from the template, not copied verbatim.
+                     # Default cards for the optional post-processing tools
+                     # (Pythia8/Delphes/MadSpin/reweight/analysis) so that
+                     # bin/generate_events can offer to enable and edit them.
+                     'Cards': relative_path_list(pjoin(MG5DIR, 'Template', 'Common', 'Cards'),
+                                  ['madspin_card_default.dat', 'reweight_card_default.dat',
+                                   'density_card_default.dat', 'delphes_card_default.dat',
+                                   'plot_card.dat']) +
+                              relative_path_list(pjoin(MG5DIR, 'Template', 'LO', 'Cards'),
+                                  ['pythia8_card_default.dat',
+                                   'madanalysis5_parton_card_default.dat',
+                                   'madanalysis5_hadron_card_default.dat',
+                                   'rivet_card_default.dat'])}
 
     to_link_in_P = ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h',
                     'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',

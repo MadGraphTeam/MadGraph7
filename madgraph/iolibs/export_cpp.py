@@ -31,6 +31,7 @@ import json
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
 import madgraph.core.helas_objects as helas_objects
+import madgraph.iolibs.group_subprocs as group_subprocs
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.drawing_svg as draw_svg
 import madgraph.iolibs.files as files
@@ -306,8 +307,10 @@ class UFOModelConverterCPP(object):
                                self.write_set_parameters(self.params_dep)
         replace_dict['set_dependent_couplings'] = \
                                self.write_set_parameters(list(self.coups_dep.values()))
+        # Only independent flavored couplings use the FLV_COUPLING value[] pointer mechanism;
+        # dependent (running-alphas) ones are gathered event-by-event (see model_handling / Step 3).
         replace_dict['set_flv_couplings'] = \
-                                self.write_flv_couplings(self.coups_flv_dep+self.coups_flv_indep)    
+                                self.write_flv_couplings(self.coups_flv_indep)
 
         replace_dict['print_independent_parameters'] = \
                                self.write_print_parameters(self.params_indep)
@@ -373,17 +376,57 @@ class UFOModelConverterCPP(object):
 
         return "\n".join(res_strings)
 
+    def _assert_flv_couplings_supported(self, params):
+        """Refuse, with a clear and actionable message, the merged-flavor
+        coupling structures the C++ (mg7/standalone_mg7) backend cannot yet
+        generate correctly, instead of crashing or emitting wrong/uncompilable
+        code.
+
+        Supported: one- and two-merged-leg "partner" vertices, with either
+        flavor-*independent* or *dependent* (event-by-event, running-alphas)
+        couplings. Single-merged-leg vertices (one merged fermion + an unmerged
+        partner, e.g. the electroweak MSSM squark-quark-neutralino vertices) are
+        serialized like the Fortran side (the unmerged partner is given flavor
+        index 1) and gated by the merged leg (see get_coupling_def). Dependent
+        flavored couplings (e.g. the SUSY-QCD MSSM gluino-squark-quark vertices)
+        are gathered event-by-event into cDPF_* / flvCOUPs_dep (Step 3).
+
+        Not yet supported (raises):
+
+          * a vertex with more than two merged-flavor legs (never seen so far).
+
+        The Fortran 'madevent'/'standalone' output supports the remaining cases.
+        See docs/mg7_merged_flavor_mssm_design.md.
+        """
+        for coupl in params:
+            for key in coupl.flavors:
+                nb_merged = len([i for i in key if i != 0])
+                if nb_merged in (1, 2):
+                    continue
+                raise InvalidCmd(
+                    "merged-flavor C++ output (mg7/standalone_mg7) does not yet "
+                    "support this process: flavor coupling %s connects %d "
+                    "merged-flavor legs; only one or two are supported. Use "
+                    "'output madevent' or 'output standalone' for this process. "
+                    "See docs/mg7_merged_flavor_mssm_design.md for details."
+                    % (coupl.name, nb_merged))
+
     def write_flv_couplings(self, params):
         """Write out the lines of independent parameters"""
 
+        self._assert_flv_couplings_supported(params)
         def_flv = []
         # For each parameter, write name = expr;
         for coupl in params:
             for key, c in coupl.flavors.items():
-                # get first/second index
-                k1, k2 = [i for i in key if i!=0]
+                nonzero = [i for i in key if i != 0]
+                if len(nonzero) == 2:
+                    k1, k2 = nonzero
+                else:
+                    # single merged leg: unmerged partner has flavor index 1
+                    k1 = nonzero[0]; k2 = 1
                 def_flv.append('%(name)s.partner[%(in)i] = %(out)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
-                def_flv.append('%(name)s.partner2[%(out)i] = %(in)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1}) 
+                def_flv.append('%(name)s.partner2[%(out)i] = %(in)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
                 def_flv.append('%(name)s.val[%(in)i]  =  &%(coupl)s;' % {'name': coupl.name,'in': k1-1, 'coupl': c})
 
         return "\n".join(def_flv)
@@ -1154,6 +1197,57 @@ class OneProcessExporterCPP(object):
         else:
             return replace_dict
 
+    def _cpp_flav_rows(self, matrix_element, allowed_flavors):
+        """Return the per-flavor group-position rows (as C++ initialiser
+        strings like '{0, 0, 1, 1}') for *allowed_flavors*. Group positions are
+        0-based, matching the convention used by the C++ flavor-mask table and
+        the HELAS ixxxxx/oxxxxx flv argument."""
+        model = matrix_element.get('processes')[0].get('model')
+        merged_particles = model.get('merged_particles') or {}
+        pdg_to_group_index = {}
+        max_group_size = 0
+        for merged_id, members in merged_particles.items():
+            members = list(members)
+            if members:
+                max_group_size = max(max_group_size, len(members))
+                pdg_to_group_index[int(merged_id)] = 0
+                pdg_to_group_index[-int(merged_id)] = 0
+            for pos, pdg in enumerate(members):
+                pdg = int(pdg)
+                pdg_to_group_index[pdg] = pos
+                pdg_to_group_index[-pdg] = pos
+        flav_rows = []
+        for flavor in allowed_flavors:
+            row = []
+            for p in flavor:
+                p = int(p)
+                if p in pdg_to_group_index:
+                    row.append(str(pdg_to_group_index[p]))
+                elif abs(p) in pdg_to_group_index:
+                    row.append(str(pdg_to_group_index[abs(p)]))
+                elif max_group_size and 1 <= abs(p) <= max_group_size:
+                    row.append(str(abs(p) - 1))
+                else:
+                    row.append('0')
+            flav_rows.append('{%s}' % ', '.join(row))
+        return flav_rows
+
+    def _cpp_sigmakin_flavor(self, matrix_element):
+        """Return (n_flavors, flav_rows, n_legs) for the always-on per-flavor
+        good-helicity filter in sigmaKin. n_flavors is always >= 1: an ME with
+        no merged-particle variants is a single flavor whose group index is 0 on
+        every leg (C++ group indices are 0-based), matching the flavor[] = 0
+        convention the callers use for an unmerged leg. n_legs is the number of
+        external legs (the length of each flav_table row), returned explicitly
+        so callers need not infer it from the initialiser string."""
+        nexternal = matrix_element.get_nexternal_ninitial()[0]
+        allowed_flavors = matrix_element.compute_flavor_masks()
+        if not allowed_flavors:
+            return (1, ['{%s}' % ', '.join(['0'] * nexternal)], nexternal)
+        return (len(allowed_flavors),
+                self._cpp_flav_rows(matrix_element, allowed_flavors),
+                len(allowed_flavors[0]))
+
     def get_flavor_mask_blocks(self, matrix_element):
         """Return declaration/setup blocks for C++ flavor-mask guards."""
 
@@ -1375,6 +1469,60 @@ class OneProcessExporterCPP(object):
                                         for m in self.matrix_elements])
             replace_dict['nb_amp'] = len(self.amplitudes.get_all_amplitudes())
             replace_dict['nexternal'] = len(self.processes[0].get('legs'))
+
+            # Always-on per-flavor good-helicity filter: goodhel/ntry/igood/
+            # ngood/sum_hel/jhel are indexed by a per-point flav_idx resolved
+            # from flavor[] via sk_flav_table, so a helicity that is zero for one
+            # flavor is never dropped for another. nflav is >= 1 (an unmerged ME
+            # is a single flavor); for nproc > 1 there is no single flavor table,
+            # so fall back to one flavor (flav_idx stays 0).
+            single_me = len(self.matrix_elements) == 1
+            if single_me:
+                sk_nflav, sk_flav_rows, n_legs = \
+                    self._cpp_sigmakin_flavor(self.matrix_elements[0])
+            else:
+                n_legs = replace_dict['nexternal']
+                sk_nflav, sk_flav_rows = \
+                    (1, ['{%s}' % ', '.join(['0'] * n_legs)])
+            replace_dict['cpp_goodhel_decl'] = (
+                "const int nflav = %d;\n" % sk_nflav +
+                "static const int sk_flav_table[nflav][%d] = {%s};\n"
+                % (n_legs, ', '.join(sk_flav_rows)) +
+                "static bool goodhel[nflav][ncomb] = {};\n"
+                "static int ntry[nflav] = {}, sum_hel[nflav] = {}, ngood[nflav] = {};\n"
+                "static int igood[nflav][ncomb];\n"
+                "static int jhel[nflav];")
+            # Resolve flavor[] -> flav_idx via sk_flav_table. For the single-ME
+            # case a flavor absent from the table is not an allowed combination
+            # (its |M|^2 is zero): flav_idx stays -1 and we short-circuit to a
+            # zero matrix element before indexing the per-flavor goodhel/ntry
+            # arrays. For the multi-ME fallback there is a single (all-zero) row
+            # and no real per-flavor split, so flav_idx defaults to 0.
+            if single_me:
+                replace_dict['cpp_flav_idx_compute'] = (
+                    "int flav_idx = -1;\n"
+                    "for (int fi = 0; fi < nflav; ++fi) {\n"
+                    "  bool fmatch = true;\n"
+                    "  for (int fj = 0; fj < %d; ++fj) {\n" % n_legs +
+                    "    if (flavor[fj] != sk_flav_table[fi][fj]) { fmatch = false; break; }\n"
+                    "  }\n"
+                    "  if (fmatch) { flav_idx = fi; break; }\n"
+                    "}\n"
+                    "if (flav_idx < 0) {\n"
+                    "  for (int i = 0; i < nprocesses; i++) matrix_element[i] = 0.;\n"
+                    "  return;\n"
+                    "}\n")
+            else:
+                replace_dict['cpp_flav_idx_compute'] = (
+                    "int flav_idx = 0;\n"
+                    "for (int fi = 0; fi < nflav; ++fi) {\n"
+                    "  bool fmatch = true;\n"
+                    "  for (int fj = 0; fj < %d; ++fj) {\n" % n_legs +
+                    "    if (flavor[fj] != sk_flav_table[fi][fj]) { fmatch = false; break; }\n"
+                    "  }\n"
+                    "  if (fmatch) { flav_idx = fi; break; }\n"
+                    "}\n")
+
             if write:
                 file = \
                  self.read_template_file(\
@@ -2484,7 +2632,8 @@ class ProcessExporterCPP(VirtualExporter):
     oneprocessclass = OneProcessExporterCPP
     s= _file_path + 'iolibs/template_files/'
     dirs_to_create = ['src', 'lib', 'Cards', 'SubProcesses']
-    from_template = {'src': [s+'rambo.h', s+'rambo.cc', s+'read_slha.h', s+'read_slha.cc'],
+    from_template = {'src': [s+'rambo.h', s+'rambo.cc', s+'read_slha.h', s+'read_slha.cc',
+                             s+'mg5_citation.h', s+'mg5_citation.cc'],
                      'SubProcesses': []}
     to_link_in_P = ['Makefile']
     template_src_make = pjoin(_file_path, 'iolibs', 'template_files','Makefile_sa_cpp_src')
@@ -3033,9 +3182,12 @@ class ProcessExporterMG7(ProcessExporterCPP):
     # 'check' driver)
     template_Sub_make = pjoin(_file_path, 'iolibs', 'template_files',
                               'Makefile_sa_cpp_sp_api')
+    # NB: Cards/run_card.toml is NOT copied verbatim here; it is generated in
+    # finalize() from the run_card.toml template via banner.RunCardMG7, so that
+    # process-dependent defaults are filled in (see create_run_card).
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp'],
-                     'Cards': [s+'mg7/run_card.toml']}
+                     'Cards': []}
     #from_template_simd = [
     #    s+"mg7/api.h",
     #    s+"mg7/simd/api_simd.cpp",
@@ -3107,14 +3259,187 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 )
             os.chmod(madnis_bin, 0o755)
 
-    def finalize(self, *args, **kwargs):
+    def finalize(self, matrix_elements=None, history='', *args, **kwargs):
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
         ))
         with open(file_name, 'w') as f:
             json.dump(self.process_info, f)
+
+        # Generate Cards/run_card.toml from the template, filling in
+        # process-dependent defaults (mirrors the LO run_card.dat logic).
+        self.create_run_card(matrix_elements, history)
+
+        # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
+        # post-processing driver (get_characteristics) so that the madevent
+        # tool interface can run on this directory.
+        self.create_proc_characteristics(matrix_elements)
+
+        # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
+        # Point it at the MG5 install so tool paths (pythia8, etc.) and the
+        # cluster/run-mode settings resolve from the central configuration.
+        try:
+            with open(pjoin(self.dir_path, 'Cards',
+                            'me5_configuration.txt'), 'w') as fsock:
+                fsock.write('# configuration for the mg7 post-processing tools\n'
+                            'mg5_path = %s\n' % MG5DIR)
+        except Exception as error:
+            logger.warning('could not write me5_configuration.txt: %s', error)
+
+        # MadAnalysis5 default analysis cards, tailored to this process. This
+        # must run *before* history.write() below: writing the proc_card cleans
+        # the history in place (dropping the multiparticle 'define' lines that
+        # MA5 needs to resolve p/j/... in the process).
+        self.create_ma5_default_cards(matrix_elements, history)
+
+        # Record the generation commands (proc_card_mg5.dat) so that the model
+        # and process end up in the LHE banner (needed by MadSpin/reweight/...).
+        try:
+            if history:
+                history.write(os.path.join(self.dir_path, 'Cards',
+                                           'proc_card_mg5.dat'))
+        except Exception as error:
+            logger.warning('could not write proc_card_mg5.dat: %s', error)
+
         # we don't call super().finalize() since it would call ProcessExporterCPP.finalize()
         # which would compile the model in src/, and we don't want that
+
+    def pass_information_from_cmd(self, cmd):
+        """Capture the process definitions from the command interface; needed to
+        generate the MadAnalysis5 default cards at output time."""
+        self.proc_defs = getattr(cmd, '_curr_proc_defs', None)
+
+    def create_ma5_default_cards(self, matrix_elements, history):
+        """Call MadAnalysis5 to write process-tailored default analysis cards
+        (parton + hadron), like the madevent exporter does. Falls back silently
+        to the generic default cards if MA5 is unavailable or fails."""
+        ma5_path = self.opt.get('madanalysis5_path')
+        proc_defs = getattr(self, 'proc_defs', None)
+        if not ma5_path or proc_defs is None:
+            return
+
+        processes = None
+        try:
+            if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+                processes = [me.get('processes') for megroup in matrix_elements
+                             for me in megroup['matrix_elements']]
+            elif matrix_elements:
+                processes = [me.get('processes')
+                             for me in matrix_elements['matrix_elements']]
+        except (KeyError, TypeError):
+            processes = None
+
+        # expand merged-flavor beam codes (81/82/...) so MA5 recognises the legs
+        proc_defs = self.expand_merged_particle_legs(proc_defs)
+
+        try:
+            from madgraph.interface import common_run_interface as common_run
+            ma5 = common_run.CommonRunCmd.get_MadAnalysis5_interpreter(
+                MG5DIR, ma5_path, loglevel=100)
+            if ma5 is None:
+                return
+            logger.info('Generating MadAnalysis5 default cards tailored to this process')
+            for lvl in ('parton', 'hadron'):
+                try:
+                    text = ma5.main.madgraph.generate_card(history, proc_defs,
+                                                           processes, lvl)
+                except (Exception, SystemExit):
+                    import traceback as _tb
+                    logger.debug('MA5 %s card error:\n%s', lvl, _tb.format_exc())
+                    logger.warning('MadAnalysis5 failed to write a %s-level default '
+                                   'analysis card for this process.', lvl)
+                    continue
+                out = os.path.join(self.dir_path, 'Cards',
+                                   'madanalysis5_%s_card_default.dat' % lvl)
+                with open(out, 'w') as fsock:
+                    fsock.write(text)
+        except (Exception, SystemExit) as error:
+            logger.warning('MadAnalysis5 default card generation failed: %s', error)
+
+    def create_run_card(self, matrix_elements, history):
+        """Write Cards/run_card.toml from the run_card.toml template via
+        banner.RunCardMG7, applying process-dependent defaults."""
+
+        run_card = banner_mod.RunCardMG7()
+
+        processes = None
+        try:
+            if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+                processes = [me.get('processes') for megroup in matrix_elements
+                             for me in megroup['matrix_elements']]
+            elif matrix_elements:
+                processes = [me.get('processes')
+                             for me in matrix_elements['matrix_elements']]
+        except (KeyError, TypeError):
+            processes = None
+
+        if processes:
+            run_card.create_default_for_process(self.proc_characteristic,
+                                                history, processes)
+            # persist the model so the runtime can compute widths set to 'auto'
+            # in the param_card (and recompute them at each scan point). A hash
+            # of the model's python source is stored on the second line so the
+            # runtime can detect a model that changed since output.
+            try:
+                model = processes[0][0].get('model')
+                model_path = model.get('modelpath')
+                model_ref = model_path or model.get('name')
+                if model_ref:
+                    model_hash = misc.hash_model_files(model_path) if model_path else None
+                    with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
+                        f.write(model_ref + '\n' + (model_hash or '') + '\n')
+            except Exception:
+                pass
+
+        template = pjoin(_file_path, 'iolibs', 'template_files',
+                         'mg7', 'run_card.toml')
+        run_card.write(pjoin(self.dir_path, 'Cards', 'run_card.toml'),
+                       template=template)
+        # Also write a concrete default card so the interactive card editor
+        # can offer "set <param> default" (mirrors run_card_default.dat at LO).
+        run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.toml'),
+                       template=template)
+
+    def create_proc_characteristics(self, matrix_elements):
+        """Populate and write SubProcesses/proc_characteristics. This is the
+        file CommonRunCmd.get_characteristics() reads to learn ninitial /
+        nexternal / initial-state PDGs, so that the reused madevent tool
+        interface can drive post-processing on this (C++/madspace) output."""
+        pc = self.proc_characteristic
+
+        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+            me_list = [me for megroup in matrix_elements
+                       for me in megroup['matrix_elements']]
+        elif matrix_elements:
+            me_list = list(matrix_elements['matrix_elements'])
+        else:
+            me_list = []
+
+        procs = []
+        for me in me_list:
+            if not me.get('processes'):
+                continue
+            nexternal, ninitial = me.get_nexternal_ninitial()
+            pc['nexternal'] = max(pc['nexternal'], nexternal)
+            pc['ninitial'] = ninitial
+            procs.extend(me.get('processes'))
+
+        if procs:
+            pc['pdg_initial1'] = [p.get_initial_pdg(1) for p in procs
+                                  if p.get_initial_pdg(1)]
+            pc['pdg_initial2'] = [p.get_initial_pdg(2) for p in procs
+                                  if p.get_initial_pdg(2)]
+            model = procs[0].get('model')
+            colored = set(abs(p.get('pdg_code')) for p in model.get('particles')
+                          if p.get('color') > 1)
+            pc['colored_pdgs'] = sorted(colored)
+            # ISR/FSR presence drives (e.g.) the shower's initial/final radiation
+            pc['has_isr'] = any(abs(pid) in colored
+                                for pid in pc['pdg_initial1'] + pc['pdg_initial2'])
+            pc['has_fsr'] = any(abs(fid) in colored
+                                for p in procs for fid in p.get_final_ids())
+
+        pc.write(pjoin(self.dir_path, 'SubProcesses', 'proc_characteristics'))
 
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     """ Determine which Export class is required. cmd is the command 

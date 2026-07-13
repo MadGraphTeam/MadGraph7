@@ -3694,17 +3694,36 @@ class HelasDiagram(base_objects.PhysicsObject):
         
         return self['amplitudes']
 
-    def check_flavor(self, flavor_id, model, debug=False):
+    def check_flavor(self, flavor_id, model, debug=False, clear_flavor_tag=True):
         """ check if the real_pdg is compatible with the diagram"""
 
         #flavor_status = {}
         #pdg_for_number = {}
-        # remove the information from previous check
-        for wfct in self['wavefunctions'] + self['amplitudes']:
+        # remove the information from previous check.
+        # NB: self['wavefunctions'] only lists the wavefunctions *introduced*
+        # by this diagram.  In a HELAS-optimised matrix element a diagram also
+        # reuses wavefunctions (and their sub-trees) introduced by earlier
+        # diagrams; those appear here only as mothers.  If we cleared the tag
+        # for self['wavefunctions'] alone, such shared mothers would keep a
+        # stale flavortag computed for a *different* flavor, and
+        # propagate_flavor_tag would silently reuse it instead of recomputing
+        # it -- wrongly rejecting (or accepting) this diagram depending on the
+        # order in which flavors are checked.  Clear the whole ancestor closure
+        # of every wavefunction and amplitude instead.
+        _seen_clear = set()
+        def _clear_flavor_tag(wf):
+            if id(wf) in _seen_clear:
+                return
+            _seen_clear.add(id(wf))
             try:
-                del wfct['flavortag']
-            except:
+                del wf['flavortag']
+            except Exception:
                 pass
+            for m in wf.get('mothers'):
+                _clear_flavor_tag(m)
+        if clear_flavor_tag:
+            for wfct in self['wavefunctions'] + self['amplitudes']:
+                _clear_flavor_tag(wfct)
 
         # In decay-chain diagrams, a wavefunction may have external mothers
         # (wavefunctions with no mothers) that do not appear in
@@ -3716,19 +3735,43 @@ class HelasDiagram(base_objects.PhysicsObject):
         # already in the list.  Amplitudes must be included because decay-chain
         # insertion (insert_decay) can rewrite amplitude mothers to wavefunctions
         # that live outside self['wavefunctions'].
+        #
+        # This walk must also *validate* the reused internal ancestors, not just
+        # tag the external leaves.  In a HELAS-optimised matrix element a diagram
+        # reuses whole sub-trees introduced by earlier diagrams; those internal
+        # wavefunctions are never visited by the main loop below (they are not in
+        # self['wavefunctions']).  Since the aggressive clearing above wiped any
+        # flavortag they may have carried, their flavor validity is only ever
+        # computed here.  If we tagged the leaves but skipped validating the
+        # reused internal wavefunctions, a flavor-violating sub-tree (e.g. a
+        # gluon built from u~ d) would slip through whenever the wavefunction
+        # that consumes it is flavor-blind (e.g. a g g g vertex) — wrongly
+        # accepting the diagram.  So propagate the tag through each reused
+        # internal ancestor and abort as soon as one is invalid.
         def _tag_external_ancestors(wf):
-            """Recursively tag external (no-mothers) wavefunctions."""
+            """Recursively tag external (no-mothers) wavefunctions and validate
+            reused internal ancestors.  Return False if a reused internal
+            wavefunction is flavor-invalid, True otherwise."""
             if len(wf.get('mothers')) == 0:
-                wf.tag_external_flavor(flavor_id, model)
-            else:
-                for m in wf.get('mothers'):
-                    _tag_external_ancestors(m)
+                if not hasattr(wf, 'flavortag'):
+                    wf.tag_external_flavor(flavor_id, model)
+                return True
+            if hasattr(wf, 'flavortag'):
+                # already validated through another path in this call
+                return bool(wf['flavortag'])
+            for m in wf.get('mothers'):
+                if not _tag_external_ancestors(m):
+                    return False
+            # every ancestor is tagged: validate this reused internal wavefunction
+            return bool(wf.propagate_flavor_tag(model, check_valid_input=True))
 
         wf_in_list = set(id(wfct) for wfct in self['wavefunctions'])
         for obj in list(self['wavefunctions']) + list(self['amplitudes']):
             for m in obj.get('mothers'):
                 if id(m) not in wf_in_list:
-                    _tag_external_ancestors(m)
+                    if not _tag_external_ancestors(m):
+                        # a reused internal ancestor is flavor-invalid
+                        return False
 
         if debug:misc.sprint(len(self['wavefunctions']), len(self['amplitudes']), [id(w) for w in self['wavefunctions']], [id(w) for w in self['amplitudes']])
         for wfct in self['wavefunctions']:
@@ -5271,12 +5314,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return allowed_helicity
 
 
-    def get_external_flavors(self, all_perm=False, return_sign=False):
+    def get_external_flavors(self, all_perm=False, return_pdgs=False):
         """If merged particles are used, determine the list of possible flavor that are not zero """
 
         if self['allowed_flavors']:
-            if return_sign:
-                return self['allowed_flavors'], self['allowed_flavors_sign']
+            if return_pdgs:
+                return self['allowed_flavors'], self['allowed_flavors_pdgs']
             else:
                 return self['allowed_flavors']
         pdgs=[]
@@ -5297,7 +5340,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 else:
                     pdg_signs.append(-1 if particle.get_pdg_code() < 0 else 1)
         
-        to_map = collections.defaultdict(lambda:[1])
+        to_map = {}
         model = self.get('processes')[0].get('model')
         for key in model.get('merged_particles'):
             to_map[key] = model.get('merged_particles')[key]
@@ -5329,7 +5372,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # trusted to skip a sibling assignment for decay-chain ME (see below).
         is_decay_chain = bool(self.get('processes')[0].get('decay_chains'))
 
-        for one_flavor in itertools.product(*[to_map[abs(id)] for id in pdgs]):
+        for one_flavor, one_flavor_pdg in zip(
+            itertools.product(*[to_map.get(abs(id), [1]) for id in pdgs]),
+            itertools.product(*[to_map.get(abs(id), [abs(id)]) for id in pdgs]),
+        ):
             # get the actual pdg code (with the sign)
             pdg = [one_flavor[i] if id > 0 else -one_flavor[i] for i,id in enumerate(pdgs)]
 
@@ -5370,7 +5416,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             # do the computation
             if self.check_flavor(one_flavor, self.get('processes')[0].get('model')):
                 flavor_list.append(one_flavor)
-                pdg_list.append([flav * sign for flav, sign in zip(one_flavor, pdg_signs)])
+                pdg_list.append([flav * sign for flav, sign in zip(one_flavor_pdg, pdg_signs)])
                 #misc.sprint('checking flavor:', pdg, one_flavor, True)
                 checked[pdg] = True
                 if allow_triming:
@@ -5386,7 +5432,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 raise self.NoFlavorError("No diagram left after trimming for flavor!")
              
         self['allowed_flavors'] = flavor_list
-        self['allowed_flavors_sign'] = pdg_list
+        self['allowed_flavors_pdgs'] = pdg_list
 
         # Clean up temporary 'flavortag' attributes left on wavefunctions by
         # the last check_flavor call.  These dynamic dict keys are only valid
@@ -5399,43 +5445,75 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             except Exception:
                 pass
 
-        if return_sign:
-            return self['allowed_flavors'], self['allowed_flavors_sign']
+        if return_pdgs:
+            return self['allowed_flavors'], self['allowed_flavors_pdgs']
         else:
             return self['allowed_flavors']
     
-    def get_external_flavors_with_iden(self, return_sign=False):
+    def get_external_flavors_with_iden(self, return_pdgs=False):
         if self['allowed_flavors_with_iden']:
-            if return_sign:
-                return self['allowed_flavors_with_iden'], self['allowed_flavors_with_iden_sign']
+            if return_pdgs:
+                return self['allowed_flavors_with_iden'], self['allowed_flavors_with_iden_pdgs']
             else:
                 return self['allowed_flavors_with_iden']
 
         model = self.get('processes')[0].get('model')
-        all_flv, all_flv_sign = self.get_external_flavors(return_sign=True)
+        all_flv, all_flv_pdgs = self.get_external_flavors(return_pdgs=True)
         map_all_flv = {}
-        map_all_flv_sign = {}
-        for i, (flv1, flv1_sign) in  enumerate(zip(all_flv, all_flv_sign)):
+        map_all_flv_pdgs = {}
+        for i, (flv1, flv1_pdgs) in  enumerate(zip(all_flv, all_flv_pdgs)):
             coup = self.get_coupling_for_flv(flv1, model)
             if coup in map_all_flv:
                 map_all_flv[coup].append(flv1)
-                map_all_flv_sign[coup].append(flv1_sign)
+                map_all_flv_pdgs[coup].append(flv1_pdgs)
             else:
                 map_all_flv[coup] = [flv1]
-                map_all_flv_sign[coup] = [flv1_sign]
+                map_all_flv_pdgs[coup] = [flv1_pdgs]
 
-        self['allowed_flavors_with_iden_sign'] = map_all_flv_sign.values()
+        self['allowed_flavors_with_iden_pdgs'] = map_all_flv_pdgs.values()
         self['allowed_flavors_with_iden'] = map_all_flv.values()
-        if return_sign:
-            return self['allowed_flavors_with_iden'], self['allowed_flavors_with_iden_sign']
+        if return_pdgs:
+            return self['allowed_flavors_with_iden'], self['allowed_flavors_with_iden_pdgs']
         else:
             return self['allowed_flavors_with_iden']
 
     def check_flavor(self, real_pdgs, model, debug=False):
-        """check if any feynman diagram is compatible with the pdg codes replaced by the real_pdgs"""
+        """check if any feynman diagram is compatible with the pdg codes replaced by the real_pdgs
+        """
         HelasDiagram.done_flavor = []
+
+        # remove the information from previous check.
+        # NB: self['wavefunctions'] only lists the wavefunctions *introduced*
+        # by this diagram.  In a HELAS-optimised matrix element a diagram also
+        # reuses wavefunctions (and their sub-trees) introduced by earlier
+        # diagrams; those appear here only as mothers.  If we cleared the tag
+        # for self['wavefunctions'] alone, such shared mothers would keep a
+        # stale flavortag computed for a *different* flavor, and
+        # propagate_flavor_tag would silently reuse it instead of recomputing
+        # it -- wrongly rejecting (or accepting) this diagram depending on the
+        # order in which flavors are checked.  Clear the whole ancestor closure
+        # of every wavefunction and amplitude instead.
+        _seen_clear = set()
+        def _clear_flavor_tag(wf):
+            if id(wf) in _seen_clear:
+                return
+            _seen_clear.add(id(wf))
+            try:
+                del wf['flavortag']
+            except Exception:
+                pass
+            for m in wf.get('mothers'):
+                _clear_flavor_tag(m)
+        
+        for diag in self.get('diagrams'):
+            for wf in diag.get('wavefunctions'):
+                _clear_flavor_tag(wf)
+            for amp in diag.get('amplitudes'):
+                _clear_flavor_tag(amp)
+
+
         for i, diag in enumerate(self.get('diagrams')):
-            if diag.check_flavor(real_pdgs, model, debug=debug):
+            if diag.check_flavor(real_pdgs, model, debug=debug, clear_flavor_tag=False):
                 if debug: misc.sprint('diag', i, 'is ok')
                 return True
         if debug: misc.sprint('no diag for ', real_pdgs)
@@ -5468,7 +5546,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 pass
         for i, diag in enumerate(self.get('diagrams')):
             if not diag.has_flavor:
-                if diag.check_flavor(real_pdgs, model, debug=debug):
+                if diag.check_flavor(real_pdgs, model, debug=debug, clear_flavor_tag=False):
                     diag.has_flavor = True
                     if debug: misc.sprint('diag', i, 'is ok')
                 else:
@@ -5584,32 +5662,38 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if not allowed_flavors:
             return []
 
-        # 1) Per-diagram mask via existing diag.check_flavor primitive.
-        # IMPORTANT: diag.check_flavor only resets the 'flavortag' attribute on
-        # *its own* wavefunctions+amplitudes. propagate_flavor_tag then reads
-        # mothers' flavortag and trusts it as up-to-date. When a diagram's
-        # amplitude has a mother wavefunction owned by a *different* diagram
-        # (cross-diagram dependency via the reuse_outdated_wavefunctions
-        # graph), that mother retains the flavortag from whichever flavor we
-        # last checked it against — producing the WRONG answer here.
+        # 1) Per-diagram mask.
+        # We never call HelasDiagram.check_flavor directly here: that primitive
+        # re-clears (and recomputes) the flavortag of its whole ancestor closure
+        # on every call, which is wasteful when the same wavefunctions and
+        # propagators are shared across diagrams.  Instead we go through the
+        # HelasMatrixElement-level check_flavor_for_all_diagrams, which clears the
+        # flavortag state exactly once per flavor and then tags every compatible
+        # diagram (has_flavor=True), letting diagrams reuse each other's
+        # already-computed flavor information within a given flavor.
         #
-        # Fix: clear flavortag globally before each diagram check so every
-        # check starts from a clean slate. The cost is O(N_wfs) per check,
-        # which is negligible at generation time.
-        all_wfs_amps = self.get_all_wavefunctions() + self.get_all_amplitudes()
+        # check_flavor_for_all_diagrams is cumulative (it skips diagrams already
+        # flagged), so to recover the *per-flavor* active-diagram set we reset the
+        # has_flavor flags before each flavor and read them back afterwards.
         for diag in self.get('diagrams'):
-            diag_mask = 0
-            for flav_idx, flavor in enumerate(allowed_flavors):
-                for wfct in all_wfs_amps:
-                    try:
-                        del wfct['flavortag']
-                    except Exception:
-                        pass
-                if diag.check_flavor(flavor, model):
-                    diag_mask |= (1 << flav_idx)
-            diag['flavor_mask'] = diag_mask
+            diag['flavor_mask'] = 0
+
+        for flav_idx, flavor in enumerate(allowed_flavors):
+            self.reset_has_flavor()
+            self.check_flavor_for_all_diagrams(flavor, model)
+            bit = 1 << flav_idx
+            for diag in self.get('diagrams'):
+                if diag.has_flavor:
+                    diag['flavor_mask'] |= bit
+
+        # The per-flavor loop above leaves has_flavor reflecting only the last
+        # flavor.  This is not a trimming pass, so restore has_flavor to the
+        # union state (a diagram is active iff it contributes to some flavor) to
+        # keep it consistent for any later remove_diagrams_without_flavor call.
+        for diag in self.get('diagrams'):
+            diag.has_flavor = bool(diag['flavor_mask'])
             for amp in diag.get('amplitudes'):
-                amp['flavor_mask'] = diag_mask
+                amp['flavor_mask'] = diag['flavor_mask']
 
         # 2) Initialise every wavefunction mask to 0, then OR each amplitude's
         # mask into all reachable ancestor wavefunctions via the 'mothers'

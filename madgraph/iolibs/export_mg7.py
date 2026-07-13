@@ -18,12 +18,13 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         )
         self.diagrams = self.amplitude.get("diagrams")
         self.helas_diagrams = self.matrix_element.get("diagrams")
-        self.all_flavors, self.all_flavors_sign = self.matrix_element.get_external_flavors_with_iden(return_sign=True)
+        self.all_flavors, self.all_flavors_pdgs = self.matrix_element.get_external_flavors_with_iden(return_pdgs=True)
         self.process = self.amplitude.get("process")
         self.legs = self.process.get("legs_with_decays")
         self.color_basis = self.matrix_element.get("color_basis")
         self.set_topology()
         self.set_flavor_indices()
+        self.set_active_flavors()
         self.set_channels_colors_map()
 
     def generate_process_files(self):
@@ -45,7 +46,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
     def set_flavor_indices(self):
         self.all_flavors_same_initial = []
         self.all_flavors_indices = []
-        for i, flavors in enumerate(self.all_flavors_sign):
+        for i, flavors in enumerate(self.all_flavors_pdgs):
             flv_dict = defaultdict(list)
             for flv in flavors:
                 flv_dict[(flv[0], flv[1])].append(flv)
@@ -54,6 +55,19 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 indices.append(len(self.all_flavors_same_initial))
                 self.all_flavors_same_initial.append((i, flv))
             self.all_flavors_indices.append(indices)
+
+    def set_active_flavors(self):
+        self.active_flavors = [[] for d in self.diagrams]
+        for indices, flavors in zip(self.all_flavors_indices, self.all_flavors):
+            self.matrix_element.reset_has_flavor()
+            diag_mask = self.matrix_element.check_flavor_for_all_diagrams(
+                list(flavors[0]), self.model
+            )
+            for active_flavors, diag in zip(
+                self.active_flavors, self.matrix_element.get('diagrams')
+            ):
+                if diag.has_flavor:
+                    active_flavors.extend(indices)
 
     def set_channels_colors_map(self):
         if self.color_basis:
@@ -74,24 +88,18 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 continue
 
             active_colors = diag_jamps[diagram_index] if self.color_basis else [0]
+            active_flavors = self.active_flavors[diagram_index]
             if sym_index < 0:
                 self.channels[self.channel_indices[-sym_index - 1]]["diagrams"].append(
                     {
                         "diagram": diagram_index,
                         "permutation": sym_perm,
+                        "active_flavors": active_flavors,
                         "active_colors": active_colors,
                     }
                 )
                 self.channel_indices.append(-1)
                 continue
-
-            helas_diagram = self.helas_diagrams[diagram_index]
-            active_flavors = [
-                flav_id
-                for indices, flavors in zip(self.all_flavors_indices, self.all_flavors)
-                if helas_diagram.check_flavor([flv for flv in flavors[0]], self.model)
-                for flav_id in indices
-            ]
 
             diagram = self.diagrams[diagram_index]
             vertices = []
@@ -123,11 +131,11 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     "propagators": propagators,
                     "vertices": vertices,
                     "on_shell_propagators": on_shell_propagators,
-                    "active_flavors": active_flavors,
                     "diagrams": [
                         {
                             "diagram": diagram_index,
                             "permutation": sym_perm,
+                            "active_flavors": active_flavors,
                             "active_colors": active_colors,
                         }
                     ],
@@ -187,8 +195,16 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     sign = -1 if part_id < 0 else 1
                     pdg_color_types[sign * pdg] = sign * self.model.get_particle(part_id).get_color()
 
+        has_mirror_all = self.matrix_element.get("has_mirror_process")
+        same_initial_multiparticle = self.incoming[0] == self.incoming[1]
         flavors = [
-            {"index": index, "options": options}
+            {
+                "index": index,
+                "options": options,
+                "mirror": has_mirror_all or (
+                    same_initial_multiparticle and options[0][0] != options[0][1]
+                )
+            }
             for index, options in self.all_flavors_same_initial
         ]
         return {
@@ -202,5 +218,4 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             "pdg_color_types": pdg_color_types,
             "diagram_count": len(self.diagrams),
             "helicities": list(self.matrix_element.get_helicity_matrix()),
-            "has_mirror_process": self.matrix_element.get("has_mirror_process"),
         }
