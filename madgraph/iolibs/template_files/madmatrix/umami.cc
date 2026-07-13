@@ -319,7 +319,7 @@ extern "C"
         case UMAMI_IN_CHANNEL_INDEX:
           channel_in = static_cast<const unsigned int*>( input );
           break;
-        case UMAMI_IN_INVARIANT_MASS_SQ:
+        case UMAMI_IN_VIRTUALITY:
           mij_in = static_cast<const double*>( input );
           break;
         default:

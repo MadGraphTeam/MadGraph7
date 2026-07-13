@@ -123,10 +123,12 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         call_arg = aloha_writers.WriteALOHA.define_argument_list(self, couplings)
         if self.use_fixp2():
-            # FIXP2 is a per-event quantity (the invariant mass of the offshell
-            # current for that phase-space point), so it is a SIMD vector. It is
-            # typed fptype_invmass_sv (the offshell-propagator virtuality precision,
-            # default double) so the propagator denominator keeps the m_ij precision.
+            # FIXP2 is now the real propagator VIRTUALITY p^2 - M^2 of this offshell current
+            # for that phase-space point, supplied by the caller (the phase-space integrator)
+            # so that the p^2 - M^2 cancellation is avoided. It is a per-event SIMD quantity
+            # typed fptype_invmass_sv (offshell-propagator precision, default double); when
+            # non-zero the ME forms the denominator (p^2 - M^2) + i*M*W from it and the known
+            # M, W instead of recomputing p^2 - M^2 from the momenta.
             extra = ('invmass_v', 'FIXP2')
             call_arg.append(extra)
             self.declaration.add(extra)
@@ -710,12 +712,19 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         # NB: fptype_invmass is scalar-only (cppnone/CUDA), so the scalar ternary
                         # is per-event correct. MADARITH double-expansion is not handled here.
                         mydict['zero'] = self.change_number_format(0)
-                        mydict['massterm'] = 'static_cast<fptype_invmass>( M%(i)s ) * ( static_cast<fptype_invmass>( M%(i)s ) - cxtype_invmass( 0, 1 ) * static_cast<fptype_invmass>( W%(i)s ) )' % mydict
+                        # FIXP2 now carries the real virtuality p^2 - M^2; the propagator
+                        # denominator is (p^2 - M^2) + i*M*W = FIXP2 + iMW (only the known
+                        # width term is added, so the p^2 - M^2 cancellation is avoided).
+                        mydict['imw'] = 'cxtype_invmass( 0, 1 ) * static_cast<fptype_invmass>( M%(i)s ) * static_cast<fptype_invmass>( W%(i)s )' % mydict
                         mydict['denomnorm'] = '%(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom_sv>(M%(i)s) * ( static_cast<fptype_denom_sv>(M%(i)s) - cId * static_cast<fptype_denom_sv>(W%(i)s) ) )' % mydict
                         out.write('    const cxtype_denom_sv cId( 0., 1. );\n') # OM
+                        if os.environ.get('MADMATRIX_VIRT_DEBUG', '') == '1':
+                            mydict['virtcl'] = '( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) ) - static_cast<fptype_invmass>( M%(i)s ) * static_cast<fptype_invmass>( M%(i)s )' % mydict
+                            out.write('    // VIRT_DEBUG: check the supplied virtuality p^2-M^2 against the momenta-based value to ~8 digits\n') # FS
+                            out.write('    if( FIXP2 != %(zero)s ) { const fptype_invmass FIXP2cl = %(virtcl)s; assert( std::fabs( FIXP2 - FIXP2cl ) <= 1.e-8 * ( std::fabs( FIXP2cl ) + 1.e-30 ) ); }\n' % mydict) # FS
                         out.write('    %(declnamedenom)s = ( FIXP2 == %(zero)s )\n' % mydict) # OM
-                        out.write('      ? ( %(denomnorm)s )\n' % mydict) # OM (no m_ij: fptype_denom)
-                        out.write('      : static_cast<cxtype_denom_sv>( %(invnum)s / ( FIXP2 - ( %(massterm)s ) ) );\n' % mydict) # OM (m_ij: fptype_invmass)
+                        out.write('      ? ( %(denomnorm)s )\n' % mydict) # OM (no virtuality: p^2 from momenta)
+                        out.write('      : static_cast<cxtype_denom_sv>( %(invnum)s / ( FIXP2 + ( %(imw)s ) ) );\n' % mydict) # OM/FS (virtuality: (p^2-M^2)+iMW)
                     else:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
                         out.write('    const cxtype_denom_sv cId( 0., 1. );\n') # AV
@@ -742,11 +751,14 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         # in fptype_invmass from FIXP2, then down-cast), but the mass term is the
                         # complex M*M.
                         mydict['zero'] = self.change_number_format(0)
-                        mydict['massterm'] = 'static_cast<cxtype_invmass>( M%(i)s ) * static_cast<cxtype_invmass>( M%(i)s )' % mydict
+                        # Complex-mass scheme (UNTESTED for the virtuality path): FIXP2 carries the
+                        # real part p^2 - Re(M^2); the ME re-adds the known -i*Im(M^2) so the full
+                        # complex denominator p^2 - M^2 = FIXP2 - i*Im(M^2) is recovered.
+                        mydict['imm2'] = 'cxtype_invmass( 0, 1 ) * cximag( static_cast<cxtype_invmass>( M%(i)s ) * static_cast<cxtype_invmass>( M%(i)s ) )' % mydict
                         mydict['denomnorm'] = '%(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] *dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - ( static_cast<fptype_denom>(M%(i)s) * static_cast<fptype_denom>(M%(i)s) ) )' % mydict
                         out.write('    %(declnamedenom)s = ( FIXP2 == %(zero)s )\n' % mydict) # OM
-                        out.write('      ? ( %(denomnorm)s )\n' % mydict) # OM (no m_ij: fptype_denom)
-                        out.write('      : static_cast<cxtype_denom_sv>( %(invnum)s / ( FIXP2 - ( %(massterm)s ) ) );\n' % mydict) # OM (m_ij: fptype_invmass)
+                        out.write('      ? ( %(denomnorm)s )\n' % mydict) # OM (no virtuality: p^2 from momenta)
+                        out.write('      : static_cast<cxtype_denom_sv>( %(invnum)s / ( FIXP2 - ( %(imm2)s ) ) );\n' % mydict) # OM/FS (virtuality: p^2-Re(M^2)-i*Im(M^2))
                     else:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] *dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - ( static_cast<fptype_denom>(M%(i)s) * static_cast<fptype_denom>(M%(i)s) ) );\n' % mydict) # AV

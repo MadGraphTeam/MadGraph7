@@ -321,7 +321,7 @@ namespace
     const std::vector<unsigned int>& flvVec,
     std::vector<double>& umamiMEs,
     const double* umamiMij = nullptr // optional: per-event m_ij (FIXP2). If non-null, also pass
-                                     // UMAMI_IN_INVARIANT_MASS_SQ so the ME uses the m_ij path.
+                                     // UMAMI_IN_VIRTUALITY so the ME uses the m_ij path.
 #endif
   )
   {
@@ -334,8 +334,8 @@ namespace
     UmamiStatus st = umami_matrix_element(
       handle, nevt, nevt, 0, 2, in_keys, inputs, 1, out_keys, outputs );
 #else
-    const unsigned int nIn = ( umamiMij != nullptr ) ? 3 : 2; // add UMAMI_IN_INVARIANT_MASS_SQ if m_ij given
-    UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_INVARIANT_MASS_SQ };
+    const unsigned int nIn = ( umamiMij != nullptr ) ? 3 : 2; // add UMAMI_IN_VIRTUALITY if m_ij given
+    UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_VIRTUALITY };
     const void* inputs[3] = { umamiMomenta.data(), flvVec.data(), umamiMij };
     void* outputs[1] = { umamiMEs.data() };
     UmamiStatus st = umami_matrix_element(
@@ -406,7 +406,7 @@ namespace
       // External 0-based channel index; must be uniform within a SIMD page (#898).
       for( std::size_t ievt = 0; ievt < nevt; ++ievt ) chanIdx[ievt] = c;
 
-      UmamiInputKey in_keys[4] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_CHANNEL_INDEX, UMAMI_IN_INVARIANT_MASS_SQ };
+      UmamiInputKey in_keys[4] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_CHANNEL_INDEX, UMAMI_IN_VIRTUALITY };
       const void* inputs[4] = { umamiMomenta.data(), flvVec.data(), chanIdx.data(), umamiMij };
       const unsigned int nIn = ( umamiMij != nullptr ) ? 4 : 3;
       UmamiOutputKey out_keys[2] = { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_DIAGRAM_AMP2 };
@@ -723,7 +723,7 @@ namespace
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt );
-    // Buffers for the UMAMI_IN_INVARIANT_MASS_SQ self-test (see below)
+    // Buffers for the UMAMI_IN_VIRTUALITY self-test (see below)
     std::vector<double> umamiMEs2( nevt );
     std::vector<double> umamiMij( (std::size_t)CPPProcess::npar * CPPProcess::npar * nevt );
     // Buffers for the UMAMI_IN_CHANNEL_INDEX example/self-test (see below)
@@ -804,7 +804,7 @@ namespace
 #endif
 
 #ifndef MGONGPUCPP_GPUIMPL
-    // Self-test of the UMAMI_IN_INVARIANT_MASS_SQ (FIXP2) path on the shared PS point.
+    // Self-test of the UMAMI_IN_VIRTUALITY (FIXP2) path on the shared PS point.
     // First compute a reference ME from the momenta alone, then fill
     // m_ij[i][j] = ( eta_i p_i + eta_j p_j )^2 from the SAME momenta (eta=-1 for initial
     // legs, +1 for final legs, i.e. the all-outgoing convention used by the
@@ -839,7 +839,7 @@ namespace
           }
         }
       }
-      UmamiInputKey in_keys2[2] = { UMAMI_IN_MOMENTA, UMAMI_IN_INVARIANT_MASS_SQ };
+      UmamiInputKey in_keys2[2] = { UMAMI_IN_MOMENTA, UMAMI_IN_VIRTUALITY };
       const void* inputs2[2] = { umamiMomenta.data(), umamiMij.data() };
       UmamiOutputKey out_keys2[1] = { UMAMI_OUT_MATRIX_ELEMENT };
       void* outputs2[1] = { umamiMEs2.data() };
@@ -857,7 +857,7 @@ namespace
         const double denom = std::max( std::abs( a ), std::abs( b ) );
         if( denom > 0. && std::abs( a - b ) / denom > 1e-6 )
         {
-          std::cerr << "ERROR! UMAMI_IN_INVARIANT_MASS_SQ self-test mismatch at ievt=" << ievt
+          std::cerr << "ERROR! UMAMI_IN_VIRTUALITY self-test mismatch at ievt=" << ievt
                     << ": ME(no m_ij)=" << a << " ME(m_ij)=" << b << std::endl;
           umami_free( umami_handle );
           return 4;
@@ -882,7 +882,7 @@ namespace
       if( mgOnGpu::hostChannel2iconfig[chan] <= 0 ) continue; // skip channels with no associated iconfig
       for( std::size_t ievt = 0; ievt < nevt; ++ievt )
         umamiChannel[ievt] = chan; // external 0-based channel index (must be uniform within a SIMD page)
-      UmamiInputKey in_keysC[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_CHANNEL_INDEX, UMAMI_IN_INVARIANT_MASS_SQ };
+      UmamiInputKey in_keysC[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_CHANNEL_INDEX, UMAMI_IN_VIRTUALITY };
       const void* inputsC[3] = { umamiMomenta.data(), umamiChannel.data(), umamiMij.data() };
       UmamiOutputKey out_keysC[1] = { UMAMI_OUT_MATRIX_ELEMENT };
       void* outputsC[1] = { umamiMEsChan.data() };
@@ -1059,7 +1059,7 @@ namespace
     HostBufferWeights hstWeights( nevt );
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
-    // m_ij (UMAMI_IN_INVARIANT_MASS_SQ / FIXP2) input, so the ME is computed via the m_ij path
+    // m_ij (UMAMI_IN_VIRTUALITY / FIXP2) input, so the ME is computed via the m_ij path
     std::vector<double> umamiMij( (std::size_t)CPPProcess::npar * CPPProcess::npar * nevt );
     std::vector<unsigned int> flvVec( nevt, flavorID );
     // Per-event multichannel buffers: nChannels weighted MEs + weights, the combined
@@ -1224,7 +1224,7 @@ namespace
 #ifndef MGONGPUCPP_GPUIMPL
       // Build the per-event m_ij[i][j] = ( eta_i p_i + eta_j p_j )^2 from the momenta (eta=-1
       // initial / +1 final, the all-outgoing convention) and pass it to run_umami below, so the
-      // matrix element is computed through the m_ij (UMAMI_IN_INVARIANT_MASS_SQ / FIXP2) path.
+      // matrix element is computed through the m_ij (UMAMI_IN_VIRTUALITY / FIXP2) path.
       for( std::size_t ievt = 0; ievt < nevt; ++ievt )
         for( int i = 0; i < CPPProcess::npar; ++i )
         {
