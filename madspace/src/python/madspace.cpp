@@ -1237,8 +1237,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
-            py::arg("discrete_before") = std::monostate{},
-            py::arg("discrete_after") = std::monostate{},
+            py::arg("discrete_sym") = std::monostate{},
+            py::arg("discrete_flavor") = std::monostate{},
             py::arg("pdf_grid") = std::nullopt,
             py::arg("running_coupling") = std::nullopt,
             py::arg("energy_scale") = std::nullopt,
@@ -1262,8 +1262,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("mapping", &Integrand::mapping)
         .def("diff_xs", &Integrand::diff_xs)
         .def("adaptive_map", &Integrand::adaptive_map)
-        .def("discrete_before", &Integrand::discrete_before)
-        .def("discrete_after", &Integrand::discrete_after)
+        .def("discrete_sym", &Integrand::discrete_sym)
+        .def("discrete_flavor", &Integrand::discrete_flavor)
         .def("energy_scale", &Integrand::energy_scale)
         .def("prop_chan_weights", &Integrand::prop_chan_weights)
         .def("chan_weight_net", &Integrand::chan_weight_net)

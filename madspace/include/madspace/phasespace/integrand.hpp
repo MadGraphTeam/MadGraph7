@@ -43,8 +43,8 @@ public:
         const PhaseSpaceMapping& mapping,
         const DifferentialCrossSection& diff_xs,
         const AdaptiveMapping& adaptive_map = std::monostate{},
-        const AdaptiveDiscrete& discrete_before = std::monostate{},
-        const AdaptiveDiscrete& discrete_after = std::monostate{},
+        const AdaptiveDiscrete& discrete_sym = std::monostate{},
+        const AdaptiveDiscrete& discrete_flavor = std::monostate{},
         const std::optional<PdfGrid>& pdf_grid = std::nullopt,
         const std::optional<RunningCoupling>& running_coupling = std::nullopt,
         const std::optional<EnergyScale>& energy_scale = std::nullopt,
@@ -88,8 +88,8 @@ public:
     const PhaseSpaceMapping& mapping() const { return _mapping; }
     const DifferentialCrossSection& diff_xs() const { return _diff_xs; }
     const AdaptiveMapping& adaptive_map() const { return _adaptive_map; }
-    const AdaptiveDiscrete& discrete_before() const { return _discrete_before; }
-    const AdaptiveDiscrete& discrete_after() const { return _discrete_after; }
+    const AdaptiveDiscrete& discrete_sym() const { return _discrete_sym; }
+    const AdaptiveDiscrete& discrete_flavor() const { return _discrete_flavor; }
     const std::optional<EnergyScale>& energy_scale() const { return _energy_scale; }
     const std::optional<PropagatorChannelWeights>& prop_chan_weights() const {
         return _prop_chan_weights;
@@ -115,8 +115,8 @@ private:
     PhaseSpaceMapping _mapping;
     DifferentialCrossSection _diff_xs;
     AdaptiveMapping _adaptive_map;
-    AdaptiveDiscrete _discrete_before;
-    AdaptiveDiscrete _discrete_after;
+    AdaptiveDiscrete _discrete_sym;
+    AdaptiveDiscrete _discrete_flavor;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
     std::optional<RunningCoupling> _running_coupling;
@@ -209,8 +209,8 @@ private:
     ) const override;
 
     Integrand::AdaptiveMapping _adaptive_map;
-    Integrand::AdaptiveDiscrete _discrete_before;
-    Integrand::AdaptiveDiscrete _discrete_after;
+    Integrand::AdaptiveDiscrete _discrete_sym;
+    Integrand::AdaptiveDiscrete _discrete_flavor;
     std::size_t _permutation_count;
     std::size_t _flavor_count;
     bool _has_pdf_prior;

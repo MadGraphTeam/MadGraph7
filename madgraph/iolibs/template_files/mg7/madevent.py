@@ -101,8 +101,8 @@ def format_time(t: int, centi: bool = False):
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
     adaptive_mapping: ms.Flow | ms.VegasMapping
-    discrete_before: ms.DiscreteSampler | ms.DiscreteFlow | None
-    discrete_after: ms.DiscreteSampler | ms.DiscreteFlow | None
+    discrete_sym: ms.DiscreteSampler | ms.DiscreteFlow | None
+    discrete_flavor: ms.DiscreteSampler | ms.DiscreteFlow | None
     channel_weight_indices: list[int] | None
     name: str
     active_flavors: list[int]
@@ -1064,14 +1064,14 @@ class MadgraphSubprocess:
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
                     prefix += f".subchan{topo_index}"
-                discrete_before, discrete_after = self.build_discrete(
+                discrete_sym, discrete_flavor = self.build_discrete(
                     len(chan_permutations), len(self.meta["flavors"]), prefix
                 )
                 channels.append(Channel(
                     phasespace_mapping = mapping,
                     adaptive_mapping = self.build_vegas(mapping, prefix),
-                    discrete_before = discrete_before,
-                    discrete_after = discrete_after,
+                    discrete_sym = discrete_sym,
+                    discrete_flavor = discrete_flavor,
                     channel_weight_indices = indices,
                     name = f"{channel_id}",
                     active_flavors = active_flavors,
@@ -1116,14 +1116,14 @@ class MadgraphSubprocess:
             leptonic=self.process.leptonic,
         )
         prefix = f"subproc{self.subproc_id}.flat"
-        discrete_before, discrete_after = self.build_discrete(
+        discrete_sym, discrete_flavor = self.build_discrete(
             1, len(self.meta["flavors"]), prefix
         )
         channel = Channel(
             phasespace_mapping = mapping,
             adaptive_mapping = self.build_vegas(mapping, prefix),
-            discrete_before = discrete_before,
-            discrete_after = discrete_after,
+            discrete_sym = discrete_sym,
+            discrete_flavor = discrete_flavor,
             channel_weight_indices = [0],
             name = "F",
             active_flavors = [],
@@ -1176,8 +1176,8 @@ class MadgraphSubprocess:
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
                 adaptive_mapping = channel.adaptive_mapping,
-                discrete_before = channel.discrete_before,
-                discrete_after = channel.discrete_after,
+                discrete_sym = channel.discrete_sym,
+                discrete_flavor = channel.discrete_flavor,
                 channel_weight_indices = list(range(
                     channel_index, channel_index + perm_count
                 )),
@@ -1190,8 +1190,8 @@ class MadgraphSubprocess:
         channels.append(Channel(
             phasespace_mapping = flat_channel.phasespace_mapping,
             adaptive_mapping = flat_channel.adaptive_mapping,
-            discrete_before = flat_channel.discrete_before,
-            discrete_after = flat_channel.discrete_after,
+            discrete_sym = flat_channel.discrete_sym,
+            discrete_flavor = flat_channel.discrete_flavor,
             channel_weight_indices = [len(symfact)],
             name = flat_channel.name,
             active_flavors = flat_channel.active_flavors,
@@ -1220,21 +1220,7 @@ class MadgraphSubprocess:
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
             cond_dim = 0
 
-            discrete_before = channel.discrete_before
-            if discrete_before is not None:
-                perm_count = channel.phasespace_mapping.channel_count()
-                discrete_before = ms.DiscreteFlow(
-                    option_counts=[perm_count],
-                    prefix=f"{prefix}.discrete_flow_before",
-                    dims_with_prior=[],
-                    condition_dim=0,
-                    subnet_hidden_dim=madnis_args["discrete_hidden_dim"],
-                    subnet_layers=madnis_args["discrete_layers"],
-                    subnet_activation=self.activation(madnis_args["discrete_activation"]),
-                )
-                discrete_before.initialize_globals(self.process.contexts[0])
-                cond_dim += perm_count
-
+            # The adaptive map runs before discrete_sym, so it is unconditioned.
             flow_dim = channel.phasespace_mapping.random_dim()
             flow = ms.Flow(
                 input_dim=flow_dim,
@@ -1254,24 +1240,40 @@ class MadgraphSubprocess:
                 )
             cond_dim += flow_dim
 
-            discrete_after = channel.discrete_after
-            if discrete_after is not None:
-                discrete_after = ms.DiscreteFlow(
+            # discrete_sym runs after the adaptive map, so it can condition on its latent.
+            discrete_sym = channel.discrete_sym
+            if discrete_sym is not None:
+                perm_count = channel.phasespace_mapping.channel_count()
+                discrete_sym = ms.DiscreteFlow(
+                    option_counts=[perm_count],
+                    prefix=f"{prefix}.discrete_flow_sym",
+                    dims_with_prior=[],
+                    condition_dim=cond_dim,
+                    subnet_hidden_dim=madnis_args["discrete_hidden_dim"],
+                    subnet_layers=madnis_args["discrete_layers"],
+                    subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                )
+                discrete_sym.initialize_globals(self.process.contexts[0])
+                cond_dim += perm_count
+
+            discrete_flavor = channel.discrete_flavor
+            if discrete_flavor is not None:
+                discrete_flavor = ms.DiscreteFlow(
                     option_counts=[len(self.meta["flavors"])],
-                    prefix=f"{prefix}.discrete_flow_after",
+                    prefix=f"{prefix}.discrete_flow_flavor",
                     dims_with_prior=[0],
                     condition_dim=cond_dim,
                     subnet_hidden_dim=madnis_args["discrete_hidden_dim"],
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_after.initialize_globals(self.process.contexts[0])
+                discrete_flavor.initialize_globals(self.process.contexts[0])
 
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
                 adaptive_mapping = flow,
-                discrete_before = discrete_before,
-                discrete_after = discrete_after,
+                discrete_sym = discrete_sym,
+                discrete_flavor = discrete_flavor,
                 channel_weight_indices = channel.channel_weight_indices,
                 name = channel.name,
                 active_flavors = channel.active_flavors,
@@ -1305,24 +1307,24 @@ class MadgraphSubprocess:
     ) -> tuple[ms.DiscreteSampler | None, ms.DiscreteSampler | None]:
         is_adaptive = self.process.run_card["phasespace"]["adaptive_symmetry_sampling"]
         if is_adaptive and permutation_count > 1:
-            discrete_before = ms.DiscreteSampler(
-                [permutation_count], f"{prefix}.discrete_before"
+            discrete_sym = ms.DiscreteSampler(
+                [permutation_count], f"{prefix}.discrete_sym"
             )
             for context in self.process.contexts:
-                discrete_before.initialize_globals(context)
+                discrete_sym.initialize_globals(context)
         else:
-            discrete_before = None
+            discrete_sym = None
 
         if flavor_count > 1:
-            discrete_after = ms.DiscreteSampler(
-                [flavor_count], f"{prefix}.discrete_after", [0]
+            discrete_flavor = ms.DiscreteSampler(
+                [flavor_count], f"{prefix}.discrete_flavor", [0]
             )
             for context in self.process.contexts:
-                discrete_after.initialize_globals(context)
+                discrete_flavor.initialize_globals(context)
         else:
-            discrete_after = None
+            discrete_flavor = None
 
-        return discrete_before, discrete_after
+        return discrete_sym, discrete_flavor
 
     def build_cwnet(self, channel_count: int) -> ms.ChannelWeightNetwork:
         madnis_args = self.process.run_card["madnis"]
@@ -1412,8 +1414,8 @@ class MadgraphSubprocess:
                 channel.phasespace_mapping,
                 cross_section,
                 channel.adaptive_mapping,
-                channel.discrete_before,
-                channel.discrete_after,
+                channel.discrete_sym,
+                channel.discrete_flavor,
                 pdf_grid,
                 self.process.running_coupling,
                 self.scale,

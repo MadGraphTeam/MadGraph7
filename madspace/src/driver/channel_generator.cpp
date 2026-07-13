@@ -120,8 +120,8 @@ ChannelEventGenerator::ChannelEventGenerator(
         },
         [](auto sampler) {}
     };
-    std::visit(add_names, integrand.discrete_before());
-    std::visit(add_names, integrand.discrete_after());
+    std::visit(add_names, integrand.discrete_sym());
+    std::visit(add_names, integrand.discrete_flavor());
     std::optional<DiscreteOptimizer> discrete_optimizer;
     RuntimePtr discrete_histogram = nullptr;
     if (prob_names.size() > 0) {
