@@ -876,6 +876,18 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
                 );
             }
             break;
+        case UMAMI_IN_VIRTUALITY:
+            // flattened (npar x npar) real virtuality matrix v[i][j] = p^2 - M^2
+            if (input_type.dtype != DataType::dt_float ||
+                input_type.shape.size() != 1) {
+                throw std::invalid_argument(
+                    std::format(
+                        "matrix_element, argument {}: expected batch of float arrays",
+                        i + 1
+                    )
+                );
+            }
+            break;
         default:
             throw std::invalid_argument(
                 std::format(
