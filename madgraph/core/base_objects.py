@@ -2624,6 +2624,40 @@ class FLV_Coupling(PhysicsObject):
         """return all couplings"""
         return misc.make_unique(list(self['flavors'].values()))
 
+    @staticmethod
+    def get_partner_indices(key):
+        """Return the (k1, k2) partner flavor indices for one flavor key.
+
+        k1 is the flavor index of the first fermion (F1) of the vertex and k2
+        that of the second (F2); the consuming ALOHA routine fills
+        PARTNER(k1)=k2, PARTNER2(k2)=k1 and indexes VAL by k1.  For a vertex
+        with two merged fermions both indices come straight from the key.  For
+        a single merged fermion the unmerged partner is assigned flavor index
+        1, and which fermion (F1 or F2) carries the merged leg is decided by the
+        position of the non-zero entry in the key: the merged leg is F1 iff it
+        is the first entry, otherwise it is F2 (so PARTNER is filled in the
+        F1->F2 direction expected by the routine).
+
+        This is the single source of truth shared by every backend (Fortran,
+        C++, Python) so their FLV_COUPLING tables stay consistent -- keeping the
+        merged leg's position is what makes a single-merged-leg vertex such as
+        `w+ ta+ vt~` (unmerged tau, merged neutrino) work identically in all of
+        them.
+        """
+        nonzero = [i for i in key if i != 0]
+        if len(nonzero) == 2:
+            return nonzero[0], nonzero[1]
+        elif len(nonzero) == 1:
+            k = nonzero[0]
+            if key[0] == k:
+                return k, 1
+            else:
+                return 1, k
+        raise MadGraph5Error(
+            'Flavor coupling with %d merged legs is not supported (key=%s); '
+            'only one or two merged flavor legs are handled.'
+            % (len(nonzero), repr(key)))
+
     def __str__(self):
 
         max_flav = max([max([i for i in k]) for k in  self['flavors']])

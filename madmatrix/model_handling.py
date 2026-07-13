@@ -954,17 +954,20 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # code. See docs/mg7_merged_flavor_mssm_design.md.
         self._assert_flv_couplings_supported(params)
 
+        from madgraph.core import base_objects
         def_flv = []
         # For each parameter, write name = expr;
         for coupl in params:
             for key, c in coupl.flavors.items():
-                nonzero = [i for i in key if i != 0]
-                if len(nonzero) == 2:
-                    k1, k2 = nonzero
-                else:
-                    # single merged leg: unmerged partner has flavor index 1
-                    # (mirror Fortran flavor_couplings.f)
-                    k1 = nonzero[0]; k2 = 1
+                # Same (k1, k2) derivation as the Fortran/C++/Python backends:
+                # for a single merged leg the unmerged partner is flavor index 1
+                # and the PARTNER/PARTNER2 direction depends on which fermion
+                # carries the merged leg (see FLV_Coupling.get_partner_indices).
+                # Using this shared helper keeps mg7 consistent with the others
+                # -- previously it always used (k, 1), which transposed the
+                # table for a single merged leg not in the first position (e.g.
+                # the merged neutrino of `w+ ta+ vt~`).
+                k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
                 def_flv.append('%(name)s.partner1[%(in)i] = %(out)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
                 def_flv.append('%(name)s.partner2[%(out)i] = %(in)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
                 def_flv.append('%(name)s.value[%(in)i] = &%(coupl)s;' % {'name': coupl.name,'in': k1-1, 'coupl': c})

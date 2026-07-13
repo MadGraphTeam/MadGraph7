@@ -1596,18 +1596,33 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 self[tag_name] = flav[index]
                 return return_fct(self, True, model, tag_name)
             else:
-                # need to set the flavor for a valid combination
-                pdg, flav_input = [(w.get('pdg_code'), w.get(tag_name)) for i, w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')][0] 
-                pdg_order = [p.get_pdg_code() for  p in vertex.get('particles')]
-                pos_input = pdg_order.index(pdg)
-                pos_output = pdg_order.index(-pdg_out)
-                for key in coup.get('flavors'):
-                    if key[pos_input] == flav_input:
-                        self[tag_name] = key[pos_output]
-                        return return_fct(self, True, model, tag_name)
+                merged_input = [(w.get('pdg_code'), w.get(tag_name)) for i, w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')]
+                if merged_input:
+                    pdg, flav_input = merged_input[0]
+                    pdg_order = [p.get_pdg_code() for  p in vertex.get('particles')]
+                    pos_input = pdg_order.index(pdg)
+                    pos_output = pdg_order.index(-pdg_out)
+                    for key in coup.get('flavors'):
+                        if key[pos_input] == flav_input:
+                            self[tag_name] = key[pos_output]
+                            return return_fct(self, True, model, tag_name)
+                    else:
+                        self[tag_name] = 0
+                        return return_fct(self, False, model, tag_name)
                 else:
-                    self[tag_name] = 0
-                    return return_fct(self, False, model, tag_name)
+                    # This happens for case like ta+ w- > vt
+                    # since ta+ is not merged but the neutrino is, 
+                    # for this example, we need to find the flavor of the neutrino
+                    # A single flavor should be valid from the coupling.
+                    if len(coup.get('flavors')) != 1:
+                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                    flv_coup = next(iter(coup.get('flavors').keys()))
+                    flav_output = [ f for f in flv_coup if f != 0]
+                    if len(flav_output) != 1:
+                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                    self[tag_name] = flav_output[0]
+                    return return_fct(self, True, model, tag_name)
+
         elif self.get('interaction_id') == 0:
             # this is a case where the current flavor is trivial (the pdg is not a merged one)
             # and there is no interaction, so no need to check the validity of the input
@@ -1665,7 +1680,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
             return None
         
         pdg_out = self.get('pdg_code')
-        if pdg_out in model.get('merged_particles'):
+        misc.sprint(pdg_out, self[tag_name], [p.get_pdg_code() for p in vertex.get('particles')])
+        if abs(pdg_out) in model.get('merged_particles'):
             pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')]             
             index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_vertex) if abs(pdg) in model.get('merged_particles')][0]
             merge_flavor = self[tag_name]
