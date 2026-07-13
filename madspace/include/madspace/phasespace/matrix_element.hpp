@@ -16,7 +16,8 @@ public:
         random_diagram_in,
         helicity_in,
         channel_in,
-        diagram_in
+        diagram_in,
+        virtuality_in // per-event real virtuality matrix v[i][j] = p^2 - M^2 (UMAMI_IN_VIRTUALITY)
     };
 
     enum MatrixElementOutput {

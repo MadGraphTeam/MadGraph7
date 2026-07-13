@@ -53,6 +53,12 @@ MatrixElement::MatrixElement(
                 case channel_in:
                     arg_types.push_back("channel", batch_int);
                     break;
+                case virtuality_in:
+                    // real virtuality matrix v[i][j] = p^2 - M^2, flattened (npar x npar) per event
+                    arg_types.push_back(
+                        "virtuality", batch_float_array(particle_count * particle_count)
+                    );
+                    break;
                 default:
                     throw std::invalid_argument("unknown input type");
                 }
@@ -147,6 +153,9 @@ NamedVector<Value> MatrixElement::build_function_impl(
             break;
         case channel_in:
             input_key = UMAMI_IN_CHANNEL_INDEX;
+            break;
+        case virtuality_in:
+            input_key = UMAMI_IN_VIRTUALITY;
             break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));
