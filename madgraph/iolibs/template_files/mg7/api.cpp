@@ -26,6 +26,34 @@ UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result) {
     return UMAMI_SUCCESS;
 }
 
+UmamiStatus umami_supported_inputs(bool* supported) {
+    for (int i = 0; i < UMAMI_INPUT_KEY_COUNT; ++i) supported[i] = false;
+    supported[UMAMI_IN_MOMENTA] = true;
+    supported[UMAMI_IN_ALPHA_S] = true;
+    supported[UMAMI_IN_FLAVOR_INDEX] = true;
+    supported[UMAMI_IN_RANDOM_COLOR] = true;
+    supported[UMAMI_IN_RANDOM_HELICITY] = true;
+    supported[UMAMI_IN_RANDOM_DIAGRAM] = true;
+    return UMAMI_SUCCESS;
+}
+
+UmamiStatus umami_required_inputs(bool* required) {
+    for (int i = 0; i < UMAMI_INPUT_KEY_COUNT; ++i) required[i] = false;
+    required[UMAMI_IN_MOMENTA] = true;
+    required[UMAMI_IN_FLAVOR_INDEX] = true;
+    return UMAMI_SUCCESS;
+}
+
+UmamiStatus umami_supported_outputs(bool* supported) {
+    for (int i = 0; i < UMAMI_OUTPUT_KEY_COUNT; ++i) supported[i] = false;
+    supported[UMAMI_OUT_MATRIX_ELEMENT] = true;
+    supported[UMAMI_OUT_DIAGRAM_AMP2] = true;
+    supported[UMAMI_OUT_COLOR_INDEX] = true;
+    supported[UMAMI_OUT_HELICITY_INDEX] = true;
+    supported[UMAMI_OUT_DIAGRAM_INDEX] = true;
+    return UMAMI_SUCCESS;
+}
+
 UmamiStatus umami_initialize(UmamiHandle* handle, char const* param_card_path) {
     CPPProcess* process = new CPPProcess(param_card_path);
     std::vector<double*>& momenta = process->getMomenta();
