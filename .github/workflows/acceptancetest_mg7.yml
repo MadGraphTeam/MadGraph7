@@ -259,6 +259,7 @@ jobs:
     # merged-flavor processes is not wired up yet (see test_madevent_merged_
     # flavor_uq_mg7). The madevent counterpart is test_madevent_mssm_gogo in
     # acceptancetest_madevent.yml.
+    needs: build_madspace
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -278,6 +279,7 @@ jobs:
     # the madevent reference (4.541638 pb, run_01 of test_generation_from_file_1)
     # and is expected to be red until the mg7 integrator handles merged-flavor
     # p p > go go. Self-skips if the madspace + LHAPDF(NNPDF23) stack is absent.
+    needs: build_madspace
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -285,7 +287,6 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_heptools
-      - uses: ./.github/actions/install_madspace
       - name: test one of the test test_generation_from_file_1_mg7
         run: |
             cd $GITHUB_WORKSPACE
