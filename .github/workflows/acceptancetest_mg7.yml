@@ -208,9 +208,10 @@ jobs:
 
   acceptancetest_mg7_merged_flavor_uq:
     needs: build_madspace
-    # KNOWN-FAILING (not xfail): mg7 currently segfaults on u q > u q with the
-    # merged q = u d multiparticle. This job is expected to be red until the mg7
-    # integrator handles merged-flavor processes; it keeps the crash visible.
+    # mg7 cross-section for the merged-flavor u q > u q (q = u d), pinned to the
+    # 4428 pb obtained from the separate single-flavor processes. It used to come
+    # out too large because the mixed u d initial flavor was mirrored; see
+    # acceptancetest_mg7_merged_flavor_mirroring, which guards that flag directly.
     # The test self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true

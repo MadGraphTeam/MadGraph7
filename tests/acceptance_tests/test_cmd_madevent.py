@@ -1035,16 +1035,17 @@ class TestMECmdShell(unittest.TestCase):
 
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,
-        q = u d).
+        q = u d): the merged-flavor path must reproduce the 4428 pb obtained by
+        running u u > u u and u d > u d as separate single-flavor processes.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: the mg7 (madspace)
-        integrator currently SEGFAULTS on this merged-flavor process, so
-        generate_events does not produce the physical cross-section (4428 pb).
-        The test asserts the physical reference and is therefore expected to
-        fail until the mg7 integrator handles merged-flavor u q > u q; it is
-        left undecorated so the failure stays visible in the mg7 workflow
-        rather than being silently swallowed by expectedFailure. It still
-        self-skips where the mg7 runtime stack is unavailable.
+        This used to come out too large because the mg7 exporter mirrored the
+        mixed u d initial flavor -- leg 1 is a fixed u, so the beam-swapped
+        d u > u d state is not part of the process and the u d contribution was
+        counted twice (see Process.has_same_initial_multiparticle and
+        test_merged_flavor_initial_state_mirroring_mg7, which guards the flag
+        directly at output level).
+
+        Self-skips where the mg7 runtime stack is unavailable.
         """
         import glob, json
         try:
