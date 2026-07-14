@@ -990,8 +990,9 @@ class MadgraphSubprocess:
                     resolved = match.group(1)
             api_path = api_path_format.format(device=resolved)
             if not os.path.isfile(api_path):
-                logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
+                precision = self.process.run_card["run"]["precision"]
+                logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}' (FPTYPE={precision})")
+                misc.compile(arg = [f"BACKEND={device}", f"FPTYPE={precision}", "USEBUILDDIR=1"], cwd = subproc_path)
             api_paths.append(api_path)
 
         self.incoming_masses = [
