@@ -7985,17 +7985,6 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         """Write the mirrorprocs.inc file determining which processes have
         IS mirror process in subprocess group mode."""
 
-        def get_initial_leg_signature(proc, beam_number):
-            """Return a flavor signature for one initial leg based on the
-            process definition multiparticle content (when available)."""
-            flavor = proc.get_initial_flavor(beam_number)
-            if flavor:
-                return tuple(sorted(abs(f) for f in flavor))
-            pdg = proc.get_initial_pdg(beam_number)
-            if pdg is None:
-                return tuple()
-            return (abs(pdg),)
-
         lines = []
         bool_dict = {True: '.true.', False: '.false.'}
         matrix_elements = subproc_group.get('matrix_elements')
@@ -8003,11 +7992,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             flavors = me.get_external_flavors_with_iden()
             process = me.get('processes')[0]
 
-            same_initial_multiparticle = (
-                process.get_ninitial() == 2 and
-                get_initial_leg_signature(process, 1) ==
-                get_initial_leg_signature(process, 2)
-            )
+            # shared with the mg7 exporter (see Process.has_same_initial_multiparticle)
+            same_initial_multiparticle = process.has_same_initial_multiparticle()
             if me.get('has_mirror_process'):
                 lines.append("DATA (MIRRORPROCS(%i,I),I=1,%d)/%s/" % \
                             (i+1, len(flavors),
