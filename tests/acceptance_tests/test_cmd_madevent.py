@@ -2985,6 +2985,47 @@ set draw_rivet_plots True
         self.assertTrue(os.path.exists(pjoin(run, 'rivet_result.yoda')),
                         'mg7 Rivet run produced no yoda output in %s' % run)
 
+    def test_mass_reweighting_mg7(self):
+        """Matrix-element reweighting chained on the mg7 output through the
+        command interface (mirrors test_mass_reweighting): p p > t t~ is
+        generated with the mg7 output and reweighted to a heavier top by the
+        reused madevent reweight driver (reweight -from_cards).
+
+        The reweight module rebuilds the matrix element from the model/process
+        stored in the LHE banner, so this also covers the banner's proc_card."""
+        datadir = _mg7_datadir_or_skip(self)
+        # one reweight point: the same "heavier top" hypothesis as the madevent
+        # test. The default output mode adds the new weight to the events.
+        reweight_card = ("launch\n"
+                         "set mass mt 200\n")
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > t t~'],
+            pjoin(self.path, 'MG7_reweight'), datadir,
+            switch_lines=['reweight=ON'],
+            extra_cards=[(reweight_card, 'reweight_card.dat')],
+            events=100)
+
+        lhe_path = None
+        for name in ('unweighted_events.lhe.gz', 'unweighted_events.lhe',
+                     'events.lhe.gz', 'events.lhe'):
+            if os.path.exists(pjoin(run, name)):
+                lhe_path = pjoin(run, name)
+                break
+        self.assertTrue(lhe_path, 'no mg7 event file under %s' % run)
+
+        # every event must carry the extra reweighted weight
+        nb_event = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            self.assertIn('rwgt_1', rwgt,
+                          'mg7 reweight did not add the rwgt_1 weight to the events')
+            self.assertNotEqual(float(rwgt['rwgt_1']), 0.0)
+            nb_event += 1
+        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
+
     def test_w_production_with_ms_decay_mg7(self):
         """MadSpin decay chained on the mg7 output through the command interface
         (mirrors test_w_production_with_ms_decay): p p > w+ z is generated with
