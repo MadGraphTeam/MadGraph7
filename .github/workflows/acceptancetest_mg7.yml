@@ -229,9 +229,10 @@ jobs:
 
   acceptancetest_mg7_e_e_collision:
     needs: build_madspace
-    # KNOWN-FAILING (not xfail): mg7 has no lepton-beam support (run_card.toml
-    # only carries a hadron PDF), so e+ e- > e+ e- aborts with
-    # "PID 11 not found in pdf grid". Red until mg7 supports lepton beams.
+    # mg7 Bhabha cross-section (e+ e- > e+ e-), pinned to the madevent value for
+    # the same run_card settings (40.3 pb) plus an explicit check that neither
+    # beam flavor is mirrored -- the beams are different particles, and mirroring
+    # them used to double the result to ~81 pb.
     # Self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true

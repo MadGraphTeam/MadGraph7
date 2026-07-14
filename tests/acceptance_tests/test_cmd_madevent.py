@@ -1033,6 +1033,16 @@ class TestMECmdShell(unittest.TestCase):
                 'q q > q q (q = u d): only the mixed initial flavor may be '
                 'mirrored, got mirror=%s for %s' % (mirror, (flavor,)))
 
+        # e+ e- > e+ e-: the two beams are *different* particles (the leg
+        # signature must stay signed -- comparing |pdg| made e+ and e- look like
+        # the same beam and mirrored the flavor, doubling the cross-section).
+        ee = mirrors('e+ e- > e+ e-', pjoin(self.path, 'MG7_mirror_ee'))
+        self.assertEqual(sorted(ee), [(-11, 11)])
+        for flavor, mirror in ee.items():
+            self.assertFalse(mirror,
+                'e+ e- > e+ e-: beams are different particles, flavor %s must '
+                'not be mirrored (that doubles the cross-section)' % (flavor,))
+
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,
         q = u d): the merged-flavor path must reproduce the 4428 pb obtained by
@@ -2033,23 +2043,42 @@ C
         self.assertLess(abs(val1 - target) / err1, 2.)
 
     def test_e_e_collision_mg7(self):
-        """mg7 equivalent of test_e_e_collision for e+ e- > e+ e-.
+        """mg7 cross-section for e+ e- > e+ e- (Bhabha).
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 has no lepton-beam
-        (no-PDF / lpp=0) support yet -- its run_card.toml only carries a hadron
-        PDF, so generate_events aborts with "PID 11 not found in pdf grid". The
-        test asserts the physical cross-section (155.9 pb) and is expected to
-        fail until mg7 supports lepton beams; left undecorated so the limitation
-        stays visible. Self-skips where the mg7 runtime stack is unavailable.
+        NB: this cannot be compared to test_e_e_collision's 155.9 pb -- that
+        number belongs to the tailored run_card_ee.dat which that test copies in.
+        Here the mg7 default run_card.toml is used (via _run_mg7_xsec), and the
+        reference is the madevent cross-section for the same setup: 40.3 pb.
+
+        The e+ and e- beams are *different* particles, so the beam-swapped
+        initial state is not part of the process and no flavor may be mirrored.
+        Mirroring it (which happened while the initial-leg signature compared
+        |pdg|, making e+ and e- look like the same beam) doubled the result to
+        ~81 pb -- hence the explicit mirroring assertion on top of the
+        cross-section. Self-skips where the mg7 runtime stack is unavailable.
         """
+        import json
         datadir = _mg7_datadir_or_skip(self)
-        cross, error = _run_mg7_xsec(self, 
+        run_dir = pjoin(self.path, 'MG7_ee')
+        cross, error = _run_mg7_xsec(self,
             ['set automatic_html_opening False --no_save',
              'import model sm',
              'generate e+ e- > e+ e-'],
-            pjoin(self.path, 'MG7_ee'), datadir)
-        # physical reference (same as test_e_e_collision); mg7 must reproduce it
-        self.assertAlmostEqual(cross, 155.9, delta=max(2.0, 5 * error))
+            run_dir, datadir)
+
+        # explicit mirroring check: e+ and e- are distinct beams -> never mirror
+        info = json.load(open(pjoin(run_dir, 'SubProcesses',
+                                    'subprocesses.json')))
+        for proc in info:
+            for flavor in proc['flavors']:
+                self.assertFalse(flavor['mirror'],
+                    'e+ e- > e+ e-: the beams are different particles, so the '
+                    'swapped initial state is not part of the process and flavor '
+                    '%s must not be mirrored (that doubles the cross-section)'
+                    % (flavor['options'],))
+
+        # madevent reference for the same run_card settings
+        self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
 
     def load_result(self, run_name):
         
