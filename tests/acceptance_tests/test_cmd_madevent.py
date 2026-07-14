@@ -239,6 +239,20 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
                   file=sys.stderr, flush=True)
         except Exception:
             pass
+    # TEMP DEBUG (rivet): dump the postprocessing log tail + rivet/contur logs
+    import glob as _g
+    print('\n===== TEMP mg7_postproc.log tail =====\n%s'
+          % ''.join(open(log).readlines()[-140:]), file=sys.stderr, flush=True)
+    for extra in sorted(_g.glob(pjoin(run_dir, 'Events', '**', 'rivet*.log'),
+                                recursive=True)
+                        + _g.glob(pjoin(run_dir, 'Events', '**', 'run_rivet.sh'),
+                                  recursive=True)
+                        + _g.glob(pjoin(run_dir, '**', 'contur.log'), recursive=True)):
+        try:
+            print('\n----- %s -----\n%s' % (extra, open(extra).read()),
+                  file=sys.stderr, flush=True)
+        except Exception:
+            pass
     if proc.returncode != 0:
         # surface the generate_events output (the log lives in a tmp dir that CI
         # does not upload) so the real crash is visible in the test failure.

@@ -1879,7 +1879,7 @@ def run_selected_tools(switch, process) -> None:
         try:
             cmd.postprocessing()
         except Exception as error:
-            _report_failure(log, "Rivet/Contur postprocessing", error, run_dir)
+            _report_failure(log, "Rivet-Contur postprocessing", error, run_dir)
         else:
             log.info("  -> Rivet/Contur postprocessing done (%.1fs)",
                      time.time() - start)
