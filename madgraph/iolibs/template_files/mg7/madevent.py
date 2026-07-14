@@ -1703,7 +1703,13 @@ def ask_edit_cards() -> dict:
     dict describing the selected tools."""
 
     selector_class, mother = build_selector_cmd()
-    switch, _ = mother.ask('', '0', [], ask_class=selector_class,
+    # path_msg is what makes Cmd.check_answer_in_input_file accept a bare path as
+    # an answer (its "elif path:" branch), so that a scripted launch can hand the
+    # question a card/banner path -- as the question itself advertises -- and have
+    # it replace the corresponding card. Without it the path is rejected ("This
+    # answer is not valid for current question") and the default is used instead.
+    switch, _ = mother.ask('', '0', [], path_msg='enter path',
+                           ask_class=selector_class,
                            mode='auto', line_args=[], force=False,
                            return_instance=True)
     return dict(switch)

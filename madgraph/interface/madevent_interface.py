@@ -6942,7 +6942,15 @@ tar -czf split_$1.tar.gz split_$1
         if '-M' in args or '--madspin' in args:
             passing_cmd.append('madspin=ON')
 
-        switch = self.ask('', '0', [], ask_class=self.action_editcard,
+        # path_msg is what makes Cmd.check_answer_in_input_file accept a bare
+        # path as an answer (its "elif path:" branch). The question advertises
+        # "enter the path to a valid card or banner", and interactively that
+        # works (AskforEditCard.default -> copy_file), but in a scripted run the
+        # answer is validated by check_answer_in_input_file first: without
+        # path_msg a card path is rejected ("This answer is not valid for
+        # current question") and silently replaced by the default.
+        switch = self.ask('', '0', [], path_msg='enter path',
+                          ask_class=self.action_editcard,
                           mode=mode, line_args=args, force=self.force,
                           first_cmd=passing_cmd)
         #
