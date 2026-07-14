@@ -669,7 +669,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("e_min", &Topology::Decay::e_min)
         .def_readonly("e_max", &Topology::Decay::e_max)
         .def_readonly("pdg_id", &Topology::Decay::pdg_id)
-        .def_readonly("on_shell", &Topology::Decay::on_shell);
+        .def_readonly("on_shell", &Topology::Decay::on_shell)
+        .def_readonly("on_shell_boundary", &Topology::Decay::on_shell_boundary);
     auto& topology =
         py::classh<Topology>(m, "Topology")
             .def(py::init<const Diagram&>(), py::arg("diagram"))
@@ -691,7 +692,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             .def_property_readonly("outgoing_indices", &Topology::outgoing_indices)
             .def_property_readonly("incoming_masses", &Topology::incoming_masses)
             .def_property_readonly("outgoing_masses", &Topology::outgoing_masses)
-            .def("propagator_momentum_terms", &Topology::propagator_momentum_terms);
+            .def("propagator_momentum_terms", &Topology::propagator_momentum_terms)
+            .def("__str__", &Topology::to_string);
     py::classh<PhaseSpaceMapping, Mapping> psmap(m, "PhaseSpaceMapping");
     add_enum<PhaseSpaceMapping::TChannelMode>(
         psmap,
