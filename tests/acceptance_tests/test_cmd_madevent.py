@@ -219,8 +219,15 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
         proc = subprocess.run(args, cwd=run_dir, env=env, input=stdin_text,
                               text=True, stdout=logf, stderr=subprocess.STDOUT,
                               timeout=timeout)
-    test.assertEqual(proc.returncode, 0,
-                     'mg7 generate_events failed (see %s)' % log)
+    if proc.returncode != 0:
+        # surface the generate_events output (the log lives in a tmp dir that CI
+        # does not upload) so the real crash is visible in the test failure.
+        try:
+            tail = ''.join(open(log).readlines()[-120:])
+        except Exception as err:
+            tail = '(could not read %s: %s)' % (log, err)
+        test.fail('mg7 generate_events failed (rc=%s)\n'
+                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
     runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
     test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
     return runs[0]
