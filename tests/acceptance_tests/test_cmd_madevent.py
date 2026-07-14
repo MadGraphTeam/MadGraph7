@@ -2963,15 +2963,13 @@ set draw_rivet_plots True
         Uses p p > w+ z rather than the madevent test's p p > e+ e-: mg7's LHE
         writer (madspace LHECompleter) currently crashes on the Drell-Yan final
         state, whereas the two-boson process writes LHE cleanly; the default
-        rivet card's generic MC_ELECTRONS/MUONS/JETS analyses would produce a
-        yoda for the showered W/Z decays.
+        rivet card's generic MC_ELECTRONS/MUONS/JETS analyses produce a yoda for
+        the showered W/Z decays.
 
-        KNOWN-FAILING (development phase, intentionally NOT xfail): the command
-        interface drives the chain correctly (generation + Pythia8 shower run),
-        but the mg7 Rivet driver does not yet run Rivet -- it logs "Skipping
-        Rivet for now, passing it to postprocessor" and writes no
-        rivet_result.yoda. Left red on purpose so the missing mg7 Rivet support
-        stays visible in CI until it is implemented before release."""
+        do_rivet defers the actual Rivet execution to the postprocessor
+        (rivet_card default run_rivet_later = True); run_selected_tools runs that
+        postprocessor (cmd.postprocessing()) after the shower, exactly as
+        MadEventCmd.do_launch does, so rivet_result.yoda is produced."""
         datadir = _mg7_datadir_or_skip(self)
         run = _run_mg7_postproc(
             self,

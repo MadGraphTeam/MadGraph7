@@ -1863,6 +1863,26 @@ def run_selected_tools(switch, process) -> None:
         run("MadAnalysis5 (hadron)", "madanalysis5_hadron --no_default")
     if switch.get("analysis") == "Rivet":
         run("Rivet", "rivet --no_default")
+        # do_rivet only *prepares* the run (writes Events/<run>/run_rivet.sh)
+        # and defers the actual execution to the postprocessor -- the rivet_card
+        # default has run_rivet_later = True, so with --no_default it logs
+        # "Skipping Rivet for now, passing it to postprocessor" and appends the
+        # run to cmd.postprocessing_dirs. MadEventCmd.do_launch runs that
+        # postprocessor at the end of a run; do the same here so the .yoda (and,
+        # when run_contur = True, the Contur limits) are actually produced.
+        bar = "=" * 60
+        log.info("")
+        log.info(bar)
+        log.info("  post-processing step: Rivet/Contur postprocessing")
+        log.info(bar)
+        start = time.time()
+        try:
+            cmd.postprocessing()
+        except Exception as error:
+            _report_failure(log, "Rivet/Contur postprocessing", error, run_dir)
+        else:
+            log.info("  -> Rivet/Contur postprocessing done (%.1fs)",
+                     time.time() - start)
 
 
 def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
