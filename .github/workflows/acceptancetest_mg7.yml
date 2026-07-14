@@ -296,7 +296,7 @@ jobs:
   # mg7 post-processing chaining (command interface + new output).
   #
   # Each job below runs a full mg7 generation and then chains one post-processing
-  # tool (time-of-flight, Pythia8, Rivet, MadSpin) through the mg7 command
+  # tool (time-of-flight, Pythia8, Rivet, MadSpin, reweighting) through the mg7 command
   # interface (bin/generate_events -> the merged tool-selection question ->
   # run_selected_tools -> MG7RunCmd), giving at least one CI check that every
   # tool still works with the default output. The tools come from the combined
@@ -356,6 +356,25 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_rivet_from_file_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_reweight:
+    needs: build_madspace
+    # Matrix-element reweighting ships with MG5 (no external tool); it only needs
+    # the madspace + LHAPDF(NNPDF23) stack (and a Fortran compiler for the
+    # standalone reweighting matrix element, which the runner provides).
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_mass_reweighting_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_mass_reweighting_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_madspin:
     needs: build_madspace
