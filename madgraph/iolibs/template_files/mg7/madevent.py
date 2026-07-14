@@ -1863,13 +1863,26 @@ def run_selected_tools(switch, process) -> None:
         run("MadAnalysis5 (hadron)", "madanalysis5_hadron --no_default")
     if switch.get("analysis") == "Rivet":
         run("Rivet", "rivet --no_default")
-        # do_rivet only *prepares* the run (writes Events/<run>/run_rivet.sh)
-        # and defers the actual execution to the postprocessor -- the rivet_card
-        # default has run_rivet_later = True, so with --no_default it logs
-        # "Skipping Rivet for now, passing it to postprocessor" and appends the
-        # run to cmd.postprocessing_dirs. MadEventCmd.do_launch runs that
-        # postprocessor at the end of a run; do the same here so the .yoda (and,
-        # when run_contur = True, the Contur limits) are actually produced.
+
+    # Finalize the run exactly as MadEventCmd.do_launch does after the
+    # shower/detector/analysis tools: store_result() processes the deferred
+    # "to_store" actions -- in particular it gzips the Pythia8 HepMC to
+    # <tag>_pythia8_events.hepmc.gz (the pythia8_card default is HEPMCoutput:file
+    # = hepmc.gz). The deferred Rivet job reads exactly that .gz path, so this
+    # must run before the Rivet/Contur postprocessor below.
+    try:
+        cmd.store_result()
+    except Exception as error:
+        _report_failure(log, "store_result", error, run_dir)
+
+    if switch.get("analysis") == "Rivet":
+        # do_rivet only *prepared* the run (wrote Events/<run>/run_rivet.sh) and
+        # deferred execution to the postprocessor -- the rivet_card default has
+        # run_rivet_later = True, so with --no_default it logged "Skipping Rivet
+        # for now, passing it to postprocessor" and appended the run to
+        # cmd.postprocessing_dirs. MadEventCmd.do_launch runs that postprocessor
+        # at the end of a run; do the same here so the .yoda (and, when
+        # run_contur = True, the Contur limits) are actually produced.
         bar = "=" * 60
         log.info("")
         log.info(bar)
