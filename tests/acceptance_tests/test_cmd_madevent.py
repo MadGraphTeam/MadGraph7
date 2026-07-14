@@ -2956,7 +2956,6 @@ set draw_rivet_plots True
         self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
                         'mg7 Delphes run produced no output in %s' % run)
 
-    @unittest.expectedFailure
     def test_rivet_from_file_mg7(self):
         """Rivet analysis chained on the mg7 output (Pythia8 shower + Rivet)
         through the command interface (mirrors test_rivet_from_file).
@@ -2967,13 +2966,12 @@ set draw_rivet_plots True
         rivet card's generic MC_ELECTRONS/MUONS/JETS analyses would produce a
         yoda for the showered W/Z decays.
 
-        EXPECTED FAILURE for now: the command interface drives the chain
-        correctly (generation + Pythia8 shower run), but the mg7 Rivet driver
-        does not yet run Rivet -- it logs "Skipping Rivet for now, passing it to
-        postprocessor" and writes no rivet_result.yoda. Kept as an
-        @expectedFailure so the gap stays tracked in CI: it flips to an
-        unexpected success once mg7 actually runs Rivet, which is the signal to
-        drop this decorator."""
+        KNOWN-FAILING (development phase, intentionally NOT xfail): the command
+        interface drives the chain correctly (generation + Pythia8 shower run),
+        but the mg7 Rivet driver does not yet run Rivet -- it logs "Skipping
+        Rivet for now, passing it to postprocessor" and writes no
+        rivet_result.yoda. Left red on purpose so the missing mg7 Rivet support
+        stays visible in CI until it is implemented before release."""
         datadir = _mg7_datadir_or_skip(self)
         run = _run_mg7_postproc(
             self,

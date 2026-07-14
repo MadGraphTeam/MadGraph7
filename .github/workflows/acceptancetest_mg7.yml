@@ -154,7 +154,11 @@ jobs:
 
   acceptancetest_mg7_madspin_mixed_flavor:
     needs: build_madspace
-    # xfail: mg7 + MadSpin pipeline not wired up yet (kept on the to-do list)
+    # KNOWN-FAILING (development phase, no longer xfail): the mg7 + MadSpin
+    # density-summary pipeline is not wired up yet. Kept red on purpose so the
+    # gap stays visible until it is implemented before release. restore_heptools
+    # provides LHAPDF/NNPDF23 so the red reflects the real mg7 + MadSpin gap
+    # rather than a missing-PDF generation error.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -162,9 +166,11 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_madspin_mixed_flavor_decay_log_summary_mg7
         run: |
             cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_madspin_mixed_flavor_decay_log_summary_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_group_subprocess:

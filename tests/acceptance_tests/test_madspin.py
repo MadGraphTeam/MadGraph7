@@ -332,20 +332,18 @@ decay z > l+ l-
         self.assertNotRegex(banner_text, r'(?mi)^\s*decay\s+82\s+[0-9eE.+-]+\s+# added\s*$')
         self.assertNotRegex(banner_text, r'(?mi)^\s*decay\s+83\s+[0-9eE.+-]+\s+# added\s*$')
 
-    @unittest.expectedFailure
     def test_madspin_mixed_flavor_decay_log_summary_mg7(self):
         """TODO (mg7 + MadSpin): same check as
         test_madspin_mixed_flavor_decay_log_summary but with the current
         default 'mg7' (madspace/madnis) exporter instead of Fortran madevent.
 
-        This is *expected to fail for now*: the mg7 launch does not run the
-        MadSpin density flow and does not emit the
+        KNOWN-FAILING (development phase, intentionally NOT xfail): the mg7
+        launch does not run the MadSpin density flow and does not emit the
         'MadSpin unweight efficiency: ...' summary line (it currently runs the
         madnis pipeline instead, which here does not produce decayed events in
-        the bounded time). It is kept as an @expectedFailure so it is tracked
-        in CI: once mg7 + MadSpin is supported it will report an *unexpected
-        success*, which is the signal to wire mg7 into the MadSpin flow and
-        drop this decorator.
+        the bounded time). Left red on purpose so the missing mg7 + MadSpin
+        density-summary support stays visible in CI until it is implemented
+        before release.
         """
         cmd_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.cmd')
         log_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.log')
