@@ -952,6 +952,23 @@ class TestMECmdShell(unittest.TestCase):
         mg_cmd.exec_cmd('generate u q > u q QCD=0')
         mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
 
+        # Explicit check of the initial-state mirroring, on top of the
+        # cross-section: leg 1 is a fixed u while leg 2 is the merged u/d
+        # multiparticle, so the beam-swapped "d u" initial state is NOT part of
+        # this process. Neither flavor may therefore be mirrored -- a mirror on
+        # the u d flavor would count it twice (and the cross-section check below
+        # would then be off by the u d contribution).
+        import glob as _glob
+        mirror_incs = _glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*',
+                                       'mirrorprocs.inc'))
+        self.assertTrue(mirror_incs, 'no mirrorprocs.inc under %s' % self.run_dir)
+        for path in mirror_incs:
+            text = open(path).read().upper()
+            self.assertNotIn('.TRUE.', text,
+                'u q > u q (q = u d): leg 1 is a fixed u, so no initial-state '
+                'mirroring may be applied, but %s requests one:\n%s'
+                % (path, text))
+
         self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
         self.cmd_line.no_notification()
         self.cmd_line.exec_cmd('set automatic_html_opening False')
@@ -967,6 +984,54 @@ class TestMECmdShell(unittest.TestCase):
         # Reference 4428 pb is u u > u u plus u d > u d run as separate
         # single-flavor processes (no merged multiparticle).
         self.assertAlmostEqual(cross, 4428.0, delta=max(30.0, 5 * error))
+
+    def test_merged_flavor_initial_state_mirroring_mg7(self):
+        """Initial-state mirroring of the merged-flavor mg7 output.
+
+        The beam-swapped (mirror) copy of a flavor combination may only be added
+        when the two initial legs range over the *same* set of flavors, i.e. when
+        the swapped initial state really is part of the process and got collapsed
+        into this one:
+
+        * u q > u q (q = u d): leg 1 is a fixed u, so "d u > u d" is NOT part of
+          the process -- no flavor may be mirrored. Mirroring the u d flavor here
+          made its contribution twice too large.
+        * q q > q q (q = u d): both legs span {u,d}, so the "d u" combination was
+          collapsed into "u d" and only that *mixed* flavor must be mirrored.
+
+        This is an output-level check (no event generation), so it needs no mg7
+        runtime and directly guards the flag the cross-section depends on."""
+        import json
+
+        def mirrors(process, out_dir):
+            mg = MGCmd.MasterCmd()
+            mg.no_notification()
+            for c in ['set automatic_html_opening False --no_save',
+                      'import model sm', 'define q = u d',
+                      'generate %s' % process]:
+                mg.exec_cmd(c)
+            mg.exec_cmd('output mg7 %s' % out_dir)
+            info = json.load(open(pjoin(out_dir, 'SubProcesses',
+                                        'subprocesses.json')))
+            # {(initial pdg 1, initial pdg 2): mirror}
+            return {tuple(f['options'][0][:2]): f['mirror']
+                    for p in info for f in p['flavors']}
+
+        # leg 1 fixed to u -> the d u initial state is absent -> never mirror
+        uq = mirrors('u q > u q', pjoin(self.path, 'MG7_mirror_uq'))
+        self.assertEqual(sorted(uq), [(2, 1), (2, 2)])
+        for flavor, mirror in uq.items():
+            self.assertFalse(mirror,
+                'u q > u q (q = u d): flavor %s must not be mirrored (leg 1 is a '
+                'fixed u, so d u > u d is not part of the process); mirroring it '
+                'double counts the u d contribution' % (flavor,))
+
+        # both legs span {u,d} -> the swapped mixed flavor was collapsed here
+        qq = mirrors('q q > q q', pjoin(self.path, 'MG7_mirror_qq'))
+        for flavor, mirror in qq.items():
+            self.assertEqual(mirror, flavor[0] != flavor[1],
+                'q q > q q (q = u d): only the mixed initial flavor may be '
+                'mirrored, got mirror=%s for %s' % (mirror, (flavor,)))
 
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,

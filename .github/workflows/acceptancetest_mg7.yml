@@ -171,6 +171,21 @@ jobs:
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_madspin_mixed_flavor_decay_log_summary_mg7 -pA -t0 -l INFO
 
+  acceptancetest_mg7_merged_flavor_mirroring:
+    # Output-level check of the initial-state mirroring for merged-flavor
+    # processes (u q > u q must not mirror any flavor; q q > q q must mirror only
+    # the mixed one). No event generation, so no madspace runtime needed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test one of the test test_merged_flavor_initial_state_mirroring_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_merged_flavor_initial_state_mirroring_mg7 -pA -t0 -l INFO
+
   acceptancetest_mg7_group_subprocess:
     needs: build_madspace
     # mg7 cross-section run (u u > u u). madspace is installed by checkout_mg5;

@@ -196,7 +196,15 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     pdg_color_types[sign * pdg] = sign * self.model.get_particle(part_id).get_color()
 
         has_mirror_all = self.matrix_element.get("has_mirror_process")
-        same_initial_multiparticle = self.incoming[0] == self.incoming[1]
+        # Whether the beam-swapped initial state is part of the process must be
+        # derived from the process definition (per-beam multiparticle content),
+        # exactly as madevent's write_mirrorprocs does -- not from the pdg of the
+        # matrix-element legs. With flavor merging both initial legs of
+        # "u q > u q" (q = u d) carry the same merged pdg (81), yet leg 1 is
+        # fixed to u, so "d u > u d" is not part of the process and mirroring the
+        # u d flavor would double count it.
+        same_initial_multiparticle = \
+            self.matrix_element.get("processes")[0].has_same_initial_multiparticle()
         flavors = [
             {
                 "index": index,
