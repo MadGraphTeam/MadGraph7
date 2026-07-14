@@ -380,10 +380,16 @@ decay z > l+ l-
                     stdout=log_file, stderr=subprocess.STDOUT, timeout=240)
             except subprocess.TimeoutExpired:
                 self.fail('mg7 + MadSpin run timed out (TODO: not supported yet)')
-        self.assertEqual(return_code, 0)
-
         with open(log_path) as log_file:
             log = log_file.read()
+        # surface the tail of the mg7 run log (in a tmp dir CI does not upload)
+        # so the actual failure reason is visible in CI.
+        print('\n===== test_madspin_mixed_flavor_decay_log_summary_mg7: '
+              'mg5_aMC log tail (rc=%s) =====\n%s'
+              % (return_code, '\n'.join(log.splitlines()[-150:])),
+              file=sys.stderr, flush=True)
+        self.assertEqual(return_code, 0)
+
         self.assertIsNotNone(
             re.search(r'MadSpin\s+unweight\s+efficiency', log),
             msg='mg7 + MadSpin: density-mode summary line not found in log')
