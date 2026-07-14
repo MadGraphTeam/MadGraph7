@@ -154,7 +154,9 @@ jobs:
 
   acceptancetest_mg7_madspin_mixed_flavor:
     needs: build_madspace
-    # xfail: mg7 + MadSpin pipeline not wired up yet (kept on the to-do list)
+    # mg7 + MadSpin density-summary check driven through the madevent-style
+    # launch command interface. restore_heptools provides LHAPDF/NNPDF23 for the
+    # u u~ > z g generation.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -162,9 +164,11 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_madspin_mixed_flavor_decay_log_summary_mg7
         run: |
             cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_madspin_mixed_flavor_decay_log_summary_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_group_subprocess:
@@ -179,7 +183,7 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_group_subprocess_mg7
         run: |
             cd $GITHUB_WORKSPACE
@@ -200,7 +204,7 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_madevent_merged_flavor_uq_mg7
         run: |
             cd $GITHUB_WORKSPACE
@@ -220,7 +224,7 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_e_e_collision_mg7
         run: |
             cd $GITHUB_WORKSPACE
@@ -240,7 +244,7 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_generation_heft_mg7
         run: |
             cd $GITHUB_WORKSPACE
@@ -280,11 +284,95 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_generation_from_file_1_mg7
         run: |
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_generation_from_file_1_mg7 -pA -t0 -l INFO
+
+
+  # ---------------------------------------------------------------------------
+  # mg7 post-processing chaining (command interface + new output).
+  #
+  # Each job below runs a full mg7 generation and then chains one post-processing
+  # tool (time-of-flight, Pythia8, Rivet, MadSpin) through the mg7 command
+  # interface (bin/generate_events -> the merged tool-selection question ->
+  # run_selected_tools -> MG7RunCmd), giving at least one CI check that every
+  # tool still works with the default output. The tools come from the combined
+  # `restore_heptools` cache (heptools-<os>), the same one the madevent jobs use
+  # -- restore_heptools fails loudly if that cache is missing. NB: a test that
+  # self-skips (missing runtime stack) is reported as a failure by
+  # test_manager.py, so these jobs need the real cache to be green.
+  # (Delphes has no dedicated job: it is not part of the heptools cache; the
+  #  test_delphes_mg7 method still exists and self-skips where Delphes is absent.)
+  # ---------------------------------------------------------------------------
+  acceptancetest_mg7_time_of_flight:
+    needs: build_madspace
+    # time-of-flight is a pure-python LHE post-processing (no external tool); it
+    # only needs the madspace + LHAPDF(NNPDF23) stack.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_add_time_of_flight_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_add_time_of_flight_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_pythia8:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_pythia8_shower_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_pythia8_shower_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_rivet:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_rivet_from_file_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_rivet_from_file_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_madspin:
+    needs: build_madspace
+    # MadSpin ships with MG5 (no external tool); it only needs the madspace +
+    # LHAPDF(NNPDF23) stack.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_w_production_with_ms_decay_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_w_production_with_ms_decay_mg7 -pA -t0 -l INFO
 
 

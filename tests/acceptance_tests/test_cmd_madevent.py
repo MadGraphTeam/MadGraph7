@@ -128,6 +128,131 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     return float(info['mean']), float(info.get('error') or 0.0)
 
 
+# default tool cards shipped with MG5, copied into the mg7 output's Cards/ so a
+# tool switch is "available" and its driver (invoked with --no_default /
+# -from_cards) finds the card it needs.
+_MG7_DEFAULT_CARDS = {
+    'pythia8': (pjoin('Template', 'LO', 'Cards', 'pythia8_card_default.dat'),
+                'pythia8_card.dat'),
+    'delphes': (pjoin('Template', 'Common', 'Cards', 'delphes_card_default.dat'),
+                'delphes_card.dat'),
+    'rivet':   (pjoin('Template', 'LO', 'Cards', 'rivet_card_default.dat'),
+                'rivet_card.dat'),
+    'madspin': (pjoin('Template', 'Common', 'Cards', 'madspin_card_default.dat'),
+                'madspin_card.dat'),
+}
+
+
+def _mg7_tool_or_skip(test, cmd, *option_keys):
+    """skipTest unless every configured tool path in *option_keys* (e.g.
+    'pythia8_path', 'delphes_path', 'rivet_path') is available; otherwise the
+    post-processing driver would silently skip the tool and the output-file
+    assertions would fail for an unrelated (missing-tool) reason."""
+    for key in option_keys:
+        path = cmd.options.get(key)
+        if not path or path in ('None', 'NA') or not os.path.exists(path):
+            test.skipTest('mg7 post-processing tool %s not configured (%s)'
+                          % (key, path))
+
+
+def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
+                      toml_edits=None, precopy_cards=None, extra_cards=None,
+                      events=100, require_tools=(), timeout=1800):
+    """Drive an mg7 post-processing chain through the command interface.
+
+    Runs *setup_cmds* (MG5 lines ending with the ``generate``) + ``output mg7
+    run_dir`` in-process, trims the ``run_card.toml`` (small event target, LHE
+    output, dynamical HT/2 scale, plus any *toml_edits*), copies the requested
+    default tool cards (*precopy_cards*, keys of :data:`_MG7_DEFAULT_CARDS`) and
+    any *extra_cards* ((text, dest) pairs) into ``Cards/``, then runs the mg7
+    ``bin/generate_events`` -- feeding *switch_lines* (e.g. ``'shower=Pythia8'``)
+    on stdin so the merged tool-selection question runs the chained
+    post-processing (``run_selected_tools`` -> ``MG7RunCmd``), exactly as the
+    ``launch`` command does from the mg5 interface. When *switch_lines* is None
+    the run is non-interactive (``-f``) and only the run_card-driven LHE
+    post-processing (time-of-flight/systematics) is exercised.
+
+    Returns the run directory (``Events/run_01``). Assertions/skips are made on
+    *test*; the run self-skips when the mg7 runtime stack or a *require_tools*
+    program is unavailable.
+    """
+    import glob
+    if os.path.isdir(run_dir):
+        shutil.rmtree(run_dir)
+    mg = MGCmd.MasterCmd()
+    mg.no_notification()
+    if require_tools:
+        _mg7_tool_or_skip(test, mg, *require_tools)
+    # Drive the output through run_cmd (not exec_cmd): run_cmd records the
+    # commands in the interface history, which is what the exporter dumps into
+    # Cards/proc_card_mg5.dat and hence into the LHE banner's <MG5ProcCard>.
+    # exec_cmd bypasses the history, so the proc_card would miss the model /
+    # generate / output lines and MadSpin (which reads 'generate' from the
+    # banner) would abort with "no generate line". This mirrors how a real user
+    # drives the output (bin/mg5_aMC command file / interactive session).
+    for c in setup_cmds:
+        mg.run_cmd(c)
+    mg.run_cmd('output mg7 %s' % run_dir)
+
+    cards_dir = pjoin(run_dir, 'Cards')
+    for tool in (precopy_cards or []):
+        src, dst = _MG7_DEFAULT_CARDS[tool]
+        shutil.copy(pjoin(MG5DIR, src), pjoin(cards_dir, dst))
+    for text, dst in (extra_cards or []):
+        open(pjoin(cards_dir, dst), 'w').write(text)
+
+    toml = pjoin(run_dir, 'Cards', 'run_card.toml')
+    t = open(toml).read()
+    # post-processing operates on an LHE file
+    t = re.sub(r'output_format = "?\w+"?', 'output_format = "lhe"', t)
+    # dynamical HT/2 scale + small trimmed event target for a fast test
+    t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
+    t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
+    t = re.sub(r'events = \d+', 'events = %d' % events, t)
+    for pat, repl in (toml_edits or []):
+        t = re.sub(pat, repl, t)
+    open(toml, 'w').write(t)
+
+    env = dict(os.environ)
+    env['LHAPDF_DATA_PATH'] = datadir
+    log = pjoin(run_dir, 'mg7_postproc.log')
+    if switch_lines:
+        stdin_text = '\n'.join(list(switch_lines) + ['done']) + '\n'
+        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events')]
+    else:
+        stdin_text = None
+        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f']
+    with open(log, 'w') as logf:
+        proc = subprocess.run(args, cwd=run_dir, env=env, input=stdin_text,
+                              text=True, stdout=logf, stderr=subprocess.STDOUT,
+                              timeout=timeout)
+    # Surface any per-tool *_crash.log written by run_selected_tools when a
+    # post-processing tool fails *without* failing generate_events (rc stays 0),
+    # so a silently-swallowed tool failure is visible in CI. The systematics
+    # crash is a known, gracefully-handled mg7 gap (LHE lacks <mgrwt>) and is
+    # filtered out to keep the passing tests quiet.
+    for cl in sorted(glob.glob(pjoin(run_dir, '**', '*_crash.log'), recursive=True)):
+        if os.path.basename(cl) == 'systematics_computation_crash.log':
+            continue
+        try:
+            print('\n----- %s -----\n%s' % (cl, open(cl).read()),
+                  file=sys.stderr, flush=True)
+        except Exception:
+            pass
+    if proc.returncode != 0:
+        # surface the generate_events output (the log lives in a tmp dir that CI
+        # does not upload) so the real crash is visible in the test failure.
+        try:
+            tail = ''.join(open(log).readlines()[-120:])
+        except Exception as err:
+            tail = '(could not read %s: %s)' % (log, err)
+        test.fail('mg7 generate_events failed (rc=%s)\n'
+                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
+    runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
+    test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
+    return runs[0]
+
+
 #===============================================================================
 # TestCmd
 #===============================================================================
@@ -2744,6 +2869,163 @@ set draw_rivet_plots True
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet_result.yoda')))
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet-plots','index.html')))
 
+
+    #==========================================================================
+    # mg7 (madspace) counterparts of the post-processing acceptance tests.
+    # Each drives a full mg7 generation and then chains the same post-processing
+    # tool through the mg7 command interface (bin/generate_events -> the merged
+    # tool-selection question -> run_selected_tools -> MG7RunCmd), so that at
+    # least one test exercises the command interface + chaining of every tool
+    # with the new (default) output. They self-skip when the mg7 runtime stack
+    # (madspace + LHAPDF + NNPDF23) or the external tool is unavailable.
+    #==========================================================================
+    def test_add_time_of_flight_mg7(self):
+        """time-of-flight LHE post-processing chained on the mg7 output.
+
+        Mirrors test_add_time_of_flight: the run_card.toml [postprocessing]
+        time_of_flight threshold is applied to the generated events (this is the
+        mg7 equivalent of the madevent 'add_time_of_flight' command), and the
+        invariant lifetime written on the LHE particles is checked against the
+        threshold."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_tof'), datadir,
+            switch_lines=None,
+            toml_edits=[(r'time_of_flight = -?[\d.eE+-]+',
+                         'time_of_flight = 4e-14')],
+            events=100)
+
+        event = pjoin(run, 'events.lhe')
+        if not os.path.exists(event):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=event)
+
+        has_zero = False
+        has_non_zero = False
+        for evt in lhe_parser.EventFile(event):
+            for particle in evt:
+                if particle.pid in [23, 24]:
+                    self.assertTrue(particle.vtim == 0 or particle.vtim > 4e-14)
+                    if particle.vtim == 0:
+                        has_zero = True
+                    else:
+                        has_non_zero = True
+        self.assertTrue(has_non_zero,
+                        'no time-of-flight information was added to the mg7 LHE')
+
+    def test_pythia8_shower_mg7(self):
+        """Pythia8 shower chained on the mg7 output through the command
+        interface (mirrors the shower part of test_add_time_of_flight): the mg7
+        events are showered in parallel by the reused madevent driver and a
+        HepMC file is produced."""
+        import glob
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_py8'), datadir,
+            switch_lines=['shower=Pythia8'],
+            precopy_cards=['pythia8'],
+            require_tools=('pythia8_path',),
+            events=100)
+
+        self.assertTrue(glob.glob(pjoin(run, '*hepmc*')),
+                        'mg7 Pythia8 shower produced no HepMC output in %s' % run)
+
+    def test_delphes_mg7(self):
+        """Delphes detector simulation chained on the mg7 output (Pythia8 shower
+        + Delphes) through the command interface."""
+        import glob
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_delphes'), datadir,
+            switch_lines=['shower=Pythia8', 'detector=Delphes'],
+            precopy_cards=['pythia8', 'delphes'],
+            require_tools=('pythia8_path', 'delphes_path'),
+            events=100)
+
+        self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
+                        'mg7 Delphes run produced no output in %s' % run)
+
+    def test_rivet_from_file_mg7(self):
+        """Rivet analysis chained on the mg7 output (Pythia8 shower + Rivet)
+        through the command interface (mirrors test_rivet_from_file).
+
+        Uses p p > w+ z rather than the madevent test's p p > e+ e-: mg7's LHE
+        writer (madspace LHECompleter) currently crashes on the Drell-Yan final
+        state, whereas the two-boson process writes LHE cleanly; the default
+        rivet card's generic MC_ELECTRONS/MUONS/JETS analyses produce a yoda for
+        the showered W/Z decays.
+
+        do_rivet defers the actual Rivet execution to the postprocessor
+        (rivet_card default run_rivet_later = True); run_selected_tools runs that
+        postprocessor (cmd.postprocessing()) after the shower, exactly as
+        MadEventCmd.do_launch does, so rivet_result.yoda is produced."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_rivet'), datadir,
+            switch_lines=['shower=Pythia8', 'analysis=Rivet'],
+            precopy_cards=['pythia8', 'rivet'],
+            require_tools=('pythia8_path', 'rivet_path'),
+            events=100)
+
+        self.assertTrue(os.path.exists(pjoin(run, 'rivet_result.yoda')),
+                        'mg7 Rivet run produced no yoda output in %s' % run)
+
+    def test_w_production_with_ms_decay_mg7(self):
+        """MadSpin decay chained on the mg7 output through the command interface
+        (mirrors test_w_production_with_ms_decay): p p > w+ z is generated with
+        the mg7 output and then the w+ is decayed (w+ > j j) by the reused
+        madevent MadSpin driver.
+
+        Uses the 2->2 p p > w+ z rather than the madevent test's 2->1 p p > w+:
+        mg7's madspace phase-space builder requires at least two outgoing
+        particles, so a 2->1 process cannot be generated by the mg7 output."""
+        import glob
+        datadir = _mg7_datadir_or_skip(self)
+        madspin_card = ("set spinmode madspin\n"
+                        "decay w+ > j j\n"
+                        "launch\n")
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_madspin'), datadir,
+            switch_lines=['madspin=ON'],
+            extra_cards=[(madspin_card, 'madspin_card.dat')],
+            events=100)
+
+        decayed = glob.glob(pjoin(os.path.dirname(run), 'run_01_decayed*',
+                                  '*.lhe*'))
+        self.assertTrue(decayed,
+                        'mg7 MadSpin run produced no decayed events under %s'
+                        % os.path.dirname(run))
+        counts = {}
+        for evt in lhe_parser.EventFile(decayed[0]):
+            for particle in evt:
+                if particle.status == 1:
+                    counts[particle.pdg] = counts.get(particle.pdg, 0) + 1
+        # w+ > j j : the decay products are light-flavour (anti)quarks, and the
+        # merged-flavour placeholders (81/82/83) must have been resolved.
+        self.assertNotIn(81, counts)
+        self.assertNotIn(-81, counts)
+        self.assertTrue(any(abs(pdg) in (1, 2, 3, 4) for pdg in counts),
+                        'no light quarks among the MadSpin decay products: %s'
+                        % counts)
 
 
 

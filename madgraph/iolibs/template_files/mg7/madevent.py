@@ -1671,6 +1671,20 @@ def build_selector_cmd():
                         self.modified_card.add("run")
                         return
 
+                    # legacy madevent run_card names -> mg7 "section.key", so a
+                    # madevent-style launch script ("set nevents 500", "set
+                    # use_syst F", "set bwcutoff 10", ...) edits the mg7
+                    # run_card.toml verbatim. RunCardMG7._LO_SCALAR_MAP is the
+                    # same rename table used by the LO->MG7 run_card conversion.
+                    if rest and nlow in run_card._LO_SCALAR_MAP \
+                            and nlow not in [k.lower() for k in run_card.keys()]:
+                        target = run_card._LO_SCALAR_MAP[nlow]
+                        run_card.set(target, rest, user=True)
+                        logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                    nlow, target, run_card[target])
+                        self.modified_card.add("run")
+                        return
+
                     if rest and nlow in [k.lower() for k in run_card.keys()]:
                         current = run_card[nlow]
                         if isinstance(current, (int, float)) and not isinstance(current, bool):
@@ -1689,7 +1703,13 @@ def ask_edit_cards() -> dict:
     dict describing the selected tools."""
 
     selector_class, mother = build_selector_cmd()
-    switch, _ = mother.ask('', '0', [], ask_class=selector_class,
+    # path_msg is what makes Cmd.check_answer_in_input_file accept a bare path as
+    # an answer (its "elif path:" branch), so that a scripted launch can hand the
+    # question a card/banner path -- as the question itself advertises -- and have
+    # it replace the corresponding card. Without it the path is rejected ("This
+    # answer is not valid for current question") and the default is used instead.
+    switch, _ = mother.ask('', '0', [], path_msg='enter path',
+                           ask_class=selector_class,
                            mode='auto', line_args=[], force=False,
                            return_instance=True)
     return dict(switch)
@@ -1849,6 +1869,39 @@ def run_selected_tools(switch, process) -> None:
         run("MadAnalysis5 (hadron)", "madanalysis5_hadron --no_default")
     if switch.get("analysis") == "Rivet":
         run("Rivet", "rivet --no_default")
+
+    # Finalize the run exactly as MadEventCmd.do_launch does after the
+    # shower/detector/analysis tools: store_result() processes the deferred
+    # "to_store" actions -- in particular it gzips the Pythia8 HepMC to
+    # <tag>_pythia8_events.hepmc.gz (the pythia8_card default is HEPMCoutput:file
+    # = hepmc.gz). The deferred Rivet job reads exactly that .gz path, so this
+    # must run before the Rivet/Contur postprocessor below.
+    try:
+        cmd.store_result()
+    except Exception as error:
+        _report_failure(log, "store_result", error, run_dir)
+
+    if switch.get("analysis") == "Rivet":
+        # do_rivet only *prepared* the run (wrote Events/<run>/run_rivet.sh) and
+        # deferred execution to the postprocessor -- the rivet_card default has
+        # run_rivet_later = True, so with --no_default it logged "Skipping Rivet
+        # for now, passing it to postprocessor" and appended the run to
+        # cmd.postprocessing_dirs. MadEventCmd.do_launch runs that postprocessor
+        # at the end of a run; do the same here so the .yoda (and, when
+        # run_contur = True, the Contur limits) are actually produced.
+        bar = "=" * 60
+        log.info("")
+        log.info(bar)
+        log.info("  post-processing step: Rivet/Contur postprocessing")
+        log.info(bar)
+        start = time.time()
+        try:
+            cmd.postprocessing()
+        except Exception as error:
+            _report_failure(log, "Rivet-Contur postprocessing", error, run_dir)
+        else:
+            log.info("  -> Rivet/Contur postprocessing done (%.1fs)",
+                     time.time() - start)
 
 
 def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
