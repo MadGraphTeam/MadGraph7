@@ -154,11 +154,9 @@ jobs:
 
   acceptancetest_mg7_madspin_mixed_flavor:
     needs: build_madspace
-    # KNOWN-FAILING (development phase, no longer xfail): the mg7 + MadSpin
-    # density-summary pipeline is not wired up yet. Kept red on purpose so the
-    # gap stays visible until it is implemented before release. restore_heptools
-    # provides LHAPDF/NNPDF23 so the red reflects the real mg7 + MadSpin gap
-    # rather than a missing-PDF generation error.
+    # mg7 + MadSpin density-summary check driven through the madevent-style
+    # launch command interface. restore_heptools provides LHAPDF/NNPDF23 for the
+    # u u~ > z g generation.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:

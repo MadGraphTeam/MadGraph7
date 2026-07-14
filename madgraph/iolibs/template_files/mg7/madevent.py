@@ -1671,6 +1671,20 @@ def build_selector_cmd():
                         self.modified_card.add("run")
                         return
 
+                    # legacy madevent run_card names -> mg7 "section.key", so a
+                    # madevent-style launch script ("set nevents 500", "set
+                    # use_syst F", "set bwcutoff 10", ...) edits the mg7
+                    # run_card.toml verbatim. RunCardMG7._LO_SCALAR_MAP is the
+                    # same rename table used by the LO->MG7 run_card conversion.
+                    if rest and nlow in run_card._LO_SCALAR_MAP \
+                            and nlow not in [k.lower() for k in run_card.keys()]:
+                        target = run_card._LO_SCALAR_MAP[nlow]
+                        run_card.set(target, rest, user=True)
+                        logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                    nlow, target, run_card[target])
+                        self.modified_card.add("run")
+                        return
+
                     if rest and nlow in [k.lower() for k in run_card.keys()]:
                         current = run_card[nlow]
                         if isinstance(current, (int, float)) and not isinstance(current, bool):
