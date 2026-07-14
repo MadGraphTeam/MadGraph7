@@ -241,6 +241,10 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
             pass
     # TEMP DEBUG (rivet): dump the postprocessing log tail + rivet/contur logs
     import glob as _g
+    _tree = '\n'.join(sorted(
+        os.path.relpath(p, run_dir)
+        for p in _g.glob(pjoin(run_dir, 'Events', '**', '*'), recursive=True)))
+    print('\n===== TEMP Events/ tree =====\n%s' % _tree, file=sys.stderr, flush=True)
     print('\n===== TEMP mg7_postproc.log tail =====\n%s'
           % ''.join(open(log).readlines()[-140:]), file=sys.stderr, flush=True)
     for extra in sorted(_g.glob(pjoin(run_dir, 'Events', '**', 'rivet*.log'),
