@@ -102,49 +102,31 @@ typedef void* UmamiHandle;
 UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result);
 
 /**
- * Reports which input keys can be passed to this matrix element implementation, to
- * be written by whoever implements the UMAMI interface. Implementing this function
- * is optional; a caller that fails to resolve it should treat it as unavailable.
+ * Reports which input keys can be passed to this matrix element implementation.
+ * Optional — callers that fail to resolve this symbol should treat it as unavailable.
  *
- * @param supported
- *     pointer to a caller-allocated array of `UMAMI_INPUT_KEY_COUNT` booleans.
- *     On return, element `i` is set to whether the input key with numeric value
- *     `i` (see `UmamiInputKey`) is accepted by this implementation.
- * @return
- *     UMAMI_SUCCESS on success, error code otherwise
+ * @param supported pointer set to an implementation-owned boolean array
+ * @param count pointer set to the length of `*supported`
  */
-UmamiStatus umami_supported_inputs(bool* supported);
+UmamiStatus umami_supported_inputs(bool const** supported, int* count);
 
 /**
- * Reports which input keys must be passed to this matrix element implementation for
- * `umami_matrix_element` to succeed, to be written by whoever implements the UMAMI
- * interface. This is a subset of the keys reported by `umami_supported_inputs`.
- * Implementing this function is optional; a caller that fails to resolve it should
- * treat it as unavailable.
+ * Reports which input keys are mandatory. Subset of `umami_supported_inputs`.
+ * Optional — callers that fail to resolve this symbol should treat it as unavailable.
  *
- * @param required
- *     pointer to a caller-allocated array of `UMAMI_INPUT_KEY_COUNT` booleans.
- *     On return, element `i` is set to whether the input key with numeric value
- *     `i` (see `UmamiInputKey`) is mandatory for this implementation.
- * @return
- *     UMAMI_SUCCESS on success, error code otherwise
+ * @param required pointer set to an implementation-owned boolean array
+ * @param count pointer set to the length of `*required`
  */
-UmamiStatus umami_required_inputs(bool* required);
+UmamiStatus umami_required_inputs(bool const** required, int* count);
 
 /**
- * Reports which output keys can be requested from this matrix element
- * implementation, to be written by whoever implements the UMAMI interface.
- * Implementing this function is optional; a caller that fails to resolve it should
- * treat it as unavailable.
+ * Reports which output keys can be requested from this matrix element implementation.
+ * Optional — callers that fail to resolve this symbol should treat it as unavailable.
  *
- * @param supported
- *     pointer to a caller-allocated array of `UMAMI_OUTPUT_KEY_COUNT` booleans.
- *     On return, element `i` is set to whether the output key with numeric value
- *     `i` (see `UmamiOutputKey`) can be produced by this implementation.
- * @return
- *     UMAMI_SUCCESS on success, error code otherwise
+ * @param supported pointer set to an implementation-owned boolean array
+ * @param count pointer set to the length of `*supported`
  */
-UmamiStatus umami_supported_outputs(bool* supported);
+UmamiStatus umami_supported_outputs(bool const** supported, int* count);
 
 /**
  * Creates an instance of the matrix element. Each instance is independent, so thread

@@ -210,37 +210,34 @@ extern "C"
     return UMAMI_SUCCESS;
   }
 
-  UmamiStatus umami_supported_inputs( bool* supported )
+  UmamiStatus umami_supported_inputs( bool const** supported, int* count )
   {
-    for( int i = 0; i < UMAMI_INPUT_KEY_COUNT; ++i ) supported[i] = false;
-    supported[UMAMI_IN_MOMENTA] = true;
-    supported[UMAMI_IN_ALPHA_S] = true;
-    supported[UMAMI_IN_FLAVOR_INDEX] = true;
-    supported[UMAMI_IN_RANDOM_COLOR] = true;
-    supported[UMAMI_IN_RANDOM_HELICITY] = true;
-    supported[UMAMI_IN_RANDOM_DIAGRAM] = true;
-    supported[UMAMI_IN_DIAGRAM_INDEX] = true;
+    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
+    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true };
+    *supported = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
   }
 
-  UmamiStatus umami_required_inputs( bool* required )
+  UmamiStatus umami_required_inputs( bool const** required, int* count )
   {
-    for( int i = 0; i < UMAMI_INPUT_KEY_COUNT; ++i ) required[i] = false;
-    required[UMAMI_IN_MOMENTA] = true;
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true }; // MOMENTA only
+    *required = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
   }
 
-  UmamiStatus umami_supported_outputs( bool* supported )
+  UmamiStatus umami_supported_outputs( bool const** supported, int* count )
   {
-    for( int i = 0; i < UMAMI_OUTPUT_KEY_COUNT; ++i ) supported[i] = false;
-    supported[UMAMI_OUT_MATRIX_ELEMENT] = true;
-    supported[UMAMI_OUT_DIAGRAM_AMP2] = true;
-    supported[UMAMI_OUT_COLOR_INDEX] = true;
-    supported[UMAMI_OUT_HELICITY_INDEX] = true;
-    supported[UMAMI_OUT_DIAGRAM_INDEX] = true;
+    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX, GPU_STREAM
 #ifdef MGONGPUCPP_GPUIMPL
-    supported[UMAMI_OUT_GPU_STREAM] = true;
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true, true };
+#else
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
 #endif
+    *supported = data;
+    *count = UMAMI_OUTPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
   }
 

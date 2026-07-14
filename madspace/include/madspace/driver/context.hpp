@@ -48,27 +48,36 @@ public:
     std::size_t index() const { return _index; }
     const std::string& file_name() const { return _file_name; }
     std::vector<bool> supported_inputs() const {
-        bool supported[UMAMI_INPUT_KEY_COUNT];
-        check_umami_status(_supported_inputs(supported));
-        return std::vector<bool>(supported, supported + UMAMI_INPUT_KEY_COUNT);
+        bool const* data; int count;
+        check_umami_status(_supported_inputs(&data, &count));
+        std::vector<bool> result(UMAMI_INPUT_KEY_COUNT, false);
+        for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i)
+            result[i] = data[i];
+        return result;
     }
     std::vector<bool> required_inputs() const {
-        bool required[UMAMI_INPUT_KEY_COUNT];
-        check_umami_status(_required_inputs(required));
+        bool const* data; int count;
+        check_umami_status(_required_inputs(&data, &count));
         std::vector<bool> supported = supported_inputs();
-        for (std::size_t i = 0; i < UMAMI_INPUT_KEY_COUNT; ++i) {
-            if (required[i] && !supported[i]) {
+        for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i) {
+            if (data[i] && !supported[i]) {
                 throw_error(std::format(
                     "input key {} is reported as required but not as supported", i
                 ));
             }
         }
-        return std::vector<bool>(required, required + UMAMI_INPUT_KEY_COUNT);
+        std::vector<bool> result(UMAMI_INPUT_KEY_COUNT, false);
+        for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i)
+            result[i] = data[i];
+        return result;
     }
     std::vector<bool> supported_outputs() const {
-        bool supported[UMAMI_OUTPUT_KEY_COUNT];
-        check_umami_status(_supported_outputs(supported));
-        return std::vector<bool>(supported, supported + UMAMI_OUTPUT_KEY_COUNT);
+        bool const* data; int count;
+        check_umami_status(_supported_outputs(&data, &count));
+        std::vector<bool> result(UMAMI_OUTPUT_KEY_COUNT, false);
+        for (int i = 0; i < count && i < UMAMI_OUTPUT_KEY_COUNT; ++i)
+            result[i] = data[i];
+        return result;
     }
 
     void call(

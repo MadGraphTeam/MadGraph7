@@ -26,31 +26,27 @@ UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result) {
     return UMAMI_SUCCESS;
 }
 
-UmamiStatus umami_supported_inputs(bool* supported) {
-    for (int i = 0; i < UMAMI_INPUT_KEY_COUNT; ++i) supported[i] = false;
-    supported[UMAMI_IN_MOMENTA] = true;
-    supported[UMAMI_IN_ALPHA_S] = true;
-    supported[UMAMI_IN_FLAVOR_INDEX] = true;
-    supported[UMAMI_IN_RANDOM_COLOR] = true;
-    supported[UMAMI_IN_RANDOM_HELICITY] = true;
-    supported[UMAMI_IN_RANDOM_DIAGRAM] = true;
+UmamiStatus umami_supported_inputs(bool const** supported, int* count) {
+    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true };
+    *supported = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
 }
 
-UmamiStatus umami_required_inputs(bool* required) {
-    for (int i = 0; i < UMAMI_INPUT_KEY_COUNT; ++i) required[i] = false;
-    required[UMAMI_IN_MOMENTA] = true;
-    required[UMAMI_IN_FLAVOR_INDEX] = true;
+UmamiStatus umami_required_inputs(bool const** required, int* count) {
+    // MOMENTA and FLAVOR_INDEX (both dereferenced unconditionally in umami_matrix_element)
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, false, true };
+    *required = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
 }
 
-UmamiStatus umami_supported_outputs(bool* supported) {
-    for (int i = 0; i < UMAMI_OUTPUT_KEY_COUNT; ++i) supported[i] = false;
-    supported[UMAMI_OUT_MATRIX_ELEMENT] = true;
-    supported[UMAMI_OUT_DIAGRAM_AMP2] = true;
-    supported[UMAMI_OUT_COLOR_INDEX] = true;
-    supported[UMAMI_OUT_HELICITY_INDEX] = true;
-    supported[UMAMI_OUT_DIAGRAM_INDEX] = true;
+UmamiStatus umami_supported_outputs(bool const** supported, int* count) {
+    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
+    *supported = data;
+    *count = UMAMI_OUTPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
 }
 

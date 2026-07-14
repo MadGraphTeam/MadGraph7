@@ -11,7 +11,7 @@ using namespace madspace;
 using json = nlohmann::json;
 
 namespace {
-UmamiStatus umami_key_query_not_implemented(bool*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
 } // namespace
 
 MatrixElementApi::MatrixElementApi(
