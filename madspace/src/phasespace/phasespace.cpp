@@ -2,6 +2,7 @@
 #include "madspace/constants.hpp"
 #include "madspace/util.hpp"
 #include <algorithm>
+#include <map>
 
 using namespace madspace;
 
@@ -382,6 +383,77 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 _virt_slot_of_pos.at(j * npar + i).at(c) = static_cast<me_int_t>(k);
             }
         }
+
+        // First-level t-channel propagators: exactly two non-zero momentum factors, one on
+        // an incoming leg (0/1) and one on an outgoing leg. Their invariant p^2 = t is
+        // recomputed from the momenta (see the members). Build the per-channel (permuted)
+        // factor list and the position->factor-index / position->M^2 tables.
+        if (_topology.t_propagator_count() > 0) {
+            _t_factor_of_pos.assign(
+                npar * npar, std::vector<me_int_t>(channel_count, -1)
+            );
+            _t_mass2_of_pos.assign(
+                npar * npar, std::vector<double>(channel_count, 0.)
+            );
+            std::map<std::vector<me_int_t>, std::size_t> found_factors;
+            for (auto& [factors, mass, width] :
+                 _topology.propagator_momentum_terms(false)) {
+                std::size_t n_nonzero = 0, n_incoming = 0;
+                for (std::size_t k = 0; k < factors.size(); ++k) {
+                    if (factors.at(k) != 0) {
+                        ++n_nonzero;
+                        if (k < 2) {
+                            ++n_incoming;
+                        }
+                    }
+                }
+                // keep only 2-external-leg t-channel props (one incoming + one outgoing);
+                // n_incoming==0 is s-channel (handled above), ==2 is the s_hat root.
+                if (n_nonzero != 2 || n_incoming != 1) {
+                    continue;
+                }
+                for (std::size_t c = 0; c < channel_count; ++c) {
+                    std::vector<me_int_t> permuted(npar);
+                    for (std::size_t i = 0; i < npar; ++i) {
+                        std::size_t slot =
+                            _permutations.empty()
+                                ? i
+                                : static_cast<std::size_t>(_permutations.at(c).at(i));
+                        permuted.at(i) = factors.at(slot);
+                    }
+                    std::size_t fi = npar, fj = npar;
+                    for (std::size_t i = 0; i < npar; ++i) {
+                        if (permuted.at(i) != 0) {
+                            (fi == npar ? fi : fj) = i;
+                        }
+                    }
+                    auto found = found_factors.find(permuted);
+                    std::size_t idx;
+                    if (found == found_factors.end()) {
+                        idx = _t_momentum_factors.size();
+                        _t_momentum_factors.emplace_back(
+                            permuted.begin(), permuted.end()
+                        );
+                        found_factors[permuted] = idx;
+                    } else {
+                        idx = found->second;
+                    }
+                    _t_factor_of_pos.at(fi * npar + fj).at(c) = static_cast<me_int_t>(idx);
+                    _t_factor_of_pos.at(fj * npar + fi).at(c) = static_cast<me_int_t>(idx);
+                    _t_mass2_of_pos.at(fi * npar + fj).at(c) = mass * mass;
+                    _t_mass2_of_pos.at(fj * npar + fi).at(c) = mass * mass;
+                }
+            }
+            // replace the -1 placeholders with the sentinel index (appended 0 at runtime)
+            auto sentinel = static_cast<me_int_t>(_t_momentum_factors.size());
+            for (auto& col : _t_factor_of_pos) {
+                for (auto& v : col) {
+                    if (v < 0) {
+                        v = sentinel;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -630,6 +702,22 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             pos_slots.push_back(fb.gather_int(chan_index, _virt_slot_of_pos.at(p)));
         }
         Value virtuality = fb.select(src, fb.stack(pos_slots));
+        // Add first-level t-channel propagators (one incoming + one outgoing leg): p^2 = t
+        // is computed from the momenta in double (spacelike, so no cancellation), then
+        // t - M^2 scattered into the (i,j) positions of the sampled channel.
+        if (!_t_momentum_factors.empty()) {
+            Value t_invs = fb.invariants_from_momenta(p_ext_lab, _t_momentum_factors);
+            Value t_invs_ext =
+                fb.cat({t_invs, fb.full({0., batch, static_cast<me_int_t>(1)})});
+            ValueVec vt_slots;
+            for (std::size_t p = 0; p < npar * npar; ++p) {
+                Value fidx = fb.gather_int(chan_index, _t_factor_of_pos.at(p));
+                Value inv_p = fb.gather(fidx, t_invs_ext);
+                Value m2_p = fb.gather(chan_index, _t_mass2_of_pos.at(p));
+                vt_slots.push_back(fb.sub(inv_p, m2_p));
+            }
+            virtuality = fb.add(virtuality, fb.stack(vt_slots));
+        }
         outputs.push_back("virtuality", virtuality);
     }
     return {outputs, ps_weight};

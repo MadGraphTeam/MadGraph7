@@ -80,11 +80,13 @@ private:
     nested_vector2<me_int_t> _permutations;
 
     // Virtuality passthrough: when enabled, build_forward additionally outputs a
-    // flattened (npar x npar) real matrix v[i][j] = p^2 - M^2 for every s-channel
-    // propagator that is the fusion of exactly two external legs (i,j), taken from the
-    // numerically clean *sampled* invariant s (not recomputed from the momenta). Entries
-    // that are not such a propagator in the sampled channel are left at 0, which the ME
-    // treats as "recompute from momenta". See UMAMI_IN_VIRTUALITY / wf_fixp2_map.
+    // flattened (npar x npar) real matrix v[i][j] = p^2 - M^2 for every first-level
+    // propagator that is the fusion of exactly two external legs (i,j). s-channel props
+    // (two outgoing legs) use the numerically clean *sampled* invariant; first-level
+    // t-channel props (one incoming + one outgoing leg) use p^2 = t recomputed from the
+    // momenta in double (spacelike, no Breit-Wigner cancellation). Entries that are not
+    // such a propagator in the sampled channel are left at 0, which the ME treats as
+    // "recompute from momenta". See UMAMI_IN_VIRTUALITY / wf_fixp2_map.
     bool _produce_virtuality;
     // for each 2-external-leg propagator k: the decay index (to read its sampled p^2 =
     // mass2) and the propagator mass squared M^2
@@ -94,6 +96,16 @@ private:
     // position (i,j) in that channel (permutation), or _virt_decay_index.size() (sentinel)
     // if no propagator sits there. Used with select() to scatter the values per event.
     nested_vector2<me_int_t> _virt_slot_of_pos;
+
+    // First-level t-channel propagators (one incoming + one outgoing external leg). Their
+    // p^2 = t is spacelike (no Breit-Wigner cancellation), so it is recomputed from the
+    // momenta in double via invariants_from_momenta rather than sampled. _t_momentum_factors
+    // is the deduplicated list of per-channel permuted momentum-coefficient vectors; for each
+    // output position (i,j) the tables give, per channel, the index into that invariants
+    // vector (sentinel _t_momentum_factors.size() if none) and the propagator mass squared.
+    nested_vector2<double> _t_momentum_factors;
+    nested_vector2<me_int_t> _t_factor_of_pos;
+    nested_vector2<double> _t_mass2_of_pos;
 };
 
 } // namespace madspace
