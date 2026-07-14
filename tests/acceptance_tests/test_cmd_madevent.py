@@ -219,15 +219,26 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
         proc = subprocess.run(args, cwd=run_dir, env=env, input=stdin_text,
                               text=True, stdout=logf, stderr=subprocess.STDOUT,
                               timeout=timeout)
-    if proc.returncode != 0:
-        # surface the generate_events output (the log lives in a tmp dir that CI
-        # does not upload) so the real crash is visible in the test failure.
+    # The log lives in a tmp dir that CI does not upload; echo its tail (and any
+    # per-tool *_crash.log written by run_selected_tools when a post-processing
+    # tool fails silently, i.e. without failing generate_events) so both hard
+    # crashes and swallowed tool failures are visible in the CI output.
+    try:
+        tail = ''.join(open(log).readlines()[-120:])
+    except Exception as err:
+        tail = '(could not read %s: %s)' % (log, err)
+    crash = ''
+    for cl in sorted(glob.glob(pjoin(run_dir, '**', '*_crash.log'), recursive=True)):
         try:
-            tail = ''.join(open(log).readlines()[-120:])
-        except Exception as err:
-            tail = '(could not read %s: %s)' % (log, err)
-        test.fail('mg7 generate_events failed (rc=%s)\n'
-                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
+            crash += '\n----- %s -----\n%s' % (cl, open(cl).read())
+        except Exception:
+            pass
+    print('\n===== mg7 generate_events (rc=%s) log tail + crash logs =====\n'
+          '----- %s (last 120 lines) -----\n%s%s' % (proc.returncode, log, tail, crash),
+          file=sys.stderr, flush=True)
+    if proc.returncode != 0:
+        test.fail('mg7 generate_events failed (rc=%s); see the log tail above'
+                  % proc.returncode)
     runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
     test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
     return runs[0]
