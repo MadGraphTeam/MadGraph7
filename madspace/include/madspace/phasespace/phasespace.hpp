@@ -81,12 +81,13 @@ private:
 
     // Virtuality passthrough: when enabled, build_forward additionally outputs a
     // flattened (npar x npar) real matrix v[i][j] = p^2 - M^2 for every first-level
-    // propagator that is the fusion of exactly two external legs (i,j). s-channel props
-    // (two outgoing legs) use the numerically clean *sampled* invariant; first-level
-    // t-channel props (one incoming + one outgoing leg) use p^2 = t recomputed from the
-    // momenta in double (spacelike, no Breit-Wigner cancellation). Entries that are not
-    // such a propagator in the sampled channel are left at 0, which the ME treats as
-    // "recompute from momenta". See UMAMI_IN_VIRTUALITY / wf_fixp2_map.
+    // propagator that is the fusion of exactly two external legs (i,j). All three kinds
+    // are covered: s-channel two-outgoing and the two-incoming s_hat current use the
+    // numerically clean *sampled* invariant (a Breit-Wigner resonance keeps its clean
+    // value); first-level t-channel (one incoming + one outgoing) uses p^2 = t recomputed
+    // from the momenta in double (spacelike, no cancellation). Entries that are not such a
+    // propagator in the sampled channel are left at 0, which the ME treats as "recompute
+    // from momenta". See UMAMI_IN_VIRTUALITY / wf_fixp2_map.
     bool _produce_virtuality;
     // for each 2-external-leg propagator k: the decay index (to read its sampled p^2 =
     // mass2) and the propagator mass squared M^2

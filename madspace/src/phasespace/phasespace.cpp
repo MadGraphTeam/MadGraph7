@@ -356,6 +356,15 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             _virt_mass2.push_back(decay.mass * decay.mass);
             props.push_back({leaf_ext_pos.at(c0), leaf_ext_pos.at(c1)});
         }
+        // 2-incoming s-channel propagator (both beams fuse into one current): only present
+        // when the diagram has no t-channel. Its p^2 = s_hat is the sampled root invariant
+        // (decay 0), so an s-channel Breit-Wigner resonance keeps its clean value.
+        if (_topology.t_propagator_count() == 0) {
+            double m0 = _topology.decays().at(0).mass;
+            _virt_decay_index.push_back(0);
+            _virt_mass2.push_back(m0 * m0);
+            props.push_back({0, 1});
+        }
         std::size_t prop_count = props.size();
         std::size_t channel_count = std::max<std::size_t>(_permutations.size(), 1);
         // sentinel index prop_count into the (prop_count + 1)-length source vector -> 0
