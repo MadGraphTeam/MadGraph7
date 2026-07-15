@@ -1596,18 +1596,33 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 self[tag_name] = flav[index]
                 return return_fct(self, True, model, tag_name)
             else:
-                # need to set the flavor for a valid combination
-                pdg, flav_input = [(w.get('pdg_code'), w.get(tag_name)) for i, w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')][0] 
-                pdg_order = [p.get_pdg_code() for  p in vertex.get('particles')]
-                pos_input = pdg_order.index(pdg)
-                pos_output = pdg_order.index(-pdg_out)
-                for key in coup.get('flavors'):
-                    if key[pos_input] == flav_input:
-                        self[tag_name] = key[pos_output]
-                        return return_fct(self, True, model, tag_name)
+                merged_input = [(w.get('pdg_code'), w.get(tag_name)) for i, w in enumerate(self.get('mothers')) if abs(w.get_pdg_code()) in model.get('merged_particles')]
+                if merged_input:
+                    pdg, flav_input = merged_input[0]
+                    pdg_order = [p.get_pdg_code() for  p in vertex.get('particles')]
+                    pos_input = pdg_order.index(pdg)
+                    pos_output = pdg_order.index(-pdg_out)
+                    for key in coup.get('flavors'):
+                        if key[pos_input] == flav_input:
+                            self[tag_name] = key[pos_output]
+                            return return_fct(self, True, model, tag_name)
+                    else:
+                        self[tag_name] = 0
+                        return return_fct(self, False, model, tag_name)
                 else:
-                    self[tag_name] = 0
-                    return return_fct(self, False, model, tag_name)
+                    # This happens for case like ta+ w- > vt
+                    # since ta+ is not merged but the neutrino is, 
+                    # for this example, we need to find the flavor of the neutrino
+                    # A single flavor should be valid from the coupling.
+                    if len(coup.get('flavors')) != 1:
+                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                    flv_coup = next(iter(coup.get('flavors').keys()))
+                    flav_output = [ f for f in flv_coup if f != 0]
+                    if len(flav_output) != 1:
+                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                    self[tag_name] = flav_output[0]
+                    return return_fct(self, True, model, tag_name)
+
         elif self.get('interaction_id') == 0:
             # this is a case where the current flavor is trivial (the pdg is not a merged one)
             # and there is no interaction, so no need to check the validity of the input
@@ -1665,7 +1680,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
             return None
         
         pdg_out = self.get('pdg_code')
-        if pdg_out in model.get('merged_particles'):
+        misc.sprint(pdg_out, self[tag_name], [p.get_pdg_code() for p in vertex.get('particles')])
+        if abs(pdg_out) in model.get('merged_particles'):
             pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')]             
             index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_vertex) if abs(pdg) in model.get('merged_particles')][0]
             merge_flavor = self[tag_name]
@@ -3942,6 +3958,17 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         flavor which is not compatible with the diagram."""
         pass
 
+    # Class-level policy flag controlling how external flavors are enumerated
+    # for merged (flavor-grouped) processes.  In the default (masking) mode we
+    # keep a single representative per permutation class -- diagrams whose only
+    # flavor is a non-representative permutation are permutation duplicates and
+    # get trimmed.  When enumerate_all_flavors is True (set by do_output for the
+    # `--mask=False` standalone mode) every raw flavor combination is checked,
+    # so those permutation-duplicate diagrams keep a valid flavor and survive;
+    # only genuinely unphysical diagrams (supporting no flavor at all, e.g.
+    # charge-forbidden) are still trimmed.
+    enumerate_all_flavors = False
+
     def default_setup(self):
         """Default values for all properties"""
 
@@ -5495,10 +5522,24 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         pdgs, pdg_signs, to_map, restricted_flavor, ninit = \
             self._flavor_enumeration_context(model)
 
-        # A per-leg flavor restriction means some diagrams may be incompatible
-        # with every allowed flavor and must be trimmed.  Record the flag; the
-        # actual trimming is deferred to get_external_flavors() (see docstring).
-        self._flavor_allow_trimming = (restricted_flavor != [None] * len(pdgs))
+        # Some diagrams may be incompatible with *every* allowed flavor and
+        # must be trimmed.  This happens for two reasons:
+        #  - an explicit per-leg flavor restriction, or
+        #  - merged (flavor-grouped) external particles, which can generate
+        #    diagrams whose only flavor assignment is a non-representative
+        #    permutation of a kept one (so they are permutation duplicates of a
+        #    kept diagram), or on which no flavor can map at all (e.g. forbidden
+        #    by electric-charge conservation).
+        # In both cases the orphan diagrams carry an all-zero flavor mask and
+        # must be removed.  Record the flag here; the actual trimming is
+        # deferred to get_external_flavors() (see docstring).  Note the set of
+        # "orphan" diagrams depends on how flavors are enumerated below: in the
+        # default (representative) mode a permutation-duplicate diagram is an
+        # orphan, whereas with enumerate_all_flavors it keeps a valid flavor and
+        # only genuinely unphysical diagrams remain orphans.
+        has_merged_external = any(abs(pdg) in to_map for pdg in pdgs)
+        self._flavor_allow_trimming = has_merged_external or \
+            (restricted_flavor != [None] * len(pdgs))
 
         # Fast path: if no external leg carries a merged (flavor-grouped) pdg and
         # there is no flavor restriction, then there is a single external-flavor
@@ -5535,9 +5576,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # trusted to skip a sibling assignment for a decay-chain ME.
         is_decay_chain = bool(self.get('processes')[0].get('decay_chains'))
 
+        # In enumerate_all_flavors mode (the `--mask=False` standalone case) we
+        # keep *every* raw flavor combination rather than one representative per
+        # permutation class, so that the matrix element is directly evaluable
+        # for any flavor ordering.  Skipping the signature dedup means a diagram
+        # whose only flavor is a non-representative permutation still records a
+        # valid flavor and survives trimming; only diagrams supporting no flavor
+        # at all remain orphans.
+        enumerate_all = self.enumerate_all_flavors
+
         for one_flavor, signed_pdg, signature in self._iter_candidate_flavors(
                 pdgs, pdg_signs, to_map, restricted_flavor, ninit):
-            if signature in checked:
+            if not enumerate_all and signature in checked:
                 if checked[signature]:
                     # genuine permutation duplicate of a validated flavor
                     continue
@@ -7070,8 +7120,14 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     continue
             
             for matrix_element in matrix_element_list:
-                if any(l.get('flavor') for l in matrix_element.get_all_wavefunctions()):
-                    matrix_element.get_external_flavors()
+                # Trigger restricted-flavor / merged-flavor diagram trimming
+                # here, *before* the color basis is built below (process_color),
+                # so the color basis is constructed from the final (trimmed)
+                # diagram set and stays consistent with it.  get_external_flavors
+                # self-populates and only trims when there is something to trim,
+                # so it is a cheap no-op for plain (non-merged, unrestricted)
+                # matrix elements.
+                matrix_element.get_external_flavors()
 
             # Deal with newly generated matrix elements
             for matrix_element in copy.copy(matrix_element_list):
