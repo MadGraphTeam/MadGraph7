@@ -319,6 +319,11 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_heptools
+      - name: Breakpoint
+        uses: namespacelabs/breakpoint-action@v0
+        with:
+          duration: 30m
+          authorized-users: oliviermattelaer
       - name: test one of the test test_generation_from_file_1_mg7
         run: |
             cd $GITHUB_WORKSPACE
