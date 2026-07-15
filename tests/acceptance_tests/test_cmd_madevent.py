@@ -2137,6 +2137,9 @@ C
                     % (flavor['options'],))
 
         # madevent reference for the same run_card settings
+        target = 155.9
+        target = 40.3 # fixed scale mz
+
         self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
 
     def load_result(self, run_name):
@@ -2730,7 +2733,8 @@ class TestMEfromfile(unittest.TestCase):
              'generate g g > b b~ HIW<=1'],
             pjoin(self.path, 'MG7_heft'), datadir)
         # physical reference (same as test_generation_heft)
-        target = 4.117e8
+        target = 4.117e8 # HT/2
+        target = 3.754e+08 # fixed scale MZ
         self.assertLess(abs(cross - target) / target, 0.10,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))

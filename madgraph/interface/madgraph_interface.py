@@ -3025,7 +3025,7 @@ class CompleteForCmd(cmd.CompleteCmd):
         args = self.split_arg(line[0:begidx])
         # Format
         if len(args) == 1:
-            return self.list_completion(text, self._install_opts + self._advanced_install_opts)
+            return self.list_completion(text, sorted(set(self._install_opts) | set(self._advanced_install_opts)))
         elif len(args) and args[0] == 'update':
             return self.list_completion(text, ['-f','--timeout='])
         elif len(args) >= 2 and args[1] == 'madspace':
@@ -5365,6 +5365,9 @@ This implies that with decay chains:
                     
 
             duplicate =1
+            if part_name[0].isdigit() and len(part_name) > 1 and not part_name[1].isdigit(): 
+                duplicate, part_name = int(part_name[0]), part_name[1:]
+
             if part_name in self._multiparticles:
                 # final-state multiparticles cannot be tagged
                 if is_tagged and state:
@@ -5433,19 +5436,7 @@ This implies that with decay chains:
                                 break
                     else:  
                         mylegids.append(pdg)
-                else:
-                    # check for duplication flag!
-                    if part_name[0].isdigit():
-                        duplicate, part_name = int(part_name[0]), part_name[1:]
-                        if part_name in self._multiparticles:
-                            if isinstance(self._multiparticles[part_name][0], list):
-                                raise self.InvalidCmd(\
-                                      "Multiparticle %s is or-multiparticle" % part_name + \
-                                      " which can be used only for required s-channels")
-                            mylegids.extend(self._multiparticles[part_name])                        
-                        else:
-                            mypart = self._curr_model['particles'].get_copy(part_name)
-                            mylegids.append(mypart.get_pdg_code())
+
 
             if mylegids:
                 for _ in range(duplicate):
