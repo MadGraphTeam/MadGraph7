@@ -10,7 +10,7 @@
       {"id": "gq_qqqbar",         "process": "g _quark > _quark _quark _anti_quark",               "cross": 2.589e+05, "error": 91.76},
       {"id": "gqbar_ggqbar",      "process": "g _anti_quark > g g _anti_quark",                    "cross": 2.197e+06, "error": 639.1},
       {"id": "gqbar_qqbarqbar",   "process": "g _anti_quark > _quark _anti_quark _anti_quark",     "cross": 9.63e+04, "error": 34.19},
-      {"id": "qq_gqq",            "process": "_quark _quark > g _quark _quark",                    "cross": 1.039e+06, "error": 254.3},
+      {"id": "qq_gqq",            "process": "_quark _quark > g _quark _quark",                    "cross": 1.047e+06, "error": 273.6},
       {"id": "qqbar_ggg",         "process": "_quark _anti_quark > g g g",                         "cross": 5944, "error": 2.437},
       {"id": "qqbar_gqqbar",      "process": "_quark _anti_quark > g _quark _anti_quark",          "cross": 5.26e+05, "error": 142.7},
       {"id": "qbarqbar_gqbarqbar","process": "_anti_quark _anti_quark > g _anti_quark _anti_quark","cross": 1.916e+05, "error": 59.33}
@@ -28,7 +28,7 @@
       {"id": "gg_ttxqqbar",           "process": "g g > t t~ _quark _anti_quark",                  "cross": 17.92, "error": 0.005483},
       {"id": "gq_ttxgq",              "process": "g _quark > t t~ g _quark",                       "cross": 130.9, "error": 0.03545},
       {"id": "gqbar_ttxgqbar",        "process": "g _anti_quark > t t~ g _anti_quark",             "cross": 22.1,  "error": 0.006179},
-      {"id": "qq_ttxqq",              "process": "_quark _quark > t t~ _quark _quark",             "cross": 15.12, "error": 0.004464},
+      {"id": "qq_ttxqq",              "process": "_quark _quark > t t~ _quark _quark",             "cross": 15.37, "error": 0.004464},
       {"id": "qqbar_ttxgg",           "process": "_quark _anti_quark > t t~ g g",                  "cross": 5.944, "error": 0.002005},
       {"id": "qqbar_ttxqqbar",        "process": "_quark _anti_quark > t t~ _quark _anti_quark",   "cross": 3.595, "error": 0.001049},
       {"id": "qbarqbar_ttxqbarqbar",  "process": "_anti_quark _anti_quark > t t~ _anti_quark _anti_quark", "cross": 0.5119, "error": 0.0001495}
@@ -49,7 +49,7 @@
       {"id": "gg_eeqqbar",          "process": "g g > e+ e- _quark _anti_quark",                   "cross": 8.62,  "error": 0.003529},
       {"id": "gq_eegq",             "process": "g _quark > e+ e- g _quark",                        "cross": 27.32, "error": 0.008703},
       {"id": "gqbar_eegqbar",       "process": "g _anti_quark > e+ e- g _anti_quark",              "cross": 13.64, "error": 0.004341},
-      {"id": "qq_eeqq",             "process": "_quark _quark > e+ e- _quark _quark",              "cross": 7.498, "error": 0.001954},
+      {"id": "qq_eeqq",             "process": "_quark _quark > e+ e- _quark _quark",              "cross": 7.566, "error": 0.001927},
       {"id": "qqbar_eegg",          "process": "_quark _anti_quark > e+ e- g g",                   "cross": 3.95,  "error": 0.001233},
       {"id": "qqbar_eeqqbar",       "process": "_quark _anti_quark > e+ e- _quark _anti_quark",    "cross": 4.407, "error": 0.001189},
       {"id": "qbarqbar_eeqbarqbar", "process": "_anti_quark _anti_quark > e+ e- _anti_quark _anti_quark", "cross": 1.467, "error": 0.0004163}
