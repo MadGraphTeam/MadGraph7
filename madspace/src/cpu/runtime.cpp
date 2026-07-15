@@ -885,10 +885,7 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     _input_count(function.inputs().size()),
     _rand_gens(
         context->thread_pool(),
-        []() {
-            std::random_device rand_device;
-            return std::mt19937(rand_device());
-        }
+        []() { return make_rng(); }
     ),
     _concurrent(concurrent) {
     if (context->device()->device_type() != DeviceType::cpu) {

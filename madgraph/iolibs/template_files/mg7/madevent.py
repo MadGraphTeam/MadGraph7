@@ -362,6 +362,8 @@ class MadgraphProcess:
         run_args = self.run_card["run"]
         gen_args = self.run_card["generation"]
         vegas_args = self.run_card["vegas"]
+        # seed the event-generation RNGs before any sampling happens (-1 => random)
+        ms.set_generation_seed(int(run_args["seed"]))
         cfg = ms.GeneratorConfig()
         cfg.target_count = gen_args["events"]
         cfg.vegas_damping = vegas_args["damping"]

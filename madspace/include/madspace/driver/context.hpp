@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <random>
 #include <unordered_map>
 
 #include "madspace/compgraphs.hpp"
@@ -150,6 +151,16 @@ ContextPtr default_context();
 ContextPtr default_cuda_context(std::size_t index = 0);
 ContextPtr default_hip_context(std::size_t index = 0);
 ContextPtr default_device_context(DevicePtr device);
+
+// Deterministic RNG seeding for reproducible event generation. When a non-negative seed is
+// set, make_rng() returns std::mt19937 instances seeded deterministically from it (a global
+// stream counter gives each a distinct sub-stream); a negative seed falls back to
+// non-deterministic std::random_device (the default). Set this once, before generation, so
+// every RNG (phase-space sampling and host-side unweighting/combine) picks it up.
+// NB: with more than one CPU thread, batch-to-thread scheduling still makes results only
+// statistically (not bit-) reproducible; use a single thread for exact reproducibility.
+void set_generation_seed(std::int64_t seed);
+std::mt19937 make_rng();
 
 inline std::string prefixed_name(const std::string& prefix, const std::string& name) {
     return prefix == "" ? name : std::format("{}.{}", prefix, name);

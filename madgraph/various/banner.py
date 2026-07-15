@@ -6452,6 +6452,8 @@ class RunCardMG7(RunCard):
             comment="options: cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto")
         self.add_toml_param('run', 'precision', "m", gridpack=True, allowed=['f', 'm', 'd'],
             comment="matrix element float precision (make FPTYPE): f=float, m=mixed, d=double")
+        self.add_toml_param('run', 'seed', -1, gridpack=True,
+            comment="RNG seed for reproducible generation; -1 = random. NB: exact reproducibility needs cpu_thread_pool_size = 1")
         self.add_toml_param('run', 'simd_vector_size', -1,
             comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,

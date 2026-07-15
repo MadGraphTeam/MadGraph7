@@ -5,6 +5,9 @@ devices = %(run.devices)s
 # matrix element floating-point precision to compile with (make FPTYPE):
 #   f = single (float), m = mixed (double momenta/couplings, float vertices), d = double
 precision = %(run.precision)s
+# RNG seed for reproducible generation; -1 = random (non-deterministic).
+# NB: exact reproducibility also needs a single CPU thread (cpu_thread_pool_size = 1).
+seed = %(run.seed)s
 # options:
 #   -1 to choose automatically
 #   on x86: 1, 4, 8
