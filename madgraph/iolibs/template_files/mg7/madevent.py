@@ -1708,11 +1708,35 @@ def ask_edit_cards() -> dict:
     # question a card/banner path -- as the question itself advertises -- and have
     # it replace the corresponding card. Without it the path is rejected ("This
     # answer is not valid for current question") and the default is used instead.
-    switch, _ = mother.ask('', '0', [], path_msg='enter path',
-                           ask_class=selector_class,
-                           mode='auto', line_args=[], force=False,
-                           return_instance=True)
-    return dict(switch)
+    switch, question = mother.ask('', '0', [], path_msg='enter path',
+                                  ask_class=selector_class,
+                                  mode='auto', line_args=[], force=False,
+                                  return_instance=True)
+    switch = dict(switch)
+    prune_unselected_tool_cards(mother, question, switch)
+    return switch
+
+
+def prune_unselected_tool_cards(mother, question, switch) -> None:
+    """Hide the cards of the tools that were NOT selected in the question.
+
+    The question materialises every candidate tool card (copying the
+    *_default.dat) so that it can offer them all for edition; madevent's
+    ask_run_configuration prunes them again afterwards (keep_cards on the
+    selected cards), but the mg7 launcher had no such cleanup. The materialised
+    cards therefore persisted, and a later re-launch of the same output saw them
+    all present and defaulted every switch to ON (set_default_<tool> keys off
+    card presence). Prune here too, using the question's own switch->card map, so
+    a re-launch reflects the previous selection instead of turning everything on.
+    """
+    try:
+        keep = list(question.always_cards)
+        for spec in question.switch_cards:
+            if spec['on'](switch):
+                keep.append(spec['card'])
+        mother.keep_cards(keep)
+    except Exception as error:
+        logger.debug('could not prune unselected tool cards: %s', error)
 
 
 def _find_event_file(run_path):

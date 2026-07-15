@@ -1043,6 +1043,68 @@ class TestMECmdShell(unittest.TestCase):
                 'e+ e- > e+ e-: beams are different particles, flavor %s must '
                 'not be mirrored (that doubles the cross-section)' % (flavor,))
 
+    def test_relaunch_switch_defaults_mg7(self):
+        """Re-launching an mg7 output must not turn every tool on.
+
+        The launch question materialises every candidate tool card (copying the
+        *_default.dat) so it can offer them for edition. If the cards of the
+        tools the user did not select are not pruned afterwards, a later launch
+        sees them all present and defaults every switch to ON (set_default_<tool>
+        keys off card presence). This drives the real launch question
+        (ask_edit_cards) twice on the same output, selecting nothing each time,
+        and checks that the second launch still defaults every switch to OFF
+        instead of turning everything on. Output-level: no madspace/LHAPDF
+        runtime needed."""
+        import importlib, io
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        for c in ['set automatic_html_opening False --no_save',
+                  'import model sm', 'generate e+ e- > mu+ mu-']:
+            mg.exec_cmd(c)
+        out_dir = pjoin(self.path, 'MG7_relaunch')
+        mg.exec_cmd('output mg7 %s' % out_dir)
+
+        launcher = importlib.import_module(
+            'madgraph.iolibs.template_files.mg7.madevent')
+        tool_cards = ('pythia8_card.dat', 'madspin_card.dat', 'delphes_card.dat',
+                      'reweight_card.dat', 'rivet_card.dat',
+                      'madanalysis5_parton_card.dat',
+                      'madanalysis5_hadron_card.dat')
+
+        def active_tool_cards():
+            present = set(os.listdir(pjoin(out_dir, 'Cards')))
+            return sorted(c for c in tool_cards if c in present)
+
+        def launch_select_nothing():
+            # drive the real launch question, answering '0' (= done: select
+            # nothing / accept the shown defaults)
+            old_stdin = sys.stdin
+            sys.stdin = io.StringIO('0\n')
+            try:
+                return launcher.ask_edit_cards()
+            finally:
+                sys.stdin = old_stdin
+
+        cwd = os.getcwd()
+        try:
+            os.chdir(out_dir)
+            # LAUNCH 1: selecting nothing must leave no active tool card behind
+            # (the materialised cards are pruned again).
+            launch_select_nothing()
+            self.assertEqual(active_tool_cards(), [],
+                'the launch left unselected tool cards active: %s'
+                % active_tool_cards())
+
+            # LAUNCH 2: the defaults must reflect the previous (empty) selection
+            # -- no switch may come back on.
+            switch = launch_select_nothing()
+            for key, value in switch.items():
+                self.assertIn(value, ('OFF', 'Not Avail.'),
+                    're-launch defaulted %s=%s instead of OFF -- the tool cards '
+                    'from the previous launch were not pruned' % (key, value))
+        finally:
+            os.chdir(cwd)
+
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,
         q = u d): the merged-flavor path must reproduce the 4428 pb obtained by
