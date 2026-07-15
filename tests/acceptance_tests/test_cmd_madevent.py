@@ -704,14 +704,10 @@ class TestMECmdShell(unittest.TestCase):
         and checks the two cross-sections agree (grouping consistency). It also
         pins the absolute value to the mg7-native result obtained with the
         run_card.toml defaults (NNPDF23_lo_as_0130_qed + dynamical HT/2 scale,
-        events=2000) ~ 2.21e5 pb.
+        events=2000) ~ 1.277e+06 pb.
 
         NOTE: this is NOT the madevent reference (1.31e6 pb in
-        test_group_subprocess); the two are not directly comparable (different
-        PDF/scale defaults) and there is moreover a known mg7 normalisation
-        discrepancy. The check is intentionally a live (non-xfail) guard on the
-        current mg7 result and should be revisited when the mg7 integrator
-        normalisation is resolved.
+        test_group_subprocess); but it would be if true lhapdf were used in madevent
         """
         import glob, json
         # The mg7 cross-section run needs the madspace runtime and a resolvable
@@ -771,8 +767,9 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val1 - val2) / (err1 + err2 + 1e-30), 5,
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
-        # mg7-native reference (see docstring) -- NOT the madevent 1.31e6 value.
-        target = 221409.0
+        # NOT the madevent 1.31e6 value for internal pdf but the one for 
+        # lhapdf NNPDF23_lo_as_0130_qed + dynamical HT/2 scale 
+        target = 1.277e+06
         self.assertLess(abs(val2 - target) / target, 0.10,
             'mg7 u u > u u cross-section %s far from mg7 reference %s'
             % (val2, target))
