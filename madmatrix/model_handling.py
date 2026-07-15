@@ -733,8 +733,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         out.write('    const cxtype_denom_sv cId( 0., 1. );\n') # OM
                         if os.environ.get('MADMATRIX_VIRT_DEBUG', '') == '1':
                             mydict['virtcl'] = '( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) ) - static_cast<fptype_invmass>( M%(i)s ) * static_cast<fptype_invmass>( M%(i)s )' % mydict
-                            out.write('    // VIRT_DEBUG: check the supplied virtuality p^2-M^2 against the momenta-based value to ~8 digits\n') # FS
-                            out.write('    if( FIXP2 != %(zero)s ) { const fptype_invmass FIXP2cl = %(virtcl)s; assert( std::fabs( FIXP2 - FIXP2cl ) <= 1.e-8 * ( std::fabs( FIXP2cl ) + 1.e-30 ) ); }\n' % mydict) # FS
+                            # VIRT_DEBUG: verify the supplied virtuality equals the momenta-based p^2-M^2
+                            # of THIS propagator (FIXP2 != 0 only for the diagram the caller selected via
+                            # the channelId gate). Only assert for a double-precision propagator-momentum
+                            # recompute: an FP32 (fptype_denom=float) value cannot reproduce the passed
+                            # double virtuality to 1e-8 - that is precisely why it is passed.
+                            out.write('    // VIRT_DEBUG: check the supplied virtuality p^2-M^2 against the momenta-based value (FP64 only)\n') # FS
+                            out.write('    if( FIXP2 != %(zero)s ) { const fptype_invmass FIXP2cl = %(virtcl)s; if constexpr( sizeof( fptype_denom ) == sizeof( double ) ) { assert( std::fabs( FIXP2 - FIXP2cl ) <= 1.e-8 * ( std::fabs( FIXP2cl ) + 1.e-30 ) ); } else { (void)FIXP2cl; } }\n' % mydict) # FS
                         out.write('    %(declnamedenom)s = ( FIXP2 == %(zero)s )\n' % mydict) # OM
                         out.write('      ? ( %(denomnorm)s )\n' % mydict) # OM (no virtuality: p^2 from momenta)
                         out.write('      : static_cast<cxtype_denom_sv>( %(invnum)s / ( FIXP2 + ( %(imw)s ) ) );\n' % mydict) # OM/FS (virtuality: (p^2-M^2)+iMW)
