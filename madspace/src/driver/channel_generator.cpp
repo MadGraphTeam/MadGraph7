@@ -16,6 +16,9 @@ int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_
     if (index_map.contains("partial_weight_product")) {
         flags |= EventRecord::f_partial_weights;
     }
+    if (index_map.contains("subprocess_index")) {
+        flags |= EventRecord::f_subproc_index;
+    }
     return flags;
 }
 
@@ -270,6 +273,11 @@ void ChannelEventGenerator::init_field_indices() {
         _field_indices.partial_weight_product = index_map.at("partial_weight_product");
     } else {
         _field_indices.partial_weight_product = -1;
+    }
+    if (index_map.contains("subprocess_index")) {
+        _field_indices.subprocess_index = index_map.at("subprocess_index");
+    } else {
+        _field_indices.subprocess_index = -1;
     }
     _field_indices.random = index_map.at("random");
     _field_indices.rest = _field_indices.random + 1;
@@ -640,6 +648,15 @@ void ChannelEventGenerator::write_events(
         for (std::size_t i = 0; i < pw_view.size(); ++i) {
             auto event = event_buffer.event(i);
             event.partial_weight_product() = pw_view[i];
+        }
+    }
+
+    if (_field_indices.subprocess_index != -1) {
+        auto subproc_view =
+            unweighted_events.at(_field_indices.subprocess_index).view<me_int_t, 1>();
+        for (std::size_t i = 0; i < subproc_view.size(); ++i) {
+            auto event = event_buffer.event(i);
+            event.subprocess_index() = subproc_view[i];
         }
     }
 

@@ -606,6 +606,8 @@ void EventGenerator::read_and_combine(
     bool has_beam2 = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_beam2;
     bool has_partial =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
+    bool has_subproc_index =
+        _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
 
     std::random_device rand_device;
     std::mt19937 rand_gen(rand_device());
@@ -642,7 +644,9 @@ void EventGenerator::read_and_combine(
         auto event_in = sampled_chan->event_buffer.event(sampled_chan->buffer_index);
         auto event_out = buffer.event(event_index);
         event_out.weight() = std::max(1., weight / channel->max_weight()) * norm_factor;
-        event_out.subprocess_index() = channel->status().subprocess;
+        event_out.subprocess_index() = has_subproc_index
+            ? event_in.subprocess_index().value()
+            : static_cast<int>(channel->status().subprocess);
         event_out.diagram_index() = event_in.diagram_index();
         event_out.color_index() = event_in.color_index();
         event_out.flavor_index() = event_in.flavor_index();
