@@ -205,15 +205,17 @@ namespace mgOnGpu
 #endif
 
   // fptype_invmass: precision of the offshell-propagator virtuality (m_ij / FIXP2) and of the
-  // propagator denominator computed from it. Default double. NB: unlike the other stage
-  // types this one is only wired for scalar builds (cppnone / CUDA); in a SIMD build it must
-  // equal fptype (a static_assert at the end of this file enforces it).
+  // propagator denominator computed from it. Follows the global fptype by default; define
+  // MGONGPU_FPTYPE_INVMASS_DOUBLE to keep it (and the supplied virtuality) in double even in
+  // a reduced-precision (FPTYPE=f) build. NB: unlike the other stage types this one is only
+  // wired for scalar builds (cppnone / CUDA); in a SIMD build it must equal fptype (a
+  // static_assert at the end of this file enforces it).
 #if defined MGONGPU_FPTYPE_INVMASS_DOUBLE
   typedef double fptype_invmass;
 #elif defined MGONGPU_FPTYPE_INVMASS_FLOAT
   typedef float fptype_invmass;
 #else
-  typedef fptype fptype_invmass; // default: double
+  typedef fptype fptype_invmass;
 #endif
 
   // fptype_vertex: for VVF vertex function (FFV1_0, FFV1P0_3) internal computation
