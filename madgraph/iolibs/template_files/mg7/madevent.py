@@ -871,6 +871,89 @@ def clean_pids(pids: list[int]) -> list[int]:
     return pids_out
 
 
+def build_multi_channel_data(
+    meta: dict,
+    process: "MadgraphProcess",
+    incoming_masses: list[float],
+    outgoing_masses: list[float],
+) -> MultiChannelData:
+    bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
+    diagram_count = meta["diagram_count"]
+
+    amp2_remap = [-1] * diagram_count
+    symfact = []
+    topologies = []
+    permutations = []
+    channel_indices = []
+    channel_weight_indices = []
+    diagram_indices = []
+    diagram_color_indices = []
+    active_flavors = []
+    channel_index = 0
+
+    for channel_id, channel in enumerate(meta["channels"]):
+        propagators = []
+        for i, pid in enumerate(clean_pids(channel["propagators"])):
+            mass = process.get_mass(pid)
+            width = process.get_width(pid)
+            if i in channel["on_shell_propagators"]:
+                e_min = mass - bw_cutoff * width
+                e_max = mass + bw_cutoff * width
+            else:
+                e_min = 0
+                e_max = 0
+            propagators.append(ms.Propagator(
+                mass=mass,
+                width=width,
+                integration_order=0,
+                e_min=e_min,
+                e_max=e_max,
+            ))
+        vertices = channel["vertices"]
+        diagrams = channel["diagrams"]
+        chan_permutations = [d["permutation"] for d in diagrams]
+        diag = ms.Diagram(
+            incoming_masses, outgoing_masses, propagators, vertices
+        )
+        chan_topologies = ms.Topology.topologies(diag)
+        topo_count = len(chan_topologies)
+
+        amp2_remap[diagrams[0]["diagram"]] = channel_index
+        channel_index_first = channel_index
+        symfact_index_first = len(symfact)
+        channel_index += 1
+        symfact.extend([None] * topo_count)
+        for d in diagrams[1:]:
+            amp2_remap[d["diagram"]] = channel_index
+            channel_index += 1
+            symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
+
+        topologies.append(chan_topologies)
+        permutations.append(chan_permutations)
+        channel_indices.append(list(range(channel_index_first, channel_index)))
+        channel_weight_indices.append([
+            [
+                symfact_index_first + topo_index + i * topo_count
+                for i in range(len(chan_permutations))
+            ]
+            for topo_index in range(topo_count)
+        ])
+        diagram_indices.append([d["diagram"] for d in diagrams])
+        diagram_color_indices.append([d["active_colors"] for d in diagrams])
+        active_flavors.append([d["active_flavors"] for d in diagrams])
+    return MultiChannelData(
+        amp2_remap,
+        symfact,
+        topologies,
+        permutations,
+        channel_indices,
+        channel_weight_indices,
+        diagram_indices,
+        diagram_color_indices,
+        active_flavors,
+    )
+
+
 class MadgraphSubprocess:
     def __init__(self, process: MadgraphProcess, meta: dict, subproc_id: int):
         self.process = process
@@ -953,80 +1036,11 @@ class MadgraphSubprocess:
         if self.multi_channel_data is not None:
             return self.multi_channel_data
 
-        diagram_count = self.meta["diagram_count"]
-        bw_cutoff = self.process.run_card["phasespace"]["bw_cutoff"]
-
-        amp2_remap = [-1] * diagram_count
-        symfact = []
-        topologies = []
-        permutations = []
-        channel_indices = []
-        channel_weight_indices = []
-        diagram_indices = []
-        diagram_color_indices = []
-        active_flavors = []
-        channel_index = 0
-
-        for channel_id, channel in enumerate(self.meta["channels"]):
-            propagators = []
-            for i, pid in enumerate(clean_pids(channel["propagators"])):
-                mass = self.process.get_mass(pid)
-                width = self.process.get_width(pid)
-                if i in channel["on_shell_propagators"]:
-                    e_min = mass - bw_cutoff * width
-                    e_max = mass + bw_cutoff * width
-                else:
-                    e_min = 0
-                    e_max = 0
-                propagators.append(ms.Propagator(
-                    mass=mass,
-                    width=width,
-                    integration_order=0,
-                    e_min=e_min,
-                    e_max=e_max,
-                ))
-            vertices = channel["vertices"]
-            diagrams = channel["diagrams"]
-            chan_permutations = [d["permutation"] for d in diagrams]
-            diag = ms.Diagram(
-                self.incoming_masses, self.outgoing_masses, propagators, vertices
-            )
-            chan_topologies = ms.Topology.topologies(diag)
-            topo_count = len(chan_topologies)
-
-            amp2_remap[diagrams[0]["diagram"]] = channel_index
-            channel_index_first = channel_index
-            symfact_index_first = len(symfact)
-            channel_index += 1
-            symfact.extend([None] * topo_count)
-            for d in diagrams[1:]:
-                amp2_remap[d["diagram"]] = channel_index
-                channel_index += 1
-                symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
-
-            topologies.append(chan_topologies)
-            permutations.append(chan_permutations)
-            channel_indices.append(list(range(channel_index_first, channel_index)))
-            channel_weight_indices.append([
-                [
-                    symfact_index_first + topo_index + i * topo_count
-                    for i in range(len(chan_permutations))
-                ]
-                for topo_index in range(topo_count)
-            ])
-            diagram_indices.append([d["diagram"] for d in diagrams])
-            diagram_color_indices.append([d["active_colors"] for d in diagrams])
-            active_flavors.append([d["active_flavors"] for d in diagrams])
-        self.multi_channel_data = MultiChannelData(
-            amp2_remap,
-            symfact,
-            topologies,
-            permutations,
-            channel_indices,
-            channel_weight_indices,
-            diagram_indices,
-            diagram_color_indices,
-            active_flavors,
+        self.multi_channel_data = build_multi_channel_data(
+            self.meta,
+            self.process,
+            self.incoming_masses,
+            self.outgoing_masses,
         )
         return self.multi_channel_data
 
