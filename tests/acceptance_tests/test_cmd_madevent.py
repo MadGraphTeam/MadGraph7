@@ -71,7 +71,7 @@ def check_html_page(cls, link):
 # Shared helpers for the mg7 (madspace) cross-section acceptance tests
 # (module-level so they can be used from several test classes)
 #===============================================================================
-def _mg7_datadir_or_skip(test):
+def _mg7_datadir_or_skip(testinstance):
     """Return a usable LHAPDF data dir for mg7 runs, or skipTest (on *test*) if
     the mg7 runtime stack (madspace + LHAPDF + the run_card.toml default PDF) is
     not available."""
@@ -83,11 +83,17 @@ def _mg7_datadir_or_skip(test):
         has_mg7 = False
     datadir = os.environ.get('LHAPDF_DATA_PATH')
     if not datadir:
+        mg = MGCmd.MasterCmd()
+        lhapdf = mg.options['lhapdf']
+        if not lhapdf:
+            lhapdf = 'lhapdf-config'
         try:
             datadir = subprocess.check_output(
-                ['lhapdf-config', '--datadir']).decode().strip()
+            [lhapdf, '--datadir']).decode().strip()
         except Exception:
-            datadir = None
+            datadir = None 
+        
+    
     if not has_mg7 or not datadir or not os.path.isdir(datadir):
         test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
     if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
