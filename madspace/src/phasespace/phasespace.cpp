@@ -2,6 +2,7 @@
 #include "madspace/constants.hpp"
 #include "madspace/util.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <map>
 
 using namespace madspace;
@@ -397,7 +398,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         // an incoming leg (0/1) and one on an outgoing leg. Their invariant p^2 = t is
         // recomputed from the momenta (see the members). Build the per-channel (permuted)
         // factor list and the position->factor-index / position->M^2 tables.
-        if (_topology.t_propagator_count() > 0) {
+        // Set MADSPACE_VIRT_NO_TCHANNEL to pass only the s-channel virtualities (turn off
+        // the first-level t-channel passing), reproducing the s-channel-only behaviour.
+        bool pass_t_channel = std::getenv("MADSPACE_VIRT_NO_TCHANNEL") == nullptr;
+        if (pass_t_channel && _topology.t_propagator_count() > 0) {
             _t_factor_of_pos.assign(
                 npar * npar, std::vector<me_int_t>(channel_count, -1)
             );
