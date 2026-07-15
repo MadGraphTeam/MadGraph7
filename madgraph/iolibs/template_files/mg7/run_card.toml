@@ -57,6 +57,7 @@ max_batch_size = %(vegas.max_batch_size)s
 
 [phasespace]
 mode = %(phasespace.mode)s #options: multichannel, flat, both
+merge_subprocesses = %(phasespace.merge_subprocesses)s
 sde_strategy = %(phasespace.sde_strategy)s #options: diagrams, denominators
 decays = %(phasespace.decays)s # options: all, massive, none
 t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
