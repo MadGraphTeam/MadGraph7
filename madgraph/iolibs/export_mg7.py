@@ -57,7 +57,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.name = f"P{matrix_element.get('processes')[0].shell_string()}"
         self.model = self.matrix_element.get("processes")[0].get("model")
         self.amplitude = self.matrix_element.get("base_amplitude")
-        merge_jets = True
+        merge_jets = False
         if merge_jets:
             self.sym_indices, self.sym_perms, _ = find_symmetry(
                 self.matrix_element,

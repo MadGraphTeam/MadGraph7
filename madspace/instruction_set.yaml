@@ -149,6 +149,24 @@ accept_norm:
   class: AcceptNormInstruction
   custom_op: True
 
+batch_split_by_index:
+  inputs:
+    - name: indices
+      type: [int]
+      desc:
+    - name: count
+      type: [int, single]
+      desc:
+  outputs: any
+  class: BatchSplitByIndexInstruction
+  custom_op: True
+
+batch_merge_by_index:
+  inputs: any
+  outputs: any
+  class: BatchMergeByIndexInstruction
+  custom_op: True
+
 ---
 title: Math
 

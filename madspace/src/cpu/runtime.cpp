@@ -379,17 +379,10 @@ void batch_scatter_impl(
 }
 
 template <typename D>
-void op_batch_scatter(
-    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+void batch_scatter_dispatch(
+    Tensor& indices, Tensor& source, Tensor& output, const D& device
 ) {
-    auto& indices = locals[instruction.input_indices[0]];
-    auto& target = locals[instruction.input_indices[1]];
-    auto& source = locals[instruction.input_indices[2]];
-
-    auto& output = locals[instruction.output_indices[0]];
-    output = target.copy(device);
-    device.sync_barrier();
-    switch (target.shape().size()) {
+    switch (output.shape().size()) {
     case 1:
         batch_scatter_impl<1>(indices, source, output, device);
         break;
@@ -404,6 +397,73 @@ void op_batch_scatter(
         break;
     default:
         throw std::runtime_error("The number of dimensions must be between 1 and 4");
+    }
+}
+
+template <typename D>
+void op_batch_scatter(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    auto& indices = locals[instruction.input_indices[0]];
+    auto& target = locals[instruction.input_indices[1]];
+    auto& source = locals[instruction.input_indices[2]];
+
+    auto& output = locals[instruction.output_indices[0]];
+    output = target.copy(device);
+    device.sync_barrier();
+    batch_scatter_dispatch(indices, source, output, device);
+}
+
+template <typename D>
+void op_batch_split_by_index(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    auto& indices = locals[instruction.input_indices[0]];
+    std::size_t count = locals[instruction.input_indices[1]].index_value();
+    auto indices_view_flat = indices.flat_view<me_int_t, 1>(0);
+    device.submit([indices_view_flat, count, &locals, &instruction, &device]() mutable {
+        std::vector<std::size_t> sizes(count);
+        TensorView<me_int_t, 1> indices_view(indices_view_flat);
+        for (std::size_t i = 0; i < indices_view.size(); ++i) {
+            sizes[indices_view[i]] += 1;
+        }
+        std::vector<TensorView<me_int_t, 1>> views;
+        views.reserve(count);
+        for (auto [size, output_index] : zip(sizes, instruction.output_indices)) {
+            auto& output = locals[output_index];
+            output = Tensor(DataType::dt_int, {size}, device);
+            views.push_back(output.view<me_int_t, 1>());
+        }
+        sizes.clear();
+        for (std::size_t i = 0; i < indices_view.size(); ++i) {
+            me_int_t index = indices_view[i];
+            std::size_t& size = sizes[index];
+            views[index][size] = i;
+            ++size;
+        }
+    });
+}
+
+template <typename D>
+void op_batch_merge_by_index(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    std::size_t batch_size = 0;
+    for (std::size_t i = 0; i < instruction.input_indices.size(); i += 2) {
+        batch_size += locals[instruction.input_indices[i]].size(0);
+    }
+    auto& arg0 = locals[instruction.input_indices[0]];
+    auto& output = locals[instruction.output_indices[0]];
+    Sizes shape = arg0.shape();
+    shape[0] = batch_size;
+    output = Tensor(arg0.dtype(), shape, device);
+    for (std::size_t i = 0; i < instruction.input_indices.size(); i += 2) {
+        batch_scatter_dispatch(
+            locals[instruction.input_indices[i + 1]],
+            locals[instruction.input_indices[i]],
+            output,
+            device
+        );
     }
 }
 

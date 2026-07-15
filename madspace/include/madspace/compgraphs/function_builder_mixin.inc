@@ -59,6 +59,14 @@ Value accept_norm(Value accepted_batch, Value full_batch) {
     return instruction("accept_norm", {accepted_batch, full_batch})[0];
 }
 
+ValueVec batch_split_by_index(Value indices, Value count) {
+    return instruction("batch_split_by_index", {indices, count});
+}
+
+ValueVec batch_merge_by_index(ValueVec args) {
+    return instruction("batch_merge_by_index", args);
+}
+
 Value add(Value in1, Value in2) {
     return instruction("add", {in1, in2})[0];
 }

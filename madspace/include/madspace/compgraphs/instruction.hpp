@@ -115,6 +115,20 @@ public:
     TypeVec signature(const ValueVec& args) const override;
 };
 
+class BatchSplitByIndexInstruction : public Instruction {
+public:
+    BatchSplitByIndexInstruction(int opcode, bool differentiable) :
+        Instruction("batch_split_by_index", opcode, differentiable) {}
+    TypeVec signature(const ValueVec& args) const override;
+};
+
+class BatchMergeByIndexInstruction : public Instruction {
+public:
+    BatchMergeByIndexInstruction(int opcode, bool differentiable) :
+        Instruction("batch_merge_by_index", opcode, differentiable) {}
+    TypeVec signature(const ValueVec& args) const override;
+};
+
 class CatInstruction : public Instruction {
 public:
     CatInstruction(int opcode, bool differentiable) :
