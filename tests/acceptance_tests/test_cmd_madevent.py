@@ -71,7 +71,7 @@ def check_html_page(cls, link):
 # Shared helpers for the mg7 (madspace) cross-section acceptance tests
 # (module-level so they can be used from several test classes)
 #===============================================================================
-def _mg7_datadir_or_skip(testinstance):
+def _mg7_datadir_or_skip(test):
     """Return a usable LHAPDF data dir for mg7 runs, or skipTest (on *test*) if
     the mg7 runtime stack (madspace + LHAPDF + the run_card.toml default PDF) is
     not available."""
@@ -93,7 +93,7 @@ def _mg7_datadir_or_skip(testinstance):
         except Exception:
             datadir = None 
         
-    
+    misc.sprint(datadir)
     if not has_mg7 or not datadir or not os.path.isdir(datadir):
         test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
     if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
@@ -2943,8 +2943,8 @@ class TestMEfromfile(unittest.TestCase):
              'generate p p > go go'],
             pjoin(self.path, 'MG7_mssm_gogo'), datadir)
         # madevent reference (run_01 in test_generation_from_file_1)
-        target = 4.541638
-        self.assertLess(abs(cross - target) / target, 0.10,
+        target = 5.024 # no cut madevent with lhapdf (not internal pdf) (relative error from madevent: 1e-4)
+        self.assertLess(abs(cross - target) / target, 0.01,
             'mg7 p p > go go cross-section %s far from madevent reference %s'
             % (cross, target))
 
