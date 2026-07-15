@@ -1412,10 +1412,11 @@ class MadgraphSubprocess:
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
                 channel.phasespace_mapping,
-                cross_section,
+                [cross_section],
                 channel.adaptive_mapping,
                 channel.discrete_sym,
                 channel.discrete_flavor,
+                flavors,
                 pdf_grid,
                 self.process.running_coupling,
                 self.scale,

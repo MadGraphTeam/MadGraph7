@@ -1214,10 +1214,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             py::init<
                 const PhaseSpaceMapping&,
-                const DifferentialCrossSection&,
+                const std::vector<DifferentialCrossSection>&,
                 const Integrand::AdaptiveMapping&,
                 const Integrand::AdaptiveDiscrete&,
                 const Integrand::AdaptiveDiscrete&,
+                const nested_vector2<me_int_t>&,
                 const std::optional<PdfGrid>&,
                 const std::optional<RunningCoupling>&,
                 const std::optional<EnergyScale>&,
@@ -1233,12 +1234,16 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<double>&,
-                const std::vector<bool>&>(),
+                const std::vector<bool>&,
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
             py::arg("discrete_sym") = std::monostate{},
             py::arg("discrete_flavor") = std::monostate{},
+            py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf_grid") = std::nullopt,
             py::arg("running_coupling") = std::nullopt,
             py::arg("energy_scale") = std::nullopt,
@@ -1254,7 +1259,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("active_flavors") = nested_vector2<std::size_t>{},
             py::arg("flavor_remap") = std::vector<std::size_t>{},
             py::arg("flavor_factors") = std::vector<double>{},
-            py::arg("flavor_mirror") = std::vector<bool>{}
+            py::arg("flavor_mirror") = std::vector<bool>{},
+            py::arg("flavor_diff_xs_indices") = std::vector<std::size_t>{},
+            py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
+            py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{}
         )
         .def("particle_count", &Integrand::particle_count)
         .def("madnis_training", &Integrand::madnis_training)

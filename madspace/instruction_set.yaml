@@ -163,7 +163,9 @@ batch_split_by_index:
 
 batch_merge_by_index:
   inputs: any
-  outputs: any
+  outputs:
+    - name: output
+      desc:
   class: BatchMergeByIndexInstruction
   custom_op: True
 

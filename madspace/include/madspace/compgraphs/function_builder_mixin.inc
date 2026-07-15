@@ -63,8 +63,8 @@ ValueVec batch_split_by_index(Value indices, Value count) {
     return instruction("batch_split_by_index", {indices, count});
 }
 
-ValueVec batch_merge_by_index(ValueVec args) {
-    return instruction("batch_merge_by_index", args);
+Value batch_merge_by_index(ValueVec args) {
+    return instruction("batch_merge_by_index", args)[0];
 }
 
 Value add(Value in1, Value in2) {

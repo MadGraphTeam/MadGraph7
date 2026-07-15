@@ -10,10 +10,11 @@ static const BatchSize acc_batch_size("acc_batch_size");
 
 Integrand::Integrand(
     const PhaseSpaceMapping& mapping,
-    const DifferentialCrossSection& diff_xs,
+    const std::vector<DifferentialCrossSection>& diff_xs,
     const AdaptiveMapping& adaptive_map,
     const AdaptiveDiscrete& discrete_sym,
     const AdaptiveDiscrete& discrete_flavor,
+    const nested_vector2<me_int_t>& pid_options,
     const std::optional<PdfGrid>& pdf_grid,
     const std::optional<RunningCoupling>& running_coupling,
     const std::optional<EnergyScale>& energy_scale,
@@ -29,14 +30,18 @@ Integrand::Integrand(
     const nested_vector2<std::size_t>& active_flavors,
     const std::vector<std::size_t>& flavor_remap,
     const std::vector<double>& flavor_factors,
-    const std::vector<bool>& flavor_mirror
+    const std::vector<bool>& flavor_mirror,
+    const std::vector<std::size_t>& flavor_diff_xs_indices,
+    const std::vector<std::size_t>& flavor_subproc_indices,
+    const std::vector<std::size_t>& flavor_per_subproc_remap
 ) :
     FunctionGenerator(
         "Integrand",
         {{"batch_size", Type({batch_size})}},
         [&] {
             NamedVector<Type> ret_types;
-            auto flav_count = diff_xs.pid_options().size();
+            auto& diff_xs_first = diff_xs.at(0);
+            auto flav_count = pid_options.size();
             if (madnis_training) {
                 if (std::holds_alternative<std::monostate>(adaptive_map)) {
                     throw std::invalid_argument(
@@ -52,8 +57,9 @@ Integrand::Integrand(
                     "channel_weights",
                     batch_float_array(
                         chan_weight_remap.size() > 0 ? remapped_chan_count
-                            : subchan_weights        ? subchan_weights->channel_count()
-                                              : diff_xs.matrix_element().diagram_count()
+                            : subchan_weights
+                            ? subchan_weights->channel_count()
+                            : diff_xs_first.matrix_element().diagram_count()
                     )
                 );
                 ret_types.push_back(
@@ -82,15 +88,15 @@ Integrand::Integrand(
                 ret_types.push_back("ren_scale", batch_float);
                 ret_types.push_back("alpha_qcd", batch_float);
                 if (partial_weights) {
-                    if (diff_xs.has_pdf(0)) {
+                    if (diff_xs_first.has_pdf(0)) {
                         ret_types.push_back("x1", batch_float);
                         ret_types.push_back("fact_scale1", batch_float);
                     }
-                    if (diff_xs.has_pdf(1)) {
+                    if (diff_xs_first.has_pdf(1)) {
                         ret_types.push_back("x2", batch_float);
                         ret_types.push_back("fact_scale2", batch_float);
                     }
-                    if (diff_xs.has_pdf(0) || diff_xs.has_pdf(1)) {
+                    if (diff_xs_first.has_pdf(0) || diff_xs_first.has_pdf(1)) {
                         ret_types.push_back("partial_weight_product", batch_float);
                     }
                 }
@@ -103,6 +109,9 @@ Integrand::Integrand(
                     !std::holds_alternative<std::monostate>(discrete_flavor)) {
                     ret_types.push_back("discrete_flavor_index", batch_int);
                 }
+                if (flavor_diff_xs_indices.size() > 0) {
+                    ret_types.push_back("subprocess_index", batch_int);
+                }
             }
             return ret_types;
         }()
@@ -112,6 +121,7 @@ Integrand::Integrand(
     _adaptive_map(adaptive_map),
     _discrete_sym(discrete_sym),
     _discrete_flavor(discrete_flavor),
+    _pid_options(pid_options),
     _running_coupling(running_coupling),
     _energy_scale(energy_scale),
     _prop_chan_weights(prop_chan_weights),
@@ -124,21 +134,30 @@ Integrand::Integrand(
     _partial_weights(partial_weights),
     _channel_indices(channel_indices.begin(), channel_indices.end()),
     _random_dim(
-        mapping.random_dim() +               // phasespace
-        (mapping.channel_count() > 1) +      // symmetric channel
-        (diff_xs.pid_options().size() > 1) + // flavor
-        // flipped initial state/
+        mapping.random_dim() +          // phasespace
+        (mapping.channel_count() > 1) + // symmetric channel
+        (pid_options.size() > 1) +      // flavor
+        // flipped initial state
         std::any_of(flavor_mirror.begin(), flavor_mirror.end(), std::identity{})
     ),
     _flavor_remap(flavor_remap.begin(), flavor_remap.end()),
-    _flavor_factors(flavor_factors) {
+    _flavor_factors(flavor_factors),
+    _flavor_diff_xs_indices(
+        flavor_diff_xs_indices.begin(), flavor_diff_xs_indices.end()
+    ),
+    _flavor_subproc_indices(
+        flavor_subproc_indices.begin(), flavor_subproc_indices.end()
+    ),
+    _flavor_per_subproc_remap(
+        flavor_per_subproc_remap.begin(), flavor_per_subproc_remap.end()
+    ) {
     if (pdf_grid) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
-            for (auto& option : diff_xs.pid_options()) {
+            for (auto& option : pid_options) {
                 pids.insert(option.at(i));
             }
-            for (auto& option : diff_xs.pid_options()) {
+            for (auto& option : pid_options) {
                 _pdf_indices.at(i).push_back(
                     std::distance(pids.begin(), pids.find(option.at(i)))
                 );
@@ -154,9 +173,9 @@ Integrand::Integrand(
             );
         }
         _active_flavors_mask.resize(mapping.channel_count());
-        std::vector<bool> mask_all(diff_xs.pid_options().size());
+        std::vector<bool> mask_all(pid_options.size());
         for (auto [mask, active] : zip(_active_flavors_mask, active_flavors)) {
-            mask.resize(diff_xs.pid_options().size());
+            mask.resize(pid_options.size());
             for (auto index : active) {
                 mask.at(index) = 1.;
                 mask_all.at(index) = 1.;
@@ -181,7 +200,7 @@ std::tuple<std::vector<std::size_t>, std::vector<bool>> Integrand::latent_dims()
     std::vector<std::size_t> dims{_mapping.random_dim(), 1};
     std::vector<bool> is_float{true, false};
 
-    auto flav_count = _diff_xs.pid_options().size();
+    auto flav_count = _pid_options.size();
     if (flav_count > 1 && !std::holds_alternative<std::monostate>(_discrete_flavor)) {
         dims.push_back(1);
         is_float.push_back(false);
@@ -211,7 +230,7 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
         return Type(DataType::dt_float, acc_batch_size, {n, 4});
     };
 
-    bool has_multi_flavor = _diff_xs.pid_options().size() > 1;
+    bool has_multi_flavor = _pid_options.size() > 1;
     int particle_count = static_cast<int>(_mapping.particle_count());
     int random_dim = static_cast<int>(_mapping.random_dim());
 
@@ -249,12 +268,12 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     }
     ret.push_back("ren_scale", acc_float);
     if ((_pdfs.at(0) || _pdfs.at(1)) && _energy_scale) {
-        auto flav_count = static_cast<int>(_diff_xs.pid_options().size());
+        auto flav_count = static_cast<int>(_pid_options.size());
         if (has_multi_flavor) {
             ret.push_back("pdf_prior", acc_float_array(flav_count));
         }
         for (std::size_t i = 0; i < 2; ++i) {
-            if (_diff_xs.has_pdf(i)) {
+            if (_diff_xs.at(0).has_pdf(i)) {
                 ret.push_back(std::format("pdf{}", i + 1), acc_float);
                 ret.push_back(std::format("fact_scale{}", i + 1), acc_float);
             }
@@ -267,7 +286,7 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
 NamedVector<Value> Integrand::build_channel_part(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    bool has_multi_flavor = _diff_xs.pid_options().size() > 1;
+    bool has_multi_flavor = _pid_options.size() > 1;
     bool has_permutations = _mapping.channel_count() > 1;
     auto batch_size_val = args.at("batch_size");
 
@@ -390,7 +409,7 @@ NamedVector<Value> Integrand::build_channel_part(
     if ((_pdfs.at(0) || _pdfs.at(1)) && _energy_scale) {
         ValueVec pdf_priors;
         for (std::size_t i = 0; i < 2; ++i) {
-            if (_diff_xs.has_pdf(i)) {
+            if (_diff_xs.at(0).has_pdf(i)) {
                 auto pdf =
                     _pdfs.at(i)
                         .value()
@@ -428,7 +447,7 @@ NamedVector<Value> Integrand::build_channel_part(
                     } else {
                         auto [index, flavor_det] = fb.sample_discrete(
                             flavor_random_acc,
-                            static_cast<me_int_t>(_diff_xs.pid_options().size())
+                            static_cast<me_int_t>(_pid_options.size())
                         );
                         flavor_id = index;
                         weights_after_cuts.push_back(flavor_det);
@@ -539,11 +558,11 @@ NamedVector<Value> Integrand::build_channel_part(
     if (has_pdf_prior) {
         out.push_back("pdf_prior", pdf_prior);
     }
-    if (_diff_xs.has_pdf(0)) {
+    if (_diff_xs.at(0).has_pdf(0)) {
         out.push_back("pdf1", pdf_results.at(0));
         out.push_back("fact_scale1", scales.at(1));
     }
-    if (_diff_xs.has_pdf(1)) {
+    if (_diff_xs.at(0).has_pdf(1)) {
         out.push_back("pdf2", pdf_results.at(1));
         out.push_back("fact_scale2", scales.at(2));
     }
@@ -554,7 +573,7 @@ NamedVector<Value> Integrand::build_channel_part(
 NamedVector<Value> Integrand::build_common_part(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    bool has_multi_flavor = _diff_xs.pid_options().size() > 1;
+    bool has_multi_flavor = _pid_options.size() > 1;
     bool has_permutations = _mapping.channel_count() > 1;
     bool has_pdf_prior =
         (_pdfs.at(0) || _pdfs.at(1)) && _energy_scale && has_multi_flavor;
@@ -583,7 +602,7 @@ NamedVector<Value> Integrand::build_common_part(
     std::size_t channel_count = _chan_weight_remap.size() > 0 ? _remapped_chan_count
         : _subchan_weights
         ? _subchan_weights->channel_count()
-        : _diff_xs.matrix_element().diagram_count();
+        : _diff_xs.at(0).matrix_element().diagram_count();
     Value chan_weights_acc;
     if (channel_count > 1 && _prop_chan_weights) {
         chan_weights_acc = _prop_chan_weights->build_function(fb, {momenta_acc}).at(0);
@@ -601,14 +620,41 @@ NamedVector<Value> Integrand::build_common_part(
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
     xs_args.push_back(flavor_id);
-    if (_diff_xs.has_pdf(0)) {
+    if (_diff_xs.at(0).has_pdf(0)) {
         xs_args.push_back(args.at("pdf1"));
     }
-    if (_diff_xs.has_pdf(1)) {
+    if (_diff_xs.at(0).has_pdf(1)) {
         xs_args.push_back(args.at("pdf2"));
     }
     xs_args.push_back(alpha_qcd_acc);
-    auto dxs_vec = _diff_xs.build_function(fb, xs_args);
+    ValueVec dxs_vec;
+    Value ps_flavor_id;
+    Value subproc_id;
+    if (_diff_xs.size() == 1) {
+        dxs_vec = _diff_xs.at(0).build_function(fb, xs_args).values();
+        ps_flavor_id = flavor_id;
+    } else {
+        Value dxs_index = fb.gather(flavor_id, _flavor_diff_xs_indices);
+        ps_flavor_id = fb.gather(flavor_id, _flavor_per_subproc_remap);
+        subproc_id = fb.gather(flavor_id, _flavor_subproc_indices);
+        ValueVec split_indices =
+            fb.batch_split_by_index(dxs_index, static_cast<me_int_t>(_diff_xs.size()));
+        std::vector<ValueVec> split_outputs;
+        for (auto [diff_xs, indices] : zip(_diff_xs, split_indices)) {
+            ValueVec split_args;
+            for (Value& arg : xs_args) {
+                split_args.push_back(fb.batch_gather(indices, arg));
+            }
+            ValueVec outputs = diff_xs.build_function(fb, split_args).values();
+            for (auto [out, split_out] : zip(outputs, split_outputs)) {
+                split_out.push_back(out);
+                split_out.push_back(indices);
+            }
+        }
+        for (auto& split_out : split_outputs) {
+            dxs_vec.push_back(fb.batch_merge_by_index(split_out));
+        }
+    }
     auto diff_xs_acc = dxs_vec.at(0);
     if (_flavor_factors.size() > 0) {
         diff_xs_acc = fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors));
@@ -720,7 +766,7 @@ NamedVector<Value> Integrand::build_common_part(
                 "discrete_flavor_index", scatter_or_drop(zeros, flavor_id)
             );
             if (has_pdf_prior) {
-                auto flav_count = static_cast<me_int_t>(_diff_xs.pid_options().size());
+                auto flav_count = static_cast<me_int_t>(_pid_options.size());
                 outputs.push_back(
                     "pdf_prior",
                     scatter_or_drop(
@@ -745,7 +791,7 @@ NamedVector<Value> Integrand::build_common_part(
         outputs.push_back("color_index", scatter_or_drop(zeros_int, dxs_vec.at(2)));
         outputs.push_back("helicity_index", scatter_or_drop(zeros_int, dxs_vec.at(3)));
         outputs.push_back("diagram_index", scatter_or_drop(zeros_int, dxs_vec.at(4)));
-        outputs.push_back("flavor_index", scatter_or_drop(zeros_int, flavor_id));
+        outputs.push_back("flavor_index", scatter_or_drop(zeros_int, ps_flavor_id));
 
         outputs.push_back(
             "ren_scale", scatter_or_drop(zeros_float, args.at("ren_scale"))
@@ -753,7 +799,7 @@ NamedVector<Value> Integrand::build_common_part(
         outputs.push_back("alpha_qcd", scatter_or_drop(zeros_float, alpha_qcd_acc));
         if (_partial_weights) {
             ValueVec pdf_vals;
-            if (_diff_xs.has_pdf(0)) {
+            if (_diff_xs.at(0).has_pdf(0)) {
                 outputs.push_back(
                     "x1", scatter_or_drop(zeros_float, args.at("x1_acc"))
                 );
@@ -762,7 +808,7 @@ NamedVector<Value> Integrand::build_common_part(
                 );
                 pdf_vals.push_back(args.at("pdf1"));
             }
-            if (_diff_xs.has_pdf(1)) {
+            if (_diff_xs.at(0).has_pdf(1)) {
                 outputs.push_back(
                     "x2", scatter_or_drop(zeros_float, args.at("x2_acc"))
                 );
@@ -771,7 +817,7 @@ NamedVector<Value> Integrand::build_common_part(
                 );
                 pdf_vals.push_back(args.at("pdf2"));
             }
-            if (_diff_xs.has_pdf(0) || _diff_xs.has_pdf(1)) {
+            if (_diff_xs.at(0).has_pdf(0) || _diff_xs.at(0).has_pdf(1)) {
                 outputs.push_back(
                     "partial_weight_product",
                     scatter_or_drop(zeros_float, fb.product(pdf_vals))
@@ -789,6 +835,11 @@ NamedVector<Value> Integrand::build_common_part(
             !std::holds_alternative<std::monostate>(_discrete_flavor)) {
             outputs.push_back(
                 "discrete_flavor_index", scatter_or_drop(zeros_int, flavor_id)
+            );
+        }
+        if (subproc_id) {
+            outputs.push_back(
+                "subprocess_index", scatter_or_drop(zeros_int, subproc_id)
             );
         }
     }
@@ -962,7 +1013,7 @@ IntegrandProbability::IntegrandProbability(const Integrand& integrand) :
                 {"latent", batch_float_array(integrand._mapping.random_dim())},
                 {"channel_index_in_group", batch_int}
             };
-            auto flavor_count = integrand._diff_xs.pid_options().size();
+            auto flavor_count = integrand._pid_options.size();
             if (flavor_count > 1 &&
                 !std::holds_alternative<std::monostate>(integrand._discrete_flavor)) {
                 arg_types.push_back("discrete_flavor_index", batch_int);
@@ -979,7 +1030,7 @@ IntegrandProbability::IntegrandProbability(const Integrand& integrand) :
     _discrete_sym(integrand._discrete_sym),
     _discrete_flavor(integrand._discrete_flavor),
     _permutation_count(integrand._mapping.channel_count()),
-    _flavor_count(integrand._diff_xs.pid_options().size()),
+    _flavor_count(integrand._pid_options.size()),
     _has_pdf_prior(
         (integrand._pdfs.at(0) || integrand._pdfs.at(1)) && integrand._energy_scale
     ) {}

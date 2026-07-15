@@ -41,10 +41,11 @@ public:
 
     Integrand(
         const PhaseSpaceMapping& mapping,
-        const DifferentialCrossSection& diff_xs,
+        const std::vector<DifferentialCrossSection>& diff_xs,
         const AdaptiveMapping& adaptive_map = std::monostate{},
         const AdaptiveDiscrete& discrete_sym = std::monostate{},
         const AdaptiveDiscrete& discrete_flavor = std::monostate{},
+        const nested_vector2<me_int_t>& pid_options = {},
         const std::optional<PdfGrid>& pdf_grid = std::nullopt,
         const std::optional<RunningCoupling>& running_coupling = std::nullopt,
         const std::optional<EnergyScale>& energy_scale = std::nullopt,
@@ -60,7 +61,10 @@ public:
         const nested_vector2<std::size_t>& active_flavors = {},
         const std::vector<std::size_t>& flavor_remap = {},
         const std::vector<double>& flavor_factors = {},
-        const std::vector<bool>& flavor_mirror = {}
+        const std::vector<bool>& flavor_mirror = {},
+        const std::vector<std::size_t>& flavor_diff_xs_indices = {},
+        const std::vector<std::size_t>& flavor_subproc_indices = {},
+        const std::vector<std::size_t>& flavor_per_subproc_remap = {}
     );
     std::size_t particle_count() const { return _mapping.particle_count(); }
     bool madnis_training() const { return _madnis_training; }
@@ -86,7 +90,7 @@ public:
         }
     }
     const PhaseSpaceMapping& mapping() const { return _mapping; }
-    const DifferentialCrossSection& diff_xs() const { return _diff_xs; }
+    const std::vector<DifferentialCrossSection>& diff_xs() const { return _diff_xs; }
     const AdaptiveMapping& adaptive_map() const { return _adaptive_map; }
     const AdaptiveDiscrete& discrete_sym() const { return _discrete_sym; }
     const AdaptiveDiscrete& discrete_flavor() const { return _discrete_flavor; }
@@ -113,10 +117,11 @@ private:
     build_common_part(FunctionBuilder& fb, const NamedVector<Value>& channel_out) const;
 
     PhaseSpaceMapping _mapping;
-    DifferentialCrossSection _diff_xs;
+    std::vector<DifferentialCrossSection> _diff_xs;
     AdaptiveMapping _adaptive_map;
     AdaptiveDiscrete _discrete_sym;
     AdaptiveDiscrete _discrete_flavor;
+    nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
     std::optional<RunningCoupling> _running_coupling;
@@ -139,6 +144,9 @@ private:
     std::vector<me_int_t> _flavor_mirror;
     bool _has_mirror;
     NamedVector<Type> _channel_part_ret_types;
+    std::vector<me_int_t> _flavor_diff_xs_indices;
+    std::vector<me_int_t> _flavor_subproc_indices;
+    std::vector<me_int_t> _flavor_per_subproc_remap;
 
     friend class IntegrandProbability;
     friend class IntegrandChannelPart;
