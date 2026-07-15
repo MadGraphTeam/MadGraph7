@@ -704,7 +704,10 @@ class TestMECmdShell(unittest.TestCase):
         and checks the two cross-sections agree (grouping consistency). It also
         pins the absolute value to the mg7-native result obtained with the
         run_card.toml defaults (NNPDF23_lo_as_0130_qed + dynamical HT/2 scale,
-        events=2000) ~ 1.312e6 pb, which is the same as the madevent 1.31e6 pb value.
+        events=2000) ~ 1.277e+06 pb.
+
+        NOTE: this is NOT the madevent reference (1.31e6 pb in
+        test_group_subprocess); but it would be if true lhapdf were used in madevent
         """
         import glob, json
         # The mg7 cross-section run needs the madspace runtime and a resolvable
@@ -764,8 +767,9 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val1 - val2) / (err1 + err2 + 1e-30), 5,
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
-        # mg7-native reference (see docstring) -- NOT the madevent 1.31e6 value.
-        target = 1.312e+06
+        # NOT the madevent 1.31e6 value for internal pdf but the one for 
+        # lhapdf NNPDF23_lo_as_0130_qed + dynamical HT/2 scale 
+        target = 1.277e+06
         self.assertLess(abs(val2 - target) / target, 0.10,
             'mg7 u u > u u cross-section %s far from mg7 reference %s'
             % (val2, target))
@@ -1025,6 +1029,78 @@ class TestMECmdShell(unittest.TestCase):
             self.assertEqual(mirror, flavor[0] != flavor[1],
                 'q q > q q (q = u d): only the mixed initial flavor may be '
                 'mirrored, got mirror=%s for %s' % (mirror, (flavor,)))
+
+        # e+ e- > e+ e-: the two beams are *different* particles (the leg
+        # signature must stay signed -- comparing |pdg| made e+ and e- look like
+        # the same beam and mirrored the flavor, doubling the cross-section).
+        ee = mirrors('e+ e- > e+ e-', pjoin(self.path, 'MG7_mirror_ee'))
+        self.assertEqual(sorted(ee), [(-11, 11)])
+        for flavor, mirror in ee.items():
+            self.assertFalse(mirror,
+                'e+ e- > e+ e-: beams are different particles, flavor %s must '
+                'not be mirrored (that doubles the cross-section)' % (flavor,))
+
+    def test_relaunch_switch_defaults_mg7(self):
+        """Re-launching an mg7 output must not turn every tool on.
+
+        The launch question materialises every candidate tool card (copying the
+        *_default.dat) so it can offer them for edition. If the cards of the
+        tools the user did not select are not pruned afterwards, a later launch
+        sees them all present and defaults every switch to ON (set_default_<tool>
+        keys off card presence). This drives the real launch question
+        (ask_edit_cards) twice on the same output, selecting nothing each time,
+        and checks that the second launch still defaults every switch to OFF
+        instead of turning everything on. Output-level: no madspace/LHAPDF
+        runtime needed."""
+        import importlib, io
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        for c in ['set automatic_html_opening False --no_save',
+                  'import model sm', 'generate e+ e- > mu+ mu-']:
+            mg.exec_cmd(c)
+        out_dir = pjoin(self.path, 'MG7_relaunch')
+        mg.exec_cmd('output mg7 %s' % out_dir)
+
+        launcher = importlib.import_module(
+            'madgraph.iolibs.template_files.mg7.madevent')
+        tool_cards = ('pythia8_card.dat', 'madspin_card.dat', 'delphes_card.dat',
+                      'reweight_card.dat', 'rivet_card.dat',
+                      'madanalysis5_parton_card.dat',
+                      'madanalysis5_hadron_card.dat')
+
+        def active_tool_cards():
+            present = set(os.listdir(pjoin(out_dir, 'Cards')))
+            return sorted(c for c in tool_cards if c in present)
+
+        def launch_select_nothing():
+            # drive the real launch question, answering '0' (= done: select
+            # nothing / accept the shown defaults)
+            old_stdin = sys.stdin
+            sys.stdin = io.StringIO('0\n')
+            try:
+                return launcher.ask_edit_cards()
+            finally:
+                sys.stdin = old_stdin
+
+        cwd = os.getcwd()
+        try:
+            os.chdir(out_dir)
+            # LAUNCH 1: selecting nothing must leave no active tool card behind
+            # (the materialised cards are pruned again).
+            launch_select_nothing()
+            self.assertEqual(active_tool_cards(), [],
+                'the launch left unselected tool cards active: %s'
+                % active_tool_cards())
+
+            # LAUNCH 2: the defaults must reflect the previous (empty) selection
+            # -- no switch may come back on.
+            switch = launch_select_nothing()
+            for key, value in switch.items():
+                self.assertIn(value, ('OFF', 'Not Avail.'),
+                    're-launch defaulted %s=%s instead of OFF -- the tool cards '
+                    'from the previous launch were not pruned' % (key, value))
+        finally:
+            os.chdir(cwd)
 
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,
@@ -2026,26 +2102,45 @@ C
         self.assertLess(abs(val1 - target) / err1, 2.)
 
     def test_e_e_collision_mg7(self):
-        """mg7 equivalent of test_e_e_collision for e+ e- > e+ e-.
+        """mg7 cross-section for e+ e- > e+ e- (Bhabha).
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 has no lepton-beam
-        (no-PDF / lpp=0) support yet -- its run_card.toml only carries a hadron
-        PDF, so generate_events aborts with "PID 11 not found in pdf grid". The
-        test asserts the physical cross-section (155.9 pb) and is expected to
-        fail until mg7 supports lepton beams; left undecorated so the limitation
-        stays visible. Self-skips where the mg7 runtime stack is unavailable.
+        NB: this cannot be compared to test_e_e_collision's 155.9 pb -- that
+        number belongs to the tailored run_card_ee.dat which that test copies in.
+        Here the mg7 default run_card.toml is used (via _run_mg7_xsec), and the
+        reference is the madevent cross-section for the same setup: 40.3 pb.
+
+        The e+ and e- beams are *different* particles, so the beam-swapped
+        initial state is not part of the process and no flavor may be mirrored.
+        Mirroring it (which happened while the initial-leg signature compared
+        |pdg|, making e+ and e- look like the same beam) doubled the result to
+        ~81 pb -- hence the explicit mirroring assertion on top of the
+        cross-section. Self-skips where the mg7 runtime stack is unavailable.
         """
+        import json
         datadir = _mg7_datadir_or_skip(self)
-        cross, error = _run_mg7_xsec(self, 
+        run_dir = pjoin(self.path, 'MG7_ee')
+        cross, error = _run_mg7_xsec(self,
             ['set automatic_html_opening False --no_save',
              'import model sm',
              'generate e+ e- > e+ e-'],
-            pjoin(self.path, 'MG7_ee'), datadir)
-        # physical reference (same as test_e_e_collision); mg7 must reproduce it
+            run_dir, datadir)
+
+        # explicit mirroring check: e+ and e- are distinct beams -> never mirror
+        info = json.load(open(pjoin(run_dir, 'SubProcesses',
+                                    'subprocesses.json')))
+        for proc in info:
+            for flavor in proc['flavors']:
+                self.assertFalse(flavor['mirror'],
+                    'e+ e- > e+ e-: the beams are different particles, so the '
+                    'swapped initial state is not part of the process and flavor '
+                    '%s must not be mirrored (that doubles the cross-section)'
+                    % (flavor['options'],))
+
+        # madevent reference for the same run_card settings
         target = 155.9
         target = 40.3 # fixed scale mz
 
-        self.assertAlmostEqual(cross, target, delta=max(2.0, 5 * error))
+        self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
 
     def load_result(self, run_name):
         

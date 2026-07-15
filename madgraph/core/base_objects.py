@@ -4230,15 +4230,21 @@ class Process(PhysicsObject):
         
     def get_initial_leg_signature(self, number):
         """Return a flavor signature for one initial leg: the (sorted) content of
-        its multiparticle definition when it has one, else its concrete pdg."""
+        its multiparticle definition when it has one, else its concrete pdg.
+
+        The pdgs are kept *signed*. A beam that can only be an e+ does not span
+        the same flavors as one that can only be an e-, so "e+ e- > e+ e-" must
+        not be seen as having two interchangeable beams -- taking abs() here made
+        both beams look like "an electron", the e+ e- flavor got mirrored and the
+        cross-section came out twice too large."""
 
         flavor = self.get_initial_flavor(number)
         if flavor:
-            return tuple(sorted(abs(f) for f in flavor))
+            return tuple(sorted(flavor))
         pdg = self.get_initial_pdg(number)
         if pdg is None:
             return tuple()
-        return (abs(pdg),)
+        return (pdg,)
 
     def has_same_initial_multiparticle(self):
         """True when both initial legs range over the *same* set of flavors.

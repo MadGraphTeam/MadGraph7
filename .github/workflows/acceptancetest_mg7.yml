@@ -186,6 +186,21 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_merged_flavor_initial_state_mirroring_mg7 -pA -t0 -l INFO
 
+  acceptancetest_mg7_relaunch_defaults:
+    # Re-launching an mg7 output must not default every tool to ON: the launch
+    # question prunes the cards of the unselected tools. Output-level (drives the
+    # question twice), so no madspace runtime needed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test one of the test test_relaunch_switch_defaults_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_relaunch_switch_defaults_mg7 -pA -t0 -l INFO
+
   acceptancetest_mg7_group_subprocess:
     needs: build_madspace
     # mg7 cross-section run (u u > u u). madspace is installed by checkout_mg5;
@@ -229,9 +244,10 @@ jobs:
 
   acceptancetest_mg7_e_e_collision:
     needs: build_madspace
-    # KNOWN-FAILING (not xfail): mg7 has no lepton-beam support (run_card.toml
-    # only carries a hadron PDF), so e+ e- > e+ e- aborts with
-    # "PID 11 not found in pdf grid". Red until mg7 supports lepton beams.
+    # mg7 Bhabha cross-section (e+ e- > e+ e-), pinned to the madevent value for
+    # the same run_card settings (40.3 pb) plus an explicit check that neither
+    # beam flavor is mirrored -- the beams are different particles, and mirroring
+    # them used to double the result to ~81 pb.
     # Self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
