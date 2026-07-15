@@ -29,7 +29,7 @@ extern "C" {
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
  */
-#define UMAMI_MINOR_VERSION 2
+#define UMAMI_MINOR_VERSION 3
 
 typedef enum {
     /** operation was executed successfully */
@@ -100,6 +100,14 @@ typedef enum {
      * recomputing p^2 - M^2 from the momenta.
      * Optional. type: `double`, shape: `(particle count, particle count)` */
     UMAMI_IN_VIRTUALITY,
+    /** channel index selecting which diagram's offshell propagators consume the supplied
+     * UMAMI_IN_VIRTUALITY (via the channelId gate of the m_ij override), WITHOUT applying
+     * the single-diagram-enhancement channel weight to the matrix element. Use this when
+     * the caller performs the multichannel weighting itself (e.g. MadSpace) and only wants
+     * the propagator-virtuality substitution. Contrast UMAMI_IN_CHANNEL_INDEX, which also
+     * multiplies the ME by numerator(channel)/denominator.
+     * Optional. type: `unsigned int`, shape: `()` */
+    UMAMI_IN_FIXP2_CHANNEL,
 } UmamiInputKey;
 
 typedef enum {

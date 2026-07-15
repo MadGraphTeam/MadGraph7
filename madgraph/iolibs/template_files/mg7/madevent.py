@@ -1485,6 +1485,9 @@ class MadgraphSubprocess:
             for channel in phasespace.channels
         ):
             me_inputs.append(ms.MatrixElement.virtuality_in)
+            # also pass the sampled channel so the ME actually consumes the virtuality
+            # (gates the m_ij override by channelId); no SDE reweighting (MadSpace does it)
+            me_inputs.append(ms.MatrixElement.fixp2_channel_in)
         if self.matrix_element:
             matrix_element = ms.MatrixElement(
                 self.matrix_element,

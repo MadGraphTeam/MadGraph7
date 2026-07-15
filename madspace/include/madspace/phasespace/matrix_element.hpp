@@ -17,7 +17,8 @@ public:
         helicity_in,
         channel_in,
         diagram_in,
-        virtuality_in // per-event real virtuality matrix v[i][j] = p^2 - M^2 (UMAMI_IN_VIRTUALITY)
+        virtuality_in, // per-event real virtuality matrix v[i][j] = p^2 - M^2 (UMAMI_IN_VIRTUALITY)
+        fixp2_channel_in // per-event channel index gating the virtuality override, no SDE reweight (UMAMI_IN_FIXP2_CHANNEL)
     };
 
     enum MatrixElementOutput {

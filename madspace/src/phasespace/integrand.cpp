@@ -625,6 +625,15 @@ NamedVector<Value> Integrand::build_common_part(
             fb.full({0., fb.batch_size({momenta_acc}), npar * npar})
         );
     }
+    // sampled channel (accepted events) that selects which diagram's propagators consume the
+    // virtuality (UMAMI_IN_FIXP2_CHANNEL / the channelId gate of the m_ij override). No SDE
+    // reweighting is applied in the ME; MadSpace does the multichannel weighting itself.
+    bool me_wants_fixp2_channel =
+        std::find(me_inputs.begin(), me_inputs.end(), MatrixElement::fixp2_channel_in) !=
+        me_inputs.end();
+    if (me_wants_fixp2_channel) {
+        xs_args.push_back(fb.batch_gather(indices_acc, args.at("chan_index")));
+    }
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
     xs_args.push_back(flavor_id);

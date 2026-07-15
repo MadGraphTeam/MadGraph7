@@ -59,6 +59,9 @@ MatrixElement::MatrixElement(
                         "virtuality", batch_float_array(particle_count * particle_count)
                     );
                     break;
+                case fixp2_channel_in:
+                    arg_types.push_back("fixp2_channel", batch_int);
+                    break;
                 default:
                     throw std::invalid_argument("unknown input type");
                 }
@@ -156,6 +159,9 @@ NamedVector<Value> MatrixElement::build_function_impl(
             break;
         case virtuality_in:
             input_key = UMAMI_IN_VIRTUALITY;
+            break;
+        case fixp2_channel_in:
+            input_key = UMAMI_IN_FIXP2_CHANNEL;
             break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));

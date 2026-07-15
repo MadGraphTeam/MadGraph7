@@ -287,6 +287,7 @@ extern "C"
     [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
     const double* mij_in = nullptr;  // optional per-event invariant mass^2 matrix (npar x npar)
     const unsigned int* channel_in = nullptr; // optional per-event channel index (multichannel weight)
+    const unsigned int* fixp2_channel_in = nullptr; // optional per-event channel index for the m_ij gate only (no channel weight)
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -318,6 +319,9 @@ extern "C"
           break;
         case UMAMI_IN_CHANNEL_INDEX:
           channel_in = static_cast<const unsigned int*>( input );
+          break;
+        case UMAMI_IN_FIXP2_CHANNEL:
+          fixp2_channel_in = static_cast<const unsigned int*>( input );
           break;
         case UMAMI_IN_VIRTUALITY:
           mij_in = static_cast<const double*>( input );
@@ -541,14 +545,18 @@ extern "C"
     HostBufferBase<unsigned int, false> channel_ids( rounded_count );
     const unsigned int* allChannelIds_ptr = nullptr;
     bool mulChannelWeight = false;
-    if( channel_in != nullptr )
+    // UMAMI_IN_CHANNEL_INDEX drives the single-diagram enhancement (multiply the ME by the
+    // channel weight); UMAMI_IN_FIXP2_CHANNEL uses the same channelId only to gate the m_ij
+    // propagator-virtuality override, WITHOUT reweighting (the caller does its own SDE).
+    const unsigned int* channel_src = ( channel_in != nullptr ) ? channel_in : fixp2_channel_in;
+    if( channel_src != nullptr )
     {
       for( std::size_t i_event = 0; i_event < count; ++i_event )
-        channel_ids[i_event] = channel_in[i_event + offset] + 1;
+        channel_ids[i_event] = channel_src[i_event + offset] + 1;
       for( std::size_t i_event = count; i_event < rounded_count; ++i_event )
         channel_ids[i_event] = ( count > 0 ) ? channel_ids[count - 1] : 1; // pad to keep SIMD pages uniform
       allChannelIds_ptr = channel_ids.data();
-      mulChannelWeight = true;
+      mulChannelWeight = ( channel_in != nullptr );
     }
     // Optional per-event invariant mass^2 matrix (npar x npar) for offshell propagators;
     // when not provided, mij_ptr stays null and the propagators recompute p^2 from momenta.

@@ -773,6 +773,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"diagram_in", MatrixElement::diagram_in},
             {"channel_in", MatrixElement::channel_in},
             {"virtuality_in", MatrixElement::virtuality_in},
+            {"fixp2_channel_in", MatrixElement::fixp2_channel_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
