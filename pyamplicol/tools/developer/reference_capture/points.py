@@ -76,18 +76,6 @@ def _transverse_stress_metric(
     )
 
 
-def _energy_stress_metric(
-    momenta: Sequence[Momentum],
-    sqrt_s: Decimal,
-    *,
-    initial_state_count: int = 2,
-) -> StressMetric:
-    with localcontext() as context:
-        context.prec = _DECIMAL_WORKING_DIGITS
-        value = +min(momentum[0] / sqrt_s for momentum in momenta[initial_state_count:])
-    return StressMetric("minimum-final-energy-fraction", value)
-
-
 def _two_body_generic(
     process_id: str,
     expression: str,
@@ -351,7 +339,7 @@ def _three_body_stress(process_id: str) -> CapturePoint:
         arithmetic_precision_bits=decimal_digits_to_bits(_DECIMAL_WORKING_DIGITS),
         round_trip_decimal_digits=_DECIMAL_ROUND_TRIP_DIGITS,
         certified_decimal_digits=_DECIMAL_CERTIFIED_DIGITS,
-        stress_metric=_energy_stress_metric(momenta, sqrt_s),
+        stress_metric=_transverse_stress_metric(momenta, sqrt_s),
     )
     validate_point_kinematics(point, point.masses)
     return point

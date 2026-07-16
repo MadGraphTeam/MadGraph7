@@ -179,8 +179,8 @@ def test_three_body_stress_point_is_deliberately_soft() -> None:
     assert soft[3] < soft[0]
     assert incoming_dot_soft > 0
     assert point.stress_metric == capture.StressMetric(
-        "minimum-final-energy-fraction",
-        Decimal("0.001"),
+        "minimum-final-transverse-momentum-squared-fraction",
+        Decimal("0.00000004"),
     )
 
 
