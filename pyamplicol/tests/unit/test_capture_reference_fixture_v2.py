@@ -151,7 +151,7 @@ def test_reference_points_are_deterministic_canonical_and_valid(
         assert first[-1].round_trip_decimal_digits >= 80
         assert first[-1].certified_decimal_digits >= 80
         assert first[-1].stress_metric is not None
-        assert first[-1].stress_metric.value <= Decimal("0.000001")
+        assert first[-1].stress_metric.value <= Decimal("0.001")
 
     for point in first:
         values = (
@@ -174,13 +174,13 @@ def test_three_body_stress_point_is_deliberately_soft() -> None:
         Decimal(0),
     )
 
-    assert soft[0] == Decimal("0.00001")
+    assert soft[0] == Decimal("1")
     assert soft[1] != 0
     assert soft[3] < soft[0]
     assert incoming_dot_soft > 0
     assert point.stress_metric == capture.StressMetric(
         "minimum-final-energy-fraction",
-        Decimal("0.00000001"),
+        Decimal("0.001"),
     )
 
 

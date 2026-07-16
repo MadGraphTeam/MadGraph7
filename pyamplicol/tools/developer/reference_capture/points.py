@@ -29,6 +29,10 @@ _BINARY64_CERTIFIED_DIGITS = 12
 _DECIMAL_WORKING_DIGITS = 110
 _DECIMAL_ROUND_TRIP_DIGITS = _DECIMAL_WORKING_DIGITS
 _DECIMAL_CERTIFIED_DIGITS = 80
+# Keep this point genuinely soft and near-collinear while retaining the ten
+# decimal digits certified by the independent binary64 Fortran oracle.
+_THREE_BODY_STRESS_ENERGY_FRACTION = Decimal("1e-3")
+_THREE_BODY_STRESS_SINE = Decimal("0.2")
 _POINT_SEEDS: Mapping[str, tuple[int, int, int]] = {
     "d d~ > z g": (104729, 104759, 104761),
     "d d~ > z g g": (130363, 130367, 130369),
@@ -314,12 +318,12 @@ def _three_body_stress(process_id: str) -> CapturePoint:
         context.prec = _DECIMAL_WORKING_DIGITS
         sqrt_s = +_GENERIC_SQRT_S
         mass = +_Z_MASS
-        soft_energy = +(sqrt_s * Decimal("1e-8"))
+        soft_energy = +(sqrt_s * _THREE_BODY_STRESS_ENERGY_FRACTION)
         q_energy = +(sqrt_s - soft_energy)
         q_mass = +(sqrt_s * sqrt_s - 2 * sqrt_s * soft_energy).sqrt()
         hard_energy = +(q_mass * q_mass - mass * mass) / (2 * q_mass)
         z_energy = +(q_mass * q_mass + mass * mass) / (2 * q_mass)
-        sine = Decimal("1e-3")
+        sine = _THREE_BODY_STRESS_SINE
         cosine = +(Decimal(1) - sine * sine).sqrt()
         zero = Decimal(0)
         soft_px = +(soft_energy * sine)
@@ -338,7 +342,7 @@ def _three_body_stress(process_id: str) -> CapturePoint:
         process_id=process_id,
         point_class="stress",
         algorithm_name="decimal-soft-near-collinear-sequential-three-body",
-        algorithm_version="1",
+        algorithm_version="2",
         rng=None,
         seed=None,
         sqrt_s=sqrt_s,
