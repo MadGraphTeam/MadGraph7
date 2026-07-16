@@ -111,6 +111,10 @@ def _artifact_inspection_summary(
     features = cast(list[object], plain["cpu_features"])
     if features:
         target = f"{target} [{', '.join(str(feature) for feature in features)}]"
+    runtime_capabilities = cast(
+        Sequence[object],
+        plain["runtime_capabilities"],
+    )
 
     summary = prettytable.PrettyTable(("field", "value"))
     summary.align["field"] = "l"
@@ -134,7 +138,7 @@ def _artifact_inspection_summary(
         ),
         (
             "capabilities",
-            ", ".join(str(value) for value in plain["runtime_capabilities"]),
+            ", ".join(str(value) for value in runtime_capabilities),
         ),
         (
             "payloads",
