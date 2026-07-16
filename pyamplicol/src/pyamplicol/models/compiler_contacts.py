@@ -366,7 +366,7 @@ def _four_point_contact_color_split(
     tuple[int, ...],
     tuple[int, ...],
     int,
-]:
+] | None:
     factors = _normalized_structure_constant_factors(term.color_expression)
     if len(factors) == 2:
         shared_dummies = set(value for value in factors[0] if value < 0) & set(
@@ -401,18 +401,20 @@ def _four_point_contact_color_split(
                         dummy,
                     )
 
-    input_legs = tuple(leg for leg in range(4) if leg != result_leg)
-    return (
-        (input_legs[0], input_legs[1]),
-        input_legs[2],
-        term.color_source,
-        "1",
-        term.lc_color_normalization_power,
-        0,
-        (),
-        (),
-        -1,
-    )
+    if term.color_source in {"1", "UFO::{}::1"} or term.color_expression == "1":
+        input_legs = tuple(leg for leg in range(4) if leg != result_leg)
+        return (
+            (input_legs[0], input_legs[1]),
+            input_legs[2],
+            term.color_source,
+            "1",
+            term.lc_color_normalization_power,
+            0,
+            (),
+            (),
+            -1,
+        )
+    return None
 
 
 def _normalized_structure_constant_factors(

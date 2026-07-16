@@ -12,6 +12,7 @@ from pyamplicol.generation.dag_algorithms import (
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.models import BuiltinSMModel, CompiledUFOModel, compile_model_source
 from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.compiler_contacts import _four_point_contact_color_split
 from pyamplicol.models.external_symmetries import (
     derive_external_symmetry_certificates,
 )
@@ -89,6 +90,27 @@ def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) ->
         yang_mills_vertices,
     )
     assert model.lc_trace_reflection_equivalence_is_proven(pure_adjoint)
+
+
+def test_external_sm_four_gluon_contacts_keep_proven_lowering(external_sm) -> None:
+    compiled, _model = external_sm
+    contact_terms = tuple(
+        term
+        for term in compiled.ir.vertex_terms
+        if term.particles == ("g", "g", "g", "g")
+    )
+
+    assert len(contact_terms) == 3
+    assert all(
+        _four_point_contact_color_split(term, result_leg) is not None
+        for term in contact_terms
+        for result_leg in range(4)
+    )
+    contact_term_ids = {term.id for term in contact_terms}
+    assert any(
+        contact_term_ids <= set(kernel.term_ids)
+        for kernel in compiled.ir.oriented_kernels
+    )
 
 
 @pytest.mark.parametrize(
@@ -285,3 +307,51 @@ def test_deformed_quartic_coupling_disables_yang_mills_theorems(external_sm) -> 
 
     assert certificates.yang_mills_adjoint_names == frozenset()
     assert certificates.yang_mills_kernel_kinds == frozenset()
+
+
+def test_reachable_non_yang_mills_kernel_disables_global_adjoint_theorems(
+    external_sm,
+) -> None:
+    compiled, _model = external_sm
+    original_certificates = derive_external_symmetry_certificates(compiled.ir)
+    representative = next(
+        kernel
+        for kernel in compiled.ir.oriented_kernels
+        if kernel.kind in original_certificates.yang_mills_kernel_kinds
+        and kernel.particles == ("g", "g", "g")
+    )
+    source_term = next(
+        term
+        for term in compiled.ir.vertex_terms
+        if term.id in (representative.term_ids or (representative.term_id,))
+    )
+    extra_term_id = max(term.id for term in compiled.ir.vertex_terms) + 1
+    extra_kind = max(kernel.kind for kernel in compiled.ir.oriented_kernels) + 1
+    extra_term = replace(
+        source_term,
+        id=extra_term_id,
+        vertex="V_non_yang_mills_adjoint",
+        lorentz_name="L_non_yang_mills_adjoint",
+        lorentz_source="1",
+        lorentz_expression="1",
+    )
+    extra_kernel = replace(
+        representative,
+        kind=extra_kind,
+        term_id=extra_term_id,
+        term_ids=(extra_term_id,),
+        vertex=extra_term.vertex,
+        evaluation_class="",
+        evaluation_equivalence_verified=False,
+    )
+
+    certificates = derive_external_symmetry_certificates(
+        replace(
+            compiled.ir,
+            vertex_terms=(*compiled.ir.vertex_terms, extra_term),
+            oriented_kernels=(*compiled.ir.oriented_kernels, extra_kernel),
+        )
+    )
+
+    assert certificates.yang_mills_kernel_kinds
+    assert certificates.yang_mills_adjoint_names == frozenset()

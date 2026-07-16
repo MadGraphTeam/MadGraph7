@@ -486,13 +486,38 @@ def _compile_four_point_contact_kernels(
         if "ufo_momentum_" in term.lorentz_expression:
             continue
         source_particles = tuple(particle_by_name[name] for name in term.particles)
+        result_legs: list[int] = []
+        result_particle_names: set[str] = set()
+        for result_leg, source_result in enumerate(source_particles):
+            if source_result.name in result_particle_names:
+                continue
+            result_particle_names.add(source_result.name)
+            result_legs.append(result_leg)
+        contact_splits = {
+            result_leg: _four_point_contact_color_split(term, result_leg)
+            for result_leg in result_legs
+        }
+        literal_singlet = term.color_source in {"1", "UFO::{}::1"} or (
+            term.color_expression == "1"
+        )
+        if literal_singlet and any(
+            particle.color != 1 for particle in source_particles
+        ):
+            continue
+        if any(split is None for split in contact_splits.values()):
+            # Leave the complete term unlowered so model preflight reports a
+            # structured unsupported-contact-color-lowering error.  Partial
+            # orientation output would incorrectly make the term appear valid.
+            continue
         oriented_result_particles: set[str] = set()
-        for result_leg in range(4):
+        for result_leg in result_legs:
             source_result = source_particles[result_leg]
             if source_result.name in oriented_result_particles:
                 continue
             oriented_result_particles.add(source_result.name)
-            contact_split = _four_point_contact_color_split(term, result_leg)
+            contact_split = contact_splits[result_leg]
+            if contact_split is None:
+                raise AssertionError("validated contact split unexpectedly vanished")
             (
                 pair_legs,
                 remaining_leg,

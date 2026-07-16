@@ -136,7 +136,7 @@ def derive_external_symmetry_certificates(
         for term_ids in quartic_groups.values()
         for term_id in term_ids
     }
-    complete_adjoint_names = frozenset(
+    candidate_adjoint_names = frozenset(
         name
         for name in ym_coupling_by_adjoint
         if name in quartic_groups
@@ -150,7 +150,7 @@ def derive_external_symmetry_certificates(
             parity_kinds.add(kernel.kind)
         if term_ids and term_ids <= set(ym_cubic_terms):
             names = {ym_cubic_terms[term_id] for term_id in term_ids}
-            if names <= complete_adjoint_names:
+            if names <= candidate_adjoint_names:
                 parity_kinds.add(kernel.kind)
                 yang_mills_kinds.add(kernel.kind)
                 continue
@@ -176,6 +176,15 @@ def derive_external_symmetry_certificates(
         parameters,
         model_symbols=model_symbols,
     )
+    complete_adjoint_names = frozenset(
+        name
+        for name in candidate_adjoint_names
+        if _yang_mills_sector_is_closed(
+            name,
+            ir.oriented_kernels,
+            yang_mills_kernel_kinds=frozenset(yang_mills_kinds),
+        )
+    )
 
     return ExternalSymmetryCertificates(
         parity_kernel_kinds=frozenset(parity_kinds),
@@ -183,6 +192,37 @@ def derive_external_symmetry_certificates(
         yang_mills_adjoint_names=complete_adjoint_names,
         adjoint_current_reflection_phases=tuple(sorted(reflection_phases.items())),
     )
+
+
+def _yang_mills_sector_is_closed(
+    source_name: str,
+    kernels: tuple[CompiledOrientedKernel, ...],
+    *,
+    yang_mills_kernel_kinds: frozenset[int],
+) -> bool:
+    """Require every tree-reachable interaction to remain Yang--Mills.
+
+    A certified cubic and quartic tensor is insufficient for global helicity
+    and trace-reflection theorems when the same adjoint source can also produce
+    another state.  Follow the trivalent compiled theory from two reachable
+    currents, including synthetic contact auxiliaries, and fail closed as soon
+    as any reachable kernel lacks the exact Yang--Mills certificate.
+    """
+
+    reachable = {source_name}
+    changed = True
+    while changed:
+        changed = False
+        for kernel in kernels:
+            left_name, right_name, result_name = kernel.particles
+            if left_name not in reachable or right_name not in reachable:
+                continue
+            if kernel.kind not in yang_mills_kernel_kinds:
+                return False
+            if result_name not in reachable:
+                reachable.add(result_name)
+                changed = True
+    return True
 
 
 def _is_yang_mills_cubic_term(
