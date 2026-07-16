@@ -3,10 +3,10 @@
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyList};
+use pyo3::types::{PyAny, PyBool, PyDict, PyList};
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
-    NativeResolvedEvaluation, NativeRuntime, ParameterKind, ParticleRole,
+    NativeResolvedEvaluation, NativeRuntime, NativeRuntimeProfile, ParameterKind, ParticleRole,
     ProcessPhysics as CoreProcessPhysics, ReductionKind, RusticolError as CoreError,
     RusticolErrorKind, runtime_target_info,
 };
@@ -494,6 +494,55 @@ impl Runtime {
         Ok(result)
     }
 
+    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16, include_values=false))]
+    fn profile(
+        &mut self,
+        py: Python<'_>,
+        momenta: &Bound<'_, PyAny>,
+        helicities: Option<Vec<String>>,
+        color_flows: Option<Vec<String>>,
+        precision: u32,
+        include_values: bool,
+    ) -> PyResult<Py<PyAny>> {
+        require_raw_f64_precision(precision).map_err(python_error)?;
+        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let profiled = self
+            .runtime
+            .evaluate_f64_profile(
+                &values,
+                point_count,
+                helicities.as_deref(),
+                color_flows.as_deref(),
+            )
+            .map_err(python_error)?;
+        let result = runtime_profile_to_python(py, &profiled.profile, point_count)?;
+        if include_values {
+            result.set_item("values", PyList::new(py, profiled.values)?)?;
+        }
+        self.emit_warnings(py)?;
+        Ok(result.into_any().unbind())
+    }
+
+    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16, include_values=false))]
+    fn evaluate_profile(
+        &mut self,
+        py: Python<'_>,
+        momenta: &Bound<'_, PyAny>,
+        helicities: Option<Vec<String>>,
+        color_flows: Option<Vec<String>>,
+        precision: u32,
+        include_values: bool,
+    ) -> PyResult<Py<PyAny>> {
+        self.profile(
+            py,
+            momenta,
+            helicities,
+            color_flows,
+            precision,
+            include_values,
+        )
+    }
+
     #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16))]
     fn evaluate_resolved(
         &mut self,
@@ -748,6 +797,48 @@ fn nested_f64_values(
         points.push(PyList::new(py, helicities)?.into_any().unbind());
     }
     Ok(PyList::new(py, points)?.into_any().unbind())
+}
+
+fn runtime_profile_to_python<'py>(
+    py: Python<'py>,
+    profile: &NativeRuntimeProfile,
+    point_count: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let payload = PyDict::new(py);
+    payload.set_item("points", point_count)?;
+    payload.set_item("wall_time_s", profile.total_s)?;
+    payload.set_item("source_fill_time_s", profile.source_fill_s)?;
+    payload.set_item("momentum_setup_time_s", profile.momentum_setup_s)?;
+    payload.set_item("stage_input_pack_time_s", profile.stage_input_pack_s)?;
+    payload.set_item(
+        "stage_evaluator_call_time_s",
+        profile.stage_evaluator_call_s,
+    )?;
+    payload.set_item("stage_evaluator_time_s", profile.stage_evaluator_s)?;
+    payload.set_item("output_assign_time_s", profile.output_assign_s)?;
+    payload.set_item(
+        "amplitude_input_pack_time_s",
+        profile.amplitude_input_pack_s,
+    )?;
+    payload.set_item(
+        "amplitude_evaluator_call_time_s",
+        profile.amplitude_evaluator_call_s,
+    )?;
+    payload.set_item("amplitude_evaluator_time_s", profile.amplitude_evaluator_s)?;
+    payload.set_item("reduction_time_s", profile.reduction_s)?;
+    payload.set_item(
+        "stage_input_pack_by_stage_time_s",
+        profile.stage_input_pack_by_stage_s.clone(),
+    )?;
+    payload.set_item(
+        "stage_evaluator_call_by_stage_time_s",
+        profile.stage_evaluator_call_by_stage_s.clone(),
+    )?;
+    payload.set_item(
+        "stage_output_assign_by_stage_time_s",
+        profile.stage_output_assign_by_stage_s.clone(),
+    )?;
+    Ok(payload)
 }
 
 #[pyfunction]

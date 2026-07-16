@@ -307,6 +307,49 @@ impl NativeRuntime {
             .map(|(values, _profile)| values)
     }
 
+    pub fn evaluate_f64_profile(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        let batch = self.prepare_f64_batch(momenta, point_count)?;
+        let (values, profile) = if helicity_ids.is_some() || color_ids.is_some() {
+            self.validate_selector_capabilities(helicity_ids, color_ids)?;
+            self.record_resolved_warnings(helicity_ids, color_ids)?;
+            let selected_helicities = selector_set(helicity_ids, "helicity")?;
+            let selected_colors = selector_set(color_ids, "color component")?;
+            let (resolved, profile) = self.runtime.run_resolved_f64(
+                &batch,
+                selected_helicities.as_ref(),
+                selected_colors.as_ref(),
+            )?;
+            let component_count = resolved
+                .helicity_indices
+                .len()
+                .checked_mul(resolved.color_indices.len())
+                .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflow"))?;
+            if component_count == 0 {
+                return Err(RusticolError::invalid_argument(
+                    "resolved evaluation returned an empty component axis",
+                ));
+            }
+            let values = resolved
+                .values
+                .chunks(component_count)
+                .map(|point| point.iter().sum())
+                .collect();
+            (values, profile)
+        } else {
+            self.runtime.run_f64(&batch)?
+        };
+        Ok(NativeProfiledEvaluation {
+            values,
+            profile: profile.into(),
+        })
+    }
+
     pub fn evaluate_resolved_f64(
         &mut self,
         momenta: &[f64],

@@ -124,6 +124,15 @@ def _tuple_of_strings(value: Sequence[str], name: str) -> tuple[str, ...]:
     return result
 
 
+def _tuple_of_ints(value: Sequence[int], name: str) -> tuple[int, ...]:
+    if isinstance(value, (str, bytes)):
+        raise ConfigurationError(f"{name} must be a list of integers")
+    result = tuple(value)
+    if any(isinstance(item, bool) or not isinstance(item, int) for item in result):
+        raise ConfigurationError(f"{name} must contain integers")
+    return result
+
+
 def _string_tuple_mapping(
     value: Mapping[str, Sequence[str]], name: str
 ) -> Mapping[str, tuple[str, ...]]:
@@ -146,6 +155,19 @@ def _integer_mapping(value: Mapping[str, int], name: str) -> Mapping[str, int]:
             raise ConfigurationError(f"{name} keys must be non-empty strings")
         if isinstance(entry, bool) or not isinstance(entry, int) or entry < 0:
             raise ConfigurationError(f"{name}.{key} must be a non-negative integer")
+        result[key] = entry
+    return MappingProxyType(result)
+
+
+def _signed_integer_mapping(value: Mapping[str, int], name: str) -> Mapping[str, int]:
+    if not isinstance(value, Mapping):
+        raise ConfigurationError(f"{name} must be a table")
+    result: dict[str, int] = {}
+    for key, entry in value.items():
+        if not isinstance(key, str) or not key:
+            raise ConfigurationError(f"{name} keys must be non-empty strings")
+        if isinstance(entry, bool) or not isinstance(entry, int):
+            raise ConfigurationError(f"{name}.{key} must be an integer")
         result[key] = entry
     return MappingProxyType(result)
 
@@ -274,6 +296,19 @@ class ProcessConfig:
         default_factory=dict,
         metadata=_setting("map_int", dynamic_kind="int"),
     )
+    max_color_sectors: int | None = field(
+        default=None, metadata=_setting("int", nullable=True)
+    )
+    reference_color_order: tuple[int, ...] = field(
+        default=(), metadata=_setting("list_int")
+    )
+    selected_color_sector_ids: tuple[int, ...] = field(
+        default=(), metadata=_setting("list_int")
+    )
+    selected_source_helicities: Mapping[str, int] = field(
+        default_factory=dict,
+        metadata=_setting("map_int", dynamic_kind="int"),
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.entries, (str, bytes)):
@@ -323,6 +358,34 @@ class ProcessConfig:
             self,
             "max_coupling_orders",
             _integer_mapping(self.max_coupling_orders, "process.max_coupling_orders"),
+        )
+        object.__setattr__(
+            self,
+            "max_color_sectors",
+            _optional_integer(
+                self.max_color_sectors, "process.max_color_sectors", minimum=0
+            ),
+        )
+        object.__setattr__(
+            self,
+            "reference_color_order",
+            _tuple_of_ints(self.reference_color_order, "process.reference_color_order"),
+        )
+        object.__setattr__(
+            self,
+            "selected_color_sector_ids",
+            _tuple_of_ints(
+                self.selected_color_sector_ids,
+                "process.selected_color_sector_ids",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "selected_source_helicities",
+            _signed_integer_mapping(
+                self.selected_source_helicities,
+                "process.selected_source_helicities",
+            ),
         )
 
 

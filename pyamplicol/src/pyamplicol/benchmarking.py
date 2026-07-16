@@ -8,7 +8,9 @@ import os
 import platform
 import statistics
 import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.api.protocols import Momenta, RuntimeBackend
@@ -56,6 +58,7 @@ class BenchmarkBackend:
         batch = _benchmark_batch(points, self._config.batch_size)
         helicities = self._config.helicity_ids or None
         color_flows = self._config.color_flow_ids or None
+        profiler = _native_profiler(runtime)
         task_id = "runtime-benchmark"
         if self._progress is not None:
             self._progress.emit(
@@ -65,37 +68,100 @@ class BenchmarkBackend:
                     total=None,
                 )
             )
+        evaluator_samples: list[float] | None = None
+        evaluator_environment: dict[str, object]
         try:
-            for _ in range(self._config.warmup_runs):
-                runtime.evaluate(
-                    batch,
-                    helicities=helicities,
-                    color_flows=color_flows,
-                )
             samples: list[float] = []
             elapsed = 0.0
-            while (
-                len(samples) < self._config.minimum_samples
-                or elapsed < self._config.target_runtime
-            ):
-                started = time.perf_counter()
-                runtime.evaluate(
-                    batch,
-                    helicities=helicities,
-                    color_flows=color_flows,
-                )
-                duration = time.perf_counter() - started
-                elapsed += duration
-                samples.append(duration / len(batch))
-                if self._progress is not None:
-                    self._progress.emit(
-                        ProgressUpdate(
-                            task_id,
-                            completed=len(samples),
-                            total=None,
-                            message=f"{elapsed:.3g}s sampled",
-                        )
+            if profiler is None:
+                for _ in range(self._config.warmup_runs):
+                    runtime.evaluate(
+                        batch,
+                        helicities=helicities,
+                        color_flows=color_flows,
                     )
+                while (
+                    len(samples) < self._config.minimum_samples
+                    or elapsed < self._config.target_runtime
+                ):
+                    started = time.perf_counter()
+                    runtime.evaluate(
+                        batch,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                    )
+                    duration = time.perf_counter() - started
+                    elapsed += duration
+                    samples.append(duration / len(batch))
+                    if self._progress is not None:
+                        self._progress.emit(
+                            ProgressUpdate(
+                                task_id,
+                                completed=len(samples),
+                                total=None,
+                                message=f"{elapsed:.3g}s sampled",
+                            )
+                        )
+                evaluator_environment = {
+                    "wall_time_source": "runtime_evaluate_wall_time",
+                    "evaluator_time_source": "runtime_evaluate_wall_time",
+                }
+            else:
+                for _ in range(self._config.warmup_runs):
+                    profiler(
+                        batch,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                        precision=16,
+                        include_values=False,
+                    )
+                evaluator_samples = []
+                while (
+                    len(samples) < self._config.minimum_samples
+                    or elapsed < self._config.target_runtime
+                ):
+                    started = time.perf_counter()
+                    profile = profiler(
+                        batch,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                        precision=16,
+                        include_values=False,
+                    )
+                    elapsed += time.perf_counter() - started
+                    points_in_profile = _profile_point_count(profile, len(batch))
+                    samples.append(
+                        _profile_float(profile, "wall_time_s") / points_in_profile
+                    )
+                    evaluator_samples.append(
+                        _profile_core_evaluator_seconds(profile) / points_in_profile
+                    )
+                    if self._progress is not None:
+                        self._progress.emit(
+                            ProgressUpdate(
+                                task_id,
+                                completed=len(samples),
+                                total=None,
+                                message=f"{elapsed:.3g}s profiled",
+                            )
+                        )
+                (
+                    evaluator_mean,
+                    evaluator_deviation,
+                    evaluator_error,
+                    evaluator_relative,
+                ) = _sample_statistics(evaluator_samples)
+                evaluator_environment = {
+                    "wall_time_source": "runtime_profile_wall_time",
+                    "evaluator_time_source": "runtime_profile_core_evaluator_time",
+                    "evaluator_sample_count": len(evaluator_samples),
+                    "evaluator_elapsed_seconds": elapsed,
+                    "evaluator_standard_deviation_seconds_per_point": (
+                        evaluator_deviation
+                    ),
+                    "evaluator_standard_error_seconds_per_point": evaluator_error,
+                    "evaluator_relative_standard_error": evaluator_relative,
+                }
         except Exception as exc:
             if self._progress is not None:
                 self._progress.emit(
@@ -107,16 +173,16 @@ class BenchmarkBackend:
         if self._progress is not None:
             self._progress.emit(ProgressEnd(task_id))
 
-        mean = statistics.fmean(samples)
-        deviation = statistics.stdev(samples) if len(samples) > 1 else 0.0
-        error = deviation / math.sqrt(len(samples))
-        relative_error = error / mean if mean > 0.0 else 0.0
+        mean, deviation, error, relative_error = _sample_statistics(samples)
+        evaluator_time_per_point = (
+            mean if evaluator_samples is None else evaluator_mean
+        )
         return BenchmarkResult(
             requested_config=self._config,
             effective_config=self._config,
             sample_count=len(samples),
             wall_time_per_point=mean,
-            evaluator_time_per_point=None,
+            evaluator_time_per_point=evaluator_time_per_point,
             uncertainty=BenchmarkStatistics(deviation, error, relative_error),
             environment={
                 "python": platform.python_version(),
@@ -124,6 +190,7 @@ class BenchmarkBackend:
                 "machine": platform.machine(),
                 "batch_size": len(batch),
                 "elapsed_seconds": elapsed,
+                **evaluator_environment,
             },
         )
 
@@ -147,6 +214,48 @@ class BenchmarkBackend:
 def _benchmark_batch(points: Momenta, batch_size: int) -> Momenta:
     source = tuple(points)
     return tuple(source[index % len(source)] for index in range(batch_size))
+
+
+def _native_profiler(
+    runtime: RuntimeBackend,
+) -> Callable[..., Mapping[str, object]] | None:
+    for name in ("profile", "evaluate_profile"):
+        profiler = getattr(runtime, name, None)
+        if callable(profiler):
+            return profiler
+    return None
+
+
+def _profile_float(profile: Mapping[str, object], key: str) -> float:
+    value = profile.get(key)
+    if isinstance(value, bool) or not isinstance(value, (float, int)):
+        raise EvaluationError(f"native runtime profile field {key!r} is not numeric")
+    value = float(value)
+    if not math.isfinite(value) or value < 0.0:
+        raise EvaluationError(f"native runtime profile field {key!r} is invalid")
+    return value
+
+
+def _profile_point_count(profile: Mapping[str, object], fallback: int) -> int:
+    value: Any = profile.get("points", fallback)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise EvaluationError("native runtime profile point count is invalid")
+    return value
+
+
+def _profile_core_evaluator_seconds(profile: Mapping[str, object]) -> float:
+    return _profile_float(profile, "stage_evaluator_time_s") + _profile_float(
+        profile,
+        "amplitude_evaluator_time_s",
+    )
+
+
+def _sample_statistics(samples: list[float]) -> tuple[float, float, float, float]:
+    mean = statistics.fmean(samples)
+    deviation = statistics.stdev(samples) if len(samples) > 1 else 0.0
+    error = deviation / math.sqrt(len(samples))
+    relative_error = error / mean if mean > 0.0 else 0.0
+    return mean, deviation, error, relative_error
 
 
 def create_benchmark_backend(

@@ -180,7 +180,10 @@ def run_color_probe(
     # The pinned Fortran probe copies this path into a fixed 80-character
     # buffer, so use the deliberately short system-temporary spelling.
     with tempfile.TemporaryDirectory(prefix="pac-", dir="/tmp") as raw:
-        momentum_path = Path(raw) / "momenta.dat"
+        work = Path(raw)
+        process_copy = work / "processes.txt"
+        momentum_path = work / "momenta.dat"
+        shutil.copy2(process_file, process_copy)
         momentum_path.write_text(
             "\n".join(
                 " ".join(format(float(component), ".17g") for component in vector)
@@ -195,11 +198,11 @@ def run_color_probe(
             str(entry.group),
             str(entry.integral),
             color_accuracy,
-            str(process_file.resolve()),
+            str(process_copy),
             str(momentum_path),
             *(str(value) for value in ordered_helicities),
         ]
-        completed = _run(command, cwd=Path(raw))
+        completed = _run(command, cwd=work)
     return _parse_probe_output(completed.stdout + "\n" + completed.stderr)
 
 

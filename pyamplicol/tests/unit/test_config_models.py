@@ -30,7 +30,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 58
+    assert len(FIELD_REGISTRY) == 62
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -42,6 +42,9 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     )
     assert FIELD_REGISTRY["process.multiparticles"].dynamic_kind == "list_str"
     assert FIELD_REGISTRY["process.entries"].kind == "process_entries"
+    assert FIELD_REGISTRY["process.reference_color_order"].kind == "list_int"
+    assert FIELD_REGISTRY["process.selected_color_sector_ids"].kind == "list_int"
+    assert FIELD_REGISTRY["process.selected_source_helicities"].dynamic_kind == "int"
     assert "process.requests" not in FIELD_REGISTRY
     assert "process.names" not in FIELD_REGISTRY
     assert "evaluator.stage_local_parameter_layout" not in FIELD_REGISTRY

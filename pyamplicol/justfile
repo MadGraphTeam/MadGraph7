@@ -109,6 +109,13 @@ install-wheel PYTHON_ARG="":
 dev-install:
     {{python}} dependencies/install_dependencies.py
 
+# Report/campaign prerequisite. pyAmpliCol is not released yet, so this keeps
+# the explicit build entrypoint tied to the patched dev-install environment.
+dev-build:
+    just dev-install
+    {{dev_python}} -c 'import pyamplicol; import pyamplicol.api'
+    {{dev_python}} docs/result_tables.py validate
+
 dev-test:
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just source-gate
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate

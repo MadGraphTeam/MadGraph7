@@ -39,7 +39,6 @@
           python = pkgs.python311.withPackages (
             pythonPackages: with pythonPackages; [
               pip
-              pypdf
               setuptools
               wheel
             ]
@@ -88,16 +87,17 @@
                 gzip
                 just
                 jq
+                lhapdf
                 ninja
                 openssh
                 patch
                 pkg-config
-                poppler_utils
+                poppler-utils
                 python
                 ripgrep
                 rustToolchain
                 stdenv.cc
-                texlive.combined.scheme-full
+                texliveFull
                 unzip
                 which
                 xz

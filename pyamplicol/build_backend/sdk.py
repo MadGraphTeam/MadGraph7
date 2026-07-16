@@ -161,6 +161,13 @@ def _cargo_fetch(root: Path, target_dir: Path, target: str) -> None:
         )
 
 
+def _subprocess_excerpt(*streams: str, lines: int = 120) -> str:
+    output = "\n".join(stream.strip() for stream in streams if stream.strip())
+    if not output:
+        return ""
+    return "\n".join(output.splitlines()[-lines:])
+
+
 def _static_library(messages: list[dict[str, Any]]) -> Path:
     candidates: list[Path] = []
     for message in messages:
@@ -458,10 +465,17 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
         ],
         cwd=root,
         env=environment,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    if completed.returncode != 0:
+        detail = _subprocess_excerpt(completed.stdout, completed.stderr)
+        suffix = f"\n{detail}" if detail else ""
+        raise RuntimeError(
+            "Rusticol C SDK cargo build failed with exit code "
+            f"{completed.returncode}{suffix}"
+        )
     messages = _cargo_messages(completed.stdout)
     archive = _static_library(messages)
     if not archive.is_file():

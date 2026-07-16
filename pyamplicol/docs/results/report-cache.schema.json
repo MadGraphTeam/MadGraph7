@@ -4,6 +4,22 @@
     "measurement": {
       "additionalProperties": false,
       "properties": {
+        "artifact_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "effective_config": {
           "type": [
             "object",
@@ -20,6 +36,18 @@
             "null"
           ]
         },
+        "failure_kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "generation_seconds": {
           "minimum": 0,
           "type": [
@@ -27,7 +55,36 @@
             "null"
           ]
         },
+        "limit_gib": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "log_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "manifest_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "matrix_element": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "peak_rss_gib": {
           "minimum": 0,
           "type": [
             "number",
@@ -72,7 +129,19 @@
           "enum": [
             "not_available",
             "ok",
-            "failed"
+            "failed",
+            "timeout",
+            "memory_limit",
+            "validation_failed",
+            "error",
+            "unsupported"
+          ]
+        },
+        "timeout_seconds": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
           ]
         },
         "wall_seconds_per_point": {
@@ -95,7 +164,17 @@
         "matrix_element",
         "requested_config",
         "effective_config",
-        "environment"
+        "environment",
+        "failure_kind",
+        "failure_message",
+        "artifact_path",
+        "log_path",
+        "manifest_path",
+        "peak_rss_gib",
+        "limit_gib",
+        "timeout_seconds",
+        "command",
+        "metadata"
       ],
       "type": "object"
     }
@@ -231,7 +310,7 @@
       "const": "0.1.0"
     },
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "spdx_license_identifier": {
       "const": "0BSD"

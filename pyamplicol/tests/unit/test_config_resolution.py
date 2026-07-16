@@ -80,6 +80,17 @@ def test_dynamic_map_override_is_schema_aware(tmp_path: Path) -> None:
     assert resolution.effective.process.max_coupling_orders["QCD"] == 2
 
 
+def test_selected_source_helicity_overrides_accept_signed_values() -> None:
+    resolution = resolve_config(
+        {"action": "generate"},
+        overrides=(
+            "process.selected_source_helicities.1=-1",
+            "process.selected_source_helicities.2=1",
+        ),
+    )
+    assert resolution.effective.process.selected_source_helicities == {"1": -1, "2": 1}
+
+
 def test_nullable_and_bare_enum_overrides() -> None:
     assert parse_override("model.cache_dir=null").value is None
     assert parse_override("color.accuracy=nlc").value == "nlc"

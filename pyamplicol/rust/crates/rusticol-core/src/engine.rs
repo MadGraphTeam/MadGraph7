@@ -1228,6 +1228,51 @@ pub struct NativeRuntimeMetadata {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct NativeRuntimeProfile {
+    pub source_fill_s: f64,
+    pub momentum_setup_s: f64,
+    pub stage_input_pack_s: f64,
+    pub stage_evaluator_call_s: f64,
+    pub stage_evaluator_s: f64,
+    pub output_assign_s: f64,
+    pub amplitude_input_pack_s: f64,
+    pub amplitude_evaluator_call_s: f64,
+    pub amplitude_evaluator_s: f64,
+    pub reduction_s: f64,
+    pub total_s: f64,
+    pub stage_input_pack_by_stage_s: Vec<f64>,
+    pub stage_evaluator_call_by_stage_s: Vec<f64>,
+    pub stage_output_assign_by_stage_s: Vec<f64>,
+}
+
+impl From<RuntimeProfile> for NativeRuntimeProfile {
+    fn from(profile: RuntimeProfile) -> Self {
+        Self {
+            source_fill_s: profile.source_fill_s,
+            momentum_setup_s: profile.momentum_setup_s,
+            stage_input_pack_s: profile.stage_input_pack_s,
+            stage_evaluator_call_s: profile.stage_evaluator_call_s,
+            stage_evaluator_s: profile.stage_evaluator_s,
+            output_assign_s: profile.output_assign_s,
+            amplitude_input_pack_s: profile.amplitude_input_pack_s,
+            amplitude_evaluator_call_s: profile.amplitude_evaluator_call_s,
+            amplitude_evaluator_s: profile.amplitude_evaluator_s,
+            reduction_s: profile.reduction_s,
+            total_s: profile.total_s,
+            stage_input_pack_by_stage_s: profile.stage_input_pack_by_stage_s,
+            stage_evaluator_call_by_stage_s: profile.stage_evaluator_call_by_stage_s,
+            stage_output_assign_by_stage_s: profile.stage_output_assign_by_stage_s,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NativeProfiledEvaluation {
+    pub values: Vec<f64>,
+    pub profile: NativeRuntimeProfile,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct NativeResolvedEvaluation {
     /// Row-major storage with layout `[point][helicity][color]`.
     pub values: Vec<f64>,

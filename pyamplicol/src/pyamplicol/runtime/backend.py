@@ -252,6 +252,52 @@ class RusticolRuntimeBackend:
             color_accuracy=cast(_Accuracy, str(native.color_accuracy)),
         )
 
+    def profile(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int = 16,
+        include_values: bool = False,
+    ) -> Mapping[str, object]:
+        if precision != 16:
+            raise EvaluationError(
+                "runtime profiling is available only for native f64 precision"
+            )
+        profiler = getattr(self._runtime, "profile", None)
+        if not callable(profiler):
+            raise EvaluationError("native runtime does not expose profiling")
+        payload = _invoke(
+            self._native_module,
+            profiler,
+            momenta,
+            helicities=helicities,
+            color_flows=color_flows,
+            precision=precision,
+            include_values=include_values,
+        )
+        if not isinstance(payload, Mapping):
+            raise EvaluationError("native runtime profile is not a mapping")
+        return cast(Mapping[str, object], dict(payload))
+
+    def evaluate_profile(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int = 16,
+        include_values: bool = False,
+    ) -> Mapping[str, object]:
+        return self.profile(
+            momenta,
+            helicities=helicities,
+            color_flows=color_flows,
+            precision=precision,
+            include_values=include_values,
+        )
+
     def _exact(self) -> SymbolicaExactExecutor:
         if self._exact_executor is None:
             from .symbolica_exact import SymbolicaExactExecutor

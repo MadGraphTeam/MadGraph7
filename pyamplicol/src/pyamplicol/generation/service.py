@@ -1123,9 +1123,36 @@ class GenerationBackend:
         process: CanonicalProcessIR,
         model: Model,
     ) -> tuple[GenericDAG, dict[str, object]]:
+        run = self._run_config
+        process_config = None if run is None else run.process
+        max_color_sectors = (
+            None if process_config is None else process_config.max_color_sectors
+        )
+        reference_color_order = (
+            None
+            if process_config is None or not process_config.reference_color_order
+            else tuple(int(label) for label in process_config.reference_color_order)
+        )
+        selected_color_sector_ids = (
+            None
+            if process_config is None or not process_config.selected_color_sector_ids
+            else tuple(
+                int(sector_id) for sector_id in process_config.selected_color_sector_ids
+            )
+        )
+        selected_source_helicities = (
+            None
+            if process_config is None or not process_config.selected_source_helicities
+            else {
+                int(label): int(helicity)
+                for label, helicity in process_config.selected_source_helicities.items()
+            }
+        )
         color_plan = build_color_plan(
             process,
             color_accuracy=self._color_accuracy,
+            max_sectors=max_color_sectors,
+            reference_color_order=reference_color_order,
             fold_trace_reflections=(
                 model.lc_trace_reflection_equivalence_is_proven(process)
             ),
@@ -1136,7 +1163,6 @@ class GenerationBackend:
                 f"process {process.process!r} has no usable color plan: {detail}"
             )
         limits = self._coupling_order_limits
-        run = self._run_config
         if run is not None and run.process.coupling_order_policy == "minimal":
             inferred = infer_minimal_coupling_order_limits(
                 process,
@@ -1147,8 +1173,12 @@ class GenerationBackend:
         dag = compile_generic_dag(
             process,
             model=model,
+            max_color_sectors=max_color_sectors,
+            reference_color_order=reference_color_order,
+            selected_color_sector_ids=selected_color_sector_ids,
             max_coupling_orders=limits or None,
             max_quark_pairs=self._max_quark_pairs,
+            selected_source_helicities=selected_source_helicities,
         )
         if dag.truncated:
             raise GenerationError(

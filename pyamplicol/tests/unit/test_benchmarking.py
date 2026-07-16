@@ -67,6 +67,23 @@ class _RuntimeWithValidation(_Runtime):
         return (((1.0, 0.0, 0.0, 1.0),),)
 
 
+class _RuntimeWithProfile(_Runtime):
+    profile_calls = 0
+
+    def profile(self, momenta: object, **kwargs: object) -> dict[str, object]:
+        self.profile_calls += 1
+        assert kwargs["helicities"] == ("h0",)
+        assert kwargs["color_flows"] is None
+        assert kwargs["precision"] == 16
+        assert kwargs["include_values"] is False
+        return {
+            "points": len(momenta),  # type: ignore[arg-type]
+            "wall_time_s": 12.0e-6,
+            "stage_evaluator_time_s": 2.0e-6,
+            "amplitude_evaluator_time_s": 6.0e-6,
+        }
+
+
 def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
     runtime = _Runtime()
     config = BenchmarkConfig(
@@ -82,8 +99,35 @@ def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
     assert result.sample_count == 5
     assert runtime.calls == 7
     assert result.wall_time_per_point >= 0.0
-    assert result.evaluator_time_per_point is None
+    assert result.evaluator_time_per_point == result.wall_time_per_point
     assert result.environment["batch_size"] == 4
+    assert result.environment["evaluator_time_source"] == "runtime_evaluate_wall_time"
+
+
+def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
+    runtime = _RuntimeWithProfile()
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=4,
+        warmup_runs=1,
+        minimum_samples=3,
+        helicity_ids=("h0",),
+    )
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+    assert result.sample_count == 3
+    assert runtime.calls == 0
+    assert runtime.profile_calls == 4
+    assert result.wall_time_per_point == pytest.approx(3.0e-6)
+    assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
+    assert result.environment["wall_time_source"] == "runtime_profile_wall_time"
+    assert (
+        result.environment["evaluator_time_source"]
+        == "runtime_profile_core_evaluator_time"
+    )
+    assert result.environment["evaluator_sample_count"] == 3
 
 
 def test_benchmark_uses_runtime_validation_point_when_points_are_omitted() -> None:

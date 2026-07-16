@@ -1,15 +1,16 @@
 % SPDX-License-Identifier: 0BSD
-\documentclass[10pt,a4paper]{article}
+\documentclass[10pt,letterpaper]{article}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[a4paper,margin=22mm,headheight=21pt]{geometry}
+\usepackage[letterpaper,margin=0.75in,headheight=21pt]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{array}
 \usepackage{booktabs}
 \usepackage{fancyhdr}
 \usepackage{hyperref}
 \usepackage{listings}
+\usepackage{longtable}
 \usepackage{pdflscape}
 \usepackage{siunitx}
 \usepackage[table]{xcolor}
@@ -17,8 +18,15 @@
 \definecolor{ReportInk}{HTML}{17212B}
 \definecolor{ReportBlue}{HTML}{145A86}
 \definecolor{ReportGreen}{HTML}{287A58}
+\definecolor{ReportOrange}{HTML}{B76E00}
+\definecolor{ReportRed}{HTML}{B33A3A}
 \definecolor{ReportRule}{HTML}{CBD3DA}
 \definecolor{ReportMuted}{HTML}{66717C}
+\definecolor{refblue}{HTML}{DCEBFF}
+\definecolor{bestgreen}{HTML}{DFF5E4}
+\definecolor{speedgreen}{HTML}{1A7F37}
+\definecolor{speedorange}{HTML}{BF8700}
+\definecolor{speedred}{HTML}{CF222E}
 
 \hypersetup{
   colorlinks=true,
@@ -45,11 +53,12 @@
 \newcommand{\PAC}{\texttt{pyAmpliCol}}
 \newcommand{\AC}{\texttt{AmpliCol}}
 \newcommand{\ReportNA}{\textcolor{ReportMuted}{\textsc{n/a}}}
+\newcommand{\ReportStatus}[1]{\textcolor{ReportMuted}{\textsc{#1}}}
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
-\newcommand{\ReportMatrixLegend}{\ReportTableNote{A populated cell reports generation time and summed wall time per phase-space point. Release cells are intentionally N/A; applicability and independent-reference slots remain in JSON.}}
-\newcommand{\ReportLadderLegend}{\ReportTableNote{Cells use the matrix generation-time and summed-runtime convention. Variant overrides are machine-readable in JSON.}}
-\newcommand{\ReportLandscapeFooter}{\vfill\noindent\footnotesize\textcolor{ReportMuted}{pyAmpliCol 0.1.0 \hfill Methodology and performance \hfill \thepage}\par}
+\newcommand{\ReportMatrixLegend}{\ReportTableNote{Matrix cells use the old matrix layout: the upper line shows original Fortran AmpliCol generation time and the pyAmpliCol JIT O3 generation ratio; the lower line shows original Fortran AmpliCol runtime and the pyAmpliCol JIT O3 wall\texttt{|}evaluator runtime ratios. Ratios are pyAmpliCol divided by AmpliCol, so values below one mean pyAmpliCol is faster.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Z tables use the old performance-summary layout: reference rows are original Fortran AmpliCol, pyAmpliCol rows show generation, wall, and evaluator timings with ratios against the reference where available. Variant overrides are machine-readable in JSON.}}
+\newcommand{\ReportLandscapeFooter}{}
 
 \lstset{
   basicstyle=\ttfamily\small,
@@ -74,11 +83,10 @@
 This report defines the public theory, validation, and performance methodology
 for \PAC{}, release 0.1.0. It fixes the canonical process coverage for the
 built-in Standard Model, an externally loaded Standard Model, a scalar contact
-model, and a scalar-gravity model. The release result caches are intentionally
-reset: every table entry is \ReportNA. Consequently this document makes no
-numerical performance claim. Its tables are a reproducible publication surface
-for measurements produced later with the released typed API and recorded with
-their effective configuration and environment.
+model, and a scalar-gravity model. Its tables are a reproducible publication
+surface for measurements produced from the developer installation and recorded
+with their effective configuration, environment, artifacts, logs, and
+independent-reference provenance.
 \end{abstract}
 
 \tableofcontents
@@ -102,9 +110,11 @@ The report has three purposes:
         validated JSON caches.
 \end{enumerate}
 
-An \ReportNA{} entry means that the standalone release has no recorded
-measurement for that slot. It is neither a zero, a failure, nor a value carried
-over from another implementation.
+An \ReportNA{} entry means that the current cache has no recorded measurement
+for that slot. It is neither a zero, a failure, nor a value carried over from
+another implementation. Explicit failure labels such as \ReportStatus{t/o},
+\ReportStatus{RAM>800G}, \ReportStatus{VALIDATION FAILED}, and
+\ReportStatus{ERROR} indicate measured campaign outcomes with saved logs.
 
 \section{Current Recursion and Model Lowering}
 
@@ -257,18 +267,21 @@ $n=8$. NLC and full-colour grids retain $n=1,\ldots,5$; cells below a family's
 minimum physical multiplicity remain explicitly marked \ReportNA{} and carry
 an applicability flag in JSON.
 
-The external-SM matrices use the same process definitions and colour contracts
-as the built-in matrices. Their model source is the packaged Standard Model
-loaded through the external JSON/UFO compilation path, so the comparison
-isolates model-source and generic-lowering behaviour without changing the
-requested physics.
+The external-SM matrices use the same process definitions, colour contracts,
+and numerical input parameters as the built-in matrices. Their model source is
+the packaged Standard Model loaded through the external JSON/UFO compilation
+path, so the comparison isolates model-source and generic-lowering behaviour
+without changing the requested physics or the original Fortran AmpliCol
+reference.
 
 \input{result_matrix_builtin_sm_lc_table.tex}
 \ReportMatrixLegend
 \ReportLandscapeFooter
 \clearpage
 \input{result_matrix_builtin_sm_nlc_table.tex}
-\vspace{1.2em}
+\ReportMatrixLegend
+\ReportLandscapeFooter
+\clearpage
 \input{result_matrix_builtin_sm_full_table.tex}
 \ReportMatrixLegend
 \ReportLandscapeFooter
@@ -278,15 +291,14 @@ requested physics.
 \ReportLandscapeFooter
 \clearpage
 \input{result_matrix_external_sm_nlc_table.tex}
-\vspace{1.2em}
+\ReportMatrixLegend
+\ReportLandscapeFooter
+\clearpage
 \input{result_matrix_external_sm_full_table.tex}
 \ReportMatrixLegend
 \ReportLandscapeFooter
 \end{landscape}
-\pagestyle{fancy}
-
 \clearpage
-\begin{landscape}
 \pagestyle{empty}
 \section{Z-plus-Jets Evaluator Ladders}
 
@@ -298,11 +310,11 @@ as typed dotted configuration paths in the cache rather than inferred from
 table labels.
 
 \input{result_z_builtin_sm_table.tex}
-\vspace{1.5em}
+\clearpage
 \input{result_z_external_sm_table.tex}
 \ReportLadderLegend
 \ReportLandscapeFooter
-\end{landscape}
+\clearpage
 \pagestyle{fancy}
 
 \section{Colour-Singlet Model Ladders}
@@ -320,11 +332,12 @@ colour reduce to the same unit colour contraction.
 
 \section{Interpretation}
 
-This release establishes coverage and methodology, not a baseline. Performance
-regression gates should be enabled only after the same release artifact has
-produced a complete, reviewed baseline on named hardware. Until then, consumers
-should treat every \ReportNA{} entry as unavailable and should not interpolate,
-copy, or estimate a value from neighbouring multiplicities or model profiles.
+This report establishes coverage, methodology, and the current measured cache
+state. Performance regression gates should be enabled only after the same
+developer-installed artifact has produced a complete, reviewed baseline on
+named hardware. Consumers should treat every \ReportNA{} entry as unavailable
+and should not interpolate, copy, or estimate a value from neighbouring
+multiplicities or model profiles.
 
 The machine-readable caches under \texttt{docs/results/} are authoritative for
 table completeness and measurement provenance. The TeX inputs and this PDF are

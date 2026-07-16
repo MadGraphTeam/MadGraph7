@@ -17,8 +17,8 @@ pub use artifact::{
 pub use engine::{
     NativeColorComponent, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,
     NativeExternalParticle, NativeHelicityConfiguration, NativeModelParameter,
-    NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata, RuntimeCapability,
-    supported_runtime_capabilities,
+    NativeProfiledEvaluation, NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata,
+    NativeRuntimeProfile, RuntimeCapability, supported_runtime_capabilities,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{

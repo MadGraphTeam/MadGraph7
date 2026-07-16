@@ -8,6 +8,7 @@ ScalarInput: TypeAlias = float | int
 Momenta: TypeAlias = Sequence[Sequence[Sequence[ScalarInput]]]
 ModelParameterValue: TypeAlias = complex | float | int
 ResolvedScalar: TypeAlias = float
+RuntimeProfile: TypeAlias = Mapping[str, object]
 
 class TargetInfo:
     @property
@@ -186,6 +187,24 @@ class Runtime:
         color_flows: Sequence[str] | None = None,
         precision: Literal[16] = 16,
     ) -> list[float]: ...
+    def profile(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: Literal[16] = 16,
+        include_values: bool = False,
+    ) -> RuntimeProfile: ...
+    def evaluate_profile(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: Literal[16] = 16,
+        include_values: bool = False,
+    ) -> RuntimeProfile: ...
     def evaluate_resolved(
         self,
         momenta: Momenta,

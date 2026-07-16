@@ -777,6 +777,17 @@ def _single_wheel(directory: Path, prefix: str) -> Path:
     return candidates[0]
 
 
+def _archive_candidate_wheels(directory: Path, prefix: str) -> None:
+    candidates = sorted(directory.glob(f"{prefix}*.whl"))
+    if not candidates:
+        return
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    destination = TRASH / f"candidate-wheel-refresh-{stamp}" / directory.relative_to(ROOT)
+    destination.mkdir(parents=True, exist_ok=True)
+    for wheel in candidates:
+        shutil.move(str(wheel), str(destination / wheel.name))
+
+
 def _build_candidate_wheels(runner: Runner) -> None:
     python = _venv_python()
     environment = _venv_environment()
@@ -820,6 +831,8 @@ def _build_candidate_wheels(runner: Runner) -> None:
         environment,
         PYAMPLICOL_BUILD_MODE="candidate",
     )
+    if not runner.dry_run:
+        _archive_candidate_wheels(project_wheels, "pyamplicol")
     runner.run(
         [
             python,
