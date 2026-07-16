@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import platform
 import struct
 import sys
 import tempfile
@@ -398,13 +397,8 @@ def _compiled_compiler_flags(settings: SymbolicaEvaluatorSettings) -> tuple[str,
     return tuple(settings.compiler_flags)
 
 
-def _aarch64_platform() -> bool:
-    machine = platform.machine().lower()
-    return machine in {"arm64", "aarch64"}
-
-
 def _symjit_element_layout() -> str:
-    return "complex-f64x2" if _aarch64_platform() else "complex-f64"
+    return "complex-f64"
 
 
 def _compiled_runtime_capability(settings: Mapping[str, object]) -> str:

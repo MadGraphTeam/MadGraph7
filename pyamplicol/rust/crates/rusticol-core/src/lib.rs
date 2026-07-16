@@ -29,9 +29,9 @@ pub use metadata::{
 
 pub const PYTHON_API_VERSION: u32 = 1;
 pub const TOML_SCHEMA_VERSION: u32 = 1;
-pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 6;
+pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 7;
 pub const PROCESS_ARTIFACT_SCHEMA_VERSION: u32 = 3;
 pub const RUNTIME_PHYSICS_SCHEMA_VERSION: u32 = 1;
 pub const C_ABI_VERSION: u32 = 1;
-pub const SYMBOLICA_SERIALIZATION_ABI: &str = "candidate-e4167e7-bincode2";
+pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v1";
 pub const ARTIFACT_MANIFEST_FILE: &str = "artifact.json";

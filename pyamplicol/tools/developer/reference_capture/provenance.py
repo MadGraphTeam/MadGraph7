@@ -17,6 +17,7 @@ from typing import cast
 from urllib.parse import urlparse
 
 from .common import (
+    CONTRIBUTOR_LOCK,
     INSTALL_STATE,
     RELEASE_LOCK,
     ROOT,
@@ -271,39 +272,63 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
 
     try:
         with RELEASE_LOCK.open("rb") as stream:
-            lock = cast(Mapping[str, object], tomllib.load(stream))
+            release = cast(Mapping[str, object], tomllib.load(stream))
+        with CONTRIBUTOR_LOCK.open("rb") as stream:
+            contributor = cast(Mapping[str, object], tomllib.load(stream))
         state = cast(
             Mapping[str, object],
             json.loads(INSTALL_STATE.read_text(encoding="utf-8")),
         )
     except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
         raise CaptureError(f"cannot read dependency provenance: {error}") from error
-    if lock.get("schema_version") != 1 or state.get("schema_version") != 1:
-        raise CaptureError("release-lock and install-state schema versions must be 1")
+    if (
+        release.get("schema_version") != 1
+        or contributor.get("schema_version") != 1
+        or state.get("schema_version") != 1
+    ):
+        raise CaptureError(
+            "release-lock, contributor-lock, and install-state schema versions "
+            "must be 1"
+        )
     release_digest = sha256_file(RELEASE_LOCK)
+    contributor_digest = sha256_file(CONTRIBUTOR_LOCK)
     if state.get("release_lock_sha256") != release_digest:
         raise CaptureError(
             "dependencies/install-state.json is not bound to the current release lock; "
             "rerun the dependency installer before capture"
         )
+    if state.get("contributor_lock_sha256") != contributor_digest:
+        raise CaptureError(
+            "dependencies/install-state.json is not bound to the current "
+            "contributor lock; rerun the dependency installer before capture"
+        )
 
     sources = as_mapping(state.get("sources"), "install-state.sources")
-    symbolica = as_mapping(lock.get("symbolica"), "release-lock.symbolica")
-    symjit = as_mapping(lock.get("symjit"), "release-lock.symjit")
-    loader = as_mapping(lock.get("ufo_model_loader"), "release-lock.ufo_model_loader")
-    legacy = as_mapping(lock.get("legacy_amplicol"), "release-lock.legacy_amplicol")
-    abis = as_mapping(lock.get("abis"), "release-lock.abis")
-    project = as_mapping(lock.get("project"), "release-lock.project")
+    symbolica = as_mapping(release.get("symbolica"), "release-lock.symbolica")
+    symjit = as_mapping(contributor.get("symjit"), "contributor-lock.symjit")
+    loader = {
+        **as_mapping(
+            release.get("ufo_model_loader"),
+            "release-lock.ufo_model_loader",
+        ),
+        **as_mapping(
+            contributor.get("ufo_model_loader"),
+            "contributor-lock.ufo_model_loader",
+        ),
+    }
+    legacy = as_mapping(
+        contributor.get("legacy_amplicol"),
+        "contributor-lock.legacy_amplicol",
+    )
+    abis = as_mapping(release.get("abis"), "release-lock.abis")
+    project = as_mapping(release.get("project"), "release-lock.project")
     symbolica_source = as_mapping(sources.get("symbolica"), "source symbolica")
     symjit_source = as_mapping(sources.get("symjit"), "source symjit")
-    loader_source = as_mapping(
-        sources.get("ufo-model-loader"), "source ufo-model-loader"
-    )
 
     legacy_module = developer_module("legacy_amplicol")
     legacy_digest = canonical_sha256(
         {
-            "patches": legacy_module.managed_patch_metadata(),
+            "branch": legacy_module.checkout_branch(),
             "revision": legacy_module.expected_revision(),
             "source_url": str(legacy["source_url"]),
         }
@@ -359,8 +384,8 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
             "id": "dependency:ufo-model-loader",
             "name": "ufo-model-loader",
             "version": str(loader["required_version"]),
-            "revision": str(loader_source["revision"]),
-            "content_sha256": str(loader_source["worktree_sha256"]),
+            "revision": str(loader["published_revision"]),
+            "content_sha256": str(loader["wheel_sha256"]),
             "serialization_abi": None,
             "license": str(loader["license"]),
         },
@@ -389,7 +414,7 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
             raise CaptureError(
                 f"dependency {payload['id']} has invalid content digest {digest!r}"
             )
-    return DependencySnapshot(payloads, lock, state)
+    return DependencySnapshot(payloads, release, contributor, state)
 
 
 def default_artifact_root(revision: str) -> Path:

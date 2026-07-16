@@ -7,7 +7,7 @@ simplify = true
 cache = true
 
 [process]
-entries = []
+entries = [{ expression = "d d~ > z" }]
 flavor_scheme = 5
 coupling_order_policy = "minimal"
 
@@ -19,7 +19,8 @@ coupling_order_policy = "minimal"
 accuracy = "lc"
 
 [generation]
-mode = "error"
+output = "."
+mode = "replace"
 workers = 1
 emit_api_bundle = true
 
@@ -67,9 +68,9 @@ helicity_ids = []
 color_flow_ids = []
 
 [output]
-format = "human"
+format = "json"
 color = "auto"
-progress = "auto"
+progress = "log"
 log_level = "info"
 
 [symbolica]

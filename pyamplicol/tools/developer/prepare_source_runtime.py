@@ -35,7 +35,6 @@ _SDK_PREFIXES = (
     "pyamplicol/_sdk/fortran/",
     "pyamplicol/_sdk/include/",
     "pyamplicol/_sdk/lib/",
-    "pyamplicol/_sdk/sboms/",
 )
 _SDK_FILES = {
     "pyamplicol/_sdk/link.json",

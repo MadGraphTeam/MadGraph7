@@ -36,6 +36,13 @@ _TEMPLATES: tuple[tuple[str, str, str, bool], ...] = (
         False,
     ),
     ("fortran/Makefile", "text/x-makefile", "api-build-file", False),
+    (
+        "rust/check_standalone.rs",
+        "text/x-rust",
+        "api-source",
+        False,
+    ),
+    ("rust/Makefile", "text/x-makefile", "api-build-file", False),
 )
 
 

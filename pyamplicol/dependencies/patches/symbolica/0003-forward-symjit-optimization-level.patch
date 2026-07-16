@@ -1,0 +1,29 @@
+diff --git a/src/evaluate/backend.rs b/src/evaluate/backend.rs
+index c41c67d..5fc2d52 100644
+--- a/src/evaluate/backend.rs
++++ b/src/evaluate/backend.rs
+@@ -357,7 +357,23 @@ impl JITCompilationSettings {
+ 
+     fn apply_to_config(&self, config: &mut Config) {
+         config.set_dicect(self.direct_translation);
+-        config.set_opt_level(2);
++        config.set_opt_level(self.optimization_level);
+     }
+ }
++
++#[cfg(test)]
++mod jit_compilation_settings_tests {
++    use super::{Config, JITCompilationSettings};
++
++    #[test]
++    fn forwards_requested_optimization_level() {
++        for level in 0..=3 {
++            let mut config = Config::default();
++            JITCompilationSettings::default()
++                .optimization_level(level)
++                .apply_to_config(&mut config);
++            assert_eq!(config.opt_level(), level);
++        }
++    }
++}
+ 

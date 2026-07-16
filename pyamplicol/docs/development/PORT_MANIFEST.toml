@@ -67,7 +67,7 @@ component = "models"
 path = "pyAmpliCol/src/pyamplicol/model.py"
 blob = "8ffde00cf5651445a7740aa8f918df85d21c0031"
 strategy = "preserve-built-in-behavior"
-destination = ["src/pyamplicol/models/builtin.py", "src/pyamplicol/models/builtin_definitions.py", "src/pyamplicol/models/builtin_lowering.py"]
+destination = ["src/pyamplicol/models/builtin/model.py", "src/pyamplicol/models/builtin/definitions.py", "src/pyamplicol/models/builtin/lowering.py", "src/pyamplicol/models/builtin/expressions.py"]
 status = "ported"
 
 [[reference_inputs]]
@@ -107,7 +107,7 @@ component = "processes"
 path = "pyAmpliCol/src/pyamplicol/processes.py"
 blob = "226fd0057433e33646ededc350a62529d4490fb1"
 strategy = "selective-rewrite"
-destination = ["src/pyamplicol/processes/core.py", "src/pyamplicol/processes/enumeration.py", "src/pyamplicol/processes/selection.py"]
+destination = ["src/pyamplicol/models/builtin/process_catalog.py", "src/pyamplicol/models/builtin/process_types.py", "src/pyamplicol/models/builtin/process_enumeration.py", "src/pyamplicol/models/builtin/process_selection.py"]
 status = "ported"
 
 [[reference_inputs]]

@@ -57,24 +57,26 @@ def _sector_topology_signature(
         if leg.outgoing_pdg is not None
     }
     if sector.kind == "open-lines":
-        line_by_coloured = {line.coloured_labels: line for line in sector.quark_lines}
+        line_by_coloured = {
+            line.coloured_labels: line for line in sector.open_color_lines
+        }
         ordered_blocks = (
-            _ordered_open_line_blocks(sector.word_labels, sector.quark_lines)
+            _ordered_open_line_blocks(sector.word_labels, sector.open_color_lines)
             if sector.word_labels
             else None
         )
         ordered_lines = (
             tuple(line_by_coloured[block] for block in ordered_blocks)
             if ordered_blocks is not None
-            else sector.quark_lines
+            else sector.open_color_lines
         )
         return (
             sector.kind,
             tuple(
                 (
-                    pdg_by_label[line.quark_label],
-                    tuple(pdg_by_label[label] for label in line.gluon_labels),
-                    pdg_by_label[line.antiquark_label],
+                    pdg_by_label[line.fundamental_label],
+                    tuple(pdg_by_label[label] for label in line.adjoint_labels),
+                    pdg_by_label[line.antifundamental_label],
                     tuple(pdg_by_label[label] for label in line.singlet_labels),
                 )
                 for line in ordered_lines
@@ -94,16 +96,18 @@ def _sector_topology_signature(
 
 def _sector_topology_labels(sector: LCColorSector) -> tuple[int, ...]:
     if sector.kind == "open-lines":
-        line_by_coloured = {line.coloured_labels: line for line in sector.quark_lines}
+        line_by_coloured = {
+            line.coloured_labels: line for line in sector.open_color_lines
+        }
         ordered_blocks = (
-            _ordered_open_line_blocks(sector.word_labels, sector.quark_lines)
+            _ordered_open_line_blocks(sector.word_labels, sector.open_color_lines)
             if sector.word_labels
             else None
         )
         ordered_lines = (
             tuple(line_by_coloured[block] for block in ordered_blocks)
             if ordered_blocks is not None
-            else sector.quark_lines
+            else sector.open_color_lines
         )
         return tuple(label for line in ordered_lines for label in line.line_labels)
     if sector.kind == "single-trace":
@@ -151,7 +155,7 @@ def lc_topology_replay_partitions(
     All-flow replay artifacts can be more general: they split one topology
     group into several initial-label-safe blocks and materialize one
     representative sidecar per block.  This also covers pure single-trace
-    gluon sectors without falling back to an all-sector artifact.
+    adjoint sectors without falling back to an all-sector artifact.
     """
 
     if color_plan.color_accuracy != "lc":
@@ -260,16 +264,14 @@ def _lc_topology_replay_sector_weight(
 ) -> float:
     """Return the LC multiplicity represented by a materialized sector.
 
-    Pure single-trace LC plans fold trace reflections during colour-sector
-    enumeration.  AmpliCol's all-ordering ``imode=2`` basis keeps both trace
-    orientations, while the reflected colour-ordered amplitude has the same
-    squared contribution.  Replaying the folded sector with weight two preserves
-    the full all-ordering sum without compiling or evaluating the reflected
-    duplicate.
+    A model-proven pure single-trace LC plan may fold trace reflections during
+    colour-sector enumeration.  Replaying such a materialized representative
+    with weight two preserves the full ordering sum.
     """
 
     if (
         color_plan.color_accuracy == "lc"
+        and color_plan.trace_reflections_folded
         and sector.kind == "single-trace"
         and len(sector.trace_labels) > 2
     ):
@@ -283,7 +285,8 @@ def lc_line_pairing_representative_ids(
     """Return one sector per LC open-line pairing/allocation.
 
     This is a generic colour-flow pruning helper.  It keeps distinct
-    quark-antiquark pairings and distinct gluon/singlet attachments, but drops
+    fundamental-antifundamental pairings and distinct adjoint/singlet
+    attachments, but drops
     duplicate sectors that only permute complete open-line blocks in the colour
     word.  It deliberately does not group sectors with different flavour
     pairings or different particles assigned to a line.
@@ -317,20 +320,20 @@ def _sector_line_pairing_signature(
             tuple(
                 sorted(
                     (
-                        line.quark_label,
-                        pdg_by_label.get(line.quark_label),
-                        line.antiquark_label,
-                        pdg_by_label.get(line.antiquark_label),
+                        line.fundamental_label,
+                        pdg_by_label.get(line.fundamental_label),
+                        line.antifundamental_label,
+                        pdg_by_label.get(line.antifundamental_label),
                         tuple(
                             (label, pdg_by_label.get(label))
-                            for label in line.gluon_labels
+                            for label in line.adjoint_labels
                         ),
                         tuple(
                             (label, pdg_by_label.get(label))
                             for label in line.singlet_labels
                         ),
                     )
-                    for line in sector.quark_lines
+                    for line in sector.open_color_lines
                 )
             ),
         )

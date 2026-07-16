@@ -30,12 +30,17 @@ an undefined variable when enabled.
 
 JSON models and restriction cards were regenerated with
 `ufo-model-loader==0.1.7` at revision
-`9cb4deeae40ddd64184049af07ac1d03ce5f6162`. Full model serializations use
+`f3fda32c5e6a673075c345d74a11f12b83c00015`. Full model serializations use
 `restriction="full"`, simplification enabled, and `JSONLook.VERBOSE`.
 `sm_wrapped_indices.json` additionally enables Lorentz-index wrapping. The
 tracked `scalars_2p_3p.json` variant is reserialized from its own canonical
 content and freezes `N_SCALARS=3` with contact valences two and three; it does
 not retain a runtime environment option.
+
+Each JSON restriction card is a complete serialization of its matching UFO
+`restrict_*.dat` card. Zero-valued parameters are therefore explicit. A
+separately supplied sparse JSON card remains an override map: omitted entries
+retain the unrestricted model defaults and are never inferred to be zero.
 
 Every changed source and result hash is listed in
 [TRANSFORMATIONS.md](TRANSFORMATIONS.md) and in `PROVENANCE.toml`.
@@ -52,8 +57,8 @@ terms of its source model; the loader itself is MIT licensed.
 All primary source identities point to exact AmpliCol baseline Git objects.
 For additional traceability, each record compares that source blob with the
 same path at GammaLoop revision
-`db79edc84f6a1580decbcc4ede7ea0b1c79d9a08`. Thirty-nine of 66 baseline
-payload blobs match that pinned revision exactly. The other 27 are not claimed
+`db79edc84f6a1580decbcc4ede7ea0b1c79d9a08`. Twenty-eight of 66 baseline
+payload blobs match that pinned revision exactly. The other 38 are not claimed
 as exact GammaLoop-revision content; their exact provenance stops at the
 AmpliCol baseline while GammaLoop remains the documented distribution origin.
 

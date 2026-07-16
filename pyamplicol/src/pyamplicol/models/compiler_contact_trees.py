@@ -15,6 +15,7 @@ from .compiler_kernels import (
     _canonicalize_oriented_kernel_component,
     _remap_kernel_symbols,
     _replace_expression_symbols,
+    _spin_axis_labels,
     _spin_dimension,
     _spin_representations,
     _spin_slots,
@@ -109,6 +110,7 @@ def _compile_color_singlet_contact_trees(
                     mass="ZERO",
                     width="ZERO",
                     charge=0.0,
+                    quantum_numbers=(("electric_charge", "0"),),
                     ghost_number=0,
                     propagating=False,
                     goldstoneboson=False,
@@ -133,6 +135,7 @@ def _compile_color_singlet_contact_trees(
                     source_particles=source_particles,
                     scalar_product_tree=scalar_product_tree,
                     start_kind=start_kind,
+                    model_symbols=model_symbols,
                 )
                 return node
 
@@ -170,6 +173,7 @@ def _append_contact_tree_partial_kernels(
     source_particles: Sequence[CompiledParticleRecord],
     scalar_product_tree: bool,
     start_kind: int,
+    model_symbols: ModelSymbolRegistry,
 ) -> None:
     if node.left is None or node.right is None:
         raise ValueError("contact tree partial node is missing a child")
@@ -188,6 +192,7 @@ def _append_contact_tree_partial_kernels(
             node.left,
             source_particles,
             scalar_product_tree=scalar_product_tree,
+            model_symbols=model_symbols,
         )
         right_payload = _contact_tree_node_payload(
             kind,
@@ -195,6 +200,7 @@ def _append_contact_tree_partial_kernels(
             node.right,
             source_particles,
             scalar_product_tree=scalar_product_tree,
+            model_symbols=model_symbols,
         )
         components = (
             (left_payload[0] * right_payload[0],)
@@ -261,6 +267,7 @@ def _append_contact_tree_final_kernels(
             left_node,
             source_particles,
             scalar_product_tree=True,
+            model_symbols=model_symbols,
         )
         right_payload = _contact_tree_node_payload(
             canonical_kind,
@@ -268,6 +275,7 @@ def _append_contact_tree_final_kernels(
             right_node,
             source_particles,
             scalar_product_tree=True,
+            model_symbols=model_symbols,
         )
         canonical_components = (
             left_payload[0] * right_payload[0] * _sym.E(term.lorentz_expression),
@@ -291,6 +299,7 @@ def _append_contact_tree_final_kernels(
                 kind=canonical_kind,
                 canonical_left_side="left",
                 canonical_right_side="right",
+                model_symbols=model_symbols,
             )
             template_cache[template_key] = canonical_kind, canonical_components
         else:
@@ -300,6 +309,7 @@ def _append_contact_tree_final_kernels(
                     component,
                     old_kind=template_kind,
                     new_kind=canonical_kind,
+                    model_symbols=model_symbols,
                 )
                 for component in template_components
             )
@@ -318,6 +328,7 @@ def _append_contact_tree_final_kernels(
                 component,
                 old_kind=canonical_kind,
                 new_kind=kind,
+                model_symbols=model_symbols,
                 swap_sides=actual_left is right_node,
             )
             for component in canonical_weighted_components
@@ -358,25 +369,28 @@ def _contact_tree_node_payload(
     source_particles: Sequence[CompiledParticleRecord],
     *,
     scalar_product_tree: bool,
+    model_symbols: ModelSymbolRegistry,
 ) -> tuple[_sym.Expression, ...]:
     if node.is_leaf:
         if node.physical_leg is None:
             raise ValueError("contact tree leaf has no source leg")
         dimension = _spin_dimension(source_particles[node.physical_leg].spin)
         components = tuple(
-            symbols.kernel_component(kind, side, index) for index in range(dimension)
+            model_symbols.kernel_component(kind, side, index)
+            for index in range(dimension)
         )
         if scalar_product_tree:
             return components
         momenta = tuple(
-            symbols.kernel_momentum(kind, side, index) for index in range(4)
+            model_symbols.kernel_momentum(kind, side, index) for index in range(4)
         )
         return (*components, *momenta)
     dimension = node.particle.component_dimension
     if dimension is None:
         raise ValueError("contact tree auxiliary has no component dimension")
     return tuple(
-        symbols.kernel_component(kind, side, index) for index in range(dimension)
+        model_symbols.kernel_component(kind, side, index)
+        for index in range(dimension)
     )
 
 
@@ -390,6 +404,7 @@ def _contact_tree_final_component_expressions(
     kind: int,
     canonical_left_side: str,
     canonical_right_side: str,
+    model_symbols: ModelSymbolRegistry,
 ) -> tuple[_sym.Expression, ...]:
     payload_by_leg = {
         **_contact_tree_payload_by_leg(
@@ -397,12 +412,14 @@ def _contact_tree_final_component_expressions(
             canonical_left_side,
             left_node,
             source_particles,
+            model_symbols=model_symbols,
         ),
         **_contact_tree_payload_by_leg(
             kind,
             canonical_right_side,
             right_node,
             source_particles,
+            model_symbols=model_symbols,
         ),
     }
     momentum_by_leg = {
@@ -424,16 +441,26 @@ def _contact_tree_final_component_expressions(
             leg=leg,
             spin=source_particles[leg].spin,
             components=components,
+            model_symbols=model_symbols,
         )
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
         library.register(
             _sym.LibraryTensor.dense(
-                _sym.TensorName(symbols.ufo_momentum_tensor_name(leg + 1))(minkowski),
+                _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))(
+                    minkowski
+                ),
                 momentum,
             )
         )
-    result = _execute_dense_tensor(expression, library)
+    result = _execute_dense_tensor(
+        expression,
+        library,
+        axis_labels=_spin_axis_labels(
+            source_particles[result_leg].spin,
+            result_leg + 1,
+        ),
+    )
     expected = _spin_dimension(source_particles[result_leg].spin)
     if len(result) != expected:
         raise ValueError(
@@ -454,6 +481,7 @@ def eager_color_singlet_vertex_term_components(
     input_components: Mapping[int, Sequence[_sym.Expression]],
     input_momenta: Mapping[int, Sequence[_sym.Expression]],
     coupling: _sym.Expression | None = None,
+    model_symbols: ModelSymbolRegistry | None = None,
 ) -> tuple[_sym.Expression, ...]:
     """Contract one original color-singlet n-ary term without its lowered tree."""
 
@@ -465,6 +493,7 @@ def eager_color_singlet_vertex_term_components(
         raise ValueError(f"result leg {result_leg} is outside valence {term.valence}")
     particle_by_name = {particle.name: particle for particle in particles}
     source_particles = tuple(particle_by_name[name] for name in term.particles)
+    tensor_symbols = model_symbols or symbols.model("eager-contact-oracle")
     input_legs = set(range(term.valence)) - {result_leg}
     if set(input_components) != input_legs or set(input_momenta) != input_legs:
         raise ValueError(
@@ -492,6 +521,7 @@ def eager_color_singlet_vertex_term_components(
             leg=leg,
             spin=source_particles[leg].spin,
             components=components,
+            model_symbols=tensor_symbols,
         )
 
     momentum_by_leg[result_leg] = tuple(
@@ -505,13 +535,22 @@ def eager_color_singlet_vertex_term_components(
     for leg, momentum in momentum_by_leg.items():
         library.register(
             _sym.LibraryTensor.dense(
-                _sym.TensorName(symbols.ufo_momentum_tensor_name(leg + 1))(minkowski),
+                _sym.TensorName(tensor_symbols.ufo_momentum_tensor_name(leg + 1))(
+                    minkowski
+                ),
                 momentum,
             )
         )
     if coupling is not None:
         expression *= coupling
-    result = _execute_dense_tensor(expression, library)
+    result = _execute_dense_tensor(
+        expression,
+        library,
+        axis_labels=_spin_axis_labels(
+            source_particles[result_leg].spin,
+            result_leg + 1,
+        ),
+    )
     expected_dimension = _spin_dimension(source_particles[result_leg].spin)
     if len(result) != expected_dimension:
         raise ValueError(
@@ -529,6 +568,8 @@ def _contact_tree_payload_by_leg(
     side: str,
     node: _ContactTreeNode,
     source_particles: Sequence[CompiledParticleRecord],
+    *,
+    model_symbols: ModelSymbolRegistry,
 ) -> dict[int, tuple[tuple[_sym.Expression, ...], tuple[_sym.Expression, ...]]]:
     payload = _contact_tree_node_payload(
         kind,
@@ -536,6 +577,7 @@ def _contact_tree_payload_by_leg(
         node,
         source_particles,
         scalar_product_tree=False,
+        model_symbols=model_symbols,
     )
     result: dict[
         int, tuple[tuple[_sym.Expression, ...], tuple[_sym.Expression, ...]]
@@ -560,13 +602,14 @@ def _contact_tree_physical_tensor_expression(
     leg: int,
     spin: int,
     components: Sequence[_sym.Expression],
+    model_symbols: ModelSymbolRegistry,
 ) -> _sym.Expression:
     representations = _spin_representations(spin)
     if not representations:
         if len(components) != 1:
             raise ValueError("scalar contact input must have one component")
         return components[0]
-    name = _sym.TensorName(symbols.contact_leg_tensor_name(kind, leg))
+    name = _sym.TensorName(model_symbols.contact_leg_tensor_name(kind, leg))
     library.register(_sym.LibraryTensor.dense(name(*representations), components))
     return name(*_spin_slots(spin, leg + 1)).to_expression()
 
@@ -646,6 +689,7 @@ def _deduplicate_contact_partials(
                     _sym.E(component),
                     old_kind=kernel.kind,
                     new_kind=0,
+                    model_symbols=model_symbols,
                 ),
                 substitutions,
             ).to_canonical_string()

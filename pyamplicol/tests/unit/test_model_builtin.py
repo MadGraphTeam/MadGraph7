@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 import pyamplicol.models as models
 from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.base import Model, Vertex
+from pyamplicol.models.builtin.model import BuiltinModel
 from pyamplicol.models.loading import compile_model_source
 
 
@@ -54,3 +58,34 @@ def test_model_builtin_compiles_to_canonical_records_without_replacing_path() ->
 def test_model_builtin_public_name_has_no_legacy_alias() -> None:
     assert models.BuiltinSMModel is BuiltinSMModel
     assert not hasattr(models, "AmplicolSMLeadingColorModel")
+
+
+def test_shared_model_contract_has_no_builtin_sm_pdg_fallbacks() -> None:
+    generic = Model(name="generic-model-contract")
+
+    assert issubclass(BuiltinSMModel, BuiltinModel)
+    assert not issubclass(BuiltinModel, BuiltinSMModel)
+    with pytest.raises(NotImplementedError, match="massless adjoint-vector role"):
+        generic.is_massless_adjoint_vector(21)
+    with pytest.raises(NotImplementedError, match="fundamental colored-fermion role"):
+        generic.is_fundamental_colored_fermion(1)
+    with pytest.raises(NotImplementedError, match="propagator lowering"):
+        generic.propagator_lowering_rule(21)
+    assert not generic.global_helicity_flip_equivalence_is_proven(
+        (Vertex(0, (1, -1, 21)),)
+    )
+    assert not generic.pure_massless_adjoint_helicity_zero_rule_is_proven(
+        object(),
+        (Vertex(0, (21, 21, 21)),),
+    )
+
+
+def test_global_helicity_flip_proof_is_owned_by_the_builtin_model() -> None:
+    model = BuiltinSMModel()
+
+    assert model.global_helicity_flip_equivalence_is_proven(
+        (Vertex(0, (1, -1, 21)), Vertex(6, (1, 21, 1)))
+    )
+    assert not model.global_helicity_flip_equivalence_is_proven(
+        (Vertex(10, (1, -1, 22)),)
+    )

@@ -211,17 +211,8 @@
   "fixture": "physics-v1.json",
   "fixture_sha256": "43173e8e527676fe9b26467e9f0b6b0d26cd323ecebcac69f56ce64a8b1a85ac",
   "oracle": "legacy-fortran-amplicol-color-probe",
-  "patches": [
-    {
-      "path": "patches/legacy-amplicol/0001-build-color-probe-without-lhapdf.patch",
-      "sha256": "b6e26676a36c7503a21fddbab5760b7a4f002888b497ce9ff40c496181a67062"
-    },
-    {
-      "path": "patches/legacy-amplicol/0002-report-complete-recursion-kinds.patch",
-      "sha256": "83558c260a9e07bfbd2d2f95aa8a8f9aa82bbebc5624e24cc776d17705b4ad85"
-    }
-  ],
-  "revision": "643bc6f99d7b2249af0a85204768df243e612411",
+  "patches": [],
+  "revision": "f3fdca35631c9405d28337a79cdab84994d8e414",
   "schema_version": 1,
   "tolerances": {
     "absolute": 1e-15,

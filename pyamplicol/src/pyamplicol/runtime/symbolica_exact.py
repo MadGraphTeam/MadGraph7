@@ -565,31 +565,62 @@ def _source_wavefunction(
         )
     dimension = _json_integer(source["dimension"])
     particle_id = _json_integer(source["particle_id"])
+    anti_particle_id = _json_integer(source["anti_particle_id"])
     helicity = _json_integer(source["source_helicity"])
     chirality = _json_integer(source["chirality"])
-    kind = str(source.get("wavefunction_kind", ""))
-    mass = _particle_mass(schema, particle_id, model_parameters)
-    if dimension == 1:
+    kind = str(source["wavefunction_kind"])
+    orientation = str(source["source_orientation"])
+    if orientation not in {"particle", "antiparticle", "self-conjugate"}:
+        raise ArtifactError(f"source has invalid orientation {orientation!r}")
+    if anti_particle_id == 0 or (
+        (orientation == "self-conjugate") != (particle_id == anti_particle_id)
+    ):
+        raise ArtifactError(
+            "source orientation is inconsistent with its antiparticle relation"
+        )
+    if dimension == 1 and kind == "scalar":
         return ((_ONE, _ZERO),)
-    if dimension == 2:
+    if kind == "fermion" and orientation == "self-conjugate":
+        raise CompatibilityError(
+            "self-conjugate fermion source wavefunctions are unsupported"
+        )
+    if dimension == 2 and kind == "fermion":
         return (
             _antiquark_weyl(momentum, helicity, chirality)
-            if particle_id < 0
+            if orientation == "antiparticle"
             else _quark_weyl(momentum, helicity, chirality)
         )
     if dimension == 4 and kind == "fermion":
+        mass = _particle_mass(
+            schema,
+            particle_id,
+            anti_particle_id,
+            model_parameters,
+        )
         return (
             _antiquark_dirac(momentum, helicity, mass)
-            if particle_id < 0
+            if orientation == "antiparticle"
             else _quark_dirac(momentum, helicity, mass)
         )
     if dimension == 4 and kind == "vector":
+        mass = _particle_mass(
+            schema,
+            particle_id,
+            anti_particle_id,
+            model_parameters,
+        )
         return (
             _massless_vector(momentum, helicity)
             if mass == 0
             else _massive_vector(momentum, helicity, mass)
         )
     if dimension == 16 and kind == "spin2":
+        mass = _particle_mass(
+            schema,
+            particle_id,
+            anti_particle_id,
+            model_parameters,
+        )
         return _spin2(momentum, helicity, mass)
     raise CompatibilityError(
         f"high-precision source kind {kind!r} with dimension {dimension} is unsupported"
@@ -599,18 +630,24 @@ def _source_wavefunction(
 def _particle_mass(
     schema: Mapping[str, object],
     particle_id: int,
+    anti_particle_id: int,
     parameters: Sequence[Decimal],
 ) -> Decimal:
     model = cast(Mapping[str, object], schema["model"])
     particles = cast(Sequence[Mapping[str, object]], model["particles"])
     record = next(
-        (
-            item
-            for item in particles
-            if abs(_json_integer(item["pdg"])) == abs(particle_id)
-        ),
+        (item for item in particles if _json_integer(item["pdg"]) == particle_id),
         None,
     )
+    if record is None:
+        record = next(
+            (
+                item
+                for item in particles
+                if _json_integer(item["pdg"]) == anti_particle_id
+            ),
+            None,
+        )
     if record is None:
         return _ZERO
     parameter_name = record.get("mass_parameter")

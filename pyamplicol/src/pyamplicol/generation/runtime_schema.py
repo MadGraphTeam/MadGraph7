@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import math
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -173,7 +171,10 @@ def _current_slots(dag: GenericDAG) -> list[dict[str, object]]:
                 "chirality": current.index.chirality,
                 "spin_state": _spin_state(current.index.spin_state),
                 "flavour_flow": list(current.index.flavour_flow),
-                "charge_flow": current.index.charge_flow,
+                "quantum_number_flow": [
+                    [name, expression]
+                    for name, expression in current.index.quantum_number_flow
+                ],
                 "color_state": current.index.color_state.to_json_dict(),
                 "auxiliary_kind": current.index.auxiliary_kind,
             }
@@ -653,8 +654,10 @@ def _source_record(
         "physical_pdg": None if leg is None else leg.pdg,
         "outgoing_pdg": current.index.particle_id,
         "particle_id": current.index.particle_id,
+        "anti_particle_id": model.anti_particle(current.index.particle_id),
         "source_kind": "external-wavefunction",
         "wavefunction_kind": model.source_wavefunction_kind(current.index.particle_id),
+        "source_orientation": model.source_orientation(current.index.particle_id),
         "source_helicity": current.source_helicity,
         "chirality": current.index.chirality,
         "spin_state": _spin_state(current.index.spin_state),
@@ -665,35 +668,7 @@ def _source_record(
 
 
 def _normalization(dag: GenericDAG, model: Model) -> dict[str, object]:
-    provider = getattr(model, "runtime_normalization_payload", None)
-    if callable(provider):
-        return dict(provider(dag))
-    initial = list(dag.process.initial_pdgs)
-    final = list(dag.process.final_pdgs)
-    external = [*initial, *final]
-    color_factor = int(model.leading_color_factor(external))
-    electroweak_power = (
-        max(1, len(dag.process.singlet_labels)) if dag.process.singlet_labels else 0
-    )
-    qcd_power = max(0, len(dag.process.legs) - 2 - electroweak_power)
-    alpha_s = float(getattr(model, "alpha_s_me_check", 0.118))
-    alpha_ew = float(getattr(model, "alpha_ew", 0.007546771114))
-    return {
-        "color_accuracy": dag.process.color_accuracy,
-        "color_factor": color_factor,
-        "average_factor": _initial_average(initial),
-        "identical_factor": _identical_factor(final),
-        "final_state_identical_factor": _identical_factor(final),
-        "quark_line_partner_factor": 1,
-        "global_coupling_factor": (
-            (4.0 * math.pi * alpha_s) ** qcd_power
-            * (2.0 * 4.0 * math.pi * alpha_ew) ** electroweak_power
-        ),
-        "qcd_coupling_power": qcd_power,
-        "electroweak_coupling_power": electroweak_power,
-        "couplings_in_stage_evaluators": True,
-        "coupling_policy": "stage evaluators include local vertex couplings",
-    }
+    return dict(model.runtime_normalization_payload(dag))
 
 
 def _model_payload(dag: GenericDAG, model: Model) -> dict[str, object]:
@@ -726,7 +701,7 @@ def _model_payload(dag: GenericDAG, model: Model) -> dict[str, object]:
                 "charge": particle.charge,
             }
             for particle in sorted(model.particles.values(), key=lambda item: item.pdg)
-            if particle.pdg in particle_ids
+            if particle.pdg in particle_ids or particle.anti_pdg in particle_ids
         ],
         "vertices": [
             {
@@ -765,7 +740,10 @@ def _external_particles(dag: GenericDAG) -> list[dict[str, object]]:
             "outgoing_particle": leg.outgoing_particle,
             "pdg": leg.pdg,
             "outgoing_pdg": leg.outgoing_pdg,
-            "particle_class": leg.particle_class,
+            "statistics": leg.statistics,
+            "wavefunction_family": leg.wavefunction_family,
+            "color_role": leg.color_role,
+            "source_orientation": leg.source_orientation,
             "momentum_slot": leg.label - 1,
             "momentum_components": ["E", "px", "py", "pz"],
         }
@@ -872,22 +850,6 @@ def _spin_state(value: object) -> object:
 
 def _mask_labels(mask: int) -> tuple[int, ...]:
     return tuple(index + 1 for index in range(mask.bit_length()) if mask & (1 << index))
-
-
-def _initial_average(initial_pdgs: Sequence[int]) -> int:
-    factor = 1
-    for pdg in initial_pdgs:
-        if pdg == 21:
-            factor *= 16
-        elif 1 <= abs(pdg) <= 6:
-            factor *= 6
-        else:
-            factor *= 2
-    return factor
-
-
-def _identical_factor(final_pdgs: Sequence[int]) -> int:
-    return math.prod(math.factorial(count) for count in Counter(final_pdgs).values())
 
 
 def _mapping(value: object) -> Mapping[str, object]:

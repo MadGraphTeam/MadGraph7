@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import warnings
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from pyamplicol import Generator, ModelSource, Runtime
+from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.config import ColorConfig, ModelConfig, RunConfig
 from tools.developer.analytic_oracles import (
@@ -45,11 +47,30 @@ EXTERNAL_SM_SOURCES = {
     "json": MODEL_ASSETS / "json/sm/sm.json",
     "ufo": MODEL_ASSETS / "ufo/sm",
 }
+EXTERNAL_SM_PROCESS_IDS = (
+    "sm_ddbar_z",
+    "sm_udbar_wplus",
+    "sm_ddbar_zg",
+    "sm_ddbar_ee",
+    "sm_ddbar_uubar",
+    "sm_ddbar_ddbar",
+    "sm_gg_gg",
+    "sm_gg_ttbar",
+    "sm_ddbar_zgg",
+)
 NAMED_CASE_IDS = {
     "builtin_sm_ddbar_zg_lc": "case:sm_ddbar_zg:lc",
     "scalars_2to2_lc": "case:scalars_2to2:lc",
     "scalar_gravity_2to2_lc": "case:scalar_gravity_2to2:lc",
 }
+
+
+@pytest.fixture(autouse=True)
+def _discard_generated_artifacts(tmp_path: Path) -> Iterator[None]:
+    """Keep parameterized generation tests from retaining every large artifact."""
+
+    yield
+    shutil.rmtree(tmp_path, ignore_errors=True)
 
 
 def _case_payload(
@@ -299,57 +320,96 @@ def test_current_source_external_models_match_reference(
 
 
 @pytest.mark.parametrize("source_kind", tuple(EXTERNAL_SM_SOURCES))
+@pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
 def test_current_source_external_sm_matches_builtin_reference(
     tmp_path: Path,
     source_kind: str,
+    accuracy: str,
 ) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
 
-    reference, reference_momenta = _named_reference_case("builtin_sm_ddbar_zg_lc")
+    processes = {process["id"]: process for process in REFERENCE_PAYLOAD["processes"]}
+    cases = {case["id"]: case for case in REFERENCE_PAYLOAD["cases"]}
+    points = {point["id"]: point for point in REFERENCE_PAYLOAD["points"]}
     config = RunConfig(
         action="generate",
         model=ModelConfig(cache=False),
-        color=ColorConfig(accuracy="lc"),
+        color=ColorConfig(accuracy=accuracy),
     )
-    artifact = tmp_path / f"external-sm-{source_kind}"
+    artifact = tmp_path / f"external-sm-{source_kind}-{accuracy}"
     Generator(config).generate(
-        reference["process"],
+        ProcessSet.from_expressions(
+            tuple(
+                processes[process_id]["expression"]
+                for process_id in EXTERNAL_SM_PROCESS_IDS
+            ),
+            names=EXTERNAL_SM_PROCESS_IDS,
+        ),
         artifact,
         model=ModelSource.from_path(EXTERNAL_SM_SOURCES[source_kind]),
     )
 
-    outer = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
-    execution = json.loads(
-        (
-            artifact / "processes" / outer["processes"][0]["id"] / "execution.json"
-        ).read_text(encoding="utf-8")
-    )
-    for name, expected in reference["topology"].items():
-        if name == "interaction_evaluation_count":
-            continue
-        assert execution["dag_summary"][name] == expected
+    for process_id in EXTERNAL_SM_PROCESS_IDS:
+        case = cases[f"case:{process_id}:{accuracy}"]
+        execution = json.loads(
+            (artifact / "processes" / process_id / "execution.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        topology = case["topology"]
+        assert execution["dag_summary"]["current_count"] == topology["currents"]
+        assert execution["dag_summary"]["interaction_count"] == topology["interactions"]
+        assert execution["dag_summary"]["amplitude_root_count"] == topology["roots"]
 
-    runtime = Runtime.load(artifact)
-    momenta = tuple(
-        tuple(tuple(float(component) for component in vector) for vector in point)
-        for point in reference_momenta
-    )
-    total = runtime.evaluate(momenta)
-    resolved = runtime.evaluate_resolved(momenta)
+        runtime = Runtime.load(artifact, process=process_id)
+        assert runtime.physics.helicity_coverage == "complete"
+        assert runtime.physics.color_coverage == (
+            "complete" if accuracy == "lc" else "contracted"
+        )
+        expected_helicities = tuple(item["id"] for item in case["axes"]["helicities"])
+        expected_colors = tuple(item["id"] for item in case["axes"]["colors"])
+        for observation in case["observations"]:
+            point = points[observation["point_id"]]
+            momenta = (
+                tuple(
+                    tuple(float(component) for component in vector)
+                    for vector in point["momenta"]
+                ),
+            )
+            total = runtime.evaluate(momenta)[0]
+            resolved = runtime.evaluate_resolved(momenta)
+            expected_total = float(observation["total"])
 
-    assert total[0].real == pytest.approx(reference["total"], rel=1.0e-10)
-    assert total[0].imag == pytest.approx(0.0, abs=1.0e-15)
-    assert resolved.total()[0] == pytest.approx(total[0], rel=1.0e-12)
-    helicity_index = {value: index for index, value in enumerate(resolved.helicity_ids)}
-    color_index = {value: index for index, value in enumerate(resolved.color_ids)}
-    for helicity_id, expected_colors in reference["resolved"].items():
-        for color_id, expected_value in expected_colors.items():
-            actual = resolved.values[0][helicity_index[helicity_id]][
-                color_index[color_id]
-            ]
-            assert actual.real == pytest.approx(expected_value, rel=1.0e-10)
-            assert actual.imag == pytest.approx(0.0, abs=1.0e-15)
+            assert total.real == pytest.approx(
+                expected_total,
+                rel=1.0e-10,
+                abs=1.0e-12,
+            )
+            assert total.imag == pytest.approx(
+                0.0,
+                abs=max(1.0e-15, abs(expected_total) * 1.0e-12),
+            )
+            assert resolved.total()[0] == pytest.approx(
+                total,
+                rel=1.0e-12,
+                abs=1.0e-12,
+            )
+            assert resolved.helicity_ids == expected_helicities
+            assert resolved.color_ids == expected_colors
+            for helicity_index, expected_row in enumerate(observation["values"]):
+                for color_index, expected_text in enumerate(expected_row):
+                    expected = float(expected_text)
+                    actual = resolved.values[0][helicity_index][color_index]
+                    assert actual.real == pytest.approx(
+                        expected,
+                        rel=1.0e-10,
+                        abs=1.0e-12,
+                    )
+                    assert actual.imag == pytest.approx(
+                        0.0,
+                        abs=max(1.0e-15, abs(expected) * 1.0e-12),
+                    )
 
 
 def test_external_sm_mass_overrides_refresh_sources_and_derived_masses(

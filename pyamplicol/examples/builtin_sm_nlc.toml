@@ -9,7 +9,7 @@ action = "generate"
 source = "built-in-sm"
 
 [process]
-entries = [{ expression = "d d~ > z g", name = "ddbar_zg_nlc" }]
+entries = [{ expression = "u u~ > g g", name = "uubar_gg_nlc" }]
 
 [color]
 accuracy = "nlc"

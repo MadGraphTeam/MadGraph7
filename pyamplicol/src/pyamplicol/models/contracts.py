@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from .._internal.physics.symbols import symbols
+from .base import QuantumNumberFlow
 
 SUPPORTED_COLOR_REPRESENTATIONS = frozenset({-3, 1, 3, 8})
 
@@ -16,6 +19,61 @@ def validate_color_representation(value: int, *, context: str = "particle") -> i
             f"{context} uses unsupported UFO color representation {representation}"
         )
     return representation
+
+
+def validate_quantum_number_flow(
+    value: object,
+    *,
+    context: str = "particle",
+) -> QuantumNumberFlow:
+    if not isinstance(value, list | tuple):
+        raise ValueError(f"{context} quantum numbers must be a sequence")
+    result: list[tuple[str, str]] = []
+    for item in value:
+        if not isinstance(item, list | tuple) or len(item) != 2:
+            raise ValueError(
+                f"{context} quantum-number entries must be [name, expression] pairs"
+            )
+        name, expression = item
+        if not isinstance(name, str) or not name:
+            raise ValueError(
+                f"{context} quantum-number names must be non-empty strings"
+            )
+        if not isinstance(expression, str) or not expression:
+            raise ValueError(
+                f"{context} quantum-number expressions must be non-empty strings"
+            )
+        _constant_quantum_number_expression(
+            expression,
+            context=f"{context} quantum number {name!r}",
+        )
+        result.append((name, expression))
+
+    names = tuple(name for name, _expression in result)
+    if names != tuple(sorted(set(names))):
+        raise ValueError(f"{context} quantum-number names must be sorted and unique")
+    return tuple(result)
+
+
+def _constant_quantum_number_expression(
+    expression: str,
+    *,
+    context: str,
+) -> Any:
+    from . import compiler_symbolica as _sym
+
+    _sym._ensure_symbolica()
+    try:
+        parsed = _sym.E(expression)
+    except Exception as exc:
+        raise ValueError(f"{context} is not a valid Symbolica expression") from exc
+    if parsed.get_all_symbols(False):
+        raise ValueError(f"{context} must be symbol-free")
+    if not parsed.is_real():
+        raise ValueError(f"{context} must be real")
+    if not parsed.is_finite():
+        raise ValueError(f"{context} must be a finite real constant")
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -66,12 +124,45 @@ class CompiledParticleRecord:
     mass: str
     width: str
     charge: float
+    quantum_numbers: QuantumNumberFlow
     ghost_number: int
     propagating: bool
     goldstoneboson: bool
     propagator: str | None
     component_dimension: int | None = None
     auxiliary_kind: str | None = None
+    statistics: str = ""
+    wavefunction_family: str = ""
+    color_role: str = ""
+    self_conjugate: bool | None = None
+    source_orientation: str = ""
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(float(self.charge)):
+            raise ValueError(f"particle {self.name!r} charge must be finite")
+        quantum_numbers = validate_quantum_number_flow(
+            self.quantum_numbers,
+            context=f"particle {self.name!r}",
+        )
+        if not any(name == "electric_charge" for name, _ in quantum_numbers):
+            raise ValueError(
+                f"particle {self.name!r} must declare exact electric_charge metadata"
+            )
+        object.__setattr__(
+            self,
+            "quantum_numbers",
+            quantum_numbers,
+        )
+        derived = _particle_role_metadata(self)
+        for field_name, expected in derived.items():
+            supplied = getattr(self, field_name)
+            if supplied in {"", None}:
+                object.__setattr__(self, field_name, expected)
+            elif supplied != expected:
+                raise ValueError(
+                    f"particle {self.name!r} has inconsistent {field_name}: "
+                    f"{supplied!r}, expected {expected!r}"
+                )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -83,13 +174,72 @@ class CompiledParticleRecord:
             "mass": self.mass,
             "width": self.width,
             "charge": self.charge,
+            "quantum_numbers": [list(item) for item in self.quantum_numbers],
             "ghost_number": self.ghost_number,
             "propagating": self.propagating,
             "goldstoneboson": self.goldstoneboson,
             "propagator": self.propagator,
             "component_dimension": self.component_dimension,
             "auxiliary_kind": self.auxiliary_kind,
+            "statistics": self.statistics,
+            "wavefunction_family": self.wavefunction_family,
+            "color_role": self.color_role,
+            "self_conjugate": self.self_conjugate,
+            "source_orientation": self.source_orientation,
         }
+
+
+def _particle_role_metadata(particle: CompiledParticleRecord) -> dict[str, object]:
+    representation = validate_color_representation(
+        particle.color,
+        context=f"particle {particle.name!r}",
+    )
+    if particle.ghost_number != 0:
+        statistics = "ghost"
+    elif particle.auxiliary_kind is not None or particle.spin < 0:
+        statistics = "auxiliary"
+    elif particle.spin % 2 == 0:
+        statistics = "fermion"
+    else:
+        statistics = "boson"
+
+    if statistics == "fermion":
+        wavefunction_family = "fermion"
+    elif particle.spin == 1:
+        wavefunction_family = "scalar"
+    elif particle.spin == 3:
+        wavefunction_family = "vector"
+    elif particle.spin == 5:
+        wavefunction_family = "spin2"
+    elif statistics == "ghost":
+        wavefunction_family = "ghost"
+    else:
+        wavefunction_family = "auxiliary"
+
+    color_role = {
+        -3: "antifundamental",
+        1: "singlet",
+        3: "fundamental",
+        8: "adjoint",
+    }[representation]
+    self_conjugate = particle.name == particle.antiname
+    if self_conjugate:
+        source_orientation = "self-conjugate"
+    elif particle.pdg_code > 0:
+        source_orientation = "particle"
+    elif particle.pdg_code < 0:
+        source_orientation = "antiparticle"
+    else:
+        raise ValueError(
+            f"non-self-conjugate particle {particle.name!r} cannot use PDG code zero"
+        )
+    return {
+        "statistics": statistics,
+        "wavefunction_family": wavefunction_family,
+        "color_role": color_role,
+        "self_conjugate": self_conjugate,
+        "source_orientation": source_orientation,
+    }
 
 
 @dataclass(frozen=True)
@@ -97,7 +247,7 @@ class CompiledCouplingRecord:
     name: str
     expression: str
     resolved_expression: str
-    value: tuple[float, float]
+    value: tuple[float, float] | None
     orders: tuple[tuple[str, int], ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -105,7 +255,7 @@ class CompiledCouplingRecord:
             "name": self.name,
             "expression": self.expression,
             "resolved_expression": self.resolved_expression,
-            "value": list(self.value),
+            "value": None if self.value is None else list(self.value),
             "orders": [[name, value] for name, value in self.orders],
         }
 
@@ -246,12 +396,84 @@ class CompiledModelIR:
     oriented_kernels: tuple[CompiledOrientedKernel, ...]
 
     def __post_init__(self) -> None:
+        self._validate_particle_identities()
         for context, expression in self._executable_expressions():
             if "UFO::" in expression:
                 raise ValueError(
                     f"{context} retains a process-global UFO symbol; "
                     "regenerate it through the model symbol registry"
                 )
+
+    def _validate_particle_identities(self) -> None:
+        by_name: dict[str, CompiledParticleRecord] = {}
+        by_pdg: dict[int, CompiledParticleRecord] = {}
+        for particle in self.particles:
+            if particle.name in by_name:
+                raise ValueError(
+                    f"compiled model contains duplicate particle name {particle.name!r}"
+                )
+            if particle.pdg_code in by_pdg:
+                raise ValueError(
+                    f"compiled model contains duplicate PDG code {particle.pdg_code}"
+                )
+            by_name[particle.name] = particle
+            by_pdg[particle.pdg_code] = particle
+        for particle in self.particles:
+            anti = by_name.get(particle.antiname)
+            if anti is None:
+                raise ValueError(
+                    f"particle {particle.name!r} refers to absent antiparticle "
+                    f"{particle.antiname!r}"
+                )
+            if anti.antiname != particle.name:
+                raise ValueError(
+                    f"particle/antiparticle relation is not involutive for "
+                    f"{particle.name!r} and {anti.name!r}"
+                )
+            if anti is not particle and anti.pdg_code != -particle.pdg_code:
+                raise ValueError(
+                    f"non-self-conjugate pair {particle.name!r}/{anti.name!r} must "
+                    "use opposite signed PDG codes"
+                )
+            if anti is particle:
+                for name, expression in particle.quantum_numbers:
+                    parsed = _constant_quantum_number_expression(
+                        expression,
+                        context=(
+                            f"self-conjugate particle {particle.name!r} quantum "
+                            f"number {name!r}"
+                        ),
+                    )
+                    if parsed.to_canonical_string() != "0":
+                        raise ValueError(
+                            f"self-conjugate particle {particle.name!r} must have "
+                            f"zero quantum number {name!r}"
+                        )
+                continue
+            particle_names = tuple(name for name, _ in particle.quantum_numbers)
+            anti_names = tuple(name for name, _ in anti.quantum_numbers)
+            if particle_names != anti_names:
+                raise ValueError(
+                    f"particle/antiparticle pair {particle.name!r}/{anti.name!r} "
+                    "must declare the same quantum numbers"
+                )
+            for (name, expression), (_anti_name, anti_expression) in zip(
+                particle.quantum_numbers,
+                anti.quantum_numbers,
+                strict=True,
+            ):
+                total = _constant_quantum_number_expression(
+                    expression,
+                    context=f"particle {particle.name!r} quantum number {name!r}",
+                ) + _constant_quantum_number_expression(
+                    anti_expression,
+                    context=f"particle {anti.name!r} quantum number {name!r}",
+                )
+                if total.to_canonical_string() != "0":
+                    raise ValueError(
+                        f"particle/antiparticle pair {particle.name!r}/{anti.name!r} "
+                        f"must have exactly negated quantum number {name!r}"
+                    )
 
     def _executable_expressions(self) -> tuple[tuple[str, str], ...]:
         """Return scalar/evaluator expressions, excluding raw tensor source."""
@@ -355,6 +577,10 @@ class CompiledModelIR:
                     mass=str(item["mass"]),
                     width=str(item["width"]),
                     charge=_floating(item["charge"]),
+                    quantum_numbers=validate_quantum_number_flow(
+                        item["quantum_numbers"],
+                        context=f"particle {str(item['name'])!r}",
+                    ),
                     ghost_number=_integer(item["ghost_number"]),
                     propagating=bool(item["propagating"]),
                     goldstoneboson=bool(item["goldstoneboson"]),
@@ -365,6 +591,15 @@ class CompiledModelIR:
                         else _integer(item["component_dimension"])
                     ),
                     auxiliary_kind=_optional_string(item.get("auxiliary_kind")),
+                    statistics=str(item.get("statistics", "")),
+                    wavefunction_family=str(item.get("wavefunction_family", "")),
+                    color_role=str(item.get("color_role", "")),
+                    self_conjugate=(
+                        None
+                        if item.get("self_conjugate") is None
+                        else bool(item["self_conjugate"])
+                    ),
+                    source_orientation=str(item.get("source_orientation", "")),
                 )
                 for item in _mappings(payload.get("particles"))
             ),
@@ -373,7 +608,7 @@ class CompiledModelIR:
                     name=str(item["name"]),
                     expression=str(item["expression"]),
                     resolved_expression=str(item["resolved_expression"]),
-                    value=_pair(item.get("value")),
+                    value=_optional_pair(item.get("value")),
                     orders=_orders(item.get("orders")),
                 )
                 for item in _mappings(payload.get("couplings"))
@@ -544,4 +779,5 @@ __all__ = [
     "CompiledPropagatorRecord",
     "CompiledVertexTerm",
     "validate_color_representation",
+    "validate_quantum_number_flow",
 ]

@@ -3,78 +3,127 @@
 # Packaged Examples
 
 All TOML cards use schema version 1 and resolve paths relative to themselves.
-List or copy the wheel-owned examples without referring to an installation or
-source-checkout path:
+Create an editable, installation-independent workspace with:
 
 ```console
-pyamplicol examples list
 pyamplicol examples copy ./pyamplicol-examples
+cd pyamplicol-examples
 ```
 
-Run a copied card by passing it as the first argument:
+The primary example uses the serialized external Standard Model and generates a
+19-subprocess `p p > Z j j` artifact:
 
 ```console
-pyamplicol pyamplicol-examples/builtin_sm_lc.toml \
-  --set generation.output=artifacts/ddbar_zg
+pyamplicol external_json_sm.toml
+pyamplicol evaluate_total.toml
+pyamplicol evaluate_resolved.toml
+pyamplicol benchmark.toml
 ```
 
-Schema-v3 generation is integrated and emits one root multi-language `API/`
-bundle. Evaluation and benchmark cards use the lazy Rusticol runtime adapter
-shipped in a built wheel. Remaining publication gates are listed in
-[`docs/user/release-status.md`](../docs/user/release-status.md).
+`evaluate_total.toml` selects `p_p_to_z_j_j_4`, the concrete
+`d d~ > Z g g` process. Its parameter card updates the genuine UFO external
+inputs `aS` and `MZ`.
 
 ## Run Cards
 
 | File | Coverage |
 | --- | --- |
-| `builtin_sm_lc.toml` | Built-in SM, LC, JIT defaults |
-| `builtin_sm_nlc.toml` | Built-in SM, NLC contracted color |
-| `builtin_sm_full.toml` | Built-in SM, full contracted color |
-| `process_set_mixed_multiplicity.toml` | Named process set with 2-to-2 and 2-to-3 requests |
-| `external_ufo_sm.toml` | Trusted external SM UFO directory |
-| `external_json_sm.toml` | External serialized SM JSON |
-| `external_json_scalars.toml` | Scalar contact model and model parameters |
-| `external_json_scalar_gravity.toml` | Spin-2 scalar-gravity model |
-| `evaluate_total.toml` | Summed runtime evaluation from JSON momenta |
-| `evaluate_resolved.toml` | Resolved runtime evaluation and selectors |
-| `benchmark.toml` | Short evaluator benchmark |
+| `external_json_sm.toml` | Primary portable JSON SM, explicit two-flavor `p`/`j`, LC JIT |
+| `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
+| `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
+| `benchmark.toml` | Short benchmark of the same selected subprocess |
+| `process_set_mixed_multiplicity.toml` | Named external-SM 2-to-2 and 2-to-3 requests |
+| `external_ufo_sm.toml` | Trusted UFO execution path |
+| `external_json_scalars.toml` | Scalar contact model and repeated particles |
+| `external_json_scalar_gravity.toml` | Proven massless spin-2 model path |
+| `builtin_sm_lc.toml` | Built-in compatibility SM, `u u~ > g g`, LC |
+| `builtin_sm_nlc.toml` | Built-in compatibility SM, contracted NLC |
+| `builtin_sm_full.toml` | Built-in compatibility SM, contracted full color |
 | `all_options.toml` | Every current schema field, active and commented |
 
-The external-model cards deliberately use editable `models/...` paths relative
-to the copied cards. Populate them from the wheel-owned model resources with:
+`examples copy` also materializes wheel-owned `sm`, `scalars`, and
+`scalar_gravity` resources into `models/`. The included
+`python/copy_packaged_models.py` helper performs the resource-only operation for
+a separate workspace and refuses to merge into a non-empty destination unless
+`--force` is supplied. The public model API accepts filesystem paths, so no
+example relies on an installation directory.
+
+## Typed Python
+
+Plan or generate the primary process through the typed API:
 
 ```console
-cd pyamplicol-examples
-python python/copy_packaged_models.py
-pyamplicol external_json_sm.toml
+python python/typed_generation.py artifacts/pp_zjj --plan-only
+python python/typed_generation.py artifacts/pp_zjj
 ```
 
-Use `--force` only to merge over an existing model workspace. The helper uses
-`importlib.resources`, so it works from an installed wheel and never assumes a
-checkout layout. The public model API still expects a filesystem path rather
-than a packaged model name.
+The script compiles the external JSON model before planning, carries explicit
+`p`/`j` definitions in the resolved configuration, and writes the same root
+API bundle as the CLI.
 
-## Python And Native APIs
+Evaluate with a parameter card plus a direct override:
 
-`python/typed_generation.py` covers typed config resolution, process sets,
-planning, built-in/external models, and transactional schema-v3 generation.
-Use `--plan-only` when only the non-writing plan is wanted.
+```console
+python python/runtime_evaluation.py \
+  artifacts/pp_zjj data/pp_zjj_momenta.json \
+  --process p_p_to_z_j_j_4 \
+  --parameters data/model_parameters.json \
+  --set-parameter aS=0.1165
+```
 
-`python/runtime_evaluation.py` loads model parameters, computes summed and
-resolved values, and verifies their agreement. `python/benchmark.py` uses the
-typed benchmark service. `python/external_models.py` demonstrates explicit
-UFO and JSON `ModelSource` construction.
+Benchmark the selected process:
+
+```console
+python python/benchmark.py artifacts/pp_zjj \
+  --process p_p_to_z_j_j_4 \
+  --momenta data/pp_zjj_momenta.json
+```
+
+`python/external_models.py` demonstrates explicit JSON and trusted-UFO
+`ModelSource` construction:
+
+```console
+python python/external_models.py models/json/sm/sm.json models/ufo/sm
+```
+
+## Generated Python, Rust, C++, And Fortran
+
+Every generated artifact contains one `API/` bundle. All drivers select a
+process, accept JSON/direct model-parameter updates, evaluate resolved values,
+sum them, and compare with the optimized total:
+
+```console
+python artifacts/pp_zjj/API/python/check_standalone.py \
+  --process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json
+make -C artifacts/pp_zjj/API/rust run \
+  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --precision 16 --json'
+make -C artifacts/pp_zjj/API/cpp run \
+  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
+make -C artifacts/pp_zjj/API/fortran run \
+  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
+```
+
+The generated Rust source is compiled directly with `rustc` and
+`rusticol-config --rustflags`; no Rust crate dependency is needed. Rust, C++,
+and Fortran support f64 (`--precision 16`) only. The Python driver also exposes
+precision-controlled Symbolica evaluation when the artifact capability allows
+it.
+
+## Hand-Written Native Examples
 
 `native/runtime.cpp`, `native/runtime.f90`, and `native/Makefile` consume only
-the SDK discovered from an installed wheel by `rusticol-config`. Native APIs
-support f64; Python exposes f64 and precision-controlled evaluation through the
-public runtime contract.
-
-Every generated artifact also includes equivalent drivers under `API/`. For a
-single process:
+the SDK discovered from an installed wheel:
 
 ```console
-python artifacts/builtin_sm_lc/API/python/check_standalone.py --json
-make -C artifacts/builtin_sm_lc/API/cpp run
-make -C artifacts/builtin_sm_lc/API/fortran run
+make -C native
+native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_4 \
+  data/model_parameters.json
+native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_4 \
+  data/model_parameters.json
 ```
+
+Both examples apply a direct `aS` override, evaluate the five-particle
+validation point, and verify that resolved components reproduce the total.
+
+Current publication gates are listed in
+[`docs/user/release-status.md`](../docs/user/release-status.md).

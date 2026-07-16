@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: 0BSD
-# One named artifact containing 2-to-2 and 2-to-3 processes.
+# One external-SM artifact containing 2-to-2 and 2-to-3 processes.
 # Generation can reuse proven final-state permutations within the set.
 
 schema_version = 1
 action = "generate"
 
 [model]
-source = "built-in-sm"
+source = "models/json/sm/sm.json"
+restriction = "default"
 
 [process]
 entries = [
-  { expression = "d d~ > z g", name = "ddbar_zg" },
-  { expression = "d d~ > z g g", name = "ddbar_zgg" },
+  { expression = "u u~ > Z g", name = "uubar_Zg" },
+  { expression = "u u~ > Z g g", name = "uubar_Zgg" },
 ]
 flavor_scheme = 5
 max_quark_lines = 2

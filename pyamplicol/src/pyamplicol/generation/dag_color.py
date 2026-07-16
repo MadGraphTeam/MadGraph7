@@ -10,6 +10,8 @@ from ..models import Model, Vertex
 from ..processes.ir import ProcessLegIR
 from .dag_ordering import (
     _closure_combination_matches_word,
+    _known_color_representation,
+    _known_fermion_statistics,
     _labels_projected_to_word,
     _lc_word_with_sink_last,
     _line_local_singlet_extras_allowed,
@@ -46,28 +48,49 @@ class ColorEngine:
         self.model = model
         self._sector_by_id = {sector.id: sector for sector in color_plan.sectors}
         self._leg_by_label = {leg.label: leg for leg in color_plan.process.legs}
-        self._label_is_color_singlet: dict[int, bool] = {}
+        self._color_rep_by_label: dict[int, int | None] = {}
         for label, leg in self._leg_by_label.items():
             if leg.outgoing_pdg is None:
-                self._label_is_color_singlet[label] = False
+                self._color_rep_by_label[label] = None
                 continue
-            try:
-                self._label_is_color_singlet[label] = (
-                    self.model.color_rep(leg.outgoing_pdg) == 1
-                )
-            except KeyError:
-                self._label_is_color_singlet[label] = False
+            self._color_rep_by_label[label] = _known_color_representation(
+                self.model,
+                leg.outgoing_pdg,
+            )
+        self._label_is_color_singlet = {
+            label: representation == 1
+            for label, representation in self._color_rep_by_label.items()
+        }
+        self._shared_lc_coloured_labels = {
+            label
+            for label, representation in self._color_rep_by_label.items()
+            if representation is not None and representation != 1
+        }
+        self._shared_lc_singlet_labels = {
+            label
+            for label, representation in self._color_rep_by_label.items()
+            if representation == 1
+        }
+        self._fundamental_line_auxiliary_ids = (
+            self._find_fundamental_line_auxiliary_ids()
+        )
+        self._fundamental_fermion_pair_count = (
+            self._external_fundamental_fermion_pair_count()
+        )
         self._vertex_has_colour_cache: dict[tuple[int, int, int, int], bool] = {}
         self._ordered_combination_labels_cache: dict[
             tuple[int, tuple[int, ...], tuple[int, ...], int, int, int, int],
             tuple[int, ...] | None,
         ] = {}
-        self._shared_single_trace = (
+        color_plan_matches_model = self._color_plan_matches_model_roles()
+        all_external_massless_adjoint_vectors = (
+            self._all_external_massless_adjoint_vectors()
+        )
+        self._shared_single_trace = bool(
             color_plan.color_accuracy in {"nlc", "full"}
             and bool(color_plan.sectors)
-            and not color_plan.process.quark_labels
-            and not color_plan.process.antiquark_labels
-            and not color_plan.process.singlet_labels
+            and color_plan_matches_model
+            and all_external_massless_adjoint_vectors
             and all(sector.kind == "single-trace" for sector in color_plan.sectors)
         )
         self._shared_single_trace_words = tuple(
@@ -76,25 +99,21 @@ class ColorEngine:
         self._shared_lc_orderings = (
             color_plan.color_accuracy == "lc"
             and bool(color_plan.sectors)
-            and bool(color_plan.coloured_labels)
+            and bool(self._shared_lc_coloured_labels)
+            and color_plan_matches_model
         )
         self._shared_lc_all_ordering_symmetry = bool(
             shared_lc_all_ordering_symmetry
             and self._shared_lc_orderings
             and not color_plan.truncated
         )
-        pure_gluon_process_symmetry = bool(
+        all_adjoint_process_symmetry = bool(
             self._shared_lc_all_ordering_symmetry
-            and all(
-                leg.outgoing_pdg is not None and abs(int(leg.outgoing_pdg)) == 21
-                for leg in color_plan.process.legs
-            )
+            and all_external_massless_adjoint_vectors
         )
-        self._shared_lc_coloured_labels = set(color_plan.coloured_labels)
-        self._shared_lc_singlet_labels = set(color_plan.process.singlet_labels)
         self._shared_lc_fixed_sink_label = (
             max(self._shared_lc_coloured_labels)
-            if pure_gluon_process_symmetry and self._shared_lc_coloured_labels
+            if all_adjoint_process_symmetry and self._shared_lc_coloured_labels
             else None
         )
         self._shared_lc_words_by_sector = tuple(
@@ -149,6 +168,86 @@ class ColorEngine:
             self._shared_lc_segments = frozenset(segments)
         else:
             self._shared_lc_segments = frozenset()
+
+    def _color_plan_matches_model_roles(self) -> bool:
+        if any(
+            representation is None
+            for representation in self._color_rep_by_label.values()
+        ):
+            return False
+        for sector in self.color_plan.sectors:
+            sector_coloured_labels = {
+                label for group in sector.coloured_label_groups for label in group
+            }
+            if sector_coloured_labels != self._shared_lc_coloured_labels:
+                return False
+            if set(sector.singlet_labels) != self._shared_lc_singlet_labels:
+                return False
+        return True
+
+    def _all_external_massless_adjoint_vectors(self) -> bool:
+        if not self._leg_by_label:
+            return False
+        for leg in self._leg_by_label.values():
+            if leg.outgoing_pdg is None:
+                return False
+            try:
+                if not self.model.is_massless_adjoint_vector(leg.outgoing_pdg):
+                    return False
+            except (KeyError, NotImplementedError, TypeError, ValueError):
+                return False
+        return True
+
+    def _is_fundamental_colored_fermion(self, particle_id: int) -> bool:
+        representation = _known_color_representation(self.model, particle_id)
+        return (
+            representation is not None
+            and abs(representation) == 3
+            and _known_fermion_statistics(self.model, particle_id) is True
+        )
+
+    def _is_fundamental_line_auxiliary(self, particle_id: int) -> bool:
+        try:
+            auxiliary_kind = self.model.auxiliary_kind(particle_id)
+        except (KeyError, NotImplementedError, TypeError, ValueError):
+            return False
+        return auxiliary_kind == "u1-subtraction-color-flow-vector"
+
+    def _find_fundamental_line_auxiliary_ids(self) -> frozenset[int]:
+        """Identify proven unphysical singlet currents attached to fundamental lines."""
+
+        auxiliary_ids: set[int] = set()
+        for vertex in self.model.vertices:
+            for index, particle_id in enumerate(vertex.particles):
+                if not self._is_fundamental_line_auxiliary(particle_id):
+                    continue
+                other_particles = (
+                    vertex.particles[:index] + vertex.particles[index + 1 :]
+                )
+                if all(
+                    self._is_fundamental_colored_fermion(other_particle)
+                    for other_particle in other_particles
+                ):
+                    auxiliary_ids.add(particle_id)
+        return frozenset(auxiliary_ids)
+
+    def _external_fundamental_fermion_pair_count(self) -> int:
+        fundamental_count = 0
+        antifundamental_count = 0
+        for leg in self._leg_by_label.values():
+            if leg.outgoing_pdg is None or not self._is_fundamental_colored_fermion(
+                leg.outgoing_pdg
+            ):
+                continue
+            representation = _known_color_representation(
+                self.model,
+                leg.outgoing_pdg,
+            )
+            if representation == 3:
+                fundamental_count += 1
+            elif representation == -3:
+                antifundamental_count += 1
+        return min(fundamental_count, antifundamental_count)
 
     def source_states_for_leg(self, leg: ProcessLegIR) -> tuple[ColorState, ...]:
         if self._shared_lc_orderings:
@@ -297,7 +396,7 @@ class ColorEngine:
             structure == "fundamental-generator"
             and reps[:2] == (3, 3)
             and reps[2] == 8
-            and self._lc_labels_close_one_quark_line(ordered_external_labels)
+            and self._lc_labels_close_one_open_line(ordered_external_labels)
         ):
             basis.add(_LC_FIERZ_SINGLET_BASIS)
             weight = (1.0 / 3.0, 0.0)
@@ -355,7 +454,7 @@ class ColorEngine:
             for sector in (self._sector_by_id.get(sector_id),)
         )
 
-    def _lc_labels_close_one_quark_line(
+    def _lc_labels_close_one_open_line(
         self,
         ordered_external_labels: tuple[int, ...],
     ) -> bool:
@@ -412,12 +511,10 @@ class ColorEngine:
         return tuple(sorted(left_groups | right_groups))
 
     def _particle_has_colour(self, pdg: int) -> bool:
-        if pdg == 99:
-            return True
-        try:
-            return self.model.color_rep(pdg) != 1
-        except KeyError:
-            return True
+        representation = _known_color_representation(self.model, pdg)
+        return (
+            representation is not None and representation != 1
+        ) or pdg in self._fundamental_line_auxiliary_ids
 
     def closure_compatible(
         self,
@@ -478,20 +575,19 @@ class ColorEngine:
         if cached is not None:
             return cached
         for pdg in vertex.particles:
-            try:
-                if self.model.color_rep(pdg) != 1:
-                    self._vertex_has_colour_cache[key] = True
-                    return True
-            except KeyError:
+            if self._particle_has_colour(pdg):
                 self._vertex_has_colour_cache[key] = True
                 return True
         self._vertex_has_colour_cache[key] = False
         return False
 
     def vertex_allowed(self, vertex: Vertex) -> bool:
-        if 99 not in vertex.particles:
+        if not any(
+            particle_id in self._fundamental_line_auxiliary_ids
+            for particle_id in vertex.particles
+        ):
             return True
-        return self.color_plan.process.quark_lines.quark_pair_count >= 2
+        return self._fundamental_fermion_pair_count >= 2
 
     def ordered_combination_allowed(
         self,
@@ -776,7 +872,6 @@ class ColorEngine:
             reversed_segment = tuple(reversed(coloured_segment))
             if not (
                 allow_reversed
-                and self.shared_lc_all_ordering_symmetry
                 and reversed_segment in self._shared_lc_segments
             ):
                 return None

@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: 0BSD
 api = 1
 toml = 1
-compiled_model = 6
+compiled_model = 7
+model_compiler = 6
 process_artifact = 3
+runtime_expression = 2
 runtime_physics_metadata = 1
 reference_physics_fixture = 2
 reference_oracle_evidence = 2
 reference_fixture_bundle = 1
 c_abi = 1
-symbolica_serialization = "candidate-e4167e7-bincode2"
+symbolica_serialization = "symbolica-bincode2-v1"

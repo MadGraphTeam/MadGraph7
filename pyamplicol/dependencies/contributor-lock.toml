@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: 0BSD
+# Source-checkout-only dependency inputs for non-publishable contributor builds.
+schema_version = 1
+
+[abis]
+symbolica_serialization = "symbolica-bincode2-v1"
+symjit_application = "symjit-application-storage-v3"
+
+[symbolica]
+source_url = "https://github.com/symbolica-dev/symbolica.git"
+candidate_revision = "e4167e767147ab8f3b4f039057c396c8fa961f6a"
+community_url = "https://github.com/symbolica-dev/symbolica-community.git"
+community_revision = "4daa45e793a3775f13bee33c4ddd2ba7f22ba714"
+release_status = "patched-candidate"
+
+[symjit]
+candidate_version = "2.20.2"
+source_url = "https://github.com/siravan/symjit.git"
+candidate_revision = "1d9e7b104c29d612981b1d59cae0cfe8fbf9a4d1"
+application_storage_version = 3
+release_status = "unpatched-candidate"
+license = "MIT"
+
+[gammaloop_candidate]
+source_url = "https://github.com/alphal00p/gammaloop.git"
+revision = "db79edc84f6a1580decbcc4ede7ea0b1c79d9a08"
+release_status = "developer-build-input-only"
+
+[ufo_model_loader]
+published_revision = "f3fda32c5e6a673075c345d74a11f12b83c00015"
+wheel_sha256 = "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
+license = "MIT"
+
+[legacy_amplicol]
+source_url = "git@github.com:rikkert-frederix/AmpliCol.git"
+branch = "amplicol_with_patches"
+revision = "f3fdca35631c9405d28337a79cdab84994d8e414"
+release_status = "developer-only"
+license = "NOASSERTION"
+redistributed = false
+license_evidence = "No LICENSE or COPYING file exists at the pinned branch revision"
+
+[[patches]]
+dependency = "symbolica"
+path = "patches/symbolica/0001-fix-complex-export-aarch64.patch"
+sha256 = "bfd580fe34d5abccf0b7f80c02f381b244366e12e9096c7585454e5547bc2ef2"
+
+[[patches]]
+dependency = "symbolica"
+path = "patches/symbolica/0002-release-gil-for-multiple-evaluator-build.patch"
+sha256 = "73148daafa9c39df6bdafea2a1b154d4d96d673d67a87163aedfd512ca7e5660"
+
+[[patches]]
+dependency = "symbolica"
+path = "patches/symbolica/0003-forward-symjit-optimization-level.patch"
+sha256 = "8236948b47eeec4e9de18969b1051f86eb77650c09578de74d09d89a45e9bef2"
+
+[[patches]]
+dependency = "symbolica"
+path = "patches/symbolica/0004-export-symjit-application.patch"
+sha256 = "b5a3a43335200bce7441c800bc2f542c215d38de04318146c4dac98f4644dc4e"

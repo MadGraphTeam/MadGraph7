@@ -31,7 +31,6 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
         "symbolica",
         "symbolica-community",
         "symjit",
-        "ufo-model-loader",
         "gammaloop",
     }
     assert {item.key for item in with_legacy} == {
@@ -39,32 +38,33 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
         "legacy-amplicol",
     }
     assert all(len(item.revision) == 40 for item in with_legacy)
+    legacy = next(item for item in with_legacy if item.key == "legacy-amplicol")
+    assert legacy.branch == "amplicol_with_patches"
+    assert legacy.revision == "f3fdca35631c9405d28337a79cdab84994d8e414"
 
 
-def test_ufo_loader_uses_public_base_and_checksummed_local_patch() -> None:
+def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> None:
     module = _module()
     payload = module._lock()
     loader = payload["ufo_model_loader"]
-    assert loader["candidate_revision"] == ("9cb4deeae40ddd64184049af07ac1d03ce5f6162")
+    assert loader["required_version"] == "0.1.7"
+    assert loader["latest_verified_published_version"] == "0.1.7"
+    assert loader["published_revision"] == (
+        "f3fda32c5e6a673075c345d74a11f12b83c00015"
+    )
+    assert loader["wheel_sha256"] == (
+        "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
+    )
+    assert loader["release_status"] == "verified"
     patches = [
         entry
         for entry in payload["patches"]
         if entry["dependency"] == "ufo-model-loader"
     ]
-    assert patches == [
-        {
-            "dependency": "ufo-model-loader",
-            "path": (
-                "patches/ufo-model-loader/0001-fix-sparse-json-restrictions.patch"
-            ),
-            "sha256": (
-                "34b70eb92402070e8aabaae8deb9a25ef09e6a6beb05537568d37aed6a972737"
-            ),
-        }
-    ]
+    assert patches == []
 
 
-def test_legacy_oracle_patches_are_local_and_checksummed() -> None:
+def test_legacy_oracle_uses_the_pinned_remote_branch_without_local_patches() -> None:
     module = _module()
     payload = module._lock()
     patches = [
@@ -72,23 +72,66 @@ def test_legacy_oracle_patches_are_local_and_checksummed() -> None:
         for entry in payload["patches"]
         if entry["dependency"] == "legacy-amplicol"
     ]
-    assert [entry["path"] for entry in patches] == [
-        "patches/legacy-amplicol/0001-build-color-probe-without-lhapdf.patch",
-        "patches/legacy-amplicol/0002-report-complete-recursion-kinds.patch",
-        "patches/legacy-amplicol/0003-report-lc-row-partitions.patch",
+    assert patches == []
+    assert not tuple(
+        (module.DEPENDENCIES / "patches" / "legacy-amplicol").glob("*.patch")
+    )
+
+
+def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    monkeypatch.setattr(module, "CHECKOUTS", tmp_path / "checkouts")
+    source = module.Source(
+        "legacy-amplicol",
+        "https://github.com/rikkert-frederix/AmpliCol.git",
+        "f3fdca35631c9405d28337a79cdab84994d8e414",
+        "amplicol_with_patches",
+    )
+    calls: list[tuple[list[str], Path | None]] = []
+
+    class FakeRunner:
+        dry_run = False
+
+        def run(self, command, *, cwd=None, **_kwargs):
+            calls.append(([str(item) for item in command], cwd))
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+    module._checkout(FakeRunner(), source, update=False)
+
+    assert calls == [
+        (
+            [
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "--branch",
+                "amplicol_with_patches",
+                "--single-branch",
+                "--no-checkout",
+                "https://github.com/rikkert-frederix/AmpliCol.git",
+                str(source.path),
+            ],
+            None,
+        ),
+        (
+            [
+                "git",
+                "checkout",
+                "--detach",
+                "f3fdca35631c9405d28337a79cdab84994d8e414",
+            ],
+            source.path,
+        ),
     ]
-    for entry in patches:
-        patch = module.DEPENDENCIES / entry["path"]
-        assert patch.is_file()
-        digest = module.hashlib.sha256(patch.read_bytes()).hexdigest()
-        assert digest == entry["sha256"]
 
 
 def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> None:
     module = _module()
     requirements = module._runtime_requirements_text()
     assert "symbolica==" not in requirements
-    assert "ufo-model-loader==" not in requirements
     for requirement in (
         "colorama==0.4.6",
         "numpy==2.4.2",
@@ -96,6 +139,7 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> 
         "progressbar2==4.5.0",
         "python-utils==4.0.0",
         "typing-extensions==4.16.0",
+        "ufo-model-loader==0.1.7",
         "wcwidth==0.8.2",
     ):
         assert requirements.count(requirement) == 1
@@ -128,37 +172,6 @@ def test_installer_tree_fingerprint_matches_content_and_ignores_build_cache(
     target.mkdir()
     (target / "output").write_text("build\n", encoding="utf-8")
     assert module._source_tree_sha256(source) == second
-
-
-def test_python_dependency_build_uses_an_isolated_clean_source_copy(
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    source = tmp_path / "source"
-    source.mkdir()
-    (source / "pyproject.toml").write_text("[build-system]\n", encoding="utf-8")
-    package = source / "src" / "package"
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
-    (source / ".git").mkdir()
-    (source / ".git" / "index").write_bytes(b"git")
-    egg_info = source / "src" / "package.egg-info"
-    egg_info.mkdir()
-    (egg_info / "PKG-INFO").write_text("generated\n", encoding="utf-8")
-    (source / "build").mkdir()
-    (source / "build" / "output").write_text("generated\n", encoding="utf-8")
-
-    staged = tmp_path / "staged"
-    module._stage_python_source(source, staged)
-
-    assert (staged / "pyproject.toml").is_file()
-    assert (staged / "src" / "package" / "__init__.py").is_file()
-    assert not (staged / ".git").exists()
-    assert not (staged / "src" / "package.egg-info").exists()
-    assert not (staged / "build").exists()
-    assert (source / "src" / "package.egg-info" / "PKG-INFO").is_file()
-
-
 def test_canonical_release_lock_has_no_candidate_path_packages() -> None:
     module = _module()
     module._validate_release_cargo_lock(ROOT / "Cargo.lock")

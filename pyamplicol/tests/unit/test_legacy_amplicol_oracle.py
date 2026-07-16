@@ -444,34 +444,31 @@ def test_process_file_parser_preserves_fortran_external_order(tmp_path: Path) ->
     )
 
 
-def test_exact_patch_state_rejects_unmanaged_tracked_edits(tmp_path: Path) -> None:
+def test_pinned_branch_checkout_rejects_tracked_edits_but_allows_build_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _module()
     repository = tmp_path / "legacy"
     repository.mkdir()
-    (repository / "managed.txt").write_text("base\n", encoding="utf-8")
-    (repository / "other.txt").write_text("untouched\n", encoding="utf-8")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("base\n", encoding="utf-8")
     _git(repository, "init")
     _git(repository, "config", "user.name", "Fixture Author")
     _git(repository, "config", "user.email", "fixture@example.invalid")
-    _git(repository, "add", "managed.txt", "other.txt")
+    _git(repository, "add", "tracked.txt")
     _git(repository, "commit", "-m", "base")
+    revision = _git(repository, "rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setattr(module, "expected_revision", lambda: revision)
 
-    (repository / "managed.txt").write_text("managed patch\n", encoding="utf-8")
-    patch = tmp_path / "managed.patch"
-    patch.write_text(_git(repository, "diff", "HEAD", "--", "managed.txt").stdout)
+    module.validate_checkout(repository)
 
-    module._validate_exact_patch_state(repository, (patch,))
+    (repository / "amplicol_color_probe").write_text("build output\n", encoding="utf-8")
+    module.validate_checkout(repository)
 
-    (repository / "managed.txt").write_text(
-        "managed patch\nunmanaged edit\n", encoding="utf-8"
-    )
-    with pytest.raises(module.LegacyOracleError, match="beyond the managed"):
-        module._validate_exact_patch_state(repository, (patch,))
-
-    (repository / "managed.txt").write_text("managed patch\n", encoding="utf-8")
-    (repository / "other.txt").write_text("unexpected\n", encoding="utf-8")
-    with pytest.raises(module.LegacyOracleError, match="patch inventory"):
-        module._validate_exact_patch_state(repository, (patch,))
+    tracked.write_text("unexpected edit\n", encoding="utf-8")
+    with pytest.raises(module.LegacyOracleError, match="contains tracked edits"):
+        module.validate_checkout(repository)
 
 
 def test_process_selection_requires_the_declared_fortran_row() -> None:
@@ -542,6 +539,8 @@ def test_public_legacy_checkout_uses_noninteractive_https() -> None:
     module = _module()
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
+    assert module.checkout_branch() == "amplicol_with_patches"
+    assert module.expected_revision() == "f3fdca35631c9405d28337a79cdab84994d8e414"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(
@@ -1203,20 +1202,14 @@ def test_fixture_version_one_dispatch_preserves_legacy_path(
 def test_tracked_fortran_report_is_pinned_and_matches_physics_fixture() -> None:
     report = json.loads(REPORT.read_text(encoding="utf-8"))
     physics = json.loads(PHYSICS.read_text(encoding="utf-8"))
-    with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
+    with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
         lock = tomllib.load(stream)
 
     assert report["schema_version"] == 1
     assert report["oracle"] == "legacy-fortran-amplicol-color-probe"
     assert report["revision"] == lock["legacy_amplicol"]["revision"]
     assert report["fixture_sha256"] == hashlib.sha256(PHYSICS.read_bytes()).hexdigest()
-    assert report["patches"] == [
-        {"path": entry["path"], "sha256": entry["sha256"]}
-        for entry in lock["patches"]
-        if entry["dependency"] == "legacy-amplicol"
-        and entry["path"]
-        != "patches/legacy-amplicol/0003-report-lc-row-partitions.patch"
-    ]
+    assert report["patches"] == []
     assert report["tolerances"] == {"relative": 1.0e-8, "absolute": 1.0e-15}
     assert set(report["cases"]) == {
         "builtin_sm_ddbar_z_lc",

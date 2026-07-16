@@ -18,6 +18,7 @@ def _particle(name: str, color: int) -> CompiledParticleRecord:
         mass="ZERO",
         width="ZERO",
         charge=0.0,
+        quantum_numbers=(("electric_charge", "0"),),
         ghost_number=0,
         propagating=True,
         goldstoneboson=False,

@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 
-from .._internal.physics.symbols import symbols
+from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
 from .compiler_records import _replace_evaluator_constants, _sequence
 from .contracts import (
@@ -80,6 +80,7 @@ def _fuse_oriented_kernels(
     *,
     model_name: str,
 ) -> tuple[CompiledOrientedKernel, ...]:
+    model_symbols = symbols.model(model_name)
     groups: dict[tuple[object, ...], list[CompiledOrientedKernel]] = {}
     for kernel in kernels:
         key = (
@@ -103,6 +104,7 @@ def _fuse_oriented_kernels(
                     _sym.E(component),
                     old_kind=member.kind,
                     new_kind=kind,
+                    model_symbols=model_symbols,
                 )
                 for component in member.component_expressions
             )
@@ -167,6 +169,7 @@ def _remap_kernel_symbols(
     *,
     old_kind: int,
     new_kind: int,
+    model_symbols: ModelSymbolRegistry,
     swap_sides: bool = False,
 ) -> _sym.Expression:
     source = expression.to_canonical_string()
@@ -183,15 +186,15 @@ def _remap_kernel_symbols(
         if is_momentum:
             replacements.append(
                 _sym.Replacement(
-                    symbols.kernel_momentum(old_kind, side, index),
-                    symbols.kernel_momentum(new_kind, target_side, index),
+                    model_symbols.kernel_momentum(old_kind, side, index),
+                    model_symbols.kernel_momentum(new_kind, target_side, index),
                 )
             )
         else:
             replacements.append(
                 _sym.Replacement(
-                    symbols.kernel_component(old_kind, side, index),
-                    symbols.kernel_component(new_kind, target_side, index),
+                    model_symbols.kernel_component(old_kind, side, index),
+                    model_symbols.kernel_component(new_kind, target_side, index),
                 )
             )
     return expression.replace_multiple(replacements) if replacements else expression
@@ -215,13 +218,24 @@ def _oriented_component_expressions(
     right_leg: int,
     result_leg: int,
     kind: int,
+    model_symbols: ModelSymbolRegistry,
     use_transverse_massless_yang_mills: bool = False,
 ) -> tuple[str, ...]:
     library = _sym.TensorLibrary.hep_lib_atom()
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
-    left_symbols = _component_symbols(kind, "left", particles[left_leg].spin)
-    right_symbols = _component_symbols(kind, "right", particles[right_leg].spin)
+    left_symbols = _component_symbols(
+        kind,
+        "left",
+        particles[left_leg].spin,
+        model_symbols=model_symbols,
+    )
+    right_symbols = _component_symbols(
+        kind,
+        "right",
+        particles[right_leg].spin,
+        model_symbols=model_symbols,
+    )
     expression *= _input_tensor_expression(
         library,
         kind=kind,
@@ -229,6 +243,7 @@ def _oriented_component_expressions(
         spin=particles[left_leg].spin,
         leg=left_leg + 1,
         components=left_symbols,
+        model_symbols=model_symbols,
     )
     expression *= _input_tensor_expression(
         library,
@@ -237,12 +252,15 @@ def _oriented_component_expressions(
         spin=particles[right_leg].spin,
         leg=right_leg + 1,
         components=right_symbols,
+        model_symbols=model_symbols,
     )
     left_momentum = tuple(
-        symbols.kernel_momentum(kind, "left", component) for component in range(4)
+        model_symbols.kernel_momentum(kind, "left", component)
+        for component in range(4)
     )
     right_momentum = tuple(
-        symbols.kernel_momentum(kind, "right", component) for component in range(4)
+        model_symbols.kernel_momentum(kind, "right", component)
+        for component in range(4)
     )
     result_momentum = tuple(
         -(left_momentum[component] + right_momentum[component])
@@ -257,24 +275,30 @@ def _oriented_component_expressions(
     for leg, momentum in momentum_by_leg.items():
         library.register(
             _sym.LibraryTensor.dense(
-                _sym.TensorName(symbols.ufo_momentum_tensor_name(leg + 1))(minkowski),
+                _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))(
+                    minkowski
+                ),
                 momentum,
             )
         )
     network = _sym.TensorNetwork(expression, library)
     network.execute(library=library)
     result = network.result_tensor(library)
-    result.to_dense()
+    result_components = _ordered_dense_tensor_components(
+        result,
+        _spin_axis_labels(particles[result_leg].spin, result_leg + 1),
+    )
     expected_dimension = _spin_dimension(particles[result_leg].spin)
-    if len(result) != expected_dimension:
+    if len(result_components) != expected_dimension:
         raise ValueError(
-            f"oriented kernel {term.vertex}/{term.id} produced {len(result)} "
+            f"oriented kernel {term.vertex}/{term.id} produced "
+            f"{len(result_components)} "
             f"components for spin {particles[result_leg].spin}, expected "
             f"{expected_dimension}"
         )
     components = tuple(
-        _replace_evaluator_constants(_as_expression(result[index]))
-        for index in range(len(result))
+        _replace_evaluator_constants(_as_expression(component))
+        for component in result_components
     )
     if all(particle.spin == 3 for particle in particles):
         compact = _compact_yang_mills_three_vector_components(
@@ -465,13 +489,14 @@ def _input_tensor_expression(
     spin: int,
     leg: int,
     components: Sequence[_sym.Expression],
+    model_symbols: ModelSymbolRegistry,
 ) -> _sym.Expression:
     representations = _spin_representations(spin)
     if not representations:
         if len(components) != 1:
             raise ValueError("scalar current must have exactly one component")
         return components[0]
-    name = _sym.TensorName(symbols.kernel_tensor_name(kind, side))
+    name = _sym.TensorName(model_symbols.kernel_tensor_name(kind, side))
     library.register(_sym.LibraryTensor.dense(name(*representations), components))
     slots = _spin_slots(spin, leg)
     return name(*slots).to_expression()
@@ -504,13 +529,71 @@ def _spin_slots(spin: int, leg: int):
     return ()
 
 
+def _spin_axis_labels(spin: int, leg: int) -> tuple[str, ...]:
+    if spin == 2:
+        return (f"ufo_s_1_{leg}",)
+    if spin == 3:
+        return (f"ufo_l_1_{leg}",)
+    if spin == 5:
+        return (f"ufo_l_1_{leg}", f"ufo_l_2_{leg}")
+    return ()
+
+
+def _ordered_dense_tensor_components(
+    tensor: object,
+    expected_axis_labels: Sequence[str],
+) -> tuple[object, ...]:
+    """Flatten a dense tensor in explicit physical-index order."""
+
+    tensor.to_dense()
+    expected = tuple(str(label) for label in expected_axis_labels)
+    if not expected:
+        if len(tensor) != 1:
+            raise ValueError("scalar tensor result unexpectedly has open indices")
+        return tuple(tensor[index] for index in range(len(tensor)))
+
+    structure = tensor.structure()
+    structure.set_name(symbols.display_name("tensor_order_probe"))
+    arguments = tuple(structure.to_expression())
+    actual: list[str] = []
+    for argument in arguments:
+        source = argument.to_canonical_string()
+        labels = re.findall(r"ufo_[sl]_[0-9]+_[0-9]+", source)
+        if len(labels) != 1:
+            raise ValueError(
+                "tensor result has an unrecognized physical index: " + source
+            )
+        actual.append(labels[0])
+    if len(set(actual)) != len(actual) or set(actual) != set(expected):
+        raise ValueError(
+            "tensor result index labels do not match the requested physical order: "
+            f"actual={actual}, expected={list(expected)}"
+        )
+
+    positions = tuple(actual.index(label) for label in expected)
+    by_coordinates: dict[tuple[int, ...], object] = {}
+    for flat_index in range(len(tensor)):
+        coordinates = structure[flat_index]
+        key = tuple(int(coordinates[position]) for position in positions)
+        if key in by_coordinates:
+            raise ValueError(f"tensor result repeats coordinates {key}")
+        by_coordinates[key] = tensor[flat_index]
+    return tuple(by_coordinates[key] for key in sorted(by_coordinates))
+
+
 def _spin_dimension(spin: int) -> int:
     return {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}[spin]
 
 
-def _component_symbols(kind: int, side: str, spin: int) -> tuple[_sym.Expression, ...]:
+def _component_symbols(
+    kind: int,
+    side: str,
+    spin: int,
+    *,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[_sym.Expression, ...]:
     return tuple(
-        symbols.kernel_component(kind, side, component)
+        model_symbols.kernel_component(kind, side, component)
         for component in range(_spin_dimension(spin))
     )
 

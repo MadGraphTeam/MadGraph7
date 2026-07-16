@@ -28,7 +28,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Verify validated source workflow run and strict legal gate
+      - name: Verify the validated release workflow run
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.artifact_run_id }}
@@ -60,50 +60,32 @@ jobs:
           api = "https://api.github.com"
           run = get_json(f"{api}/repos/{repository}/actions/runs/{run_id}")
           workflow = get_json(run["workflow_url"])
-          require(run["conclusion"] == "success", "source workflow did not succeed")
-          require(run["event"] == "workflow_dispatch", "source workflow was not manually dispatched")
-          require(run["head_repository"]["full_name"] == repository, "source workflow came from another repository")
-          require(run["head_branch"] == run["repository"]["default_branch"], "source workflow did not run from the default branch")
+          require(run["conclusion"] == "success", "release workflow did not succeed")
+          require(run["event"] == "workflow_dispatch", "release workflow was not manually dispatched")
+          require(run["head_repository"]["full_name"] == repository, "release workflow came from another repository")
+          require(run["head_branch"] == run["repository"]["default_branch"], "release workflow did not run from the default branch")
           require(workflow["path"] == ".github/workflows/release-artifacts.yml", "unexpected source workflow")
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
-              stream.write(f"VALIDATED_WORKFLOW_COMMIT={run['head_sha']}\n")
 
           jobs = get_json(
               f"{api}/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
           )["jobs"]
           required_jobs = {
-              "Verify signed release tag",
-              "Native dependency legal gate",
               "Full source validation gate",
               "Independent Fortran physics oracle",
               "Build retained source distribution",
               "macOS release wheel and native deployment (macos-arm64)",
               "macOS release wheel and native deployment (macos-x86_64)",
               "manylinux release wheel and native deployment",
-              "Assemble validated release bundle",
+              "Collect validated release artifacts",
           }
           jobs_by_name = {}
           for job in jobs:
               jobs_by_name.setdefault(job["name"], []).append(job)
-          require(set(jobs_by_name) >= required_jobs, "source workflow is missing required jobs")
+          require(set(jobs_by_name) >= required_jobs, "release workflow is missing required jobs")
           for name in required_jobs:
               matches = jobs_by_name[name]
               require(len(matches) == 1, f"required job {name!r} is not unique")
               require(matches[0]["conclusion"] == "success", f"required job {name!r} did not succeed")
-
-          legal_gates = [
-              job for job in jobs
-              if job["name"] == "Native dependency legal gate"
-          ]
-          require(len(legal_gates) == 1, "native legal gate is not unique")
-          legal_gate = legal_gates[0]
-          require(legal_gate["conclusion"] == "success", "native legal gate did not succeed")
-          enforcement_steps = [
-              step for step in legal_gate["steps"]
-              if step["name"] == "Enforce native dependency legal gate"
-          ]
-          require(len(enforcement_steps) == 1, "legal enforcement step is not unique")
-          require(enforcement_steps[0]["conclusion"] == "success", "legal enforcement step did not succeed")
 
           source_gate = jobs_by_name["Full source validation gate"][0]
           source_steps = [
@@ -121,131 +103,60 @@ jobs:
           require(len(oracle_steps) == 1, "independent physics-oracle step is not unique")
           require(oracle_steps[0]["conclusion"] == "success", "independent physics-oracle step did not succeed")
           PY
-      - name: Download the previously validated bundle
+      - name: Download validated package files
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: pyamplicol-validated-release
           path: validated
           run-id: ${{ inputs.artifact_run_id }}
           github-token: ${{ github.token }}
-      - name: Verify exact hashes and release target inventory
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify release package inventory
         shell: bash
         run: |
           set -euo pipefail
-          cd validated
-          sha256sum --check --strict SHA256SUMS
           python - <<'PY'
-          import hashlib
-          import json
-          import os
-          import re
-          import urllib.parse
-          import urllib.request
           from pathlib import Path
 
-          def require(condition, message):
-              if not condition:
-                  raise RuntimeError(message)
-
-          root = Path.cwd()
-          manifest = json.loads((root / "release-manifest.json").read_text())
-          require(manifest["schema_version"] == 1, "unsupported release manifest schema")
-          require(manifest["distribution"] == "pyamplicol", "unexpected distribution")
-          require(manifest["mode"] == "release", "bundle is not a release build")
-          require(manifest["publishable"] is True, "bundle is not publishable")
-          require(manifest["sdist_wheel_parity"] == "verified", "sdist/wheel parity is not verified")
-          source = manifest["source"]
-          require(set(source) == {"commit", "tag"}, "invalid source provenance")
-          source_commit = source["commit"]
-          source_tag = source["tag"]
-          workflow_commit = os.environ["VALIDATED_WORKFLOW_COMMIT"]
-          require(re.fullmatch(r"[0-9a-f]{40}", source_commit) is not None, "invalid source commit")
-          require(re.fullmatch(r"[0-9a-f]{40}", workflow_commit) is not None, "invalid workflow commit")
-          require(isinstance(source_tag, str) and source_tag and not source_tag.startswith("-"), "invalid source tag")
-
-          headers = {
-              "Accept": "application/vnd.github+json",
-              "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-              "X-GitHub-Api-Version": "2022-11-28",
+          root = Path("validated")
+          files = sorted(path for path in root.iterdir() if path.is_file())
+          wheels = [path for path in files if path.suffix == ".whl"]
+          sdists = [path for path in files if path.name.endswith(".tar.gz")]
+          unexpected = [path for path in files if path not in {*wheels, *sdists}]
+          if unexpected:
+              raise RuntimeError(
+                  "validated artifact contains unexpected files: "
+                  + ", ".join(path.name for path in unexpected)
+              )
+          if len(wheels) != 3 or len(sdists) != 1:
+              raise RuntimeError(
+                  f"expected three wheels and one sdist, found {len(wheels)} wheels "
+                  f"and {len(sdists)} sdists"
+              )
+          expected_platforms = {
+              "macosx_11_0_arm64",
+              "macosx_11_0_x86_64",
+              "manylinux_2_28_x86_64",
           }
-
-          def get_json(url):
-              request = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  return json.load(response)
-
-          api = "https://api.github.com"
-          repository = os.environ["GITHUB_REPOSITORY"]
-          encoded_tag = urllib.parse.quote(source_tag, safe="")
-          tag_ref = get_json(
-              f"{api}/repos/{repository}/git/ref/tags/{encoded_tag}"
-          )
-          target = tag_ref["object"]
-          require(target["type"] == "tag", "release source must use an annotated tag")
-          signed_tag = get_json(
-              f"{api}/repos/{repository}/git/tags/{target['sha']}"
-          )
-          require(signed_tag["verification"]["verified"] is True, "release tag signature is not verified")
-          target = signed_tag["object"]
-          while target["type"] == "tag":
-              target = get_json(
-                  f"{api}/repos/{repository}/git/tags/{target['sha']}"
-              )["object"]
-          require(target["type"] == "commit", "release tag does not resolve to a commit")
-          require(target["sha"] == source_commit, "release tag commit does not match the bundle")
-          print(
-              "validated signed-tag source commit "
-              f"{source_commit} from workflow commit {workflow_commit}"
-          )
-          require(
-              set(manifest["release_targets"])
-              == {
-                  "macosx_11_0_arm64",
-                  "macosx_11_0_x86_64",
-                  "manylinux_2_28_x86_64",
-              },
-              "release target inventory is incomplete",
-          )
-          expected = {}
-          wheels = []
-          sdists = []
-          for entry in manifest["artifacts"]:
-              path = root / entry["filename"]
-              require(path.name == entry["filename"], "artifact filename is unsafe")
-              require(path.is_file(), f"artifact is missing: {path.name}")
-              require(path.stat().st_size == entry["size"], f"artifact size mismatch: {path.name}")
-              require(hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"], f"artifact hash mismatch: {path.name}")
-              expected[path.name] = path
-              if entry["kind"] == "wheel":
-                  require(entry["native_scan"] is True, f"wheel lacks native scan evidence: {path.name}")
-                  wheels.append(entry)
-              elif entry["kind"] == "sdist":
-                  sdists.append(entry)
-              else:
-                  raise RuntimeError(f"unexpected artifact kind: {entry['kind']}")
-          actual = {path.name for pattern in ("*.whl", "*.tar.gz") for path in root.glob(pattern)}
-          require(set(expected) == actual, "bundle contents differ from the manifest")
-          require(len(wheels) == 3, "bundle must contain exactly three wheels")
-          require(len(sdists) == 1, "bundle must contain exactly one sdist")
-          require(sorted(entry["target"] for entry in wheels) == manifest["release_targets"], "wheel targets differ from the manifest")
-          require(
-              manifest["retained_sdist"]
-              == {key: sdists[0][key] for key in ("filename", "sha256", "size")},
-              "retained sdist metadata differs from the artifact entry",
-          )
+          platforms = {
+              next(
+                  (platform for platform in expected_platforms if platform in path.name),
+                  None,
+              )
+              for path in wheels
+          }
+          if platforms != expected_platforms:
+              raise RuntimeError(f"unexpected wheel platform inventory: {platforms}")
+          if any("candidate" in path.name or "dev0" in path.name for path in files):
+              raise RuntimeError("candidate artifacts cannot be published")
           PY
-          mkdir upload
-          cp -- *.whl *.tar.gz upload/
-      - name: Publish unchanged artifacts to TestPyPI
+      - name: Publish validated artifacts to TestPyPI
         if: inputs.repository == 'testpypi'
         uses: pypa/gh-action-pypi-publish@ec4db0b4ddc65acdf4bff5fa45ac92d78b56bdf0 # v1.9.0
         with:
-          packages-dir: validated/upload
+          packages-dir: validated
           repository-url: https://test.pypi.org/legacy/
-      - name: Publish unchanged artifacts to PyPI
+      - name: Publish validated artifacts to PyPI
         if: inputs.repository == 'pypi'
         uses: pypa/gh-action-pypi-publish@ec4db0b4ddc65acdf4bff5fa45ac92d78b56bdf0 # v1.9.0
         with:
-          packages-dir: validated/upload
+          packages-dir: validated

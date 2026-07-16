@@ -23,7 +23,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPENDENCIES = ROOT / "dependencies"
-LOCK = DEPENDENCIES / "release-lock.toml"
+RELEASE_LOCK = DEPENDENCIES / "release-lock.toml"
+CONTRIBUTOR_LOCK = DEPENDENCIES / "contributor-lock.toml"
+# Retained as the public constant used by older contributor-side callers.
+LOCK = RELEASE_LOCK
 PYTHON_LOCK = DEPENDENCIES / "python-runtime-lock.toml"
 CHECKOUTS = DEPENDENCIES / "checkouts"
 WHEELHOUSE = DEPENDENCIES / "wheelhouse"
@@ -76,6 +79,7 @@ class Source:
     key: str
     url: str
     revision: str
+    branch: str | None = None
 
     @property
     def path(self) -> Path:
@@ -116,17 +120,43 @@ class Runner:
         return completed
 
 
-def _lock() -> dict[str, Any]:
-    with LOCK.open("rb") as stream:
+def _load_lock(path: Path, description: str) -> dict[str, Any]:
+    with path.open("rb") as stream:
         payload = tomllib.load(stream)
     if payload.get("schema_version") != 1:
-        raise SetupError("unsupported dependency release-lock schema")
+        raise SetupError(f"unsupported {description} schema")
+    return payload
+
+
+def _release_lock() -> dict[str, Any]:
+    return _load_lock(RELEASE_LOCK, "dependency release-lock")
+
+
+def _contributor_lock() -> dict[str, Any]:
+    return _load_lock(CONTRIBUTOR_LOCK, "dependency contributor-lock")
+
+
+def _lock() -> dict[str, Any]:
+    """Return the contributor setup view without polluting release metadata."""
+
+    release = _release_lock()
+    contributor = _contributor_lock()
+    payload = dict(release)
+    for key, value in contributor.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(payload.get(key), dict)
+        ):
+            merged = dict(payload[key])
+            merged.update(value)
+            payload[key] = merged
+        else:
+            payload[key] = value
     return payload
 
 
 def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...]:
     symbolica = payload["symbolica"]
-    loader = payload["ufo_model_loader"]
     gammaloop = payload["gammaloop_candidate"]
     sources = [
         Source(
@@ -145,11 +175,6 @@ def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...
             str(payload["symjit"]["candidate_revision"]),
         ),
         Source(
-            "ufo-model-loader",
-            str(loader["source_url"]),
-            str(loader["candidate_revision"]),
-        ),
-        Source(
             "gammaloop",
             str(gammaloop["source_url"]),
             str(gammaloop["revision"]),
@@ -162,6 +187,7 @@ def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...
                 "legacy-amplicol",
                 str(legacy["source_url"]),
                 str(legacy["revision"]),
+                str(legacy["branch"]),
             )
         )
     return tuple(sources)
@@ -270,15 +296,20 @@ def _source_tree_sha256(root: Path) -> str:
 def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
     if not source.path.exists():
         source.path.parent.mkdir(parents=True, exist_ok=True)
+        clone_command = [
+            "git",
+            "clone",
+            "--filter=blob:none",
+        ]
+        if source.branch is not None:
+            clone_command.extend(
+                ["--branch", source.branch, "--single-branch"]
+            )
+        clone_command.extend(
+            ["--no-checkout", source.url, str(source.path)]
+        )
         runner.run(
-            [
-                "git",
-                "clone",
-                "--filter=blob:none",
-                "--no-checkout",
-                source.url,
-                source.path,
-            ]
+            clone_command
         )
         runner.run(
             ["git", "checkout", "--detach", source.revision],
@@ -296,7 +327,8 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
             f"{source.path} is at {head}, expected {source.revision}; "
             "rerun with --update or --reset"
         )
-    runner.run(["git", "fetch", "origin", source.revision], cwd=source.path)
+    fetch_ref = source.branch or source.revision
+    runner.run(["git", "fetch", "origin", fetch_ref], cwd=source.path)
     runner.run(
         ["git", "checkout", "--detach", source.revision],
         cwd=source.path,
@@ -478,15 +510,10 @@ def _patch_sources(runner: Runner, payload: dict[str, Any]) -> None:
         checkout_name = {
             "symbolica": "symbolica",
             "symjit": "symjit",
-            "ufo-model-loader": "ufo-model-loader",
-            "legacy-amplicol": "legacy-amplicol",
         }.get(dependency)
         if checkout_name is None:
             continue
         checkout = CHECKOUTS / checkout_name
-        if checkout_name == "legacy-amplicol" and not checkout.is_dir():
-            # The independent Fortran oracle is deliberately optional.
-            continue
         patch = DEPENDENCIES / str(entry["path"])
         digest = hashlib.sha256(patch.read_bytes()).hexdigest()
         if digest != entry["sha256"]:
@@ -658,7 +685,7 @@ def _rewrite_candidate_symjit_requirement(root: Path) -> None:
 
 def _runtime_requirements_text() -> str:
     runtime_lock = load_python_runtime_lock(PYTHON_LOCK)
-    excluded = {"symbolica", "ufo-model-loader"}
+    excluded = {"symbolica"}
     lines: list[str] = []
     for package in runtime_lock.packages:
         if package.name in excluded:
@@ -700,7 +727,7 @@ def _ensure_venv(runner: Runner, payload: dict[str, Any]) -> None:
         "jsonschema>=4.22,<5",
         f"maturin=={toolchain['maturin']}",
         "mypy>=1.13,<2",
-        "pytest>=8.3,<10",
+        "pytest>=8.3,<9",
         "ruff>=0.9,<1",
         "twine>=6,<7",
         "wheel>=0.45,<1",
@@ -749,29 +776,12 @@ def _single_wheel(directory: Path, prefix: str) -> Path:
     return candidates[0]
 
 
-def _stage_python_source(source: Path, destination: Path) -> None:
-    """Copy a Python dependency without VCS data or prior build products."""
-
-    if not source.is_dir():
-        raise SetupError(f"candidate Python source is missing: {source}")
-    if destination.exists():
-        raise SetupError(f"candidate build staging path already exists: {destination}")
-    ignored = shutil.ignore_patterns(
-        *_SOURCE_TREE_EXCLUDES,
-        "*.egg-info",
-        "*.pyc",
-        "*.pyo",
-    )
-    shutil.copytree(source, destination, symlinks=True, ignore=ignored)
-
-
 def _build_candidate_wheels(runner: Runner) -> None:
     python = _venv_python()
     environment = _venv_environment()
     symbolica_wheels = WHEELHOUSE / "symbolica"
-    loader_wheels = WHEELHOUSE / "ufo-model-loader"
     project_wheels = ARTIFACTS
-    for directory in (symbolica_wheels, loader_wheels, project_wheels):
+    for directory in (symbolica_wheels, project_wheels):
         if not runner.dry_run:
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -791,40 +801,6 @@ def _build_candidate_wheels(runner: Runner) -> None:
         cwd=CHECKOUTS / "symbolica-community",
         env=environment,
     )
-    if runner.dry_run:
-        loader_source = CHECKOUTS / "ufo-model-loader"
-        runner.run(
-            [
-                python,
-                "-m",
-                "pip",
-                "wheel",
-                "--no-deps",
-                "--wheel-dir",
-                loader_wheels,
-                loader_source,
-            ],
-            env=environment,
-        )
-    else:
-        with tempfile.TemporaryDirectory(
-            prefix="pyamplicol-ufo-loader-build-"
-        ) as raw_staging:
-            loader_source = Path(raw_staging) / "ufo-model-loader"
-            _stage_python_source(CHECKOUTS / "ufo-model-loader", loader_source)
-            runner.run(
-                [
-                    python,
-                    "-m",
-                    "pip",
-                    "wheel",
-                    "--no-deps",
-                    "--wheel-dir",
-                    loader_wheels,
-                    loader_source,
-                ],
-                env=environment,
-            )
     if not runner.dry_run:
         runner.run(
             [
@@ -835,7 +811,6 @@ def _build_candidate_wheels(runner: Runner) -> None:
                 "--force-reinstall",
                 "--no-deps",
                 _single_wheel(symbolica_wheels, "symbolica"),
-                _single_wheel(loader_wheels, "ufo_model_loader"),
             ],
             env=environment,
         )
@@ -887,11 +862,16 @@ def _write_state(
             "revision": head,
             "worktree_sha256": _source_tree_sha256(source.path),
         }
+        if source.branch is not None:
+            source_state[source.key]["branch"] = source.branch
     state = {
         "schema_version": 1,
         "created_utc": datetime.now(UTC).isoformat(),
         "publishable": False,
-        "release_lock_sha256": hashlib.sha256(LOCK.read_bytes()).hexdigest(),
+        "release_lock_sha256": hashlib.sha256(RELEASE_LOCK.read_bytes()).hexdigest(),
+        "contributor_lock_sha256": hashlib.sha256(
+            CONTRIBUTOR_LOCK.read_bytes()
+        ).hexdigest(),
         "python_runtime_lock_sha256": hashlib.sha256(
             PYTHON_LOCK.read_bytes()
         ).hexdigest(),

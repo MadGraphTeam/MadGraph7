@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Plan or generate a transactional schema-v3 process artifact."""
+"""Plan or generate the external-JSON pp -> Zjj example with typed services."""
 
 from __future__ import annotations
 
@@ -15,15 +15,24 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("output", type=Path)
     parser.add_argument(
         "process",
-        nargs="+",
-        help="Repeat process expressions after '--', or quote each expression.",
+        nargs="*",
+        default=("p p > Z j j",),
+        help="quoted process expressions (default: 'p p > Z j j')",
     )
     parser.add_argument(
         "--model",
-        default="built-in-sm",
+        default="models/json/sm/sm.json",
         help="built-in-sm, a trusted UFO directory, or a model JSON path",
     )
     parser.add_argument("--restriction")
+    parser.add_argument(
+        "--multiparticle",
+        action="append",
+        default=["p=d,d~,g", "j=d,d~,g"],
+        metavar="NAME=ITEM[,ITEM...]",
+    )
+    parser.add_argument("--flavor-scheme", type=int, default=2)
+    parser.add_argument("--max-quark-lines", type=int, default=2)
     parser.add_argument("--color-accuracy", choices=("lc", "nlc", "full"), default="lc")
     parser.add_argument(
         "--mode",
@@ -34,17 +43,31 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _multiparticles(values: list[str]) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for value in values:
+        name, separator, members = value.partition("=")
+        entries = [member.strip() for member in members.split(",") if member.strip()]
+        if not separator or not name or not entries:
+            raise SystemExit(f"invalid --multiparticle value: {value!r}")
+        result[name] = entries
+    return result
+
+
 def main() -> int:
     args = _parser().parse_args()
+    model_config: dict[str, object] = {"source": args.model}
+    if args.restriction is not None:
+        model_config["restriction"] = args.restriction
     card = {
         "schema_version": 1,
         "action": "generate",
-        "model": {
-            "source": args.model,
-            "restriction": args.restriction,
-        },
+        "model": model_config,
         "process": {
-            "entries": [{"expression": expression} for expression in args.process]
+            "entries": [{"expression": expression} for expression in args.process],
+            "multiparticles": _multiparticles(args.multiparticle),
+            "flavor_scheme": args.flavor_scheme,
+            "max_quark_lines": args.max_quark_lines,
         },
         "color": {"accuracy": args.color_accuracy},
         "generation": {"output": args.output, "mode": args.mode},
@@ -57,7 +80,7 @@ def main() -> int:
             for entry in config.process.entries
         )
     )
-    model = (
+    model_source = (
         ModelSource.built_in_sm()
         if args.model == "built-in-sm"
         else ModelSource.from_path(
@@ -66,6 +89,7 @@ def main() -> int:
             simplify=config.model.simplify,
         )
     )
+    model = model_source.compile(use_cache=config.model.cache)
 
     generator = Generator(resolution)
     plan = generator.plan(processes, model=model)

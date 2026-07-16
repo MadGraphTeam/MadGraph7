@@ -2,17 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
-import io
-import json
-import os
 import re
-import textwrap
 import tomllib
-import urllib.request
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -53,7 +45,7 @@ def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
     assert "rust-toolchain@stable" not in workflows
     assert "default-toolchain stable" not in workflows
     assert "manylinux_2_28_x86_64:latest" not in workflows
-    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 6
+    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 5
     assert workflows.count(f"default-toolchain {RUST_TOOLCHAIN}") == 2
     assert workflows.count(MANYLINUX_IMAGE) == 2
     assert "cargo install just --version 1.46.0 --locked" in workflows
@@ -82,7 +74,7 @@ def test_external_actions_and_rustup_installer_are_immutable() -> None:
     assert "sh.rustup.rs" not in combined
     assert combined.count(RUSTUP_INIT_URL) == 2
     assert combined.count(RUSTUP_INIT_SHA256) == 2
-    assert combined.count("sha256sum --check --strict") >= 3
+    assert combined.count("sha256sum --check --strict") >= 2
 
 
 def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
@@ -109,8 +101,11 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
 
 def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     workflow = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
-    assert "git cat-file -t" in workflow
-    assert "'.verification.verified'" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "signed_tag" not in workflow
+    assert "Verify signed" not in workflow
+    assert "verification.verified" not in workflow
+    assert "ref: ${{ github.sha }}" in workflow
     assert "--sdist-only" in workflow
     assert workflow.count("--retained-sdist") >= 2
     assert "macos-15\n" in workflow
@@ -119,28 +114,25 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert 'python-version: "3.14"' in workflow
     assert "cp314-cp314" in workflow
     assert "--require-all-targets" in workflow
-    assert (
-        "SOURCE_COMMIT: ${{ needs.retained-sdist.outputs.source_commit }}" in workflow
-    )
-    assert "SOURCE_TAG: ${{ inputs.signed_tag }}" in workflow
-    assert '--source-commit "$SOURCE_COMMIT"' in workflow
-    assert '--source-tag "$SOURCE_TAG"' in workflow
+    assert "--output-dir .artifacts/validated" in workflow
+    assert "--skip-clean-install" in workflow
+    assert "--source-commit" not in workflow
+    assert "--source-tag" not in workflow
+    assert "release-manifest.json" not in workflow
+    assert "SHA256SUMS" not in workflow
     assert "retention-days: 90" in workflow
     assert "id-token: write" not in workflow
     assert "Full source validation gate" in workflow
-    assert (
-        "needs: [verify-release-tag, full-source-validation, "
-        "independent-physics-oracle]" in workflow
-    )
+    assert "needs: [full-source-validation, independent-physics-oracle]" in workflow
     assert "Independent Fortran physics oracle" in workflow
     assert "Rebuild and verify pinned Fortran evidence" in workflow
     assert "ulimit -v 31457280" in workflow
     assert "tests/fixtures/reference/physics-v2.json" in workflow
     assert "tests/fixtures/reference/legacy-fortran-v2.json" in workflow
-    assert "retained-sdist:\n    needs: legal-release-gate" in workflow
-    assert "source_commit: ${{ steps.tag.outputs.source_commit }}" in workflow
-    assert "workflow_commit: ${{ steps.tag.outputs.workflow_commit }}" in workflow
-    assert "ref: ${{ needs.verify-release-tag.outputs.source_commit }}" in workflow
+    assert (
+        "retained-sdist:\n    needs: [full-source-validation, "
+        "independent-physics-oracle]" in workflow
+    )
     assert 'PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"' in workflow
     assert "python tools/release/check_dependencies.py" in workflow
     assert "just source-gate" in workflow
@@ -148,23 +140,9 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "brew install gcc" in workflow
     assert "gcc-c++ gcc-gfortran make" in workflow
     assert workflow.count("tools/release/test_deployment.py") == 4
+    assert "Collect validated release artifacts" in workflow
+    assert "python tools/release/publish_dry_run.py" in workflow
     assert "continue-on-error" not in workflow
-
-
-def test_legal_release_job_primes_an_isolated_cargo_home_then_runs_offline() -> None:
-    workflow = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
-    legal_job = workflow.split("  legal-release-gate:\n", maxsplit=1)[1].split(
-        "\n  retained-sdist:", maxsplit=1
-    )[0]
-
-    assert "CARGO_HOME: ${{ runner.temp }}/pyamplicol-legal-cargo" in legal_job
-    assert f"dtolnay/rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}" in legal_job
-    assert "--fetch-locked-release-targets" in legal_job
-    assert 'CARGO_NET_OFFLINE: "true"' in legal_job
-    assert legal_job.index("--fetch-locked-release-targets") < legal_job.index(
-        "Enforce native dependency legal gate"
-    )
-    assert "python tools/release/check_legal_inventory.py --mode release" in legal_job
 
 
 def test_complete_source_gate_covers_every_required_suite_serially() -> None:
@@ -172,7 +150,6 @@ def test_complete_source_gate_covers_every_required_suite_serially() -> None:
 
     assert "source-gate:" in justfile
     required_targets = (
-        "just legal-gate",
         "just dependency-gate",
         "just typing",
         "just python-unit",
@@ -200,7 +177,7 @@ def test_complete_source_gate_covers_every_required_suite_serially() -> None:
     assert "tests/fixtures/reference/legacy-fortran-v2.json" in justfile
 
 
-def test_publisher_is_manual_hash_checked_and_has_no_build_checkout() -> None:
+def test_publisher_is_manual_oidc_only_and_has_no_build_checkout() -> None:
     workflow = (WORKFLOWS / "publish-pypi.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
     assert "environment:" in workflow
@@ -209,26 +186,27 @@ def test_publisher_is_manual_hash_checked_and_has_no_build_checkout() -> None:
     assert "run-id: ${{ inputs.artifact_run_id }}" in workflow
     assert 'workflow["path"] == ".github/workflows/release-artifacts.yml"' in workflow
     assert 'run["conclusion"] == "success"' in workflow
-    assert "VALIDATED_WORKFLOW_COMMIT" in workflow
-    assert "VALIDATED_SOURCE_COMMIT" not in workflow
-    assert 'manifest["source"]' in workflow
-    assert 'signed_tag["verification"]["verified"] is True' in workflow
-    assert 'target["sha"] == source_commit' in workflow
+    assert 'run["event"] == "workflow_dispatch"' in workflow
+    assert 'run["head_branch"] == run["repository"]["default_branch"]' in workflow
     for required_job in (
-        "Verify signed release tag",
-        "Native dependency legal gate",
         "Full source validation gate",
         "Independent Fortran physics oracle",
         "Build retained source distribution",
         "macOS release wheel and native deployment (macos-arm64)",
         "macOS release wheel and native deployment (macos-x86_64)",
         "manylinux release wheel and native deployment",
-        "Assemble validated release bundle",
+        "Collect validated release artifacts",
     ):
         assert required_job in workflow
     assert "Run complete release source gate" in workflow
     assert "Rebuild and verify pinned Fortran evidence" in workflow
-    assert "sha256sum --check --strict SHA256SUMS" in workflow
+    assert "expected three wheels and one sdist" in workflow
+    assert "candidate artifacts cannot be published" in workflow
+    assert "release-manifest.json" not in workflow
+    assert "SHA256SUMS" not in workflow
+    assert "verification.verified" not in workflow
+    assert "signed_tag" not in workflow
+    assert "hashlib" not in workflow
     assert "actions/checkout" not in workflow
     assert "maturin" not in workflow
     assert "cargo" not in workflow
@@ -236,106 +214,29 @@ def test_publisher_is_manual_hash_checked_and_has_no_build_checkout() -> None:
     assert "gh-action-pypi-publish" in workflow
 
 
-def test_publisher_does_not_conflate_dispatch_head_with_signed_tag_source() -> None:
+def test_publisher_requires_the_validated_default_branch_run() -> None:
     workflow = (WORKFLOWS / "publish-pypi.yml").read_text(encoding="utf-8")
-    dispatch_head = "a" * 40
-    signed_tag_source = "b" * 40
-
-    assert dispatch_head != signed_tag_source
-    assert "VALIDATED_WORKFLOW_COMMIT={run['head_sha']}" in workflow
-    assert 'source_commit = source["commit"]' in workflow
-    assert 'workflow_commit = os.environ["VALIDATED_WORKFLOW_COMMIT"]' in workflow
-    assert 'target["sha"] == source_commit' in workflow
-    assert "source_commit == workflow_commit" not in workflow
-    assert '"tag": "v0.1.0"' not in workflow
+    assert 'run["head_repository"]["full_name"] == repository' in workflow
+    assert 'run["head_branch"] == run["repository"]["default_branch"]' in workflow
+    assert 'workflow["path"] == ".github/workflows/release-artifacts.yml"' in workflow
+    assert "git/ref/tags" not in workflow
+    assert "git/tags" not in workflow
 
 
-def test_publisher_accepts_a_signed_tag_source_different_from_dispatch_head(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workflow = (WORKFLOWS / "publish-pypi.yml").read_text(encoding="utf-8")
-    verification = workflow.split("python - <<'PY'\n", maxsplit=2)[2]
-    verification = textwrap.dedent(verification.split("\n          PY", maxsplit=1)[0])
-
-    workflow_commit = "a" * 40
-    source_commit = "b" * 40
-    tag_object = "c" * 40
-    artifact_specs = (
-        (
-            "pyamplicol-0.1.0-cp311-abi3-macosx_11_0_arm64.whl",
-            "wheel",
-            "macosx_11_0_arm64",
-        ),
-        (
-            "pyamplicol-0.1.0-cp311-abi3-macosx_11_0_x86_64.whl",
-            "wheel",
-            "macosx_11_0_x86_64",
-        ),
-        (
-            "pyamplicol-0.1.0-cp311-abi3-manylinux_2_28_x86_64.whl",
-            "wheel",
-            "manylinux_2_28_x86_64",
-        ),
-        ("pyamplicol-0.1.0.tar.gz", "sdist", None),
+def test_release_pipeline_has_no_custom_supply_chain_bundle() -> None:
+    retired = (
+        ROOT / "build_backend" / "distribution_sbom.py",
+        ROOT / "tools" / "release" / "check_legal_inventory.py",
+        ROOT / "tools" / "release" / "check_rust_licenses.py",
     )
-    artifacts = []
-    for index, (filename, kind, target) in enumerate(artifact_specs):
-        payload = f"artifact-{index}".encode()
-        (tmp_path / filename).write_bytes(payload)
-        entry = {
-            "filename": filename,
-            "kind": kind,
-            "sha256": hashlib.sha256(payload).hexdigest(),
-            "size": len(payload),
-        }
-        if target is not None:
-            entry.update({"native_scan": True, "target": target})
-        artifacts.append(entry)
+    assert not any(path.exists() for path in retired)
 
-    sdist = artifacts[-1]
-    manifest = {
-        "schema_version": 1,
-        "distribution": "pyamplicol",
-        "mode": "release",
-        "publishable": True,
-        "sdist_wheel_parity": "verified",
-        "source": {"commit": source_commit, "tag": "v0.1.0"},
-        "release_targets": [
-            "macosx_11_0_arm64",
-            "macosx_11_0_x86_64",
-            "manylinux_2_28_x86_64",
-        ],
-        "artifacts": artifacts,
-        "retained_sdist": {key: sdist[key] for key in ("filename", "sha256", "size")},
-    }
-    (tmp_path / "release-manifest.json").write_text(
-        json.dumps(manifest), encoding="utf-8"
+    release_tools = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / "tools" / "release").glob("*.py"))
     )
-
-    responses = {
-        "/git/ref/tags/v0.1.0": {"object": {"type": "tag", "sha": tag_object}},
-        f"/git/tags/{tag_object}": {
-            "verification": {"verified": True},
-            "object": {"type": "commit", "sha": source_commit},
-        },
-    }
-
-    def fake_urlopen(request: urllib.request.Request, *, timeout: int) -> io.BytesIO:
-        assert timeout == 30
-        match = next(
-            payload
-            for suffix, payload in responses.items()
-            if request.full_url.endswith(suffix)
-        )
-        return io.BytesIO(json.dumps(match).encode())
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("GH_TOKEN", "fixture-token")
-    monkeypatch.setenv("GITHUB_REPOSITORY", "example/pyamplicol")
-    monkeypatch.setenv("VALIDATED_WORKFLOW_COMMIT", workflow_commit)
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-
-    exec(compile(verification, "publish-pypi.yml", "exec"), {})
-
-    assert source_commit != os.environ["VALIDATED_WORKFLOW_COMMIT"]
+    assert "CycloneDX" not in release_tools
+    assert "release-manifest.json" not in release_tools
+    assert "SHA256SUMS" not in release_tools
+    assert "load_python_runtime_lock" not in release_tools
+    assert "PythonRuntimeLock" not in release_tools

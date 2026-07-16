@@ -16,8 +16,10 @@ from .compiler_kernels import (
     _component_symbols,
     _function_arguments,
     _input_tensor_expression,
+    _ordered_dense_tensor_components,
     _remap_kernel_symbols,
     _replace_expression_symbols,
+    _spin_axis_labels,
     _spin_dimension,
     _spin_representations,
     _spin_slots,
@@ -81,6 +83,7 @@ def _fuse_contact_finals(
                                 _sym.E(member.component_expressions[index]),
                                 old_kind=member.kind,
                                 new_kind=first.kind,
+                                model_symbols=model_symbols,
                             ),
                             runtime_aliases,
                         )
@@ -130,6 +133,7 @@ def _contact_partial_component_expressions(
     right_leg: int,
     open_legs: tuple[int, ...],
     kind: int,
+    model_symbols: ModelSymbolRegistry,
 ) -> tuple[str, ...]:
     library = _sym.TensorLibrary.hep_lib_atom()
     expression = _sym.E(term.lorentz_expression)
@@ -140,7 +144,13 @@ def _contact_partial_component_expressions(
         side="left",
         spin=particles[left_leg].spin,
         leg=left_leg + 1,
-        components=_component_symbols(kind, "left", particles[left_leg].spin),
+        components=_component_symbols(
+            kind,
+            "left",
+            particles[left_leg].spin,
+            model_symbols=model_symbols,
+        ),
+        model_symbols=model_symbols,
     )
     expression *= _input_tensor_expression(
         library,
@@ -148,9 +158,23 @@ def _contact_partial_component_expressions(
         side="right",
         spin=particles[right_leg].spin,
         leg=right_leg + 1,
-        components=_component_symbols(kind, "right", particles[right_leg].spin),
+        components=_component_symbols(
+            kind,
+            "right",
+            particles[right_leg].spin,
+            model_symbols=model_symbols,
+        ),
+        model_symbols=model_symbols,
     )
-    result = _execute_dense_tensor(expression, library)
+    result = _execute_dense_tensor(
+        expression,
+        library,
+        axis_labels=tuple(
+            label
+            for leg in open_legs
+            for label in _spin_axis_labels(particles[leg].spin, leg + 1)
+        ),
+    )
     expected = math.prod(_spin_dimension(particles[leg].spin) for leg in open_legs)
     if len(result) != expected:
         raise ValueError(
@@ -175,12 +199,13 @@ def _contact_final_component_expressions(
     kind: int,
     auxiliary_on_left: bool,
     component_expansion: tuple[tuple[int, int] | None, ...],
+    model_symbols: ModelSymbolRegistry,
 ) -> tuple[str, ...]:
     library = _sym.TensorLibrary.hep_lib_atom()
     auxiliary_side = "left" if auxiliary_on_left else "right"
     physical_side = "right" if auxiliary_on_left else "left"
     auxiliary_symbols = tuple(
-        symbols.kernel_component(kind, auxiliary_side, component)
+        model_symbols.kernel_component(kind, auxiliary_side, component)
         for component in range(auxiliary.component_dimension or 0)
     )
     expanded_auxiliary = tuple(
@@ -194,6 +219,7 @@ def _contact_final_component_expressions(
         particles=particles,
         open_legs=open_legs,
         components=expanded_auxiliary,
+        model_symbols=model_symbols,
     )
     expression *= _input_tensor_expression(
         library,
@@ -205,9 +231,15 @@ def _contact_final_component_expressions(
             kind,
             physical_side,
             particles[remaining_leg].spin,
+            model_symbols=model_symbols,
         ),
+        model_symbols=model_symbols,
     )
-    result = _execute_dense_tensor(expression, library)
+    result = _execute_dense_tensor(
+        expression,
+        library,
+        axis_labels=_spin_axis_labels(particles[result_leg].spin, result_leg + 1),
+    )
     expected = _spin_dimension(particles[result_leg].spin)
     if len(result) != expected:
         raise ValueError(
@@ -230,6 +262,7 @@ def _contact_auxiliary_tensor_expression(
     particles: Sequence[CompiledParticleRecord],
     open_legs: tuple[int, ...],
     components: Sequence[_sym.Expression],
+    model_symbols: ModelSymbolRegistry,
 ) -> _sym.Expression:
     representations = tuple(
         representation
@@ -243,17 +276,21 @@ def _contact_auxiliary_tensor_expression(
     slots = tuple(
         slot for leg in open_legs for slot in _spin_slots(particles[leg].spin, leg + 1)
     )
-    name = _sym.TensorName(symbols.kernel_tensor_name(kind, side))
+    name = _sym.TensorName(model_symbols.kernel_tensor_name(kind, side))
     library.register(_sym.LibraryTensor.dense(name(*representations), components))
     return name(*slots).to_expression()
 
 
-def _execute_dense_tensor(expression: _sym.Expression, library: _sym.TensorLibrary):
+def _execute_dense_tensor(
+    expression: _sym.Expression,
+    library: _sym.TensorLibrary,
+    *,
+    axis_labels: Sequence[str],
+):
     network = _sym.TensorNetwork(expression, library)
     network.execute(library=library)
     result = network.result_tensor(library)
-    result.to_dense()
-    return result
+    return _ordered_dense_tensor_components(result, axis_labels)
 
 
 def _contact_auxiliary_color(

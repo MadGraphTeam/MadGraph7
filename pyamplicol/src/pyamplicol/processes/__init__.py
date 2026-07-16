@@ -1,44 +1,24 @@
 # SPDX-License-Identifier: 0BSD
-from .core import (
-    ANTI_PARTICLE,
-    PDGS,
-    ParsedProcess,
-    PhaseSpaceGroup,
-    ProcessEnumeration,
-    ProcessEnumerator,
-    ProcessOptions,
-    ProcessSelectionRecord,
-    ProcessSelectionReport,
-    ProcessSetEntry,
-    ProcessSetEnumeration,
-    SubprocessRecord,
-    build_generic_process_selection_report,
+"""Model-neutral process syntax and canonical process IR.
+
+Built-in-SM catalogue enumeration and selection live under
+``pyamplicol.models.builtin`` and are intentionally not re-exported here.
+"""
+
+from .core_syntax import (
+    OrderTuple,
+    ParticleName,
+    ProcessTuple,
     canonical_process_key,
-    enumerate_generic_process_set,
-    enumerate_process_set,
-    enumerate_processes,
     expand_process_variants,
     split_process_set,
 )
 
 __all__ = [
-    "ANTI_PARTICLE",
-    "PDGS",
-    "ParsedProcess",
-    "PhaseSpaceGroup",
-    "ProcessEnumeration",
-    "ProcessEnumerator",
-    "ProcessOptions",
-    "ProcessSelectionRecord",
-    "ProcessSelectionReport",
-    "ProcessSetEntry",
-    "ProcessSetEnumeration",
-    "SubprocessRecord",
-    "build_generic_process_selection_report",
+    "OrderTuple",
+    "ParticleName",
+    "ProcessTuple",
     "canonical_process_key",
-    "enumerate_generic_process_set",
-    "enumerate_process_set",
-    "enumerate_processes",
     "expand_process_variants",
     "split_process_set",
 ]

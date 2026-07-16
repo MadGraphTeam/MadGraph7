@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..models import BuiltinSMModel, Model
+from ..models import Model
 
 
 @dataclass(frozen=True)
@@ -199,8 +199,13 @@ StageBlueprintConsumer = Callable[
 ]
 
 
-class _RuntimeParameterizedModel(BuiltinSMModel):
-    """Use runtime symbols for numeric model constants without changing topology."""
+class _RuntimeParameterizedModel:
+    """Overlay runtime parameters while delegating every model decision.
+
+    This proxy deliberately does not inherit any concrete model. Models with a
+    specialized runtime-parameter implementation can still provide
+    ``with_runtime_parameters`` and bypass it.
+    """
 
     def __init__(self, base: Model, parameters: Mapping[str, Any]) -> None:
         self._base_model = base
@@ -208,15 +213,9 @@ class _RuntimeParameterizedModel(BuiltinSMModel):
         self.name = base.name
         self.particles = base.particles
         self.vertices = base.vertices
-        for attribute in (
-            "alpha_s_mz",
-            "alpha_s_me_check",
-            "alpha_ew",
-            "sin_weak",
-            "sqrt_s",
-        ):
-            if hasattr(base, attribute):
-                setattr(self, attribute, getattr(base, attribute))
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._base_model, name)
 
     def mass(self, pdg: int) -> Any:
         particle = self._base_model.particle(pdg)

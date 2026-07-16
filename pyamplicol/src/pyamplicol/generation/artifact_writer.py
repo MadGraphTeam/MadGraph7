@@ -529,7 +529,6 @@ def _current_storage(storage: Mapping[str, object]) -> dict[str, object]:
         "chirality",
         "spin_state",
         "flavour_flow",
-        "charge_flow",
         "color_state",
         "momentum_mask",
         "auxiliary_kind",
@@ -591,8 +590,10 @@ def _source_record(record: Mapping[str, object]) -> dict[str, object]:
         "physical_pdg",
         "outgoing_pdg",
         "particle_id",
+        "anti_particle_id",
         "source_kind",
         "wavefunction_kind",
+        "source_orientation",
         "source_helicity",
         "chirality",
         "spin_state",
@@ -827,7 +828,7 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             raise ValueError(
                 "direct SymJIT evaluator has an invalid fallback capability"
             )
-        if result["element_layout"] not in {"complex-f64", "complex-f64x2"}:
+        if result["element_layout"] != "complex-f64":
             raise ValueError("direct SymJIT evaluator has an invalid element layout")
         if (
             result["batch_layout"] != "row-major"

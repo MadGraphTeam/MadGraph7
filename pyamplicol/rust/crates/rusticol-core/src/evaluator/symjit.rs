@@ -35,10 +35,6 @@ pub(crate) struct SymjitApplicationMetadata<'a> {
 }
 
 impl SymjitApplicationEvaluator {
-    pub(crate) const fn supports_native2(&self) -> bool {
-        cfg!(target_arch = "aarch64")
-    }
-
     pub(crate) fn load(
         path: &Path,
         metadata: SymjitApplicationMetadata<'_>,
@@ -96,25 +92,6 @@ impl SymjitApplicationEvaluator {
         self.applet.evaluate_matrix(params, out, batch_size);
         Ok(())
     }
-
-    pub(crate) fn evaluate_native2_batch(
-        &self,
-        native_rows: usize,
-        params: &[Complex<wide::f64x2>],
-        out: &mut [Complex<wide::f64x2>],
-    ) -> RusticolResult<()> {
-        validate_batch_lengths(
-            native_rows,
-            self.input_len,
-            self.output_len,
-            params.len(),
-            out.len(),
-        )?;
-        let params = complex_slice_as_scalars(params);
-        let out = complex_slice_as_scalars_mut(out);
-        self.applet.evaluate_matrix(params, out, native_rows);
-        Ok(())
-    }
 }
 
 fn validate_manifest_metadata(metadata: &SymjitApplicationMetadata<'_>) -> RusticolResult<()> {
@@ -135,12 +112,7 @@ fn validate_manifest_metadata(metadata: &SymjitApplicationMetadata<'_>) -> Rusti
             "SymJIT application input_len and output_len must both be positive",
         ));
     }
-    let expected_element_layout = if cfg!(target_arch = "aarch64") {
-        "complex-f64x2"
-    } else {
-        "complex-f64"
-    };
-    if metadata.element_layout != expected_element_layout || metadata.batch_layout != "row-major" {
+    if metadata.element_layout != "complex-f64" || metadata.batch_layout != "row-major" {
         return Err(RusticolError::compatibility(format!(
             "unsupported SymJIT application layout element={:?}, batch={:?}",
             metadata.element_layout, metadata.batch_layout
@@ -345,11 +317,7 @@ mod tests {
             application_abi: SYMJIT_APPLICATION_STORAGE_ABI,
             input_len: 2,
             output_len: 1,
-            element_layout: if cfg!(target_arch = "aarch64") {
-                "complex-f64x2"
-            } else {
-                "complex-f64"
-            },
+            element_layout: "complex-f64",
             batch_layout: "row-major",
             compiler_type: "native",
             translation_mode: "indirect",
@@ -377,12 +345,7 @@ mod tests {
             application_abi: SYMJIT_APPLICATION_STORAGE_ABI.to_string(),
             input_len: 2,
             output_len: 1,
-            element_layout: if cfg!(target_arch = "aarch64") {
-                "complex-f64x2"
-            } else {
-                "complex-f64"
-            }
-            .to_string(),
+            element_layout: "complex-f64".to_string(),
             batch_layout: "row-major".to_string(),
             compiler_type: "native".to_string(),
             translation_mode: "indirect".to_string(),
@@ -510,6 +473,22 @@ mod tests {
     }
 
     #[test]
+    fn direct_application_requires_complex_f64_row_major_layout() {
+        let path = write_application(&application_bytes(), "layout");
+
+        let mut wrong_element_layout = metadata(&[]);
+        wrong_element_layout.element_layout = "complex-f32";
+        let error = SymjitApplicationEvaluator::load(&path, wrong_element_layout).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+
+        let mut wrong_batch_layout = metadata(&[]);
+        wrong_batch_layout.batch_layout = "column-major";
+        let error = SymjitApplicationEvaluator::load(&path, wrong_batch_layout).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn capability_counts_and_external_functions_are_validated() {
         let bytes = application_bytes();
         let path = write_application(&bytes, "metadata");
@@ -533,40 +512,6 @@ mod tests {
             error.kind(),
             crate::RusticolErrorKind::UnsupportedRuntimeCapability
         );
-        let _ = fs::remove_file(path);
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    #[test]
-    fn direct_application_evaluates_native_two_lane_rows() {
-        let path = write_application(&application_bytes(), "native2");
-        let evaluator = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap();
-        let params = [
-            Complex::new(wide::f64x2::new([1.0, 2.0]), wide::f64x2::new([3.0, 4.0])),
-            Complex::new(wide::f64x2::new([5.0, 6.0]), wide::f64x2::new([7.0, 8.0])),
-        ];
-        let mut outputs = [Complex::new(wide::f64x2::ZERO, wide::f64x2::ZERO)];
-        evaluator
-            .evaluate_native2_batch(1, &params, &mut outputs)
-            .unwrap();
-        assert_eq!(outputs[0].re.as_array(), &[6.0, 8.0]);
-        assert_eq!(outputs[0].im.as_array(), &[10.0, 12.0]);
-        let _ = fs::remove_file(path);
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    #[test]
-    fn direct_application_group_evaluates_one_model_parameter_row_in_native2() {
-        let path = write_application(&application_bytes(), "model-parameter-native2");
-        let root = path.parent().unwrap();
-        let manifest = direct_manifest(path.file_name().unwrap().to_str().unwrap().to_string());
-        let mut group = EvaluatorGroup::load(&manifest, root).unwrap();
-
-        let output = group
-            .evaluate_single_row(&[Complex::new(2.0, 3.0), Complex::new(5.0, 7.0)])
-            .unwrap();
-
-        assert_eq!(output, vec![Complex::new(7.0, 10.0)]);
         let _ = fs::remove_file(path);
     }
 }

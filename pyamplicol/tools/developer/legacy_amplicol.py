@@ -46,7 +46,6 @@ FORTRAN_ATOL = _model.FORTRAN_ATOL
 FORTRAN_EVIDENCE_RTOL_DECIMAL = _model.FORTRAN_EVIDENCE_RTOL_DECIMAL
 FORTRAN_EVIDENCE_ATOL_DECIMAL = _model.FORTRAN_EVIDENCE_ATOL_DECIMAL
 FORTRAN_CERTIFIED_DECIMAL_DIGITS = _model.FORTRAN_CERTIFIED_DECIMAL_DIGITS
-_V2_ONLY_LEGACY_PATCHES = _model.V2_ONLY_LEGACY_PATCHES
 _MAX_SUPPORTED_QUARK_LINES = _model.MAX_SUPPORTED_QUARK_LINES
 
 LegacyOracleError = _model.LegacyOracleError
@@ -70,31 +69,20 @@ def _run(
     )
 
 
-def _release_lock() -> dict[str, Any]:
-    return _checkout._release_lock(lock_path=LOCK)
+def _contributor_lock() -> dict[str, Any]:
+    return _checkout._contributor_lock(lock_path=LOCK)
 
 
 def expected_revision() -> str:
-    return _checkout.expected_revision(lock=_release_lock())
+    return _checkout.expected_revision(lock=_contributor_lock())
+
+
+def checkout_branch() -> str:
+    return _checkout.checkout_branch(lock=_contributor_lock())
 
 
 def checkout_url() -> str:
-    return _checkout.checkout_url(lock=_release_lock())
-
-
-def managed_patches() -> tuple[Path, ...]:
-    return _checkout.managed_patches(root=ROOT, lock=_release_lock())
-
-
-def managed_patch_metadata(
-    *,
-    fixture_schema_version: int | None = None,
-) -> tuple[dict[str, str], ...]:
-    return _checkout.managed_patch_metadata(
-        fixture_schema_version=fixture_schema_version,
-        root=ROOT,
-        lock=_release_lock(),
-    )
+    return _checkout.checkout_url(lock=_contributor_lock())
 
 
 def prepare_checkout(repository: Path) -> None:
@@ -103,20 +91,8 @@ def prepare_checkout(repository: Path) -> None:
         run=_run,
         validate=validate_checkout,
         url=checkout_url,
+        branch=checkout_branch,
         revision=expected_revision,
-        patches=managed_patches,
-    )
-
-
-def _managed_patch_paths(patches: Sequence[Path]) -> tuple[str, ...]:
-    return _checkout._managed_patch_paths(patches)
-
-
-def _validate_exact_patch_state(repository: Path, patches: Sequence[Path]) -> None:
-    _checkout._validate_exact_patch_state(
-        repository,
-        patches,
-        subprocess_module=subprocess,
     )
 
 
@@ -125,9 +101,6 @@ def validate_checkout(repository: Path) -> None:
         repository,
         run=_run,
         revision=expected_revision,
-        patches=managed_patches,
-        validate_exact=_validate_exact_patch_state,
-        subprocess_module=subprocess,
     )
 
 
@@ -357,7 +330,7 @@ def _verify_fixture_v1(
         "revision": expected_revision(),
         "fixture": fixture_path.name,
         "fixture_sha256": hashlib.sha256(fixture_path.read_bytes()).hexdigest(),
-        "patches": managed_patch_metadata(fixture_schema_version=1),
+        "patches": [],
         "tolerances": {
             "relative": FORTRAN_RTOL,
             "absolute": FORTRAN_ATOL,
@@ -391,8 +364,7 @@ def _fortran_dependency_ids(fixture: Mapping[str, Any]) -> tuple[str, ...]:
 
 def _oracle_content_sha256() -> str:
     return _evidence._oracle_content_sha256(
-        lock=_release_lock(),
-        patches=managed_patch_metadata(),
+        lock=_contributor_lock(),
         revision=expected_revision(),
     )
 
@@ -801,7 +773,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--prepare-checkout",
         action="store_true",
-        help="clone and patch the pinned public oracle checkout when absent",
+        help="clone the pinned public oracle branch when absent",
     )
     output = parser.add_mutually_exclusive_group()
     output.add_argument("--output", type=Path)

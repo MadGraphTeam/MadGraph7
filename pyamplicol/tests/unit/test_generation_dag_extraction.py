@@ -5,7 +5,10 @@ import pytest
 
 from pyamplicol.api import Generator, ProcessAlias, ProcessRequest, ProcessSet
 from pyamplicol.api.errors import GenerationError
+from pyamplicol.generation.dag_algorithms import infer_minimal_coupling_order_limits
 from pyamplicol.generation.dag_types import ColorState, CurrentIndex
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
 def _index(*, chirality: int = 1, ordered: tuple[int, ...] = (1, 2)) -> CurrentIndex:
@@ -18,7 +21,7 @@ def _index(*, chirality: int = 1, ordered: tuple[int, ...] = (1, 2)) -> CurrentI
         chirality=chirality,
         spin_state=chirality,
         flavour_flow=(1,),
-        charge_flow=-1,
+        quantum_number_flow=(("electric_charge", "-1/3"),),
         color_state=ColorState(
             accuracy="lc",
             sector_id=0,
@@ -81,3 +84,12 @@ def test_generation_plan_uses_production_alias_validation() -> None:
     )
     with pytest.raises(GenerationError, match="permutation has length"):
         Generator().plan(invalid)
+
+
+def test_minimal_coupling_limits_zero_nonminimal_model_orders() -> None:
+    limits = infer_minimal_coupling_order_limits(
+        build_process_ir("d d~ > u u~"),
+        model=BuiltinSMModel(),
+    )
+
+    assert limits == {"QCD": 2, "QED": 0}

@@ -10,7 +10,7 @@ from pyamplicol.generation.artifact_writer import (
 )
 from pyamplicol.generation.contracts import RuntimeExpressionSchema
 from pyamplicol.generation.validation import ValidationPointRecord
-from pyamplicol.processes.ir import build_process_ir
+from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
 def test_api_validation_points_include_aliases_in_alias_order() -> None:

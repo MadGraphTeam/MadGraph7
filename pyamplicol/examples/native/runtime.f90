@@ -7,38 +7,39 @@ program runtime_fortran
 
   type(rusticol_runtime) :: runtime
   character(len=4096) :: artifact, process_key, parameters
-  real(c_double), target :: momenta(16)
+  real(c_double), target :: momenta(20)
   real(c_double), allocatable :: totals(:), resolved(:, :, :)
   real(c_double) :: checked_total, scale
 
-  if (command_argument_count() < 1 .or. command_argument_count() > 3) then
-    error stop "usage: runtime_fortran ARTIFACT [PROCESS [PARAMETERS.json]]"
+  if (command_argument_count() < 2 .or. command_argument_count() > 3) then
+    error stop "usage: runtime_fortran ARTIFACT PROCESS [PARAMETERS.json]"
   end if
   call get_command_argument(1, artifact)
-  process_key = ""
+  call get_command_argument(2, process_key)
   parameters = ""
-  if (command_argument_count() >= 2) call get_command_argument(2, process_key)
   if (command_argument_count() == 3) call get_command_argument(3, parameters)
 
   if (len_trim(parameters) > 0) then
     call runtime%load(trim(artifact), process_key=trim(process_key), &
                       model_parameters=trim(parameters))
-  else if (len_trim(process_key) > 0) then
-    call runtime%load(trim(artifact), process_key=trim(process_key))
   else
-    call runtime%load(trim(artifact))
+    call runtime%load(trim(artifact), process_key=trim(process_key))
   end if
   call runtime%set_model_parameter( &
-      "normalization.alpha_s_me_check", 0.118_c_double)
+      "aS", 0.117_c_double)
 
-  ! One d d~ > z g point, flattened as [point][particle][E,px,py,pz].
+  ! The external-SM d d~ > Z g g subprocess p_p_to_z_j_j_4,
+  ! flattened as
+  ! [point][particle][E,px,py,pz].
   momenta = [ &
       500.0_c_double, 0.0_c_double, 0.0_c_double, 500.0_c_double, &
       500.0_c_double, 0.0_c_double, 0.0_c_double, -500.0_c_double, &
-      504.157625672_c_double, -304.1084262865_c_double, &
-      208.76026523528103_c_double, 331.35611794513767_c_double, &
-      495.842374328_c_double, 304.1084262865_c_double, &
-      -208.76026523528103_c_double, -331.35611794513767_c_double ]
+      462.6501613061637_c_double, 14.340107538562991_c_double, &
+      155.76435943335707_c_double, -425.7484539710246_c_double, &
+      369.7738416261408_c_double, -17.479290785282917_c_double, &
+      2.0064955613504103_c_double, 369.3550355960509_c_double, &
+      167.57599706769557_c_double, 3.1391832467199254_c_double, &
+      -157.77085499470743_c_double, 56.3934183749737_c_double ]
 
   call runtime%evaluate(momenta, 1_c_size_t, totals)
   call runtime%evaluate_resolved(momenta, 1_c_size_t, resolved)

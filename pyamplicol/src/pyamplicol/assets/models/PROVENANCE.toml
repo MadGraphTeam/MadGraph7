@@ -101,13 +101,13 @@ authorized_by = "docs/development/MODEL_ASSET_PROVENANCE.md#before-extraction"
 
 [[transformations]]
 id = "loader-restriction-card-v1"
-description = "Load the matching sanitized UFO restriction with simplify=True and serialize its input card with ufo-model-loader 0.1.7 JSONLook.VERBOSE"
+description = "Parse every external parameter from the matching sanitized UFO restriction card and serialize the complete card, including explicit zeros, with ufo-model-loader 0.1.7 JSONLook.VERBOSE"
 authorized_by = "docs/development/MODEL_ASSET_PROVENANCE.md#before-extraction"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/scalar_gravity/restrict_default.json"
-package_sha256 = "3f6727778bce0d2f5b5c9f4f8efba221b1b4753a0c87ffbed2d2af737cfe12a7"
-package_size = 269
+package_sha256 = "78e536276cfa98a854ea9b418a6de9437da1e21ea258fcc57ba2b20a6a691900"
+package_size = 357
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/scalar_gravity/restrict_default.json"
@@ -117,7 +117,7 @@ source_sha256 = "78e536276cfa98a854ea9b418a6de9437da1e21ea258fcc57ba2b20a6a69190
 license_ids = [ "0BSD", "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/scalar_gravity/restrict_default.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/scalar_gravity/restrict_default.dat"
 
 [[files]]
@@ -138,8 +138,8 @@ generated_from = "ufo/scalar_gravity"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/scalars/restrict_default.json"
-package_sha256 = "c6e4e1a68af965f0def35957507f0a5f51c62e8388058128cd667ca75632d73b"
-package_size = 234
+package_sha256 = "ffe7759b8efcc86e6d12d3797c2e63a91c18c07de1bace6a51ee02144ecbf218"
+package_size = 322
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/scalars/restrict_default.json"
@@ -149,7 +149,7 @@ source_sha256 = "31e30e8bdbdaf4753e361269fcd0294f7d7c82956c0afe66052dd527aa4b864
 license_ids = [ "0BSD", "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/scalars/restrict_default.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/scalars/restrict_default.dat"
 
 [[files]]
@@ -187,8 +187,8 @@ frozen_options = "N_SCALARS=3; N_POINT_INTERACTIONS=[2,3]"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_c_mass.json"
-package_sha256 = "b737d049dbf0d87f78d63f59f2cf4d00a4df0491fe3bc8383e00245bd89010be"
-package_size = 606
+package_sha256 = "014e93a779812d9af1d3886143cebc8fd911e92f5f970aee4dfffe01429651f5"
+package_size = 908
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_c_mass.json"
@@ -198,13 +198,13 @@ source_sha256 = "6b191f6d0c45a6e91ea867079b1095e37fc4882df1c1380e70312890959dc7a
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_c_mass.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_c_mass.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_ckm.json"
-package_sha256 = "a37646ed851f5a19b776551e14277d500e72b5847e7246b03d0cccfca46727f1"
-package_size = 686
+package_sha256 = "be8bdca54507167d8ae4b33d0b0b77808052cd841d6fabd26a3d99926d915b99"
+package_size = 915
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_ckm.json"
@@ -214,13 +214,13 @@ source_sha256 = "57f3ffbd0a0784d433bb9b01211299f29dde1ddd0182ee0b1e4a87dc3f2b5c7
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_ckm.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_ckm.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_default.json"
-package_sha256 = "db7492a4f219c6b54126a0f61d1cd4e1f06ea68d127808e2e3ddfdc721440433"
-package_size = 539
+package_sha256 = "8fdd48a3624620c1a15bab602f43a41519038cf69d8fef6aeaaaf13a3f1846c1"
+package_size = 906
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_default.json"
@@ -230,13 +230,13 @@ source_sha256 = "9d357d17c254595dbf612b66d6b531c982eefb71432835360bbfd8b21dcf454
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_default.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_default.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_lepton_masses.json"
-package_sha256 = "7cd99a9f36acefbc52d2cb2891e487ab3900a64cdf1ac9036eee32ba4b0853af"
-package_size = 726
+package_sha256 = "3d9fe3095907cef03f889bd95b9630a2f836d70244f1b450cfd5d2764913531b"
+package_size = 929
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_lepton_masses.json"
@@ -246,13 +246,13 @@ source_sha256 = "a22a9de56e536cd7c4e4bd4707f5f95d3255fb0dffd49d9567ec9a659576bb7
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_lepton_masses.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_lepton_masses.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_no_b_mass.json"
-package_sha256 = "f951a911a8865eab48bb8dc29913e6e217e6cb0dd1a5f39af9371eaf2555025b"
-package_size = 474
+package_sha256 = "82d2fbc06f9d0b7daaed56673912d920ca459f435e9083deed2f4b716c2f4a30"
+package_size = 906
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_no_b_mass.json"
@@ -262,13 +262,13 @@ source_sha256 = "2ca10cc1e02b34f226db983da9a787659257003e6d84001204389e8aef03dfa
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_no_b_mass.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_no_b_mass.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_no_masses.json"
-package_sha256 = "98787774b557d07a53efeffb0f29f8bcb9ab7e16c95299f3a0b82057ca209fd8"
-package_size = 402
+package_sha256 = "f925921df1b66f010cd6f8cd348b5f4728ba37678e0733d8618cef3f2b4e610e"
+package_size = 902
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_no_masses.json"
@@ -278,13 +278,13 @@ source_sha256 = "9bc6bba7b940da83484e5f43346ba202333669aaca578dfa110ed3fbc17514b
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_no_masses.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_no_masses.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_no_tau_mass.json"
-package_sha256 = "01c0f44c3c20f67cf3498595ebe5ec82a5813980abab4212e2ce9b2c2067b11d"
-package_size = 467
+package_sha256 = "a26603f4f3572309dc7ce2f23295d5a8aec61d2f3c42a017341245e459648478"
+package_size = 902
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_no_tau_mass.json"
@@ -294,13 +294,13 @@ source_sha256 = "7560d6890d7cd26532f28865fb8f4092ffcbf49c54fa7a16e921e6b08c3f43e
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_no_tau_mass.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_no_tau_mass.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_no_widths.json"
-package_sha256 = "79809b61aaf16b63ee6f78ffb240762cd514a046beef948e7ee82fbf9080d4a8"
-package_size = 390
+package_sha256 = "fdc03507f82a3d98571b97ba0ab34f712dc0eb02b101f8308b96c6ab8490c08c"
+package_size = 885
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_no_widths.json"
@@ -310,13 +310,13 @@ source_sha256 = "9002d18be203c34418a3966f7cedc5d20844c317c55906efca32f51a38f1f18
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_no_widths.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_no_widths.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/restrict_zeromass_ckm.json"
-package_sha256 = "c81fcdae5e6556ac97f66d1073ab0e94132334982b8c0d0eca8f03ca6a118e63"
-package_size = 549
+package_sha256 = "b8b4376c82f9486266283a383a0347ec42498296180d92249e2e7a772e1a7e1a"
+package_size = 911
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/restrict_zeromass_ckm.json"
@@ -326,7 +326,7 @@ source_sha256 = "2173adc123ef202816d56e20772747f8a513ce9294635e099fdbe4832329944
 license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "loader-restriction-card-v1"
 upstream_distribution_path = "assets/models/json/sm/restrict_zeromass_ckm.json"
-upstream_exact_blob_match = true
+upstream_exact_blob_match = false
 generated_from = "ufo/sm/restrict_zeromass_ckm.dat"
 
 [[files]]
@@ -1122,7 +1122,7 @@ root = "pyAmpliCol/src/pyamplicol/assets/models"
 distribution = "ufo-model-loader"
 version = "0.1.7"
 repository = "https://github.com/alphal00p/ufo_model_loader.git"
-revision = "9cb4deeae40ddd64184049af07ac1d03ce5f6162"
+revision = "f3fda32c5e6a673075c345d74a11f12b83c00015"
 license_id = "MIT"
 serialization = "JSONLook.VERBOSE"
 
@@ -1130,6 +1130,6 @@ serialization = "JSONLook.VERBOSE"
 repository = "https://github.com/alphal00p/gammaloop.git"
 revision = "db79edc84f6a1580decbcc4ede7ea0b1c79d9a08"
 root = "assets/models"
-baseline_exact_blob_matches = 39
-baseline_nonmatching_blobs = 27
+baseline_exact_blob_matches = 28
+baseline_nonmatching_blobs = 38
 interpretation = "Exactness is asserted per file below; all primary source identities remain the AmpliCol baseline Git objects"

@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from .compiler_contact_trees import eager_color_singlet_vertex_term_components
-from .compiler_entry import compile_builtin_model_ir, compile_ufo_model_ir
+from .compiler_entry import compile_ufo_model_ir
 from .compiler_kernels import (
     _as_expression as _as_expression,
 )
@@ -29,6 +31,13 @@ from .contracts import (
 from .contracts import (
     CompiledOrientedKernel as CompiledOrientedKernel,
 )
+
+
+def compile_builtin_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
+    """Compile the built-in model without loading it on external-model imports."""
+    from .builtin.compiler import compile_model_ir
+
+    return compile_model_ir(model)
 
 __all__ = [
     "CompiledCouplingOrder",

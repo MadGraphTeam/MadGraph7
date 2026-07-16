@@ -45,7 +45,6 @@ class SymbolicaEvaluatorSettings:
     max_common_pair_cache_entries: int = 5000000
     max_common_pair_distance: int = 1000
     collect_factors: bool = False
-    compiled_preset: str = "adaptive"
     compiled_inline_asm: str = "default"
     compiled_optimization_level: int = 3
     compiled_native: bool = True
@@ -66,18 +65,6 @@ class SymbolicaEvaluatorSettings:
         if self.backend not in ("jit", "compiled-complex"):
             raise NativeEvaluationError(
                 "symbolica evaluator backend must be 'jit' or 'compiled-complex'"
-            )
-        if self.compiled_preset not in (
-            "manual",
-            "adaptive",
-            "generation",
-            "balanced",
-            "runtime",
-            "runtime-o3",
-        ):
-            raise NativeEvaluationError(
-                "symbolica compiled preset must be 'manual', 'adaptive', "
-                "'generation', 'balanced', 'runtime', or 'runtime-o3'"
             )
         if self.iterations < 1:
             raise NativeEvaluationError("symbolica iterations must be positive")
@@ -146,7 +133,6 @@ class SymbolicaEvaluatorSettings:
             "max_common_pair_cache_entries": self.max_common_pair_cache_entries,
             "max_common_pair_distance": self.max_common_pair_distance,
             "collect_factors": self.collect_factors,
-            "compiled_preset": self.compiled_preset,
             "compiled_inline_asm": self.compiled_inline_asm,
             "compiled_optimization_level": self.compiled_optimization_level,
             "compiled_native": self.compiled_native,

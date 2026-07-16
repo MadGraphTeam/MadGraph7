@@ -68,8 +68,9 @@ def test_copied_card_rebases_relative_paths_to_user_directory(tmp_path: Path) ->
     shutil.copy2(source, copied)
 
     config = parse_cli((str(copied),)).resolve().effective
-    assert config.evaluation.artifact == (tmp_path / "artifacts/builtin_sm_lc")
-    assert config.evaluation.momenta == (tmp_path / "data/ddbar_zg_momenta.json")
+    assert config.evaluation.artifact == (tmp_path / "artifacts/pp_zjj")
+    assert config.evaluation.process == "p_p_to_z_j_j_4"
+    assert config.evaluation.momenta == (tmp_path / "data/pp_zjj_momenta.json")
     assert config.evaluation.model_parameters == (
         tmp_path / "data/model_parameters.json"
     )
@@ -81,16 +82,20 @@ def test_direct_cli_example_resolves_process_set_and_ordered_override(
     invocation = parse_cli(
         (
             "generate",
-            "d d~ > z g",
-            str(tmp_path / "mixed"),
-            "--process",
-            "d d~ > z g g",
-            "--name",
-            "ddbar_zg",
-            "--name",
-            "ddbar_zgg",
-            "--color-accuracy",
-            "nlc",
+            "p p > Z j j",
+            str(tmp_path / "pp_zjj"),
+            "--model",
+            str(tmp_path / "models/json/sm/sm.json"),
+            "--restriction",
+            "default",
+            "--multiparticle",
+            "p=d,d~,g",
+            "--multiparticle",
+            "j=d,d~,g",
+            "--flavor-scheme",
+            "2",
+            "--max-quark-lines",
+            "2",
             "--workers",
             "4",
             "--set",
@@ -98,11 +103,15 @@ def test_direct_cli_example_resolves_process_set_and_ordered_override(
         )
     )
     config = invocation.resolve().effective
-    assert config.process.entries == (
-        ProcessEntry("d d~ > z g", "ddbar_zg"),
-        ProcessEntry("d d~ > z g g", "ddbar_zgg"),
-    )
-    assert config.color.accuracy == "nlc"
+    assert config.process.entries == (ProcessEntry("p p > Z j j"),)
+    assert config.process.multiparticles == {
+        "p": ("d", "d~", "g"),
+        "j": ("d", "d~", "g"),
+    }
+    assert config.process.flavor_scheme == 2
+    assert config.process.max_quark_lines == 2
+    assert config.model.restriction == "default"
+    assert config.color.accuracy == "lc"
     assert config.generation.workers == 2
 
 

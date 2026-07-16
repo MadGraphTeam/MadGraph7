@@ -205,6 +205,10 @@ license = "MIT"
 direct = true
 dependencies = ["symbolica"]
 
+  [[packages.artifacts]]
+  filename = "ufo_model_loader-0.1.7-py3-none-any.whl"
+  sha256 = "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
+
 [[packages]]
 distribution = "wcwidth"
 version = "0.8.2"

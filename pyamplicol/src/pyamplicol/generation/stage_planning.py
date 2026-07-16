@@ -58,7 +58,6 @@ def build_generic_stage_compiler_blueprint(
     stage output slots in terms of stable value-slot identifiers.
     """
 
-    selected_model = model or _manifest_model(manifest)
     dag = manifest.dag if isinstance(manifest, StageCompilationInput) else manifest
     if (
         isinstance(manifest, StageCompilationInput)
@@ -84,6 +83,7 @@ def build_generic_stage_compiler_blueprint(
         raise ValueError(
             "GenericDAG stage compilation requires an explicit runtime schema"
         )
+    selected_model = model or _manifest_model(manifest)
     parameter_layout = _dict(schema["parameter_layout"])
     global_value_component_count = int(parameter_layout["value_component_count"])
     global_momentum_parameter_count = int(parameter_layout["momentum_parameter_count"])

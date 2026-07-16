@@ -2,6 +2,21 @@
   "$schema": "report-cache.schema.json",
   "benchmark_contract": {
     "batch_size": 128,
+    "config_overrides": {
+      "benchmark.batch_size": 128,
+      "benchmark.minimum_samples": 5,
+      "benchmark.target_runtime": 10.0,
+      "benchmark.warmup_runs": 2,
+      "evaluator.backend": "jit",
+      "evaluator.batch_size": 128,
+      "evaluator.jit.optimization_level": 3,
+      "evaluator.optimization.cpe_iterations": null,
+      "evaluator.optimization.horner_iterations": 10,
+      "evaluator.optimization.max_common_pair_cache_entries": 5000000,
+      "evaluator.optimization.max_common_pair_distance": 1000,
+      "evaluator.optimization.max_horner_variables": 1000,
+      "evaluator.output_chunk_size": 128
+    },
     "minimum_samples": 5,
     "observable": "summed_matrix_element",
     "runtime_api": "Runtime.evaluate",
@@ -88,7 +103,7 @@
     4
   ],
   "multiplicity_convention": "final_state",
-  "process_family": "scalar_0 scalar_0 > n graviton",
+  "process_family": "scalar_0 scalar_0 > X*graviton",
   "report_version": "0.1.0",
   "schema_version": 1,
   "spdx_license_identifier": "0BSD",

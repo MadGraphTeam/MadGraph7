@@ -80,12 +80,23 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
         payload = _read_toml(EXAMPLES / name)
         assert payload["model"] == {"source": "built-in-sm"}
         assert payload["color"]["accuracy"] == accuracy  # type: ignore[index]
+        assert payload["process"]["entries"][0]["expression"] == "u u~ > g g"  # type: ignore[index]
 
     process_set = resolve_config(EXAMPLES / "process_set_mixed_multiplicity.toml")
     assert process_set.effective.process.entries == (
-        ProcessEntry("d d~ > z g", "ddbar_zg"),
-        ProcessEntry("d d~ > z g g", "ddbar_zgg"),
+        ProcessEntry("u u~ > Z g", "uubar_Zg"),
+        ProcessEntry("u u~ > Z g g", "uubar_Zgg"),
     )
+
+    primary = resolve_config(EXAMPLES / "external_json_sm.toml").effective
+    assert primary.process.entries == (ProcessEntry("p p > Z j j"),)
+    assert primary.process.multiparticles == {
+        "p": ("d", "d~", "g"),
+        "j": ("d", "d~", "g"),
+    }
+    assert primary.process.flavor_scheme == 2
+    assert primary.model.restriction == "default"
+    assert primary.generation.output == EXAMPLES / "artifacts/pp_zjj"
 
     external_sources = {
         "external_ufo_sm.toml": "models/ufo/sm",
@@ -106,16 +117,17 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     resolved = resolve_config(EXAMPLES / "evaluate_resolved.toml").effective
     assert not total.evaluation.resolved
     assert resolved.evaluation.resolved
+    assert total.evaluation.process == resolved.evaluation.process == "p_p_to_z_j_j_4"
     assert resolve_config(EXAMPLES / "benchmark.toml").effective.action == "benchmark"
 
 
 def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:
     momenta = json.loads(
-        (EXAMPLES / "data/ddbar_zg_momenta.json").read_text(encoding="utf-8")
+        (EXAMPLES / "data/pp_zjj_momenta.json").read_text(encoding="utf-8")
     )
     assert isinstance(momenta, list) and momenta
     for point in momenta:
-        assert isinstance(point, list) and len(point) == 4
+        assert isinstance(point, list) and len(point) == 5
         for particle in point:
             assert isinstance(particle, list) and len(particle) == 4
             assert all(
@@ -124,14 +136,18 @@ def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:
                 and math.isfinite(component)
                 for component in particle
             )
+        incoming = [
+            sum(particle[index] for particle in point[:2]) for index in range(4)
+        ]
+        outgoing = [
+            sum(particle[index] for particle in point[2:]) for index in range(4)
+        ]
+        assert incoming == pytest.approx(outgoing, rel=1e-13, abs=1e-13)
 
     parameters = json.loads(
         (EXAMPLES / "data/model_parameters.json").read_text(encoding="utf-8")
     )
-    assert set(parameters) == {
-        "normalization.alpha_ew",
-        "normalization.alpha_s_me_check",
-    }
+    assert set(parameters) == {"aS", "MZ"}
     assert all(
         isinstance(value, (int, float))
         and not isinstance(value, bool)
@@ -172,20 +188,34 @@ def test_native_examples_use_installed_sdk_discovery_and_public_wrappers() -> No
 
     for option in ("--cflags", "--libs", "--fortran-source"):
         assert f"$(RUSTICOL_CONFIG) {option}" in makefile
-    assert "CXX = c++" in makefile
-    assert "FC = gfortran" in makefile
+    assert "CXX ?= c++" in makefile
+    assert "FC ?= gfortran" in makefile
     assert "$(RUSTICOL_CONFIG) --library" not in makefile
     assert "rusticol::Runtime" in cpp
     assert ".evaluate_resolved(" in cpp
     assert "set_model_parameters_json" in cpp
-    assert 'set_model_parameter("normalization.alpha_s_me_check"' in cpp
+    assert 'set_model_parameter("aS"' in cpp
+    assert "p_p_to_z_j_j_4" in cpp
     assert "use rusticol, only: rusticol_runtime" in fortran
     assert "runtime%evaluate_resolved" in fortran
     assert "model_parameters=trim(parameters)" in fortran
     assert "runtime%set_model_parameter" in fortran
-    assert '"normalization.alpha_s_me_check"' in fortran
-    assert '"alpha_s"' not in cpp
-    assert '"alpha_s"' not in fortran
+    assert '"aS"' in fortran
+    assert "p_p_to_z_j_j_4" in fortran
+    assert "momenta(20)" in fortran
+
+    generated_rust = (
+        ROOT / "src/pyamplicol/assets/api_templates/rust/check_standalone.rs"
+    ).read_text(encoding="utf-8")
+    generated_makefile = (
+        ROOT / "src/pyamplicol/assets/api_templates/rust/Makefile"
+    ).read_text(encoding="utf-8")
+    assert 'include!(env!("RUSTICOL_RUST_SOURCE"))' in generated_rust
+    assert "Runtime::load" in generated_rust
+    assert "rusticol_runtime_" not in generated_rust
+    assert "unsafe" not in generated_rust
+    assert "the Rust Rusticol API supports only double precision" in generated_rust
+    assert "$(RUSTICOL_CONFIG) --rustflags" in generated_makefile
 
     combined = "\n".join((makefile, cpp, fortran))
     assert "src/pyamplicol" not in combined
@@ -196,14 +226,39 @@ def test_readme_states_current_release_boundary_and_available_utilities() -> Non
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     status = (ROOT / "docs/user/release-status.md").read_text(encoding="utf-8")
     assert "pyamplicol==0.1.0` is not published yet" in readme
-    assert "schema-v3 generation" in readme
-    assert "root `API/` bundle" in readme
-    assert "Python-to-Rusticol runtime adapter" in readme
+    assert "p p > Z j j" in readme
+    assert "p_p_to_z_j_j_4" in readme
+    assert "rust/check_standalone.rs" in readme
+    assert "aS" in readme and "MZ" in readme
     for command in ("examples", "config", "doctor", "self-test"):
         assert command in status
         assert command in readme
-    assert "Transactional schema-v3 generation" in status
-    assert "lazy Python-to-Rusticol adapter" in status
-    assert "generated root `API/` bundle is not emitted" not in status
-    assert "GenerationBackend.generate()` raises" not in status
-    assert "artifact writing is not integrated" not in readme
+    assert "transactional schema-v3 generation" in status
+    assert "dependency-free Rust 2021" in status
+
+
+def test_user_docs_and_examples_exclude_retired_workflows() -> None:
+    sources = [
+        ROOT / "README.md",
+        *sorted((ROOT / "docs/user").glob("*.md")),
+        ROOT / "docs/development/PACKAGING_CONTRACT.md",
+        ROOT / "docs/development/ARCHITECTURE_DECISIONS.md",
+        *sorted(EXAMPLES.rglob("*.md")),
+        *sorted(EXAMPLES.rglob("*.toml")),
+        *sorted(EXAMPLES.rglob("*.py")),
+        *sorted(EXAMPLES.rglob("*.cpp")),
+        *sorted(EXAMPLES.rglob("*.f90")),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in sources)
+    for retired in (
+        "ddbar_zg",
+        "normalization.alpha_s_me_check",
+        "CycloneDX",
+        "SBOM",
+        "RECORD signatures",
+        "signed source tag",
+        "parent repository",
+        "parent workspace",
+        "parent project",
+    ):
+        assert retired not in combined

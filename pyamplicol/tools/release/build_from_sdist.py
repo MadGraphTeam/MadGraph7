@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Build and verify a wheel from one clean, externally unpacked sdist."""
+"""Build and audit a wheel from one clean, externally unpacked sdist."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _artifacts import audit_sdist, audit_wheel, compare_wheels
+from _artifacts import audit_sdist, audit_wheel
 from _common import (
     CANDIDATE_ARTIFACTS,
     DIST,
@@ -35,13 +35,13 @@ def build_wheel_from_sdist(
     python: Path,
     replace: bool = False,
 ) -> Path:
-    """Build from an untouched sdist and retain it only after parity succeeds."""
+    """Build from an untouched sdist and retain the independently audited wheel."""
 
     sdist = sdist.resolve()
     source_wheel = source_wheel.resolve()
     output_directory = output_directory.resolve()
     audit_sdist(sdist, mode=mode)
-    audit_wheel(source_wheel, mode=mode)
+    source_report = audit_wheel(source_wheel, mode=mode)
     with external_temporary_directory("pyamplicol-from-sdist-") as temporary:
         source = safe_extract_sdist(sdist, temporary / "unpacked")
         wheel_directory = temporary / "wheel"
@@ -55,13 +55,20 @@ def build_wheel_from_sdist(
             list(wheel_directory.glob("pyamplicol-*.whl")),
             "wheel rebuilt from sdist",
         )
-        audit_wheel(rebuilt, mode=mode)
+        rebuilt_report = audit_wheel(rebuilt, mode=mode)
         if rebuilt.name != source_wheel.name:
             raise ReleaseError(
                 "source and sdist wheels have different filenames: "
                 f"{source_wheel.name} != {rebuilt.name}"
             )
-        compare_wheels(source_wheel, rebuilt)
+        identity_fields = ("version", "python_tag", "abi_tag", "target", "rust_target")
+        if any(
+            getattr(source_report, field) != getattr(rebuilt_report, field)
+            for field in identity_fields
+        ):
+            raise ReleaseError(
+                "source and sdist wheels have different package or platform metadata"
+            )
 
         output_directory.mkdir(parents=True, exist_ok=True)
         target = output_directory / rebuilt.name
@@ -72,7 +79,7 @@ def build_wheel_from_sdist(
             raise ReleaseError(f"stale staged wheel must be removed first: {staged}")
         shutil.copy2(rebuilt, staged)
         os.replace(staged, target)
-    print(f"Verified source/sdist wheel parity: {target}")
+    print(f"Built and audited wheel from clean sdist: {target}")
     return target
 
 

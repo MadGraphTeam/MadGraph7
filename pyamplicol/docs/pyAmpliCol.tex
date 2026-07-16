@@ -90,7 +90,7 @@ through the Rusticol runtime. The Python layer resolves models and processes,
 constructs a shared-current directed acyclic graph (DAG), lowers bounded stages
 to Symbolica evaluators, and writes a schema-v3 process artifact. The runtime
 loads that artifact and provides summed and resolved evaluation through one
-physics contract to Python, C++17, and Fortran 2008 clients.
+physics contract to Python, Rust 2021, C++17, and Fortran 2008 clients.
 
 The report has three purposes:
 \begin{enumerate}
@@ -134,6 +134,16 @@ interactions, coupling orders, Lorentz tensors, colour tensors, propagators,
 and runtime parameters come from that representation. UFO directories contain
 trusted executable Python; serialized JSON is the portable data-only source.
 
+Optimizations on the external-model path are proof-gated rather than selected
+by particle names or PDG values. Exact normalized colour and Lorentz
+expressions, propagator metadata, and coupling relations certify current
+reflection, helicity, and reusable-kernel identities. For overlapping
+Standard-Model validation processes, the resulting current, interaction,
+amplitude-root, and colour-sector counts must match the built-in compatibility
+model after applying the same independently inferred perturbative-order
+envelope. An external compiler may retain fewer evaluator calls only when an
+additional exact kernel-equivalence certificate proves that reuse.
+
 \subsection{Contact terms and spin two}
 
 A vertex with valence above three is lowered to a deterministic tree of
@@ -176,10 +186,10 @@ layout. A separately generated reference is required for an independent
 physics comparison.
 
 The default JIT artifact embeds a self-contained SymJIT application for f64
-evaluation. Rusticol executes that payload without importing Symbolica or
-requiring a Symbolica license after generation. Higher-precision Python
-evaluation and artifacts generated with the ASM or C++ evaluator backends
-retain an explicit Symbolica runtime capability.
+evaluation. Rusticol executes that payload through the separate MIT-licensed
+SymJIT runtime without importing Symbolica or consulting its runtime license
+state. Higher-precision Python evaluation and artifacts generated with the ASM
+or C++ evaluator backends retain an explicit Symbolica runtime capability.
 
 \section{Benchmark Methodology}
 
@@ -187,9 +197,13 @@ retain an explicit Symbolica runtime capability.
 
 Each measurement begins from an immutable resolved configuration. Unless a
 table variant says otherwise, the report contract uses the release defaults:
-JIT O3, evaluator batch size 128, output chunk size 128, stage-local parameter
-layout, ten Horner iterations, backend-default common-pair elimination, a
-ten-second benchmark target, two warmup runs, and at least five timed samples.
+requested SymJIT optimization level 3, evaluator batch size 128, output chunk size
+128, stage-local parameter layout, ten Horner iterations, backend-default
+common-pair elimination, a ten-second benchmark target, two warmup runs, and at
+least five timed samples. The process matrices always record requested level 3 in
+their machine-readable benchmark contract; only explicitly labelled comparison
+rows, such as JIT level 1 in the dedicated $Z$ ladder, override it. SymJIT may
+apply its documented backend fallback independently of the requested level.
 Requested and effective configurations are stored separately so resource or
 license adjustments remain visible.
 
@@ -221,7 +235,7 @@ No timing is accepted as a numerical validation result. Conversely, a valid
 matrix element does not populate generation or runtime fields without a
 matching timing run.
 
-\subsection{Publication workflow}
+\paragraph{Publication workflow.}
 
 The report service validates all cache entries, renders every table in a
 staging directory, optionally compiles the PDF there, and publishes the JSON,
@@ -277,7 +291,7 @@ requested physics.
 \section{Z-plus-Jets Evaluator Ladders}
 
 The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
-with JIT O1, JIT O3, ASM O3, and C++ O3 evaluator configurations. They retain
+with JIT level 1, JIT level 3, ASM O3, and C++ O3 evaluator configurations. They retain
 final-state multiplicities $n=1,\ldots,9$ for the built-in model and
 $n=1,\ldots,6$ for the external-model campaign. Variant overrides are stored
 as typed dotted configuration paths in the cache rather than inferred from

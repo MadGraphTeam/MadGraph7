@@ -2,9 +2,9 @@
 
 # Installation
 
-## Released Binary Wheel
+## Binary Wheel
 
-After `0.1.0` is published, the normal installation is:
+After `0.1.0` is published, install the release with:
 
 ```console
 python -m venv .venv
@@ -12,11 +12,16 @@ python -m venv .venv
 python -m pip install pyamplicol
 ```
 
-The planned wheels support Python 3.11 and newer through the `cp311-abi3` ABI
-on macOS arm64, macOS x86_64, and manylinux x86_64. A binary-wheel install does
-not require Rust. `pyamplicol==0.1.0` is not published at this milestone.
+The planned `cp311-abi3` wheels support Python 3.11 and newer on macOS arm64,
+macOS x86_64, and manylinux x86_64. Wheel users do not need Rust. A C++ or
+Fortran compiler is needed only when compiling a native consumer against the
+included Rusticol SDK.
 
-## Direct Source Install
+`pyamplicol==0.1.0` is not published at this milestone. See
+[Release Status](release-status.md) before treating a locally built artifact
+as a release.
+
+## Source Install
 
 ```console
 git clone https://github.com/mg5amcnlo/pyamplicol.git
@@ -24,52 +29,80 @@ cd pyamplicol
 python -m pip install .
 ```
 
-This invokes the same PEP 517 backend used for release artifacts and consumes
-published dependencies only. It requires Python 3.11+, Rust 1.89+, and a C/C++
-toolchain. Strict release mode currently fails closed while exact dependency
-releases, artifact hashes, or platform targets are unverified; it does not
-silently use a developer checkout.
+This runs the same in-tree PEP 517/Maturin backend used for release artifacts
+and resolves published dependencies only. It requires Python 3.11+, Rust 1.89+
+and a C/C++ toolchain. The build checks the release dependency contract and
+fails clearly if a required published version or compatibility state is not
+ready; it does not substitute contributor inputs.
 
-## Retained Wheel
+An unpacked release source distribution supports the same command:
+
+```console
+python -m pip download --no-binary pyamplicol pyamplicol
+tar -xf pyamplicol-0.1.0.tar.gz
+cd pyamplicol-0.1.0
+python -m pip install .
+```
+
+The source distribution contains the build backend, locked Rust workspace,
+tests, docs, examples, and release tooling required for this build. Candidate
+dependency setup is intentionally source-checkout-only and is not distributed.
+
+## Retained Local Wheel
 
 ```console
 just wheel
 python -m pip install dist/pyamplicol-*.whl
 ```
 
-To select an interpreter and let the recipe build a wheel when necessary:
+To select an interpreter and build a matching wheel when necessary:
 
 ```console
 just install-wheel PYTHON=/path/to/python
 ```
 
-The static Rusticol SDK is staged only into a built wheel. Running
-`rusticol-config` directly from an unstaged source tree reports that the SDK is
-unavailable.
+The wheel owns the Python extension and target-specific static SDK. Running
+`rusticol-config` from an unstaged source tree therefore reports that the SDK
+is unavailable.
 
-## Contributor Candidate
+Useful release-equivalent checks are:
+
+```console
+just check
+just test
+just sdist
+just wheel-from-sdist
+just test-deployment
+just publish-dry-run
+```
+
+`publish-dry-run` builds and checks ordinary Python package files, performs
+platform and clean-install smoke tests, and prints the upload command without
+publishing.
+
+## Contributor Environment
+
+While exact release dependencies are gated, prepare the isolated managed
+environment with:
 
 ```console
 just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
 
-`dev-install` creates the managed `.venv`, checks out immutable candidate
-revisions, verifies and applies checked patches, and builds candidate inputs.
-Use `--without-legacy-amplicol` when the independent Fortran reference is not
-needed. Candidate artifacts record their provenance and are not publishable.
-
-Generation, Python runtime loading, and benchmarking are integrated in
-candidate environments. Installed-wheel deployment validation remains
-incomplete; check [Release Status](release-status.md) before treating a
-candidate wheel as a release artifact.
-
-Useful inventory:
+This mode uses pinned candidate dependency inputs and marks its wheels
+non-publishable. To omit the optional independent legacy-Fortran oracle:
 
 ```console
-just --list
-python dependencies/install_dependencies.py --dry-run --without-legacy-amplicol
+python dependencies/install_dependencies.py --without-legacy-amplicol
+PYTHON=.venv/bin/python PYAMPLICOL_BUILD_MODE=candidate just source-gate
 ```
 
-Do not set `PYTHONPATH` to the parent project or rely on an editable install
-when validating release behavior.
+Contributor-only dependency setup is excluded from release package files.
+Release builds remain governed by `dependencies/release-lock.toml`; candidate
+state is not a fallback for `python -m pip install .`, `just wheel`, or
+`just test-deployment`.
+
+Use `just --list` for the complete recipe inventory. Validation should run in
+the managed environment without an inherited `PYTHONPATH` or an editable
+installation from another checkout.

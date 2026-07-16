@@ -28,9 +28,8 @@ from pyamplicol.reporting import (
 )
 
 from ..color.plan import build_color_plan
-from ..models import BuiltinSMModel, Model
-from ..processes import ProcessOptions, enumerate_generic_process_set
-from ..processes.ir import CanonicalProcessIR, ProcessLegIR, build_process_ir
+from ..models.base import Model
+from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .artifact_writer import (
     CompiledProcessArtifact,
     _GenerationConfigProvenance,
@@ -59,6 +58,12 @@ if TYPE_CHECKING:
 _ProcessInput = TypeVar("_ProcessInput")
 _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
+
+
+def _builtin_sm_model() -> Model:
+    from ..models import BuiltinSMModel
+
+    return BuiltinSMModel()
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,7 +223,12 @@ class GenerationBackend:
             )
             coverage: list[dict[str, object]] = []
             for entry in expanded:
-                coverage.append(self._plan_concrete_process(entry.process_ir))
+                coverage.append(
+                    self._plan_concrete_process(
+                        entry.process_ir,
+                        model=resolved_model.model,
+                    )
+                )
             result = GenerationPlan(
                 concrete_processes=tuple(entry.request for entry in expanded),
                 estimated_coverage={
@@ -743,7 +753,6 @@ class GenerationBackend:
             max_common_pair_cache_entries=(optimization.max_common_pair_cache_entries),
             max_common_pair_distance=optimization.max_common_pair_distance,
             collect_factors=collect_factors,
-            compiled_preset="generation",
             compiled_inline_asm="default" if backend == "asm" else "none",
             compiled_optimization_level=cpp_level,
             compiled_native=run.evaluator.cpp.native_arch,
@@ -850,12 +859,14 @@ class GenerationBackend:
         return config.generation if isinstance(config, RunConfig) else config
 
     @property
-    def _process_options(self) -> ProcessOptions:
+    def _builtin_process_options(self):
+        from ..models.builtin.process_types import BuiltinProcessOptions
+
         run = self._run_config
         if run is None:
-            return ProcessOptions()
+            return BuiltinProcessOptions()
         max_lines = run.process.max_quark_lines
-        return ProcessOptions(
+        return BuiltinProcessOptions(
             flavour_scheme=run.process.flavor_scheme,
             include_3qqbar=max_lines is None or max_lines >= 3,
         )
@@ -898,12 +909,12 @@ class GenerationBackend:
             is_builtin = self._is_builtin_compiled_model(source)
             return _ResolvedModel(
                 self._source_for_compiled_model(source),
-                BuiltinSMModel() if is_builtin else None,
+                _builtin_sm_model() if is_builtin else None,
                 source,
                 use_compiled_process_catalog=not is_builtin,
             )
         if source.kind == "built-in-sm":
-            return _ResolvedModel(source, BuiltinSMModel())
+            return _ResolvedModel(source, _builtin_sm_model())
         if source.path is None:
             raise ModelError("external model source has no path")
 
@@ -945,7 +956,7 @@ class GenerationBackend:
         is_builtin = self._is_builtin_compiled_model(compiled)
         return _ResolvedModel(
             source,
-            BuiltinSMModel() if is_builtin else None,
+            _builtin_sm_model() if is_builtin else None,
             compiled,
             use_compiled_process_catalog=not is_builtin,
         )
@@ -966,7 +977,7 @@ class GenerationBackend:
             if self._is_builtin_compiled_model(source):
                 return _ResolvedModel(
                     self._source_for_compiled_model(source),
-                    BuiltinSMModel(),
+                    _builtin_sm_model(),
                     source,
                     use_compiled_process_catalog=False,
                 )
@@ -979,7 +990,7 @@ class GenerationBackend:
                 source,
             )
         if source.kind == "built-in-sm":
-            return _ResolvedModel(source, BuiltinSMModel())
+            return _ResolvedModel(source, _builtin_sm_model())
         if source.path is None:
             raise ModelError("external model source has no path")
         from ..models.external import CompiledUFOModel
@@ -1008,7 +1019,7 @@ class GenerationBackend:
         if self._is_builtin_compiled_model(compiled):
             return _ResolvedModel(
                 source,
-                BuiltinSMModel(),
+                _builtin_sm_model(),
                 compiled,
                 use_compiled_process_catalog=False,
             )
@@ -1023,16 +1034,21 @@ class GenerationBackend:
             resolved_model.compiled is None
             or not resolved_model.use_compiled_process_catalog
         ):
+            from ..models.builtin.process_ir import build_process_ir
+            from ..models.builtin.process_selection import (
+                enumerate_generic_process_set,
+            )
+
             enumeration = enumerate_generic_process_set(
                 request.expression,
-                self._process_options,
+                self._builtin_process_options,
                 max_quark_pairs=self._max_quark_pairs,
             )
             return tuple(
                 build_process_ir(
                     entry.process,
                     color_accuracy=self._color_accuracy,
-                    options=self._process_options,
+                    options=self._builtin_process_options,
                 )
                 for entry in enumeration.entries
             )
@@ -1049,7 +1065,7 @@ class GenerationBackend:
         )
         run = self._run_config
         multiparticles = None if run is None else run.process.multiparticles
-        return tuple(
+        candidates = tuple(
             build_model_process_ir(
                 process,
                 resolved_model.compiled.ir,
@@ -1061,15 +1077,31 @@ class GenerationBackend:
                 multiparticles=multiparticles,
             )
         )
+        selected, rejected = _select_color_ready_processes(
+            candidates,
+            color_accuracy=self._color_accuracy,
+        )
+        if not selected:
+            detail = "; ".join(rejected) or "no concrete processes"
+            raise GenerationError(
+                f"process request {request.expression!r} has no usable color plan: "
+                f"{detail}"
+            )
+        return selected
 
     def _plan_concrete_process(
         self,
         process: CanonicalProcessIR,
+        *,
+        model: Model | None,
     ) -> dict[str, object]:
         color_plan = build_color_plan(
             process,
             color_accuracy=self._color_accuracy,
-            options=self._process_options,
+            fold_trace_reflections=(
+                model is not None
+                and model.lc_trace_reflection_equivalence_is_proven(process)
+            ),
         )
         if not color_plan.ready_for_requested_colour:
             detail = "; ".join(color_plan.diagnostics) or "no color sectors"
@@ -1094,7 +1126,9 @@ class GenerationBackend:
         color_plan = build_color_plan(
             process,
             color_accuracy=self._color_accuracy,
-            options=self._process_options,
+            fold_trace_reflections=(
+                model.lc_trace_reflection_equivalence_is_proven(process)
+            ),
         )
         if not color_plan.ready_for_requested_colour:
             detail = "; ".join(color_plan.diagnostics) or "no color sectors"
@@ -1107,16 +1141,12 @@ class GenerationBackend:
             inferred = infer_minimal_coupling_order_limits(
                 process,
                 model=model,
-                color_accuracy=self._color_accuracy,
-                options=self._process_options,
                 max_coupling_orders=limits or None,
             )
             limits = inferred or limits
         dag = compile_generic_dag(
             process,
             model=model,
-            color_accuracy=self._color_accuracy,
-            options=self._process_options,
             max_coupling_orders=limits or None,
             max_quark_pairs=self._max_quark_pairs,
         )
@@ -1149,6 +1179,28 @@ def _runtime_stage_count(schema: RuntimeExpressionSchema) -> int:
     if isinstance(stages, str | bytes) or not isinstance(stages, Sequence):
         raise GenerationError("runtime expression schema stages must be a sequence")
     return len(stages)
+
+
+def _select_color_ready_processes(
+    processes: Sequence[CanonicalProcessIR],
+    *,
+    color_accuracy: str,
+) -> tuple[tuple[CanonicalProcessIR, ...], tuple[str, ...]]:
+    """Drop structurally impossible children of an external multiparticle request."""
+
+    selected: list[CanonicalProcessIR] = []
+    rejected: list[str] = []
+    for process in processes:
+        color_plan = build_color_plan(
+            process,
+            color_accuracy=color_accuracy,
+        )
+        if color_plan.ready_for_requested_colour:
+            selected.append(process)
+            continue
+        detail = "; ".join(color_plan.diagnostics) or "no color sectors"
+        rejected.append(f"{process.process}: {detail}")
+    return tuple(selected), tuple(rejected)
 
 
 def _expanded_name(base: str, index: int, count: int) -> str:

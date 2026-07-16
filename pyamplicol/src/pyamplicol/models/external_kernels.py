@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from .._internal.physics.symbols import symbols
-from .compiler import (
+from .contracts import (
     CompiledOrientedKernel,
 )
 
@@ -160,13 +160,21 @@ class ExternalModelKernelMixin:
         )
         substitutions: dict[_sym.Expression, Any] = {}
         for index, value in enumerate(full_left):
-            substitutions[symbols.kernel_component(kernel.kind, "left", index)] = value
+            substitutions[
+                self._model_symbols.kernel_component(kernel.kind, "left", index)
+            ] = value
         for index, value in enumerate(full_right):
-            substitutions[symbols.kernel_component(kernel.kind, "right", index)] = value
+            substitutions[
+                self._model_symbols.kernel_component(kernel.kind, "right", index)
+            ] = value
         for index, value in enumerate(left_momentum):
-            substitutions[symbols.kernel_momentum(kernel.kind, "left", index)] = value
+            substitutions[
+                self._model_symbols.kernel_momentum(kernel.kind, "left", index)
+            ] = value
         for index, value in enumerate(right_momentum):
-            substitutions[symbols.kernel_momentum(kernel.kind, "right", index)] = value
+            substitutions[
+                self._model_symbols.kernel_momentum(kernel.kind, "right", index)
+            ] = value
         for name, value in parameter_values.items():
             substitutions[symbols.runtime_model_parameter(self.name, name)] = value
         templates = self._kernel_component_expressions(kernel)

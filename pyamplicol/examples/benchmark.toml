@@ -5,9 +5,9 @@ schema_version = 1
 action = "benchmark"
 
 [evaluation]
-artifact = "artifacts/builtin_sm_lc"
-process = "ddbar_zg"
-momenta = "data/ddbar_zg_momenta.json"
+artifact = "artifacts/pp_zjj"
+process = "p_p_to_z_j_j_4"
+momenta = "data/pp_zjj_momenta.json"
 
 [benchmark]
 target_runtime = 1.0

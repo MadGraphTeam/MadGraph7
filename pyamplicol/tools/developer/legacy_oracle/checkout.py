@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Release-lock, Git checkout, patch, and compiler provenance helpers."""
+"""Contributor-lock, Git checkout, and compiler provenance helpers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import tempfile
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -16,8 +15,6 @@ from typing import Any, cast
 
 from .model import (
     LOCK,
-    ROOT,
-    V2_ONLY_LEGACY_PATCHES,
     CompilerProvenance,
     LegacyOracleError,
 )
@@ -47,132 +44,28 @@ def _run(
     return cast(subprocess.CompletedProcess[str], completed)
 
 
-def _release_lock(*, lock_path: Path = LOCK) -> dict[str, Any]:
+def _contributor_lock(*, lock_path: Path = LOCK) -> dict[str, Any]:
     with lock_path.open("rb") as stream:
         return tomllib.load(stream)
 
 
 def expected_revision(*, lock: Mapping[str, Any] | None = None) -> str:
-    release_lock = _release_lock() if lock is None else lock
-    return str(release_lock["legacy_amplicol"]["revision"])
+    contributor = _contributor_lock() if lock is None else lock
+    return str(contributor["legacy_amplicol"]["revision"])
+
+
+def checkout_branch(*, lock: Mapping[str, Any] | None = None) -> str:
+    contributor = _contributor_lock() if lock is None else lock
+    return str(contributor["legacy_amplicol"]["branch"])
 
 
 def checkout_url(*, lock: Mapping[str, Any] | None = None) -> str:
-    release_lock = _release_lock() if lock is None else lock
-    source = str(release_lock["legacy_amplicol"]["source_url"])
+    contributor = _contributor_lock() if lock is None else lock
+    source = str(contributor["legacy_amplicol"]["source_url"])
     prefix = "git@github.com:"
     if source.startswith(prefix):
         return "https://github.com/" + source.removeprefix(prefix)
     return source
-
-
-def managed_patches(
-    *,
-    root: Path = ROOT,
-    lock: Mapping[str, Any] | None = None,
-) -> tuple[Path, ...]:
-    release_lock = _release_lock() if lock is None else lock
-    return tuple(
-        root / "dependencies" / str(entry["path"])
-        for entry in release_lock["patches"]
-        if entry["dependency"] == "legacy-amplicol"
-    )
-
-
-def managed_patch_metadata(
-    *,
-    fixture_schema_version: int | None = None,
-    root: Path = ROOT,
-    lock: Mapping[str, Any] | None = None,
-) -> tuple[dict[str, str], ...]:
-    release_lock = _release_lock() if lock is None else lock
-    records = []
-    for entry in release_lock["patches"]:
-        if entry["dependency"] != "legacy-amplicol":
-            continue
-        if fixture_schema_version == 1 and str(entry["path"]) in V2_ONLY_LEGACY_PATCHES:
-            continue
-        path = root / "dependencies" / str(entry["path"])
-        expected = str(entry["sha256"])
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if actual != expected:
-            raise LegacyOracleError(
-                f"legacy AmpliCol patch digest mismatch for {path.name}: "
-                f"{actual}, expected {expected}"
-            )
-        records.append({"path": str(entry["path"]), "sha256": actual})
-    return tuple(records)
-
-
-def _managed_patch_paths(patches: Sequence[Path]) -> tuple[str, ...]:
-    paths: set[str] = set()
-    for patch in patches:
-        for line in patch.read_text(encoding="utf-8").splitlines():
-            match = re.match(r"^(?:--- a/|\+\+\+ b/)([^\t ]+)", line)
-            if match is not None:
-                paths.add(match.group(1))
-    if not paths:
-        raise LegacyOracleError("managed legacy patch series changes no files")
-    return tuple(sorted(paths))
-
-
-def _validate_exact_patch_state(
-    repository: Path,
-    patches: Sequence[Path],
-    *,
-    subprocess_module: Any = subprocess,
-) -> None:
-    expected_paths = _managed_patch_paths(patches)
-    changed = subprocess_module.run(
-        ["git", "diff", "--name-only", "-z", "HEAD", "--"],
-        cwd=repository,
-        check=True,
-        capture_output=True,
-    ).stdout
-    changed_paths = tuple(
-        sorted(path.decode("utf-8") for path in changed.split(b"\0") if path)
-    )
-    if changed_paths != expected_paths:
-        raise LegacyOracleError(
-            "legacy AmpliCol tracked changes do not exactly match the managed "
-            f"patch inventory: found {changed_paths}, expected {expected_paths}"
-        )
-
-    with tempfile.TemporaryDirectory(prefix="pyamplicol-legacy-patch-state-") as raw:
-        expected_root = Path(raw)
-        for relative in expected_paths:
-            content = subprocess_module.run(
-                ["git", "show", f"HEAD:{relative}"],
-                cwd=repository,
-                check=True,
-                capture_output=True,
-            ).stdout
-            destination = expected_root / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(content)
-        for patch in patches:
-            completed = subprocess_module.run(
-                ["git", "apply", "--whitespace=nowarn", str(patch.resolve())],
-                cwd=expected_root,
-                text=True,
-                capture_output=True,
-            )
-            if completed.returncode != 0:
-                raise LegacyOracleError(
-                    f"managed legacy patch cannot be reconstructed: {patch.name}: "
-                    f"{completed.stderr.strip()}"
-                )
-        mismatches = tuple(
-            relative
-            for relative in expected_paths
-            if (repository / relative).read_bytes()
-            != (expected_root / relative).read_bytes()
-        )
-    if mismatches:
-        raise LegacyOracleError(
-            "legacy AmpliCol contains edits beyond the managed patch series in "
-            + ", ".join(mismatches)
-        )
 
 
 def validate_checkout(
@@ -180,9 +73,6 @@ def validate_checkout(
     *,
     run: Any = _run,
     revision: Any = expected_revision,
-    patches: Any = managed_patches,
-    validate_exact: Any = _validate_exact_patch_state,
-    subprocess_module: Any = subprocess,
 ) -> None:
     repository = repository.resolve()
     if not (repository / ".git").exists():
@@ -194,19 +84,15 @@ def validate_checkout(
         raise LegacyOracleError(
             f"legacy AmpliCol is at {actual_revision}, expected {revision()}"
         )
-    managed = patches()
-    for patch in managed:
-        completed = subprocess_module.run(
-            ["git", "apply", "--reverse", "--check", str(patch)],
-            cwd=repository,
-            text=True,
-            capture_output=True,
+    tracked_changes = run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=no"],
+        cwd=repository,
+    ).stdout.strip()
+    if tracked_changes:
+        raise LegacyOracleError(
+            "legacy AmpliCol checkout contains tracked edits; the developer "
+            "oracle must use the clean pinned branch revision"
         )
-        if completed.returncode != 0:
-            raise LegacyOracleError(
-                f"managed legacy patch is not applied: {patch.name}"
-            )
-    validate_exact(repository, managed)
 
 
 def prepare_checkout(
@@ -215,8 +101,8 @@ def prepare_checkout(
     run: Any = _run,
     validate: Any = validate_checkout,
     url: Any = checkout_url,
+    branch: Any = checkout_branch,
     revision: Any = expected_revision,
-    patches: Any = managed_patches,
 ) -> None:
     repository = repository.resolve()
     if repository.exists():
@@ -226,13 +112,11 @@ def prepare_checkout(
     run(["git", "init", str(repository)], cwd=repository.parent)
     run(["git", "remote", "add", "origin", url()], cwd=repository)
     run(
-        ["git", "fetch", "--depth=1", "origin", revision()],
+        ["git", "fetch", "--depth=1", "origin", branch()],
         cwd=repository,
         capture=False,
     )
     run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=repository)
-    for patch in patches():
-        run(["git", "apply", str(patch)], cwd=repository)
     validate(repository)
 
 

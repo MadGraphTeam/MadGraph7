@@ -222,7 +222,7 @@ impl ExecutionRuntime {
         } else {
             point[index]
         };
-        if source.dimension == 1 {
+        if source.dimension == 1 && source.wavefunction_kind == "scalar" {
             if out.len() != 1 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 1 but slot has length {}",
@@ -233,7 +233,7 @@ impl ExecutionRuntime {
             out[0] = c64(1.0, 0.0);
             return Ok(());
         }
-        if source.dimension == 2 {
+        if source.dimension == 2 && source.wavefunction_kind == "fermion" {
             if out.len() != 2 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 2 but slot has length {}",
@@ -242,7 +242,7 @@ impl ExecutionRuntime {
                 )));
             }
             let chirality = source.chirality;
-            let wave = if source.particle_id < 0 {
+            let wave = if source_is_antiparticle(source)? {
                 ext_antiquark_weyl_array(momentum, source.source_helicity, chirality)
             } else {
                 ext_quark_weyl_array(momentum, source.source_helicity, chirality)
@@ -258,27 +258,30 @@ impl ExecutionRuntime {
                     out.len()
                 )));
             }
-            let wave = if source.wavefunction_kind == "fermion"
-                || (source.wavefunction_kind.is_empty() && is_fermion_pdg(source.particle_id))
-            {
-                let mass = particle_mass_from_map(particle_masses, source.particle_id);
-                if source.particle_id < 0 {
+            let wave = if source.wavefunction_kind == "fermion" {
+                let mass = particle_mass_from_map(
+                    particle_masses,
+                    source.particle_id,
+                    source.anti_particle_id,
+                );
+                if source_is_antiparticle(source)? {
                     ext_antiquark_dirac_massive(momentum, source.source_helicity, mass)
                 } else {
                     ext_quark_dirac_massive(momentum, source.source_helicity, mass)
                 }
-            } else if (source.wavefunction_kind == "vector"
-                && particle_mass_from_map(particle_masses, source.particle_id) == 0.0)
-                || (source.wavefunction_kind.is_empty()
-                    && (source.particle_id.abs() == 21 || source.particle_id == 22))
-            {
-                ext_gluon(momentum, source.source_helicity)
+            } else if source.wavefunction_kind == "vector" {
+                let mass = particle_mass_from_map(
+                    particle_masses,
+                    source.particle_id,
+                    source.anti_particle_id,
+                );
+                if mass == 0.0 {
+                    ext_gluon(momentum, source.source_helicity)
+                } else {
+                    ext_massive_vector(momentum, source.source_helicity, mass)
+                }
             } else {
-                ext_massive_vector(
-                    momentum,
-                    source.source_helicity,
-                    particle_mass_from_map(particle_masses, source.particle_id),
-                )
+                return Err(unsupported_source_wavefunction(source));
             };
             out.copy_from_slice(&wave);
             return Ok(());
@@ -294,14 +297,18 @@ impl ExecutionRuntime {
             let wave = ext_spin2(
                 momentum,
                 source.source_helicity,
-                particle_mass_from_map(particle_masses, source.particle_id),
+                particle_mass_from_map(
+                    particle_masses,
+                    source.particle_id,
+                    source.anti_particle_id,
+                ),
             )?;
             out.copy_from_slice(&wave);
             return Ok(());
         }
         Err(RusticolError::invalid_argument(format!(
-            "generic source dimension {} is not implemented",
-            source.dimension
+            "generic source kind {:?} with dimension {} is not implemented",
+            source.wavefunction_kind, source.dimension
         )))
     }
 
@@ -337,7 +344,7 @@ impl ExecutionRuntime {
         } else {
             point[index].clone()
         };
-        if source.dimension == 1 {
+        if source.dimension == 1 && source.wavefunction_kind == "scalar" {
             if out.len() != 1 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 1 but slot has length {}",
@@ -348,7 +355,7 @@ impl ExecutionRuntime {
             out[0] = c_generic(T::from(1.0), T::new_zero());
             return Ok(());
         }
-        if source.dimension == 2 {
+        if source.dimension == 2 && source.wavefunction_kind == "fermion" {
             if out.len() != 2 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 2 but slot has length {}",
@@ -357,7 +364,7 @@ impl ExecutionRuntime {
                 )));
             }
             let chirality = source.chirality;
-            let wave = if source.particle_id < 0 {
+            let wave = if source_is_antiparticle(source)? {
                 ext_antiquark_weyl_generic(&momentum, source.source_helicity, chirality)
             } else {
                 ext_quark_weyl_generic(&momentum, source.source_helicity, chirality)
@@ -373,32 +380,35 @@ impl ExecutionRuntime {
                     out.len()
                 )));
             }
-            let wave = if source.wavefunction_kind == "fermion"
-                || (source.wavefunction_kind.is_empty() && is_fermion_pdg(source.particle_id))
-            {
-                let mass = particle_mass_from_map(particle_masses, source.particle_id);
+            let wave = if source.wavefunction_kind == "fermion" {
+                let mass = particle_mass_from_map(
+                    particle_masses,
+                    source.particle_id,
+                    source.anti_particle_id,
+                );
                 if mass != 0.0 {
                     return Err(RusticolError::invalid_argument(
                         "high-precision generic massive fermion sources are not implemented",
                     ));
                 }
-                if source.particle_id < 0 {
+                if source_is_antiparticle(source)? {
                     ext_antiquark_dirac_generic(&momentum, source.source_helicity)
                 } else {
                     ext_quark_dirac_generic(&momentum, source.source_helicity)
                 }
-            } else if (source.wavefunction_kind == "vector"
-                && particle_mass_from_map(particle_masses, source.particle_id) == 0.0)
-                || (source.wavefunction_kind.is_empty()
-                    && (source.particle_id.abs() == 21 || source.particle_id == 22))
-            {
-                ext_gluon_generic(&momentum, source.source_helicity)
+            } else if source.wavefunction_kind == "vector" {
+                let mass = particle_mass_from_map(
+                    particle_masses,
+                    source.particle_id,
+                    source.anti_particle_id,
+                );
+                if mass == 0.0 {
+                    ext_gluon_generic(&momentum, source.source_helicity)
+                } else {
+                    ext_massive_vector_generic(&momentum, source.source_helicity, T::from(mass))
+                }
             } else {
-                ext_massive_vector_generic(
-                    &momentum,
-                    source.source_helicity,
-                    T::from(particle_mass_from_map(particle_masses, source.particle_id)),
-                )
+                return Err(unsupported_source_wavefunction(source));
             };
             out.clone_from_slice(&wave);
             return Ok(());
@@ -414,27 +424,50 @@ impl ExecutionRuntime {
             let wave = ext_spin2_generic(
                 &momentum,
                 source.source_helicity,
-                T::from(particle_mass_from_map(particle_masses, source.particle_id)),
+                T::from(particle_mass_from_map(
+                    particle_masses,
+                    source.particle_id,
+                    source.anti_particle_id,
+                )),
             )?;
             out.clone_from_slice(&wave);
             return Ok(());
         }
         Err(RusticolError::invalid_argument(format!(
-            "generic source dimension {} is not implemented",
-            source.dimension
+            "generic source kind {:?} with dimension {} is not implemented",
+            source.wavefunction_kind, source.dimension
         )))
     }
 }
 
-fn particle_mass_from_map(particle_masses: &BTreeMap<i32, f64>, particle_id: i32) -> f64 {
+fn source_is_antiparticle(source: &GenericSourceRecordManifest) -> RusticolResult<bool> {
+    match source.source_orientation {
+        GenericSourceOrientationManifest::Particle => Ok(false),
+        GenericSourceOrientationManifest::Antiparticle => Ok(true),
+        GenericSourceOrientationManifest::SelfConjugate => {
+            Err(RusticolError::invalid_argument(format!(
+                "generic source {} uses an unsupported self-conjugate fermion wavefunction",
+                source.source_id
+            )))
+        }
+    }
+}
+
+fn unsupported_source_wavefunction(source: &GenericSourceRecordManifest) -> RusticolError {
+    RusticolError::invalid_argument(format!(
+        "generic source kind {:?} with dimension {} is not implemented",
+        source.wavefunction_kind, source.dimension
+    ))
+}
+
+fn particle_mass_from_map(
+    particle_masses: &BTreeMap<i32, f64>,
+    particle_id: i32,
+    anti_particle_id: i32,
+) -> f64 {
     particle_masses
         .get(&particle_id)
         .copied()
-        .or_else(|| particle_masses.get(&(-particle_id)).copied())
+        .or_else(|| particle_masses.get(&anti_particle_id).copied())
         .unwrap_or(0.0)
-}
-
-fn is_fermion_pdg(particle_id: i32) -> bool {
-    let abs_id = particle_id.abs();
-    (1..=6).contains(&abs_id) || (11..=16).contains(&abs_id)
 }

@@ -19,7 +19,7 @@ from .._internal.versions import COMPILED_MODEL_SCHEMA_VERSION, package_version
 from .contracts import CompiledModelIR
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
-MODEL_COMPILER_VERSION = 5
+MODEL_COMPILER_VERSION = 6
 BUILTIN_SM_ALIASES = frozenset(("builtin_sm", "built-in-sm"))
 DEFAULT_MODEL_RESTRICTION = "default"
 NO_MODEL_RESTRICTION = "none"
@@ -357,7 +357,9 @@ def compile_model_source(
     phase_timings: dict[str, float] = {}
     phase_started = time.perf_counter()
     if source_kind == "built-in-sm":
-        model_payload, parameter_defaults = _built_in_model_payload()
+        from .builtin.adapters import build_model_payload
+
+        model_payload, parameter_defaults = build_model_payload()
     else:
         worker_payload = _load_external_model(
             Path(resolved),
@@ -723,137 +725,6 @@ def _loader_restriction_name(source: Path, restriction: str) -> str | None:
     return name
 
 
-def _built_in_model_payload() -> tuple[
-    dict[str, object], dict[str, tuple[float, float]]
-]:
-    from .builtin import BuiltinSMModel
-
-    model = BuiltinSMModel()
-    particles = []
-    parameters: dict[str, tuple[float, float]] = {
-        "alpha_s": (0.118, 0.0),
-        "alpha_ew": (1.0 / 132.507, 0.0),
-    }
-    for _key, particle in sorted(model.particles.items()):
-        mass_name = (
-            _built_in_parameter_name("mass", particle.pdg)
-            if float(particle.mass) != 0.0
-            else "ZERO"
-        )
-        width_name = (
-            _built_in_parameter_name("width", particle.pdg)
-            if float(particle.width) != 0.0
-            else "ZERO"
-        )
-        if mass_name != "ZERO":
-            parameters[mass_name] = (float(particle.mass), 0.0)
-        if width_name != "ZERO":
-            parameters[width_name] = (float(particle.width), 0.0)
-        for pdg in dict.fromkeys((particle.pdg, particle.anti_pdg)):
-            is_antiparticle = pdg != particle.pdg
-            anti_pdg = particle.pdg if is_antiparticle else particle.anti_pdg
-            color = particle.color_rep
-            if is_antiparticle and abs(color) in {3, 6}:
-                color = -color
-            particles.append(
-                {
-                    "pdg_code": pdg,
-                    "name": _built_in_particle_name(pdg),
-                    "antiname": _built_in_particle_name(anti_pdg),
-                    "spin": _built_in_ufo_spin(pdg, particle.spin),
-                    "color": color,
-                    "mass": mass_name,
-                    "width": width_name,
-                    "texname": _built_in_particle_name(pdg),
-                    "antitexname": _built_in_particle_name(anti_pdg),
-                    "charge": -particle.charge if is_antiparticle else particle.charge,
-                    "ghost_number": 0,
-                    "lepton_number": 0,
-                    "y_charge": 0,
-                    "propagating": particle.spin >= 0,
-                    "goldstoneboson": False,
-                    "propagator": f"builtin_prop_{pdg}",
-                }
-            )
-    return (
-        {
-            "name": "built-in-sm",
-            "restriction": None,
-            "orders": [
-                {"name": "QCD", "expansion_order": 99, "hierarchy": 1},
-                {"name": "QED", "expansion_order": 99, "hierarchy": 2},
-            ],
-            "parameters": [
-                {
-                    "name": name,
-                    "nature": "external",
-                    "parameter_type": "real",
-                    "value": [value[0], value[1]],
-                    "expression": None,
-                    "lhablock": "PYAMPLICOL",
-                    "lhacode": [index],
-                }
-                for index, (name, value) in enumerate(
-                    sorted(parameters.items()),
-                    start=1,
-                )
-            ],
-            "particles": particles,
-            "propagators": [],
-            "lorentz_structures": [],
-            "couplings": [],
-            "vertex_rules": [
-                {
-                    "name": f"builtin_vertex_{index}",
-                    "particles": [
-                        _built_in_particle_name(pdg) for pdg in vertex.particles
-                    ],
-                    "color_structures": ["1"],
-                    "lorentz_structures": [f"builtin_kind_{vertex.kind}"],
-                    "couplings": [[f"builtin_coupling_{index}"]],
-                    "builtin_kind": vertex.kind,
-                    "builtin_coupling": list(vertex.coupling),
-                }
-                for index, vertex in enumerate(model.vertices)
-            ],
-            "functions": [],
-            "form_factors": [],
-            "builtin_model": True,
-        },
-        parameters,
-    )
-
-
-def _built_in_parameter_name(field: str, pdg: int) -> str:
-    pdg_token = f"m{abs(int(pdg))}" if int(pdg) < 0 else str(int(pdg))
-    return f"{field}_{pdg_token}"
-
-
-def _built_in_particle_name(pdg: int) -> str:
-    from ..processes import PDGS
-
-    candidates = [name for name, value in PDGS.items() if int(value) == pdg]
-    if candidates:
-        return min(candidates, key=lambda name: (len(name), name))
-    return f"pdg_{pdg}"
-
-
-def _built_in_ufo_spin(pdg: int, internal_spin: int) -> int:
-    """Translate the legacy kernel spin tag to the UFO 2S+1 convention."""
-    if internal_spin < 0:
-        return -1
-    absolute_pdg = abs(pdg)
-    if 1 <= absolute_pdg <= 6 or 11 <= absolute_pdg <= 16:
-        return 2
-    if absolute_pdg in {21, 22, 23, 24}:
-        return 3
-    if absolute_pdg == 25:
-        return 1
-    raise ValueError(
-        f"cannot map built-in particle {pdg} with spin tag {internal_spin} to UFO spin"
-    )
-
-
 def _model_expression_functions(model: Mapping[str, object]) -> set[str]:
     expressions: list[str] = []
     for key in ("parameters", "couplings", "propagators", "lorentz_structures"):
@@ -879,10 +750,9 @@ def _source_digest(kind: str, source: str | Path) -> str:
     digest = hashlib.sha256()
     digest.update(kind.encode("utf-8") + b"\0")
     if kind == "built-in-sm":
-        for name in ("base.py", "builtin.py", "expressions.py"):
-            digest.update(name.encode("utf-8") + b"\0")
-            digest.update(Path(__file__).with_name(name).read_bytes())
-            digest.update(b"\0")
+        from .builtin.adapters import source_digest
+
+        digest.update(source_digest().encode("ascii"))
         return digest.hexdigest()
     path = Path(source)
     root = path.parent if path.is_file() else path

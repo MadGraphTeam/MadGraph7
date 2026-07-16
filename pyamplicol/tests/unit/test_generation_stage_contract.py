@@ -9,6 +9,8 @@ from pyamplicol.generation.stage_compiler import (
     _fanout_aware_current_order,
     build_generic_stage_compiler_blueprint,
 )
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
 def _minimal_schema() -> dict[str, object]:
@@ -38,7 +40,8 @@ def test_generation_runtime_expression_schema_is_canonical_and_frozen() -> None:
 
 
 def test_generation_stage_compiler_requires_schema_and_local_parameters() -> None:
-    dag = compile_generic_dag("d d~ > z")
+    model = BuiltinSMModel()
+    dag = compile_generic_dag(build_process_ir("d d~ > z"), model=model)
     with pytest.raises(ValueError, match="explicit runtime schema"):
         build_generic_stage_compiler_blueprint(dag)
     with pytest.raises(ValueError, match="stage-local parameter layout"):

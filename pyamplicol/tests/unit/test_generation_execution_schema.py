@@ -7,17 +7,29 @@ from pyamplicol.generation.artifact_writer import _execution_plan
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.runtime_schema import build_runtime_schema
 from pyamplicol.models import BuiltinSMModel, CompiledUFOModel, compile_model_source
+from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.processes.model import build_model_process_ir
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "models"
 
 
 def test_execution_plan_is_strict_schema_v3_runtime_dto() -> None:
+    model = BuiltinSMModel()
     schema = build_runtime_schema(
-        compile_generic_dag("d d~ > z"),
-        BuiltinSMModel(),
+        compile_generic_dag(build_process_ir("d d~ > z"), model=model),
+        model,
         process_id="ddbar_z",
     )
+
+    for leg in schema["external_particles"]:
+        assert "particle_class" not in leg
+        assert {
+            "statistics",
+            "wavefunction_family",
+            "color_role",
+            "source_orientation",
+        } <= leg.keys()
 
     plan = _execution_plan(schema)
 
@@ -84,7 +96,10 @@ def test_external_particle_masses_link_to_runtime_parameters() -> None:
     model = CompiledUFOModel(compiled)
 
     z_schema = build_runtime_schema(
-        compile_generic_dag("d d~ > z", model=model),
+        compile_generic_dag(
+            build_model_process_ir("d d~ > z", compiled.ir),
+            model=model,
+        ),
         model,
         process_id="ddbar_z_external",
     )
@@ -95,7 +110,10 @@ def test_external_particle_masses_link_to_runtime_parameters() -> None:
     assert z_record["mass_parameter"] == "MZ"
 
     w_schema = build_runtime_schema(
-        compile_generic_dag("u d~ > w+", model=model),
+        compile_generic_dag(
+            build_model_process_ir("u d~ > w+", compiled.ir),
+            model=model,
+        ),
         model,
         process_id="udbar_wp_external",
     )

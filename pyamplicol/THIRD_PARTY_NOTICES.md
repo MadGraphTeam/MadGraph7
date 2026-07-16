@@ -7,8 +7,7 @@ third-party dependencies or bundled model data.
 ## Symbolica
 
 pyAmpliCol uses Symbolica, including its idenso and spenso functionality.
-Symbolica is proprietary software and is recorded in the Rust inventory as
-`LicenseRef-Symbolica-Proprietary`. Its upstream terms state that copying or
+Symbolica is proprietary software. Its upstream terms state that copying or
 distribution of any part of the Symbolica code requires express prior
 permission:
 <https://symbolica.io/license/>.
@@ -28,14 +27,12 @@ serialization ABI, and source revision used to build them.
 
 Contributors may opt into a pinned checkout of the original Fortran AmpliCol
 repository for independent numerical and performance validation. That checkout
-is not included in pyAmpliCol wheels or source distributions. The pinned
-revision contains no `LICENSE` or `COPYING` file, so its release-lock license
-field is deliberately `NOASSERTION`; this is not a grant or a claim about the
-upstream source's terms.
-
-The three checked-in diagnostic patch files were written for this pyAmpliCol
-project and are distributed under 0BSD. Applying those patches locally does
-not alter or replace whatever terms govern the upstream checkout.
+is not included in pyAmpliCol wheels or source distributions. The contributor
+metadata records that the pinned upstream revision contains no `LICENSE` or
+`COPYING` file. This observation is not a grant or a claim about the upstream
+source's terms. The developer setup uses the dedicated upstream branch
+`amplicol_with_patches`; no legacy-AmpliCol patch payload is
+shipped in pyAmpliCol release artifacts.
 
 ## SymJIT
 
@@ -43,15 +40,6 @@ SymJIT is a separate Rust dependency used by Symbolica's JIT functionality.
 The published `symjit` crate is distributed under the MIT License, not the
 Symbolica proprietary license. Its copyright notice and complete MIT License
 are reproduced in `licenses/SymJIT.txt`.
-
-## Rust Dependency Inventory
-
-`licenses/RUST_THIRD_PARTY.toml` records every third-party package in
-`Cargo.lock`, including transitive packages, with its exact version, Cargo
-source, checksum when supplied by Cargo, and curated SPDX license expression.
-`tools/release/check_rust_licenses.py` fails if the lock and inventory differ,
-if required special notices are missing, or if any legal file is not included
-in the release source.
 
 ## Native Runtime Feature Boundary
 
@@ -62,11 +50,8 @@ Rusticol closure and link SymJIT directly; they do not link Symbolica, Rug/GMP,
 or Malachite. Higher-precision Python evaluation loads the separately installed
 Symbolica Python package lazily and remains subject to Symbolica's terms.
 
-`licenses/STATIC_LINK_COMPLIANCE.toml` records this feature-separation policy.
-The release gate derives each target-specific Cargo closure and scans both
-native artifacts for GMP/MPFR/Malachite markers. If a future feature change
-makes LGPL code statically reachable, publication is blocked until the policy
-contains complete target coverage and the required relinking/source evidence.
+The native build and installed-wheel tests verify that the f64 C API archive
+does not depend on Python or the arbitrary-precision Symbolica runtime.
 
 ## UFO Model Loader
 

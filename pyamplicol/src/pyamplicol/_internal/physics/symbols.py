@@ -60,6 +60,25 @@ class ModelSymbolRegistry:
     def expression_string(self, source: str) -> str:
         return self.expression(source).to_canonical_string()
 
+    def kernel_tensor_name(self, kind: int, side: str) -> str:
+        return self.qualified_name(f"compiler::kernel_{int(kind)}_{side}")
+
+    def kernel_component(self, kind: int, side: str, index: int) -> Any:
+        return self.symbol(f"compiler::kernel_{int(kind)}_{side}_{int(index)}")
+
+    def kernel_momentum(self, kind: int, side: str, index: int) -> Any:
+        return self.symbol(
+            f"compiler::kernel_{int(kind)}_{side}_momentum_{int(index)}"
+        )
+
+    def contact_leg_tensor_name(self, kind: int, leg: int) -> str:
+        return self.qualified_name(
+            f"compiler::contact_{int(kind)}_leg_{int(leg)}"
+        )
+
+    def ufo_momentum_tensor_name(self, leg: int) -> str:
+        return self.qualified_name(f"compiler::ufo_momentum_{int(leg)}")
+
 
 @dataclass(frozen=True)
 class SymbolRegistry:

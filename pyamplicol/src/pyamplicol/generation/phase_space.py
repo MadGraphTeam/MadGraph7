@@ -6,66 +6,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from .._internal.physics.types import (
-    ExternalMomentum,
-    FourMomentum,
-    NativeEvaluationError,
-)
-from ..models import BuiltinSMModel
-from ..processes.ir import build_process_ir
-
-
-def _legacy_rambo_z_gluon_point(
-    process: str,
-    model: BuiltinSMModel,
-    *,
-    gluon_count: int,
-    sqrt_s: float,
-    seed: int,
-) -> tuple[ExternalMomentum, ...]:
-    """Generate a legacy deterministic RAMBO-style point for q q~ -> Z + n g.
-
-    The massless construction follows the standard flat RAMBO mapping of
-    Kleiss, Stirling and Ellis, CPC 40 (1986).  Massive final particles are
-    then handled by a common spatial rescaling, as in the usual RAMBO massive
-    extension: the centre-of-mass directions are kept fixed while the common
-    scale is chosen so that the final-state energies add up to ``sqrt_s``.
-    """
-
-    if gluon_count < 1:
-        raise NativeEvaluationError("RAMBO Z-gluon points need at least one gluon")
-    z_mass = model.mass(23)
-    if sqrt_s <= z_mass:
-        raise NativeEvaluationError("sqrt(s) must be above the Z mass")
-
-    pdgs = _physical_pdgs(process)
-    expected = gluon_count + 3
-    if len(pdgs) != expected:
-        raise NativeEvaluationError(
-            f"expected {expected} external particles for q q~ -> Z + {gluon_count} g"
-        )
-
-    final_pdgs = (*((21,) * gluon_count), 23)
-    final_masses = tuple(0.0 if pdg == 21 else model.mass(pdg) for pdg in final_pdgs)
-    if sum(final_masses) >= sqrt_s:
-        raise NativeEvaluationError("final-state masses exceed sqrt(s)")
-
-    rng = np.random.default_rng(seed)
-    final_momenta = _massive_rambo_final_state(
-        len(final_masses),
-        sqrt_s=sqrt_s,
-        masses=final_masses,
-        rng=rng,
-    )
-    beam_energy = 0.5 * sqrt_s
-    return (
-        ExternalMomentum(pdgs[0], (beam_energy, 0.0, 0.0, beam_energy)),
-        ExternalMomentum(pdgs[1], (beam_energy, 0.0, 0.0, -beam_energy)),
-        *(
-            ExternalMomentum(pdg, momentum)
-            for pdg, momentum in zip(final_pdgs, final_momenta, strict=True)
-        ),
-    )
+from .._internal.physics.types import FourMomentum, NativeEvaluationError
 
 
 def massive_rambo_final_state(
@@ -88,58 +29,6 @@ def massive_rambo_final_state(
         sqrt_s=sqrt_s,
         masses=masses,
         rng=np.random.default_rng(seed),
-    )
-
-
-def generic_validation_point(
-    process: str,
-    *,
-    model: BuiltinSMModel | None = None,
-    sqrt_s: float | None = None,
-    seed: int = 101,
-) -> tuple[ExternalMomentum, ...]:
-    """Return deterministic process-generic two-beam validation kinematics."""
-
-    model = model or BuiltinSMModel()
-    ir = build_process_ir(process)
-    initial_pdgs = tuple(int(pdg) for pdg in ir.initial_pdgs)
-    final_pdgs = tuple(int(pdg) for pdg in ir.final_pdgs)
-    if len(initial_pdgs) != 2:
-        raise NativeEvaluationError(
-            "generic validation momenta currently require a two-body initial state"
-        )
-    if not final_pdgs:
-        raise NativeEvaluationError(
-            "generic validation momenta require at least one final-state particle"
-        )
-    final_masses = tuple(float(model.mass(pdg)) for pdg in final_pdgs)
-    threshold = sum(final_masses)
-    if sqrt_s is None:
-        sqrt_s = threshold if len(final_pdgs) == 1 else max(1000.0, threshold + 100.0)
-    if sqrt_s < threshold:
-        raise NativeEvaluationError("sqrt(s) is below the final-state mass threshold")
-    if len(final_pdgs) == 1:
-        if threshold <= 0.0:
-            raise NativeEvaluationError(
-                "no finite centre-of-mass validation point exists for one "
-                "massless final state"
-            )
-        final_momenta = ((float(sqrt_s), 0.0, 0.0, 0.0),)
-    else:
-        final_momenta = massive_rambo_final_state(
-            len(final_pdgs),
-            sqrt_s=float(sqrt_s),
-            masses=final_masses,
-            seed=seed,
-        )
-    beam_energy = 0.5 * float(sqrt_s)
-    return (
-        ExternalMomentum(initial_pdgs[0], (beam_energy, 0.0, 0.0, beam_energy)),
-        ExternalMomentum(initial_pdgs[1], (beam_energy, 0.0, 0.0, -beam_energy)),
-        *(
-            ExternalMomentum(pdg, momentum)
-            for pdg, momentum in zip(final_pdgs, final_momenta, strict=True)
-        ),
     )
 
 
@@ -219,11 +108,6 @@ def _massless_rambo_final_state(
     )
 
 
-def _physical_pdgs(process: str) -> tuple[int, ...]:
-    ir = build_process_ir(process)
-    return (*ir.initial_pdgs, *ir.final_pdgs)
-
-
 def _boost_from_rest(
     momentum: FourMomentum, beta: tuple[float, float, float]
 ) -> FourMomentum:
@@ -296,4 +180,4 @@ def _minkowski_square(momentum: FourMomentum) -> float:
     )
 
 
-__all__ = ["generic_validation_point", "massive_rambo_final_state"]
+__all__ = ["massive_rambo_final_state"]

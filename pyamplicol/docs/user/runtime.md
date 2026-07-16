@@ -2,46 +2,85 @@
 
 # Runtime
 
-The public `Runtime` facade loads a schema-v3 process artifact and exposes
-stable physical metadata and evaluation methods. Its lazy adapter imports the
-wheel's `pyamplicol._rusticol` extension only when an artifact is loaded.
-Schema-v3 generation emits the runtime payloads and root API examples described
-below.
+`Runtime` loads a schema-v3 process artifact and exposes stable process,
+particle, helicity, color, reduction, and model-parameter metadata. The native
+extension is imported only when an artifact is loaded.
 
-## Load And Inspect
+## Load A Concrete Process
+
+Multiprocess artifacts require a stable process name or alias:
 
 ```python
 from pyamplicol import Runtime
 
-runtime = Runtime.load("artifacts/mixed", process="ddbar_zg")
+runtime = Runtime.load("artifacts/pp_zjj", process="p_p_to_z_j_j_4")
+print(runtime.physics.process)  # d d~ > Z g g
 print(runtime.physics.external_particles)
 print(runtime.physics.helicity_ids)
 print(runtime.physics.color_flow_ids)
 ```
 
-For a process-set artifact, `process` selects a stable process name or alias.
-Artifact schema, payload hashes, paths, target, and ABI are validated before
-executable state is loaded.
+Artifact schema, payload paths and hashes, target compatibility, and runtime ABI
+are validated before executable state is loaded.
+
+## Model Parameters
+
+The artifact records mutable UFO external parameters and their defaults:
+
+```python
+for parameter in runtime.physics.model_parameters:
+    if parameter.mutable:
+        print(parameter.name, parameter.default_real)
+```
+
+Apply a complete JSON object while loading:
+
+```python
+runtime = Runtime.load(
+    "artifacts/pp_zjj",
+    process="p_p_to_z_j_j_4",
+    model_parameters={"aS": 0.117, "MZ": 91.188},
+)
+```
+
+Or update genuine UFO inputs atomically after loading:
+
+```python
+runtime.set_model_parameters({"aS": 0.1165, "MZ": 91.1876})
+runtime.set_model_parameter("MT", 172.5)
+```
+
+Derived couplings and dependent parameters are refreshed before the update is
+committed. An unknown, immutable, non-finite, or otherwise invalid entry rejects
+the full batch; no prefix is applied. The CLI and all generated API drivers use
+the same contract:
+
+```console
+pyamplicol evaluate artifacts/pp_zjj \
+  --process p_p_to_z_j_j_4 \
+  --model-parameters data/model_parameters.json \
+  --momenta data/pp_zjj_momenta.json
+```
 
 ## Total And Resolved Evaluation
 
 Momenta have shape `(point, external particle, [E, px, py, pz])`:
 
 ```python
-momenta = [[
-    [500.0, 0.0, 0.0, 500.0],
-    [500.0, 0.0, 0.0, -500.0],
-    [504.157625672, -304.1084262865, 208.7602652353, 331.3561179451],
-    [495.842374328, 304.1084262865, -208.7602652353, -331.3561179451],
-]]
+import json
+from pathlib import Path
 
+momenta = json.loads(Path("data/pp_zjj_momenta.json").read_text())
 total = runtime.evaluate(momenta)
 resolved = runtime.evaluate_resolved(momenta)
-assert resolved.total() == total
+
+for summed, explicit in zip(total, resolved.total(), strict=True):
+    scale = max(1.0, abs(summed))
+    assert abs(summed - explicit) <= 1.0e-12 * scale
 ```
 
 At LC, resolved values have shape `(point, helicity, physical color flow)`. At
-NLC/full, the last dimension has length one because color is contracted.
+NLC/full, the final dimension has length one because color is contracted.
 
 Selectors use IDs reported by `runtime.physics`:
 
@@ -53,91 +92,65 @@ selected = runtime.evaluate(
 )
 ```
 
-Color-flow selection is available only for LC artifacts. NLC/full artifacts
-advertise helicity selection alone; their singleton contracted-color axis is an
-output descriptor, and passing `color_flows` is an error. Precision 16 uses the
-native Rusticol path. Other Python precision requests lazily load the retained
-evaluator states with Symbolica's own `Evaluator.load()` API and return decimal
-results. Decimal kinematics retain their supplied digits. Binary64-origin
-kinematics and runtime model values are padded with trailing zeros to the
-requested precision; this stabilizes the higher-precision replay without
-claiming to reconstruct information absent from the input. Stage inputs are
-re-padded after every evaluator boundary. Evaluation uses guard digits and
-round-to-nearest-even before publishing the requested number of decimal digits;
-that number controls arithmetic precision and is not a claim of certified
-physical accuracy. Resolved Decimal components are summed exactly rather than
-through Python's ambient Decimal context. The C++ and Fortran APIs remain
-f64-only.
+Color-flow selection is available only for LC artifacts. NLC/full accept
+helicity selectors and reject color-flow selectors.
 
-Every artifact records the evaluator capabilities required to load it. The
-default JIT backend stores a self-contained SymJIT application under
-`symjit.application.complex-f64.v1`; Rusticol executes that f64 payload without
-importing Symbolica or consulting a Symbolica license. This makes a generated
-JIT process independently deployable and permits normal multi-handle runtime
-concurrency even when generation ran in restricted mode.
+## Precision And Capabilities
 
-That guarantee is backend- and precision-specific. Arbitrary-precision Python
-evaluation uses the retained Symbolica evaluator state and replays the recorded
-stage-local execution plan. ASM and C++ artifacts also advertise
-Symbolica-backed runtime capabilities; the lightweight native SDK rejects them
-before loading and reports that a Symbolica-capable runtime is required.
+Precision 16 executes the direct SymJIT f64 application through Rusticol. It
+does not import Symbolica or consult Symbolica's runtime license state. This
+Symbolica-independent path is shared by Python, Rust, C++, and Fortran and uses
+the separate MIT-licensed SymJIT runtime.
 
-## Artifact Trust
+Other positive Python precision requests lazily load retained Symbolica
+evaluator states and replay the recorded stage-local plan. Decimal input keeps
+its supplied digits. Values originating as binary64 are extended with trailing
+zeros; requesting more arithmetic digits does not reconstruct input information
+or certify that many physically accurate digits. Results are rounded to the
+requested decimal precision after guard-digit evaluation.
 
-A process artifact is executable input: direct SymJIT payloads are translated
-to native code at load time, and compiled backends may contain native
-libraries. Payload hashes and path checks establish internal consistency, not
-publisher authenticity. Load only artifacts whose producer and transport you
-trust. Corrupted or untrusted artifacts should be discarded rather than used
-as a parser-security boundary.
-
-Rusticol deliberately follows Symbolica's trusted-input implementation here:
-it supplies the empty external-function map, calls SymJIT's own
-`Application::load`, and seals the returned application. It does not maintain
-a second application decoder.
-
-## Model Parameters
-
-Updates validate as one transaction before committing:
-
-```python
-runtime.set_model_parameters(
-    {
-        "normalization.alpha_s_me_check": 0.118,
-        "normalization.alpha_ew": 1.0 / 132.507,
-    }
-)
-runtime.set_model_parameter("normalization.alpha_s_me_check", 0.120)
-```
-
-The CLI accepts a JSON object with `--model-parameters`. Invalid or unknown
-entries reject the update rather than applying a prefix.
+ASM and C++ evaluator artifacts advertise a Symbolica-backed runtime
+capability. The lightweight native SDK rejects unsupported capabilities before
+partial loading. Rust, C++, and Fortran expose f64 only and reject precision
+requests other than 16.
 
 ## Benchmarking
 
-```python
-from pyamplicol import BenchmarkConfig, BenchmarkRunner
+Benchmark a selected runtime through the same optimized total path:
 
+```python
+from pyamplicol import BenchmarkConfig, BenchmarkRunner, Runtime
+
+runtime = Runtime.load("artifacts/pp_zjj", process="p_p_to_z_j_j_4")
 runner = BenchmarkRunner(BenchmarkConfig(target_runtime=1.0, batch_size=128))
-result = runner.run("artifacts/ddbar_zg", points=momenta)
+result = runner.run(runtime, points=momenta)
 print(result.wall_time_per_point, result.uncertainty)
 ```
 
 The direct equivalent is:
 
 ```console
-pyamplicol benchmark artifacts/ddbar_zg \
-  --momenta examples/data/ddbar_zg_momenta.json \
+pyamplicol benchmark artifacts/pp_zjj \
+  --set evaluation.process=p_p_to_z_j_j_4 \
+  --momenta data/pp_zjj_momenta.json \
   --target-runtime 1.0
 ```
 
-The benchmark uses the same runtime adapter and optimized summed evaluation
-path as `Runtime.evaluate()`.
+## Artifact Trust
+
+A process artifact is executable input. Direct SymJIT applications are lowered
+to native code at load time, and compiled backends may contain native
+libraries. Manifest hashes and path confinement establish internal consistency,
+not publisher identity. Generate artifacts yourself or obtain them through a
+trusted channel.
+
+Rusticol uses SymJIT's own trusted-input `Application::load(...).seal()` path
+with an empty external-function map. It does not maintain a second application
+decoder.
 
 ## Concurrency And Warnings
 
-Model parameter and warning state belongs to one runtime handle. A mutable
-handle must not be called concurrently. Independent handles may be evaluated
-from separate threads. Symbolica's restricted-mode generation clamp does not
-apply to independent Rusticol runtime handles evaluating a direct SymJIT f64
-payload.
+Parameter and warning state belongs to one runtime handle. Do not call the same
+mutable handle concurrently. Independent handles may run in separate threads.
+Symbolica's restricted-generation clamp does not limit independent handles
+executing direct JIT f64 artifacts.

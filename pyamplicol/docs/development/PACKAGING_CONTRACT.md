@@ -1,45 +1,54 @@
+<!-- SPDX-License-Identifier: 0BSD -->
+
 # Packaging And Release Contract
 
-The first independent packaging audit approved bootstrap work but found the
-release dependency gate closed. This document is normative for build and
-release implementation.
+This document is normative for standalone pyAmpliCol package builds and
+publication.
 
 ## Canonical Build
 
-- Distribution: `pyamplicol==0.1.0`, Python 3.11+, 0BSD.
-- In-tree backend: pinned Maturin 1.14.1 through PEP 517
-  `backend-path = ["build_backend"]`.
-- Extension: `pyamplicol._rusticol` from `rusticol-python` with
+- Distribution: `pyamplicol==0.1.0`, Python 3.11+, license `0BSD`.
+- Backend: the in-tree PEP 517 wrapper delegates to pinned Maturin.
+- Python extension: `pyamplicol._rusticol`, built from `rusticol-python` with
   `abi3-py311`.
-- Static SDK: `rusticol-capi` depends on the Python-free core and contains no
-  PyO3, NumPy, Python symbols, or Python linker dependency.
-- Root Cargo workspace metadata is the only release-version source. Python
-  reports installed metadata through `importlib.metadata`.
+- Native SDK: `rusticol-capi` links the Python-independent Rusticol core and
+  must contain no PyO3, NumPy, Python symbols, or Python linker dependency.
+- Version source: root Cargo workspace metadata. Installed Python obtains the
+  version from distribution metadata.
+- Rust resolution: the committed `Cargo.lock` is authoritative.
 
-Build hooks create an allowlisted temporary source overlay, use an external
-`CARGO_TARGET_DIR`, and never mutate the checkout or unpacked sdist. Candidate
-artifacts use
-`0.1.0.dev0+candidate.<12-hex-dependency-lock-digest>`, embed
-`publishable: false`, and never enter `dist/`.
+Build hooks create a temporary allowlisted source overlay, use an external
+`CARGO_TARGET_DIR`, and leave the source tree or unpacked source distribution
+unchanged.
 
-## SDK Capture
+## Dependency Modes
 
-One JSON-message `cargo rustc` invocation builds `rusticol-capi` and asks
-rustc for native static libraries. The backend:
+Release mode reads `dependencies/release-lock.toml` and accepts only exact
+published package/crate versions and compatible ABI metadata. Git, path,
+editable, and candidate dependencies are forbidden.
 
-1. selects exactly one static archive from Cargo `compiler-artifact` records;
-2. accepts only typed, target-specific allowlisted system libraries and
-   frameworks;
-3. rejects absolute paths, `-L`, RPATHs, compiler-discovered replacements,
-   and cross-target SDK builds;
-4. scans the archive for Python, PyO3, and NumPy symbols;
-5. generates a deterministic, target-filtered CycloneDX 1.5 dependency SBOM;
-6. emits relative `metadata.json` and `link.json`, including archive and SBOM
-   hashes;
-7. stages generated SDK files through `rusticol-python`'s `OUT_DIR` for
-   Maturin's generated-file include support.
+Candidate mode is available only from a full source checkout. It reads the
+repository-only contributor contract and produces explicitly non-publishable
+artifacts. Contributor dependency setup and local candidate inputs are excluded
+from release wheels and source distributions.
 
-The installed layout is:
+Release and candidate Cargo resolution are physically separate. A release
+command must fail closed when exact published inputs are unavailable; it must
+never fall back to contributor state.
+
+## Wheel Contents
+
+The wheel contains:
+
+- the typed Python package and one native extension;
+- model assets with their provenance and content manifest;
+- packaged examples and Python/Rust/C++/Fortran API templates;
+- direct-JIT f64 self-test data;
+- license and third-party notice files;
+- the target-specific Rusticol C ABI archive, C/C++ headers, Fortran module
+  source, SDK configuration, and relative link metadata.
+
+The installed SDK layout is:
 
 ```text
 pyamplicol/_sdk/
@@ -47,62 +56,79 @@ pyamplicol/_sdk/
   include/rusticol.hpp
   fortran/rusticol.f90
   lib/librusticol_capi.a
-  sboms/rusticol-capi.cyclonedx.json
   config.py
   metadata.json
   link.json
 ```
 
-Fortran module files are not shipped because they are compiler-specific.
-`rusticol-config` reports typed paths and link arguments; it never emits a
-machine-specific build-time path.
+The backend captures one static archive from Cargo JSON messages, validates the
+complete C ABI, rejects non-relocatable link inputs, scans for Python-family
+symbols, and records only target-appropriate system libraries/frameworks.
+`rusticol-config` exposes typed C/C++ flags, Fortran source, Rust linker flags,
+and JSON metadata without a machine-specific build path.
 
-Wheel audits accept only the `pyamplicol/` package, its one `.dist-info/`
-directory, and an optional repair-tool `.libs/` directory. They verify the
-release lock, schema resources, exact PEP 639 license inventory, SDK archive,
-and SDK SBOM before deployment testing.
+Wheel audits permit only the `pyamplicol/` package, one `.dist-info/` directory,
+and an optional platform repair directory. Standard wheel `RECORD` protects
+installed-file integrity. Model and process-artifact digests remain scoped to
+the package features that verify those payloads against accidental mutation.
 
-## Artifact Parity
+## Source Distribution
 
-Release wheels are built only from the one retained unpacked sdist outside
-the parent workspace. A direct-source same-host wheel is discarded after
-normalized path, metadata, `RECORD`, package-resource, SDK-hash, and native
-binary comparison.
+One retained source distribution is the source of all release wheels. It must
+build with `python -m pip install .` using published dependencies and contain:
+
+- Python/Rust/build sources and lockfiles;
+- schemas, tests, examples, docs, and release tooling;
+- the README, licenses, notices, and TeX report sources.
+
+It excludes dependency checkouts, contributor setup, local candidate inputs,
+generated process outputs, build products, caches, and local environments.
+
+`just sdist`, `just wheel-from-sdist`, and the PEP 517 hooks exercise the same
+backend. The sdist audit checks required members and forbidden source-checkout
+inputs before a wheel is retained.
+
+## Validation Matrix
 
 Release targets are:
 
 - macOS 11 arm64, `cp311-abi3`;
 - macOS 11 x86_64, `cp311-abi3`;
-- manylinux_2_28 x86_64, `cp311-abi3`.
+- manylinux 2.28 x86_64, `cp311-abi3`.
 
-Each compressed wheel is at most 95 MB and is installed and tested on CPython
-3.11 and 3.14 without Rust present.
+Each wheel is installed on CPython 3.11 and 3.14 and tested without Rust in the
+consumer environment. Validation includes:
 
-## Closed Release Gates
+- `twine check` and platform/native-dependency audits;
+- import, CLI, direct-JIT f64 self-test, and packaged-example checks;
+- Python total/resolved runtime behavior with Symbolica imports blocked;
+- C++17, Fortran 2008, and generated Rust f64 driver compilation/execution;
+- model-parameter card and direct UFO-parameter override behavior;
+- the independent physics oracle and required regression gates.
 
-Publication remains blocked until:
+Local entry points are:
 
-- published Symbolica Python and Rust artifacts contain every required local
-  fix and pass serialization compatibility;
-- the Symbolica-selected SymJIT release passes the AArch64 regressions;
-- `ufo-model-loader` containing revision
-  `9cb4deeae40ddd64184049af07ac1d03ce5f6162` is published;
-- every bundled model has complete redistributable license provenance.
+```console
+just source-gate
+just test-deployment
+just release-artifacts
+just publish-dry-run
+```
 
-Candidate mode may consume locally built exact dependency wheels and patched
-crates, but public metadata never contains a Git, path, editable, or parent
-dependency.
+`publish-dry-run` validates ordinary package files and prints the upload command
+without uploading anything.
 
 ## Publishing
 
-CI checks candidate builds with read-only permissions and no OIDC. Release
-artifacts are manually built from a signed tag on the three release targets.
-TestPyPI and production receive the unchanged, previously validated bundle.
-Production publishing is `workflow_dispatch` only; only the protected `pypi`
-job receives `id-token: write`, performs no checkout or build, and uses PyPI
-Trusted Publishing.
+The release inventory is exactly one source distribution and one wheel per
+supported target. Publication never rebuilds these files.
 
-Every external CI action is pinned by immutable commit SHA. Linux bootstrap
-verifies the pinned `rustup-init` archive checksum, and the final artifact
-manifest binds every retained file to the signed source tag and full source
-commit before a publishing job can consume it.
+The validated-artifact workflow is manually dispatched with read-only source
+permissions. A separate manual publishing workflow downloads the successful
+validated inventory, verifies the expected platforms and non-candidate version,
+and publishes through a protected TestPyPI or PyPI environment using OIDC
+Trusted Publishing. Only that final job receives `id-token: write`.
+
+Publication remains blocked until the release dependency contract marks the
+Symbolica/SymJIT combination compatible and every target passes the complete
+installed-package matrix.

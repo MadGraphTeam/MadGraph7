@@ -13,7 +13,7 @@ from .symbolica_adapters import (
 from .symbolica_adapters import (
     _JITSymbolicaEvaluatorAdapter as _JITSymbolicaEvaluatorAdapter,
 )
-from .symbolica_compile import _compile_symbolica_outputs, _resolve_compiled_preset
+from .symbolica_compile import _compile_symbolica_outputs
 from .symbolica_helpers import (
     ComplexOutput,
     _artifact_path_for_manifest,
@@ -33,6 +33,5 @@ __all__ = [
     "_compile_symbolica_outputs",
     "_evaluate_complex_outputs",
     "_load_symbolica_evaluator_artifact",
-    "_resolve_compiled_preset",
     "_symbolica_evaluator_artifact_manifest",
 ]

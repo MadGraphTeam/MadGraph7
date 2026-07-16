@@ -8,7 +8,7 @@ from functools import cache
 from threading import RLock
 from typing import Any
 
-from .._internal.physics.symbols import symbols
+from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from .contracts import validate_color_representation
 
 E: Any = None
@@ -75,11 +75,16 @@ class NormalizedTensorExpression:
 def normalize_lorentz_expression(
     source: str,
     spins: Sequence[int],
+    *,
+    model_symbols: ModelSymbolRegistry | None = None,
 ) -> NormalizedTensorExpression:
     """Convert one wrapped UFO Lorentz expression into typed spenso form."""
 
     _ensure_symbolica()
-    context = _LorentzContext(tuple(int(spin) for spin in spins))
+    context = _LorentzContext(
+        tuple(int(spin) for spin in spins),
+        model_symbols=model_symbols,
+    )
     expression = E(source)
     expression = _replace(expression, "UFO::PSlash(a_,b_)", context.p_slash)
     expression = _replace(expression, "UFO::Gamma(a_,b_,c_)", context.gamma)
@@ -139,17 +144,28 @@ def normalize_vertex_tensor_term(
     color: str,
     spins: Sequence[int],
     color_representations: Sequence[int],
+    model_symbols: ModelSymbolRegistry | None = None,
 ) -> tuple[NormalizedTensorExpression, NormalizedTensorExpression]:
     return (
-        normalize_lorentz_expression(lorentz, spins),
+        normalize_lorentz_expression(
+            lorentz,
+            spins,
+            model_symbols=model_symbols,
+        ),
         normalize_color_expression(color, color_representations),
     )
 
 
 class _LorentzContext:
-    def __init__(self, spins: tuple[int, ...]) -> None:
+    def __init__(
+        self,
+        spins: tuple[int, ...],
+        *,
+        model_symbols: ModelSymbolRegistry | None = None,
+    ) -> None:
         _ensure_symbolica()
         self.spins = spins
+        self.model_symbols = model_symbols
         self.minkowski = Representation.mink(4)
         self.bispinor = Representation.bis(4)
         library = TensorLibrary.hep_lib_atom()
@@ -275,7 +291,12 @@ class _LorentzContext:
     def _momentum_tensor(self, leg: int, slot) -> Expression:
         if leg < 1 or leg > len(self.spins):
             raise ValueError(f"UFO momentum refers to absent leg {leg}")
-        return TensorName(symbols.ufo_momentum_tensor_name(leg))(slot).to_expression()
+        name = (
+            symbols.ufo_momentum_tensor_name(leg)
+            if self.model_symbols is None
+            else self.model_symbols.ufo_momentum_tensor_name(leg)
+        )
+        return TensorName(name)(slot).to_expression()
 
     def _fresh_label(self, prefix: str) -> str:
         label = f"ufo_{prefix}_internal_{self._fresh_index}"

@@ -6,14 +6,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from ..color.plan import GenericColorPlan
-from ..models import BuiltinSMModel, Model
-from ..processes import ProcessOptions
+from ..models import Model
 from ..processes.ir import CanonicalProcessIR
 from .dag_algorithms import contributing_color_sector_ids
 from .dag_compiler import GenericDAGCompiler
 from .dag_types import (
     AmplitudeRoot,
-    ColorAccuracy,
     CurrentNode,
     GenericDAG,
     InteractionNode,
@@ -278,11 +276,9 @@ class GenericCurrentPlan:
 
 
 def build_generic_current_plan(
-    process: str | CanonicalProcessIR | GenericDAG,
+    process: CanonicalProcessIR | GenericDAG,
     *,
-    model: Model | None = None,
-    color_accuracy: ColorAccuracy = "lc",
-    options: ProcessOptions | None = None,
+    model: Model,
     max_currents: int | None = None,
     max_color_sectors: int | None = None,
     reference_color_order: tuple[int, ...] | None = None,
@@ -296,14 +292,11 @@ def build_generic_current_plan(
     ignored_particle_ids: Iterable[int] | None = None,
     ignored_vertex_kinds: Iterable[int] | None = None,
 ) -> GenericCurrentPlan:
-    model = model or BuiltinSMModel()
     dag = (
         process
         if isinstance(process, GenericDAG)
         else GenericDAGCompiler(
             model=model,
-            color_accuracy=color_accuracy,
-            options=options,
             max_currents=max_currents,
             max_color_sectors=max_color_sectors,
             reference_color_order=reference_color_order,
@@ -322,11 +315,9 @@ def build_generic_current_plan(
 
 
 def build_generic_stage_plan(
-    plan: GenericCurrentPlan | GenericDAG,
+    plan: GenericCurrentPlan,
 ) -> GenericStagePlan:
-    current_plan = (
-        build_generic_current_plan(plan) if isinstance(plan, GenericDAG) else plan
-    )
+    current_plan = plan
     stages: list[GenericCurrentStage] = []
     interactions_by_subset: dict[int, list[InteractionNode]] = {}
     for interaction in current_plan.interactions:

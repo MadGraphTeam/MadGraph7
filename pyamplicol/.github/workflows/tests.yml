@@ -1,0 +1,138 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-compatibility:
+    name: Python ${{ matrix.python-version }} lightweight API
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install lightweight test dependency
+        run: python -m pip install "pytest>=8.3,<9"
+      - name: Check lightweight typed configuration API
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: >-
+          python -m pytest
+          tests/unit/test_config_models.py
+          tests/unit/test_config_resolution.py
+          -q
+      - name: Check the CI memory watchdog
+        if: matrix.python-version == '3.11'
+        run: python -m pytest tests/unit/test_ci_memory_watchdog.py -q
+
+  candidate-runtime:
+    name: Candidate generation, runtime, and native SDK
+    needs: python-compatibility
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      PYAMPLICOL_BUILD_MODE: candidate
+      PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Cache Cargo downloads
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.89.0-${{ hashFiles('Cargo.lock', 'dependencies/candidate-Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.89.0-
+      - name: Install C++17 and Fortran 2008 toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          command -v c++
+          command -v gfortran
+          command -v make
+      - name: Build the pinned contributor candidate (30 GiB RSS limit)
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python dependencies/install_dependencies.py
+          --without-legacy-amplicol
+      - name: Run lightweight dependency, typing, and CI-tool checks
+        run: |
+          .venv/bin/python tools/release/check_dependencies.py --candidate --offline
+          PYTHON="$PWD/.venv/bin/python" just typing
+          .venv/bin/python -m ruff check tools/ci tests/unit/test_ci_memory_watchdog.py
+      - name: Run focused Python unit checks (30 GiB RSS limit)
+        run: |
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            .venv/bin/python -m pytest \
+            tests/unit/test_api_requests.py \
+            tests/unit/test_api_bundle.py \
+            tests/unit/test_config_models.py \
+            tests/unit/test_config_resolution.py \
+            tests/unit/test_dag_model_independence.py \
+            tests/unit/test_external_model_independence.py \
+            tests/unit/test_generation_execution_schema.py \
+            tests/unit/test_generation_stage_contract.py \
+            tests/unit/test_model_loading.py \
+            tests/unit/test_sdk_config.py \
+            -q
+      - name: Run focused generation and runtime integration (30 GiB RSS limit)
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python -m pytest
+          tests/integration/test_schema_v3_generation_runtime.py
+          -q
+      - name: Build and exercise Python, C++, Fortran, and Rust APIs (30 GiB RSS limit)
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python -m pytest
+          tests/integration/test_multilanguage_api.py
+          -q
+      - name: Check Rust workspace (30 GiB RSS limit)
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          env PYTHON=$PWD/.venv/bin/python just rust-check
+      - name: Test Rust workspace (30 GiB RSS limit)
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          env PYTHON=$PWD/.venv/bin/python just rust-test
+      - name: Exercise installed candidate and checkout-independent examples
+        run: |
+          .venv/bin/python -m pyamplicol self-test --format json
+          .venv/bin/python -m pytest tests/integration/test_examples.py -q

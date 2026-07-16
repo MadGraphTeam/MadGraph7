@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from .checkout import (
-    _release_lock,
+    _contributor_lock,
+    checkout_branch,
     expected_revision,
-    managed_patch_metadata,
 )
 from .model import ROOT, CompilerProvenance, LegacyOracleError, ProcessEntry
 
@@ -79,16 +79,14 @@ def _fortran_dependency_ids(
 def _oracle_content_sha256(
     *,
     lock: Mapping[str, Any] | None = None,
-    patches: Sequence[Mapping[str, str]] | None = None,
     revision: str | None = None,
 ) -> str:
-    release_lock = _release_lock() if lock is None else lock
-    patch_metadata = managed_patch_metadata() if patches is None else patches
+    contributor = _contributor_lock() if lock is None else lock
     pinned_revision = expected_revision() if revision is None else revision
     payload = {
-        "patches": patch_metadata,
+        "branch": checkout_branch(lock=contributor),
         "revision": pinned_revision,
-        "source_url": str(release_lock["legacy_amplicol"]["source_url"]),
+        "source_url": str(contributor["legacy_amplicol"]["source_url"]),
     }
     encoded = json.dumps(
         payload,

@@ -9,7 +9,7 @@ action = "generate"
 source = "built-in-sm"
 
 [process]
-entries = [{ expression = "d d~ > z g", name = "ddbar_zg_full" }]
+entries = [{ expression = "u u~ > g g", name = "uubar_gg_full" }]
 
 [color]
 accuracy = "full"

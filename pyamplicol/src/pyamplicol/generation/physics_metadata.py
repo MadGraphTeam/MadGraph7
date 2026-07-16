@@ -156,8 +156,8 @@ def _possible_helicity_vectors(
         values: set[int] = set()
         for state in model.source_spin_states(particle_id):
             helicity = int(state.helicity)
-            if leg.is_initial and model.is_gluon(particle_id):
-                helicity = -helicity
+            if leg.is_initial:
+                helicity *= model.source_helicity_crossing_sign(particle_id)
             values.add(helicity)
         per_leg.append(tuple(sorted(values)))
     return tuple(tuple(values) for values in product(*per_leg))
@@ -314,7 +314,11 @@ def _expected_lc_physical_color_count(dag: GenericDAG) -> int:
     count = 0
     for sector in dag.color_plan.sectors:
         count += 1
-        if sector.kind == "single-trace" and len(sector.trace_labels) > 2:
+        if (
+            dag.color_plan.trace_reflections_folded
+            and sector.kind == "single-trace"
+            and len(sector.trace_labels) > 2
+        ):
             reflected = (sector.trace_labels[0], *reversed(sector.trace_labels[1:]))
             if reflected != sector.trace_labels:
                 count += 1

@@ -13,7 +13,6 @@ impl EvaluatorGroup {
             evaluators,
             output_len,
             chunk_scratch_f64: Vec::new(),
-            chunk_scratch_native2: Vec::new(),
         })
     }
 
@@ -31,24 +30,7 @@ impl EvaluatorGroup {
         &mut self,
         params: &[Complex<f64>],
     ) -> RusticolResult<Vec<Complex<f64>>> {
-        if !self.supports_native2() {
-            return self.evaluate_batch(1, params);
-        }
-        let packed = params
-            .iter()
-            .map(|value| {
-                Complex::new(
-                    wide::f64x2::new([value.re, value.re]),
-                    wide::f64x2::new([value.im, value.im]),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut native_output = Vec::new();
-        self.evaluate_native2_into(1, &packed, &mut native_output)?;
-        Ok(native_output
-            .into_iter()
-            .map(|value| c64(value.re.as_array()[0], value.im.as_array()[0]))
-            .collect())
+        self.evaluate_batch(1, params)
     }
 
     pub(crate) fn evaluate_batch_into(
@@ -90,61 +72,6 @@ impl EvaluatorGroup {
                 let dst = row * self.output_len + output_offset;
                 out[dst..dst + evaluator.output_len]
                     .copy_from_slice(&self.chunk_scratch_f64[src..src + evaluator.output_len]);
-            }
-            output_offset += evaluator.output_len;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn supports_native2(&self) -> bool {
-        !self.evaluators.is_empty()
-            && self
-                .evaluators
-                .iter()
-                .all(|evaluator| match &evaluator.eval {
-                    #[cfg(feature = "f64-symjit")]
-                    F64Evaluator::SymjitApplication(evaluator) => evaluator.supports_native2(),
-                    #[cfg(feature = "symbolica-runtime")]
-                    F64Evaluator::JitNative2(_) => true,
-                    #[cfg(feature = "symbolica-runtime")]
-                    F64Evaluator::Compiled(_) | F64Evaluator::Jit(_) => false,
-                })
-    }
-
-    pub(crate) fn evaluate_native2_into(
-        &mut self,
-        native_rows: usize,
-        params: &[Complex<wide::f64x2>],
-        out: &mut Vec<Complex<wide::f64x2>>,
-    ) -> RusticolResult<()> {
-        let expected_output_len = native_rows * self.output_len;
-        if out.len() != expected_output_len {
-            out.resize(
-                expected_output_len,
-                Complex::new(wide::f64x2::ZERO, wide::f64x2::ZERO),
-            );
-        }
-        if self.evaluators.len() == 1 {
-            return self.evaluators[0].evaluate_native2_batch(native_rows, params, out);
-        }
-
-        let mut output_offset = 0;
-        for evaluator in &mut self.evaluators {
-            self.chunk_scratch_native2.resize(
-                native_rows * evaluator.output_len,
-                Complex::new(wide::f64x2::ZERO, wide::f64x2::ZERO),
-            );
-            evaluator.evaluate_native2_batch(
-                native_rows,
-                params,
-                &mut self.chunk_scratch_native2,
-            )?;
-            for row in 0..native_rows {
-                let source_start = row * evaluator.output_len;
-                let target_start = row * self.output_len + output_offset;
-                out[target_start..target_start + evaluator.output_len].copy_from_slice(
-                    &self.chunk_scratch_native2[source_start..source_start + evaluator.output_len],
-                );
             }
             output_offset += evaluator.output_len;
         }
@@ -246,62 +173,6 @@ impl LoadedEvaluator {
                 eval.evaluate_batch(batch_size, params, out)
                     .map_err(RusticolError::evaluation)
             }
-            #[cfg(feature = "symbolica-runtime")]
-            F64Evaluator::JitNative2(eval) => {
-                if params.len() != batch_size * self.input_len {
-                    return Err(RusticolError::invalid_argument(format!(
-                        "parameter buffer has length {}, expected {}",
-                        params.len(),
-                        batch_size * self.input_len
-                    )));
-                }
-                if out.len() != batch_size * self.output_len {
-                    return Err(RusticolError::invalid_argument(format!(
-                        "output buffer has length {}, expected {}",
-                        out.len(),
-                        batch_size * self.output_len
-                    )));
-                }
-                eval.evaluate_batch(batch_size, params, out)
-                    .map_err(RusticolError::evaluation)
-            }
-        }
-    }
-
-    fn evaluate_native2_batch(
-        &mut self,
-        native_rows: usize,
-        params: &[Complex<wide::f64x2>],
-        out: &mut [Complex<wide::f64x2>],
-    ) -> RusticolResult<()> {
-        if params.len() != native_rows * self.input_len {
-            return Err(RusticolError::invalid_argument(format!(
-                "native parameter buffer has length {}, expected {}",
-                params.len(),
-                native_rows * self.input_len
-            )));
-        }
-        if out.len() != native_rows * self.output_len {
-            return Err(RusticolError::invalid_argument(format!(
-                "native output buffer has length {}, expected {}",
-                out.len(),
-                native_rows * self.output_len
-            )));
-        }
-        match &mut self.eval {
-            #[cfg(feature = "f64-symjit")]
-            F64Evaluator::SymjitApplication(eval) => {
-                eval.evaluate_native2_batch(native_rows, params, out)
-            }
-            #[cfg(feature = "symbolica-runtime")]
-            F64Evaluator::JitNative2(eval) => {
-                eval.batch_evaluate(params, out, native_rows);
-                Ok(())
-            }
-            #[cfg(feature = "symbolica-runtime")]
-            F64Evaluator::Compiled(_) | F64Evaluator::Jit(_) => Err(RusticolError::evaluation(
-                "native two-lane evaluation requested for a non-native evaluator",
-            )),
         }
     }
 }
@@ -410,33 +281,19 @@ pub(crate) fn flatten_evaluators(
             #[cfg(feature = "symbolica-runtime")]
             {
                 let _ = runtime_capability;
-                let (jit_settings, exact_eval, jit_eval, jit_native2) =
+                let (jit_settings, exact_eval, jit_eval) =
                     load_evaluator_state(&artifact_path(root, evaluator_state_path)?)?;
-                let eval = if native_simd_jit_enabled() {
-                    F64Evaluator::JitNative2(match jit_native2 {
-                        Some(eval) => eval,
-                        None => exact_eval
-                            .jit_compile::<Complex<wide::f64x2>>(jit_settings.clone())
-                            .map_err(|err| {
-                                RusticolError::evaluation(format!(
-                                    "could not compile native two-lane JIT evaluator from {}: {err}",
-                                    evaluator_state_path
-                                ))
-                            })?,
-                    })
-                } else {
-                    F64Evaluator::Jit(match jit_eval {
-                        Some(eval) => eval,
-                        None => exact_eval
-                            .jit_compile::<Complex<f64>>(jit_settings)
-                            .map_err(|err| {
-                                RusticolError::evaluation(format!(
-                                    "could not compile scalar JIT evaluator from {}: {err}",
-                                    evaluator_state_path
-                                ))
-                            })?,
-                    })
-                };
+                let eval = F64Evaluator::Jit(match jit_eval {
+                    Some(eval) => eval,
+                    None => exact_eval
+                        .jit_compile::<Complex<f64>>(jit_settings)
+                        .map_err(|err| {
+                            RusticolError::evaluation(format!(
+                                "could not compile scalar JIT evaluator from {}: {err}",
+                                evaluator_state_path
+                            ))
+                        })?,
+                });
                 output.push(LoadedEvaluator {
                     eval,
                     exact_eval: Some(exact_eval),
@@ -617,16 +474,7 @@ pub(crate) fn load_evaluator_state(
     JITCompilationSettings,
     ExpressionEvaluator<Complex<Rational>>,
     Option<JITCompiledEvaluator<Complex<f64>>>,
-    Option<JITCompiledEvaluator<Complex<wide::f64x2>>>,
 )> {
-    type SavedEvaluatorNative2 = (
-        bool,
-        JITCompilationSettings,
-        ExpressionEvaluator<Complex<Rational>>,
-        Option<JITCompiledEvaluator<f64>>,
-        Option<JITCompiledEvaluator<Complex<f64>>>,
-        Option<JITCompiledEvaluator<Complex<wide::f64x2>>>,
-    );
     type SavedEvaluator = (
         bool,
         JITCompilationSettings,
@@ -641,47 +489,17 @@ pub(crate) fn load_evaluator_state(
             path.display()
         ))
     })?;
-    match bincode::decode_from_slice::<SavedEvaluatorNative2, _>(
-        &bytes,
-        bincode::config::standard(),
-    ) {
-        Ok(((_, settings, evaluator, _, jit_complex, jit_native2), consumed)) => {
-            ensure_evaluator_state_consumed(path, bytes.len(), consumed)?;
-            Ok((settings, evaluator, jit_complex, jit_native2))
-        }
-        Err(native2_error) => {
-            let ((_, settings, evaluator, _, jit_complex), consumed) =
-                bincode::decode_from_slice::<SavedEvaluator, _>(
-                    &bytes,
-                    bincode::config::standard(),
-                )
-                .map_err(|legacy_error| {
-                    RusticolError::compatibility(format!(
-                        "evaluator state {} does not match Symbolica serialization ABI {}: {native2_error}; {legacy_error}; regenerate the schema-v3 artifact",
-                        path.display(),
-                        crate::SYMBOLICA_SERIALIZATION_ABI
-                    ))
-                })?;
-            ensure_evaluator_state_consumed(path, bytes.len(), consumed)?;
-            Ok((settings, evaluator, jit_complex, None))
-        }
-    }
-}
-
-#[cfg(feature = "symbolica-runtime")]
-fn native_simd_jit_enabled() -> bool {
-    if !cfg!(target_arch = "aarch64") {
-        return false;
-    }
-    std::env::var("RUSTICOL_NATIVE_SIMD_JIT")
-        .ok()
-        .map(|value| {
-            !matches!(
-                value.to_ascii_lowercase().as_str(),
-                "0" | "false" | "no" | "off"
-            )
-        })
-        .unwrap_or(true)
+    let ((_, settings, evaluator, _, jit_complex), consumed) =
+        bincode::decode_from_slice::<SavedEvaluator, _>(&bytes, bincode::config::standard())
+            .map_err(|error| {
+                RusticolError::compatibility(format!(
+                    "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
+                    path.display(),
+                    crate::SYMBOLICA_SERIALIZATION_ABI
+                ))
+            })?;
+    ensure_evaluator_state_consumed(path, bytes.len(), consumed)?;
+    Ok((settings, evaluator, jit_complex))
 }
 
 #[cfg(feature = "symbolica-runtime")]

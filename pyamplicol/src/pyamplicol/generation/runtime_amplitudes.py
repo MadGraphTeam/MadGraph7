@@ -232,7 +232,9 @@ def _root_all_sector_weight(
     weight = float(root.helicity_weight)
     if dag.process.color_accuracy != "lc":
         return weight
-    if dag.color_plan.process.quark_lines.quark_pair_count != 0:
+    if dag.color_plan.process.color_endpoints.pair_count != 0:
+        return weight
+    if not dag.color_plan.trace_reflections_folded:
         return weight
     if not has_multiple_lc_root_sectors:
         return weight
@@ -248,7 +250,7 @@ def _root_all_sector_weight(
 def _has_multiple_lc_root_sectors(dag: GenericDAG) -> bool:
     if dag.process.color_accuracy != "lc":
         return False
-    if dag.color_plan.process.quark_lines.quark_pair_count != 0:
+    if dag.color_plan.process.color_endpoints.pair_count != 0:
         return False
     return len({_root_color_sector_id(dag, root) for root in dag.amplitude_roots}) > 1
 

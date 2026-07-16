@@ -13,18 +13,19 @@ from ..models.contracts import (
     CompiledParticleRecord,
     validate_color_representation,
 )
-from .core import (
-    ParsedProcess,
-    ProcessOptions,
+from .core_syntax import (
     canonical_process_key,
     split_process_set,
 )
 from .ir import (
     CanonicalProcessIR,
+    ColorEndpointSummary,
+    ColorRole,
     LegSide,
-    ParticleClass,
+    ParticleStatistics,
     ProcessLegIR,
-    QuarkLineSummary,
+    SourceOrientation,
+    WavefunctionFamily,
 )
 
 
@@ -88,62 +89,44 @@ class ModelParticleCatalog:
                 f"{particle.antiname!r}"
             ) from exc
 
-    def particle_class(self, particle: CompiledParticleRecord) -> ParticleClass:
+    def validate_process_role(self, particle: CompiledParticleRecord) -> None:
+        """Reject colored roles unsupported by the current color planner."""
+
         representation = validate_color_representation(
             particle.color,
             context=f"particle {particle.name!r}",
         )
-        if representation == 8:
-            return "gluon"
-        if representation == 3:
-            return "quark"
-        if representation == -3:
-            return "antiquark"
-        if particle.spin == 3:
-            return "vector"
-        if self.model_name in {"sm", "built-in-sm"}:
-            absolute_pdg = abs(particle.pdg_code)
-            if absolute_pdg in {11, 13, 15}:
-                return "charged-lepton"
-            if absolute_pdg in {12, 14, 16}:
-                return "neutrino"
-            if absolute_pdg == 25:
-                return "higgs"
-        return "singlet"
+        supported_colored_role = (
+            particle.color_role in {"fundamental", "antifundamental"}
+            and particle.statistics == "fermion"
+        ) or (
+            particle.color_role == "adjoint"
+            and particle.wavefunction_family == "vector"
+        )
+        if representation != 1 and not supported_colored_role:
+            raise ValueError(
+                f"particle {particle.name!r} has unsupported colored external-state "
+                f"role (spin={particle.spin}, color={representation}); current color "
+                "planning supports fundamental fermions and adjoint vectors"
+            )
 
     def default_multiparticles(self) -> dict[str, tuple[str, ...]]:
-        if self.model_name not in {"sm", "built-in-sm"}:
-            return {}
-        available = {particle.name for particle in self.external_particles}
-        preferred = (
-            "g",
-            "d",
-            "d~",
-            "u",
-            "u~",
-            "s",
-            "s~",
-            "c",
-            "c~",
-            "b",
-            "b~",
+        partons = tuple(
+            particle.name
+            for particle in self.external_particles
+            if particle.mass.casefold() == "zero"
+            and (
+                (
+                    particle.statistics == "fermion"
+                    and particle.color_role in {"fundamental", "antifundamental"}
+                )
+                or (
+                    particle.wavefunction_family == "vector"
+                    and particle.color_role == "adjoint"
+                )
+            )
         )
-        values = tuple(name for name in preferred if name in available)
-        return {"p": values, "j": values}
-
-
-@dataclass(frozen=True)
-class ModelProcessSetEntry:
-    key: str
-    process: str
-    ir: CanonicalProcessIR
-
-
-@dataclass(frozen=True)
-class ModelProcessSet:
-    request: str
-    options: ProcessOptions
-    entries: tuple[ModelProcessSetEntry, ...]
+        return {} if not partons else {"p": partons, "j": partons}
 
 
 def parse_multiparticle_definitions(
@@ -245,22 +228,19 @@ def build_model_process_ir(
             ),
         ]
     )
-    counts = Counter(leg.particle_class for leg in legs)
-    parsed = ParsedProcess(
-        initial_state=tuple(particle.name for particle in outgoing_initial),
-        jet_count=0,
-        rest=tuple(particle.name for particle in final),
-    )
+    counts = Counter(leg.color_role for leg in legs)
     return CanonicalProcessIR(
         process=canonical,
         key=canonical_process_key(canonical),
-        parsed=parsed,
         color_accuracy=color_accuracy,
         legs=legs,
-        quark_lines=QuarkLineSummary(
-            quark_count=counts["quark"],
-            antiquark_count=counts["antiquark"],
-            quark_pair_count=min(counts["quark"], counts["antiquark"]),
+        color_endpoints=ColorEndpointSummary(
+            fundamental_count=counts["fundamental"],
+            antifundamental_count=counts["antifundamental"],
+            pair_count=min(
+                counts["fundamental"],
+                counts["antifundamental"],
+            ),
         ),
     )
 
@@ -299,6 +279,7 @@ def _model_leg(
     outgoing_particle: CompiledParticleRecord,
     catalog: ModelParticleCatalog,
 ) -> ProcessLegIR:
+    catalog.validate_process_role(outgoing_particle)
     return ProcessLegIR(
         label=label,
         side=cast(LegSide, side),
@@ -306,14 +287,21 @@ def _model_leg(
         outgoing_particle=outgoing_particle.name,
         pdg=particle.pdg_code,
         outgoing_pdg=outgoing_particle.pdg_code,
-        particle_class=catalog.particle_class(outgoing_particle),
+        statistics=cast(ParticleStatistics, outgoing_particle.statistics),
+        wavefunction_family=cast(
+            WavefunctionFamily,
+            outgoing_particle.wavefunction_family,
+        ),
+        color_role=cast(ColorRole, outgoing_particle.color_role),
+        source_orientation=cast(
+            SourceOrientation,
+            outgoing_particle.source_orientation,
+        ),
     )
 
 
 __all__ = [
     "ModelParticleCatalog",
-    "ModelProcessSet",
-    "ModelProcessSetEntry",
     "build_model_process_ir",
     "expand_model_processes",
     "parse_multiparticle_definitions",

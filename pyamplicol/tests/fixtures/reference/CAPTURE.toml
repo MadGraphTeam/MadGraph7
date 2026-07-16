@@ -29,7 +29,7 @@ command = [
 [evidence.legacy_fortran]
 file = "legacy-fortran-v2.json"
 repository = "https://github.com/rikkert-frederix/AmpliCol.git"
-revision = "643bc6f99d7b2249af0a85204768df243e612411"
+revision = "58c169b7df58ec8a38c0b748e08548cec20b4530"
 records = 90
 validation_profile = "binary64"
 

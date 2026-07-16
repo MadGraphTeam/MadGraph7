@@ -21741,11 +21741,11 @@
       "version": "0.1.7"
     },
     {
-      "content_sha256": "48b7cd8b931dbbd5a4d86d97734d06836e5c3412c932d3484e2799e6a2488469",
+      "content_sha256": "ed18d0240cc7b1ea821708209afbfa40a8fcec63d62bd72cfa8c6f2f1cbf1990",
       "id": "dependency:legacy-amplicol",
       "license": "NOASSERTION",
       "name": "Pinned legacy Fortran AmpliCol",
-      "revision": "643bc6f99d7b2249af0a85204768df243e612411",
+      "revision": "58c169b7df58ec8a38c0b748e08548cec20b4530",
       "serialization_abi": null,
       "version": "developer-only"
     },

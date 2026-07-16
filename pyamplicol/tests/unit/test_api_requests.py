@@ -58,7 +58,7 @@ def test_public_compiled_model_uses_the_canonical_schema() -> None:
     compiled = ModelSource.built_in_sm().compile(use_cache=False)
 
     assert isinstance(compiled, CompiledModel)
-    assert compiled.schema_version == COMPILED_MODEL_SCHEMA_VERSION == 6
+    assert compiled.schema_version == COMPILED_MODEL_SCHEMA_VERSION == 7
 
 
 def test_process_requests_normalize_and_sets_require_unique_names() -> None:

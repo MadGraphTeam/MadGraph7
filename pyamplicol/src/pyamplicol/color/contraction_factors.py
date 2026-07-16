@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Process-specific color-factor algorithms."""
+"""Representation-based color-factor algorithms."""
 
 from __future__ import annotations
 
@@ -8,38 +8,38 @@ from fractions import Fraction
 
 from .contraction_trace import (
     _check_nlc,
-    _check_nlc_1qqbar,
+    _check_nlc_one_open_line,
     _eval_nc_terms,
     _eval_trace,
     _simplify_trace_terms,
     _simplify_trace_terms_nc_power,
 )
 from .contraction_types import NC, ColorGroupDescriptor
-from .plan import GenericColorPlan, LCColorSector, LCQuarkLine
+from .plan import GenericColorPlan, LCColorSector, LCOpenColorLine
 
 
-def _pure_gluon_color_factors(
+def _pure_adjoint_color_factors(
     left: LCColorSector,
     right: LCColorSector,
     n_ord: int,
     full_col_acc: int,
 ) -> tuple[float, float, float]:
     return (
-        _pure_gluon_color_factor(
+        _pure_adjoint_color_factor(
             left,
             right,
             n_ord,
             accuracy="lc",
             full_col_acc=full_col_acc,
         ),
-        _pure_gluon_color_factor(
+        _pure_adjoint_color_factor(
             left,
             right,
             n_ord,
             accuracy="nlc",
             full_col_acc=full_col_acc,
         ),
-        _pure_gluon_color_factor(
+        _pure_adjoint_color_factor(
             left,
             right,
             n_ord,
@@ -49,7 +49,7 @@ def _pure_gluon_color_factors(
     )
 
 
-def _pure_gluon_color_factor(
+def _pure_adjoint_color_factor(
     left: LCColorSector,
     right: LCColorSector,
     n_ord: int,
@@ -78,7 +78,7 @@ def _pure_gluon_color_factor(
     )
 
 
-def _one_quark_line_color_factors(
+def _one_open_line_color_factors(
     left: LCColorSector,
     right: LCColorSector,
     n_ord: int,
@@ -92,12 +92,12 @@ def _one_quark_line_color_factors(
     if iper == jper:
         nlc = full
     else:
-        acc = _check_nlc_1qqbar(tuple(jper[1:-1]), tuple(iper[1:-1]))
+        acc = _check_nlc_one_open_line(tuple(jper[1:-1]), tuple(iper[1:-1]))
         nlc = full if acc != 0 else 0.0
     return (lc, nlc, full)
 
 
-def _two_quark_line_color_factors(
+def _two_open_line_color_factors(
     color_plan: GenericColorPlan,
     left: LCColorSector,
     right: LCColorSector,
@@ -115,16 +115,16 @@ def _two_quark_line_color_factors(
     )
     gi, ui = _two_line_gi_ui(color_plan, iper, reference)
     gj, uj = _two_line_gi_ui(color_plan, jper, reference)
-    same_flavour = _has_same_flavour_quark_lines(color_plan)
+    repeated_fundamental_species = _has_repeated_fundamental_species(color_plan)
     lc = 0.0
     if iper == jper:
         if ui == 1 and uj == 1:
             lc = float(NC ** (n_ord - 2))
-        elif ui == 2 and uj == 2 and not same_flavour:
+        elif ui == 2 and uj == 2 and not repeated_fundamental_species:
             lc = float(NC ** (n_ord - 4) * 9.0)
-        elif ui == 2 and uj == 2 and same_flavour:
+        elif ui == 2 and uj == 2 and repeated_fundamental_species:
             lc = float(NC ** (n_ord - 2))
-    full = _two_quark_line_full_factor(
+    full = _two_open_line_full_factor(
         iper,
         jper,
         n_ord=n_ord,
@@ -132,21 +132,20 @@ def _two_quark_line_color_factors(
         gj=gj,
         ui=ui,
         uj=uj,
-        same_flavour=same_flavour,
     )
     nlc = 0.0
     if abs(full) > 0.0:
-        iper_glu, jper_glu = _two_line_ordered_gluon_strings(
+        iper_adj, jper_adj = _two_line_ordered_adjoint_strings(
             color_plan,
             iper,
             jper,
         )
-        iper_ord, jper_ord = _convert_two_line_gluon_strings(
+        iper_ord, jper_ord = _convert_two_line_adjoint_strings(
             n_ord,
-            iper_glu,
-            jper_glu,
+            iper_adj,
+            jper_adj,
         )
-        acc = _check_nlc_2qqbar_sf(
+        acc = _check_nlc_two_open_lines_same_species(
             n_ord,
             iper_ord,
             jper_ord,
@@ -160,7 +159,7 @@ def _two_quark_line_color_factors(
     return (lc, nlc, full)
 
 
-def _two_quark_line_full_factor(
+def _two_open_line_full_factor(
     iper: tuple[int, ...],
     jper: tuple[int, ...],
     *,
@@ -169,7 +168,6 @@ def _two_quark_line_full_factor(
     gj: int,
     ui: int,
     uj: int,
-    same_flavour: bool,
 ) -> float:
     if ui == uj:
         traces = (
@@ -200,10 +198,10 @@ def _is_open_line_pair(
 ) -> bool:
     if left.kind != "open-lines" or right.kind != "open-lines":
         return False
-    return len(left.quark_lines) == len(right.quark_lines)
+    return len(left.open_color_lines) == len(right.open_color_lines)
 
 
-def _multi_quark_line_color_factors(
+def _multi_open_line_color_factors(
     color_plan: GenericColorPlan,
     left: LCColorSector,
     right: LCColorSector,
@@ -211,7 +209,7 @@ def _multi_quark_line_color_factors(
     """Generic overlap of multi-open-line colour-flow tensors.
 
     Each sector is a product of open strings
-    ``(T...T)_{q_i,\bar q_j}``.  The right sector is conjugated, so its gluon
+    ``(T...T)_{i,\bar j}``.  The right sector is conjugated, so its adjoint
     string is traversed in reverse order, and the fundamental colour indices
     form closed alternating left/right cycles.  The resulting traces are reduced
     with the same Fierz machinery used for pure traces, but we keep powers of
@@ -219,11 +217,14 @@ def _multi_quark_line_color_factors(
     first ``1/Nc**2`` suppression.
     """
 
-    terms = _open_line_nc_power_terms(left.quark_lines, right.quark_lines)
+    terms = _open_line_nc_power_terms(
+        left.open_color_lines,
+        right.open_color_lines,
+    )
     if not terms:
         return (0.0, 0.0, 0.0)
-    leading_power = color_plan.process.quark_lines.quark_pair_count + len(
-        color_plan.process.gluon_labels
+    leading_power = color_plan.process.color_endpoints.pair_count + len(
+        color_plan.process.adjoint_labels
     )
     lc = _eval_nc_terms(terms, min_power=leading_power)
     nlc = _eval_nc_terms(terms, min_power=max(leading_power - 2, 0))
@@ -232,34 +233,42 @@ def _multi_quark_line_color_factors(
 
 
 def _open_line_nc_power_terms(
-    left_lines: tuple[LCQuarkLine, ...],
-    right_lines: tuple[LCQuarkLine, ...],
+    left_lines: tuple[LCOpenColorLine, ...],
+    right_lines: tuple[LCOpenColorLine, ...],
 ) -> Mapping[int, Fraction]:
-    left_by_quark = {line.quark_label: line for line in left_lines}
-    right_by_antiquark = {line.antiquark_label: line for line in right_lines}
-    if set(left_by_quark) != {line.quark_label for line in right_lines}:
+    left_by_fundamental = {line.fundamental_label: line for line in left_lines}
+    right_by_antifundamental = {
+        line.antifundamental_label: line for line in right_lines
+    }
+    if set(left_by_fundamental) != {
+        line.fundamental_label for line in right_lines
+    }:
         return {}
-    if {line.antiquark_label for line in left_lines} != set(right_by_antiquark):
+    if {line.antifundamental_label for line in left_lines} != set(
+        right_by_antifundamental
+    ):
         return {}
 
     visited: set[int] = set()
     traces: list[tuple[int, ...]] = []
-    for start in sorted(left_by_quark):
+    for start in sorted(left_by_fundamental):
         if start in visited:
             continue
         current = start
         trace: list[int] = []
         while current not in visited:
             visited.add(current)
-            left_line = left_by_quark.get(current)
+            left_line = left_by_fundamental.get(current)
             if left_line is None:
                 return {}
-            trace.extend(left_line.gluon_labels)
-            right_line = right_by_antiquark.get(left_line.antiquark_label)
+            trace.extend(left_line.adjoint_labels)
+            right_line = right_by_antifundamental.get(
+                left_line.antifundamental_label
+            )
             if right_line is None:
                 return {}
-            trace.extend(reversed(right_line.gluon_labels))
-            current = right_line.quark_label
+            trace.extend(reversed(right_line.adjoint_labels))
+            current = right_line.fundamental_label
         traces.append(tuple(trace))
     permutation_sign = -1 if (len(left_lines) - len(traces)) % 2 else 1
     return _simplify_trace_terms_nc_power(
@@ -276,8 +285,8 @@ def _coloured_word(sector: LCColorSector) -> tuple[int, ...]:
 
 
 def _two_line_reference_start(color_plan: GenericColorPlan) -> int | None:
-    if color_plan.process.quark_labels:
-        return int(color_plan.process.quark_labels[0])
+    if color_plan.process.fundamental_labels:
+        return int(color_plan.process.fundamental_labels[0])
     return None
 
 
@@ -296,12 +305,12 @@ def _two_line_gi_ui(
     word: tuple[int, ...],
     reference_word: tuple[int, ...],
 ) -> tuple[int, int]:
-    quarkish = set(color_plan.process.quark_labels) | set(
-        color_plan.process.antiquark_labels
+    fundamental_endpoints = set(color_plan.process.fundamental_labels) | set(
+        color_plan.process.antifundamental_labels
     )
     gi = 0
     for position in range(1, max(len(word) - 1, 1)):
-        if word[position] in quarkish:
+        if word[position] in fundamental_endpoints:
             gi = position - 1
             break
     ui = 1
@@ -312,28 +321,28 @@ def _two_line_gi_ui(
     return gi, ui
 
 
-def _two_line_ordered_gluon_strings(
+def _two_line_ordered_adjoint_strings(
     color_plan: GenericColorPlan,
     iper: tuple[int, ...],
     jper: tuple[int, ...],
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    quarkish = set(color_plan.process.quark_labels) | set(
-        color_plan.process.antiquark_labels
+    fundamental_endpoints = set(color_plan.process.fundamental_labels) | set(
+        color_plan.process.antifundamental_labels
     )
     return (
-        tuple(label for label in iper if label not in quarkish),
-        tuple(label for label in jper if label not in quarkish),
+        tuple(label for label in iper if label not in fundamental_endpoints),
+        tuple(label for label in jper if label not in fundamental_endpoints),
     )
 
 
-def _convert_two_line_gluon_strings(
+def _convert_two_line_adjoint_strings(
     n_ord: int,
     iper: tuple[int, ...],
     jper: tuple[int, ...],
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """Mirror AmpliCol's convert_gluon_string helper.
+    """Mirror AmpliCol's ordered-adjoint-string conversion.
 
-    The NLC topology tests depend only on the relative order of gluons.  The
+    The NLC topology tests depend only on the relative order of adjoints.  The
     Fortran routine maps the largest external label to 1, the next largest to
     2, and so on, separately for the row and column strings.
     """
@@ -350,7 +359,7 @@ def _convert_two_line_gluon_strings(
     return convert(iper), convert(jper)
 
 
-def _check_nlc_2qqbar_sf(
+def _check_nlc_two_open_lines_same_species(
     n_ord: int,
     iper: tuple[int, ...],
     jper: tuple[int, ...],
@@ -359,7 +368,7 @@ def _check_nlc_2qqbar_sf(
     ii: int,
     jj: int,
 ) -> int:
-    """Port of AmpliCol's check_NLC_2qqbar_SF topology filter.
+    """Port of AmpliCol's same-species two-open-line NLC topology filter.
 
     It returns 99 for LC-like entries, +/-1 for first subleading entries, and
     0 for NNLC-or-beyond entries.  The final NLC coefficient is still the full
@@ -396,7 +405,7 @@ def _check_nlc_2qqbar_sf(
         if bb and (aa == cc or not aa):
             return _check_nlc_subword(dd, bb, threshold=m - rj - 4)
         return 0
-    return _check_nlc_2qqbar_overlap(aa, bb, cc, dd, m, ri, rj)
+    return _check_nlc_two_open_lines_overlap(aa, bb, cc, dd, m, ri, rj)
 
 
 def _nlc_pairing_is_planar(word: tuple[int, ...], m: int) -> bool:
@@ -449,7 +458,7 @@ def _check_nlc_subword(
     return sign
 
 
-def _check_nlc_2qqbar_overlap(
+def _check_nlc_two_open_lines_overlap(
     aa: tuple[int, ...],
     bb: tuple[int, ...],
     cc: tuple[int, ...],
@@ -458,7 +467,7 @@ def _check_nlc_2qqbar_overlap(
     ri: int,
     rj: int,
 ) -> int:
-    """Remaining overlapping-sets branch of check_NLC_2qqbar_SF."""
+    """Remaining overlapping-sets branch of the two-open-line NLC check."""
 
     temp2 = aa + tuple(reversed(cc))
     temp3 = bb + tuple(reversed(dd))
@@ -542,18 +551,18 @@ def _check_nlc_2qqbar_overlap(
     return 1
 
 
-def _has_same_flavour_quark_lines(color_plan: GenericColorPlan) -> bool:
+def _has_repeated_fundamental_species(color_plan: GenericColorPlan) -> bool:
     pdg_by_label: dict[int, int] = {
         leg.label: abs(int(leg.outgoing_pdg))
         for leg in color_plan.process.legs
         if leg.outgoing_pdg is not None
     }
-    quark_flavours = [
+    fundamental_flavours = [
         pdg_by_label[label]
-        for label in color_plan.process.quark_labels
+        for label in color_plan.process.fundamental_labels
         if label in pdg_by_label
     ]
-    return len(set(quark_flavours)) < len(quark_flavours)
+    return len(set(fundamental_flavours)) < len(fundamental_flavours)
 
 
 def _common_helicity_weight(

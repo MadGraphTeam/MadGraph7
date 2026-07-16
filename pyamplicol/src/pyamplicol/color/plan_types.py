@@ -15,17 +15,21 @@ ColorSectorKind = Literal["singlet", "open-lines", "single-trace"]
 
 
 @dataclass(frozen=True)
-class LCQuarkLine:
-    """One leading-colour open colour line in all-outgoing conventions."""
+class LCOpenColorLine:
+    """One leading-colour open line in all-outgoing conventions."""
 
-    quark_label: int
-    antiquark_label: int
-    gluon_labels: tuple[int, ...]
+    fundamental_label: int
+    antifundamental_label: int
+    adjoint_labels: tuple[int, ...]
     singlet_labels: tuple[int, ...] = ()
 
     @property
     def coloured_labels(self) -> tuple[int, ...]:
-        return (self.quark_label, *self.gluon_labels, self.antiquark_label)
+        return (
+            self.fundamental_label,
+            *self.adjoint_labels,
+            self.antifundamental_label,
+        )
 
     @property
     def line_labels(self) -> tuple[int, ...]:
@@ -33,9 +37,9 @@ class LCQuarkLine:
 
     def to_json_dict(self) -> dict[str, object]:
         return {
-            "quark_label": self.quark_label,
-            "antiquark_label": self.antiquark_label,
-            "gluon_labels": list(self.gluon_labels),
+            "fundamental_label": self.fundamental_label,
+            "antifundamental_label": self.antifundamental_label,
+            "adjoint_labels": list(self.adjoint_labels),
             "singlet_labels": list(self.singlet_labels),
             "line_labels": list(self.line_labels),
         }
@@ -47,7 +51,7 @@ class LCColorSector:
 
     id: int
     kind: ColorSectorKind
-    quark_lines: tuple[LCQuarkLine, ...] = ()
+    open_color_lines: tuple[LCOpenColorLine, ...] = ()
     trace_labels: tuple[int, ...] = ()
     singlet_labels: tuple[int, ...] = ()
     word_labels: tuple[int, ...] = ()
@@ -55,7 +59,7 @@ class LCColorSector:
     @property
     def coloured_label_groups(self) -> tuple[tuple[int, ...], ...]:
         if self.kind == "open-lines":
-            return tuple(line.coloured_labels for line in self.quark_lines)
+            return tuple(line.coloured_labels for line in self.open_color_lines)
         if self.kind == "single-trace":
             return (self.trace_labels,)
         return ()
@@ -63,7 +67,7 @@ class LCColorSector:
     @property
     def line_label_groups(self) -> tuple[tuple[int, ...], ...]:
         if self.kind == "open-lines":
-            return tuple(line.coloured_labels for line in self.quark_lines)
+            return tuple(line.coloured_labels for line in self.open_color_lines)
         if self.kind == "single-trace":
             return ((*self.trace_labels, *self.singlet_labels),)
         if self.kind == "singlet":
@@ -77,7 +81,9 @@ class LCColorSector:
         if self.kind == "open-lines":
             return (
                 tuple(
-                    label for line in self.quark_lines for label in line.coloured_labels
+                    label
+                    for line in self.open_color_lines
+                    for label in line.coloured_labels
                 ),
             )
         if self.kind == "single-trace":
@@ -91,7 +97,7 @@ class LCColorSector:
         """Colour words accepted while constructing currents for this sector.
 
         The sector itself has one physical colour word.  During current
-        construction, however, complete open quark-line blocks can be traversed
+        construction, however, complete open-line blocks can be traversed
         in different intermediate orders.  This lets the generic recursion
         reproduce AmpliCol's colour-ordered current closures without naming a
         process family.
@@ -99,10 +105,10 @@ class LCColorSector:
 
         from .plan_build import _ordered_open_line_blocks
 
-        if self.kind != "open-lines" or len(self.quark_lines) < 2:
+        if self.kind != "open-lines" or len(self.open_color_lines) < 2:
             return self.color_words
         primary = self.color_words[0]
-        blocks = _ordered_open_line_blocks(primary, self.quark_lines)
+        blocks = _ordered_open_line_blocks(primary, self.open_color_lines)
         if blocks is None or len(blocks) < 2:
             return self.color_words
         words: list[tuple[int, ...]] = [primary]
@@ -129,7 +135,9 @@ class LCColorSector:
         return {
             "id": self.id,
             "kind": self.kind,
-            "quark_lines": [line.to_json_dict() for line in self.quark_lines],
+            "open_color_lines": [
+                line.to_json_dict() for line in self.open_color_lines
+            ],
             "trace_labels": list(self.trace_labels),
             "singlet_labels": list(self.singlet_labels),
             "word_labels": list(self.word_labels),
@@ -203,6 +211,7 @@ class GenericColorPlan:
     diagnostics: tuple[str, ...] = ()
     truncated: bool = False
     idenso_required: bool = False
+    trace_reflections_folded: bool = False
 
     @property
     def sector_count(self) -> int:
@@ -221,9 +230,9 @@ class GenericColorPlan:
         return tuple(
             sorted(
                 {
-                    *self.process.quark_labels,
-                    *self.process.antiquark_labels,
-                    *self.process.gluon_labels,
+                    *self.process.fundamental_labels,
+                    *self.process.antifundamental_labels,
+                    *self.process.adjoint_labels,
                 }
             )
         )
@@ -248,6 +257,7 @@ class GenericColorPlan:
             "sector_count": self.sector_count,
             "truncated": self.truncated,
             "idenso_required": self.idenso_required,
+            "trace_reflections_folded": self.trace_reflections_folded,
             "ready_for_leading_colour": self.ready_for_leading_colour,
             "ready_for_requested_colour": self.ready_for_requested_colour,
             "coloured_labels": list(self.coloured_labels),

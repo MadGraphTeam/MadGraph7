@@ -6,7 +6,7 @@ from pyamplicol.api import ProcessRequest
 from pyamplicol.config import GenerationConfig, GenerationValidationConfig
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.models import BuiltinSMModel
-from pyamplicol.processes.ir import build_process_ir
+from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
 def test_generation_reports_only_structural_reduction() -> None:

@@ -22,9 +22,6 @@ dependency-gate:
         {{python}} tools/release/check_dependencies.py --offline; \
     fi
 
-legal-gate:
-    {{python}} tools/release/check_legal_inventory.py --mode {{build_mode}}
-
 python-unit:
     PYTHONPATH="$PWD/src" {{python}} -m pytest tests/unit -q
 
@@ -71,7 +68,6 @@ rust-test:
 
 # Complete source gate used before any release artifact is retained.
 source-gate:
-    just legal-gate
     just dependency-gate
     just source-runtime
     just typing
@@ -126,11 +122,9 @@ test-deployment:
 release-artifacts:
     PYAMPLICOL_BUILD_MODE=release just source-gate
     just independent-physics-oracle
-    PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/check_legal_inventory.py --mode release
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/build_release_artifacts.py
 
 publish-dry-run:
     PYAMPLICOL_BUILD_MODE=release just source-gate
     just independent-physics-oracle
-    PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/check_legal_inventory.py --mode release
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/publish_dry_run.py

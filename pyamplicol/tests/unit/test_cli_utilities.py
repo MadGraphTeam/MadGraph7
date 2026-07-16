@@ -78,6 +78,6 @@ def test_example_run_materializes_outside_package_resources(
 
     card = example_card("builtin_sm_lc")
     assert card == tmp_path / "cache/builtin_sm_lc.toml"
-    assert (tmp_path / "cache/data/ddbar_zg_momenta.json").is_file()
+    assert (tmp_path / "cache/data/pp_zjj_momenta.json").is_file()
     assert (tmp_path / "cache/models/json/scalars/scalars.json").is_file()
     assert (tmp_path / "cache/models/ufo/sm/vertices.py").is_file()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from pyamplicol.processes import enumerate_generic_process_set
+from pyamplicol.models.builtin.process_selection import enumerate_generic_process_set
 
 
 def test_generic_selection_accepts_model_driven_pure_singlet_processes() -> None:

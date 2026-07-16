@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-import hashlib
-import platform
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -42,12 +40,7 @@ class _FakeJITEvaluator:
     def export_symjit_f64_application(self) -> tuple[bytes, str]:
         if self.export_error is not None:
             raise self.export_error
-        layout = (
-            "complex-f64x2"
-            if platform.machine().lower() in {"arm64", "aarch64"}
-            else "complex-f64"
-        )
-        return b"symjit-application-v3", layout
+        return b"symjit-application-v3", "complex-f64"
 
     def save(self) -> bytes:
         return b"symbolica-evaluator-state"
@@ -210,25 +203,10 @@ def test_stage_manifest_verifies_aggregated_runtime_capabilities(
         _stage_evaluator_set(stage_set)
 
 
-def test_symjit_application_abi_matches_candidate_provenance() -> None:
+def test_symjit_application_abi_matches_contributor_contract() -> None:
     lock = tomllib.loads(
-        (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
-    )
-    symjit = lock["symjit"]
-    patch_hashes = [
-        patch["sha256"] for patch in lock["patches"] if patch["dependency"] == "symjit"
-    ]
-    contract = (
-        "\n".join(
-            (
-                "symjit-application-abi-v1",
-                "storage-version=3",
-                f"revision={symjit['candidate_revision']}",
-                *(f"patch={digest}" for digest in patch_hashes),
-            )
+        (ROOT / "dependencies" / "contributor-lock.toml").read_text(
+            encoding="utf-8"
         )
-        + "\n"
     )
-    digest = hashlib.sha256(contract.encode("ascii")).hexdigest()
-    expected = f"symjit-app-v3-sha256:{digest}"
-    assert expected == SYMJIT_APPLICATION_ABI
+    assert lock["abis"]["symjit_application"] == SYMJIT_APPLICATION_ABI

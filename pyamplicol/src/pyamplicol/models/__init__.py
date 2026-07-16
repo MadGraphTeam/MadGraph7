@@ -15,9 +15,9 @@ from .base import (
     VertexEvaluationEquivalence,
     VertexLoweringRule,
 )
-from .builtin import BuiltinSMModel
 
 _LAZY_EXPORTS = {
+    "BuiltinSMModel": (".builtin", "BuiltinSMModel"),
     "CompiledModel": (".loading", "CompiledModel"),
     "CompiledUFOModel": (".external", "CompiledUFOModel"),
     "ModelCompileOptions": (".loading", "ModelCompileOptions"),

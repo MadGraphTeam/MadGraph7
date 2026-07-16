@@ -35,6 +35,7 @@ from pyamplicol.config import (
     RunConfig,
 )
 from pyamplicol.licensing import SymbolicaLicenseState
+from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
 def _snapshot(root: Path) -> tuple[tuple[str, int, int, int, bytes | None], ...]:
@@ -65,6 +66,29 @@ def _forbidden(name: str):
 
 def _restricted_license(**_kwargs: object) -> SymbolicaLicenseState:
     return SymbolicaLicenseState(licensed=False, restricted=True)
+
+
+def test_external_multiparticle_filter_keeps_only_color_ready_children() -> None:
+    candidates = tuple(
+        build_process_ir(process, color_accuracy="lc")
+        for process in (
+            "d d > z d d~",
+            "d d > z d d",
+            "d d~ > z g g",
+        )
+    )
+
+    selected, rejected = generation_service._select_color_ready_processes(
+        candidates,
+        color_accuracy="lc",
+    )
+
+    assert tuple(process.process for process in selected) == (
+        "d d > z d d",
+        "d d~ > z g g",
+    )
+    assert len(rejected) == 1
+    assert rejected[0].startswith("d d > z d d~:")
 
 
 def test_model_compilation_returns_the_canonical_public_model() -> None:

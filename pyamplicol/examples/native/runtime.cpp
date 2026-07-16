@@ -10,27 +10,30 @@
 #include <vector>
 
 int main(int argc, char **argv) {
-    if (argc < 2 || argc > 4) {
-        std::cerr << "usage: runtime_cpp ARTIFACT [PROCESS [PARAMETERS.json]]\n";
+    if (argc < 3 || argc > 4) {
+        std::cerr << "usage: runtime_cpp ARTIFACT PROCESS [PARAMETERS.json]\n";
         return 2;
     }
 
     try {
-        const std::string process = argc >= 3 ? argv[2] : "";
-        rusticol::Runtime runtime(argv[1], process);
+        rusticol::Runtime runtime(argv[1], argv[2]);
         if (argc == 4) {
             runtime.set_model_parameters_json(argv[3]);
         }
-        runtime.set_model_parameter("normalization.alpha_s_me_check", 0.118);
+        runtime.set_model_parameter("aS", 0.117);
 
-        // One d d~ > z g point, flattened as [point][particle][E,px,py,pz].
+        // The external-SM d d~ > Z g g subprocess p_p_to_z_j_j_4,
+        // flattened as
+        // [point][particle][E,px,py,pz].
         const std::vector<double> momenta{
             500.0, 0.0, 0.0, 500.0,
             500.0, 0.0, 0.0, -500.0,
-            504.157625672, -304.1084262865, 208.76026523528103,
-            331.35611794513767,
-            495.842374328, 304.1084262865, -208.76026523528103,
-            -331.35611794513767,
+            462.6501613061637, 14.340107538562991, 155.76435943335707,
+            -425.7484539710246,
+            369.7738416261408, -17.479290785282917, 2.0064955613504103,
+            369.3550355960509,
+            167.57599706769557, 3.1391832467199254, -157.77085499470743,
+            56.3934183749737,
         };
         constexpr std::size_t point_count = 1;
         const auto totals = runtime.evaluate(momenta, point_count);

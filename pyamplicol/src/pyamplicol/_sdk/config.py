@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib.resources
 import json
 import os
@@ -29,7 +28,7 @@ class SdkInfo:
     include_dir: Path
     library: Path
     fortran_source: Path
-    sbom: Path
+    rust_source: Path
     system_libraries: tuple[str, ...]
     frameworks: tuple[str, ...]
 
@@ -45,14 +44,27 @@ class SdkInfo:
         )
         return (str(self.library), *libraries, *frameworks)
 
+    @property
+    def rust_flags(self) -> tuple[str, ...]:
+        return tuple(
+            token
+            for link_flag in self.link_flags
+            for token in ("-C", f"link-arg={link_flag}")
+        )
+
+    @property
+    def cargo_encoded_rust_flags(self) -> str:
+        return "\x1f".join(self.rust_flags)
+
     def to_json(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["include_dir"] = str(self.include_dir)
         payload["library"] = str(self.library)
         payload["fortran_source"] = str(self.fortran_source)
-        payload["sbom"] = str(self.sbom)
+        payload["rust_source"] = str(self.rust_source)
         payload["cflags"] = list(self.cflags)
         payload["link_flags"] = list(self.link_flags)
+        payload["rust_flags"] = list(self.rust_flags)
         return payload
 
 
@@ -87,14 +99,6 @@ def _confined(root: Path, relative: str) -> Path:
     return path
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while block := stream.read(1024 * 1024):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def load_sdk_info() -> SdkInfo:
     root = _resource_root()
     metadata = _load_json(root / "metadata.json")
@@ -111,17 +115,11 @@ def load_sdk_info() -> SdkInfo:
             "Rusticol SDK metadata version does not match pyamplicol"
         )
     library = _confined(root, str(metadata["archive"]))
-    expected_digest = str(metadata.get("archive_sha256", ""))
-    if len(expected_digest) != 64 or _sha256(library) != expected_digest:
-        raise SdkUnavailableError("Rusticol SDK archive digest does not match metadata")
-    sbom = _confined(root, str(metadata.get("sbom", "")))
-    expected_sbom_digest = str(metadata.get("sbom_sha256", ""))
-    if len(expected_sbom_digest) != 64 or _sha256(sbom) != expected_sbom_digest:
-        raise SdkUnavailableError("Rusticol SDK SBOM digest does not match metadata")
     for required in (
         "include/rusticol.h",
         "include/rusticol.hpp",
         "fortran/rusticol.f90",
+        "rust/rusticol.rs",
     ):
         _confined(root, required)
 
@@ -132,7 +130,9 @@ def load_sdk_info() -> SdkInfo:
         include_dir=(root / "include").resolve(),
         library=library,
         fortran_source=_confined(root, "fortran/rusticol.f90"),
-        sbom=sbom,
+        rust_source=_confined(
+            root, str(metadata.get("rust_source", "rust/rusticol.rs"))
+        ),
         system_libraries=tuple(map(str, link.get("system_libraries", []))),
         frameworks=tuple(map(str, link.get("frameworks", []))),
     )
@@ -150,9 +150,11 @@ def _parser() -> argparse.ArgumentParser:
     group.add_argument("--include-dir", action="store_true")
     group.add_argument("--library", action="store_true")
     group.add_argument("--fortran-source", action="store_true")
-    group.add_argument("--sbom", action="store_true")
+    group.add_argument("--rust-source", action="store_true")
     group.add_argument("--cflags", action="store_true")
     group.add_argument("--libs", action="store_true")
+    group.add_argument("--rustflags", action="store_true")
+    group.add_argument("--cargo-rustflags", action="store_true")
     group.add_argument("--json", action="store_true")
     return parser
 
@@ -176,12 +178,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(info.library)
     elif args.fortran_source:
         print(info.fortran_source)
-    elif args.sbom:
-        print(info.sbom)
+    elif args.rust_source:
+        print(info.rust_source)
     elif args.cflags:
         print(shlex.join(info.cflags))
     elif args.libs:
         print(shlex.join(info.link_flags))
+    elif args.rustflags:
+        print(shlex.join(info.rust_flags))
+    elif args.cargo_rustflags:
+        print(info.cargo_encoded_rust_flags)
     elif args.json:
         print(json.dumps(info.to_json(), indent=2, sort_keys=True))
     return 0

@@ -10,97 +10,144 @@ pyamplicol/_sdk/
   include/rusticol.hpp
   fortran/rusticol.f90
   lib/librusticol_capi.a
-  sboms/rusticol-capi.cyclonedx.json
+  config.py
   metadata.json
   link.json
 ```
 
-`rusticol-config` verifies the SDK metadata, static-archive hash, and SBOM hash
-before returning paths or typed linker flags:
+`rusticol-config` validates the SDK schema, package version, target, and
+confined resource paths before returning target-specific linker arguments:
 
 ```console
 rusticol-config --abi-version
+rusticol-config --version
 rusticol-config --target
 rusticol-config --include-dir
 rusticol-config --library
 rusticol-config --fortran-source
-rusticol-config --sbom
 rusticol-config --cflags
 rusticol-config --libs
+rusticol-config --rustflags
 rusticol-config --json
 ```
 
-It is expected to fail in an unstaged source checkout. Install a binary wheel
-or a wheel built with `just wheel` before compiling native examples.
+The command is expected to fail in an unstaged source tree. Install a binary
+wheel or a wheel built with `just wheel` before compiling native consumers.
+
+## Generated Artifact APIs
+
+Every generated artifact has one API bundle at its root:
+
+```text
+artifacts/pp_zjj/API/
+  validation_points.dat
+  python/check_standalone.py
+  rust/check_standalone.rs
+  cpp/check_standalone.cpp
+  fortran/check_standalone.f90
+```
+
+The drivers load metadata, select a concrete process, accept a JSON
+model-parameter card and direct overrides, evaluate all resolved components,
+sum them explicitly, and compare with the optimized total. Run the primary
+subprocess with:
+
+```console
+python artifacts/pp_zjj/API/python/check_standalone.py \
+  --process p_p_to_z_j_j_4 \
+  --set-parameter aS 0.117 0 \
+  --json
+
+make -C artifacts/pp_zjj/API/rust run \
+  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --precision 16 --json'
+make -C artifacts/pp_zjj/API/cpp run \
+  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
+make -C artifacts/pp_zjj/API/fortran run \
+  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
+```
+
+Each Makefile writes binaries, objects, and Fortran modules to a sibling
+`.pyamplicol-api-build/` directory, leaving the integrity-checked process
+artifact unchanged.
+
+## Rust f64
+
+The generated Rust 2021 source directly wraps C ABI v1 for its artifact. It is
+compiled with `rustc` and links the wheel-owned static library through
+`rusticol-config --rustflags`; Cargo and a separately published Rusticol crate
+are not required:
+
+```console
+make -C artifacts/pp_zjj/API/rust
+make -C artifacts/pp_zjj/API/rust run \
+  ARGS='--process p_p_to_z_j_j_4 --precision 16'
+```
+
+The generated wrapper owns the opaque runtime handle, frees it on drop, exposes
+metadata and parameter updates, and checks both total and resolved f64
+evaluation. `--precision 16` is the only native precision. Use the generated
+Python driver for precision-controlled Symbolica evaluation.
 
 ## C++17
+
+The header-only wrapper provides metadata, model parameters, warnings, and
+total/resolved f64 evaluation:
 
 ```cpp
 #include <rusticol.hpp>
 
-rusticol::Runtime runtime("artifacts/ddbar_zg", "ddbar_zg");
+rusticol::Runtime runtime("artifacts/pp_zjj", "p_p_to_z_j_j_4");
+runtime.set_model_parameter("aS", 0.117);
 auto total = runtime.evaluate(flat_momenta, point_count);
 auto resolved = runtime.evaluate_resolved(flat_momenta, point_count);
 ```
 
-Compile using only installed-wheel discovery:
+Compile using installed-wheel discovery:
 
 ```console
-c++ -std=c++17 runtime.cpp \
-  $(rusticol-config --cflags) \
-  $(rusticol-config --library) \
-  $(rusticol-config --libs) \
-  -o runtime_cpp
+eval "set -- $(rusticol-config --cflags) $(rusticol-config --libs)"
+c++ -std=c++17 runtime.cpp "$@" -o runtime_cpp
 ```
 
-The header-only wrapper exposes metadata, physical helicities and colors,
-total/resolved f64 evaluation, JSON/direct parameter updates, and warning
-control. Native evaluation is f64 only.
+`rusticol-config` is part of the trusted local installation. The `eval` step
+turns its shell-escaped flag stream into an argument vector and therefore also
+preserves SDK paths containing spaces. Generated API bundles provide the same
+logic in their Makefiles.
 
 ## Fortran 2008
 
 The wheel ships module source rather than a compiler-specific `.mod` file:
 
 ```console
-gfortran -std=f2008 \
-  $(rusticol-config --fortran-source) runtime.f90 \
-  $(rusticol-config --library) \
-  $(rusticol-config --libs) \
-  -o runtime_fortran
+RUSTICOL_FORTRAN="$(rusticol-config --fortran-source)"
+eval "set -- $(rusticol-config --libs)"
+gfortran -std=f2008 "$RUSTICOL_FORTRAN" runtime.f90 "$@" -o runtime_fortran
 ```
 
-`type(rusticol_runtime)` provides `load`, `evaluate`, `evaluate_resolved`,
-parameter updates, metadata, and warning methods. Resolved Fortran storage is
-`(color, helicity, point)`, the column-major view of the C ABI's
-`(point, helicity, color)` sequence.
+`type(rusticol_runtime)` provides load/close, metadata, model-parameter and
+warning methods, and total/resolved f64 evaluation. Resolved Fortran storage is
+`(color, helicity, point)`, the column-major view of the C ABI sequence
+`(point, helicity, color)`.
 
-The complete source examples and Makefile are in
-[`examples/native`](../../examples/native). Schema-v3 generation also emits
-equivalent standalone drivers once at the artifact root:
+Complete hand-written C++ and Fortran examples are in
+[`examples/native`](../../examples/native):
 
 ```console
-python artifacts/ddbar_zg/API/python/check_standalone.py \
-  --process ddbar_zg --json
-
-make -C artifacts/ddbar_zg/API/cpp run ARGS='--process ddbar_zg --json'
-make -C artifacts/ddbar_zg/API/fortran run ARGS='--process ddbar_zg --json'
+make -C examples/native
+examples/native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_4 \
+  examples/data/model_parameters.json
+examples/native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_4 \
+  examples/data/model_parameters.json
 ```
 
-Both Makefiles keep binaries, objects, and Fortran modules in the artifact's
-sibling `.pyamplicol-api-build/` directory. The signed artifact tree therefore
-remains unchanged and can still pass strict payload verification at runtime.
+## Runtime Capability
 
-Each driver loads typed metadata, applies optional model-parameter cards and
-direct overrides, evaluates every resolved component represented by the
-artifact, explicitly sums them, and compares that sum with the compatibility
-total. The native drivers reject precision requests other than f64.
+The static SDK supports direct SymJIT f64 artifacts identified by
+`symjit.application.complex-f64.v1`. Once generated, these payloads require
+neither the Symbolica Python module nor a Symbolica runtime-license check. This
+Symbolica-independent path uses the separate MIT-licensed SymJIT runtime. ASM
+and C++ evaluator artifacts retain a Symbolica runtime capability and are
+rejected by the lightweight native SDK before partial loading.
 
-The wheel-owned static SDK intentionally supports direct SymJIT f64 artifacts,
-identified by `symjit.application.complex-f64.v1`. These payloads contain the
-compiled application and require neither the Symbolica Python module nor a
-Symbolica license after generation. ASM and C++ evaluator artifacts retain a
-Symbolica runtime capability and are rejected with a capability error rather
-than being loaded partially.
-
-The SDK treats process artifacts as trusted executable inputs. Manifest hashes
-verify payload consistency but are not signatures or provenance evidence.
+Process artifacts are trusted executable inputs. Their hashes verify payload
+consistency but do not establish origin.

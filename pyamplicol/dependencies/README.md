@@ -9,28 +9,33 @@ They never apply patches or reference a local checkout. The exact required
 versions and compatibility state are recorded in `release-lock.toml`.
 
 `tools/release/check_dependencies.py` is a hard release gate. At present,
-strict release mode is expected to fail because the validated
-`ufo-model-loader` 0.1.7 revision is not yet available on PyPI and the
-published Symbolica serialization/runtime compatibility has not been marked
-verified.
+strict release mode is expected to fail because published Symbolica
+serialization/runtime compatibility has not been marked verified.
 
 ## Candidate Development Mode
 
-`just dev-install` uses immutable source revisions and the checksummed patches
-listed in `release-lock.toml`. Candidate mode exists for development and physics
-validation only. Artifacts produced in this mode record the candidate
-revisions and are not eligible for PyPI publication.
+`just dev-install` uses immutable Symbolica/SymJIT source revisions and the
+checksummed Symbolica patches listed in `contributor-lock.toml`. Candidate mode
+exists for development and physics validation only. It installs the verified
+published `ufo-model-loader==0.1.7` wheel directly from the hash-locked runtime
+closure. Artifacts produced in this mode record the candidate revisions and
+are not eligible for PyPI publication.
 
-The managed `ufo-model-loader` patch makes sparse JSON restrictions match UFO
-restriction-card semantics and evaluates unrestricted serialized models from
-their declared external defaults. It is applied locally to the pinned public
-revision; contributor setup never depends on an unpublished upstream branch.
+The contributor build uses unpatched SymJIT 2.20.2 at
+`1d9e7b104c29d612981b1d59cae0cfe8fbf9a4d1`. On macOS arm64 the retained
+requested-level-3 wrong-result probe agrees with requested level 1 to
+`3.47e-16`. The revision also adds the
+production vector-emitter safeguard that prevents the previously observed
+oversized stack adjustment. The deliberately synthetic probe that calls the
+low-level stack helper with a frame above 16 MiB still exceeds AArch64's
+immediate range, but that manufactured route is no longer reachable from the
+generated evaluator path. No local SymJIT patch is applied.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
-only as an independent validation and benchmarking reference. Three narrow,
-checksummed diagnostic patches remove the unnecessary LHAPDF link from its
-direct color probe and expose complete recursion-kind diagnostics. A third
-checksummed diagnostic patch reports each LC contraction-row partition. This
+only as an independent validation and benchmarking reference. The pinned
+`amplicol_with_patches` branch removes the unnecessary LHAPDF
+link from its direct color probe, exposes complete recursion-kind diagnostics,
+and reports each LC contraction-row partition. This
 resolves the physical color component only for a genuinely single-flow case;
 multi-flow fixtures use the rows only to verify the complete per-helicity
 aggregate. None modifies
@@ -39,9 +44,7 @@ tracked low-multiplicity LC/NLC/full fixture, including every physical
 helicity and every independently resolvable color component, against the
 pinned Fortran implementation.
 
-The pinned upstream revision contains no `LICENSE` or `COPYING` file, so the
-release lock records its license as `NOASSERTION`. The checkout is never
-redistributed in a wheel or sdist. The three pyAmpliCol-authored diagnostic
-patches are part of this 0BSD source distribution; that does not assert or
-replace a license for the upstream Fortran source to which a developer applies
-them locally.
+The pinned upstream revision contains no `LICENSE` or `COPYING` file. That fact
+is recorded in contributor-only provenance, not the release dependency lock.
+The checkout and its developer-only branch are never redistributed in a wheel
+or sdist.

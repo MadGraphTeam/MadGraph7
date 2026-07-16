@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 
-CXX = c++
-FC = gfortran
+CXX ?= c++
+FC ?= gfortran
 CXXFLAGS ?= -O2
 FFLAGS ?= -O2
 RUSTICOL_CONFIG ?= rusticol-config
@@ -18,5 +18,5 @@ runtime_cpp: runtime.cpp
 		$(RUSTICOL_LIBS) -o $@
 
 runtime_fortran: runtime.f90
-	$(FC) $(FFLAGS) -std=f2008 $(RUSTICOL_FORTRAN) $< \
+	$(FC) $(FFLAGS) -std=f2008 "$(RUSTICOL_FORTRAN)" $< \
 		$(RUSTICOL_LIBS) -o $@

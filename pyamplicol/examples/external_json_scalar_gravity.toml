@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 # Serialized spin-2 scalar-gravity model named "scalar_gravity".
-# Materialize its JSON with python/copy_packaged_models.py.
+# `pyamplicol examples copy` materializes this model beside the card.
 
 schema_version = 1
 action = "generate"

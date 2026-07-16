@@ -73,8 +73,6 @@ impl AmplitudeRuntime {
             input_spans,
             parameter_scratch_f64: Vec::new(),
             output_scratch_f64: Vec::new(),
-            parameter_scratch_native2: Vec::new(),
-            output_scratch_native2: Vec::new(),
             evaluator: EvaluatorGroup::load(&stage.evaluator, root)?,
         })
     }
@@ -84,40 +82,6 @@ impl AmplitudeRuntime {
         batch_size: usize,
         state: &[Complex<f64>],
     ) -> RusticolResult<(f64, f64)> {
-        if self.evaluator.supports_native2() {
-            let global_parameter_count = state.len().checked_div(batch_size).ok_or_else(|| {
-                RusticolError::invalid_argument("generic amplitude batch size is zero")
-            })?;
-            let pack_start = Instant::now();
-            pack_native2_parameters(
-                batch_size,
-                global_parameter_count,
-                self.input_components.as_deref(),
-                state,
-                &mut self.parameter_scratch_native2,
-            )?;
-            let input_pack_s = pack_start.elapsed().as_secs_f64();
-
-            let eval_start = Instant::now();
-            self.evaluator.evaluate_native2_into(
-                batch_size.div_ceil(2),
-                &self.parameter_scratch_native2,
-                &mut self.output_scratch_native2,
-            )?;
-            self.output_scratch_f64
-                .resize(batch_size * self.evaluator.output_len, c64(0.0, 0.0));
-            for row in 0..batch_size {
-                let native_row = row / 2 * self.evaluator.output_len;
-                let output_row = row * self.evaluator.output_len;
-                let lane = row % 2;
-                for column in 0..self.evaluator.output_len {
-                    let value = self.output_scratch_native2[native_row + column];
-                    self.output_scratch_f64[output_row + column] =
-                        c64(value.re.as_array()[lane], value.im.as_array()[lane]);
-                }
-            }
-            return Ok((input_pack_s, eval_start.elapsed().as_secs_f64()));
-        }
         if let Some(input_components) = self.input_components.as_ref() {
             let local_parameter_count = input_components.len();
             let global_parameter_count = state.len().checked_div(batch_size).ok_or_else(|| {

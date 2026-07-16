@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from numbers import Number
 from typing import TYPE_CHECKING, Any
 
-from .compiler import (
+from .contracts import (
     CompiledParameterRecord,
 )
 from .expressions import (

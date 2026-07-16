@@ -15,6 +15,24 @@ if TYPE_CHECKING:
     from .dag_color import ColorEngine
 
 
+def _known_color_representation(model: Model, particle_id: int) -> int | None:
+    """Return explicit model colour metadata without guessing from identity."""
+
+    try:
+        return int(model.color_rep(int(particle_id)))
+    except (KeyError, NotImplementedError, TypeError, ValueError):
+        return None
+
+
+def _known_fermion_statistics(model: Model, particle_id: int) -> bool | None:
+    """Return explicit model statistics, or ``None`` when they are unavailable."""
+
+    try:
+        return bool(model.is_fermion(int(particle_id)))
+    except (KeyError, NotImplementedError, TypeError, ValueError):
+        return None
+
+
 def _direct_contraction_kind(
     model: Model,
     left: CurrentIndex,
@@ -33,7 +51,13 @@ def _direct_contraction_kind(
             return None
         return "weyl"
     if left_dimension == 4:
-        if model.is_fermion(left.particle_id) and model.is_fermion(right.particle_id):
+        left_is_fermion = _known_fermion_statistics(model, left.particle_id)
+        right_is_fermion = _known_fermion_statistics(model, right.particle_id)
+        if left_is_fermion is None or right_is_fermion is None:
+            return None
+        if left_is_fermion != right_is_fermion:
+            return None
+        if left_is_fermion:
             return "dirac"
         return "lorentz"
     if left_dimension == 6:
@@ -181,21 +205,21 @@ def _ordered_combination_segment(
     return None
 
 
-def _lc_all_gluon_symmetry_order_variants(
+def _lc_all_adjoint_symmetry_order_variants(
     left: tuple[int, ...],
     right: tuple[int, ...],
     *,
-    left_all_gluon: bool,
-    right_all_gluon: bool,
+    left_all_adjoint: bool,
+    right_all_adjoint: bool,
+    result_reflection_proven: bool,
 ) -> tuple[tuple[tuple[int, ...], tuple[float, float]], ...]:
-    """Return signed pure-gluon LC symmetry variants."""
+    """Return signed pure-adjoint LC symmetry variants."""
 
     n1 = len(left)
     n2 = len(right)
-    switch1 = 2 if left_all_gluon and n1 >= 2 else 1
-    switch2 = 2 if right_all_gluon and n2 >= 2 else 1
-    switch3 = 2 if left_all_gluon and right_all_gluon else 1
-    result_all_gluon = left_all_gluon and right_all_gluon
+    switch1 = 2 if left_all_adjoint and n1 >= 2 else 1
+    switch2 = 2 if right_all_adjoint and n2 >= 2 else 1
+    switch3 = 2 if result_reflection_proven else 1
     variants: list[tuple[tuple[int, ...], tuple[float, float]]] = []
     for i in range(1, switch1 + 1):
         for j in range(1, switch2 + 1):
@@ -212,7 +236,9 @@ def _lc_all_gluon_symmetry_order_variants(
                     first = tuple(reversed(right)) if invert & 1 else right
                     second = tuple(reversed(left)) if invert & 2 else left
                 proposed = (*first, *second)
-                if result_all_gluon and not _lc_all_gluon_symmetry_order_kept(proposed):
+                if result_reflection_proven and not _lc_all_adjoint_symmetry_order_kept(
+                    proposed
+                ):
                     continue
                 negative = (
                     (k == 2) ^ (j == 2 and n2 % 2 == 0) ^ (i == 2 and n1 % 2 == 0)
@@ -221,7 +247,7 @@ def _lc_all_gluon_symmetry_order_variants(
     return tuple(variants)
 
 
-def _lc_all_gluon_symmetry_order_kept(labels: tuple[int, ...]) -> bool:
+def _lc_all_adjoint_symmetry_order_kept(labels: tuple[int, ...]) -> bool:
     if not labels:
         return False
     min_label = min(labels)
@@ -285,7 +311,7 @@ def _sector_intermediate_order_words(
     can choose the opposite endpoint without duplicating physical sectors.
     Intermediate currents, however, must follow the sector's physical colour
     word; using all compatibility words here double-counts the same ordered
-    current topology for multi-quark-line processes with singlet insertions.
+    current topology for multi-open-line processes with singlet insertions.
     """
 
     return sector.color_words or sector.compatibility_words
@@ -304,7 +330,7 @@ def _lc_word_with_sink_last(
         *normalized[: sink_index + 1],
     )
     current_word = rotated[:-1]
-    if current_word and not _lc_all_gluon_symmetry_order_kept(current_word):
+    if current_word and not _lc_all_adjoint_symmetry_order_kept(current_word):
         current_word = tuple(reversed(current_word))
     return (*current_word, rotated[-1])
 
@@ -333,12 +359,12 @@ def _mask_labels(mask: int) -> tuple[int, ...]:
     return tuple(index + 1 for index in range(mask.bit_length()) if mask & (1 << index))
 
 
-def _canonical_sink_mask(process_ir: CanonicalProcessIR) -> int:
-    fermion_classes = {"quark", "antiquark", "charged-lepton", "neutrino"}
+def _canonical_sink_mask(process_ir: CanonicalProcessIR, model: Model) -> int:
     fermion_labels = [
         leg.label
         for leg in process_ir.legs
-        if leg.outgoing_pdg is not None and leg.particle_class in fermion_classes
+        if leg.outgoing_pdg is not None
+        and _known_fermion_statistics(model, int(leg.outgoing_pdg)) is True
     ]
     if fermion_labels:
         return 1 << (min(fermion_labels) - 1)
@@ -373,11 +399,11 @@ def _closure_candidate_splits(
             leg = leg_by_label.get(label)
             if leg is None or leg.outgoing_pdg is None:
                 continue
-            try:
-                is_colored = model.color_rep(int(leg.outgoing_pdg)) != 1
-            except KeyError:
-                is_colored = True
-            if is_colored:
+            representation = _known_color_representation(
+                model,
+                int(leg.outgoing_pdg),
+            )
+            if representation is not None and representation != 1:
                 colored_reference_labels.append(label)
         if colored_reference_labels:
             sink_labels.append(colored_reference_labels[-1])
@@ -398,7 +424,10 @@ def _closure_candidate_splits(
                 if word:
                     sink_labels.append(int(word[-1]))
     if not sink_labels:
-        sink_labels.append(_mask_labels(_canonical_sink_mask(process_ir))[0])
+        fallback_sink_mask = _canonical_sink_mask(process_ir, model)
+        fallback_sink_labels = _mask_labels(fallback_sink_mask)
+        if fallback_sink_labels:
+            sink_labels.append(fallback_sink_labels[0])
     seen: set[int] = set()
     for label in sink_labels:
         if label in seen:
@@ -463,12 +492,11 @@ def _lc_color_order_reachable_masks(
     singlet_labels: set[int] = set()
     for leg in process_ir.legs:
         if leg.outgoing_pdg is None:
-            continue
-        try:
-            is_colored = model.color_rep(int(leg.outgoing_pdg)) != 1
-        except KeyError:
-            is_colored = True
-        if is_colored:
+            return None
+        representation = _known_color_representation(model, int(leg.outgoing_pdg))
+        if representation is None:
+            return None
+        if representation != 1:
             colored_labels.add(leg.label)
         else:
             singlet_labels.add(leg.label)
@@ -479,6 +507,13 @@ def _lc_color_order_reachable_masks(
         return frozenset(_nonzero_submasks(full_mask))
 
     for sector in color_plan.sectors:
+        sector_colored_labels = {
+            label for group in sector.coloured_label_groups for label in group
+        }
+        if sector_colored_labels != colored_labels:
+            return None
+        if set(sector.singlet_labels) != singlet_labels:
+            return None
         if sector.kind == "open-lines":
             for singlet_submask in _submasks_for_labels(sector.singlet_labels):
                 if singlet_submask:

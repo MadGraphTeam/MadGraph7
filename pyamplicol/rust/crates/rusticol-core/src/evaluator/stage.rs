@@ -60,8 +60,6 @@ impl StageRuntime {
             input_spans,
             parameter_scratch_f64: Vec::new(),
             output_scratch_f64: Vec::new(),
-            parameter_scratch_native2: Vec::new(),
-            output_scratch_native2: Vec::new(),
             evaluator,
         })
     }
@@ -72,9 +70,6 @@ impl StageRuntime {
         parameter_count: usize,
         state: &mut [Complex<f64>],
     ) -> RusticolResult<(f64, f64, f64)> {
-        if self.evaluator.supports_native2() {
-            return self.evaluate_f64_native2_into_state(batch_size, parameter_count, state);
-        }
         let mut input_pack_s = 0.0;
         let eval_start;
         if let Some(input_components) = self.input_components.as_ref() {
@@ -129,49 +124,6 @@ impl StageRuntime {
                         &self.output_scratch_f64[source_start..source_start + *len],
                     );
                 }
-            }
-        }
-        Ok((
-            input_pack_s,
-            evaluator_s,
-            assign_start.elapsed().as_secs_f64(),
-        ))
-    }
-
-    fn evaluate_f64_native2_into_state(
-        &mut self,
-        batch_size: usize,
-        parameter_count: usize,
-        state: &mut [Complex<f64>],
-    ) -> RusticolResult<(f64, f64, f64)> {
-        let pack_start = Instant::now();
-        pack_native2_parameters(
-            batch_size,
-            parameter_count,
-            self.input_components.as_deref(),
-            state,
-            &mut self.parameter_scratch_native2,
-        )?;
-        let input_pack_s = pack_start.elapsed().as_secs_f64();
-
-        let evaluator_start = Instant::now();
-        self.evaluator.evaluate_native2_into(
-            batch_size.div_ceil(2),
-            &self.parameter_scratch_native2,
-            &mut self.output_scratch_native2,
-        )?;
-        let evaluator_s = evaluator_start.elapsed().as_secs_f64();
-
-        let assign_start = Instant::now();
-        let output_len = self.evaluator.output_len;
-        for row in 0..batch_size {
-            let state_row = row * parameter_count;
-            let native_row = row / 2 * output_len;
-            let lane = row % 2;
-            for (output_column, state_offset) in &self.outputs {
-                let value = self.output_scratch_native2[native_row + *output_column];
-                state[state_row + *state_offset] =
-                    c64(value.re.as_array()[lane], value.im.as_array()[lane]);
             }
         }
         Ok((
@@ -282,51 +234,6 @@ impl StageRuntime {
     }
 }
 
-pub(crate) fn pack_native2_parameters(
-    batch_size: usize,
-    global_parameter_count: usize,
-    input_components: Option<&[usize]>,
-    state: &[Complex<f64>],
-    target: &mut Vec<Complex<wide::f64x2>>,
-) -> RusticolResult<()> {
-    if batch_size == 0 {
-        return Err(RusticolError::invalid_argument(
-            "native two-lane evaluation requires a non-empty batch",
-        ));
-    }
-    if state.len() != batch_size * global_parameter_count {
-        return Err(RusticolError::invalid_argument(format!(
-            "state buffer has length {}, expected {}",
-            state.len(),
-            batch_size * global_parameter_count
-        )));
-    }
-    let local_parameter_count = input_components
-        .map(|components| components.len())
-        .unwrap_or(global_parameter_count);
-    target.resize(
-        batch_size.div_ceil(2) * local_parameter_count,
-        Complex::new(wide::f64x2::ZERO, wide::f64x2::ZERO),
-    );
-    for native_row in 0..batch_size.div_ceil(2) {
-        let first_row = native_row * 2;
-        let second_row = usize::min(first_row + 1, batch_size - 1);
-        let target_row = native_row * local_parameter_count;
-        for local_index in 0..local_parameter_count {
-            let global_index = input_components
-                .map(|components| components[local_index])
-                .unwrap_or(local_index);
-            let first = state[first_row * global_parameter_count + global_index];
-            let second = state[second_row * global_parameter_count + global_index];
-            target[target_row + local_index] = Complex::new(
-                wide::f64x2::new([first.re, second.re]),
-                wide::f64x2::new([first.im, second.im]),
-            );
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn contiguous_input_spans(input_components: &[usize]) -> Vec<(usize, usize, usize)> {
     if input_components.is_empty() {
         return Vec::new();
@@ -387,35 +294,5 @@ pub(crate) fn contiguous_output_spans(outputs: &[(usize, usize)]) -> Vec<(usize,
         Vec::new()
     } else {
         spans
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn native2_parameter_packing_duplicates_the_final_row_of_an_odd_batch() {
-        let state = vec![
-            c64(1.0, 10.0),
-            c64(2.0, 20.0),
-            c64(3.0, 30.0),
-            c64(4.0, 40.0),
-            c64(5.0, 50.0),
-            c64(6.0, 60.0),
-        ];
-        let mut packed = Vec::new();
-
-        pack_native2_parameters(3, 2, None, &state, &mut packed).unwrap();
-
-        assert_eq!(packed.len(), 4);
-        assert_eq!(packed[0].re.as_array(), &[1.0, 3.0]);
-        assert_eq!(packed[0].im.as_array(), &[10.0, 30.0]);
-        assert_eq!(packed[1].re.as_array(), &[2.0, 4.0]);
-        assert_eq!(packed[1].im.as_array(), &[20.0, 40.0]);
-        assert_eq!(packed[2].re.as_array(), &[5.0, 5.0]);
-        assert_eq!(packed[2].im.as_array(), &[50.0, 50.0]);
-        assert_eq!(packed[3].re.as_array(), &[6.0, 6.0]);
-        assert_eq!(packed[3].im.as_array(), &[60.0, 60.0]);
     }
 }

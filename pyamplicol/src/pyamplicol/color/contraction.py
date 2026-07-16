@@ -9,11 +9,11 @@ from .contraction_factors import (
     _coloured_word,
     _common_helicity_weight,
     _is_open_line_pair,
-    _multi_quark_line_color_factors,
-    _one_quark_line_color_factors,
-    _pure_gluon_color_factor,
-    _pure_gluon_color_factors,
-    _two_quark_line_color_factors,
+    _multi_open_line_color_factors,
+    _one_open_line_color_factors,
+    _pure_adjoint_color_factor,
+    _pure_adjoint_color_factors,
+    _two_open_line_color_factors,
 )
 from .contraction_types import (
     ColorContractionEntry,
@@ -117,18 +117,18 @@ def color_contraction_factors(
 ) -> tuple[float, float, float]:
     """Return reference-normalized (LC, NLC, full) colour factors."""
 
-    n_quark_pairs = color_plan.process.quark_lines.quark_pair_count
+    open_line_count = color_plan.process.color_endpoints.pair_count
     n_ord = len(_coloured_word(left))
     if len(_coloured_word(right)) != n_ord:
         return (0.0, 0.0, 0.0)
-    if n_quark_pairs == 0:
-        return _pure_gluon_color_factors(left, right, n_ord, full_col_acc)
-    if n_quark_pairs == 1:
-        return _one_quark_line_color_factors(left, right, n_ord)
-    if n_quark_pairs == 2:
-        return _two_quark_line_color_factors(color_plan, left, right, n_ord)
-    if n_quark_pairs >= 3 and _is_open_line_pair(left, right):
-        return _multi_quark_line_color_factors(color_plan, left, right)
+    if open_line_count == 0:
+        return _pure_adjoint_color_factors(left, right, n_ord, full_col_acc)
+    if open_line_count == 1:
+        return _one_open_line_color_factors(left, right, n_ord)
+    if open_line_count == 2:
+        return _two_open_line_color_factors(color_plan, left, right, n_ord)
+    if open_line_count >= 3 and _is_open_line_pair(left, right):
+        return _multi_open_line_color_factors(color_plan, left, right)
     return (0.0, 0.0, 0.0)
 
 
@@ -142,12 +142,12 @@ def color_contraction_factor(
 ) -> float:
     """Return only the requested reference-normalized colour factor."""
 
-    n_quark_pairs = color_plan.process.quark_lines.quark_pair_count
+    open_line_count = color_plan.process.color_endpoints.pair_count
     n_ord = len(_coloured_word(left))
     if len(_coloured_word(right)) != n_ord:
         return 0.0
-    if n_quark_pairs == 0:
-        return _pure_gluon_color_factor(
+    if open_line_count == 0:
+        return _pure_adjoint_color_factor(
             left,
             right,
             n_ord,

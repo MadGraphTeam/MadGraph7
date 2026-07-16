@@ -16,7 +16,7 @@ from .plan_types import (
     LCColorSector,
     LCColorSectorReplayPartition,
     LCColorSectorTopologyGroup,
-    LCQuarkLine,
+    LCOpenColorLine,
 )
 
 __all__ = [
@@ -26,7 +26,7 @@ __all__ = [
     "LCColorSector",
     "LCColorSectorReplayPartition",
     "LCColorSectorTopologyGroup",
-    "LCQuarkLine",
+    "LCOpenColorLine",
     "build_color_plan",
     "lc_line_pairing_representative_ids",
     "lc_topology_replay_partitions",

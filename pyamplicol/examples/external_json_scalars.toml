@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 # Serialized scalar contact model named "scalars".
-# Materialize models/json/scalars/scalars.json with copy_packaged_models.py.
+# `pyamplicol examples copy` materializes this model beside the card.
 
 schema_version = 1
 action = "generate"

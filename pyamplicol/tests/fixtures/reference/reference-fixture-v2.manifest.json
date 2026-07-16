@@ -1,5 +1,5 @@
 {
-  "bundle_sha256": "5bcb333988f04d23535e52bde2e2ef2cdc7b78bf42db145eb55116386f9dabe2",
+  "bundle_sha256": "6692f512038cfaf9e9aeaf480a7cf07deb5d685473d476a1b63f8cf2953cb5af",
   "files": [
     {
       "path": "analytic-oracles-v2.json",
@@ -7,11 +7,11 @@
     },
     {
       "path": "legacy-fortran-v2.json",
-      "sha256": "7f844aad23802e7afe9c57eb00b45b3602c773bf74ab4d0af1d54aa9a1933f6e"
+      "sha256": "8b7d3f852c152be175354f020dbc01bb3bc6a931d642678f1f5df5070197e7bc"
     },
     {
       "path": "physics-v2.json",
-      "sha256": "cbd72b6e0ae45324294554038630f7dbaf95b4434dd060d3f09eddce62e11aa4"
+      "sha256": "8fd62ddd0d81abbb8a596fc3acc87ddd7b4d36ed4cd53ce495688aa6893ce194"
     }
   ],
   "kind": "pyamplicol-reference-fixture-bundle",

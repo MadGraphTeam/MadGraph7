@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Entry points for compiling built-in and external model IR."""
+"""Entry point for compiling external UFO model IR."""
 
 from __future__ import annotations
 
@@ -25,8 +25,6 @@ from .compiler_contacts import (
 from .compiler_kernels import (
     _canonicalize_oriented_kernel_component,
     _fuse_oriented_kernels,
-    _is_compile_time_zero_parameter,
-    _is_single_structure_constant,
     _lc_color_normalization_power,
     _oriented_component_expressions,
     _permutation_sign,
@@ -121,6 +119,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
                 normalize_lorentz_expression(
                     str(lorentz["structure"]),
                     tuple(int(value) for value in _sequence(lorentz["spins"])),
+                    model_symbols=model_symbols,
                 )
             )
         for color_index, row_value in enumerate(coupling_matrix):
@@ -302,6 +301,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                             _sym.E(component),
                             old_kind=kernel.kind,
                             new_kind=0,
+                            model_symbols=model_symbols,
                             swap_sides=swap_sides,
                         ),
                         derived_couplings,
@@ -373,42 +373,6 @@ def _annotate_oriented_kernel_evaluation_equivalence(
     return tuple(normalized)
 
 
-def compile_builtin_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
-    _sym._ensure_symbolica()
-    particles = tuple(_particle(item) for item in _mappings(model.get("particles")))
-    terms = tuple(
-        CompiledVertexTerm(
-            id=index,
-            vertex=str(vertex["name"]),
-            particles=tuple(str(value) for value in _sequence(vertex["particles"])),
-            color_index=0,
-            lorentz_index=0,
-            color_source="built-in",
-            color_expression="built-in",
-            lorentz_name=str(vertex["builtin_kind"]),
-            lorentz_source="built-in",
-            lorentz_expression="built-in",
-            coupling=f"builtin_coupling_{index}",
-            coupling_expression=str(vertex.get("builtin_coupling", [1.0, 0.0])),
-            coupling_orders=(),
-            backend="built-in",
-        )
-        for index, vertex in enumerate(_mappings(model.get("vertex_rules")))
-    )
-    return CompiledModelIR(
-        name=str(model.get("name", "built-in-sm")),
-        orders=tuple(_order(item) for item in _mappings(model.get("orders"))),
-        parameters=tuple(
-            _parameter(item) for item in _mappings(model.get("parameters"))
-        ),
-        particles=particles,
-        couplings=(),
-        propagators=(),
-        vertex_terms=terms,
-        oriented_kernels=(),
-    )
-
-
 def _compile_oriented_kernels(
     terms: Sequence[CompiledVertexTerm],
     particles: Sequence[CompiledParticleRecord],
@@ -416,7 +380,6 @@ def _compile_oriented_kernels(
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
-    parameter_by_name = {parameter.name: parameter for parameter in parameters}
     external_parameters = {
         parameter.name for parameter in parameters if parameter.nature == "external"
     }
@@ -452,16 +415,7 @@ def _compile_oriented_kernels(
                     right_leg=right_leg,
                     result_leg=result_leg,
                     kind=len(kernels),
-                    use_transverse_massless_yang_mills=(
-                        _is_single_structure_constant(term.color_expression)
-                        and all(
-                            _is_compile_time_zero_parameter(
-                                particle_by_name[name].mass,
-                                parameter_by_name,
-                            )
-                            for name in term.particles
-                        )
-                    ),
+                    model_symbols=model_symbols,
                 )
                 coupling_symbols = set(
                     _sym.E(term.coupling_expression).get_all_symbols(False)
@@ -565,6 +519,7 @@ def _compile_four_point_contact_kernels(
                 right_leg=pair_legs[1],
                 open_legs=open_legs,
                 kind=canonical_kind,
+                model_symbols=model_symbols,
             )
             representative_indices, component_expansion = _compress_contact_components(
                 canonical_components
@@ -584,6 +539,7 @@ def _compile_four_point_contact_kernels(
                 mass="ZERO",
                 width="ZERO",
                 charge=0.0,
+                quantum_numbers=(("electric_charge", "0"),),
                 ghost_number=0,
                 propagating=False,
                 goldstoneboson=False,
@@ -619,6 +575,7 @@ def _compile_four_point_contact_kernels(
                     right_leg=right_leg,
                     open_legs=open_legs,
                     kind=kind,
+                    model_symbols=model_symbols,
                 )
                 outer_sign = (
                     _permutation_sign(
@@ -718,6 +675,7 @@ def _compile_four_point_contact_kernels(
                                 kind=kind,
                                 auxiliary_on_left=auxiliary_on_left,
                                 component_expansion=component_expansion,
+                                model_symbols=model_symbols,
                             )
                         ),
                         coupling_expression="1",

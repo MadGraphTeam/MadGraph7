@@ -17,6 +17,7 @@ from typing import Any, Literal, cast
 ROOT = Path(__file__).resolve().parents[3]
 DEPENDENCIES = ROOT / "dependencies"
 RELEASE_LOCK = DEPENDENCIES / "release-lock.toml"
+CONTRIBUTOR_LOCK = DEPENDENCIES / "contributor-lock.toml"
 INSTALL_STATE = DEPENDENCIES / "install-state.json"
 MODEL_ASSETS = ROOT / "src" / "pyamplicol" / "assets" / "models" / "json"
 
@@ -145,6 +146,7 @@ class RuntimeSnapshot:
 class DependencySnapshot:
     payloads: tuple[dict[str, object], ...]
     release_lock: Mapping[str, object]
+    contributor_lock: Mapping[str, object]
     install_state: Mapping[str, object]
 
 

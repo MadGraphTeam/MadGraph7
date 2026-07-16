@@ -7,9 +7,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
 
 from ..color.plan import GenericColorPlan, build_color_plan
-from ..models import BuiltinSMModel, Model, Vertex
-from ..processes import ProcessOptions
-from ..processes.ir import CanonicalProcessIR, build_process_ir
+from ..models import Model, Vertex
+from ..processes.ir import CanonicalProcessIR
 from .dag_color import ColorEngine
 from .dag_ordering import (
     _closure_candidate_splits,
@@ -39,11 +38,9 @@ def _normalize_generation_cap(value: int | None) -> int | None:
 
 
 def infer_minimal_coupling_order_limits(
-    process: str | CanonicalProcessIR,
+    process: CanonicalProcessIR,
     *,
-    model: Model | None = None,
-    color_accuracy: str = "lc",
-    options: ProcessOptions | None = None,
+    model: Model,
     max_color_sectors: int | None = None,
     selected_color_sector_ids: Iterable[int] | None = None,
     max_coupling_orders: Mapping[str, int] | None = None,
@@ -59,20 +56,24 @@ def infer_minimal_coupling_order_limits(
     external states, tracks UFO-style coupling orders, and returns the
     component-wise maximum over all closure paths with the lowest
     model-declared hierarchy-weighted order. The returned dictionary can be
-    used as ordinary ``max_coupling_orders``.
+    used as ordinary ``max_coupling_orders``. Model-declared orders absent from
+    the minimal envelope are returned with a zero limit because an omitted
+    limit means unrestricted to the DAG compiler.
     """
 
-    active_model = model or BuiltinSMModel()
-    process_ir = (
-        process
-        if isinstance(process, CanonicalProcessIR)
-        else build_process_ir(process, color_accuracy=color_accuracy, options=options)
-    )
+    active_model = model
+    if not isinstance(process, CanonicalProcessIR):
+        raise TypeError(
+            "coupling-order inference requires a model-resolved CanonicalProcessIR"
+        )
+    process_ir = process
     color_plan = build_color_plan(
         process_ir,
         color_accuracy=process_ir.color_accuracy,
-        options=options,
         max_sectors=max_color_sectors,
+        fold_trace_reflections=(
+            active_model.lc_trace_reflection_equivalence_is_proven(process_ir)
+        ),
     )
     explicit_sector_ids = (
         None
@@ -91,6 +92,7 @@ def infer_minimal_coupling_order_limits(
             diagnostics=color_plan.diagnostics,
             truncated=color_plan.truncated,
             idenso_required=color_plan.idenso_required,
+            trace_reflections_folded=color_plan.trace_reflections_folded,
         )
     color_engine = ColorEngine(color_plan, active_model)
     full_mask = _labels_mask(leg.label for leg in process_ir.legs)
@@ -138,7 +140,11 @@ def infer_minimal_coupling_order_limits(
         for total in totals
         if _coupling_order_degree(total, hierarchies=hierarchies) == minimum_total_order
     )
-    return _coupling_order_envelope(minimal_totals)
+    envelope = _coupling_order_envelope(minimal_totals)
+    order_names = set(hierarchies) | set(envelope)
+    for total in totals:
+        order_names.update(name for name, _value in total)
+    return {name: envelope.get(name, 0) for name in sorted(order_names)}
 
 
 def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
@@ -255,14 +261,12 @@ def prune_global_helicity_flip_equivalent_roots(
     dag: GenericDAG,
     model: Model,
 ) -> GenericDAG:
-    """Group global-helicity-flip equivalent roots for parity-symmetric QCD.
+    """Group roots when the model proves a global-helicity-flip identity.
 
     This is the safe, structural subset of AmpliCol's numerical helicity
-    filtering.  For pure-QCD LC amplitudes, flipping all external helicities is
-    a parity-equivalent contribution to the helicity-summed squared matrix
-    element.  Keeping one representative with doubled helicity weight reduces
-    amplitude roots and then dead-tree pruning removes currents that fed only
-    the discarded partner roots.
+    filtering. Keeping one proven representative with doubled helicity weight
+    reduces amplitude roots, after which dead-tree pruning removes currents
+    that fed only the discarded partner roots.
     """
 
     if not _global_helicity_flip_equivalence_safe(dag, model):
@@ -271,7 +275,7 @@ def prune_global_helicity_flip_equivalent_roots(
         return dag
 
     source_by_bit = _source_helicity_signature_by_bit(dag)
-    pure_gluon = _pure_gluon_tree_helicity_pruning_safe(dag, model)
+    pure_massless_adjoint = _pure_massless_adjoint_helicity_pruning_safe(dag, model)
     initial_leg_labels = {
         int(leg.label) for leg in dag.process.legs if leg.side == "initial"
     }
@@ -279,7 +283,7 @@ def prune_global_helicity_flip_equivalent_roots(
     zero_pruned = False
     for root in dag.amplitude_roots:
         signature = _root_physical_helicity_signature(dag, root, source_by_bit)
-        if pure_gluon and _pure_gluon_tree_helicity_signature_is_zero(
+        if pure_massless_adjoint and _pure_massless_adjoint_helicity_signature_is_zero(
             signature,
             initial_leg_labels,
         ):
@@ -349,39 +353,45 @@ def _global_helicity_flip_equivalence_safe(
         if leg.outgoing_pdg is None:
             return False
         pdg = int(leg.outgoing_pdg)
-        if not (model.is_gluon(pdg) or model.is_quark(abs(pdg))):
+        if not (
+            model.is_massless_adjoint_vector(pdg)
+            or model.is_fundamental_colored_fermion(pdg)
+        ):
             return False
         if model.mass(pdg) != 0.0:
             return False
-    for interaction in dag.interactions:
-        vertex = Vertex(interaction.vertex_kind, interaction.vertex_particles)
-        orders = model.vertex_coupling_orders(vertex)
-        if not orders and model.vertex_is_internal_contact_fragment(vertex):
-            continue
-        if not orders or any(name != "QCD" for name, _value in orders):
-            return False
-    for root in dag.amplitude_roots:
-        if root.vertex_kind is None or root.vertex_particles is None:
-            continue
-        orders = model.vertex_coupling_orders(
-            Vertex(root.vertex_kind, root.vertex_particles)
-        )
-        if not orders or any(name != "QCD" for name, _value in orders):
-            return False
-    return True
+    vertices = [
+        Vertex(interaction.vertex_kind, interaction.vertex_particles)
+        for interaction in dag.interactions
+    ]
+    vertices.extend(
+        Vertex(root.vertex_kind, root.vertex_particles)
+        for root in dag.amplitude_roots
+        if root.vertex_kind is not None and root.vertex_particles is not None
+    )
+    return model.global_helicity_flip_equivalence_is_proven(vertices)
 
 
-def _pure_gluon_tree_helicity_pruning_safe(
+def _pure_massless_adjoint_helicity_pruning_safe(
     dag: GenericDAG,
     model: Model,
 ) -> bool:
-    return all(
-        leg.outgoing_pdg is not None and model.is_gluon(int(leg.outgoing_pdg))
-        for leg in dag.process.legs
+    vertices = [
+        Vertex(interaction.vertex_kind, interaction.vertex_particles)
+        for interaction in dag.interactions
+    ]
+    vertices.extend(
+        Vertex(root.vertex_kind, root.vertex_particles)
+        for root in dag.amplitude_roots
+        if root.vertex_kind is not None and root.vertex_particles is not None
+    )
+    return model.pure_massless_adjoint_helicity_zero_rule_is_proven(
+        dag.process,
+        vertices,
     )
 
 
-def _pure_gluon_tree_helicity_signature_is_zero(
+def _pure_massless_adjoint_helicity_signature_is_zero(
     signature: tuple[object, ...],
     initial_leg_labels: set[int],
 ) -> bool:

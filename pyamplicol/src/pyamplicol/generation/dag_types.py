@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ..color.plan import GenericColorPlan, LCColorSector
+from ..models.base import QuantumNumberFlow
 from ..processes.ir import CanonicalProcessIR
 
 ColorAccuracy = Literal["lc", "nlc", "full"]
@@ -122,7 +123,7 @@ class CurrentIndex:
     chirality: int
     spin_state: int | tuple[int, ...]
     flavour_flow: tuple[int, ...]
-    charge_flow: int
+    quantum_number_flow: QuantumNumberFlow
     color_state: ColorState
     momentum_mask: int
     coupling_orders: tuple[tuple[str, int], ...] = ()
@@ -170,7 +171,7 @@ class CurrentIndex:
             self.chirality,
             self.spin_state,
             self.flavour_flow,
-            self.charge_flow,
+            self.quantum_number_flow,
             self.color_state,
             self.momentum_mask,
             self.coupling_orders,
@@ -206,7 +207,9 @@ class CurrentIndex:
             "chirality": self.chirality,
             "spin_state": spin_state,
             "flavour_flow": list(self.flavour_flow),
-            "charge_flow": self.charge_flow,
+            "quantum_number_flow": [
+                [name, expression] for name, expression in self.quantum_number_flow
+            ],
             "color_state": self.color_state.to_json_dict(),
             "momentum_mask": self.momentum_mask,
             "coupling_orders": [[name, value] for name, value in self.coupling_orders],

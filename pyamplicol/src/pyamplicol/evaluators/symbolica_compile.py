@@ -431,64 +431,6 @@ def _symbolica_evaluator_kwargs(
     }
 
 
-def _resolve_compiled_preset(
-    preset: str,
-    *,
-    gluon_count: int | None = None,
-    inline_asm: str,
-    optimization_level: int,
-    output_chunk_size: int | None = None,
-) -> tuple[str, int, int | None]:
-    if preset == "manual":
-        return inline_asm, optimization_level, output_chunk_size
-    if preset == "adaptive":
-        if gluon_count is None:
-            raise NativeEvaluationError(
-                "adaptive symbolica compiled preset requires a gluon count"
-            )
-        chunk_size = output_chunk_size
-        if chunk_size is None:
-            if 5 <= gluon_count <= 6:
-                chunk_size = 64
-            elif gluon_count == 7:
-                chunk_size = 96
-        if gluon_count <= 7:
-            return "none", 1, chunk_size
-        return "default", 3, chunk_size
-    if preset == "generation":
-        return "default", 3, output_chunk_size
-    if preset == "balanced":
-        return "none", 1, output_chunk_size
-    if preset == "runtime":
-        if gluon_count is None:
-            return "none", 3, output_chunk_size
-        chunk_size = output_chunk_size
-        if chunk_size is None:
-            if 5 <= gluon_count <= 6:
-                chunk_size = 64
-            elif gluon_count == 7 or gluon_count == 8:
-                chunk_size = 96
-        if 5 <= gluon_count <= 6:
-            return "none", 2, chunk_size
-        if 7 <= gluon_count <= 8:
-            return "none", 1, chunk_size
-        return "none", 3, chunk_size
-    if preset == "runtime-o3":
-        if gluon_count is None:
-            return "none", 3, output_chunk_size
-        chunk_size = output_chunk_size
-        if chunk_size is None:
-            if 5 <= gluon_count <= 6:
-                chunk_size = 64
-            elif gluon_count >= 7:
-                chunk_size = 96
-        return "none", 3, chunk_size
-    raise NativeEvaluationError(
-        "symbolica compiled preset must be 'manual', 'adaptive', "
-        "'generation', 'balanced', 'runtime', or 'runtime-o3'"
-    )
-
-
 def _finalize_symbolica_evaluator(
     evaluator: Any,
     settings: SymbolicaEvaluatorSettings,

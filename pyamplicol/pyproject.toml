@@ -104,10 +104,6 @@ include = [
   { path = "rust-toolchain.toml", format = ["sdist"] },
   { path = "justfile", format = ["sdist"] },
   { path = "build_backend/**/*", format = ["sdist"] },
-  { path = "config/release-dependencies.toml", format = ["sdist"] },
-  { path = "dependencies/install_dependencies.py", format = ["sdist"] },
-  { path = "dependencies/patches/**/*", format = ["sdist"] },
-  { path = "dependencies/python-runtime-lock.toml", format = ["sdist"] },
   { path = "dependencies/release-lock.toml", format = ["sdist"] },
   { path = "docs/**/*", format = ["sdist"] },
   { path = "examples/**/*", format = ["sdist"] },
@@ -122,7 +118,13 @@ include = [
 exclude = [
   "**/__pycache__/**",
   "**/*.pyc",
+  "build_backend/python_lock.py",
   "dependencies/checkouts/**",
+  "dependencies/contributor-lock.toml",
+  "dependencies/install_dependencies.py",
+  "dependencies/patches/**",
+  "dependencies/python-runtime-lock.toml",
+  "dependencies/symbolica_patches.tar.gz",
   "docs/archive/**",
   "docs/*.aux",
   "docs/*.bbl",
@@ -139,6 +141,10 @@ exclude = [
   "PYPI_DEPLOYMENT_TEST/**",
   "target/**",
 ]
+
+[tool.maturin.sbom]
+rust = false
+auditwheel = false
 
 [tool.pytest.ini_options]
 addopts = "-ra --import-mode=importlib"

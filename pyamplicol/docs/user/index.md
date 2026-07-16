@@ -2,28 +2,29 @@
 
 # User Guide
 
-pyAmpliCol has three steering surfaces backed by the same immutable schema:
-TOML run cards, direct CLI options, and typed Python services. Generated
-schema-v3 artifacts are evaluated by Rusticol through Python or the packaged
-C++17/Fortran 2008 SDK.
+pyAmpliCol uses one typed schema for TOML cards, direct CLI options, and Python
+services. The primary workflow compiles the packaged external JSON Standard
+Model, expands `p p > Z j j` into concrete processes, and evaluates one
+schema-v3 artifact from Python, Rust, C++17, or Fortran 2008.
 
 Start with:
 
-1. [Installation](installation.md) for PyPI, source, retained-wheel, and
-   contributor workflows.
-2. [Configuration](configuration.md) for run cards, direct flags, overrides,
-   color modes, and evaluator choices.
-3. [Models And Processes](models.md) for the built-in SM, external UFO/JSON,
-   process sets, and multiparticles.
-4. [Runtime](runtime.md) for total/resolved evaluation, selectors, model
-   parameters, and benchmarking.
-5. [Native SDK](native-sdk.md) for C++17 and Fortran 2008 consumers.
-6. [Symbolica Licensing](symbolica.md) for restricted mode, license requests,
-   and generation resource policy.
-7. [Release Status](release-status.md) for the remaining integration and
-   publication gates in the current milestone checkout.
+1. [Installation](installation.md) for binary-wheel, source, retained-wheel,
+   and contributor workflows.
+2. [Configuration](configuration.md) for the primary run card, direct flags,
+   overrides, color modes, and evaluator choices.
+3. [Models And Processes](models.md) for JSON/UFO inputs, multiprocess
+   expansion, the built-in compatibility model, and supported UFO features.
+4. [Runtime](runtime.md) for total/resolved evaluation, selectors, genuine UFO
+   parameter updates, benchmarking, and artifact trust.
+5. [Native SDK](native-sdk.md) for generated Rust/C++/Fortran drivers and the
+   installed static SDK.
+6. [Symbolica Licensing](symbolica.md) for restricted generation and the
+   Symbolica-independent direct-JIT f64 runtime path.
+7. [Release Status](release-status.md) for the remaining `0.1.0` publication
+   gates.
 
-Every packaged example is indexed in
-[examples/README.md](../../examples/README.md). Built-in-model cards can be run
-directly; the external-model examples include a helper that copies wheel-owned
-UFO/JSON assets into an editable example workspace.
+Every packaged card and source example is indexed in
+[examples/README.md](../../examples/README.md). `pyamplicol examples copy`
+creates an editable workspace and materializes the wheel-owned JSON/UFO models
+without relying on a source-tree layout.

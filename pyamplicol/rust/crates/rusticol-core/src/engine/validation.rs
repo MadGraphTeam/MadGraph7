@@ -259,14 +259,13 @@ fn validate_generic_current_storage(manifest: &ExecutionManifest) -> RusticolRes
                 )));
             }
             if slot.spin_state.is_null()
-                || slot.charge_flow.abs() > 1000
                 || slot
                     .auxiliary_kind
                     .as_ref()
                     .is_some_and(|kind| kind.is_empty())
             {
                 return Err(RusticolError::artifact(format!(
-                    "generic current slot {index} has invalid spin/charge/auxiliary metadata"
+                    "generic current slot {index} has invalid spin/auxiliary metadata"
                 )));
             }
         }
@@ -423,6 +422,7 @@ fn validate_generic_sources(manifest: &ExecutionManifest) -> RusticolResult<()> 
                 source.source_kind
             )));
         }
+        validate_source_wavefunction_metadata(index, source)?;
         if source.side != "initial" && source.side != "final" {
             return Err(RusticolError::artifact(format!(
                 "generic source {index} has invalid side {:?}",
@@ -472,6 +472,41 @@ fn validate_generic_sources(manifest: &ExecutionManifest) -> RusticolResult<()> 
         return Err(RusticolError::artifact(
             "generic source parameter count does not match source records",
         ));
+    }
+    Ok(())
+}
+
+pub(super) fn validate_source_wavefunction_metadata(
+    index: usize,
+    source: &GenericSourceRecordManifest,
+) -> RusticolResult<()> {
+    if source.anti_particle_id == 0 {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} has an invalid antiparticle relation"
+        )));
+    }
+    let self_conjugate = source.particle_id == source.anti_particle_id;
+    if (source.source_orientation == GenericSourceOrientationManifest::SelfConjugate)
+        != self_conjugate
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} orientation is inconsistent with its antiparticle relation"
+        )));
+    }
+    match (source.wavefunction_kind.as_str(), source.dimension) {
+        ("fermion", 2 | 4) => {
+            if self_conjugate {
+                return Err(RusticolError::artifact(format!(
+                    "generic source {index} is an unsupported self-conjugate fermion source"
+                )));
+            }
+        }
+        ("scalar", 1) | ("vector", 4) | ("spin2", 16) => {}
+        (kind, dimension) => {
+            return Err(RusticolError::artifact(format!(
+                "generic source {index} has unsupported wavefunction kind {kind:?} with dimension {dimension}"
+            )));
+        }
     }
     Ok(())
 }

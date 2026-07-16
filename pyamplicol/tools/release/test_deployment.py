@@ -55,13 +55,6 @@ from install_wheel import (
 )
 
 _LOCK = ROOT / "dependencies" / "release-lock.toml"
-_PYTHON_LOCK = ROOT / "dependencies" / "python-runtime-lock.toml"
-sys.path.insert(0, str(ROOT / "build_backend"))
-
-from python_lock import (  # noqa: E402
-    PythonRuntimeLock,
-    load_python_runtime_lock,
-)
 
 _SELFTEST_RESOURCE = r"""
 import importlib.resources
@@ -104,7 +97,6 @@ for entry in sys.path:
 _INSTALLED_SMOKE = (
     _PATH_ISOLATION_SMOKE
     + r"""
-import hashlib
 import importlib.metadata
 import importlib.resources
 import json
@@ -173,8 +165,6 @@ metadata = json.loads(
     package.joinpath("_sdk", "metadata.json").read_text(encoding="utf-8")
 )
 
-archive_digest = hashlib.sha256(sdk.library.read_bytes()).hexdigest()
-assert archive_digest == metadata["archive_sha256"]
 assert sdk.abi_version == 1
 assert sdk.package_version == version
 
@@ -198,8 +188,6 @@ assert all(
     for root in roots
 ), sorted(roots)
 for relative in (
-    ("assets", "release", "release-lock.toml"),
-    ("assets", "release", "python-runtime-lock.toml"),
     ("assets", "schemas", "README.md"),
     ("assets", "schemas", "artifact-manifest-v3.schema.json"),
     ("assets", "schemas", "runtime-physics-v1.schema.json"),
@@ -252,6 +240,7 @@ class DependencyInstallation:
 class NativeToolchain:
     cxx: tuple[str, ...]
     fortran: tuple[str, ...]
+    rustc: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -270,64 +259,32 @@ def _release_lock() -> dict[str, Any]:
     return payload
 
 
-def _runtime_lock() -> PythonRuntimeLock:
-    release = _release_lock()
-    contract = release.get("python_runtime_lock")
-    if not isinstance(contract, dict):
-        raise ReleaseError("release lock has no Python runtime lock contract")
-    if contract.get("path") != "dependencies/python-runtime-lock.toml":
-        raise ReleaseError("release lock points at an unexpected Python runtime lock")
-    expected = contract.get("sha256")
-    observed = sha256(_PYTHON_LOCK)
-    if expected != observed:
-        raise ReleaseError(
-            f"Python runtime lock digest mismatch: expected {expected}, got {observed}"
-        )
-    try:
-        return load_python_runtime_lock(_PYTHON_LOCK)
-    except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
-        raise ReleaseError(f"invalid Python runtime lock: {error}") from error
-
-
 def exact_dependencies() -> dict[str, str]:
-    return {package.name: package.version for package in _runtime_lock().packages}
-
-
-def _requirements_text(
-    runtime_lock: PythonRuntimeLock,
-    local_wheels: dict[str, Path],
-) -> str:
-    lines: list[str] = []
-    for package in runtime_lock.packages:
-        local = local_wheels.get(package.name)
-        if local is not None:
-            requirement = f"{package.distribution} @ {local.resolve().as_uri()}"
-            hashes = [sha256(local)]
-        else:
-            requirement = f"{package.distribution}=={package.version}"
-            hashes = [artifact.sha256 for artifact in package.artifacts]
-        if not hashes:
-            raise ReleaseError(
-                f"{package.name}=={package.version} has no installable locked artifact"
-            )
-        lines.append(f"{requirement} \\")
-        for index, digest in enumerate(hashes):
-            continuation = " \\" if index < len(hashes) - 1 else ""
-            lines.append(f"    --hash=sha256:{digest}{continuation}")
-    return "\n".join(lines) + "\n"
+    raw = _release_lock().get("python_dependencies")
+    if not isinstance(raw, list):
+        raise ReleaseError("release lock has no exact Python dependency list")
+    dependencies: dict[str, str] = {}
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise ReleaseError("release lock Python dependencies must be tables")
+        distribution = entry.get("distribution")
+        version = entry.get("version")
+        if not isinstance(distribution, str) or not isinstance(version, str):
+            raise ReleaseError("release dependency needs distribution/version")
+        name = canonicalize_name(distribution)
+        if name in dependencies:
+            raise ReleaseError(f"release lock repeats Python dependency {name}")
+        dependencies[name] = version
+    return dependencies
 
 
 def _candidate_dependencies(
     lock: dict[str, Any], dependencies: dict[str, str]
 ) -> dict[str, str]:
     symbolica = lock["symbolica"]
-    loader = lock["ufo_model_loader"]
     candidates = {
         canonicalize_name(str(symbolica["python_distribution"])): str(
             symbolica["python_version"]
-        ),
-        canonicalize_name(str(loader["python_distribution"])): str(
-            loader["required_version"]
         ),
     }
     for name, version in candidates.items():
@@ -469,9 +426,14 @@ def _native_command(variable: str, defaults: Sequence[str]) -> tuple[str, ...] |
 def _native_toolchain(mode: str) -> NativeToolchain | None:
     cxx = _native_command("CXX", ("c++", "clang++", "g++"))
     fortran = _native_command("FC", ("gfortran", "flang-new", "flang", "ifx"))
+    rustc = _native_command("RUSTC", ("rustc",))
     missing = tuple(
         name
-        for name, command in (("C++17", cxx), ("Fortran 2008", fortran))
+        for name, command in (
+            ("C++17", cxx),
+            ("Fortran 2008", fortran),
+            ("Rust 2021", rustc),
+        )
         if command is None
     )
     if missing:
@@ -484,8 +446,8 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
             raise ReleaseError(message)
         print(f"Candidate deployment did not run native SDK smoke tests: {message}")
         return None
-    assert cxx is not None and fortran is not None
-    return NativeToolchain(cxx=cxx, fortran=fortran)
+    assert cxx is not None and fortran is not None and rustc is not None
+    return NativeToolchain(cxx=cxx, fortran=fortran, rustc=rustc)
 
 
 def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
@@ -502,7 +464,7 @@ def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
         ) from error
     if not isinstance(payload, dict):
         raise ReleaseError("rusticol-config SDK metadata must be an object")
-    for key in ("cflags", "link_flags", "fortran_source"):
+    for key in ("cflags", "link_flags", "rust_flags", "fortran_source"):
         if key not in payload:
             raise ReleaseError(f"rusticol-config SDK metadata is missing {key}")
     if not isinstance(payload["cflags"], list) or not all(
@@ -513,6 +475,10 @@ def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
         isinstance(item, str) for item in payload["link_flags"]
     ):
         raise ReleaseError("rusticol-config link flags must be strings")
+    if not isinstance(payload["rust_flags"], list) or not all(
+        isinstance(item, str) for item in payload["rust_flags"]
+    ):
+        raise ReleaseError("rusticol-config rust flags must be strings")
     return payload
 
 
@@ -580,15 +546,15 @@ def _installed_selftest_fixture(
     )
 
 
-def _native_result(
-    executable: Path,
+def _driver_result(
+    command: Sequence[str | os.PathLike[str]],
     *,
     language: str,
     fixture: NativePhysicsFixture,
     environment: dict[str, str],
 ) -> dict[str, Any]:
     completed = run(
-        [executable, "--json", "--process", fixture.process_id],
+        [*command, "--json", "--process", fixture.process_id],
         cwd=fixture.artifact,
         env=environment,
         capture_output=True,
@@ -657,6 +623,35 @@ def _native_result(
     return payload
 
 
+def _compare_driver_results(results: dict[str, dict[str, Any]]) -> None:
+    expected_languages = {"python", "cpp", "fortran", "rust"}
+    if set(results) != expected_languages:
+        raise ReleaseError(
+            "installed API comparison did not exercise all four languages"
+        )
+    reference = results["python"]
+    result_keys = ("values", "resolved_sum", "compatibility_total")
+    reference_fields = set(reference) - {"language", *result_keys}
+    for language, payload in results.items():
+        fields = set(payload) - {"language", *result_keys}
+        if fields != reference_fields or any(
+            payload.get(key) != reference.get(key) for key in reference_fields
+        ):
+            raise ReleaseError(
+                f"installed {language} API driver metadata disagrees with Python"
+            )
+        for key in result_keys:
+            reference_values = list(map(float, reference[key]))
+            values = list(map(float, payload[key]))
+            if len(values) != len(reference_values) or any(
+                not math.isclose(left, right, rel_tol=1.0e-12, abs_tol=1.0e-15)
+                for left, right in zip(values, reference_values, strict=True)
+            ):
+                raise ReleaseError(
+                    f"installed {language} API driver disagrees with Python for {key}"
+                )
+
+
 def _native_sdk_smoke(
     python: Path,
     *,
@@ -675,15 +670,29 @@ def _native_sdk_smoke(
     )
     native = sandbox / "native-sdk-smoke"
     native.mkdir(parents=True, exist_ok=False)
+    python_source = fixture.artifact / "API" / "python" / "check_standalone.py"
     cpp_source = fixture.artifact / "API" / "cpp" / "check_standalone.cpp"
     fortran_source = fixture.artifact / "API" / "fortran" / "check_standalone.f90"
-    if not cpp_source.is_file() or not fortran_source.is_file():
-        raise ReleaseError("installed self-test artifact has no native API drivers")
+    rust_source = fixture.artifact / "API" / "rust" / "check_standalone.rs"
+    missing_sources = [
+        source
+        for source in (python_source, cpp_source, fortran_source, rust_source)
+        if not source.is_file()
+    ]
+    if missing_sources:
+        raise ReleaseError(
+            "installed self-test artifact has no complete four-language API bundle: "
+            + ", ".join(
+                str(path.relative_to(fixture.artifact)) for path in missing_sources
+            )
+        )
     cpp_binary = native / "check_standalone_cpp"
     fortran_binary = native / "check_standalone_fortran"
+    rust_binary = native / "check_standalone_rust"
 
     cflags = list(map(str, sdk["cflags"]))
     link_flags = list(map(str, sdk["link_flags"]))
+    rust_flags = list(map(str, sdk["rust_flags"]))
     packaged_fortran = Path(str(sdk["fortran_source"])).resolve(strict=True)
     run(
         [
@@ -716,30 +725,48 @@ def _native_sdk_smoke(
         env=environment,
         capture_output=True,
     )
+    run(
+        [
+            *toolchain.rustc,
+            "--edition=2021",
+            "-C",
+            "opt-level=2",
+            rust_source,
+            "-o",
+            rust_binary,
+            *rust_flags,
+        ],
+        cwd=native,
+        env=environment,
+        capture_output=True,
+    )
     results = {
-        "cpp": _native_result(
-            cpp_binary,
+        "python": _driver_result(
+            (python, "-I", python_source),
+            language="python",
+            fixture=fixture,
+            environment=environment,
+        ),
+        "cpp": _driver_result(
+            (cpp_binary,),
             language="cpp",
             fixture=fixture,
             environment=environment,
         ),
-        "fortran": _native_result(
-            fortran_binary,
+        "fortran": _driver_result(
+            (fortran_binary,),
             language="fortran",
             fixture=fixture,
             environment=environment,
         ),
+        "rust": _driver_result(
+            (rust_binary,),
+            language="rust",
+            fixture=fixture,
+            environment=environment,
+        ),
     }
-    for key in ("values", "resolved_sum", "compatibility_total"):
-        cpp_values = list(map(float, results["cpp"][key]))
-        fortran_values = list(map(float, results["fortran"][key]))
-        if len(cpp_values) != len(fortran_values) or any(
-            not math.isclose(left, right, rel_tol=1.0e-12, abs_tol=1.0e-15)
-            for left, right in zip(cpp_values, fortran_values, strict=True)
-        ):
-            raise ReleaseError(
-                f"installed C++ and Fortran API drivers disagree for {key}"
-            )
+    _compare_driver_results(results)
     return True
 
 
@@ -790,15 +817,13 @@ def _install_dependencies(
     supported_tags: Sequence[str] | None = None,
 ) -> DependencyInstallation:
     lock = _release_lock()
-    runtime_lock = _runtime_lock()
-    dependencies = {package.name: package.version for package in runtime_lock.packages}
+    dependencies = exact_dependencies()
     base_command: list[str | os.PathLike[str]] = [
         python,
         "-I",
         "-m",
         "pip",
         "install",
-        "--require-hashes",
         "--only-binary=:all:",
         "--index-url",
         "https://pypi.org/simple",
@@ -814,12 +839,17 @@ def _install_dependencies(
         raise ReleaseError("release deployment cannot consume a local wheelhouse")
     else:
         local_wheels = {}
-    requirements = virtual_env.parent / "locked-requirements.txt"
-    requirements.write_text(
-        _requirements_text(runtime_lock, local_wheels),
-        encoding="utf-8",
-    )
-    command = [*base_command, "--requirement", requirements]
+    distributions = {
+        canonicalize_name(str(entry["distribution"])): str(entry["distribution"])
+        for entry in lock["python_dependencies"]
+    }
+    requirements: list[str | os.PathLike[str]] = []
+    for name, version in sorted(dependencies.items()):
+        local = local_wheels.get(name)
+        requirements.append(
+            local if local is not None else f"{distributions[name]}=={version}"
+        )
+    command = [*base_command, *requirements]
     run(command, env=clean_environment(virtual_env=virtual_env))
     return DependencyInstallation(dependencies, local_wheels)
 

@@ -364,8 +364,8 @@ def _check_nlc(jper: tuple[int, ...], iper: tuple[int, ...]) -> int:
     return sign if itemp == iper else 0
 
 
-def _check_nlc_1qqbar(jper: tuple[int, ...], iper: tuple[int, ...]) -> int:
-    """Port AmpliCol's check_NLC_1qqbar for one open quark line."""
+def _check_nlc_one_open_line(jper: tuple[int, ...], iper: tuple[int, ...]) -> int:
+    """Port AmpliCol's one-open-line NLC topology check."""
 
     n = len(iper)
     if len(jper) != n:

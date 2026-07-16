@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 RUSTICOL_CONFIG ?= rusticol-config
-CXX = c++
+CXX ?= c++
 ARTIFACT_DIR := $(abspath ../..)
 BUILD_DIR ?= $(abspath ../../..)/.pyamplicol-api-build/$(notdir $(ARTIFACT_DIR))/cpp
 TARGET := $(BUILD_DIR)/check_standalone

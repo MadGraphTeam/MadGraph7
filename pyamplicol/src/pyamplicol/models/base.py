@@ -31,6 +31,7 @@ class Vertex:
 
 
 CouplingOrders = tuple[tuple[str, int], ...]
+QuantumNumberFlow = tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class QuantumFlow:
     chirality: int
     spin_state: int | tuple[int, ...]
     flavour_flow: tuple[int, ...]
-    charge_flow: int
+    quantum_number_flow: QuantumNumberFlow
     coupling: tuple[float, float]
 
 
@@ -225,17 +226,6 @@ class Model:
         return signs
 
     @cached_property
-    def _color_rep_by_pdg(self) -> dict[int, int]:
-        reps: dict[int, int] = {}
-        for pdg, particle in self._species_by_pdg.items():
-            color = particle.color_rep
-            if self._property_sign_by_pdg[pdg] < 0 and abs(color) == 3:
-                reps[pdg] = -color
-            else:
-                reps[pdg] = color
-        return reps
-
-    @cached_property
     def _vertices_by_input(self) -> dict[tuple[str, int, int], tuple[Vertex, ...]]:
         return {}
 
@@ -274,54 +264,44 @@ class Model:
         return self._property_sign(pdg) * self.particle(pdg).weak_isospin[1]
 
     def color_rep(self, pdg: int) -> int:
-        try:
-            return self._color_rep_by_pdg[pdg]
-        except KeyError as exc:
-            raise KeyError(f"particle not in model: {pdg}") from exc
+        del pdg
+        raise NotImplementedError("model does not define colour representations")
 
     def color_dim(self, pdg: int) -> int:
         return abs(self.color_rep(pdg))
 
-    def is_quark(self, pdg: int) -> bool:
-        return 1 <= pdg <= 6
-
-    def is_antiquark(self, pdg: int) -> bool:
-        return -6 <= pdg <= -1
-
-    def is_lepton(self, pdg: int) -> bool:
-        return 11 <= pdg <= 16
-
-    def is_antilepton(self, pdg: int) -> bool:
-        return -16 <= pdg <= -11
-
     def is_fermion(self, pdg: int) -> bool:
-        return (
-            self.is_quark(pdg)
-            or self.is_antiquark(pdg)
-            or self.is_lepton(pdg)
-            or self.is_antilepton(pdg)
-        )
+        del pdg
+        raise NotImplementedError("model does not define a fermion role")
 
     def is_chiral_eligible(self, pdg: int) -> bool:
-        return self.is_fermion(pdg) and self.mass(pdg) == 0.0
+        del pdg
+        raise NotImplementedError("model does not define chiral source eligibility")
 
-    def is_gluon(self, pdg: int) -> bool:
-        return pdg in (21, 99)
+    def is_fundamental_colored_fermion(self, pdg: int) -> bool:
+        del pdg
+        raise NotImplementedError(
+            "model does not define a fundamental colored-fermion role"
+        )
+
+    def is_massless_adjoint_vector(self, pdg: int) -> bool:
+        del pdg
+        raise NotImplementedError(
+            "model does not define a massless adjoint-vector role"
+        )
 
     def is_singlet(self, pdg: int) -> bool:
-        return not (abs(pdg) <= 6 or pdg == 21)
+        return self.color_rep(pdg) == 1
 
-    def is_tensor(self, pdg: int) -> bool:
-        return pdg in (-21, -23, 26, -26)
+    def source_helicity_crossing_sign(self, particle_id: int) -> int:
+        """Return the model-owned helicity sign used for an initial source.
 
-    def is_massive_boson(self, pdg: int) -> bool:
-        return pdg == 23 or abs(pdg) == 24
+        The current optimized basis reverses helicity for crossed massless
+        adjoint vectors. Keeping that decision at the model boundary prevents
+        generation from identifying a particle by its name or PDG code.
+        """
 
-    def is_photon(self, pdg: int) -> bool:
-        return pdg == 22
-
-    def is_higgs(self, pdg: int) -> bool:
-        return pdg == 25
+        return -1 if self.is_massless_adjoint_vector(particle_id) else 1
 
     def build_tensor_library(self) -> Any:
         raise NotImplementedError
@@ -344,96 +324,71 @@ class Model:
         model_type = f"{type(self).__module__}.{type(self).__qualname__}"
         return VertexEvaluationEquivalence(class_id=f"{model_type}:{int(kind)}")
 
+    def global_helicity_flip_equivalence_is_proven(
+        self,
+        vertices: Sequence[Vertex],
+    ) -> bool:
+        """Return whether the model proves parity pairing for these vertices.
+
+        Coupling-order names and particle labels are not such a proof. External
+        models therefore remain fail-closed until their compiler records an
+        expression-level equivalence certificate.
+        """
+
+        del vertices
+        return False
+
+    def pure_massless_adjoint_helicity_zero_rule_is_proven(
+        self,
+        process: Any,
+        vertices: Sequence[Vertex],
+    ) -> bool:
+        """Return whether all-equal and one-opposite helicities vanish.
+
+        This tree-amplitude identity requires more than massless adjoint-vector
+        external states. Generic and external models therefore remain
+        fail-closed until their compiler can provide an expression-level proof.
+        """
+
+        del process, vertices
+        return False
+
+    def adjoint_current_reflection_phase(
+        self,
+        vertex: Vertex,
+    ) -> tuple[float, float] | None:
+        """Return a proven two-input adjoint-current reflection phase.
+
+        A non-null result certifies the local off-shell identity obtained by
+        exchanging the two inputs of ``vertex``.  This is deliberately
+        separate from full-amplitude LC trace reflection: a pure gauge
+        subcurrent may be reusable inside a mixed process even when the full
+        process has no trace-reflection reduction.  Generic models remain
+        fail-closed until their lowered component expressions prove the
+        identity.
+        """
+
+        del vertex
+        return None
+
+    def lc_trace_reflection_equivalence_is_proven(self, process: Any) -> bool:
+        """Return whether one LC trace may represent its reversed ordering.
+
+        Reflection folding is an amplitude-level identity, not a consequence of
+        adjoint colour alone.  External models therefore remain fail-closed
+        unless their compiled model records a proof and overrides this hook.
+        """
+
+        del process
+        return False
+
     def propagator_lowering_rule(
         self,
         particle_id: int,
         chirality: int = 0,
     ) -> PropagatorLoweringRule:
-        if self.is_tensor(particle_id):
-            return PropagatorLoweringRule(
-                particle_id=particle_id,
-                chirality=chirality,
-                backend="identity",
-                full_tensor_network_ready=True,
-                applies_propagator=False,
-                kernel="auxiliary_tensor_embedded_propagator",
-                description=(
-                    "auxiliary-tensor propagator factors are embedded in the "
-                    "adjacent built-in-SM vertex kernels"
-                ),
-            )
-        if particle_id in (125, 126, 127):
-            return PropagatorLoweringRule(
-                particle_id=particle_id,
-                chirality=chirality,
-                backend="identity",
-                full_tensor_network_ready=True,
-                applies_propagator=False,
-                kernel="auxiliary_scalar_no_propagator",
-                description=(
-                    "Higgsor auxiliary scalar currents are non-propagating in "
-                    "the built-in-SM model"
-                ),
-            )
-        if particle_id in (21, 22, 99):
-            return PropagatorLoweringRule(
-                particle_id=particle_id,
-                chirality=chirality,
-                backend="symbolica",
-                full_tensor_network_ready=True,
-                applies_propagator=True,
-                kernel="massless_vector_feynman_gauge",
-                description="massless vector propagator in mostly-minus metric",
-            )
-        if abs(particle_id) == 24 or particle_id == 23:
-            return PropagatorLoweringRule(
-                particle_id=particle_id,
-                chirality=chirality,
-                backend="symbolica",
-                full_tensor_network_ready=True,
-                applies_propagator=True,
-                kernel="massive_vector_unitary_gauge",
-                description="massive vector propagator with width",
-            )
-        if self.is_chiral_eligible(particle_id) and chirality != 0:
-            return PropagatorLoweringRule(
-                particle_id=particle_id,
-                chirality=chirality,
-                backend="spenso",
-                full_tensor_network_ready=True,
-                applies_propagator=True,
-                kernel="weyl_fermion",
-                description="massless Weyl fermion propagator",
-            )
-        if self.is_fermion(particle_id) and self.mass(particle_id) != 0.0:
-            return PropagatorLoweringRule(
-                particle_id=particle_id,
-                chirality=chirality,
-                backend="symbolica",
-                full_tensor_network_ready=True,
-                applies_propagator=True,
-                kernel="massive_dirac_fermion",
-                description="massive Dirac fermion propagator",
-            )
-        if self.is_higgs(particle_id):
-            return PropagatorLoweringRule(
-                particle_id=particle_id,
-                chirality=chirality,
-                backend="symbolica",
-                full_tensor_network_ready=True,
-                applies_propagator=True,
-                kernel="scalar_with_width",
-                description="scalar propagator with optional width",
-            )
-        return PropagatorLoweringRule(
-            particle_id=particle_id,
-            chirality=chirality,
-            backend="unimplemented",
-            full_tensor_network_ready=False,
-            applies_propagator=True,
-            kernel="unknown",
-            description="no pyamplicol propagator lowering is registered",
-        )
+        del particle_id, chirality
+        raise NotImplementedError("model does not define propagator lowering")
 
     def source_spin_states(self, particle_id: int) -> tuple[SourceSpinState, ...]:
         if self.is_chiral_eligible(particle_id):
@@ -469,6 +424,40 @@ class Model:
             return "spin2"
         return "unknown"
 
+    def source_orientation(self, particle_id: int) -> str:
+        """Return the source orientation from the model's anti-particle relation."""
+
+        particle = self.particle(particle_id)
+        antiparticle_id = self.anti_particle(particle_id)
+        if self.anti_particle(antiparticle_id) != particle_id:
+            raise ValueError(
+                f"particle/antiparticle relation is not involutive for source "
+                f"particle {particle_id}"
+            )
+        if antiparticle_id == particle_id:
+            orientation = "self-conjugate"
+        elif particle_id == particle.pdg and antiparticle_id == particle.anti_pdg:
+            orientation = "particle"
+        elif particle_id == particle.anti_pdg and antiparticle_id == particle.pdg:
+            orientation = "antiparticle"
+        else:
+            raise ValueError(
+                f"source particle {particle_id} is inconsistent with its model-owned "
+                "particle/antiparticle relation"
+            )
+        if orientation == "self-conjugate" and self.is_fermion(particle_id):
+            raise ValueError(
+                f"unsupported self-conjugate fermion source {particle_id}: "
+                "Majorana/FNV source wavefunctions are not implemented"
+            )
+        return orientation
+
+    def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
+        """Return model-owned averaging, symmetry, color, and coupling factors."""
+
+        del dag
+        raise NotImplementedError("model does not define runtime normalization")
+
     def allowed_quantum_flows(
         self,
         vertex: Vertex,
@@ -493,7 +482,7 @@ class Model:
                         left_index,
                         right_index,
                     ),
-                    charge_flow=self.charge_units(result_particle),
+                    quantum_number_flow=self.quantum_number_flow(result_particle),
                     coupling=vertex.coupling,
                 )
             )
@@ -534,12 +523,12 @@ class Model:
         except KeyError:
             return 0
 
-    def charge_units(self, particle_id: int) -> int:
-        return round(3.0 * self.charge(particle_id))
+    def quantum_number_flow(self, particle_id: int) -> QuantumNumberFlow:
+        del particle_id
+        raise NotImplementedError("model does not define exact quantum-number flow")
 
     def auxiliary_kind(self, particle_id: int) -> str | None:
-        if self.is_tensor(particle_id):
-            return "antisymmetric-tensor"
+        del particle_id
         return None
 
     def vertex_component_expression(
@@ -639,7 +628,8 @@ class Model:
         QED order without recognizing whole process families.
         """
 
-        return (("QED", 1),)
+        del vertex
+        return ()
 
     def coupling_order_hierarchies(self) -> dict[str, int]:
         """Return UFO-style priorities used by minimal-order generation.
@@ -731,32 +721,6 @@ class Model:
             entries=tuple(entries),
         )
 
-    def three_gluon_current_expression(
-        self,
-        *,
-        left_slot: Any,
-        right_slot: Any,
-        output_slot: Any,
-        left_momentum_tensor_name: str,
-        right_momentum_tensor_name: str,
-        dummy_prefix: str,
-    ) -> Any:
-        raise NotImplementedError
-
-    def gluon_propagator_tensor_data(
-        self,
-        momentum: Sequence[Any],
-    ) -> list[Any]:
-        raise NotImplementedError
-
-    def quark_weyl_propagator_tensor_data(
-        self,
-        momentum: Sequence[Any],
-        *,
-        chirality: int,
-    ) -> list[Any]:
-        raise NotImplementedError
-
     def _species_particle(self, pdg: int) -> Particle | None:
         return self._species_by_pdg.get(pdg)
 
@@ -781,6 +745,7 @@ __all__ = [
     "Particle",
     "PropagatorLoweringRule",
     "QuantumFlow",
+    "QuantumNumberFlow",
     "SourceSpinState",
     "Vertex",
     "VertexEvaluationEquivalence",

@@ -13,44 +13,37 @@ import sys
 import tarfile
 import tomllib
 import zipfile
-from collections.abc import Callable
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "release"))
-_LOCK_BYTES = (ROOT / "dependencies" / "release-lock.toml").read_bytes()
-_PYTHON_LOCK_BYTES = (ROOT / "dependencies" / "python-runtime-lock.toml").read_bytes()
-_LOCK = tomllib.loads(_LOCK_BYTES.decode("utf-8"))
+_LOCK = tomllib.loads(
+    (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
+)
 _DEFAULT_REQUIREMENTS = [
     f"{entry['distribution']}=={entry['version']}"
     for entry in _LOCK["python_dependencies"]
 ]
-_LEGAL_FILES = tuple(
-    tomllib.loads(
-        (ROOT / "licenses" / "RUST_THIRD_PARTY.toml").read_text(encoding="utf-8")
-    )["required_release_files"]
+_LEGAL_FILES = (
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses/Symbolica.txt",
+    "licenses/SymJIT.txt",
 )
 
 import _artifacts as artifacts  # noqa: E402
 from _artifacts import (  # noqa: E402
+    _REQUIRED_WHEEL_PACKAGE_MEMBERS,
     MAX_WHEEL_BYTES,
-    RELEASE_TARGETS,
     ArtifactError,
-    WheelReport,
-    _canonical_sdist_members,
-    _canonical_wheel_package_members,
     _scan_capi_archive,
     _scan_static_runtime_families,
-    _target_cargo_inventory,
     audit_sdist,
     audit_wheel,
-    compare_wheels,
-    verify_manifest,
-    write_manifest,
 )
+from audit_sdist import REQUIRED_SDIST_MEMBERS  # noqa: E402
 
 
 def _record_hash(data: bytes) -> str:
@@ -59,226 +52,75 @@ def _record_hash(data: bytes) -> str:
     return f"sha256={encoded}"
 
 
-def _cargo_version(version: str) -> str:
-    return version.replace(".dev0+", "-dev.0+")
-
-
-def _sbom_inventory(
-    root_name: str, rust_target: str, version: str, *, candidate: bool
-) -> set[tuple[str, str]]:
-    inventory = set(_target_cargo_inventory(root_name, rust_target))
-    if not candidate:
-        return inventory
-    first_party = {"rusticol-capi", "rusticol-core", "rusticol-python"}
-    inventory = {
-        (name, _cargo_version(version) if name in first_party else item_version)
-        for name, item_version in inventory
-    }
-    candidate_symjit = _LOCK["symjit"]["candidate_version"]
-    inventory = {
-        (name, candidate_symjit if name == "symjit" else item_version)
-        for name, item_version in inventory
-    }
-    return inventory
-
-
-def _cyclonedx_sbom(
-    root_name: str,
+def _selftest_files(
     rust_target: str,
     version: str,
+    compiled_model_schema: int = _LOCK["abis"]["compiled_model"],
     *,
-    candidate: bool,
-    include_target: bool,
-) -> bytes:
-    inventory = _sbom_inventory(root_name, rust_target, version, candidate=candidate)
-    root_identity = (root_name, _cargo_version(version))
-    assert root_identity in inventory
-
-    def component(identity: tuple[str, str]) -> dict[str, str]:
-        name, item_version = identity
-        reference = f"pkg:cargo/{name}@{item_version}"
-        return {
-            "type": "library",
-            "bom-ref": reference,
-            "name": name,
-            "version": item_version,
-            "scope": "required",
-            "purl": reference,
-        }
-
-    root_reference = f"pkg:cargo/{root_identity[0]}@{root_identity[1]}"
-    children = sorted(inventory - {root_identity})
-    metadata: dict[str, object] = {"component": component(root_identity)}
-    if include_target:
-        metadata["properties"] = [
-            {"name": "pyamplicol:rust-target", "value": rust_target}
-        ]
-    document = {
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
-        "version": 1,
-        "metadata": metadata,
-        "components": [component(identity) for identity in children],
-        "dependencies": [
-            {
-                "ref": root_reference,
-                "dependsOn": [
-                    f"pkg:cargo/{name}@{item_version}"
-                    for name, item_version in children
-                ],
-            },
-            *[
-                {
-                    "ref": f"pkg:cargo/{name}@{item_version}",
-                    "dependsOn": [],
-                }
-                for name, item_version in children
-            ],
-        ],
-    }
-    return (json.dumps(document, sort_keys=True) + "\n").encode()
-
-
-def _distribution_cyclonedx_sbom(
-    rust_target: str,
-    version: str,
-    *,
-    candidate: bool,
-    lock_bytes: bytes,
-) -> bytes:
-    cargo = json.loads(
-        _cyclonedx_sbom(
-            "rusticol-python",
-            rust_target,
-            version,
-            candidate=candidate,
-            include_target=False,
-        )
-    )
-    cargo_metadata = cargo["metadata"]
-    assert isinstance(cargo_metadata, dict)
-    cargo_root = cargo_metadata["component"]
-    assert isinstance(cargo_root, dict)
-    runtime_lock = tomllib.loads(_PYTHON_LOCK_BYTES.decode("utf-8"))
-    packages = runtime_lock["packages"]
-
-    def license_record(value: str) -> dict[str, object]:
-        if " " not in value or any(
-            operator in value for operator in (" AND ", " OR ", " WITH ")
-        ):
-            return {"expression": value}
-        return {"license": {"name": value}}
-
-    python_components: list[dict[str, object]] = []
-    python_edges: list[dict[str, object]] = []
-    direct_references: list[str] = []
-    for package in packages:
-        name = artifacts.canonicalize_name(package["distribution"])
-        reference = artifacts._pypi_purl(name, str(package["version"]))
-        properties = [
-            {
-                "name": "pyamplicol:pypi:hashes-verified",
-                "value": str(bool(package.get("artifacts", []))).lower(),
-            },
-            *[
-                {
-                    "name": "pyamplicol:pypi:artifact",
-                    "value": json.dumps(
-                        {
-                            "filename": artifact["filename"],
-                            "sha256": artifact["sha256"],
-                        },
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ),
-                }
-                for artifact in package.get("artifacts", [])
-            ],
-        ]
-        python_components.append(
-            {
-                "type": "library",
-                "bom-ref": reference,
-                "name": package["distribution"],
-                "version": package["version"],
-                "scope": "required",
-                "purl": reference,
-                "licenses": [license_record(package["license"])],
-                "properties": properties,
-            }
-        )
-        python_edges.append(
-            {
-                "ref": reference,
-                "dependsOn": sorted(
-                    artifacts._pypi_purl(
-                        artifacts.canonicalize_name(dependency),
-                        str(
-                            next(
-                                item["version"]
-                                for item in packages
-                                if artifacts.canonicalize_name(item["distribution"])
-                                == artifacts.canonicalize_name(dependency)
-                            )
-                        ),
-                    )
-                    for dependency in package["dependencies"]
-                ),
-            }
-        )
-        if package["direct"]:
-            direct_references.append(reference)
-
-    root_reference = artifacts._pypi_purl("pyamplicol", version)
-    document = {
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
-        "version": 1,
-        "metadata": {
-            "component": {
-                "type": "library",
-                "bom-ref": root_reference,
-                "name": "pyamplicol",
-                "version": version,
-                "scope": "required",
-                "purl": root_reference,
-                "licenses": [{"expression": "0BSD"}],
-            },
-            "properties": [
-                {
-                    "name": "pyamplicol:build-mode",
-                    "value": "candidate" if candidate else "release",
-                },
-                {
-                    "name": "pyamplicol:release-lock:sha256",
-                    "value": hashlib.sha256(lock_bytes).hexdigest(),
-                },
-                {
-                    "name": "pyamplicol:python-runtime-lock:sha256",
-                    "value": hashlib.sha256(_PYTHON_LOCK_BYTES).hexdigest(),
-                },
-            ],
-        },
-        "components": [
-            cargo_root,
-            *cargo["components"],
-            *python_components,
-        ],
-        "dependencies": [
-            *cargo["dependencies"],
-            *python_edges,
-            {
-                "ref": root_reference,
-                "dependsOn": sorted([cargo_root["bom-ref"], *direct_references]),
-            },
-        ],
-    }
-    return (json.dumps(document, sort_keys=True) + "\n").encode()
-
-
-def _selftest_files(rust_target: str, version: str) -> dict[str, bytes]:
+    producer_compiled_model_schema: int | None = None,
+    model_compiled_model_schema: int | None = None,
+    omitted_api_payload: str | None = None,
+) -> dict[str, bytes]:
     payload_path = "processes/smoke/evaluator.symjit"
     payload = b"synthetic trusted SymJIT application"
+    compiled_model_path = "model/compiled-model.json"
+    compiled_model = (
+        json.dumps({"schema_version": compiled_model_schema}, sort_keys=True) + "\n"
+    ).encode()
+    api_payloads = {
+        "API/validation_points.dat": (
+            b"RUSTICOL_VALIDATION_POINTS_V1\n",
+            "validation-momenta",
+            "text/tab-separated-values",
+        ),
+        "API/python/check_standalone.py": (
+            b"# synthetic Python driver\n",
+            "api-source",
+            "text/x-python",
+        ),
+        "API/cpp/Makefile": (
+            b"# synthetic C++ Makefile\n",
+            "api-build-file",
+            "text/x-makefile",
+        ),
+        "API/cpp/check_standalone.cpp": (
+            b"// synthetic C++ driver\n",
+            "api-source",
+            "text/x-c++src",
+        ),
+        "API/fortran/Makefile": (
+            b"# synthetic Fortran Makefile\n",
+            "api-build-file",
+            "text/x-makefile",
+        ),
+        "API/fortran/check_standalone.f90": (
+            b"! synthetic Fortran driver\n",
+            "api-source",
+            "text/x-fortran",
+        ),
+        "API/rust/Makefile": (
+            b"# synthetic Rust Makefile\n",
+            "api-build-file",
+            "text/x-makefile",
+        ),
+        "API/rust/check_standalone.rs": (
+            b"// synthetic Rust driver\n",
+            "api-source",
+            "text/x-rust",
+        ),
+    }
+    if omitted_api_payload is not None:
+        api_payloads.pop(omitted_api_payload)
+    producer_schema = (
+        _LOCK["abis"]["compiled_model"]
+        if producer_compiled_model_schema is None
+        else producer_compiled_model_schema
+    )
+    model_schema = (
+        _LOCK["abis"]["compiled_model"]
+        if model_compiled_model_schema is None
+        else model_compiled_model_schema
+    )
     manifest = {
         "schema_version": 3,
         "artifact_id": "0" * 64,
@@ -286,7 +128,9 @@ def _selftest_files(rust_target: str, version: str) -> dict[str, bytes]:
             "distribution": "pyamplicol",
             "version": version,
             "target": {"triple": rust_target, "cpu_features": []},
+            "versions": {"compiled_model": producer_schema},
         },
+        "model": {"compiled_schema_version": model_schema},
         "runtime": {
             "engine": "rusticol",
             "engine_version": version,
@@ -294,13 +138,30 @@ def _selftest_files(rust_target: str, version: str) -> dict[str, bytes]:
         },
         "payloads": [
             {
+                "path": compiled_model_path,
+                "role": "compiled-model",
+                "media_type": "application/json",
+                "size_bytes": len(compiled_model),
+                "sha256": hashlib.sha256(compiled_model).hexdigest(),
+            },
+            {
                 "path": payload_path,
                 "role": "evaluator-state",
                 "media_type": "application/vnd.symjit.application",
                 "size_bytes": len(payload),
                 "sha256": hashlib.sha256(payload).hexdigest(),
                 "target": {"triple": rust_target, "cpu_features": []},
-            }
+            },
+            *[
+                {
+                    "path": path,
+                    "role": role,
+                    "media_type": media_type,
+                    "size_bytes": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                }
+                for path, (data, role, media_type) in sorted(api_payloads.items())
+            ],
         ],
     }
     identity = dict(manifest)
@@ -310,7 +171,7 @@ def _selftest_files(rust_target: str, version: str) -> dict[str, bytes]:
     ).encode()
     manifest["artifact_id"] = hashlib.sha256(canonical).hexdigest()
     prefix = f"pyamplicol/assets/selftest/{rust_target}"
-    return {
+    files = {
         f"{prefix}/expected.json": json.dumps(
             {
                 "schema_version": 1,
@@ -321,8 +182,16 @@ def _selftest_files(rust_target: str, version: str) -> dict[str, bytes]:
         f"{prefix}/artifact/artifact.json": (
             json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
         ).encode(),
+        f"{prefix}/artifact/{compiled_model_path}": compiled_model,
         f"{prefix}/artifact/{payload_path}": payload,
     }
+    files.update(
+        {
+            f"{prefix}/artifact/{path}": data
+            for path, (data, _role, _media_type) in api_payloads.items()
+        }
+    )
+    return files
 
 
 def _wheel(
@@ -333,18 +202,19 @@ def _wheel(
     version: str = "0.1.0",
     candidate: bool = False,
     extension: bytes = b"synthetic abi3 extension",
-    reverse: bool = False,
     bad_record: bool = False,
     requirement: str | None = None,
     requirements: list[str] | None = None,
     system_libraries: list[str] | None = None,
     sdk_version: str | None = None,
     notice: bytes | None = b"third-party notices\n",
-    include_lock: bool = True,
-    lock_bytes: bytes = _LOCK_BYTES,
     license_files: tuple[str, ...] | None = None,
     omitted_member: str | None = None,
     extra_files: dict[str, bytes] | None = None,
+    compiled_model_schema: int = _LOCK["abis"]["compiled_model"],
+    producer_compiled_model_schema: int | None = None,
+    model_compiled_model_schema: int | None = None,
+    omitted_selftest_api_payload: str | None = None,
 ) -> Path:
     if requirement is not None and requirements is not None:
         raise ValueError("use requirement or requirements, not both")
@@ -356,22 +226,9 @@ def _wheel(
     declared_legal_files = _LEGAL_FILES if license_files is None else license_files
     dist_info = f"pyamplicol-{version}.dist-info"
     sdk_archive = b"synthetic static archive"
-    sdk_sbom = _cyclonedx_sbom(
-        "rusticol-capi",
-        rust_target,
-        version,
-        candidate=candidate,
-        include_target=True,
-    )
-    distribution_sbom = _distribution_cyclonedx_sbom(
-        rust_target,
-        version,
-        candidate=candidate,
-        lock_bytes=lock_bytes,
-    )
     files = {
-        name: b"synthetic canonical wheel member\n"
-        for name in _canonical_wheel_package_members()
+        name: b"synthetic required wheel member\n"
+        for name in _REQUIRED_WHEEL_PACKAGE_MEMBERS
     }
     files.update(
         {
@@ -382,6 +239,7 @@ def _wheel(
             "pyamplicol/_sdk/include/rusticol.h": b"void rusticol(void);\n",
             "pyamplicol/_sdk/include/rusticol.hpp": b"#pragma once\n",
             "pyamplicol/_sdk/fortran/rusticol.f90": b"module rusticol\nend module\n",
+            "pyamplicol/_sdk/rust/rusticol.rs": b"// safe Rust wrapper\n",
             "pyamplicol/_sdk/lib/librusticol_capi.a": sdk_archive,
             "pyamplicol/_sdk/metadata.json": json.dumps(
                 {
@@ -390,9 +248,7 @@ def _wheel(
                     "version": sdk_version or version,
                     "target": rust_target,
                     "archive": "lib/librusticol_capi.a",
-                    "archive_sha256": hashlib.sha256(sdk_archive).hexdigest(),
-                    "sbom": "sboms/rusticol-capi.cyclonedx.json",
-                    "sbom_sha256": hashlib.sha256(sdk_sbom).hexdigest(),
+                    "rust_source": "rust/rusticol.rs",
                 }
             ).encode(),
             "pyamplicol/_sdk/link.json": json.dumps(
@@ -403,7 +259,6 @@ def _wheel(
                     "frameworks": [],
                 }
             ).encode(),
-            "pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json": sdk_sbom,
             f"{dist_info}/METADATA": (
                 "Metadata-Version: 2.4\n"
                 "Name: pyamplicol\n"
@@ -425,15 +280,18 @@ def _wheel(
                 b"pyamplicol = pyamplicol.cli:main\n"
                 b"rusticol-config = pyamplicol._sdk.config:main\n"
             ),
-            f"{dist_info}/sboms/rusticol-python.cyclonedx.json": distribution_sbom,
         }
     )
-    files.update(_selftest_files(rust_target, version))
-    if include_lock:
-        files["pyamplicol/assets/release/release-lock.toml"] = lock_bytes
-        files["pyamplicol/assets/release/python-runtime-lock.toml"] = _PYTHON_LOCK_BYTES
-    else:
-        files.pop("pyamplicol/assets/release/release-lock.toml", None)
+    files.update(
+        _selftest_files(
+            rust_target,
+            version,
+            compiled_model_schema,
+            producer_compiled_model_schema=producer_compiled_model_schema,
+            model_compiled_model_schema=model_compiled_model_schema,
+            omitted_api_payload=omitted_selftest_api_payload,
+        )
+    )
     for relative in _LEGAL_FILES:
         if relative == "THIRD_PARTY_NOTICES.md" and notice is None:
             continue
@@ -474,69 +332,12 @@ def _wheel(
 
     filename = f"pyamplicol-{version}-cp311-abi3-{platform_tag}.whl"
     path = directory / filename
-    items = list(files.items())
-    if reverse:
-        items.reverse()
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name, data in items:
-            info = zipfile.ZipInfo(
-                name, date_time=(2024 if reverse else 2025, 1, 1, 0, 0, 0)
-            )
+        for name, data in files.items():
+            info = zipfile.ZipInfo(name, date_time=(2025, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, data)
     return path
-
-
-def _rewrite_wheel(path: Path, transform: Callable[[dict[str, bytes]], None]) -> None:
-    with zipfile.ZipFile(path) as archive:
-        files = {
-            name: archive.read(name)
-            for name in archive.namelist()
-            if not name.endswith("/")
-        }
-    transform(files)
-    sdk_sbom = "pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json"
-    sdk_metadata = "pyamplicol/_sdk/metadata.json"
-    if sdk_sbom in files and sdk_metadata in files:
-        metadata = json.loads(files[sdk_metadata])
-        metadata["sbom_sha256"] = hashlib.sha256(files[sdk_sbom]).hexdigest()
-        files[sdk_metadata] = json.dumps(metadata, sort_keys=True).encode()
-    record_name = next(name for name in files if name.endswith(".dist-info/RECORD"))
-    rows = [
-        [name, _record_hash(data), str(len(data))]
-        for name, data in sorted(files.items())
-        if name != record_name
-    ]
-    rows.append([record_name, "", ""])
-    record = io.StringIO(newline="")
-    csv.writer(record, lineterminator="\n").writerows(rows)
-    files[record_name] = record.getvalue().encode()
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name, data in files.items():
-            archive.writestr(name, data)
-
-
-def _mutate_sbom(
-    path: Path,
-    mutate: Callable[[dict[str, object]], None],
-    *,
-    sdk: bool = True,
-) -> None:
-    def transform(files: dict[str, bytes]) -> None:
-        name = (
-            "pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json"
-            if sdk
-            else next(
-                item
-                for item in files
-                if ".dist-info/sboms/" in item and item.endswith(".cyclonedx.json")
-            )
-        )
-        document = json.loads(files[name])
-        mutate(document)
-        files[name] = (json.dumps(document, sort_keys=True) + "\n").encode()
-
-    _rewrite_wheel(path, transform)
 
 
 def _sdist(
@@ -552,8 +353,8 @@ def _sdist(
     python_version = version.replace("-dev.0", ".dev0")
     root = f"pyamplicol-{python_version}"
     files = {
-        name: b"synthetic canonical sdist member\n"
-        for name in _canonical_sdist_members()
+        name: b"synthetic required sdist member\n"
+        for name in {*REQUIRED_SDIST_MEMBERS, "PKG-INFO"}
     }
     files.update(
         {
@@ -563,8 +364,9 @@ def _sdist(
             "README.md": b"pyamplicol\n",
             "THIRD_PARTY_NOTICES.md": b"notices\n",
             "build_backend/_pyamplicol_build.py": b"",
-            "dependencies/python-runtime-lock.toml": _PYTHON_LOCK_BYTES,
-            "dependencies/release-lock.toml": _LOCK_BYTES,
+            "dependencies/release-lock.toml": (
+                ROOT / "dependencies" / "release-lock.toml"
+            ).read_bytes(),
             "pyproject.toml": (
                 '[project]\nname = "pyamplicol"\n'
                 + (
@@ -608,20 +410,16 @@ def _sdist(
     return path
 
 
-def test_canonical_sdist_keeps_only_portable_source_selftest() -> None:
-    members = _canonical_sdist_members()
-    selftest_prefix = "src/pyamplicol/assets/selftest/"
+def test_required_sdist_keeps_the_portable_source_selftest() -> None:
+    members = REQUIRED_SDIST_MEMBERS
 
     assert (
-        "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json"
-        in members
-    )
-    assert not any(
-        name.startswith(selftest_prefix)
-        and not name.startswith(f"{selftest_prefix}portable-64le/")
-        for name in members
+        "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json" in members
     )
     assert {
+        "examples/data/pp_zjj_momenta.json",
+        "src/pyamplicol/assets/api_templates/rust/Makefile",
+        "src/pyamplicol/assets/api_templates/rust/check_standalone.rs",
         "tests/fixtures/reference/analytic-oracles-v2.json",
         "tests/fixtures/reference/legacy-fortran-v2.json",
         "tests/fixtures/reference/physics-v2.json",
@@ -790,11 +588,45 @@ def test_wheel_filename_version_must_match_metadata(tmp_path: Path) -> None:
         audit_wheel(renamed, mode="release", native_scan=False)
 
 
-def test_candidate_pypi_purl_percent_encodes_local_version() -> None:
-    assert (
-        artifacts._pypi_purl("pyamplicol", "0.1.0.dev0+candidate.123456789abc")
-        == "pkg:pypi/pyamplicol@0.1.0.dev0%2Bcandidate.123456789abc"
+def test_wheel_selftest_compiled_model_matches_release_schema(tmp_path: Path) -> None:
+    expected = _LOCK["abis"]["compiled_model"]
+    wheel = _wheel(tmp_path, compiled_model_schema=expected - 1)
+
+    with pytest.raises(ArtifactError, match=f"release schema {expected}"):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+@pytest.mark.parametrize(
+    "schema_override",
+    [
+        {"producer_compiled_model_schema": _LOCK["abis"]["compiled_model"] - 1},
+        {"model_compiled_model_schema": _LOCK["abis"]["compiled_model"] - 1},
+    ],
+)
+def test_wheel_selftest_producer_and_model_metadata_match_release_schema(
+    tmp_path: Path,
+    schema_override: dict[str, int],
+) -> None:
+    expected = _LOCK["abis"]["compiled_model"]
+    wheel = _wheel(tmp_path, **schema_override)
+
+    with pytest.raises(
+        ArtifactError,
+        match=f"producer/model metadata.*schema {expected}",
+    ):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+def test_wheel_selftest_requires_the_complete_four_language_api_bundle(
+    tmp_path: Path,
+) -> None:
+    wheel = _wheel(
+        tmp_path,
+        omitted_selftest_api_payload="API/rust/check_standalone.rs",
     )
+
+    with pytest.raises(ArtifactError, match=r"four-language API.*API/rust"):
+        audit_wheel(wheel, mode="release", native_scan=False)
 
 
 def test_sdk_link_metadata_is_target_allowlisted(tmp_path: Path) -> None:
@@ -803,263 +635,7 @@ def test_sdk_link_metadata_is_target_allowlisted(tmp_path: Path) -> None:
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
-def test_sdk_sbom_is_required_and_hash_bound(tmp_path: Path) -> None:
-    sbom = "pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json"
-    wheel = _wheel(tmp_path, omitted_member=sbom)
-    with pytest.raises(ArtifactError, match=re.escape(sbom)):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-    wheel.unlink()
-    wheel = _wheel(tmp_path, extra_files={sbom: b"{}\n"})
-    with pytest.raises(ArtifactError, match="SBOM SHA-256"):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-
-def test_wheel_requires_exactly_one_distribution_and_one_sdk_sbom(
-    tmp_path: Path,
-) -> None:
-    dist_sbom = "pyamplicol-0.1.0.dist-info/sboms/rusticol-python.cyclonedx.json"
-    missing = _wheel(tmp_path, omitted_member=dist_sbom)
-    with pytest.raises(ArtifactError, match="exactly one Maturin distribution SBOM"):
-        audit_wheel(missing, mode="release", native_scan=False)
-
-    missing.unlink()
-    extra = _wheel(
-        tmp_path,
-        extra_files={"pyamplicol-0.1.0.dist-info/sboms/extra.cyclonedx.json": b"{}\n"},
-    )
-    with pytest.raises(ArtifactError, match="exactly one Maturin distribution SBOM"):
-        audit_wheel(extra, mode="release", native_scan=False)
-
-
-def test_sdk_sbom_rejects_empty_and_duplicate_graph_entries(tmp_path: Path) -> None:
-    empty = _wheel(tmp_path)
-
-    def empty_components(document: dict[str, object]) -> None:
-        document["components"] = []
-
-    _mutate_sbom(empty, empty_components)
-    with pytest.raises(ArtifactError, match="nonempty component list"):
-        audit_wheel(empty, mode="release", native_scan=False)
-
-    empty.unlink()
-    empty_dependencies = _wheel(tmp_path)
-
-    def empty_dependency_graph(document: dict[str, object]) -> None:
-        document["dependencies"] = []
-
-    _mutate_sbom(empty_dependencies, empty_dependency_graph)
-    with pytest.raises(ArtifactError, match="nonempty dependency graph"):
-        audit_wheel(empty_dependencies, mode="release", native_scan=False)
-
-    empty_dependencies.unlink()
-    duplicate_component = _wheel(tmp_path)
-
-    def duplicate_first_component(document: dict[str, object]) -> None:
-        components = document["components"]
-        assert isinstance(components, list)
-        components.append(dict(components[0]))
-
-    _mutate_sbom(duplicate_component, duplicate_first_component)
-    with pytest.raises(ArtifactError, match="repeats component"):
-        audit_wheel(duplicate_component, mode="release", native_scan=False)
-
-    duplicate_component.unlink()
-    duplicate_dependency = _wheel(tmp_path)
-
-    def duplicate_first_dependency(document: dict[str, object]) -> None:
-        dependencies = document["dependencies"]
-        assert isinstance(dependencies, list)
-        dependencies.append(dict(dependencies[0]))
-
-    _mutate_sbom(duplicate_dependency, duplicate_first_dependency)
-    with pytest.raises(ArtifactError, match="repeats dependency ref"):
-        audit_wheel(duplicate_dependency, mode="release", native_scan=False)
-
-
-def test_sdk_sbom_rejects_dangling_and_missing_components(tmp_path: Path) -> None:
-    dangling = _wheel(tmp_path)
-
-    def add_dangling_reference(document: dict[str, object]) -> None:
-        dependencies = document["dependencies"]
-        assert isinstance(dependencies, list)
-        root_dependency = dependencies[0]
-        assert isinstance(root_dependency, dict)
-        children = root_dependency["dependsOn"]
-        assert isinstance(children, list)
-        children.append("pkg:cargo/not-in-components@1.0.0")
-
-    _mutate_sbom(dangling, add_dangling_reference)
-    with pytest.raises(ArtifactError, match="dangling references"):
-        audit_wheel(dangling, mode="release", native_scan=False)
-
-    dangling.unlink()
-    missing = _wheel(tmp_path)
-
-    def remove_component_cleanly(document: dict[str, object]) -> None:
-        components = document["components"]
-        dependencies = document["dependencies"]
-        assert isinstance(components, list) and isinstance(dependencies, list)
-        removed = components.pop()
-        assert isinstance(removed, dict)
-        reference = removed["bom-ref"]
-        document["dependencies"] = [
-            dependency
-            for dependency in dependencies
-            if isinstance(dependency, dict) and dependency.get("ref") != reference
-        ]
-        root_dependency = document["dependencies"][0]
-        assert isinstance(root_dependency, dict)
-        children = root_dependency["dependsOn"]
-        assert isinstance(children, list)
-        root_dependency["dependsOn"] = [
-            child for child in children if child != reference
-        ]
-
-    _mutate_sbom(missing, remove_component_cleanly)
-    with pytest.raises(ArtifactError, match="target Cargo closure"):
-        audit_wheel(missing, mode="release", native_scan=False)
-
-
-def test_sdk_sbom_rejects_cargo_legal_inventory_mismatch(tmp_path: Path) -> None:
-    wheel = _wheel(tmp_path)
-
-    def replace_with_undeclared_component(document: dict[str, object]) -> None:
-        components = document["components"]
-        dependencies = document["dependencies"]
-        assert isinstance(components, list) and isinstance(dependencies, list)
-        component = components[0]
-        assert isinstance(component, dict)
-        old_reference = component["bom-ref"]
-        new_reference = "pkg:cargo/undeclared-secret@9.9.9"
-        component.update(
-            {
-                "bom-ref": new_reference,
-                "name": "undeclared-secret",
-                "version": "9.9.9",
-                "purl": new_reference,
-            }
-        )
-        for dependency in dependencies:
-            assert isinstance(dependency, dict)
-            if dependency.get("ref") == old_reference:
-                dependency["ref"] = new_reference
-            children = dependency.get("dependsOn", [])
-            assert isinstance(children, list)
-            dependency["dependsOn"] = [
-                new_reference if child == old_reference else child for child in children
-            ]
-
-    _mutate_sbom(wheel, replace_with_undeclared_component)
-    with pytest.raises(ArtifactError, match="Cargo legal inventory"):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-
-def test_distribution_sbom_root_identity_is_exact(tmp_path: Path) -> None:
-    wheel = _wheel(tmp_path)
-
-    def corrupt_root_purl(document: dict[str, object]) -> None:
-        metadata = document["metadata"]
-        assert isinstance(metadata, dict)
-        component = metadata["component"]
-        assert isinstance(component, dict)
-        component["purl"] = "pkg:cargo/not-rusticol-python@0.1.0"
-
-    _mutate_sbom(wheel, corrupt_root_purl, sdk=False)
-    with pytest.raises(ArtifactError, match="root has invalid component identity"):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-
-def test_distribution_sbom_python_components_are_lock_bound(tmp_path: Path) -> None:
-    wheel = _wheel(tmp_path)
-
-    def corrupt_colorama(document: dict[str, object]) -> None:
-        components = document["components"]
-        assert isinstance(components, list)
-        component = next(
-            item
-            for item in components
-            if isinstance(item, dict)
-            and item.get("bom-ref") == "pkg:pypi/colorama@0.4.6"
-        )
-        component["licenses"] = [{"expression": "MIT"}]
-
-    _mutate_sbom(wheel, corrupt_colorama, sdk=False)
-    with pytest.raises(ArtifactError, match="colorama disagrees with the lock"):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-
-def test_distribution_sbom_python_artifact_hashes_are_lock_bound(
-    tmp_path: Path,
-) -> None:
-    wheel = _wheel(tmp_path)
-
-    def corrupt_colorama_hash(document: dict[str, object]) -> None:
-        components = document["components"]
-        assert isinstance(components, list)
-        component = next(
-            item
-            for item in components
-            if isinstance(item, dict)
-            and item.get("bom-ref") == "pkg:pypi/colorama@0.4.6"
-        )
-        properties = component["properties"]
-        assert isinstance(properties, list)
-        artifact = next(
-            item
-            for item in properties
-            if isinstance(item, dict) and item.get("name") == "pyamplicol:pypi:artifact"
-        )
-        payload = json.loads(str(artifact["value"]))
-        payload["sha256"] = "0" * 64
-        artifact["value"] = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
-    _mutate_sbom(wheel, corrupt_colorama_hash, sdk=False)
-    with pytest.raises(ArtifactError, match="artifact records for colorama"):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-
-def test_distribution_sbom_python_edges_are_lock_bound(tmp_path: Path) -> None:
-    wheel = _wheel(tmp_path)
-
-    def drop_ufo_loader_dependency(document: dict[str, object]) -> None:
-        dependencies = document["dependencies"]
-        assert isinstance(dependencies, list)
-        record = next(
-            item
-            for item in dependencies
-            if isinstance(item, dict)
-            and item.get("ref") == "pkg:pypi/ufo-model-loader@0.1.7"
-        )
-        record["dependsOn"] = []
-
-    _mutate_sbom(wheel, drop_ufo_loader_dependency, sdk=False)
-    with pytest.raises(ArtifactError, match="edges for ufo-model-loader"):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-
-def test_distribution_sbom_lock_hash_metadata_is_required(tmp_path: Path) -> None:
-    wheel = _wheel(tmp_path)
-
-    def corrupt_runtime_lock_hash(document: dict[str, object]) -> None:
-        metadata = document["metadata"]
-        assert isinstance(metadata, dict)
-        properties = metadata["properties"]
-        assert isinstance(properties, list)
-        record = next(
-            item
-            for item in properties
-            if isinstance(item, dict)
-            and item.get("name") == "pyamplicol:python-runtime-lock:sha256"
-        )
-        record["value"] = "0" * 64
-
-    _mutate_sbom(wheel, corrupt_runtime_lock_hash, sdk=False)
-    with pytest.raises(ArtifactError, match="runtime-lock:sha256 is inconsistent"):
-        audit_wheel(wheel, mode="release", native_scan=False)
-
-
-def test_runtime_requirements_must_agree_with_packaged_lock(tmp_path: Path) -> None:
+def test_runtime_requirements_must_agree_with_release_contract(tmp_path: Path) -> None:
     missing = _wheel(
         tmp_path,
         requirements=[
@@ -1121,19 +697,16 @@ def test_runtime_requirements_must_agree_with_packaged_lock(tmp_path: Path) -> N
     assert audit_wheel(optional, mode="release", native_scan=False).version == "0.1.0"
 
 
-def test_wheel_requires_packaged_lock_and_nonempty_legal_members(
+def test_wheel_uses_metadata_not_packaged_dependency_inventories(
     tmp_path: Path,
 ) -> None:
-    no_lock = _wheel(tmp_path, include_lock=False)
-    with pytest.raises(ArtifactError, match="missing packaged dependency lock"):
-        audit_wheel(no_lock, mode="release", native_scan=False)
+    wheel = _wheel(tmp_path)
+    with zipfile.ZipFile(wheel) as archive:
+        assert not any(
+            name.startswith("pyamplicol/assets/release/") for name in archive.namelist()
+        )
 
-    no_lock.unlink()
-    changed_lock = _wheel(tmp_path, lock_bytes=_LOCK_BYTES + b"\n# changed\n")
-    with pytest.raises(ArtifactError, match="differs from canonical lock"):
-        audit_wheel(changed_lock, mode="release", native_scan=False)
-
-    changed_lock.unlink()
+    wheel.unlink()
     no_notice = _wheel(tmp_path, notice=None)
     with pytest.raises(ArtifactError, match="missing nonempty legal member"):
         audit_wheel(no_notice, mode="release", native_scan=False)
@@ -1185,23 +758,41 @@ def test_wheel_requires_all_package_owned_schema_resources(
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
+@pytest.mark.parametrize(
+    "resource",
+    [
+        "pyamplicol/_examples/data/pp_zjj_momenta.json",
+        "pyamplicol/assets/api_templates/rust/Makefile",
+        "pyamplicol/assets/api_templates/rust/check_standalone.rs",
+        "pyamplicol/_sdk/rust/rusticol.rs",
+    ],
+)
+def test_wheel_requires_primary_example_data_and_rust_api_templates(
+    tmp_path: Path, resource: str
+) -> None:
+    wheel = _wheel(tmp_path, omitted_member=resource)
+    with pytest.raises(ArtifactError, match=re.escape(resource)):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
 def test_wheel_rejects_an_unknown_top_level_root(tmp_path: Path) -> None:
     wheel = _wheel(tmp_path, extra_files={"docs/leak.txt": b"not wheel data\n"})
     with pytest.raises(ArtifactError, match=r"outside pyamplicol.*docs/leak\.txt"):
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
-def test_wheel_rejects_unmanifested_package_and_repair_root_files(
-    tmp_path: Path,
-) -> None:
-    package_secret = _wheel(
+def test_wheel_rejects_generated_sboms(tmp_path: Path) -> None:
+    wheel = _wheel(
         tmp_path,
-        extra_files={"pyamplicol/secrets/token.txt": b"not release data\n"},
+        extra_files={
+            "pyamplicol-0.1.0.dist-info/sboms/rusticol-python.cyclonedx.json": b"{}\n"
+        },
     )
-    with pytest.raises(ArtifactError, match=r"canonical package manifest.*token"):
-        audit_wheel(package_secret, mode="release", native_scan=False)
+    with pytest.raises(ArtifactError, match="must not contain generated SBOMs"):
+        audit_wheel(wheel, mode="release", native_scan=False)
 
-    package_secret.unlink()
+
+def test_wheel_rejects_non_library_repair_root_files(tmp_path: Path) -> None:
     repair_secret = _wheel(
         tmp_path,
         extra_files={"pyamplicol.libs/token.txt": b"not a repaired library\n"},
@@ -1210,7 +801,9 @@ def test_wheel_rejects_unmanifested_package_and_repair_root_files(
         audit_wheel(repair_secret, mode="release", native_scan=False)
 
 
-def test_wheel_requires_exact_legal_inventory(tmp_path: Path) -> None:
+def test_wheel_requires_standard_license_metadata_and_allows_extra_notices(
+    tmp_path: Path,
+) -> None:
     supplementary = "licenses/SymJIT.txt"
     dist_info = "pyamplicol-0.1.0.dist-info"
     wheel = _wheel(
@@ -1225,16 +818,17 @@ def test_wheel_requires_exact_legal_inventory(tmp_path: Path) -> None:
         tmp_path,
         license_files=tuple(item for item in _LEGAL_FILES if item != supplementary),
     )
-    with pytest.raises(ArtifactError, match=r"License-File inventory.*SymJIT"):
+    with pytest.raises(ArtifactError, match=r"omits required.*SymJIT"):
         audit_wheel(wheel, mode="release", native_scan=False)
 
     wheel.unlink()
+    additional = "licenses/ADDITIONAL.txt"
     wheel = _wheel(
         tmp_path,
-        license_files=(*_LEGAL_FILES, "licenses/UNDECLARED.txt"),
+        license_files=(*_LEGAL_FILES, additional),
+        extra_files={f"{dist_info}/licenses/{additional}": b"additional attribution\n"},
     )
-    with pytest.raises(ArtifactError, match=r"License-File inventory.*UNDECLARED"):
-        audit_wheel(wheel, mode="release", native_scan=False)
+    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
 
 
 def test_candidate_sdk_version_must_match_staged_package_exactly(
@@ -1251,25 +845,7 @@ def test_candidate_sdk_version_must_match_staged_package_exactly(
         audit_wheel(wheel, mode="candidate", native_scan=False)
 
 
-def test_normalized_comparison_ignores_zip_order_and_timestamps(
-    tmp_path: Path,
-) -> None:
-    left_dir = tmp_path / "left"
-    right_dir = tmp_path / "right"
-    changed_dir = tmp_path / "changed"
-    left_dir.mkdir()
-    right_dir.mkdir()
-    changed_dir.mkdir()
-    left = _wheel(left_dir)
-    right = _wheel(right_dir, reverse=True)
-    compare_wheels(left, right)
-
-    changed = _wheel(changed_dir, extension=b"different native payload")
-    with pytest.raises(ArtifactError, match="payload differs"):
-        compare_wheels(left, changed)
-
-
-def test_sdist_candidate_identity_and_manifest_path_scan(tmp_path: Path) -> None:
+def test_release_sdist_identity_and_path_scan(tmp_path: Path) -> None:
     release = _sdist(tmp_path)
     assert audit_sdist(release, mode="release").version == "0.1.0"
 
@@ -1278,7 +854,8 @@ def test_sdist_candidate_identity_and_manifest_path_scan(tmp_path: Path) -> None
         version="0.1.0-dev.0+candidate.0123456789ab",
         candidate=True,
     )
-    assert audit_sdist(candidate, mode="candidate").version.endswith("0123456789ab")
+    with pytest.raises(ArtifactError, match="candidate source distributions"):
+        audit_sdist(candidate, mode="candidate")
 
     release.unlink()
     leaked = _sdist(tmp_path, manifest_path="/Users/build/parent-project")
@@ -1306,12 +883,26 @@ def test_sdist_candidate_identity_and_manifest_path_scan(tmp_path: Path) -> None
         audit_sdist(fixture_leak, mode="release")
 
 
-def test_sdist_rejects_unmanifested_source_files(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "forbidden",
+    [
+        ".cargo/config.toml",
+        "build_backend/python_lock.py",
+        "dependencies/contributor-lock.toml",
+        "dependencies/install_dependencies.py",
+        "dependencies/patches/symbolica/fix.patch",
+        "dependencies/python-runtime-lock.toml",
+        "src/pyamplicol/_build_info.json",
+    ],
+)
+def test_sdist_rejects_contributor_dependency_material(
+    tmp_path: Path, forbidden: str
+) -> None:
     sdist = _sdist(
         tmp_path,
-        extra_files={"secrets/token.txt": b"not source distribution data\n"},
+        extra_files={forbidden: b"contributor-only\n"},
     )
-    with pytest.raises(ArtifactError, match=r"canonical source manifest.*token"):
+    with pytest.raises(ArtifactError, match="contributor-only dependency inputs"):
         audit_sdist(sdist, mode="release")
 
 
@@ -1320,9 +911,8 @@ def test_sdist_rejects_unmanifested_source_files(tmp_path: Path) -> None:
     [
         "build_backend/_pyamplicol_build.py",
         "build_backend/sdk.py",
-        "dependencies/patches/symjit/0004-fix-aarch64-long-conditional-branches.patch",
-        "dependencies/patches/symbolica/0004-export-symjit-application.patch",
         "docs/user/installation.md",
+        "examples/data/pp_zjj_momenta.json",
         "examples/python/typed_generation.py",
         "rust/crates/rusticol-capi/include/rusticol.h",
         "rust/crates/rusticol-python/stubs/pyamplicol/_rusticol.pyi",
@@ -1330,6 +920,7 @@ def test_sdist_rejects_unmanifested_source_files(tmp_path: Path) -> None:
         "schemas/artifact-manifest-v3.schema.json",
         "src/pyamplicol/assets/selftest/portable-64le/expected.json",
         "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json",
+        "src/pyamplicol/assets/api_templates/rust/check_standalone.rs",
         "tests/integration/test_examples.py",
         "tools/release/test_deployment.py",
     ],
@@ -1340,150 +931,3 @@ def test_sdist_requires_nested_release_content(
     sdist = _sdist(tmp_path, omitted_member=missing_member)
     with pytest.raises(ArtifactError, match=re.escape(missing_member)):
         audit_sdist(sdist, mode="release")
-
-
-def _complete_release_wheels(
-    directory: Path,
-) -> tuple[list[Path], list[WheelReport]]:
-    wheels: list[Path] = []
-    reports: list[WheelReport] = []
-    for platform_tag, rust_target in RELEASE_TARGETS.items():
-        wheel = _wheel(
-            directory,
-            platform_tag=platform_tag,
-            rust_target=rust_target,
-        )
-        wheels.append(wheel)
-        reports.append(
-            replace(
-                audit_wheel(wheel, mode="release", native_scan=False),
-                native_scan=True,
-            )
-        )
-    return wheels, reports
-
-
-def test_manifest_hashes_are_exact(tmp_path: Path) -> None:
-    wheels, wheel_reports = _complete_release_wheels(tmp_path)
-    sdist = _sdist(tmp_path)
-    sdist_report = audit_sdist(sdist, mode="release")
-    write_manifest(
-        tmp_path,
-        mode="release",
-        wheels=wheel_reports,
-        sdists=[sdist_report],
-        parity="verified",
-        retained_sdist=sdist_report,
-        source_commit="1" * 40,
-        source_tag="v0.1.0",
-    )
-    payload = verify_manifest(tmp_path, require_release=True, require_all_targets=False)
-    assert payload["source"] == {"commit": "1" * 40, "tag": "v0.1.0"}
-    assert {entry["filename"] for entry in payload["artifacts"]} == {
-        *(wheel.name for wheel in wheels),
-        sdist.name,
-    }
-    wheels[0].write_bytes(wheels[0].read_bytes() + b"tamper")
-    with pytest.raises(ArtifactError, match="hash/size"):
-        verify_manifest(tmp_path, require_release=True, require_all_targets=False)
-
-
-def test_manifest_source_identity_is_atomic_and_exact(tmp_path: Path) -> None:
-    with pytest.raises(ArtifactError, match="supplied together"):
-        write_manifest(
-            tmp_path,
-            mode="candidate",
-            wheels=[],
-            sdists=[],
-            parity="candidate-not-release-validated",
-            source_commit="1" * 40,
-        )
-    with pytest.raises(ArtifactError, match="full lowercase Git SHA"):
-        write_manifest(
-            tmp_path,
-            mode="candidate",
-            wheels=[],
-            sdists=[],
-            parity="candidate-not-release-validated",
-            source_commit="not-a-commit",
-            source_tag="v0.1.0",
-        )
-    with pytest.raises(ArtifactError, match=r"must be v0\.1\.0"):
-        write_manifest(
-            tmp_path,
-            mode="candidate",
-            wheels=[],
-            sdists=[],
-            parity="candidate-not-release-validated",
-            source_commit="1" * 40,
-            source_tag="v0.1.1",
-        )
-
-
-def test_partial_release_manifest_is_explicitly_not_publishable(
-    tmp_path: Path,
-) -> None:
-    sdist = _sdist(tmp_path)
-    sdist_report = audit_sdist(sdist, mode="release")
-    manifest = write_manifest(
-        tmp_path,
-        mode="release",
-        wheels=[],
-        sdists=[sdist_report],
-        parity="sdist-only",
-    )
-    assert json.loads(manifest.read_text(encoding="utf-8"))["publishable"] is False
-    with pytest.raises(ArtifactError, match="complete publishable release"):
-        verify_manifest(tmp_path, require_release=True, require_all_targets=False)
-
-
-def test_release_manifest_requires_all_targets_and_source_identity(
-    tmp_path: Path,
-) -> None:
-    sdist = _sdist(tmp_path)
-    sdist_report = audit_sdist(sdist, mode="release")
-    one_wheel = _wheel(tmp_path)
-    one_report = replace(
-        audit_wheel(one_wheel, mode="release", native_scan=False), native_scan=True
-    )
-    partial = write_manifest(
-        tmp_path,
-        mode="release",
-        wheels=[one_report],
-        sdists=[sdist_report],
-        parity="verified",
-        retained_sdist=sdist_report,
-        source_commit="1" * 40,
-        source_tag="v0.1.0",
-    )
-    assert json.loads(partial.read_text(encoding="utf-8"))["publishable"] is False
-    with pytest.raises(ArtifactError, match="complete publishable release"):
-        verify_manifest(tmp_path, require_release=True, require_all_targets=False)
-    forged = json.loads(partial.read_text(encoding="utf-8"))
-    forged["publishable"] = True
-    partial.write_text(json.dumps(forged), encoding="utf-8")
-    with pytest.raises(
-        ArtifactError, match="exactly one wheel for every release target"
-    ):
-        verify_manifest(tmp_path, require_release=True, require_all_targets=False)
-
-    one_wheel.unlink()
-    (tmp_path / "release-manifest.json").unlink()
-    (tmp_path / "SHA256SUMS").unlink()
-    _, reports = _complete_release_wheels(tmp_path)
-    source_less = write_manifest(
-        tmp_path,
-        mode="release",
-        wheels=reports,
-        sdists=[sdist_report],
-        parity="verified",
-        retained_sdist=sdist_report,
-    )
-    assert json.loads(source_less.read_text(encoding="utf-8"))["publishable"] is False
-    with pytest.raises(ArtifactError, match="complete publishable release"):
-        verify_manifest(tmp_path, require_release=True, require_all_targets=False)
-    forged = json.loads(source_less.read_text(encoding="utf-8"))
-    forged["publishable"] = True
-    source_less.write_text(json.dumps(forged), encoding="utf-8")
-    with pytest.raises(ArtifactError, match="no source identity"):
-        verify_manifest(tmp_path, require_release=True, require_all_targets=False)

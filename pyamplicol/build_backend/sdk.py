@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -13,19 +12,15 @@ import subprocess
 import tempfile
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
-from urllib.parse import quote
+from typing import Any
 
 SDK_SOURCES = (
     ("rust/crates/rusticol-capi/include/rusticol.h", "include/rusticol.h"),
     ("rust/crates/rusticol-capi/include/rusticol.hpp", "include/rusticol.hpp"),
     ("rust/crates/rusticol-capi/fortran/rusticol.f90", "fortran/rusticol.f90"),
 )
-CAPI_PACKAGE = "rusticol-capi"
-CAPI_MANIFEST = Path("rust/crates/rusticol-capi/Cargo.toml")
-SDK_SBOM = Path("sboms/rusticol-capi.cyclonedx.json")
+RUST_SDK_SOURCE = "src/pyamplicol/_sdk/rust/rusticol.rs"
 NATIVE_MARKER = "native-static-libs:"
 FORBIDDEN_SYMBOLS = (
     "PyObject",
@@ -104,14 +99,6 @@ MACOS_FRAMEWORKS = {
 }
 
 
-@dataclass(frozen=True)
-class _CargoPackage:
-    name: str
-    version: str
-    manifest_path: Path
-    source: str | None
-
-
 def _host_target(root: Path) -> str:
     completed = subprocess.run(
         ["rustc", "-vV"],
@@ -157,60 +144,6 @@ def _cargo_messages(stdout: str) -> list[dict[str, Any]]:
     return messages
 
 
-def _json_object(value: object, label: str) -> dict[str, object]:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        raise RuntimeError(f"cargo metadata {label} must be an object")
-    return cast(dict[str, object], value)
-
-
-def _json_array(value: object, label: str) -> list[object]:
-    if not isinstance(value, list):
-        raise RuntimeError(f"cargo metadata {label} must be an array")
-    return value
-
-
-def _required_string(value: object, label: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise RuntimeError(f"cargo metadata {label} must be a non-empty string")
-    return value
-
-
-def _cargo_metadata(root: Path, target_dir: Path, target: str) -> dict[str, object]:
-    manifest = root / CAPI_MANIFEST
-    if not manifest.is_file():
-        raise RuntimeError(f"missing Rusticol C API manifest: {manifest}")
-    completed = subprocess.run(
-        [
-            "cargo",
-            "metadata",
-            "--format-version",
-            "1",
-            "--locked",
-            "--offline",
-            "--filter-platform",
-            target,
-            "--manifest-path",
-            str(manifest),
-        ],
-        cwd=root,
-        env=dict(os.environ, CARGO_TARGET_DIR=str(target_dir)),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if completed.returncode != 0:
-        diagnostics = completed.stderr.strip() or completed.stdout.strip()
-        detail = f"\n{diagnostics}" if diagnostics else ""
-        raise RuntimeError(
-            f"cargo metadata failed with exit code {completed.returncode}{detail}"
-        )
-    try:
-        payload = json.loads(completed.stdout)
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("cargo metadata emitted invalid JSON") from error
-    return _json_object(payload, "output")
-
-
 def _cargo_fetch(root: Path, target_dir: Path, target: str) -> None:
     completed = subprocess.run(
         ["cargo", "fetch", "--locked", "--target", target],
@@ -226,205 +159,6 @@ def _cargo_fetch(root: Path, target_dir: Path, target: str) -> None:
         raise RuntimeError(
             f"cargo fetch failed with exit code {completed.returncode}{detail}"
         )
-
-
-def _cargo_purl(package: _CargoPackage) -> str:
-    name = quote(package.name, safe=".-_~")
-    version = quote(package.version, safe=".-_~")
-    return f"pkg:cargo/{name}@{version}"
-
-
-def _component(package: _CargoPackage, reference: str) -> dict[str, str]:
-    return {
-        "type": "library",
-        "bom-ref": reference,
-        "name": package.name,
-        "version": package.version,
-        "scope": "required",
-        "purl": reference,
-    }
-
-
-def _cyclonedx_sbom(
-    metadata: object,
-    *,
-    root_manifest: Path,
-    target: str,
-) -> bytes:
-    payload = _json_object(metadata, "output")
-    if type(payload.get("version")) is not int or payload["version"] != 1:
-        raise RuntimeError("cargo metadata output has an unsupported format version")
-    if (
-        not target
-        or any(character.isspace() for character in target)
-        or "/" in target
-        or "\\" in target
-    ):
-        raise RuntimeError("cargo metadata target is invalid")
-
-    packages: dict[str, _CargoPackage] = {}
-    for index, item in enumerate(_json_array(payload.get("packages"), "packages")):
-        package = _json_object(item, f"packages[{index}]")
-        package_id = _required_string(package.get("id"), f"packages[{index}].id")
-        if package_id in packages:
-            raise RuntimeError(f"cargo metadata repeats package id {package_id}")
-        manifest_path = Path(
-            _required_string(
-                package.get("manifest_path"),
-                f"packages[{index}].manifest_path",
-            )
-        )
-        if not manifest_path.is_absolute():
-            raise RuntimeError("cargo metadata package manifest paths must be absolute")
-        if "source" not in package:
-            raise RuntimeError(f"cargo metadata packages[{index}].source is missing")
-        source = package["source"]
-        if source is not None and (not isinstance(source, str) or not source):
-            raise RuntimeError(f"cargo metadata packages[{index}].source is invalid")
-        packages[package_id] = _CargoPackage(
-            name=_required_string(package.get("name"), f"packages[{index}].name"),
-            version=_required_string(
-                package.get("version"), f"packages[{index}].version"
-            ),
-            manifest_path=manifest_path,
-            source=source,
-        )
-
-    workspace_items = _json_array(payload.get("workspace_members"), "workspace_members")
-    workspace_members = {
-        _required_string(item, f"workspace_members[{index}]")
-        for index, item in enumerate(workspace_items)
-    }
-    if len(workspace_members) != len(workspace_items):
-        raise RuntimeError("cargo metadata repeats a workspace member")
-    if not workspace_members <= packages.keys():
-        raise RuntimeError("cargo metadata has an unknown workspace member")
-
-    resolve = _json_object(payload.get("resolve"), "resolve")
-    root_id = _required_string(resolve.get("root"), "resolve.root")
-    if root_id not in workspace_members:
-        raise RuntimeError("cargo metadata root is not a workspace member")
-
-    nodes: dict[str, Mapping[str, object]] = {}
-    for index, item in enumerate(_json_array(resolve.get("nodes"), "resolve.nodes")):
-        node = _json_object(item, f"resolve.nodes[{index}]")
-        node_id = _required_string(node.get("id"), f"resolve.nodes[{index}].id")
-        if node_id in nodes:
-            raise RuntimeError(f"cargo metadata repeats resolve node {node_id}")
-        nodes[node_id] = node
-    if packages.keys() != nodes.keys():
-        raise RuntimeError("cargo metadata package and resolve-node sets differ")
-
-    edges: dict[str, set[str]] = {}
-    for node_id, node in nodes.items():
-        required: set[str] = set()
-        for index, item in enumerate(
-            _json_array(node.get("deps"), f"resolve node {node_id} deps")
-        ):
-            dependency = _json_object(item, f"resolve node {node_id} deps[{index}]")
-            _required_string(
-                dependency.get("name"), f"resolve node {node_id} dependency name"
-            )
-            dependency_id = _required_string(
-                dependency.get("pkg"), f"resolve node {node_id} dependency package"
-            )
-            if dependency_id not in nodes:
-                raise RuntimeError(
-                    f"cargo metadata node {node_id} references unknown package "
-                    f"{dependency_id}"
-                )
-            kinds = _json_array(
-                dependency.get("dep_kinds"),
-                f"resolve node {node_id} dependency kinds",
-            )
-            if not kinds:
-                raise RuntimeError("cargo metadata dependency has no dependency kind")
-            include = False
-            for kind_index, kind_item in enumerate(kinds):
-                kind = _json_object(
-                    kind_item,
-                    f"resolve node {node_id} dependency kind {kind_index}",
-                )
-                if "kind" not in kind or "target" not in kind:
-                    raise RuntimeError("cargo metadata dependency kind is incomplete")
-                kind_name = kind["kind"]
-                if kind_name is not None and (
-                    not isinstance(kind_name, str) or kind_name not in {"build", "dev"}
-                ):
-                    raise RuntimeError(
-                        f"cargo metadata dependency kind is invalid: {kind_name!r}"
-                    )
-                kind_target = kind["target"]
-                if kind_target is not None and not isinstance(kind_target, str):
-                    raise RuntimeError("cargo metadata dependency target is invalid")
-                include = include or kind_name in {None, "build"}
-            if include:
-                required.add(dependency_id)
-        edges[node_id] = required
-
-    root_package = packages[root_id]
-    if root_package.name != CAPI_PACKAGE or root_package.source is not None:
-        raise RuntimeError(
-            "cargo metadata did not resolve the local rusticol-capi root"
-        )
-    if root_package.manifest_path.resolve() != root_manifest.resolve():
-        raise RuntimeError(
-            "cargo metadata resolved an unexpected rusticol-capi manifest"
-        )
-
-    reachable: set[str] = set()
-    pending = [root_id]
-    while pending:
-        package_id = pending.pop()
-        if package_id in reachable:
-            continue
-        reachable.add(package_id)
-        pending.extend(edges[package_id] - reachable)
-
-    references: dict[str, str] = {}
-    owners: dict[str, str] = {}
-    for package_id in sorted(reachable):
-        reference = _cargo_purl(packages[package_id])
-        owner = owners.setdefault(reference, package_id)
-        if owner != package_id:
-            raise RuntimeError(
-                f"cargo metadata closure has ambiguous package reference {reference}"
-            )
-        references[package_id] = reference
-
-    ordered = sorted(reachable, key=references.__getitem__)
-    document: dict[str, object] = {
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
-        "version": 1,
-        "metadata": {
-            "component": _component(root_package, references[root_id]),
-            "properties": [
-                {"name": "pyamplicol:rust-target", "value": target},
-            ],
-        },
-        "components": [
-            _component(packages[package_id], references[package_id])
-            for package_id in ordered
-            if package_id != root_id
-        ],
-        "dependencies": [
-            {
-                "ref": references[package_id],
-                "dependsOn": sorted(
-                    references[dependency_id] for dependency_id in edges[package_id]
-                ),
-            }
-            for package_id in ordered
-        ],
-    }
-    encoded = (
-        json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
-    ).encode("utf-8")
-    forbidden = (b"file://", b"path+file:")
-    if any(marker in encoded for marker in forbidden):
-        raise RuntimeError("generated SDK SBOM retains a local Cargo reference")
-    return encoded
 
 
 def _static_library(messages: list[dict[str, Any]]) -> Path:
@@ -697,14 +431,6 @@ def _package_version(root: Path) -> str:
     return version
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while block := stream.read(1024 * 1024):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def build_sdk(root: Path, target_dir: Path) -> Path:
     host = _host_target(root)
     target = _requested_target(host)
@@ -736,11 +462,6 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
         capture_output=True,
         text=True,
     )
-    sbom = _cyclonedx_sbom(
-        _cargo_metadata(root, target_dir, target),
-        root_manifest=root / CAPI_MANIFEST,
-        target=target,
-    )
     messages = _cargo_messages(completed.stdout)
     archive = _static_library(messages)
     if not archive.is_file():
@@ -756,6 +477,9 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     )
 
     staging = target_dir.parent / "wheel-data" / "_sdk"
+    rust_source = root / RUST_SDK_SOURCE
+    if not rust_source.is_file():
+        raise RuntimeError(f"missing Rusticol SDK source: {rust_source}")
     for source_name, destination_name in SDK_SOURCES:
         source = root / source_name
         if not source.is_file():
@@ -774,9 +498,6 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
         json.dumps(link, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    sbom_path = staging / SDK_SBOM
-    sbom_path.parent.mkdir(parents=True, exist_ok=True)
-    sbom_path.write_bytes(sbom)
     (staging / "metadata.json").write_text(
         json.dumps(
             {
@@ -785,9 +506,7 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
                 "version": _package_version(root),
                 "target": target,
                 "archive": f"lib/{archive_name}",
-                "archive_sha256": _sha256(library),
-                "sbom": SDK_SBOM.as_posix(),
-                "sbom_sha256": _sha256(sbom_path),
+                "rust_source": "rust/rusticol.rs",
             },
             indent=2,
             sort_keys=True,

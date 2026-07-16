@@ -32,8 +32,7 @@ pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
     "symbolica.legacy-jit-container.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-cpp.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
-pub const SYMJIT_APPLICATION_STORAGE_ABI: &str =
-    "symjit-app-v3-sha256:a79a6f6cef68f2d0cb854a955af2f604654e968a84643e170dd0b9b39da27686";
+pub const SYMJIT_APPLICATION_STORAGE_ABI: &str = "symjit-application-storage-v3";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -434,8 +433,6 @@ struct GenericCurrentSlotManifest {
     #[serde(default)]
     flavour_flow: Vec<i32>,
     #[serde(default)]
-    charge_flow: i32,
-    #[serde(default)]
     color_state: Value,
     momentum_mask: u64,
     auxiliary_kind: Option<String>,
@@ -479,6 +476,14 @@ struct GenericSourceFillManifest {
     sources: Vec<GenericSourceRecordManifest>,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum GenericSourceOrientationManifest {
+    Particle,
+    Antiparticle,
+    SelfConjugate,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GenericSourceRecordManifest {
@@ -496,9 +501,10 @@ struct GenericSourceRecordManifest {
     physical_pdg: i32,
     outgoing_pdg: i32,
     particle_id: i32,
+    anti_particle_id: i32,
     source_kind: String,
-    #[serde(default)]
     wavefunction_kind: String,
+    source_orientation: GenericSourceOrientationManifest,
     source_helicity: i32,
     chirality: i32,
     spin_state: Value,
@@ -716,7 +722,6 @@ struct EvaluatorGroup {
     evaluators: Vec<LoadedEvaluator>,
     output_len: usize,
     chunk_scratch_f64: Vec<Complex<f64>>,
-    chunk_scratch_native2: Vec<Complex<wide::f64x2>>,
 }
 
 enum F64Evaluator {
@@ -726,8 +731,6 @@ enum F64Evaluator {
     Compiled(CompiledComplexEvaluator),
     #[cfg(feature = "symbolica-runtime")]
     Jit(JITCompiledEvaluator<Complex<f64>>),
-    #[cfg(feature = "symbolica-runtime")]
-    JitNative2(JITCompiledEvaluator<Complex<wide::f64x2>>),
 }
 
 struct LoadedEvaluator {
@@ -1114,8 +1117,6 @@ struct StageRuntime {
     input_spans: Vec<(usize, usize, usize)>,
     parameter_scratch_f64: Vec<Complex<f64>>,
     output_scratch_f64: Vec<Complex<f64>>,
-    parameter_scratch_native2: Vec<Complex<wide::f64x2>>,
-    output_scratch_native2: Vec<Complex<wide::f64x2>>,
     evaluator: EvaluatorGroup,
 }
 
@@ -1131,8 +1132,6 @@ struct AmplitudeRuntime {
     input_spans: Vec<(usize, usize, usize)>,
     parameter_scratch_f64: Vec<Complex<f64>>,
     output_scratch_f64: Vec<Complex<f64>>,
-    parameter_scratch_native2: Vec<Complex<wide::f64x2>>,
-    output_scratch_native2: Vec<Complex<wide::f64x2>>,
     evaluator: EvaluatorGroup,
 }
 
@@ -1166,3 +1165,11 @@ use wavefunctions::*;
 #[cfg(test)]
 #[path = "engine_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "engine/source_metadata_tests.rs"]
+mod source_metadata_tests;
+
+#[cfg(test)]
+#[path = "engine/quantum_number_flow_tests.rs"]
+mod quantum_number_flow_tests;

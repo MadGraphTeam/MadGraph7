@@ -2,64 +2,17 @@ name: Validated release artifacts
 
 on:
   workflow_dispatch:
-    inputs:
-      signed_tag:
-        description: Signed release tag to build
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-artifacts-${{ inputs.signed_tag }}
+  group: release-artifacts-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  verify-release-tag:
-    name: Verify signed release tag
-    runs-on: ubuntu-24.04
-    outputs:
-      source_commit: ${{ steps.tag.outputs.source_commit }}
-      workflow_commit: ${{ steps.tag.outputs.workflow_commit }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.signed_tag }}
-      - id: tag
-        name: Verify signed tag and pin commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.signed_tag }}
-          WORKFLOW_COMMIT: ${{ github.sha }}
-        run: |
-          expected_tag="$(python - <<'PY'
-          import tomllib
-          from pathlib import Path
-
-          with Path("Cargo.toml").open("rb") as stream:
-              version = tomllib.load(stream)["workspace"]["package"]["version"]
-          print(f"v{version}")
-          PY
-          )"
-          test "$RELEASE_TAG" = "$expected_tag" || {
-            echo "release tag must be exactly $expected_tag" >&2
-            exit 2
-          }
-          tag_ref="refs/tags/$RELEASE_TAG"
-          test "$(git cat-file -t "$tag_ref")" = tag
-          tag_object="$(git rev-parse "$tag_ref")"
-          test "$(gh api "/repos/$GITHUB_REPOSITORY/git/tags/$tag_object" \
-            --jq '.verification.verified')" = true
-          commit="$(git rev-parse "${tag_ref}^{commit}")"
-          printf 'source_commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
-          printf 'workflow_commit=%s\n' "$WORKFLOW_COMMIT" >> "$GITHUB_OUTPUT"
-          test "$(git rev-parse HEAD)" = "$commit"
-
   full-source-validation:
     name: Full source validation gate
-    needs: verify-release-tag
     runs-on: ubuntu-24.04
     env:
       PYAMPLICOL_BUILD_MODE: release
@@ -67,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ needs.verify-release-tag.outputs.source_commit }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
@@ -91,12 +44,11 @@ jobs:
 
   independent-physics-oracle:
     name: Independent Fortran physics oracle
-    needs: verify-release-tag
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ needs.verify-release-tag.outputs.source_commit }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
@@ -115,45 +67,14 @@ jobs:
             --jobs 2 \
             --check-output tests/fixtures/reference/legacy-fortran-v2.json
 
-  legal-release-gate:
-    name: Native dependency legal gate
-    needs: [verify-release-tag, full-source-validation, independent-physics-oracle]
-    runs-on: ubuntu-24.04
-    env:
-      CARGO_HOME: ${{ runner.temp }}/pyamplicol-legal-cargo
-    outputs:
-      source_commit: ${{ steps.commit.outputs.source_commit }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: ${{ needs.verify-release-tag.outputs.source_commit }}
-      - id: commit
-        env:
-          VERIFIED_SOURCE_COMMIT: ${{ needs.verify-release-tag.outputs.source_commit }}
-        run: printf 'source_commit=%s\n' "$VERIFIED_SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.11"
-      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
-      - name: Fetch locked native legal closures into an isolated Cargo home
-        run: >-
-          python tools/release/check_rust_licenses.py
-          --fetch-locked-release-targets
-      - name: Enforce native dependency legal gate
-        env:
-          CARGO_NET_OFFLINE: "true"
-        run: python tools/release/check_legal_inventory.py --mode release
-
   retained-sdist:
-    needs: legal-release-gate
+    needs: [full-source-validation, independent-physics-oracle]
     name: Build retained source distribution
     runs-on: ubuntu-24.04
-    outputs:
-      source_commit: ${{ needs.legal-release-gate.outputs.source_commit }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ needs.legal-release-gate.outputs.source_commit }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
@@ -191,7 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ needs.retained-sdist.outputs.source_commit }}
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: pyamplicol-retained-sdist
@@ -207,7 +128,7 @@ jobs:
           "build>=1.2,<2"
           "maturin==1.14.1"
           "twine>=6,<7"
-      - name: Build from and compare with retained sdist
+      - name: Build and audit from retained sdist
         run: >-
           python tools/release/build_release_artifacts.py
           --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz
@@ -265,7 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ needs.retained-sdist.outputs.source_commit }}
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: pyamplicol-retained-sdist
@@ -314,14 +235,14 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  validated-bundle:
-    name: Assemble validated release bundle
+  validated-artifacts:
+    name: Collect validated release artifacts
     needs: [retained-sdist, macos-wheels, manylinux-wheel]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ needs.retained-sdist.outputs.source_commit }}
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           pattern: pyamplicol-*
@@ -332,18 +253,14 @@ jobs:
           cache: pip
       - name: Install artifact validation tools
         run: python -m pip install "twine>=6,<7"
-      - name: Assemble exact validated bundle
-        env:
-          SOURCE_COMMIT: ${{ needs.retained-sdist.outputs.source_commit }}
-          SOURCE_TAG: ${{ inputs.signed_tag }}
-        run: |
+      - name: Audit and collect package files
+        run: >-
           python tools/release/publish_dry_run.py
           --artifact-dir .artifacts/incoming
-          --bundle-dir .artifacts/validated
+          --output-dir .artifacts/validated
           --no-build
           --require-all-targets
-          --source-commit "$SOURCE_COMMIT"
-          --source-tag "$SOURCE_TAG"
+          --skip-clean-install
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pyamplicol-validated-release

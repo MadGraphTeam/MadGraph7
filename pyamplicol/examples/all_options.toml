@@ -11,9 +11,10 @@ schema_version = 1
 
 [model]
 # model.source: "built-in-sm" or a UFO directory/JSON/compiled-model path.
-source = "built-in-sm"
-# model.restriction: Optional restriction name/path. Default is null.
-restriction = "restrict_default.dat"
+source = "models/json/sm/sm.json"
+# model.restriction: Optional restriction name. Default is null, which applies
+# a model-provided default restriction when one exists.
+restriction = "default"
 # model.simplify: Simplify an external model while compiling. Default true.
 simplify = true
 # model.cache: Reuse the content-addressed compiled-model cache. Default true.
@@ -24,11 +25,10 @@ cache_dir = "cache/models"
 [process]
 # process.entries: Typed process expressions with optional unique stable names.
 entries = [
-  { expression = "d d~ > z g", name = "ddbar_zg" },
-  { expression = "d d~ > z g g", name = "ddbar_zgg" },
+  { expression = "p p > Z j j" },
 ]
 # process.flavor_scheme: Number of active quark flavors. Default 5.
-flavor_scheme = 5
+flavor_scheme = 2
 # process.max_quark_lines: Optional maximum quark-line count. Default null.
 max_quark_lines = 2
 # process.coupling_order_policy: "minimal" or "explicit". Default minimal.
@@ -41,7 +41,7 @@ j = ["d", "d~", "u", "u~", "g"]
 
 # process.max_coupling_orders: Non-negative limits keyed by coupling-order name.
 [process.max_coupling_orders]
-QCD = 3
+QCD = 4
 QED = 2
 
 [color]
@@ -50,12 +50,12 @@ accuracy = "lc"
 
 [generation]
 # generation.output: Optional artifact output path. Default null.
-output = "artifacts/all_options"
+output = "artifacts/pp_zjj_all_options"
 # generation.mode: "error", "append", or "replace". Default error.
 mode = "error"
 # generation.workers: Positive integer or "auto". Default auto.
 workers = "auto"
-# generation.emit_api_bundle: Emit root Python/C++/Fortran API bundle. Default true.
+# generation.emit_api_bundle: Emit root Python/Rust/C++/Fortran API bundle. Default true.
 emit_api_bundle = true
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
@@ -112,21 +112,21 @@ extra_flags = ["-fno-math-errno"]
 
 [evaluation]
 # evaluation.artifact: Optional schema-v3 artifact path. Default null.
-artifact = "artifacts/all_options"
+artifact = "artifacts/pp_zjj_all_options"
 # evaluation.process: Optional process name/alias within a set. Default null.
-process = "ddbar_zg"
+process = "p_p_to_z_j_j_4"
 # evaluation.precision: Positive decimal-digit request. Default 16.
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.
 resolved = true
 # evaluation.helicity_ids: Stable physical helicity selectors. Default empty.
-helicity_ids = ["h:-1,+1,-1,-1"]
+helicity_ids = []
 # evaluation.color_flow_ids: Stable LC flow selectors. Default empty.
-color_flow_ids = ["flow:2,4,1"]
+color_flow_ids = []
 # evaluation.model_parameters: Optional JSON parameter card path. Default null.
 model_parameters = "data/model_parameters.json"
 # evaluation.momenta: Optional JSON phase-space points path. Default null.
-momenta = "data/ddbar_zg_momenta.json"
+momenta = "data/pp_zjj_momenta.json"
 
 [benchmark]
 # benchmark.target_runtime: Positive target duration in seconds. Default 10.0.
@@ -138,9 +138,9 @@ warmup_runs = 2
 # benchmark.minimum_samples: Positive minimum measured samples. Default 5.
 minimum_samples = 5
 # benchmark.helicity_ids: Optional benchmark helicity selectors. Default empty.
-helicity_ids = ["h:-1,+1,-1,-1"]
+helicity_ids = []
 # benchmark.color_flow_ids: Optional benchmark LC flow selectors. Default empty.
-color_flow_ids = ["flow:2,4,1"]
+color_flow_ids = []
 
 [output]
 # output.format: "human" or "json". Default human.

@@ -3,10 +3,7 @@
 
 from __future__ import annotations
 
-import base64
-import csv
 import hashlib
-import io
 import json
 import os
 import re
@@ -15,23 +12,17 @@ import stat
 import subprocess
 import sys
 import tomllib
-import uuid
-import zipfile
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from email import policy
-from email.parser import BytesParser
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
 import maturin  # type: ignore[import-untyped]
-from distribution_sbom import build_distribution_sbom
 from sdk import build_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
-_DISTRIBUTION_LOCK_MEMBER = "pyamplicol/assets/release/release-lock.toml"
-_PYTHON_RUNTIME_LOCK_MEMBER = "pyamplicol/assets/release/python-runtime-lock.toml"
+_CONTRIBUTOR_LOCK = Path("dependencies/contributor-lock.toml")
 ALLOWLIST = (
     ".gitattributes",
     "Cargo.lock",
@@ -78,19 +69,24 @@ IGNORED_NAMES = {
     "venv",
 }
 _EXCLUDED_TREES = (
+    Path("dependencies/patches"),
     Path("docs/.result_outputs"),
     Path("docs/archive"),
     Path("outputs"),
     Path("src/pyamplicol/_sdk/fortran"),
     Path("src/pyamplicol/_sdk/include"),
     Path("src/pyamplicol/_sdk/lib"),
-    Path("src/pyamplicol/_sdk/sboms"),
 )
 _EXCLUDED_PATHS = {
     Path(".cargo/config.toml"),
+    Path("build_backend/python_lock.py"),
     Path("dependencies/candidate-Cargo.lock"),
     Path("dependencies/candidate-cargo-config.toml"),
+    Path("dependencies/contributor-lock.toml"),
+    Path("dependencies/install_dependencies.py"),
     Path("dependencies/install-state.json"),
+    Path("dependencies/python-runtime-lock.toml"),
+    Path("dependencies/symbolica_patches.tar.gz"),
     Path("src/pyamplicol/_sdk/link.json"),
     Path("src/pyamplicol/_sdk/metadata.json"),
 }
@@ -125,7 +121,6 @@ _CANDIDATE_SOURCES = {
     "symbolica",
     "symbolica-community",
     "symjit",
-    "ufo-model-loader",
 }
 _INJECTION_ENVIRONMENT_NAMES = {
     "AR",
@@ -364,16 +359,10 @@ def _stage_python_stub(overlay: Path) -> None:
 
 
 def _stage_runtime_resources(overlay: Path) -> None:
-    """Place wheel-owned metadata below the pyamplicol package namespace."""
+    """Place wheel-owned schemas below the pyamplicol package namespace."""
 
     package_assets = overlay / "src" / "pyamplicol" / "assets"
     sources = {
-        overlay / "dependencies" / "release-lock.toml": (
-            package_assets / "release" / "release-lock.toml"
-        ),
-        overlay / "dependencies" / "python-runtime-lock.toml": (
-            package_assets / "release" / "python-runtime-lock.toml"
-        ),
         overlay / "schemas" / "README.md": package_assets / "schemas" / "README.md",
         overlay / "schemas" / "artifact-manifest-v3.schema.json": (
             package_assets / "schemas" / "artifact-manifest-v3.schema.json"
@@ -393,146 +382,6 @@ def _stage_runtime_resources(overlay: Path) -> None:
             )
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-
-
-def _canonicalize_sbom_references(value: object) -> dict[str, str]:
-    replacements: dict[str, str] = {}
-
-    def visit(item: object) -> None:
-        if isinstance(item, dict):
-            reference = item.get("bom-ref")
-            purl = item.get("purl")
-            if (
-                isinstance(reference, str)
-                and reference.startswith("path+file:")
-                and isinstance(purl, str)
-                and purl.startswith("pkg:cargo/")
-            ):
-                base, separator, fragment = purl.partition("#")
-                canonical = base.split("?", 1)[0]
-                if separator:
-                    canonical = f"{canonical}#{fragment}"
-                replacements[reference] = canonical
-                item["bom-ref"] = canonical
-                item["purl"] = canonical
-            for child in item.values():
-                visit(child)
-        elif isinstance(item, list):
-            for child in item:
-                visit(child)
-
-    visit(value)
-    return replacements
-
-
-def _replace_sbom_references(value: object, replacements: Mapping[str, str]) -> object:
-    if isinstance(value, dict):
-        return {
-            key: _replace_sbom_references(child, replacements)
-            for key, child in value.items()
-        }
-    if isinstance(value, list):
-        return [_replace_sbom_references(child, replacements) for child in value]
-    if isinstance(value, str):
-        return replacements.get(value, value)
-    return value
-
-
-def _normalize_cyclonedx(data: bytes) -> bytes:
-    try:
-        payload = json.loads(data)
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("Maturin generated an invalid CycloneDX SBOM") from error
-    if not isinstance(payload, dict) or payload.get("bomFormat") != "CycloneDX":
-        raise RuntimeError("Maturin generated an unsupported SBOM")
-    replacements = _canonicalize_sbom_references(payload)
-    payload = _replace_sbom_references(payload, replacements)
-    assert isinstance(payload, dict)
-    metadata = payload.get("metadata")
-    if not isinstance(metadata, dict):
-        raise RuntimeError("Maturin SBOM has no metadata object")
-    metadata["timestamp"] = "1970-01-01T00:00:00Z"
-    payload["serialNumber"] = "urn:uuid:00000000-0000-4000-8000-000000000000"
-    identity = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).encode("utf-8")
-    identifier = bytearray(hashlib.sha256(identity).digest()[:16])
-    identifier[6] = (identifier[6] & 0x0F) | 0x40
-    identifier[8] = (identifier[8] & 0x3F) | 0x80
-    payload["serialNumber"] = f"urn:uuid:{uuid.UUID(bytes=bytes(identifier))}"
-    normalized = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    forbidden = (b"file://", b"path+file:", b"/Users/", b"/private/var/")
-    remaining = [marker for marker in forbidden if marker in normalized]
-    if remaining:
-        raise RuntimeError(
-            "normalized CycloneDX SBOM retains local references: "
-            + ", ".join(os.fsdecode(marker) for marker in remaining)
-        )
-    return normalized
-
-
-def _record_hash(data: bytes) -> str:
-    digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
-    return f"sha256={digest.decode('ascii')}"
-
-
-def _normalize_built_wheel(path: Path) -> None:
-    """Build the distribution SBOM and refresh wheel RECORD."""
-
-    if not path.is_file() or path.suffix != ".whl":
-        raise RuntimeError(f"Maturin did not produce the expected wheel: {path}")
-    with zipfile.ZipFile(path) as archive:
-        infos = archive.infolist()
-        members = {info.filename: archive.read(info) for info in infos}
-    sboms = [
-        name
-        for name in members
-        if ".dist-info/sboms/" in name and name.endswith(".cyclonedx.json")
-    ]
-    if len(sboms) != 1:
-        raise RuntimeError(
-            f"Maturin wheel must contain one CycloneDX SBOM, found {len(sboms)}"
-        )
-    metadata_names = [name for name in members if name.endswith(".dist-info/METADATA")]
-    if len(metadata_names) != 1:
-        raise RuntimeError("Maturin wheel must contain one METADATA file")
-    if _DISTRIBUTION_LOCK_MEMBER not in members:
-        raise RuntimeError(
-            "Maturin wheel is missing the packaged dependency release lock"
-        )
-    metadata = BytesParser(policy=policy.default).parsebytes(members[metadata_names[0]])
-    distribution = str(metadata.get("Name", ""))
-    version = str(metadata.get("Version", ""))
-    if not distribution or not version:
-        raise RuntimeError("Maturin wheel METADATA has no distribution identity")
-    mode = "candidate" if ".dev0+candidate." in version else "release"
-    members[sboms[0]] = build_distribution_sbom(
-        members[sboms[0]],
-        members[_DISTRIBUTION_LOCK_MEMBER],
-        members.get(_PYTHON_RUNTIME_LOCK_MEMBER),
-        distribution_name=distribution,
-        distribution_version=version,
-        runtime_requirements=tuple(metadata.get_all("Requires-Dist", [])),
-        mode=mode,
-    )
-    records = [name for name in members if name.endswith(".dist-info/RECORD")]
-    if len(records) != 1:
-        raise RuntimeError("Maturin wheel must contain one RECORD")
-    record_name = records[0]
-    rows = [
-        [name, _record_hash(data), str(len(data))]
-        for name, data in sorted(members.items())
-        if name != record_name
-    ]
-    rows.append([record_name, "", ""])
-    record = io.StringIO(newline="")
-    csv.writer(record, lineterminator="\n").writerows(rows)
-    members[record_name] = record.getvalue().encode("utf-8")
-    temporary = path.with_suffix(f"{path.suffix}.normalizing")
-    with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for info in infos:
-            archive.writestr(info, members[info.filename])
-    os.replace(temporary, path)
 
 
 def _stage_selftest_fixture(overlay: Path, target: str) -> None:
@@ -635,10 +484,6 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     )
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def _digest_item(digest: Any, name: str, data: bytes) -> None:
     encoded_name = name.encode("utf-8")
     digest.update(len(encoded_name).to_bytes(8, "big"))
@@ -648,7 +493,6 @@ def _digest_item(digest: Any, name: str, data: bytes) -> None:
 
 
 def _candidate_state(
-    overlay: Path,
     candidate_lock: Path,
     candidate_config: Path,
     installer_state: Path,
@@ -659,87 +503,69 @@ def _candidate_state(
         raise RuntimeError(f"invalid candidate installer state: {error}") from error
     if not isinstance(payload, dict) or payload.get("schema_version") != 1:
         raise RuntimeError("candidate installer state must be a schema-v1 object")
-    expected_digests = {
-        "release_lock_sha256": _sha256(overlay / "dependencies" / "release-lock.toml"),
-        "python_runtime_lock_sha256": _sha256(
-            overlay / "dependencies" / "python-runtime-lock.toml"
-        ),
-        "candidate_lock_sha256": _sha256(candidate_lock),
-        "cargo_config_sha256": _sha256(candidate_config),
-    }
-    for field, expected in expected_digests.items():
-        if payload.get(field) != expected:
-            raise RuntimeError(
-                f"candidate installer state {field} does not match its build input"
-            )
     if payload.get("publishable") is not False:
         raise RuntimeError("candidate installer state must be non-publishable")
+    if not candidate_lock.is_file() or not candidate_config.is_file():
+        raise RuntimeError("candidate Cargo inputs are incomplete")
+    with (ROOT / _CONTRIBUTOR_LOCK).open("rb") as stream:
+        contributor = tomllib.load(stream)
+    expected_revisions = {
+        "gammaloop": str(contributor["gammaloop_candidate"]["revision"]),
+        "symbolica": str(contributor["symbolica"]["candidate_revision"]),
+        "symbolica-community": str(
+            contributor["symbolica"]["community_revision"]
+        ),
+        "symjit": str(contributor["symjit"]["candidate_revision"]),
+    }
     sources = payload.get("sources")
     if not isinstance(sources, dict) or not set(sources) >= _CANDIDATE_SOURCES:
         raise RuntimeError("candidate installer state has an incomplete source map")
-    for name, entry in sources.items():
-        if not isinstance(name, str) or not isinstance(entry, dict):
+    for name, expected_revision in expected_revisions.items():
+        entry = sources.get(name)
+        if not isinstance(entry, dict):
             raise RuntimeError("candidate installer source entries must be objects")
         revision = entry.get("revision")
-        worktree = entry.get("worktree_sha256")
-        if not isinstance(revision, str) or not revision:
-            raise RuntimeError(f"candidate source {name} has no revision")
-        if (
-            not isinstance(worktree, str)
-            or re.fullmatch(r"[0-9a-f]{64}", worktree) is None
-        ):
-            raise RuntimeError(f"candidate source {name} has no valid worktree digest")
+        if revision != expected_revision:
+            raise RuntimeError(
+                f"candidate source {name} is not at its contributor-lock revision"
+            )
     return payload
 
 
 def _candidate_digest(
-    overlay: Path,
     candidate_lock: Path,
     candidate_config: Path,
     installer_state: Path,
 ) -> str:
     state = _candidate_state(
-        overlay,
         candidate_lock,
         candidate_config,
         installer_state,
     )
     digest = hashlib.sha256()
-    for path in sorted(item for item in overlay.rglob("*") if item.is_file()):
-        _digest_item(
-            digest,
-            f"source/{path.relative_to(overlay).as_posix()}",
-            path.read_bytes(),
-        )
-    lock = overlay / "dependencies" / "release-lock.toml"
-    _digest_item(digest, "release-lock.toml", lock.read_bytes())
-    runtime_lock = overlay / "dependencies" / "python-runtime-lock.toml"
-    _digest_item(digest, "python-runtime-lock.toml", runtime_lock.read_bytes())
+    _digest_item(
+        digest,
+        "contributor-lock.toml",
+        (ROOT / _CONTRIBUTOR_LOCK).read_bytes(),
+    )
     _digest_item(digest, "candidate-Cargo.lock", candidate_lock.read_bytes())
     _digest_item(digest, "candidate-cargo-config.toml", candidate_config.read_bytes())
-    patches = overlay / "dependencies" / "patches"
-    if patches.is_dir():
-        for path in sorted(item for item in patches.rglob("*") if item.is_file()):
-            _digest_item(
-                digest,
-                path.relative_to(overlay).as_posix(),
-                path.read_bytes(),
-            )
     sources = state["sources"]
-    for name in sorted(sources):
+    for name in sorted(_CANDIDATE_SOURCES):
         entry = sources[name]
         _digest_item(
             digest,
             f"source/{name}",
-            f"{entry['revision']}\0{entry['worktree_sha256']}".encode(),
+            str(entry["revision"]).encode(),
         )
     return digest.hexdigest()[:12]
 
 
 def _mark_candidate(overlay: Path) -> None:
+    if not (ROOT / _CONTRIBUTOR_LOCK).is_file():
+        raise RuntimeError("candidate build has no contributor dependency contract")
     candidate_lock, candidate_config, installer_state = _candidate_inputs()
     digest = _candidate_digest(
-        overlay,
         candidate_lock,
         candidate_config,
         installer_state,
@@ -859,9 +685,11 @@ def _rewrite_candidate_symjit_requirement(overlay: Path) -> None:
     """Use the managed candidate SymJIT only inside the isolated overlay."""
 
     with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
-        lock = tomllib.load(stream)
-    published = str(lock["symbolica"]["published_symjit_version"])
-    candidate = str(lock["symjit"]["candidate_version"])
+        release = tomllib.load(stream)
+    with (ROOT / _CONTRIBUTOR_LOCK).open("rb") as stream:
+        contributor = tomllib.load(stream)
+    published = str(release["symbolica"]["published_symjit_version"])
+    candidate = str(contributor["symjit"]["candidate_version"])
     manifest = overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")
     pattern = rf'(?m)^(symjit\s*=\s*\{{\s*version\s*=\s*)"={re.escape(published)}"'
@@ -1067,7 +895,6 @@ def build_wheel(
         metadata_directory,
         with_sdk=True,
     )
-    _normalize_built_wheel(Path(wheel_directory) / filename)
     return filename
 
 
@@ -1075,6 +902,10 @@ def build_sdist(
     sdist_directory: str,
     config_settings: Mapping[str, Any] | None = None,
 ) -> str:
+    if _build_mode() == "candidate":
+        raise RuntimeError(
+            "candidate builds are wheel-only and cannot produce source distributions"
+        )
     return _from_overlay(
         maturin.build_sdist,
         sdist_directory,

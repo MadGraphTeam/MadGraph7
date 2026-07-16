@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: 0BSD
-# Fully summed evaluation of the LC built-in-SM example.
+# Fully summed evaluation of one external-SM pp -> Zjj subprocess.
 
 schema_version = 1
 action = "evaluate"
 
 [evaluation]
-artifact = "artifacts/builtin_sm_lc"
-process = "ddbar_zg"
+artifact = "artifacts/pp_zjj"
+process = "p_p_to_z_j_j_4"
 precision = 16
 resolved = false
 model_parameters = "data/model_parameters.json"
-momenta = "data/ddbar_zg_momenta.json"
+momenta = "data/pp_zjj_momenta.json"
 
 [output]
 format = "json"

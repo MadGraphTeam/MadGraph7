@@ -8,18 +8,20 @@ from .._internal.physics.symbols import symbols
 from .base import (
     PropagatorLoweringRule,
 )
-from .compiler import (
+from .compiler_kernels import (
     _as_expression,
-    _replace_evaluator_constants,
+    _ordered_dense_tensor_components,
+    _spin_axis_labels,
     _spin_representations,
     _spin_slots,
 )
+from .compiler_records import _replace_evaluator_constants
 from .expressions import (
-    _expr_antiquark_propagator_dirac,
-    _expr_antiquark_propagator_weyl,
+    _expr_antifermion_propagator_dirac,
+    _expr_antifermion_propagator_weyl,
+    _expr_fermion_propagator_dirac,
+    _expr_fermion_propagator_weyl,
     _expr_minkowski_dot,
-    _expr_quark_propagator_dirac,
-    _expr_quark_propagator_weyl,
     _minkowski_square_expression,
 )
 from .tensors import (
@@ -135,6 +137,14 @@ class ExternalModelEvaluationMixin:
                 description="UFO massless fermion projected to a Weyl current",
             )
         spin = self.spin(particle_id)
+        massive = (
+            complex(
+                self._parameter_default(
+                    self._particle_records_by_pdg[int(particle_id)].mass
+                )
+            ).real
+            != 0.0
+        )
         custom = self._propagator_record(particle_id)
         if custom is not None and custom.custom:
             return PropagatorLoweringRule(
@@ -153,12 +163,12 @@ class ExternalModelEvaluationMixin:
             2: "ufo_dirac_propagator",
             3: (
                 "ufo_massive_vector_propagator"
-                if self.is_massive_boson(particle_id)
+                if massive
                 else "ufo_massless_vector_propagator"
             ),
             5: (
                 "ufo_massive_spin2_fierz_pauli"
-                if self.is_massive_boson(particle_id)
+                if massive
                 else "ufo_massless_spin2_de_donder"
             ),
         }
@@ -180,19 +190,22 @@ class ExternalModelEvaluationMixin:
         *,
         chirality: int = 0,
     ) -> tuple[Any, ...]:
+        source_orientation = self._particle_records_by_pdg[
+            int(particle_id)
+        ].source_orientation
         if self.auxiliary_kind(particle_id) is not None:
             return tuple(value)
         if chirality != 0 and self.is_chiral_eligible(particle_id):
             components = tuple(value)
             current_momentum = tuple(momentum)
             return (
-                _expr_antiquark_propagator_weyl(
+                _expr_antifermion_propagator_weyl(
                     components,
                     current_momentum,
                     chirality,
                 )
-                if int(particle_id) < 0
-                else _expr_quark_propagator_weyl(
+                if source_orientation == "antiparticle"
+                else _expr_fermion_propagator_weyl(
                     components,
                     current_momentum,
                     chirality,
@@ -221,14 +234,14 @@ class ExternalModelEvaluationMixin:
             components = tuple(value)
             current_momentum = tuple(momentum)
             return (
-                _expr_antiquark_propagator_dirac(
+                _expr_antifermion_propagator_dirac(
                     components,
                     current_momentum,
                     mass,
                     width,
                 )
-                if int(particle_id) < 0
-                else _expr_quark_propagator_dirac(
+                if source_orientation == "antiparticle"
+                else _expr_fermion_propagator_dirac(
                     components,
                     current_momentum,
                     mass,
@@ -264,7 +277,7 @@ class ExternalModelEvaluationMixin:
                 mass,
                 width,
                 dimension=dimension,
-                massive=self.is_massive_boson(particle_id),
+                massive=mass != 0.0,
             )
         raise NotImplementedError(f"generic spin-{spin} propagator is not implemented")
 
@@ -448,6 +461,7 @@ class ExternalModelEvaluationMixin:
         normalized = normalize_lorentz_expression(
             f"({record.numerator})/({record.denominator})",
             (spin, spin),
+            model_symbols=self._model_symbols,
         )
         expression = self._model_symbols.expression(normalized.expression)
         for parameter in self._parameter_records.values():
@@ -502,23 +516,28 @@ class ExternalModelEvaluationMixin:
         for leg in (1, 2):
             library.register(
                 _sym.LibraryTensor.dense(
-                    _sym.TensorName(symbols.ufo_momentum_tensor_name(leg))(minkowski),
+                    _sym.TensorName(
+                        self._model_symbols.ufo_momentum_tensor_name(leg)
+                    )(minkowski),
                     momenta,
                 )
             )
         network = _sym.TensorNetwork(expression, library)
         network.execute(library=library)
         tensor = network.result_tensor(library)
-        tensor.to_dense()
+        tensor_components = _ordered_dense_tensor_components(
+            tensor,
+            _spin_axis_labels(spin, 2),
+        )
         expected = self.dimension(particle_id)
-        if len(tensor) != expected:
+        if len(tensor_components) != expected:
             raise ValueError(
-                f"custom propagator {particle_id} produced {len(tensor)} "
+                f"custom propagator {particle_id} produced {len(tensor_components)} "
                 f"components, expected {expected}"
             )
         template = tuple(
-            _replace_evaluator_constants(_as_expression(tensor[index]))
-            for index in range(len(tensor))
+            _replace_evaluator_constants(_as_expression(component))
+            for component in tensor_components
         )
         self._custom_propagator_templates[int(particle_id)] = template
         return template

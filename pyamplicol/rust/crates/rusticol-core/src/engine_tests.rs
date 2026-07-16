@@ -472,7 +472,6 @@ fn empty_evaluator_group() -> EvaluatorGroup {
         evaluators: Vec::new(),
         output_len: 0,
         chunk_scratch_f64: Vec::new(),
-        chunk_scratch_native2: Vec::new(),
     }
 }
 
@@ -499,8 +498,6 @@ fn test_amplitude_runtime(
         input_spans: Vec::new(),
         parameter_scratch_f64: Vec::new(),
         output_scratch_f64: outputs,
-        parameter_scratch_native2: Vec::new(),
-        output_scratch_native2: Vec::new(),
         evaluator: empty_evaluator_group(),
     }
 }

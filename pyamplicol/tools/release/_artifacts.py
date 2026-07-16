@@ -19,13 +19,12 @@ import subprocess
 import sys
 import tomllib
 import zipfile
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
-from functools import cache, lru_cache
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import quote, unquote
 
 try:
     from packaging.markers import Variable
@@ -50,7 +49,7 @@ from _common import (
     safe_extract_sdist,
     sha256,
 )
-from audit_sdist import REQUIRED_SDIST_MEMBERS, missing_required_sdist_members
+from audit_sdist import REQUIRED_SDIST_MEMBERS
 
 MAX_WHEEL_BYTES = 95_000_000
 EXPECTED_DISTRIBUTION = "pyamplicol"
@@ -69,16 +68,12 @@ _REQUIRED_SDK_PATHS = {
     "pyamplicol/_sdk/include/rusticol.h",
     "pyamplicol/_sdk/include/rusticol.hpp",
     "pyamplicol/_sdk/fortran/rusticol.f90",
+    "pyamplicol/_sdk/rust/rusticol.rs",
     "pyamplicol/_sdk/lib/librusticol_capi.a",
     "pyamplicol/_sdk/config.py",
     "pyamplicol/_sdk/metadata.json",
     "pyamplicol/_sdk/link.json",
-    "pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json",
 }
-
-
-def _pypi_purl(name: str, version: str) -> str:
-    return f"pkg:pypi/{quote(name, safe='.-_~')}@{quote(version, safe='.-_~')}"
 
 
 _FORBIDDEN_MEMBER_PARTS = {
@@ -149,87 +144,54 @@ _SYSTEM_LIBRARIES = {
     "x86_64-unknown-linux-gnu": _COMMON_SYSTEM_LIBRARIES | {"gcc_s"},
 }
 _MACOS_FRAMEWORKS = {"CoreFoundation", "IOKit", "Security", "SystemConfiguration"}
-_DEPENDENCY_LOCK_MEMBER = "pyamplicol/assets/release/release-lock.toml"
 _CANONICAL_DEPENDENCY_LOCK = Path("dependencies/release-lock.toml")
-_PYTHON_RUNTIME_LOCK_MEMBER = "pyamplicol/assets/release/python-runtime-lock.toml"
-_CANONICAL_PYTHON_RUNTIME_LOCK = Path("dependencies/python-runtime-lock.toml")
-_RUST_LEGAL_INVENTORY = Path("licenses/RUST_THIRD_PARTY.toml")
 _REQUIRED_PACKAGE_RESOURCES = {
     "pyamplicol/assets/schemas/README.md",
     "pyamplicol/assets/schemas/artifact-manifest-v3.schema.json",
     "pyamplicol/assets/schemas/runtime-physics-v1.schema.json",
 }
+_REQUIRED_PACKAGED_EXAMPLE_MEMBERS = {
+    "pyamplicol/_examples/data/pp_zjj_momenta.json",
+}
+_REQUIRED_API_TEMPLATE_MEMBERS = {
+    "pyamplicol/assets/api_templates/rust/Makefile",
+    "pyamplicol/assets/api_templates/rust/check_standalone.rs",
+}
+_REQUIRED_WHEEL_PACKAGE_MEMBERS = {
+    "pyamplicol/__init__.py",
+    "pyamplicol/_rusticol.pyi",
+    *_REQUIRED_API_TEMPLATE_MEMBERS,
+    *_REQUIRED_PACKAGED_EXAMPLE_MEMBERS,
+    *_REQUIRED_PACKAGE_RESOURCES,
+    *_REQUIRED_SDK_PATHS,
+}
+_REQUIRED_SELFTEST_API_PAYLOADS = {
+    "API/validation_points.dat",
+    "API/python/check_standalone.py",
+    "API/cpp/Makefile",
+    "API/cpp/check_standalone.cpp",
+    "API/fortran/Makefile",
+    "API/fortran/check_standalone.f90",
+    "API/rust/Makefile",
+    "API/rust/check_standalone.rs",
+}
 _ALLOWED_REPAIR_ROOTS = {"pyamplicol.libs"}
-_DISTRIBUTION_SBOM_NAME = "rusticol-python.cyclonedx.json"
-_SDK_SBOM_NAME = "pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json"
-_CANONICAL_SDIST_SINGLE_FILES = {
-    "Cargo.lock",
-    "Cargo.toml",
-    "LICENSE",
-    "README.md",
-    "THIRD_PARTY_NOTICES.md",
-    "justfile",
-    "pyproject.toml",
-    "rust-toolchain.toml",
-}
-_CANONICAL_SDIST_TREES = {
-    "build_backend",
-    "docs",
-    "examples",
-    "licenses",
-    "rust",
-    "schemas",
-    "src",
-    "tests",
-    "tools/developer",
-    "tools/release",
-    "tools/typing",
-}
-_CANONICAL_SDIST_EXACT_PATHS = {
-    "config/release-dependencies.toml",
+_FORBIDDEN_SDIST_MEMBERS = {
+    ".cargo/config.toml",
+    "build_backend/python_lock.py",
+    "dependencies/candidate-Cargo.lock",
+    "dependencies/candidate-cargo-config.toml",
+    "dependencies/contributor-lock.toml",
+    "dependencies/install-state.json",
     "dependencies/install_dependencies.py",
     "dependencies/python-runtime-lock.toml",
-    "dependencies/release-lock.toml",
+    "dependencies/symbolica_patches.tar.gz",
+    "src/pyamplicol/_build_info.json",
 }
-_CANONICAL_SDIST_EXCLUDED_PARTS = {
-    "__pycache__",
-    ".DS_Store",
-    ".agent-work",
-    ".artifacts",
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".trash",
-    ".venv",
-    "PYPI_DEPLOYMENT_TEST",
-    "archive",
-    "build",
-    "checkouts",
-    "dist",
-    "outputs",
-    "target",
-    "venv",
-    "wheelhouse",
-}
-_CANONICAL_SDIST_EXCLUDED_SUFFIXES = {
-    ".aux",
-    ".bbl",
-    ".bcf",
-    ".blg",
-    ".fdb_latexmk",
-    ".fls",
-    ".log",
-    ".mod",
-    ".out",
-    ".pyc",
-    ".pyd",
-    ".pyo",
-    ".run.xml",
-    ".synctex.gz",
-    ".toc",
-    ".whl",
-}
+_FORBIDDEN_SDIST_PREFIXES = (
+    "dependencies/checkouts/",
+    "dependencies/patches/",
+)
 
 
 class ArtifactError(ReleaseError):
@@ -246,7 +208,6 @@ class WheelReport:
     abi_tag: str
     target: str
     rust_target: str
-    sdk_archive_sha256: str
     native_scan: bool
 
 
@@ -260,109 +221,6 @@ class SdistReport:
 
 def canonicalize_name(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).lower()
-
-
-def _source_inventory_excluded(relative: Path) -> bool:
-    if any(part in _CANONICAL_SDIST_EXCLUDED_PARTS for part in relative.parts):
-        return True
-    name = relative.name
-    if name.endswith(tuple(_CANONICAL_SDIST_EXCLUDED_SUFFIXES)):
-        return True
-    if name.endswith(".egg-info") or any(
-        part.endswith(".egg-info") for part in relative.parts
-    ):
-        return True
-    if relative in {
-        Path("dependencies/candidate-Cargo.lock"),
-        Path("dependencies/candidate-cargo-config.toml"),
-        Path("dependencies/install-state.json"),
-        Path("src/pyamplicol/_sdk/link.json"),
-        Path("src/pyamplicol/_sdk/metadata.json"),
-    }:
-        return True
-    generated_trees = (
-        Path("src/pyamplicol/_sdk/fortran"),
-        Path("src/pyamplicol/_sdk/include"),
-        Path("src/pyamplicol/_sdk/lib"),
-        Path("src/pyamplicol/_sdk/sboms"),
-    )
-    if any(relative.is_relative_to(tree) for tree in generated_trees):
-        return True
-    selftest_root = Path("src/pyamplicol/assets/selftest")
-    if relative.is_relative_to(selftest_root):
-        selftest_parts = relative.relative_to(selftest_root).parts
-        if selftest_parts and selftest_parts[0] != "portable-64le":
-            return True
-    return (
-        relative.parent == Path("src/pyamplicol")
-        and relative.name.startswith("_rusticol")
-        and relative.suffix in {".dylib", ".pyd", ".so"}
-    )
-
-
-def _regular_source_members(root: Path, relative_root: Path) -> set[str]:
-    members: set[str] = set()
-    source = root / relative_root
-    if not source.exists():
-        return members
-    if source.is_symlink():
-        raise ArtifactError(f"canonical source inventory contains a symlink: {source}")
-    candidates = [source] if source.is_file() else source.rglob("*")
-    for candidate in candidates:
-        if candidate.is_dir():
-            continue
-        relative = candidate.relative_to(root)
-        if _source_inventory_excluded(relative):
-            continue
-        if candidate.is_symlink() or not candidate.is_file():
-            raise ArtifactError(
-                f"canonical source inventory contains a non-regular file: {candidate}"
-            )
-        members.add(relative.as_posix())
-    return members
-
-
-@lru_cache(maxsize=1)
-def _canonical_sdist_members() -> frozenset[str]:
-    members = set(_CANONICAL_SDIST_SINGLE_FILES)
-    members.update(_CANONICAL_SDIST_EXACT_PATHS)
-    for tree in _CANONICAL_SDIST_TREES:
-        members.update(_regular_source_members(ROOT, Path(tree)))
-    members.update(_regular_source_members(ROOT, Path("dependencies/patches")))
-    members.update(REQUIRED_SDIST_MEMBERS)
-    members.add("PKG-INFO")
-    return frozenset(members)
-
-
-@lru_cache(maxsize=1)
-def _canonical_wheel_package_members() -> frozenset[str]:
-    members: set[str] = set()
-    package_root = Path("src/pyamplicol")
-    for name in _regular_source_members(ROOT, package_root):
-        relative = Path(name).relative_to(package_root)
-        if relative.parts[0] in {"_examples"}:
-            continue
-        if relative == Path("_build_info.json") or relative == Path("_rusticol.pyi"):
-            continue
-        if relative.is_relative_to(Path("assets/selftest")):
-            continue
-        if relative.is_relative_to(Path("assets/release")) or relative.is_relative_to(
-            Path("assets/schemas")
-        ):
-            continue
-        members.add((Path("pyamplicol") / relative).as_posix())
-    for name in _regular_source_members(ROOT, Path("examples")):
-        relative = Path(name).relative_to("examples")
-        members.add((Path("pyamplicol/_examples") / relative).as_posix())
-    stub = Path("rust/crates/rusticol-python/stubs/pyamplicol/_rusticol.pyi")
-    if not (ROOT / stub).is_file():
-        raise ArtifactError(f"canonical Rusticol stub is missing: {stub}")
-    members.add("pyamplicol/_rusticol.pyi")
-    members.update(_REQUIRED_SDK_PATHS)
-    members.update(_REQUIRED_PACKAGE_RESOURCES)
-    members.add(_DEPENDENCY_LOCK_MEMBER)
-    members.add(_PYTHON_RUNTIME_LOCK_MEMBER)
-    return frozenset(members)
 
 
 def _safe_member_name(name: str, *, archive: str) -> PurePosixPath:
@@ -498,88 +356,19 @@ def _project_requirements(pyproject: dict[str, Any]) -> list[str]:
     return requirements
 
 
-def _dependency_lock(entries: dict[str, bytes]) -> dict[str, Any]:
-    if _DEPENDENCY_LOCK_MEMBER not in entries:
-        raise ArtifactError(
-            f"wheel is missing packaged dependency lock: {_DEPENDENCY_LOCK_MEMBER}"
-        )
-    packaged = entries[_DEPENDENCY_LOCK_MEMBER]
+@lru_cache(maxsize=1)
+def _dependency_lock() -> dict[str, Any]:
     canonical_path = ROOT / _CANONICAL_DEPENDENCY_LOCK
     if not canonical_path.is_file():
         raise ArtifactError(f"canonical dependency lock is missing: {canonical_path}")
-    if packaged != canonical_path.read_bytes():
-        raise ArtifactError(
-            "wheel packaged dependency lock differs from canonical lock"
-        )
     try:
-        payload = tomllib.loads(packaged.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
-        raise ArtifactError(f"wheel dependency lock is invalid: {error}") from error
-    if payload.get("schema_version") != 1:
-        raise ArtifactError("wheel dependency lock must use schema_version = 1")
-    return payload
-
-
-def _python_runtime_lock(
-    entries: dict[str, bytes], release_lock: dict[str, Any]
-) -> dict[str, Any]:
-    if _PYTHON_RUNTIME_LOCK_MEMBER not in entries:
-        raise ArtifactError(
-            "wheel is missing packaged Python runtime lock: "
-            f"{_PYTHON_RUNTIME_LOCK_MEMBER}"
-        )
-    packaged = entries[_PYTHON_RUNTIME_LOCK_MEMBER]
-    canonical_path = ROOT / _CANONICAL_PYTHON_RUNTIME_LOCK
-    if not canonical_path.is_file():
-        raise ArtifactError(
-            f"canonical Python runtime lock is missing: {canonical_path}"
-        )
-    if packaged != canonical_path.read_bytes():
-        raise ArtifactError(
-            "wheel packaged Python runtime lock differs from canonical lock"
-        )
-    contract = release_lock.get("python_runtime_lock")
-    if (
-        not isinstance(contract, dict)
-        or contract.get("path") != "dependencies/python-runtime-lock.toml"
-        or contract.get("sha256") != hashlib.sha256(packaged).hexdigest()
-    ):
-        raise ArtifactError(
-            "wheel Python runtime lock is not hash-bound by release-lock.toml"
-        )
-    try:
-        payload = tomllib.loads(packaged.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
-        raise ArtifactError(f"wheel Python runtime lock is invalid: {error}") from error
-    if payload.get("schema_version") != 1:
-        raise ArtifactError("wheel Python runtime lock must use schema_version = 1")
-    return payload
-
-
-def _validate_sdist_python_runtime_lock(relative_files: dict[str, Path]) -> None:
-    release_path = relative_files.get("dependencies/release-lock.toml")
-    runtime_path = relative_files.get("dependencies/python-runtime-lock.toml")
-    if release_path is None or runtime_path is None:
-        raise ArtifactError("sdist is missing its Python dependency lock pair")
-    try:
-        with release_path.open("rb") as stream:
-            release_lock = tomllib.load(stream)
-        with runtime_path.open("rb") as stream:
-            runtime_lock = tomllib.load(stream)
+        with canonical_path.open("rb") as stream:
+            payload = tomllib.load(stream)
     except (OSError, tomllib.TOMLDecodeError) as error:
-        raise ArtifactError(
-            f"sdist contains an invalid dependency lock: {error}"
-        ) from error
-    contract = release_lock.get("python_runtime_lock")
-    if (
-        release_lock.get("schema_version") != 1
-        or runtime_lock.get("schema_version") != 1
-        or not isinstance(contract, dict)
-        or contract.get("path") != "dependencies/python-runtime-lock.toml"
-        or contract.get("sha256")
-        != hashlib.sha256(runtime_path.read_bytes()).hexdigest()
-    ):
-        raise ArtifactError("sdist Python runtime lock is not hash-bound correctly")
+        raise ArtifactError(f"dependency lock is invalid: {error}") from error
+    if payload.get("schema_version") != 1:
+        raise ArtifactError("dependency lock must use schema_version = 1")
+    return payload
 
 
 def _validate_wheel_resource_layout(entries: dict[str, bytes]) -> None:
@@ -601,6 +390,17 @@ def _validate_wheel_resource_layout(entries: dict[str, bytes]) -> None:
             "wheel contains members outside pyamplicol, its .dist-info, or an "
             "approved repair-library root: " + ", ".join(misplaced)
         )
+    sboms = sorted(
+        name
+        for name in entries
+        if len(PurePosixPath(name).parts) > 1
+        and PurePosixPath(name).parts[0] in dist_info_roots
+        and PurePosixPath(name).parts[1] == "sboms"
+    )
+    if sboms:
+        raise ArtifactError(
+            "lean release wheels must not contain generated SBOMs: " + ", ".join(sboms)
+        )
     missing = sorted(_REQUIRED_PACKAGE_RESOURCES - entries.keys())
     if missing:
         raise ArtifactError(
@@ -609,651 +409,12 @@ def _validate_wheel_resource_layout(entries: dict[str, bytes]) -> None:
 
 
 def _required_legal_files() -> tuple[str, ...]:
-    path = ROOT / _RUST_LEGAL_INVENTORY
-    try:
-        with path.open("rb") as stream:
-            payload = tomllib.load(stream)
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        raise ArtifactError(
-            f"could not read legal inventory {path}: {error}"
-        ) from error
-    raw = payload.get("required_release_files")
-    if (
-        not isinstance(raw, list)
-        or not raw
-        or not all(isinstance(item, str) for item in raw)
-    ):
-        raise ArtifactError(
-            f"legal inventory {path} has no required_release_files string list"
-        )
-    normalized = tuple(
-        _safe_member_name(item, archive="legal inventory").as_posix() for item in raw
+    return (
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "licenses/Symbolica.txt",
+        "licenses/SymJIT.txt",
     )
-    if len(normalized) != len(set(normalized)):
-        raise ArtifactError(f"legal inventory {path} repeats a release file")
-    return normalized
-
-
-@lru_cache(maxsize=1)
-def _legal_cargo_inventory() -> frozenset[tuple[str, str]]:
-    path = ROOT / _RUST_LEGAL_INVENTORY
-    try:
-        with path.open("rb") as stream:
-            payload = tomllib.load(stream)
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        raise ArtifactError(
-            f"could not read legal inventory {path}: {error}"
-        ) from error
-    identities: list[tuple[str, str]] = []
-    for table in ("first_party", "package"):
-        entries = payload.get(table)
-        if not isinstance(entries, list) or not entries:
-            raise ArtifactError(f"legal inventory {path} has no {table} entries")
-        for index, entry in enumerate(entries):
-            if not isinstance(entry, dict):
-                raise ArtifactError(
-                    f"legal inventory {path} {table}[{index}] is not a table"
-                )
-            name = entry.get("name")
-            version = entry.get("version")
-            if not isinstance(name, str) or not name or not isinstance(version, str):
-                raise ArtifactError(
-                    f"legal inventory {path} {table}[{index}] lacks name/version"
-                )
-            identities.append((name, version))
-    if len(identities) != len(set(identities)):
-        raise ArtifactError(f"legal inventory {path} repeats a package identity")
-    return frozenset(identities)
-
-
-@cache
-def _target_cargo_inventory(
-    package: str, rust_target: str
-) -> frozenset[tuple[str, str]]:
-    try:
-        from check_rust_licenses import (  # imported lazily by the release audit
-            SHIPPED_CARGO_ARTIFACTS,
-            CargoClosureError,
-            cargo_dependency_closure,
-        )
-    except ImportError as error:  # pragma: no cover - source layout is mandatory
-        raise ArtifactError(
-            "release audit cannot import the Cargo closure verifier"
-        ) from error
-    matches = [spec for spec in SHIPPED_CARGO_ARTIFACTS if spec.package == package]
-    if len(matches) != 1:
-        raise ArtifactError(f"release audit has no unique Cargo spec for {package}")
-    try:
-        closure = cargo_dependency_closure(ROOT, matches[0], rust_target)
-    except CargoClosureError as error:
-        raise ArtifactError(
-            f"cannot resolve release Cargo closure for {package} on {rust_target}: "
-            f"{error}"
-        ) from error
-    identities = frozenset((item.name, item.version) for item in closure.packages)
-    if not identities or len(identities) != len(closure.packages):
-        raise ArtifactError(
-            f"Cargo closure for {package} on {rust_target} has ambiguous identities"
-        )
-    unknown = identities - _legal_cargo_inventory()
-    if unknown:
-        raise ArtifactError(
-            "Cargo closure disagrees with the legal inventory: "
-            + ", ".join(f"{name}@{version}" for name, version in sorted(unknown))
-        )
-    return identities
-
-
-def _candidate_cargo_inventory(
-    *, version: str, lock: dict[str, Any]
-) -> frozenset[tuple[str, str]]:
-    cargo_version = version.replace(".dev0+", "-dev.0+")
-    legal = set(_legal_cargo_inventory())
-    first_party = {"rusticol-capi", "rusticol-core", "rusticol-python"}
-    legal.update((name, cargo_version) for name in first_party)
-    symjit = lock.get("symjit")
-    candidate_version = (
-        symjit.get("candidate_version") if isinstance(symjit, dict) else None
-    )
-    if not isinstance(candidate_version, str) or not candidate_version:
-        raise ArtifactError("candidate dependency lock has no SymJIT candidate version")
-    legal.add(("symjit", candidate_version))
-    return frozenset(legal)
-
-
-def _cargo_purl_identity(value: object) -> str | None:
-    if not isinstance(value, str) or not value:
-        return None
-    decoded = unquote(value)
-    if "?" in decoded or "#" in decoded:
-        return None
-    return decoded
-
-
-def _validate_cyclonedx_graph(
-    document: dict[str, Any],
-    *,
-    description: str,
-    root_name: str,
-    version: str,
-    rust_target: str,
-    mode: str,
-    lock: dict[str, Any],
-) -> frozenset[tuple[str, str]]:
-    metadata = document.get("metadata")
-    if (
-        document.get("bomFormat") != "CycloneDX"
-        or document.get("specVersion") != "1.5"
-        or document.get("version") != 1
-        or not isinstance(metadata, dict)
-    ):
-        raise ArtifactError(f"{description} is not a CycloneDX 1.5 document")
-    root = metadata.get("component")
-    components = document.get("components")
-    dependencies = document.get("dependencies")
-    if not isinstance(root, dict):
-        raise ArtifactError(f"{description} has no root component")
-    if not isinstance(components, list) or not components:
-        raise ArtifactError(f"{description} must contain a nonempty component list")
-    if not isinstance(dependencies, list) or not dependencies:
-        raise ArtifactError(f"{description} must contain a nonempty dependency graph")
-
-    cargo_version = (
-        version if mode == "release" else version.replace(".dev0+", "-dev.0+")
-    )
-    records = [root, *components]
-    references: dict[str, tuple[str, str]] = {}
-    identities: set[tuple[str, str]] = set()
-    purls: set[str] = set()
-    for index, component in enumerate(records):
-        label = "root" if index == 0 else f"component[{index - 1}]"
-        if not isinstance(component, dict):
-            raise ArtifactError(f"{description} {label} is not an object")
-        name = component.get("name")
-        component_version = component.get("version")
-        reference = component.get("bom-ref")
-        purl = _cargo_purl_identity(component.get("purl"))
-        if (
-            component.get("type") != "library"
-            or component.get("scope") not in {"required", "excluded"}
-            or not isinstance(name, str)
-            or not name
-            or not isinstance(component_version, str)
-            or not component_version
-            or not isinstance(reference, str)
-            or not reference
-            or purl != f"pkg:cargo/{name}@{component_version}"
-        ):
-            raise ArtifactError(
-                f"{description} {label} has invalid Cargo component identity"
-            )
-        if index == 0 and component.get("scope") != "required":
-            raise ArtifactError(f"{description} root component must be required")
-        if reference in references:
-            raise ArtifactError(f"{description} repeats component bom-ref {reference}")
-        identity = (name, component_version)
-        if identity in identities:
-            raise ArtifactError(
-                f"{description} repeats component identity {name}@{component_version}"
-            )
-        if purl in purls:
-            raise ArtifactError(f"{description} repeats component purl {purl}")
-        references[reference] = identity
-        identities.add(identity)
-        purls.add(purl)
-
-    root_reference = str(root["bom-ref"])
-    if (
-        root.get("name") != root_name
-        or root.get("version") != cargo_version
-        or _cargo_purl_identity(root_reference)
-        != f"pkg:cargo/{root_name}@{cargo_version}"
-    ):
-        raise ArtifactError(f"{description} root identity/version/purl is inconsistent")
-
-    edges: dict[str, set[str]] = {}
-    for index, dependency in enumerate(dependencies):
-        if not isinstance(dependency, dict):
-            raise ArtifactError(f"{description} dependency[{index}] is not an object")
-        reference = dependency.get("ref")
-        raw_children = dependency.get("dependsOn", [])
-        if not isinstance(reference, str) or not reference:
-            raise ArtifactError(f"{description} dependency[{index}] has no ref")
-        if reference in edges:
-            raise ArtifactError(f"{description} repeats dependency ref {reference}")
-        if not isinstance(raw_children, list) or not all(
-            isinstance(child, str) and child for child in raw_children
-        ):
-            raise ArtifactError(
-                f"{description} dependency[{index}] has invalid dependsOn"
-            )
-        if len(raw_children) != len(set(raw_children)):
-            raise ArtifactError(
-                f"{description} dependency[{index}] repeats a dependency edge"
-            )
-        children = set(raw_children)
-        if reference in children:
-            raise ArtifactError(f"{description} contains a self dependency")
-        edges[reference] = children
-    reference_set = set(references)
-    if set(edges) != reference_set:
-        missing = sorted(reference_set - set(edges))
-        extra = sorted(set(edges) - reference_set)
-        raise ArtifactError(
-            f"{description} dependency/component inventory differs; "
-            f"missing={missing}, extra={extra}"
-        )
-    dangling = sorted(
-        child
-        for children in edges.values()
-        for child in children
-        if child not in references
-    )
-    if dangling:
-        raise ArtifactError(
-            f"{description} dependency graph has dangling references: {dangling}"
-        )
-    reachable: set[str] = set()
-    pending = [root_reference]
-    while pending:
-        reference = pending.pop()
-        if reference in reachable:
-            continue
-        reachable.add(reference)
-        pending.extend(edges[reference] - reachable)
-    if reachable != reference_set:
-        raise ArtifactError(
-            f"{description} dependency graph has unreachable components: "
-            f"{sorted(reference_set - reachable)}"
-        )
-
-    identity_set = frozenset(identities)
-    allowed = (
-        _legal_cargo_inventory()
-        if mode == "release"
-        else _candidate_cargo_inventory(version=version, lock=lock)
-    )
-    unknown = identity_set - allowed
-    if unknown:
-        raise ArtifactError(
-            f"{description} disagrees with the Cargo legal inventory: "
-            + ", ".join(
-                f"{name}@{item_version}" for name, item_version in sorted(unknown)
-            )
-        )
-    if mode == "release":
-        expected = _target_cargo_inventory(root_name, rust_target)
-        if identity_set != expected:
-            missing = sorted(expected - identity_set)
-            extra = sorted(identity_set - expected)
-            raise ArtifactError(
-                f"{description} disagrees with the target Cargo closure; "
-                f"missing={missing}, extra={extra}"
-            )
-    return identity_set
-
-
-def _component_license_values(component: dict[str, Any]) -> set[str]:
-    raw = component.get("licenses")
-    if not isinstance(raw, list) or not raw:
-        return set()
-    values: set[str] = set()
-    for item in raw:
-        if not isinstance(item, dict):
-            return set()
-        expression = item.get("expression")
-        if isinstance(expression, str) and expression:
-            values.add(expression)
-            continue
-        license_record = item.get("license")
-        if not isinstance(license_record, dict):
-            return set()
-        name = license_record.get("name")
-        if not isinstance(name, str) or not name:
-            return set()
-        values.add(name)
-    return values
-
-
-def _component_properties(component: dict[str, Any]) -> dict[str, list[str]]:
-    raw = component.get("properties", [])
-    if not isinstance(raw, list):
-        raise ArtifactError("distribution SBOM component properties must be a list")
-    properties: dict[str, list[str]] = {}
-    for item in raw:
-        if not isinstance(item, dict):
-            raise ArtifactError("distribution SBOM component property is not an object")
-        name = item.get("name")
-        value = item.get("value")
-        if not isinstance(name, str) or not name or not isinstance(value, str):
-            raise ArtifactError("distribution SBOM component property is invalid")
-        properties.setdefault(name, []).append(value)
-    return properties
-
-
-def _locked_python_graph(
-    runtime_lock: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
-    raw_packages = runtime_lock.get("packages")
-    if not isinstance(raw_packages, list) or not raw_packages:
-        raise ArtifactError("Python runtime lock has no package graph")
-    packages: dict[str, dict[str, Any]] = {}
-    artifact_names: set[str] = set()
-    for index, raw in enumerate(raw_packages):
-        if not isinstance(raw, dict):
-            raise ArtifactError(f"Python runtime package[{index}] is not a table")
-        distribution = raw.get("distribution")
-        version = raw.get("version")
-        license_name = raw.get("license")
-        direct = raw.get("direct")
-        dependencies = raw.get("dependencies")
-        artifacts = raw.get("artifacts", [])
-        if (
-            not isinstance(distribution, str)
-            or not distribution
-            or not isinstance(version, str)
-            or not version
-            or not isinstance(license_name, str)
-            or not license_name
-            or not isinstance(direct, bool)
-            or not isinstance(dependencies, list)
-            or not all(isinstance(item, str) and item for item in dependencies)
-            or not isinstance(artifacts, list)
-        ):
-            raise ArtifactError(f"Python runtime package[{index}] is invalid")
-        name = canonicalize_name(distribution)
-        if name in packages:
-            raise ArtifactError(f"Python runtime lock repeats package {name}")
-        dependency_names = tuple(canonicalize_name(item) for item in dependencies)
-        if len(dependency_names) != len(set(dependency_names)):
-            raise ArtifactError(f"Python runtime package {name} repeats a dependency")
-        locked_artifacts: list[dict[str, str]] = []
-        for artifact_index, artifact in enumerate(artifacts):
-            if not isinstance(artifact, dict):
-                raise ArtifactError(
-                    f"Python runtime package {name} artifact[{artifact_index}] "
-                    "is invalid"
-                )
-            filename = artifact.get("filename")
-            digest = artifact.get("sha256")
-            if (
-                not isinstance(filename, str)
-                or not filename
-                or "/" in filename
-                or "\\" in filename
-                or not isinstance(digest, str)
-                or re.fullmatch(r"[0-9a-f]{64}", digest) is None
-            ):
-                raise ArtifactError(
-                    f"Python runtime package {name} has an invalid artifact"
-                )
-            if filename in artifact_names:
-                raise ArtifactError(f"Python runtime lock repeats artifact {filename}")
-            artifact_names.add(filename)
-            locked_artifacts.append({"filename": filename, "sha256": digest})
-        packages[name] = {
-            "distribution": distribution,
-            "version": version,
-            "license": license_name,
-            "direct": direct,
-            "dependencies": dependency_names,
-            "artifacts": tuple(
-                sorted(
-                    locked_artifacts,
-                    key=lambda item: (item["filename"], item["sha256"]),
-                )
-            ),
-        }
-    for name, package in packages.items():
-        missing = sorted(set(package["dependencies"]) - set(packages))
-        if missing:
-            raise ArtifactError(
-                f"Python runtime package {name} references unlocked packages: "
-                + ", ".join(missing)
-            )
-    return packages
-
-
-def _validate_distribution_cyclonedx_graph(
-    document: dict[str, Any],
-    *,
-    version: str,
-    rust_target: str,
-    mode: str,
-    release_lock: dict[str, Any],
-    runtime_lock: dict[str, Any],
-) -> frozenset[tuple[str, str]]:
-    metadata = document.get("metadata")
-    components = document.get("components")
-    dependencies = document.get("dependencies")
-    if (
-        document.get("bomFormat") != "CycloneDX"
-        or document.get("specVersion") != "1.5"
-        or document.get("version") != 1
-        or not isinstance(metadata, dict)
-        or not isinstance(components, list)
-        or not components
-        or not isinstance(dependencies, list)
-        or not dependencies
-    ):
-        raise ArtifactError(
-            "distribution SBOM is not a complete CycloneDX 1.5 document"
-        )
-    root = metadata.get("component")
-    if not isinstance(root, dict):
-        raise ArtifactError("distribution SBOM has no root component")
-
-    records = [root, *components]
-    by_reference: dict[str, dict[str, Any]] = {}
-    identities: set[tuple[str, str, str]] = set()
-    kinds: dict[str, str] = {}
-    for index, component in enumerate(records):
-        label = "root" if index == 0 else f"component[{index - 1}]"
-        if not isinstance(component, dict):
-            raise ArtifactError(f"distribution SBOM {label} is not an object")
-        name = component.get("name")
-        item_version = component.get("version")
-        reference = component.get("bom-ref")
-        purl = component.get("purl")
-        if (
-            component.get("type") != "library"
-            or component.get("scope") not in {"required", "excluded"}
-            or not isinstance(name, str)
-            or not name
-            or not isinstance(item_version, str)
-            or not item_version
-            or not isinstance(reference, str)
-            or not reference
-            or not isinstance(purl, str)
-            or reference != purl
-        ):
-            raise ArtifactError(
-                f"distribution SBOM {label} has invalid component identity"
-            )
-        decoded = unquote(reference)
-        match = re.fullmatch(r"pkg:(cargo|pypi)/([^@]+)@(.+)", decoded)
-        if match is None:
-            raise ArtifactError(
-                f"distribution SBOM {label} has an unsupported package URL"
-            )
-        kind, purl_name, purl_version = match.groups()
-        expected_name = name if kind == "cargo" else canonicalize_name(name)
-        if purl_name != expected_name or purl_version != item_version:
-            raise ArtifactError(
-                f"distribution SBOM {label} has an inconsistent package URL"
-            )
-        identity = (kind, purl_name, item_version)
-        if reference in by_reference or identity in identities:
-            raise ArtifactError("distribution SBOM repeats a component identity")
-        by_reference[reference] = component
-        identities.add(identity)
-        kinds[reference] = kind
-
-    root_reference = str(root["bom-ref"])
-    expected_root = _pypi_purl(EXPECTED_DISTRIBUTION, version)
-    if (
-        root_reference != expected_root
-        or root.get("name") != EXPECTED_DISTRIBUTION
-        or root.get("version") != version
-        or root.get("scope") != "required"
-        or _component_license_values(root) != {"0BSD"}
-    ):
-        raise ArtifactError("distribution SBOM root identity is inconsistent")
-
-    edges: dict[str, set[str]] = {}
-    for index, dependency in enumerate(dependencies):
-        if not isinstance(dependency, dict):
-            raise ArtifactError(
-                f"distribution SBOM dependency[{index}] is not an object"
-            )
-        reference = dependency.get("ref")
-        raw_children = dependency.get("dependsOn", [])
-        if (
-            not isinstance(reference, str)
-            or not reference
-            or reference in edges
-            or not isinstance(raw_children, list)
-            or not all(isinstance(child, str) and child for child in raw_children)
-            or len(raw_children) != len(set(raw_children))
-            or reference in raw_children
-        ):
-            raise ArtifactError(f"distribution SBOM dependency[{index}] is invalid")
-        edges[reference] = set(raw_children)
-    references = set(by_reference)
-    if set(edges) != references:
-        raise ArtifactError(
-            "distribution SBOM component and dependency inventories differ"
-        )
-    dangling = sorted(
-        child
-        for children in edges.values()
-        for child in children
-        if child not in references
-    )
-    if dangling:
-        raise ArtifactError(
-            f"distribution SBOM has dangling dependency references: {dangling}"
-        )
-    reachable: set[str] = set()
-    pending = [root_reference]
-    while pending:
-        reference = pending.pop()
-        if reference in reachable:
-            continue
-        reachable.add(reference)
-        pending.extend(edges[reference] - reachable)
-    if reachable != references:
-        raise ArtifactError(
-            "distribution SBOM has unreachable components: "
-            f"{sorted(references - reachable)}"
-        )
-
-    cargo_version = (
-        version if mode == "release" else version.replace(".dev0+", "-dev.0+")
-    )
-    cargo_root_ref = f"pkg:cargo/rusticol-python@{cargo_version}"
-    cargo_references = {
-        reference for reference, kind in kinds.items() if kind == "cargo"
-    }
-    if cargo_root_ref not in cargo_references:
-        raise ArtifactError("distribution SBOM has no Rusticol-Python Cargo root")
-    for reference in cargo_references:
-        non_cargo = edges[reference] - cargo_references
-        if non_cargo:
-            raise ArtifactError(
-                "distribution SBOM Cargo graph depends on Python components"
-            )
-    cargo_document = {
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
-        "version": 1,
-        "metadata": {"component": by_reference[cargo_root_ref]},
-        "components": [
-            by_reference[reference]
-            for reference in sorted(cargo_references - {cargo_root_ref})
-        ],
-        "dependencies": [
-            {"ref": reference, "dependsOn": sorted(edges[reference])}
-            for reference in sorted(cargo_references)
-        ],
-    }
-    cargo_inventory = _validate_cyclonedx_graph(
-        cargo_document,
-        description="distribution SBOM Cargo graph",
-        root_name="rusticol-python",
-        version=version,
-        rust_target=rust_target,
-        mode=mode,
-        lock=release_lock,
-    )
-
-    packages = _locked_python_graph(runtime_lock)
-    expected_python_refs = {
-        name: _pypi_purl(name, str(package["version"]))
-        for name, package in packages.items()
-    }
-    actual_python_refs = {
-        reference
-        for reference, kind in kinds.items()
-        if kind == "pypi" and reference != root_reference
-    }
-    if actual_python_refs != set(expected_python_refs.values()):
-        raise ArtifactError(
-            "distribution SBOM Python inventory disagrees with the runtime lock"
-        )
-    for name, package in packages.items():
-        reference = expected_python_refs[name]
-        component = by_reference[reference]
-        if (
-            component.get("name") != package["distribution"]
-            or component.get("version") != package["version"]
-            or _component_license_values(component) != {package["license"]}
-        ):
-            raise ArtifactError(
-                f"distribution SBOM component for {name} disagrees with the lock"
-            )
-        properties = _component_properties(component)
-        expected_artifacts = {
-            json.dumps(item, sort_keys=True, separators=(",", ":"))
-            for item in package["artifacts"]
-        }
-        expected_property_names = {"pyamplicol:pypi:hashes-verified"}
-        if expected_artifacts:
-            expected_property_names.add("pyamplicol:pypi:artifact")
-        actual_artifacts = set(properties.get("pyamplicol:pypi:artifact", []))
-        if (
-            set(properties) != expected_property_names
-            or actual_artifacts != expected_artifacts
-        ):
-            raise ArtifactError(
-                f"distribution SBOM artifact records for {name} disagree with the lock"
-            )
-        expected_verified = str(bool(package["artifacts"])).lower()
-        if properties["pyamplicol:pypi:hashes-verified"] != [expected_verified]:
-            raise ArtifactError(
-                f"distribution SBOM hash status for {name} disagrees with the lock"
-            )
-        expected_children = {
-            expected_python_refs[dependency] for dependency in package["dependencies"]
-        }
-        if edges[reference] != expected_children:
-            raise ArtifactError(
-                f"distribution SBOM dependency edges for {name} disagree with the lock"
-            )
-
-    expected_root_children = {
-        cargo_root_ref,
-        *(
-            expected_python_refs[name]
-            for name, package in packages.items()
-            if package["direct"]
-        ),
-    }
-    if edges[root_reference] != expected_root_children:
-        raise ArtifactError(
-            "distribution SBOM root dependencies disagree with the runtime lock"
-        )
-    return cargo_inventory
 
 
 def _locked_python_dependencies(lock: dict[str, Any]) -> dict[str, str]:
@@ -1281,46 +442,11 @@ def _locked_python_dependencies(lock: dict[str, Any]) -> dict[str, str]:
     return dependencies
 
 
-def _exact_locked_dependencies(
-    lock: dict[str, Any], dependencies: dict[str, str]
-) -> dict[str, str]:
-    symbolica = lock.get("symbolica")
-    loader = lock.get("ufo_model_loader")
-    if not isinstance(symbolica, dict) or not isinstance(loader, dict):
-        raise ArtifactError("wheel dependency lock lacks patched dependency contracts")
-    raw_exact = (
-        (symbolica.get("python_distribution"), symbolica.get("python_version")),
-        (loader.get("python_distribution"), loader.get("required_version")),
-    )
-    exact: dict[str, str] = {}
-    for distribution, version in raw_exact:
-        if not isinstance(distribution, str) or not isinstance(version, str):
-            raise ArtifactError(
-                "wheel dependency lock has invalid exact dependency data"
-            )
-        name = canonicalize_name(distribution)
-        try:
-            normalized_version = str(Version(version))
-        except InvalidVersion as error:
-            raise ArtifactError(
-                f"wheel dependency lock has invalid exact version for {name}: {version}"
-            ) from error
-        if dependencies.get(name) != normalized_version:
-            raise ArtifactError(
-                f"wheel dependency lock disagrees about exact {name} version"
-            )
-        exact[name] = normalized_version
-    return exact
-
-
 def _validate_runtime_requirements(
     raw_requirements: list[str],
     lock: dict[str, Any],
-    *,
-    require_exact: bool,
 ) -> None:
     dependencies = _locked_python_dependencies(lock)
-    exact = _exact_locked_dependencies(lock, dependencies)
     requirements: dict[str, Requirement] = {}
 
     def marker_uses_extra(items: Any) -> bool:
@@ -1371,18 +497,17 @@ def _validate_runtime_requirements(
                 f"wheel Requires-Dist for {name} excludes locked version "
                 f"{locked_version}"
             )
-        if require_exact or name in exact:
-            specifiers = list(requirement.specifier)
-            exact_match = False
-            if len(specifiers) == 1 and specifiers[0].operator == "==":
-                try:
-                    exact_match = str(Version(specifiers[0].version)) == locked_version
-                except InvalidVersion:
-                    exact_match = False
-            if not exact_match:
-                raise ArtifactError(
-                    f"wheel Requires-Dist must pin {name}=={locked_version} exactly"
-                )
+        specifiers = list(requirement.specifier)
+        exact_match = False
+        if len(specifiers) == 1 and specifiers[0].operator == "==":
+            try:
+                exact_match = str(Version(specifiers[0].version)) == locked_version
+            except InvalidVersion:
+                exact_match = False
+        if not exact_match:
+            raise ArtifactError(
+                f"wheel Requires-Dist must pin {name}=={locked_version} exactly"
+            )
 
 
 def _validate_legal_members(
@@ -1395,16 +520,14 @@ def _validate_legal_members(
         declared.append(relative.as_posix())
     if len(declared) != len(set(declared)):
         raise ArtifactError("wheel metadata repeats a License-File declaration")
-    required = _required_legal_files()
-    if set(declared) != set(required):
-        missing = sorted(set(required) - set(declared))
-        extra = sorted(set(declared) - set(required))
+    required = set(_required_legal_files())
+    if not required <= set(declared):
+        missing = sorted(required - set(declared))
         raise ArtifactError(
-            "wheel License-File inventory disagrees with the legal manifest; "
-            f"missing={missing}, extra={extra}"
+            "wheel metadata omits required license/notice files: " + ", ".join(missing)
         )
     dist_info = metadata_name.removesuffix("METADATA")
-    for relative in required:
+    for relative in declared:
         member = f"{dist_info}licenses/{relative}"
         if member not in entries or not entries[member].strip():
             raise ArtifactError(f"wheel is missing nonempty legal member: {member}")
@@ -1520,9 +643,7 @@ def _validate_sdk(
     *,
     version: str,
     rust_target: str,
-    mode: str,
-    lock: dict[str, Any],
-) -> tuple[str, frozenset[tuple[str, str]]]:
+) -> None:
     missing = sorted(_REQUIRED_SDK_PATHS - set(entries))
     if missing:
         raise ArtifactError("wheel is missing SDK resources: " + ", ".join(missing))
@@ -1543,40 +664,14 @@ def _validate_sdk(
     archive_name = (PurePosixPath("pyamplicol/_sdk") / archive).as_posix()
     if archive_name != "pyamplicol/_sdk/lib/librusticol_capi.a":
         raise ArtifactError(f"unexpected SDK archive path: {archive}")
-    actual_digest = hashlib.sha256(entries[archive_name]).hexdigest()
-    if metadata.get("archive_sha256") != actual_digest:
-        raise ArtifactError("SDK archive SHA-256 does not match metadata.json")
-    sbom = PurePosixPath(str(metadata.get("sbom", "")))
-    if sbom.as_posix() != "sboms/rusticol-capi.cyclonedx.json":
-        raise ArtifactError(f"unexpected SDK SBOM path: {sbom}")
-    sbom_name = (PurePosixPath("pyamplicol/_sdk") / sbom).as_posix()
-    if sbom_name != _SDK_SBOM_NAME:
-        raise ArtifactError(f"unexpected SDK SBOM member: {sbom_name}")
-    sbom_bytes = entries[sbom_name]
-    if metadata.get("sbom_sha256") != hashlib.sha256(sbom_bytes).hexdigest():
-        raise ArtifactError("SDK SBOM SHA-256 does not match metadata.json")
-    sbom_document = _json_object(entries, sbom_name)
-    sbom_metadata = sbom_document.get("metadata")
-    properties = (
-        sbom_metadata.get("properties") if isinstance(sbom_metadata, dict) else None
-    )
-    if not isinstance(properties, list) or {
-        str(item.get("value"))
-        for item in properties
-        if isinstance(item, dict) and item.get("name") == "pyamplicol:rust-target"
-    } != {rust_target}:
-        raise ArtifactError("SDK SBOM target metadata is inconsistent")
-    if b"file://" in sbom_bytes or b"path+file:" in sbom_bytes:
-        raise ArtifactError("SDK SBOM contains a local Cargo source reference")
-    identities = _validate_cyclonedx_graph(
-        sbom_document,
-        description="SDK SBOM",
-        root_name="rusticol-capi",
-        version=version,
-        rust_target=rust_target,
-        mode=mode,
-        lock=lock,
-    )
+    rust_source = PurePosixPath(str(metadata.get("rust_source", "")))
+    if rust_source.is_absolute() or any(
+        part in {"", ".", ".."} for part in rust_source.parts
+    ):
+        raise ArtifactError("SDK Rust source path must be relative and confined")
+    rust_source_name = (PurePosixPath("pyamplicol/_sdk") / rust_source).as_posix()
+    if rust_source_name != "pyamplicol/_sdk/rust/rusticol.rs":
+        raise ArtifactError(f"unexpected SDK Rust source path: {rust_source}")
     typed_values: dict[str, list[str]] = {}
     for key in ("system_libraries", "frameworks"):
         values = link.get(key, [])
@@ -1606,57 +701,6 @@ def _validate_sdk(
             f"libraries={sorted(unexpected_libraries)}, "
             f"frameworks={sorted(unexpected_frameworks)}"
         )
-    return actual_digest, identities
-
-
-def _validate_distribution_sbom(
-    entries: dict[str, bytes],
-    *,
-    metadata_name: str,
-    version: str,
-    rust_target: str,
-    mode: str,
-    lock: dict[str, Any],
-    runtime_lock: dict[str, Any],
-) -> frozenset[tuple[str, str]]:
-    dist_info = metadata_name.removesuffix("METADATA")
-    expected = f"{dist_info}sboms/{_DISTRIBUTION_SBOM_NAME}"
-    all_sboms = sorted(name for name in entries if name.endswith(".cyclonedx.json"))
-    if all_sboms != sorted([expected, _SDK_SBOM_NAME]):
-        raise ArtifactError(
-            "wheel must contain exactly one Maturin distribution SBOM and one "
-            f"SDK SBOM; found {all_sboms}"
-        )
-    data = entries[expected]
-    if b"file://" in data or b"path+file:" in data:
-        raise ArtifactError("distribution SBOM contains a local Cargo source reference")
-    document = _json_object(entries, expected)
-    metadata = document.get("metadata")
-    if not isinstance(metadata, dict):
-        raise ArtifactError("distribution SBOM has no metadata")
-    properties = _component_properties(metadata)
-    required_properties = {
-        "pyamplicol:build-mode": [mode],
-        "pyamplicol:release-lock:sha256": [
-            hashlib.sha256(entries[_DEPENDENCY_LOCK_MEMBER]).hexdigest()
-        ],
-        "pyamplicol:python-runtime-lock:sha256": [
-            hashlib.sha256(entries[_PYTHON_RUNTIME_LOCK_MEMBER]).hexdigest()
-        ],
-    }
-    for name, values in required_properties.items():
-        if properties.get(name) != values:
-            raise ArtifactError(
-                f"distribution SBOM metadata property {name} is inconsistent"
-            )
-    return _validate_distribution_cyclonedx_graph(
-        document,
-        version=version,
-        rust_target=rust_target,
-        mode=mode,
-        release_lock=lock,
-        runtime_lock=runtime_lock,
-    )
 
 
 def _validate_selftest_fixture(
@@ -1706,6 +750,32 @@ def _validate_selftest_fixture(
     payloads = manifest.get("payloads")
     if not isinstance(payloads, list):
         raise ArtifactError("wheel self-test payload inventory is invalid")
+    abis = _dependency_lock().get("abis")
+    expected_compiled_model_schema = (
+        abis.get("compiled_model") if isinstance(abis, dict) else None
+    )
+    if not isinstance(expected_compiled_model_schema, int):
+        raise ArtifactError("dependency lock has no compiled-model schema version")
+    compiled_model = _json_object(
+        entries, f"{prefix}/artifact/model/compiled-model.json"
+    )
+    model = manifest.get("model")
+    producer_versions = producer.get("versions")
+    if (
+        not isinstance(model, dict)
+        or model.get("compiled_schema_version") != expected_compiled_model_schema
+        or not isinstance(producer_versions, dict)
+        or producer_versions.get("compiled_model") != expected_compiled_model_schema
+    ):
+        raise ArtifactError(
+            "wheel self-test producer/model metadata does not match release "
+            f"compiled-model schema {expected_compiled_model_schema}"
+        )
+    if compiled_model.get("schema_version") != expected_compiled_model_schema:
+        raise ArtifactError(
+            "wheel self-test compiled model does not match release schema "
+            f"{expected_compiled_model_schema}"
+        )
     tagged_payloads = [
         payload
         for payload in payloads
@@ -1768,6 +838,12 @@ def _validate_selftest_fixture(
     }
     if actual != declared:
         raise ArtifactError("wheel self-test artifact payload inventory is incomplete")
+    missing_api_payloads = sorted(_REQUIRED_SELFTEST_API_PAYLOADS - declared)
+    if missing_api_payloads:
+        raise ArtifactError(
+            "wheel self-test artifact is missing four-language API payloads: "
+            + ", ".join(missing_api_payloads)
+        )
     if direct_symjit == 0:
         raise ArtifactError("wheel self-test artifact has no direct SymJIT application")
 
@@ -1782,7 +858,7 @@ def _validate_wheel_inventory(
     rust_target: str,
     mode: str,
 ) -> None:
-    expected = set(_canonical_wheel_package_members())
+    expected = set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
     expected.add(extension_name)
     if mode == "candidate":
         expected.add("pyamplicol/_build_info.json")
@@ -1796,7 +872,6 @@ def _validate_wheel_inventory(
             wheel_name,
             record_name,
             f"{dist_info}entry_points.txt",
-            f"{dist_info}sboms/{_DISTRIBUTION_SBOM_NAME}",
         }
     )
     expected.update(
@@ -1816,12 +891,10 @@ def _validate_wheel_inventory(
         repair_members.add(name)
 
     actual = set(entries) - repair_members
-    if actual != expected:
-        missing = sorted(expected - actual)
-        extra = sorted(actual - expected)
+    missing = sorted(expected - actual)
+    if missing:
         raise ArtifactError(
-            "wheel inventory disagrees with the canonical package manifest; "
-            f"missing={missing}, extra={extra}"
+            "wheel is missing required package members: " + ", ".join(missing)
         )
 
 
@@ -2138,14 +1211,11 @@ def audit_wheel(
         )
     raw_requirements = list(metadata.get_all("Requires-Dist", []))
     _reject_direct_requirements(raw_requirements)
-    dependency_lock = _dependency_lock(entries)
-    runtime_lock = _python_runtime_lock(entries, dependency_lock)
-    _validate_runtime_requirements(
-        raw_requirements,
-        dependency_lock,
-        require_exact=mode == "release",
-    )
+    dependency_lock = _dependency_lock()
+    _validate_runtime_requirements(raw_requirements, dependency_lock)
     _validate_legal_members(entries, metadata_name, metadata)
+    if str(metadata.get("License-Expression", "")) != "0BSD":
+        raise ArtifactError("wheel metadata must declare License-Expression: 0BSD")
     if str(metadata.get("Requires-Python", "")) != ">=3.11":
         raise ArtifactError("wheel metadata must require Python >=3.11")
 
@@ -2190,36 +1260,11 @@ def audit_wheel(
         raise ArtifactError(
             "wheel must contain exactly one pyamplicol/_rusticol*.abi3.so"
         )
-    sdk_digest, sdk_inventory = _validate_sdk(
+    _validate_sdk(
         entries,
         version=version,
         rust_target=rust_target,
-        mode=mode,
-        lock=dependency_lock,
     )
-    distribution_inventory = _validate_distribution_sbom(
-        entries,
-        metadata_name=metadata_name,
-        version=version,
-        rust_target=rust_target,
-        mode=mode,
-        lock=dependency_lock,
-        runtime_lock=runtime_lock,
-    )
-    cargo_version = (
-        version if mode == "release" else version.replace(".dev0+", "-dev.0+")
-    )
-    sdk_dependencies = sdk_inventory - {("rusticol-capi", cargo_version)}
-    if not sdk_dependencies <= distribution_inventory:
-        raise ArtifactError(
-            "SDK SBOM dependencies are not represented by the distribution SBOM: "
-            + ", ".join(
-                f"{name}@{item_version}"
-                for name, item_version in sorted(
-                    sdk_dependencies - distribution_inventory
-                )
-            )
-        )
     _validate_selftest_fixture(entries, version=version, rust_target=rust_target)
     _validate_wheel_inventory(
         entries,
@@ -2252,30 +1297,33 @@ def audit_wheel(
         abi_tag=abi_tag,
         target=target,
         rust_target=rust_target,
-        sdk_archive_sha256=sdk_digest,
         native_scan=perform_native_scan,
     )
 
 
-def _validate_sdist_inventory(members: set[str], *, mode: str) -> None:
-    expected = set(_canonical_sdist_members())
-    if mode == "candidate":
-        expected.add("src/pyamplicol/_build_info.json")
-    if members != expected:
-        missing = sorted(expected - members)
-        extra = sorted(members - expected)
+def _validate_sdist_inventory(members: set[str]) -> None:
+    required = {*REQUIRED_SDIST_MEMBERS, "PKG-INFO"}
+    missing = sorted(required - members)
+    if missing:
+        raise ArtifactError("sdist is missing required files: " + ", ".join(missing))
+    forbidden = sorted(
+        name
+        for name in members
+        if name in _FORBIDDEN_SDIST_MEMBERS
+        or name.startswith(_FORBIDDEN_SDIST_PREFIXES)
+    )
+    if forbidden:
         raise ArtifactError(
-            "sdist inventory disagrees with the canonical source manifest; "
-            f"missing={missing}, extra={extra}"
+            "sdist contains contributor-only dependency inputs: " + ", ".join(forbidden)
         )
 
 
 def audit_sdist(path: Path, *, mode: str) -> SdistReport:
-    """Validate sdist structure and candidate/release identity."""
+    """Validate a release sdist's structure and dependency boundary."""
 
     path = path.resolve()
-    if mode not in {"candidate", "release"}:
-        raise ArtifactError(f"unsupported sdist audit mode: {mode}")
+    if mode != "release":
+        raise ArtifactError("candidate source distributions are not supported")
     with external_temporary_directory("pyamplicol-sdist-audit-") as temporary:
         source = safe_extract_sdist(path, temporary / "source")
         relative_files = {
@@ -2283,35 +1331,15 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
             for item in source.rglob("*")
             if item.is_file()
         }
-        _validate_sdist_inventory(set(relative_files), mode=mode)
-        missing = missing_required_sdist_members(relative_files)
-        if missing:
-            raise ArtifactError(
-                "sdist is missing required files: " + ", ".join(missing)
-            )
+        _validate_sdist_inventory(set(relative_files))
         cargo = relative_files["Cargo.toml"].read_text(encoding="utf-8")
         match = re.search(r'(?m)^version = "([^"]+)"$', cargo)
         if match is None:
             raise ArtifactError("sdist Cargo.toml has no workspace version")
         cargo_version = match.group(1)
-        build_info_path = relative_files.get("src/pyamplicol/_build_info.json")
-        if mode == "release":
-            if cargo_version != EXPECTED_RELEASE_VERSION or build_info_path is not None:
-                raise ArtifactError("release sdist contains candidate identity")
-            version = EXPECTED_RELEASE_VERSION
-        else:
-            candidate_match = re.fullmatch(
-                r"0\.1\.0-dev\.0\+candidate\.([0-9a-f]{12})", cargo_version
-            )
-            if candidate_match is None or build_info_path is None:
-                raise ArtifactError("candidate sdist is not marked non-publishable")
-            build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
-            version = f"0.1.0.dev0+candidate.{candidate_match.group(1)}"
-            if (
-                build_info.get("publishable") is not False
-                or build_info.get("version") != version
-            ):
-                raise ArtifactError("candidate sdist build marker is inconsistent")
+        if cargo_version != EXPECTED_RELEASE_VERSION:
+            raise ArtifactError("release sdist contains a non-release version")
+        version = EXPECTED_RELEASE_VERSION
 
         pyproject = relative_files["pyproject.toml"].read_text(encoding="utf-8")
         try:
@@ -2324,7 +1352,6 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
             _project_requirements(pyproject_data),
             description="sdist project metadata",
         )
-        _validate_sdist_python_runtime_lock(relative_files)
         scan_names = {
             name
             for name in relative_files
@@ -2332,16 +1359,12 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
             in {
                 "Cargo.lock",
                 "Cargo.toml",
-                "dependencies/python-runtime-lock.toml",
                 "dependencies/release-lock.toml",
                 "pyproject.toml",
                 "src/pyamplicol/_build_info.json",
             }
             or ("MANIFEST" in Path(name).name and name.endswith(".toml"))
-            or (
-                name.startswith("tests/fixtures/reference/")
-                and name.endswith(".json")
-            )
+            or (name.startswith("tests/fixtures/reference/") and name.endswith(".json"))
             or name.startswith(".cargo/")
         }
         for name in sorted(scan_names):
@@ -2367,330 +1390,6 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
     )
 
 
-def _normalized_record(data: bytes) -> bytes:
-    rows = list(csv.reader(io.StringIO(data.decode("utf-8"))))
-    output = io.StringIO(newline="")
-    writer = csv.writer(output, lineterminator="\n")
-    writer.writerows(sorted(rows, key=lambda row: tuple(row)))
-    return output.getvalue().encode("utf-8")
-
-
-def normalized_wheel_contents(path: Path) -> dict[str, bytes]:
-    """Return wheel payloads independent of ZIP ordering and timestamps."""
-
-    entries = _wheel_entries(path.resolve())
-    record_name = _single_name(entries, ".dist-info/RECORD")
-    entries[record_name] = _normalized_record(entries[record_name])
-    return entries
-
-
-def compare_wheels(source_wheel: Path, sdist_wheel: Path) -> None:
-    """Require byte-identical payloads after normalizing ZIP and RECORD ordering."""
-
-    source = normalized_wheel_contents(source_wheel)
-    rebuilt = normalized_wheel_contents(sdist_wheel)
-    if set(source) != set(rebuilt):
-        missing = sorted(set(source) - set(rebuilt))
-        extra = sorted(set(rebuilt) - set(source))
-        raise ArtifactError(
-            "wheel inventory differs after sdist rebuild; "
-            f"missing={missing}, extra={extra}"
-        )
-    mismatches = [name for name in sorted(source) if source[name] != rebuilt[name]]
-    if mismatches:
-        detail = ", ".join(mismatches[:20])
-        raise ArtifactError(
-            "wheel payload differs after sdist rebuild (metadata, RECORD, package "
-            f"resources, SDK, and native binaries are compared): {detail}"
-        )
-
-
-def artifact_record(report: WheelReport | SdistReport) -> dict[str, Any]:
-    payload = asdict(report)
-    payload["kind"] = "wheel" if isinstance(report, WheelReport) else "sdist"
-    return payload
-
-
-def write_manifest(
-    directory: Path,
-    *,
-    mode: str,
-    wheels: list[WheelReport],
-    sdists: list[SdistReport],
-    parity: str,
-    retained_sdist: SdistReport | None = None,
-    source_commit: str | None = None,
-    source_tag: str | None = None,
-) -> Path:
-    """Write deterministic exact-hash metadata for uploadable artifacts."""
-
-    if mode not in {"candidate", "release"}:
-        raise ArtifactError(f"unsupported manifest mode: {mode}")
-    if (source_commit is None) != (source_tag is None):
-        raise ArtifactError("release source commit and tag must be supplied together")
-    if source_commit is not None:
-        if re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
-            raise ArtifactError(
-                "release source commit must be a full lowercase Git SHA"
-            )
-        if source_tag != f"v{EXPECTED_RELEASE_VERSION}":
-            raise ArtifactError(
-                f"release source tag must be v{EXPECTED_RELEASE_VERSION}, "
-                f"found {source_tag!r}"
-            )
-    directory.mkdir(parents=True, exist_ok=True)
-    reports: list[WheelReport | SdistReport] = sorted(
-        [*wheels, *sdists], key=lambda report: report.filename
-    )
-    wheel_targets = [report.target for report in wheels]
-    complete_release = (
-        mode == "release"
-        and parity == "verified"
-        and len(wheels) == len(RELEASE_TARGETS)
-        and len(wheel_targets) == len(set(wheel_targets))
-        and set(wheel_targets) == set(RELEASE_TARGETS)
-        and len(sdists) == 1
-        and retained_sdist is not None
-        and retained_sdist in sdists
-        and all(report.native_scan for report in wheels)
-        and all(
-            report.version == EXPECTED_RELEASE_VERSION
-            and report.python_tag == EXPECTED_PYTHON_TAG
-            and report.abi_tag == EXPECTED_ABI_TAG
-            and report.rust_target == RELEASE_TARGETS.get(report.target)
-            for report in wheels
-        )
-        and sdists[0].version == EXPECTED_RELEASE_VERSION
-        and source_commit is not None
-        and source_tag is not None
-    )
-    payload: dict[str, Any] = {
-        "schema_version": 1,
-        "distribution": EXPECTED_DISTRIBUTION,
-        "mode": mode,
-        "publishable": complete_release,
-        "sdist_wheel_parity": parity,
-        "release_targets": sorted(wheel_targets),
-        "artifacts": [artifact_record(report) for report in reports],
-    }
-    if retained_sdist is not None:
-        payload["retained_sdist"] = {
-            "filename": retained_sdist.filename,
-            "sha256": retained_sdist.sha256,
-            "size": retained_sdist.size,
-        }
-    if source_commit is not None and source_tag is not None:
-        payload["source"] = {"commit": source_commit, "tag": source_tag}
-    manifest = directory / "release-manifest.json"
-    manifest.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    checksums = directory / "SHA256SUMS"
-    checksums.write_text(
-        "".join(f"{report.sha256}  {report.filename}\n" for report in reports),
-        encoding="ascii",
-    )
-    return manifest
-
-
-def _load_manifest(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise ArtifactError(f"invalid release manifest {path}: {error}") from error
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        raise ArtifactError(f"unsupported release manifest schema: {path}")
-    return payload
-
-
-def verify_manifest(
-    directory: Path,
-    *,
-    require_release: bool,
-    require_all_targets: bool,
-) -> dict[str, Any]:
-    """Verify that a flat bundle exactly matches its manifest and checksums."""
-
-    directory = directory.resolve()
-    manifest_path = directory / "release-manifest.json"
-    checksums_path = directory / "SHA256SUMS"
-    payload = _load_manifest(manifest_path)
-    if payload.get("distribution") != EXPECTED_DISTRIBUTION:
-        raise ArtifactError("release manifest has the wrong distribution")
-    if payload.get("mode") not in {"candidate", "release"}:
-        raise ArtifactError("release manifest has an unsupported mode")
-    if payload.get("mode") == "candidate" and payload.get("publishable") is not False:
-        raise ArtifactError("candidate manifest must be explicitly non-publishable")
-    if require_release:
-        if payload.get("mode") != "release" or payload.get("publishable") is not True:
-            raise ArtifactError("manifest is not a complete publishable release")
-        if payload.get("sdist_wheel_parity") != "verified":
-            raise ArtifactError("release manifest does not prove sdist/wheel parity")
-    source = payload.get("source")
-    if source is not None and (
-        not isinstance(source, dict)
-        or re.fullmatch(r"[0-9a-f]{40}", str(source.get("commit", ""))) is None
-        or source.get("tag") != f"v{EXPECTED_RELEASE_VERSION}"
-        or set(source) != {"commit", "tag"}
-    ):
-        raise ArtifactError("release manifest has invalid source identity")
-    if require_release and source is None:
-        raise ArtifactError("publishable release manifest has no source identity")
-    artifact_entries = payload.get("artifacts")
-    if not isinstance(artifact_entries, list):
-        raise ArtifactError("release manifest artifacts must be a list")
-    expected: dict[str, str] = {}
-    wheel_entries: list[dict[str, Any]] = []
-    sdist_entries: list[dict[str, Any]] = []
-    for entry in artifact_entries:
-        if not isinstance(entry, dict):
-            raise ArtifactError("release manifest artifact entries must be objects")
-        filename = str(entry.get("filename", ""))
-        if (
-            Path(filename).name != filename
-            or "/" in filename
-            or "\\" in filename
-            or filename in expected
-        ):
-            raise ArtifactError(f"unsafe or duplicate manifest filename: {filename}")
-        kind = entry.get("kind")
-        if kind == "wheel" and filename.endswith(".whl"):
-            wheel_entries.append(entry)
-        elif kind == "sdist" and filename.endswith(".tar.gz"):
-            sdist_entries.append(entry)
-        else:
-            raise ArtifactError(f"manifest artifact kind disagrees with {filename}")
-        artifact = directory / filename
-        if not artifact.is_file():
-            raise ArtifactError(f"manifest artifact is missing: {filename}")
-        digest = sha256(artifact)
-        if digest != entry.get("sha256") or artifact.stat().st_size != entry.get(
-            "size"
-        ):
-            raise ArtifactError(f"manifest hash/size mismatch: {filename}")
-        expected[filename] = digest
-    actual = {
-        path.name
-        for pattern in ("*.whl", "*.tar.gz")
-        for path in directory.glob(pattern)
-    }
-    if actual != set(expected):
-        raise ArtifactError(
-            f"bundle artifact inventory differs from manifest: {sorted(actual)}"
-        )
-    checksum_lines = checksums_path.read_text(encoding="ascii").splitlines()
-    rendered = [f"{digest}  {name}" for name, digest in sorted(expected.items())]
-    if checksum_lines != rendered:
-        raise ArtifactError("SHA256SUMS does not exactly match release-manifest.json")
-    targets = set(map(str, payload.get("release_targets", [])))
-    wheel_targets = [str(entry.get("target", "")) for entry in wheel_entries]
-    if payload.get("release_targets") != sorted(wheel_targets):
-        raise ArtifactError("release target inventory disagrees with wheel entries")
-    if len(wheel_targets) != len(set(wheel_targets)):
-        raise ArtifactError("release manifest contains duplicate platform targets")
-    if require_release:
-        if (
-            len(wheel_entries) != len(RELEASE_TARGETS)
-            or targets != set(RELEASE_TARGETS)
-            or len(sdist_entries) != 1
-        ):
-            raise ArtifactError(
-                "release bundle must contain exactly one wheel for every release "
-                "target and one sdist"
-            )
-        if any(entry.get("native_scan") is not True for entry in wheel_entries):
-            raise ArtifactError("release manifest lacks native-scan evidence")
-        invalid_wheels = [
-            str(entry.get("filename", ""))
-            for entry in wheel_entries
-            if entry.get("version") != EXPECTED_RELEASE_VERSION
-            or entry.get("python_tag") != EXPECTED_PYTHON_TAG
-            or entry.get("abi_tag") != EXPECTED_ABI_TAG
-            or entry.get("rust_target")
-            != RELEASE_TARGETS.get(str(entry.get("target", "")))
-        ]
-        if (
-            invalid_wheels
-            or sdist_entries[0].get("version") != EXPECTED_RELEASE_VERSION
-        ):
-            raise ArtifactError(
-                "release manifest contains an artifact with inconsistent release "
-                f"identity: wheels={invalid_wheels}"
-            )
-        retained = payload.get("retained_sdist")
-        sdist_entry = sdist_entries[0]
-        if not isinstance(retained, dict) or any(
-            retained.get(key) != sdist_entry.get(key)
-            for key in ("filename", "sha256", "size")
-        ):
-            raise ArtifactError("retained sdist identity disagrees with the bundle")
-    if (require_release or require_all_targets) and targets != set(RELEASE_TARGETS):
-        raise ArtifactError(
-            "release bundle target set is incomplete: " + ", ".join(sorted(targets))
-        )
-    return payload
-
-
-def collect_unique_artifacts(directory: Path) -> list[Path]:
-    """Collect recursive artifacts, rejecting same-name hash disagreements."""
-
-    by_name: dict[str, Path] = {}
-    for pattern in ("*.whl", "*.tar.gz"):
-        for path in sorted(directory.rglob(pattern)):
-            existing = by_name.get(path.name)
-            if existing is not None and sha256(existing) != sha256(path):
-                raise ArtifactError(
-                    f"conflicting artifacts share filename {path.name}: "
-                    f"{existing} and {path}"
-                )
-            by_name.setdefault(path.name, path.resolve())
-    if not by_name:
-        raise ArtifactError(f"no wheels or sdist found under {directory}")
-    return [by_name[name] for name in sorted(by_name)]
-
-
-def verify_parity_evidence(source: Path, wheel: Path, sdist: Path) -> None:
-    """Require a platform manifest proving parity against the retained sdist."""
-
-    wheel_digest = sha256(wheel)
-    sdist_digest = sha256(sdist)
-    for manifest_path in source.rglob("release-manifest.json"):
-        payload = _load_manifest(manifest_path)
-        artifacts = payload.get("artifacts", [])
-        has_wheel = any(
-            isinstance(entry, dict)
-            and entry.get("filename") == wheel.name
-            and entry.get("sha256") == wheel_digest
-            and entry.get("native_scan") is True
-            for entry in artifacts
-        )
-        retained = payload.get("retained_sdist")
-        if (
-            has_wheel
-            and payload.get("mode") == "release"
-            and payload.get("sdist_wheel_parity") == "verified"
-            and isinstance(retained, dict)
-            and retained.get("filename") == sdist.name
-            and retained.get("sha256") == sdist_digest
-        ):
-            return
-    raise ArtifactError(
-        f"no release manifest proves {wheel.name} was compared with {sdist.name}"
-    )
-
-
-def copy_artifacts(paths: list[Path], destination: Path) -> list[Path]:
-    destination.mkdir(parents=True, exist_ok=True)
-    copied: list[Path] = []
-    for source in paths:
-        target = destination / source.name
-        if target.exists():
-            raise ArtifactError(f"bundle destination already contains {target.name}")
-        shutil.copy2(source, target)
-        copied.append(target)
-    return copied
-
-
 __all__ = [
     "MAX_WHEEL_BYTES",
     "RELEASE_TARGETS",
@@ -2699,11 +1398,4 @@ __all__ = [
     "WheelReport",
     "audit_sdist",
     "audit_wheel",
-    "collect_unique_artifacts",
-    "compare_wheels",
-    "copy_artifacts",
-    "normalized_wheel_contents",
-    "verify_manifest",
-    "verify_parity_evidence",
-    "write_manifest",
 ]

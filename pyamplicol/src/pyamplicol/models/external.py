@@ -21,6 +21,7 @@ from .external_catalog import ExternalModelCatalogMixin
 from .external_evaluation import ExternalModelEvaluationMixin
 from .external_helpers import _spin_dimension
 from .external_kernels import ExternalModelKernelMixin
+from .external_symmetries import derive_external_symmetry_certificates
 
 
 class CompiledUFOModel(
@@ -84,6 +85,7 @@ class CompiledUFOModel(
             for record in compiled.ir.particles
         }
         self._kernels = {kernel.kind: kernel for kernel in compiled.ir.oriented_kernels}
+        self._symmetry_certificates = derive_external_symmetry_certificates(compiled.ir)
         self._kernel_component_expression_cache: dict[
             int, tuple[_sym.Expression, ...]
         ] = {}

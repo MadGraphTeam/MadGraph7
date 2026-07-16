@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
-import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -121,7 +120,7 @@ def test_deployment_path_guard_allows_only_the_isolated_sandbox(
     assert guarded_path(source).returncode != 0
 
 
-def test_candidate_deployment_installs_patched_wheels_by_exact_local_path(
+def test_candidate_deployment_installs_only_symbolica_by_exact_local_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -131,12 +130,6 @@ def test_candidate_deployment_installs_patched_wheels_by_exact_local_path(
         "symbolica",
         "2.1.0",
         "cp311-abi3-test_platform",
-    )
-    loader = _dependency_wheel(
-        wheelhouse / "loader",
-        "ufo-model-loader",
-        "0.1.7",
-        "py3-none-any",
     )
     commands: list[list[str]] = []
 
@@ -156,22 +149,19 @@ def test_candidate_deployment_installs_patched_wheels_by_exact_local_path(
 
     assert installation.local_wheels == {
         "symbolica": symbolica.resolve(),
-        "ufo-model-loader": loader.resolve(),
     }
     assert len(commands) == 1
     command = commands[0]
-    assert "--require-hashes" in command
+    assert "--require-hashes" not in command
     assert "--find-links" not in command
     assert "--index-url" in command
-    requirements = (tmp_path / "locked-requirements.txt").read_text(encoding="utf-8")
-    assert symbolica.resolve().as_uri() in requirements
-    assert loader.resolve().as_uri() in requirements
-    assert hashlib.sha256(symbolica.read_bytes()).hexdigest() in requirements
-    assert hashlib.sha256(loader.read_bytes()).hexdigest() in requirements
-    assert "numpy==2.4.2" in requirements
-    assert "python-utils==4.0.0" in requirements
-    assert "typing-extensions==4.16.0" in requirements
-    assert "wcwidth==0.8.2" in requirements
+    assert str(symbolica.resolve()) in command
+    assert "ufo-model-loader==0.1.7" in command
+    assert "numpy==2.4.2" in command
+    assert not any(item.startswith("python-utils==") for item in command)
+    assert not any(item.startswith("typing-extensions==") for item in command)
+    assert not any(item.startswith("wcwidth==") for item in command)
+    assert not (tmp_path / "locked-requirements.txt").exists()
 
 
 def test_candidate_deployment_rejects_ambiguous_local_patched_wheels(
@@ -186,10 +176,9 @@ def test_candidate_deployment_rejects_ambiguous_local_patched_wheels(
             "2.1.0",
             "cp311-abi3-test_platform",
         )
-    _dependency_wheel(first, "ufo-model-loader", "0.1.7", "py3-none-any")
     with pytest.raises(ReleaseError, match="expected one compatible local symbolica"):
         release_deployment._candidate_dependency_wheels(
-            {"symbolica": "2.1.0", "ufo-model-loader": "0.1.7"},
+            {"symbolica": "2.1.0"},
             [first, second],
             ["cp311-abi3-test_platform", "py3-none-any"],
         )
@@ -202,13 +191,13 @@ def test_candidate_deployment_rejects_symlinked_wheelhouse(tmp_path: Path) -> No
     linked.symlink_to(wheelhouse, target_is_directory=True)
     with pytest.raises(ReleaseError, match="wheelhouse may not be a symlink"):
         release_deployment._candidate_dependency_wheels(
-            {"symbolica": "2.1.0", "ufo-model-loader": "0.1.7"},
+            {"symbolica": "2.1.0"},
             [linked],
             ["py3-none-any"],
         )
 
 
-def test_sdist_build_uses_clean_external_source_and_replaces_direct_wheel(
+def test_sdist_build_uses_clean_external_source_without_byte_parity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -231,13 +220,22 @@ def test_sdist_build_uses_clean_external_source_and_replaces_direct_wheel(
         observed["env"] = env
         output = Path(command[command.index("--outdir") + 1])
         output.mkdir(exist_ok=True)
-        shutil.copy2(source_wheel, output / source_wheel.name)
+        (output / source_wheel.name).write_bytes(b"independently rebuilt wheel")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setenv("PYTHONPATH", "/parent/source")
     monkeypatch.setattr(build_from_sdist, "audit_sdist", lambda *_a, **_k: None)
-    monkeypatch.setattr(build_from_sdist, "audit_wheel", lambda *_a, **_k: None)
-    monkeypatch.setattr(build_from_sdist, "compare_wheels", lambda *_a: None)
+    monkeypatch.setattr(
+        build_from_sdist,
+        "audit_wheel",
+        lambda *_a, **_k: SimpleNamespace(
+            version="0.1.0",
+            python_tag="cp311",
+            abi_tag="abi3",
+            target="test",
+            rust_target="test-target",
+        ),
+    )
     monkeypatch.setattr(
         build_from_sdist, "external_temporary_directory", fake_temporary
     )
@@ -251,7 +249,7 @@ def test_sdist_build_uses_clean_external_source_and_replaces_direct_wheel(
         mode="release",
         python=Path(sys.executable),
     )
-    assert rebuilt.read_bytes() == b"source wheel"
+    assert rebuilt.read_bytes() == b"independently rebuilt wheel"
     assert observed["cwd"] == extracted
     assert "PYTHONPATH" not in observed["env"]
 
@@ -264,9 +262,6 @@ def test_release_gate_failure_prevents_artifact_build(
 
     monkeypatch.setattr(
         build_release_artifacts, "require_clean_checkout", lambda **_kwargs: None
-    )
-    monkeypatch.setattr(
-        build_release_artifacts, "_check_legal_gate", lambda _mode: None
     )
 
     def closed_gate(*_args, **_kwargs):
@@ -299,26 +294,18 @@ def test_publish_dry_run_prints_but_never_executes_upload(
     sdist = tmp_path / "pyamplicol-0.1.0.tar.gz"
     wheel.write_bytes(b"wheel")
     sdist.write_bytes(b"sdist")
-    payload = {
-        "artifacts": [
-            {"filename": wheel.name, "sha256": "a" * 64},
-            {"filename": sdist.name, "sha256": "b" * 64},
-        ]
-    }
     commands: list[list[str]] = []
+    clean_install_wheels: list[Path] = []
 
     monkeypatch.delenv("PYAMPLICOL_BUILD_MODE", raising=False)
-    monkeypatch.setattr(publish_dry_run, "_check_legal_gate", lambda _mode: None)
     monkeypatch.setattr(
         publish_dry_run, "check_dependency_gate", lambda *_a, **_k: None
     )
-    monkeypatch.setattr(publish_dry_run, "verify_manifest", lambda *_a, **_k: payload)
     monkeypatch.setattr(
         publish_dry_run,
-        "collect_unique_artifacts",
-        lambda *_a: [wheel, sdist],
+        "audit_wheel",
+        lambda *_a, **_k: SimpleNamespace(target="test"),
     )
-    monkeypatch.setattr(publish_dry_run, "audit_wheel", lambda *_a, **_k: None)
     monkeypatch.setattr(publish_dry_run, "audit_sdist", lambda *_a, **_k: None)
 
     def fake_run(command, **_kwargs):
@@ -326,6 +313,11 @@ def test_publish_dry_run_prints_but_never_executes_upload(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(publish_dry_run, "run", fake_run)
+    monkeypatch.setattr(
+        publish_dry_run,
+        "_run_clean_install",
+        lambda wheels: clean_install_wheels.extend(wheels),
+    )
     assert (
         publish_dry_run.main(
             ["--artifact-dir", str(tmp_path), "--no-build", "--skip-twine-check"]
@@ -335,6 +327,62 @@ def test_publish_dry_run_prints_but_never_executes_upload(
     output = capsys.readouterr().out
     assert "twine upload" in output
     assert commands == []
+    assert clean_install_wheels == [wheel]
+
+
+def test_publish_dry_run_stages_plain_cross_platform_package_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    incoming = tmp_path / "incoming"
+    output = tmp_path / "upload"
+    platforms = (
+        "macosx_11_0_arm64",
+        "macosx_11_0_x86_64",
+        "manylinux_2_28_x86_64",
+    )
+    for index, platform in enumerate(platforms):
+        directory = incoming / f"platform-{index}"
+        directory.mkdir(parents=True)
+        (directory / f"pyamplicol-0.1.0-cp311-abi3-{platform}.whl").write_bytes(
+            platform.encode()
+        )
+    source = incoming / "source"
+    source.mkdir(parents=True)
+    (source / "pyamplicol-0.1.0.tar.gz").write_bytes(b"sdist")
+
+    monkeypatch.delenv("PYAMPLICOL_BUILD_MODE", raising=False)
+    monkeypatch.setattr(
+        publish_dry_run, "check_dependency_gate", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(publish_dry_run, "audit_sdist", lambda *_a, **_k: None)
+
+    def fake_audit_wheel(path: Path, **_kwargs):
+        target = next(platform for platform in platforms if platform in path.name)
+        return SimpleNamespace(target=target)
+
+    monkeypatch.setattr(publish_dry_run, "audit_wheel", fake_audit_wheel)
+    assert (
+        publish_dry_run.main(
+            [
+                "--artifact-dir",
+                str(incoming),
+                "--output-dir",
+                str(output),
+                "--no-build",
+                "--require-all-targets",
+                "--skip-twine-check",
+                "--skip-clean-install",
+            ]
+        )
+        == 0
+    )
+    assert sorted(path.name for path in output.iterdir()) == [
+        "pyamplicol-0.1.0-cp311-abi3-macosx_11_0_arm64.whl",
+        "pyamplicol-0.1.0-cp311-abi3-macosx_11_0_x86_64.whl",
+        "pyamplicol-0.1.0-cp311-abi3-manylinux_2_28_x86_64.whl",
+        "pyamplicol-0.1.0.tar.gz",
+    ]
 
 
 def test_candidate_dry_run_accepts_wheel_only_and_withholds_upload(
@@ -344,17 +392,15 @@ def test_candidate_dry_run_accepts_wheel_only_and_withholds_upload(
 ) -> None:
     wheel = tmp_path / "pyamplicol-candidate-cp311-abi3-test.whl"
     wheel.write_bytes(b"candidate wheel")
-    payload = {"artifacts": [{"filename": wheel.name, "sha256": "c" * 64}]}
     monkeypatch.delenv("PYAMPLICOL_BUILD_MODE", raising=False)
-    monkeypatch.setattr(publish_dry_run, "_check_legal_gate", lambda _mode: None)
     monkeypatch.setattr(
         publish_dry_run, "check_dependency_gate", lambda *_a, **_k: None
     )
-    monkeypatch.setattr(publish_dry_run, "verify_manifest", lambda *_a, **_k: payload)
     monkeypatch.setattr(
-        publish_dry_run, "collect_unique_artifacts", lambda *_a: [wheel]
+        publish_dry_run,
+        "audit_wheel",
+        lambda *_a, **_k: SimpleNamespace(target="test"),
     )
-    monkeypatch.setattr(publish_dry_run, "audit_wheel", lambda *_a, **_k: None)
     assert (
         publish_dry_run.main(
             [

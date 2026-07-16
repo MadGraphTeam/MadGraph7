@@ -8,7 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
-import zipfile
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -17,390 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "build_backend"))
 
 import _pyamplicol_build as backend  # noqa: E402
-import distribution_sbom as distribution  # noqa: E402
 import sdk  # noqa: E402
-
-
-def _cargo_distribution_sbom(version: str, *, reverse: bool = False) -> bytes:
-    cargo_version = version.replace(".dev0+", "-dev.0+")
-    root_ref = f"path+file:///private/build/rusticol-python#{cargo_version}"
-    core_ref = f"path+file:///Users/builder/rusticol-core#{cargo_version}"
-    build_ref = (
-        "registry+https://github.com/rust-lang/crates.io-index#build-helper@1.2.3"
-    )
-    components = [
-        {
-            "type": "library",
-            "bom-ref": core_ref,
-            "name": "rusticol-core",
-            "version": cargo_version,
-            "scope": "required",
-            "purl": (
-                f"pkg:cargo/rusticol-core@{cargo_version}"
-                "?download_url=file:///Users/builder/rusticol-core"
-            ),
-            "licenses": [{"expression": "0BSD"}],
-        },
-        {
-            "type": "library",
-            "bom-ref": build_ref,
-            "name": "build-helper",
-            "version": "1.2.3",
-            "scope": "required",
-            "purl": "pkg:cargo/build-helper@1.2.3",
-            "hashes": [{"alg": "SHA-256", "content": "c" * 64}],
-            "licenses": [{"expression": "MIT"}],
-        },
-    ]
-    dependencies = [
-        {"ref": root_ref, "dependsOn": [core_ref, build_ref]},
-        {"ref": core_ref, "dependsOn": []},
-        {"ref": build_ref, "dependsOn": []},
-    ]
-    if reverse:
-        components.reverse()
-        dependencies.reverse()
-        dependencies[-1]["dependsOn"].reverse()
-    return json.dumps(
-        {
-            "bomFormat": "CycloneDX",
-            "specVersion": "1.5",
-            "version": 1,
-            "metadata": {
-                "timestamp": "2026-07-16T00:00:00Z",
-                "component": {
-                    "type": "library",
-                    "bom-ref": root_ref,
-                    "name": "rusticol-python",
-                    "version": cargo_version,
-                    "scope": "required",
-                    "purl": (
-                        f"pkg:cargo/rusticol-python@{cargo_version}"
-                        "?download_url=file:///private/build/rusticol-python"
-                    ),
-                    "licenses": [{"expression": "0BSD"}],
-                    "components": [
-                        {
-                            "type": "library",
-                            "bom-ref": f"{root_ref} bin-target-0",
-                            "name": "_rusticol",
-                            "version": cargo_version,
-                            "purl": (
-                                f"pkg:cargo/rusticol-python@{cargo_version}"
-                                "?download_url=file://.#src/lib.rs"
-                            ),
-                        }
-                    ],
-                },
-                "properties": [
-                    {"name": "cdx:rustc:sbom:target:all_targets", "value": "true"}
-                ],
-            },
-            "components": components,
-            "dependencies": dependencies,
-        }
-    ).encode()
-
-
-def _python_locks(*, complete: bool = True) -> tuple[bytes, bytes]:
-    beta_artifact = (
-        """
-  [[packages.artifacts]]
-  filename = "beta-2.0-py3-none-any.whl"
-  sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-"""
-        if complete
-        else ""
-    )
-    runtime_lock = f"""\
-schema_version = 1
-requires_python = ">=3.11"
-supported_python = ["3.11"]
-
-[[packages]]
-distribution = "alpha-runtime"
-version = "1.0"
-license = "MIT"
-direct = true
-dependencies = ["beta"]
-
-  [[packages.artifacts]]
-  filename = "alpha_runtime-1.0-py3-none-any.whl"
-  sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
-[[packages]]
-distribution = "beta"
-version = "2.0"
-license = "BSD-3-Clause"
-direct = false
-dependencies = []
-{beta_artifact}
-""".encode()
-    digest = hashlib.sha256(runtime_lock).hexdigest()
-    release_lock = f"""\
-schema_version = 1
-
-[project]
-distribution = "pyamplicol"
-version = "0.1.0"
-python_requires = ">=3.11"
-license = "0BSD"
-
-[toolchain]
-
-[python_runtime_lock]
-path = "dependencies/python-runtime-lock.toml"
-sha256 = "{digest}"
-
-[[python_dependencies]]
-distribution = "alpha-runtime"
-version = "1.0"
-license = "MIT"
-""".encode()
-    return release_lock, runtime_lock
-
-
-def _distribution_document(
-    *,
-    mode: str = "release",
-    complete: bool = True,
-    reverse: bool = False,
-) -> bytes:
-    version = "0.1.0" if mode == "release" else "0.1.0.dev0+candidate.123456789abc"
-    release_lock, runtime_lock = _python_locks(complete=complete)
-    return distribution.build_distribution_sbom(
-        _cargo_distribution_sbom(version, reverse=reverse),
-        release_lock,
-        runtime_lock,
-        distribution_name="pyamplicol",
-        distribution_version=version,
-        runtime_requirements=("alpha-runtime==1.0",),
-        mode=mode,
-    )
-
-
-def test_cyclonedx_normalization_removes_build_and_candidate_paths() -> None:
-    root_ref = "path+file:///private/build/source/rusticol-python#0.1.0"
-    core_ref = "path+file:///private/build/source/rusticol-core#0.1.0"
-    symjit_ref = "path+file:///Users/developer/checkouts/symjit#2.19.3"
-    payload = {
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
-        "serialNumber": "urn:uuid:11111111-1111-4111-8111-111111111111",
-        "metadata": {
-            "timestamp": "2026-07-15T00:00:00Z",
-            "component": {
-                "bom-ref": root_ref,
-                "name": "rusticol-python",
-                "version": "0.1.0",
-                "purl": "pkg:cargo/rusticol-python@0.1.0?download_url=file://.",
-            },
-        },
-        "components": [
-            {
-                "bom-ref": core_ref,
-                "name": "rusticol-core",
-                "version": "0.1.0",
-                "purl": "pkg:cargo/rusticol-core@0.1.0?download_url=file://../core",
-            },
-            {
-                "bom-ref": symjit_ref,
-                "name": "symjit",
-                "version": "2.19.3",
-                "purl": (
-                    "pkg:cargo/symjit@2.19.3?download_url="
-                    "file:///Users/developer/checkouts/symjit"
-                ),
-            },
-        ],
-        "dependencies": [
-            {"ref": root_ref, "dependsOn": [core_ref]},
-            {"ref": core_ref, "dependsOn": [symjit_ref]},
-        ],
-    }
-
-    normalized = backend._normalize_cyclonedx(json.dumps(payload).encode())
-    decoded = json.loads(normalized)
-
-    assert b"file://" not in normalized
-    assert b"/Users/" not in normalized
-    assert b"/private/" not in normalized
-    assert decoded["metadata"]["timestamp"] == "1970-01-01T00:00:00Z"
-    assert decoded["dependencies"] == [
-        {
-            "ref": "pkg:cargo/rusticol-python@0.1.0",
-            "dependsOn": ["pkg:cargo/rusticol-core@0.1.0"],
-        },
-        {
-            "ref": "pkg:cargo/rusticol-core@0.1.0",
-            "dependsOn": ["pkg:cargo/symjit@2.19.3"],
-        },
-    ]
-    assert backend._normalize_cyclonedx(normalized) == normalized
-
-
-def test_distribution_sbom_merges_complete_rust_and_locked_python_graphs() -> None:
-    encoded = _distribution_document()
-    document = json.loads(encoded)
-    root = document["metadata"]["component"]
-    components = {component["purl"]: component for component in document["components"]}
-    edges = {
-        dependency["ref"]: dependency["dependsOn"]
-        for dependency in document["dependencies"]
-    }
-
-    assert root == {
-        "type": "library",
-        "bom-ref": "pkg:pypi/pyamplicol@0.1.0",
-        "name": "pyamplicol",
-        "version": "0.1.0",
-        "scope": "required",
-        "purl": "pkg:pypi/pyamplicol@0.1.0",
-        "licenses": [{"expression": "0BSD"}],
-    }
-    assert {
-        "pkg:pypi/alpha-runtime@1.0",
-        "pkg:pypi/beta@2.0",
-    } <= components.keys()
-    alpha = components["pkg:pypi/alpha-runtime@1.0"]
-    assert alpha["hashes"] == [{"alg": "SHA-256", "content": "a" * 64}]
-    artifact_properties = [
-        json.loads(item["value"])
-        for item in alpha["properties"]
-        if item["name"] == "pyamplicol:pypi:artifact"
-    ]
-    assert artifact_properties == [
-        {
-            "filename": "alpha_runtime-1.0-py3-none-any.whl",
-            "sha256": "a" * 64,
-        }
-    ]
-    build = components["pkg:cargo/build-helper@1.2.3"]
-    assert build["hashes"] == [{"alg": "SHA-256", "content": "c" * 64}]
-    assert build["licenses"] == [{"expression": "MIT"}]
-
-    assert edges[root["bom-ref"]] == [
-        "pkg:cargo/rusticol-python@0.1.0",
-        "pkg:pypi/alpha-runtime@1.0",
-    ]
-    assert edges["pkg:pypi/alpha-runtime@1.0"] == ["pkg:pypi/beta@2.0"]
-    assert edges["pkg:pypi/beta@2.0"] == []
-    assert edges["pkg:cargo/rusticol-python@0.1.0"] == [
-        "pkg:cargo/build-helper@1.2.3",
-        "pkg:cargo/rusticol-core@0.1.0",
-    ]
-    assert set(edges) == {root["bom-ref"], *components}
-    assert b"file://" not in encoded
-    assert b"path+file:" not in encoded
-    assert b"/Users/" not in encoded
-    assert b"/private/" not in encoded
-
-
-def test_distribution_sbom_is_deterministic_for_shuffled_cargo_graph() -> None:
-    assert _distribution_document() == _distribution_document(reverse=True)
-
-
-def test_distribution_sbom_distinguishes_candidate_and_release_locks() -> None:
-    candidate = json.loads(_distribution_document(mode="candidate", complete=False))
-    root = candidate["metadata"]["component"]
-    assert root["purl"] == ("pkg:pypi/pyamplicol@0.1.0.dev0%2Bcandidate.123456789abc")
-    assert any(
-        component["purl"]
-        == "pkg:cargo/rusticol-python@0.1.0-dev.0+candidate.123456789abc"
-        for component in candidate["components"]
-    )
-    beta = next(
-        component
-        for component in candidate["components"]
-        if component.get("purl") == "pkg:pypi/beta@2.0"
-    )
-    assert {item["name"]: item["value"] for item in beta["properties"]}[
-        "pyamplicol:pypi:hashes-verified"
-    ] == "false"
-
-    with pytest.raises(RuntimeError, match="lacks verified Python artifact"):
-        _distribution_document(mode="release", complete=False)
-
-
-def test_distribution_sbom_rejects_a_tampered_python_runtime_lock() -> None:
-    release_lock, runtime_lock = _python_locks()
-    with pytest.raises(RuntimeError, match="fails its SHA-256 binding"):
-        distribution.build_distribution_sbom(
-            _cargo_distribution_sbom("0.1.0"),
-            release_lock,
-            runtime_lock + b"\n# tampered\n",
-            distribution_name="pyamplicol",
-            distribution_version="0.1.0",
-            runtime_requirements=("alpha-runtime==1.0",),
-            mode="release",
-        )
-
-
-def test_wheel_normalization_only_rewrites_distribution_sbom(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    wheel = tmp_path / "pyamplicol-0.1.0-cp311-abi3-macosx_11_0_arm64.whl"
-    distribution_sbom = json.dumps(
-        {
-            "bomFormat": "CycloneDX",
-            "specVersion": "1.5",
-            "serialNumber": "urn:uuid:11111111-1111-4111-8111-111111111111",
-            "metadata": {"timestamp": "2026-07-15T00:00:00Z"},
-            "components": [],
-            "dependencies": [],
-        }
-    ).encode()
-    sdk_sbom = b'{"bomFormat":"CycloneDX","sdk":true}\n'
-    distribution_path = (
-        "pyamplicol-0.1.0.dist-info/sboms/rusticol-python.cyclonedx.json"
-    )
-    sdk_path = "pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json"
-    metadata_path = "pyamplicol-0.1.0.dist-info/METADATA"
-    record_path = "pyamplicol-0.1.0.dist-info/RECORD"
-    release_lock = b"release lock\n"
-    runtime_lock = b"runtime lock\n"
-    merged_sbom = b'{"bomFormat":"CycloneDX","merged":true}\n'
-    calls: list[tuple[object, ...]] = []
-
-    def fake_builder(*args: object, **kwargs: object) -> bytes:
-        calls.append((*args, kwargs))
-        return merged_sbom
-
-    monkeypatch.setattr(backend, "build_distribution_sbom", fake_builder)
-    with zipfile.ZipFile(wheel, "w") as archive:
-        archive.writestr(distribution_path, distribution_sbom)
-        archive.writestr(sdk_path, sdk_sbom)
-        archive.writestr(
-            metadata_path,
-            b"Metadata-Version: 2.4\n"
-            b"Name: pyamplicol\n"
-            b"Version: 0.1.0\n"
-            b"Requires-Dist: alpha-runtime==1.0\n\n",
-        )
-        archive.writestr(backend._DISTRIBUTION_LOCK_MEMBER, release_lock)
-        archive.writestr(backend._PYTHON_RUNTIME_LOCK_MEMBER, runtime_lock)
-        archive.writestr(record_path, b"")
-
-    backend._normalize_built_wheel(wheel)
-
-    with zipfile.ZipFile(wheel) as archive:
-        assert archive.read(sdk_path) == sdk_sbom
-        assert archive.read(distribution_path) == merged_sbom
-        assert archive.read(record_path)
-    assert calls == [
-        (
-            distribution_sbom,
-            release_lock,
-            runtime_lock,
-            {
-                "distribution_name": "pyamplicol",
-                "distribution_version": "0.1.0",
-                "runtime_requirements": ("alpha-runtime==1.0",),
-                "mode": "release",
-            },
-        )
-    ]
 
 
 def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -409,30 +26,22 @@ def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     installer_state = tmp_path / "install-state.json"
     candidate_lock.write_bytes((ROOT / "Cargo.lock").read_bytes())
     candidate_config.write_text("[patch.crates-io]\n", encoding="utf-8")
+    with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
+        contributor = tomllib.load(stream)
+    revisions = {
+        "gammaloop": contributor["gammaloop_candidate"]["revision"],
+        "symbolica": contributor["symbolica"]["candidate_revision"],
+        "symbolica-community": contributor["symbolica"]["community_revision"],
+        "symjit": contributor["symjit"]["candidate_revision"],
+    }
     sources = {
-        name: {
-            "revision": hashlib.sha256(name.encode()).hexdigest()[:40],
-            "worktree_sha256": hashlib.sha256(f"tree:{name}".encode()).hexdigest(),
-        }
-        for name in backend._CANDIDATE_SOURCES
+        name: {"revision": revision} for name, revision in revisions.items()
     }
     installer_state.write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "publishable": False,
-                "release_lock_sha256": hashlib.sha256(
-                    (ROOT / "dependencies" / "release-lock.toml").read_bytes()
-                ).hexdigest(),
-                "python_runtime_lock_sha256": hashlib.sha256(
-                    (ROOT / "dependencies" / "python-runtime-lock.toml").read_bytes()
-                ).hexdigest(),
-                "candidate_lock_sha256": hashlib.sha256(
-                    candidate_lock.read_bytes()
-                ).hexdigest(),
-                "cargo_config_sha256": hashlib.sha256(
-                    candidate_config.read_bytes()
-                ).hexdigest(),
                 "sources": sources,
             }
         ),
@@ -470,7 +79,9 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         candidate_core = (
             overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
         ).read_text(encoding="utf-8")
-        assert 'symjit = { version = "=2.19.3"' in candidate_core
+        with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
+            candidate_version = tomllib.load(stream)["symjit"]["candidate_version"]
+        assert f'symjit = {{ version = "={candidate_version}"' in candidate_core
         build_info = json.loads(
             (overlay / "src" / "pyamplicol" / "_build_info.json").read_text(
                 encoding="utf-8"
@@ -598,16 +209,27 @@ def test_candidate_inputs_fail_closed_when_installer_has_not_run() -> None:
         backend._candidate_inputs()
 
 
+def test_candidate_source_distributions_are_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "candidate")
+    with pytest.raises(RuntimeError, match="wheel-only"):
+        backend.build_sdist(str(tmp_path))
+
+
 def test_overlay_excludes_managed_dependencies_and_includes_licenses() -> None:
     with backend._overlay("release") as (overlay, _target):
-        assert (overlay / "config" / "release-dependencies.toml").is_file()
         assert (overlay / "licenses" / "MadGraph5_aMCatNLO.txt").is_file()
-        assert (overlay / "licenses" / "RUST_THIRD_PARTY.toml").is_file()
-        assert (overlay / "licenses" / "STATIC_LINK_COMPLIANCE.toml").is_file()
         assert (overlay / "rust-toolchain.toml").is_file()
         assert (overlay / "tools" / "typing" / "check_public_typing.py").is_file()
+        assert (overlay / "dependencies" / "release-lock.toml").is_file()
         assert not (overlay / "dependencies" / "checkouts").exists()
+        assert not (overlay / "dependencies" / "contributor-lock.toml").exists()
+        assert not (overlay / "dependencies" / "install_dependencies.py").exists()
         assert not (overlay / "dependencies" / "install-state.json").exists()
+        assert not (overlay / "dependencies" / "patches").exists()
+        assert not (overlay / "dependencies" / "python-runtime-lock.toml").exists()
+        assert not (overlay / "build_backend" / "python_lock.py").exists()
 
 
 def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
@@ -649,8 +271,6 @@ def test_wheel_stages_runtime_resources_inside_package_namespace(
 ) -> None:
     overlay = tmp_path / "overlay"
     for relative in (
-        Path("dependencies/release-lock.toml"),
-        Path("dependencies/python-runtime-lock.toml"),
         Path("schemas/README.md"),
         Path("schemas/artifact-manifest-v3.schema.json"),
         Path("schemas/runtime-physics-v1.schema.json"),
@@ -661,12 +281,7 @@ def test_wheel_stages_runtime_resources_inside_package_namespace(
 
     backend._stage_runtime_resources(overlay)
     package_assets = overlay / "src" / "pyamplicol" / "assets"
-    assert (package_assets / "release" / "release-lock.toml").read_bytes() == (
-        overlay / "dependencies" / "release-lock.toml"
-    ).read_bytes()
-    assert (package_assets / "release" / "python-runtime-lock.toml").read_bytes() == (
-        overlay / "dependencies" / "python-runtime-lock.toml"
-    ).read_bytes()
+    assert not (package_assets / "release").exists()
     assert (
         package_assets / "schemas" / "artifact-manifest-v3.schema.json"
     ).read_bytes() == (
@@ -746,7 +361,12 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     excluded = (
         Path("dependencies/candidate-Cargo.lock"),
         Path("dependencies/candidate-cargo-config.toml"),
+        Path("dependencies/contributor-lock.toml"),
+        Path("dependencies/install_dependencies.py"),
         Path("dependencies/install-state.json"),
+        Path("dependencies/patches/dependency/fix.patch"),
+        Path("dependencies/python-runtime-lock.toml"),
+        Path("build_backend/python_lock.py"),
         Path("docs/.result_outputs/cache.json"),
         Path("docs/archive/retired.md"),
         Path("docs/pyAmpliCol.aux"),
@@ -759,7 +379,6 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("src/pyamplicol/_sdk/fortran/rusticol.f90"),
         Path("src/pyamplicol/_sdk/include/rusticol.h"),
         Path("src/pyamplicol/_sdk/lib/librusticol_capi.a"),
-        Path("src/pyamplicol/_sdk/sboms/rusticol-capi.cyclonedx.json"),
         Path("src/pyamplicol/_sdk/link.json"),
         Path("src/pyamplicol/_sdk/metadata.json"),
         Path("tests/.artifacts/build.json"),
@@ -797,61 +416,36 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     ) == {"lib", "metadata.json"}
 
 
-def test_candidate_digest_covers_state_sources_and_exact_lock_inputs(
+def test_candidate_digest_covers_only_contributor_dependency_inputs(
     tmp_path: Path,
 ) -> None:
     inputs = _candidate_inputs(tmp_path)
-    overlay = tmp_path / "overlay"
-    dependencies = overlay / "dependencies"
-    dependencies.mkdir(parents=True)
-    for name in ("release-lock.toml", "python-runtime-lock.toml"):
-        (dependencies / name).write_bytes((ROOT / "dependencies" / name).read_bytes())
-    first = backend._candidate_digest(overlay, *inputs)
-
-    source = overlay / "src" / "pyamplicol" / "api.py"
-    source.parent.mkdir(parents=True)
-    source.write_text("# changed source\n", encoding="utf-8")
-    source_tree_changed = backend._candidate_digest(overlay, *inputs)
-    assert source_tree_changed != first
+    first = backend._candidate_digest(*inputs)
 
     state = json.loads(inputs[2].read_text(encoding="utf-8"))
-    state["python_runtime_lock_sha256"] = "0" * 64
-    inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    with pytest.raises(RuntimeError, match="python_runtime_lock_sha256"):
-        backend._candidate_digest(overlay, *inputs)
-    state["python_runtime_lock_sha256"] = hashlib.sha256(
-        (dependencies / "python-runtime-lock.toml").read_bytes()
-    ).hexdigest()
-
     state["sources"]["symbolica"]["worktree_sha256"] = "f" * 64
     inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    source_changed = backend._candidate_digest(overlay, *inputs)
-    assert source_changed not in {first, source_tree_changed}
+    assert backend._candidate_digest(*inputs) == first
+
+    state["sources"]["symbolica"]["revision"] = "0" * 40
+    inputs[2].write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="contributor-lock revision"):
+        backend._candidate_digest(*inputs)
+    state["sources"]["symbolica"]["revision"] = (
+        tomllib.loads(
+            (ROOT / "dependencies" / "contributor-lock.toml").read_text(
+                encoding="utf-8"
+            )
+        )["symbolica"]["candidate_revision"]
+    )
+    inputs[2].write_text(json.dumps(state), encoding="utf-8")
 
     inputs[0].write_bytes(inputs[0].read_bytes() + b"\n# identity change\n")
-    state["candidate_lock_sha256"] = hashlib.sha256(inputs[0].read_bytes()).hexdigest()
-    inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    lock_changed = backend._candidate_digest(overlay, *inputs)
-    assert lock_changed not in {first, source_changed}
-
-    runtime_lock = dependencies / "python-runtime-lock.toml"
-    runtime_lock.write_bytes(runtime_lock.read_bytes() + b"\n# identity change\n")
-    state["python_runtime_lock_sha256"] = hashlib.sha256(
-        runtime_lock.read_bytes()
-    ).hexdigest()
-    inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    runtime_changed = backend._candidate_digest(overlay, *inputs)
-    assert runtime_changed not in {first, source_changed, lock_changed}
+    lock_changed = backend._candidate_digest(*inputs)
+    assert lock_changed != first
 
     inputs[1].write_text("[patch.crates-io]\n# changed\n", encoding="utf-8")
-    state["cargo_config_sha256"] = hashlib.sha256(inputs[1].read_bytes()).hexdigest()
-    inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    assert backend._candidate_digest(overlay, *inputs) not in {
-        first,
-        source_changed,
-        lock_changed,
-        runtime_changed,
-    }
+    assert backend._candidate_digest(*inputs) not in {first, lock_changed}
 
 
 @pytest.mark.parametrize(
@@ -881,7 +475,6 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     gates: list[str] = []
     sdk_stages: list[Path] = []
     selftest_stages: list[tuple[Path, str]] = []
-    normalized_wheels: list[Path] = []
     injected_bins = (tmp_path / "injected-bin", tmp_path / "injected-tools")
     for directory in injected_bins:
         directory.mkdir()
@@ -956,7 +549,6 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
         lambda path, target_name: selftest_stages.append((path, target_name)),
     )
     monkeypatch.setattr(backend, "build_sdk", fake_sdk)
-    monkeypatch.setattr(backend, "_normalize_built_wheel", normalized_wheels.append)
     monkeypatch.setattr(backend.maturin, hook, delegated)
 
     result = getattr(backend, hook)(*arguments)
@@ -964,7 +556,6 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     assert gates == ["release"]
     assert bool(sdk_stages) is with_sdk
     assert selftest_stages == ([(overlay, "aarch64-apple-darwin")] if with_sdk else [])
-    assert normalized_wheels == ([Path(arguments[0]) / "delegated"] if with_sdk else [])
     for name, value in injected.items():
         assert os.environ[name] == value
 
@@ -1027,6 +618,7 @@ def test_pep517_backend_rejects_recursive_delegation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
     overlay = tmp_path / "overlay"
     overlay.mkdir()
 

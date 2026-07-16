@@ -10,7 +10,7 @@ from ..models import Model
 from .dag_types import GenericDAG
 
 LC_SECTOR_SELECTOR_PARAMETER = "runtime.lc_sector_id"
-EXPRESSION_SCHEMA_CONTRACT_VERSION = 1
+EXPRESSION_SCHEMA_CONTRACT_VERSION = 2
 _REQUIRED_RUNTIME_SCHEMA_KEYS = frozenset(
     {
         "amplitude_stage",

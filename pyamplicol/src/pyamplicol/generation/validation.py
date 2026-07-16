@@ -7,7 +7,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ..models import Model
+from ..models.base import Model
 from .dag_types import GenericDAG
 from .phase_space import massive_rambo_final_state
 
@@ -127,10 +127,7 @@ def _build_particles(
 
 
 def _mass(model: Model, pdg: int) -> float:
-    try:
-        value = float(model.mass(pdg))
-    except KeyError:
-        value = float(model.mass(-pdg))
+    value = float(model.mass(pdg))
     if not math.isfinite(value) or value < 0.0:
         raise ValueError(f"particle {pdg} has invalid mass {value!r}")
     return value

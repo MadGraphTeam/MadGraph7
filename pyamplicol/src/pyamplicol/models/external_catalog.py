@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from .base import (
     Particle,
     QuantumFlow,
+    QuantumNumberFlow,
     SourceSpinState,
     Vertex,
     VertexEvaluationEquivalence,
@@ -80,20 +82,11 @@ class ExternalModelCatalogMixin:
     def charge(self, pdg: int) -> float:
         return self._particle_records_by_pdg[int(pdg)].charge
 
+    def quantum_number_flow(self, particle_id: int) -> QuantumNumberFlow:
+        return self._particle_records_by_pdg[int(particle_id)].quantum_numbers
+
     def is_fermion(self, pdg: int) -> bool:
-        return self.spin(pdg) == 2
-
-    def is_quark(self, pdg: int) -> bool:
-        return self.is_fermion(pdg) and self.color_rep(pdg) == 3
-
-    def is_antiquark(self, pdg: int) -> bool:
-        return self.is_fermion(pdg) and self.color_rep(pdg) == -3
-
-    def is_lepton(self, pdg: int) -> bool:
-        return self.is_fermion(pdg) and self.color_rep(pdg) == 1 and pdg > 0
-
-    def is_antilepton(self, pdg: int) -> bool:
-        return self.is_fermion(pdg) and self.color_rep(pdg) == 1 and pdg < 0
+        return self._particle_records_by_pdg[int(pdg)].statistics == "fermion"
 
     def is_chiral_eligible(self, pdg: int) -> bool:
         if not self.is_fermion(pdg):
@@ -111,27 +104,21 @@ class ExternalModelCatalogMixin:
             and self._parameter_default(particle.mass) == 0.0
         )
 
-    def is_gluon(self, pdg: int) -> bool:
-        return self.spin(pdg) == 3 and self.color_rep(pdg) == 8
+    def is_fundamental_colored_fermion(self, pdg: int) -> bool:
+        return self.is_fermion(pdg) and abs(self.color_rep(pdg)) == 3
+
+    def is_massless_adjoint_vector(self, pdg: int) -> bool:
+        return (
+            self.spin(pdg) == 3
+            and self.color_rep(pdg) == 8
+            and complex(
+                self._parameter_default(self._particle_records_by_pdg[int(pdg)].mass)
+            ).real
+            == 0.0
+        )
 
     def is_singlet(self, pdg: int) -> bool:
         return self.color_rep(pdg) == 1
-
-    def is_tensor(self, pdg: int) -> bool:
-        return self.spin(pdg) == 5
-
-    def is_massive_boson(self, pdg: int) -> bool:
-        return (
-            self.spin(pdg) in {3, 5}
-            and self._parameter_default(self._particle_records_by_pdg[int(pdg)].mass)
-            != 0.0
-        )
-
-    def is_photon(self, pdg: int) -> bool:
-        return self.spin(pdg) == 3 and self.color_rep(pdg) == 1 and self.mass(pdg) == 0
-
-    def is_higgs(self, pdg: int) -> bool:
-        return self.spin(pdg) == 1
 
     def source_spin_states(self, particle_id: int) -> tuple[SourceSpinState, ...]:
         if self.is_chiral_eligible(particle_id):
@@ -162,6 +149,18 @@ class ExternalModelCatalogMixin:
             for helicity in helicities
         )
 
+    def source_wavefunction_kind(self, particle_id: int) -> str:
+        return self._particle_records_by_pdg[int(particle_id)].wavefunction_family
+
+    def source_orientation(self, particle_id: int) -> str:
+        record = self._particle_records_by_pdg[int(particle_id)]
+        if record.statistics == "fermion" and record.self_conjugate:
+            raise ValueError(
+                f"unsupported self-conjugate fermion source {particle_id}: "
+                "Majorana/FNV source wavefunctions are not implemented"
+            )
+        return record.source_orientation
+
     def allowed_quantum_flows(
         self,
         vertex: Vertex,
@@ -185,7 +184,7 @@ class ExternalModelCatalogMixin:
                     left_index,
                     right_index,
                 ),
-                charge_flow=self.charge_units(result_particle),
+                quantum_number_flow=self.quantum_number_flow(result_particle),
                 coupling=(1.0, 0.0),
             )
             for result_chirality in result_chiralities
@@ -232,8 +231,63 @@ class ExternalModelCatalogMixin:
             verified=True,
         )
 
-    def vertex_coupling_orders(self, vertex: Vertex):
+    def vertex_coupling_orders(
+        self,
+        vertex: Vertex,
+    ) -> tuple[tuple[str, int], ...]:
         return self._kernel(vertex.kind).coupling_orders
+
+    def global_helicity_flip_equivalence_is_proven(
+        self,
+        vertices: Sequence[Vertex],
+    ) -> bool:
+        """Accept parity reduction only for algebraically certified kernels."""
+
+        kinds = self._symmetry_certificates.parity_kernel_kinds
+        return bool(vertices) and all(vertex.kind in kinds for vertex in vertices)
+
+    def pure_massless_adjoint_helicity_zero_rule_is_proven(
+        self,
+        process: Any,
+        vertices: Sequence[Vertex],
+    ) -> bool:
+        """Recognize the tree-level Yang--Mills helicity-zero theorem."""
+
+        names = self._symmetry_certificates.yang_mills_adjoint_names
+        kinds = self._symmetry_certificates.yang_mills_kernel_kinds
+        legs = tuple(getattr(process, "legs", ()))
+        return (
+            bool(legs)
+            and bool(vertices)
+            and all(self._particle_name_for_leg(leg) in names for leg in legs)
+            and all(vertex.kind in kinds for vertex in vertices)
+        )
+
+    def adjoint_current_reflection_phase(
+        self,
+        vertex: Vertex,
+    ) -> tuple[float, float] | None:
+        """Return an exact lowered-kernel reflection certificate, if present."""
+
+        return dict(
+            self._symmetry_certificates.adjoint_current_reflection_phases
+        ).get(vertex.kind)
+
+    def lc_trace_reflection_equivalence_is_proven(self, process: Any) -> bool:
+        """Recognize reflection folding for a certified Yang--Mills sector."""
+
+        names = self._symmetry_certificates.yang_mills_adjoint_names
+        legs = tuple(getattr(process, "legs", ()))
+        return bool(legs) and all(
+            self._particle_name_for_leg(leg) in names for leg in legs
+        )
+
+    def _particle_name_for_leg(self, leg: Any) -> str | None:
+        outgoing_pdg = getattr(leg, "outgoing_pdg", None)
+        if outgoing_pdg is None:
+            return None
+        record = self._particle_records_by_pdg.get(int(outgoing_pdg))
+        return None if record is None else record.name
 
     def coupling_order_hierarchies(self) -> dict[str, int]:
         return {

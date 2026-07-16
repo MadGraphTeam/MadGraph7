@@ -171,7 +171,7 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
     )
     assert provenance["generator"]["version"] == "0.1.7"
     assert provenance["generator"]["revision"] == (
-        "9cb4deeae40ddd64184049af07ac1d03ce5f6162"
+        "f3fda32c5e6a673075c345d74a11f12b83c00015"
     )
 
     licenses = {entry["id"]: entry for entry in provenance["licenses"]}
@@ -187,7 +187,7 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
     transformations = {entry["id"] for entry in provenance["transformations"]}
     records = provenance["files"]
     assert len(records) == 66
-    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 39
+    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 28
 
     record_paths = set()
     for entry in records:
@@ -251,6 +251,32 @@ def test_all_json_is_parseable_and_models_have_expected_shape() -> None:
             )
         )
         assert actual == expected
+
+
+def test_json_restrictions_are_complete_explicit_ufo_cards() -> None:
+    from ufo_model_loader.common import optionally_lower_external_parameter_name
+    from ufo_model_loader.model import InputParamCard, Model, ParamCard
+
+    asset_root = Path(str(_assets_resource()))
+    for json_path in sorted((asset_root / "json").glob("*/restrict_*.json")):
+        model_name = json_path.parent.name
+        model_path = json_path.parent / f"{model_name}.json"
+        ufo_path = asset_root / "ufo" / model_name / f"{json_path.stem}.dat"
+        model = Model.from_json(model_path.read_text(encoding="utf-8"))
+        parameter_names = {
+            optionally_lower_external_parameter_name(parameter.name)
+            for parameter in model.get_external_parameters()
+        }
+        expected = InputParamCard.from_param_card(
+            ParamCard(str(ufo_path)),
+            model=model,
+        )
+        actual = InputParamCard.from_json_file(str(json_path))
+
+        assert set(actual) == parameter_names, json_path
+        assert actual == InputParamCard(
+            {name: expected[name] for name in parameter_names}
+        ), json_path
 
 
 def test_scalar_ufo_shape_is_environment_independent() -> None:

@@ -7,15 +7,13 @@ from collections.abc import Iterable, Mapping
 
 from ..color.plan import GenericColorPlan, build_color_plan
 from ..models import (
-    BuiltinSMModel,
     CouplingOrders,
     Model,
     QuantumFlow,
     Vertex,
     VertexEvaluationEquivalence,
 )
-from ..processes import ProcessOptions
-from ..processes.ir import CanonicalProcessIR, build_process_ir
+from ..processes.ir import CanonicalProcessIR
 from .dag_algorithms import _normalize_generation_cap
 from .dag_color import ColorEngine
 from .dag_ordering import (
@@ -27,7 +25,7 @@ from .dag_ordering import (
     _direct_contraction_kind,
     _labels_mask,
     _labels_projected_to_word,
-    _lc_all_gluon_symmetry_order_variants,
+    _lc_all_adjoint_symmetry_order_variants,
     _lc_color_order_reachable_masks,
     _mask_labels,
 )
@@ -63,9 +61,7 @@ class GenericDAGCompiler:
     def __init__(
         self,
         *,
-        model: Model | None = None,
-        color_accuracy: str = "lc",
-        options: ProcessOptions | None = None,
+        model: Model,
         max_currents: int | None = None,
         max_color_sectors: int | None = None,
         reference_color_order: tuple[int, ...] | None = None,
@@ -81,9 +77,7 @@ class GenericDAGCompiler:
         selected_source_helicities: Mapping[int, int] | None = None,
         lc_all_ordering_symmetry: bool = True,
     ) -> None:
-        self.model = model or BuiltinSMModel()
-        self.color_accuracy = color_accuracy
-        self.options = options
+        self.model = model
         self.max_currents = _normalize_generation_cap(max_currents)
         self.max_color_sectors = _normalize_generation_cap(max_color_sectors)
         self.reference_color_order = reference_color_order
@@ -122,26 +116,26 @@ class GenericDAGCompiler:
         )
         self.lc_all_ordering_symmetry = bool(lc_all_ordering_symmetry)
 
-    def compile(self, process: str | CanonicalProcessIR) -> GenericDAG:
-        process_ir = (
-            process
-            if isinstance(process, CanonicalProcessIR)
-            else build_process_ir(
-                process,
-                color_accuracy=self.color_accuracy,
-                options=self.options,
+    def compile(self, process: CanonicalProcessIR) -> GenericDAG:
+        if not isinstance(process, CanonicalProcessIR):
+            raise TypeError(
+                "generic DAG compilation requires a model-resolved CanonicalProcessIR"
             )
+        process_ir = process
+        lc_trace_reflection_proven = bool(
+            self.lc_all_ordering_symmetry
+            and self.model.lc_trace_reflection_equivalence_is_proven(process_ir)
         )
         color_plan = build_color_plan(
             process_ir,
             color_accuracy=process_ir.color_accuracy,
-            options=self.options,
             max_sectors=self.max_color_sectors,
             reference_color_order=self.reference_color_order,
+            fold_trace_reflections=lc_trace_reflection_proven,
         )
         if (
             self.max_quark_pairs is not None
-            and process_ir.quark_lines.quark_pair_count > self.max_quark_pairs
+            and process_ir.color_endpoints.pair_count > self.max_quark_pairs
         ):
             return GenericDAG(
                 process=process_ir,
@@ -182,12 +176,13 @@ class GenericDAGCompiler:
                 diagnostics=diagnostics,
                 truncated=bool(missing_sector_ids),
                 idenso_required=color_plan.idenso_required,
+                trace_reflections_folded=color_plan.trace_reflections_folded,
             )
         color_engine = ColorEngine(
             color_plan,
             self.model,
             shared_lc_all_ordering_symmetry=(
-                self.lc_all_ordering_symmetry and self.selected_color_sector_ids is None
+                lc_trace_reflection_proven and self.selected_color_sector_ids is None
             ),
         )
         table = _CurrentTable(self.model)
@@ -214,12 +209,14 @@ class GenericDAGCompiler:
             bool,
         ] = {}
         full_mask = _labels_mask(leg.label for leg in process_ir.legs)
-        gluon_labels = frozenset(
+        shared_lc_all_ordering_symmetry = color_engine.shared_lc_all_ordering_symmetry
+        adjoint_vector_labels = frozenset(
             leg.label
             for leg in process_ir.legs
-            if leg.outgoing_pdg is not None and abs(int(leg.outgoing_pdg)) == 21
+            if leg.outgoing_pdg is not None
+            and self.model.is_massless_adjoint_vector(int(leg.outgoing_pdg))
         )
-        shared_lc_all_ordering_symmetry = color_engine.shared_lc_all_ordering_symmetry
+        locally_reflectable_current_ids: set[int] = set()
         closure_candidate_splits = _closure_candidate_splits(
             process_ir,
             self.model,
@@ -315,9 +312,23 @@ class GenericDAGCompiler:
             coupling_order_cache[key] = orders
             return orders
 
-        def all_gluon_current(index: CurrentIndex) -> bool:
+        def all_adjoint_vector_current(index: CurrentIndex) -> bool:
             labels = index.external_labels
-            return bool(labels) and all(label in gluon_labels for label in labels)
+            return bool(labels) and all(
+                label in adjoint_vector_labels for label in labels
+            )
+
+        def reflection_reusable_current(current_id: int) -> bool:
+            if not color_engine.shared_lc_orderings:
+                return False
+            current = table.current(current_id)
+            if not all_adjoint_vector_current(current.index):
+                return False
+            return (
+                shared_lc_all_ordering_symmetry
+                or current.is_source
+                or current_id in locally_reflectable_current_ids
+            )
 
         for mask in _masks_by_size(full_mask):
             if mask & (mask - 1) == 0:
@@ -383,21 +394,10 @@ class GenericDAGCompiler:
                         right = table.current(right_id)
                         if left.index.overlaps(right.index):
                             continue
-                        left_all_gluon = (
-                            shared_lc_all_ordering_symmetry
-                            and all_gluon_current(left.index)
+                        left_reflection_reusable = reflection_reusable_current(left_id)
+                        right_reflection_reusable = reflection_reusable_current(
+                            right_id
                         )
-                        right_all_gluon = (
-                            shared_lc_all_ordering_symmetry
-                            and all_gluon_current(right.index)
-                        )
-                        if (
-                            left_all_gluon
-                            and right_all_gluon
-                            and max(left.index.external_labels)
-                            >= max(right.index.external_labels)
-                        ):
-                            continue
                         if not state_allowed(
                             right_mask,
                             right.index.particle_id,
@@ -453,6 +453,31 @@ class GenericDAGCompiler:
                                 coupling_orders,
                             ):
                                 continue
+                            local_two_source_reflection = (
+                                color_engine.shared_lc_orderings
+                                and left.is_source
+                                and right.is_source
+                                and len(left.index.external_labels) == 1
+                                and len(right.index.external_labels) == 1
+                                and left_reflection_reusable
+                                and right_reflection_reusable
+                                and self.model.adjoint_current_reflection_phase(vertex)
+                                == (-1.0, 0.0)
+                            )
+                            result_reflection_proven = (
+                                (
+                                    shared_lc_all_ordering_symmetry
+                                    and all_adjoint_vector_current(left.index)
+                                    and all_adjoint_vector_current(right.index)
+                                )
+                                or local_two_source_reflection
+                            )
+                            if (
+                                result_reflection_proven
+                                and max(left.index.external_labels)
+                                >= max(right.index.external_labels)
+                            ):
+                                continue
                             ordered_external_labels = (
                                 color_engine.ordered_combination_labels(
                                     left.index,
@@ -461,31 +486,37 @@ class GenericDAGCompiler:
                                 )
                             )
                             if ordered_external_labels is None and not (
-                                left_all_gluon or right_all_gluon
+                                left_reflection_reusable
+                                or right_reflection_reusable
                             ):
                                 continue
                             order_variants: tuple[
                                 tuple[tuple[int, ...], tuple[float, float]],
                                 ...,
                             ]
-                            if left_all_gluon or right_all_gluon:
-                                result_all_gluon = left_all_gluon and right_all_gluon
+                            if (
+                                left_reflection_reusable
+                                or right_reflection_reusable
+                            ):
                                 variants: list[
                                     tuple[tuple[int, ...], tuple[float, float]]
                                 ] = []
                                 for (
                                     proposed_labels,
                                     symmetry_weight,
-                                ) in _lc_all_gluon_symmetry_order_variants(
+                                ) in _lc_all_adjoint_symmetry_order_variants(
                                     left.index.ordered_external_labels,
                                     right.index.ordered_external_labels,
-                                    left_all_gluon=left_all_gluon,
-                                    right_all_gluon=right_all_gluon,
+                                    left_all_adjoint=left_reflection_reusable,
+                                    right_all_adjoint=right_reflection_reusable,
+                                    result_reflection_proven=(
+                                        result_reflection_proven
+                                    ),
                                 ):
                                     projected = (
                                         color_engine.shared_lc_ordered_proposed_labels(
                                             proposed_labels,
-                                            allow_reversed=result_all_gluon,
+                                            allow_reversed=result_reflection_proven,
                                         )
                                     )
                                     if projected is None:
@@ -549,7 +580,9 @@ class GenericDAGCompiler:
                                             chirality=quantum_flow.chirality,
                                             spin_state=quantum_flow.spin_state,
                                             flavour_flow=quantum_flow.flavour_flow,
-                                            charge_flow=quantum_flow.charge_flow,
+                                            quantum_number_flow=(
+                                                quantum_flow.quantum_number_flow
+                                            ),
                                             color_state=color_flow.state,
                                             momentum_mask=(
                                                 left.index.momentum_mask
@@ -566,6 +599,8 @@ class GenericDAGCompiler:
                                             out_index,
                                             is_source=False,
                                         )
+                                        if local_two_source_reflection:
+                                            locally_reflectable_current_ids.add(result.id)
                                         signed_color_weight = _complex_weight_mul(
                                             _complex_weight_mul(
                                                 color_flow.weight,
@@ -716,13 +751,21 @@ class GenericDAGCompiler:
                     if leg.is_initial and self.model.is_chiral_eligible(particle_id):
                         chirality = -chirality
                         spin_state = chirality
-                    elif leg.is_initial and self.model.is_gluon(particle_id):
-                        source_helicity = -source_helicity
+                    elif (
+                        leg.is_initial
+                        and (
+                            crossing_sign := self.model.source_helicity_crossing_sign(
+                                particle_id
+                            )
+                        )
+                        != 1
+                    ):
+                        source_helicity *= crossing_sign
                         if not isinstance(spin_state, int):
                             raise TypeError(
-                                "gluon source spin_state must be an integer"
+                                "crossed source spin_state must be an integer"
                             )
-                        spin_state = -spin_state
+                        spin_state *= crossing_sign
                     if (
                         self.selected_source_helicities is not None
                         and (
@@ -745,7 +788,7 @@ class GenericDAGCompiler:
                         chirality=chirality,
                         spin_state=spin_state,
                         flavour_flow=(particle_id,),
-                        charge_flow=self.model.charge_units(particle_id),
+                        quantum_number_flow=self.model.quantum_number_flow(particle_id),
                         color_state=color_state,
                         momentum_mask=1 << (leg.label - 1),
                         coupling_orders=(),
@@ -931,11 +974,9 @@ class GenericDAGCompiler:
 
 
 def compile_generic_dag(
-    process: str | CanonicalProcessIR,
+    process: CanonicalProcessIR,
     *,
-    model: Model | None = None,
-    color_accuracy: str = "lc",
-    options: ProcessOptions | None = None,
+    model: Model,
     max_currents: int | None = None,
     max_color_sectors: int | None = None,
     reference_color_order: tuple[int, ...] | None = None,
@@ -953,8 +994,6 @@ def compile_generic_dag(
 ) -> GenericDAG:
     return GenericDAGCompiler(
         model=model,
-        color_accuracy=color_accuracy,
-        options=options,
         max_currents=max_currents,
         max_color_sectors=max_color_sectors,
         reference_color_order=reference_color_order,

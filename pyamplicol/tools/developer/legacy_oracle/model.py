@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-LOCK = ROOT / "dependencies" / "release-lock.toml"
+LOCK = ROOT / "dependencies" / "contributor-lock.toml"
 DEFAULT_REPOSITORY = ROOT / "dependencies" / "checkouts" / "legacy-amplicol"
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "reference" / "physics-v2.json"
 
@@ -18,7 +18,6 @@ FORTRAN_EVIDENCE_RTOL_DECIMAL = Decimal("0.0000000001")
 FORTRAN_EVIDENCE_ATOL_DECIMAL = Decimal("0.000000000001")
 FORTRAN_CERTIFIED_DECIMAL_DIGITS = 10
 
-V2_ONLY_LEGACY_PATCHES = {"patches/legacy-amplicol/0003-report-lc-row-partitions.patch"}
 MAX_SUPPORTED_QUARK_LINES = 2
 
 

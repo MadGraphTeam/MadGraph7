@@ -75,6 +75,15 @@ def test_process_matrices_preserve_families_and_multiplicity_grids() -> None:
 
     for spec in report.MATRIX_SPECS:
         payload = caches[spec.cache_name]
+        assert payload["benchmark_contract"]["config_overrides"] == dict(
+            report.REPORT_CONFIG_OVERRIDES
+        )
+        assert (
+            payload["benchmark_contract"]["config_overrides"][
+                "evaluator.jit.optimization_level"
+            ]
+            == 3
+        )
         assert len(payload["process_families"]) == 14
         assert {
             family["key"] for family in payload["process_families"]
@@ -114,6 +123,7 @@ def test_ladders_preserve_expected_multiplicities_and_variants() -> None:
             )
         else:
             assert len(payload["entries"]) == len(spec.multiplicities)
+            assert payload["process_family"] == spec.process_family
 
 
 def test_generated_tables_are_complete_and_input_by_main_tex() -> None:
@@ -129,6 +139,15 @@ def test_generated_tables_are_complete_and_input_by_main_tex() -> None:
         assert path.read_text(encoding="utf-8") == expected_text
         assert expected_text.startswith("% SPDX-License-Identifier: 0BSD\n")
         assert expected_text.count(r"\ReportNA") > 0
+
+    scalar_contact = expected_tables["result_scalar_contact_table.tex"]
+    scalar_gravity = expected_tables["result_scalar_gravity_table.tex"]
+    assert r"scalar\_0 scalar\_0 > X*scalar\_0" in scalar_contact
+    assert r"scalar\_0 scalar\_0 > X*graviton" in scalar_gravity
+    assert "evaluator [s/pt]" in scalar_contact
+    assert "evaluator [s/pt]" in scalar_gravity
+    assert "scalar\\_0 scalar\\_0 scalar\\_0" not in scalar_contact
+    assert "graviton graviton" not in scalar_gravity
 
 
 def test_report_excludes_internal_campaign_narrative() -> None:

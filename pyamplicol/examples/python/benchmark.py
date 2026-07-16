@@ -8,12 +8,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pyamplicol import BenchmarkConfig, BenchmarkRunner
+from pyamplicol import BenchmarkConfig, BenchmarkRunner, Runtime
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifact", type=Path)
+    parser.add_argument("--process")
     parser.add_argument("--momenta", type=Path)
     parser.add_argument("--target-runtime", type=float, default=1.0)
     parser.add_argument("--batch-size", type=int, default=128)
@@ -36,8 +37,9 @@ def main() -> int:
         warmup_runs=args.warmup_runs,
         minimum_samples=args.minimum_samples,
     )
+    runtime = Runtime.load(args.artifact, process=args.process)
     result = BenchmarkRunner(config).run(
-        args.artifact,
+        runtime,
         points=_read_points(args.momenta),
     )
     print(

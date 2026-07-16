@@ -606,7 +606,7 @@ def test_run_capture_uses_mocked_assembly_and_validation_paths(
         "4" * 64,
         "5" * 64,
     )
-    dependencies = capture.DependencySnapshot((), {}, {})
+    dependencies = capture.DependencySnapshot((), {}, {}, {})
     process = capture.ProcessCaptureSpec(
         "process",
         "a b > c",

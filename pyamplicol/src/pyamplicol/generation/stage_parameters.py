@@ -8,7 +8,7 @@ from typing import Any
 
 from .._internal.physics.parameters import ParamBuilder
 from .._internal.physics.symbols import symbols
-from ..models import BuiltinSMModel, Model
+from ..models import Model
 from .contracts import StageCompilationInput
 from .contracts import (
     runtime_coupling_parameter_names as _runtime_coupling_parameter_names,
@@ -390,7 +390,7 @@ def _parameter_builder(schema: dict[str, Any]) -> ParamBuilder:
 def _manifest_model(manifest: StageCompilationInput | GenericDAG) -> Model:
     if isinstance(manifest, StageCompilationInput):
         return manifest.model
-    return BuiltinSMModel()
+    raise ValueError("GenericDAG stage compilation requires an explicit model")
 
 
 def _model_symbolica_functions(

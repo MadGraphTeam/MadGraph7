@@ -298,11 +298,7 @@ fn direct_evaluator_manifest(application_path: &str) -> Value {
         "application_abi": crate::engine::SYMJIT_APPLICATION_STORAGE_ABI,
         "input_len": 14,
         "output_len": 1,
-        "element_layout": if cfg!(target_arch = "aarch64") {
-            "complex-f64x2"
-        } else {
-            "complex-f64"
-        },
+        "element_layout": "complex-f64",
         "batch_layout": "row-major",
         "compiler_type": "native",
         "translation_mode": "indirect",
@@ -365,7 +361,7 @@ fn minimal_execution_manifest(
                 "dimension": 1, "is_source": true, "particle_id": 1,
                 "external_mask": 1, "external_labels": [], "helicity_ancestry": null,
                 "chirality": 0, "spin_state": null, "flavour_flow": [],
-                "charge_flow": 0, "color_state": null, "momentum_mask": 1,
+                "color_state": null, "momentum_mask": 1,
                 "auxiliary_kind": null
             },
             {
@@ -373,7 +369,7 @@ fn minimal_execution_manifest(
                 "dimension": 1, "is_source": true, "particle_id": -1,
                 "external_mask": 2, "external_labels": [], "helicity_ancestry": null,
                 "chirality": 0, "spin_state": null, "flavour_flow": [],
-                "charge_flow": 0, "color_state": null, "momentum_mask": 2,
+                "color_state": null, "momentum_mask": 2,
                 "auxiliary_kind": null
             }
         ],
@@ -411,8 +407,10 @@ fn minimal_execution_manifest(
                 "source_parameter_start": 0, "source_parameter_stop": 1,
                 "leg_label": 1, "input_momentum_slot": 0, "side": "initial",
                 "crossing": "identity", "physical_pdg": 1, "outgoing_pdg": 1,
-                "particle_id": 1, "source_kind": "external-wavefunction",
-                "wavefunction_kind": "scalar", "source_helicity": 0,
+                "particle_id": 1, "anti_particle_id": -1,
+                "source_kind": "external-wavefunction",
+                "wavefunction_kind": "scalar", "source_orientation": "particle",
+                "source_helicity": 0,
                 "chirality": 0, "spin_state": 1, "dimension": 1,
                 "helicity_ancestry": 1, "color_state": {}
             },
@@ -423,8 +421,10 @@ fn minimal_execution_manifest(
                 "source_parameter_start": 1, "source_parameter_stop": 2,
                 "leg_label": 2, "input_momentum_slot": 1, "side": "initial",
                 "crossing": "identity", "physical_pdg": -1, "outgoing_pdg": -1,
-                "particle_id": -1, "source_kind": "external-wavefunction",
-                "wavefunction_kind": "scalar", "source_helicity": 0,
+                "particle_id": -1, "anti_particle_id": 1,
+                "source_kind": "external-wavefunction",
+                "wavefunction_kind": "scalar", "source_orientation": "antiparticle",
+                "source_helicity": 0,
                 "chirality": 0, "spin_state": 1, "dimension": 1,
                 "helicity_ancestry": 1, "color_state": {}
             }

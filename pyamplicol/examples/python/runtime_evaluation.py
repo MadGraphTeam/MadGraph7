@@ -18,6 +18,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("momenta", type=Path)
     parser.add_argument("--process")
     parser.add_argument("--parameters", type=Path)
+    parser.add_argument(
+        "--set-parameter",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="apply a direct real or complex UFO-parameter override",
+    )
     parser.add_argument("--helicity", action="append")
     parser.add_argument("--color-flow", action="append")
     return parser
@@ -31,6 +38,19 @@ def _json_complex(value: complex) -> dict[str, float]:
     return {"real": value.real, "imag": value.imag}
 
 
+def _parameter_overrides(values: list[str]) -> dict[str, complex]:
+    result: dict[str, complex] = {}
+    for value in values:
+        name, separator, raw = value.partition("=")
+        if not separator or not name or not raw:
+            raise SystemExit(f"invalid --set-parameter value: {value!r}")
+        try:
+            result[name] = complex(raw)
+        except ValueError as error:
+            raise SystemExit(f"invalid parameter value {raw!r}") from error
+    return result
+
+
 def main() -> int:
     args = _parser().parse_args()
     parameters = _read_json(args.parameters) if args.parameters else None
@@ -40,6 +60,8 @@ def main() -> int:
         process=args.process,
         model_parameters=parameters,
     )
+    if overrides := _parameter_overrides(args.set_parameter):
+        runtime.set_model_parameters(overrides)
     selectors = {
         "helicities": args.helicity,
         "color_flows": args.color_flow,

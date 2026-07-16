@@ -15,6 +15,7 @@ from .contracts import (
     CompiledParameterRecord,
     CompiledParticleRecord,
     CompiledPropagatorRecord,
+    validate_quantum_number_flow,
 )
 
 
@@ -59,20 +60,38 @@ def _parameter(
 
 
 def _particle(item: Mapping[str, object]) -> CompiledParticleRecord:
+    name = str(item["name"])
+    charge = float(item.get("charge", 0.0))
+    quantum_numbers = item.get("quantum_numbers")
+    if quantum_numbers is None:
+        quantum_numbers = (("electric_charge", _exact_float_expression(charge)),)
     return CompiledParticleRecord(
-        name=str(item["name"]),
+        name=name,
         antiname=str(item["antiname"]),
         pdg_code=int(item["pdg_code"]),
         spin=int(item["spin"]),
         color=int(item["color"]),
         mass=str(item["mass"]),
         width=str(item["width"]),
-        charge=float(item.get("charge", 0.0)),
+        charge=charge,
+        quantum_numbers=validate_quantum_number_flow(
+            quantum_numbers,
+            context=f"particle {name!r}",
+        ),
         ghost_number=int(item.get("ghost_number", 0)),
         propagating=bool(item.get("propagating", True)),
         goldstoneboson=bool(item.get("goldstoneboson", False)),
         propagator=_optional_string(item.get("propagator")),
     )
+
+
+def _exact_float_expression(value: float) -> str:
+    if not math.isfinite(value):
+        raise ValueError("particle electric charge must be finite")
+    numerator, denominator = value.as_integer_ratio()
+    if denominator == 1:
+        return str(numerator)
+    return f"{numerator}/{denominator}"
 
 
 def _coupling(
@@ -87,7 +106,7 @@ def _coupling(
         name=str(item["name"]),
         expression=expression,
         resolved_expression=expression,
-        value=_pair(item.get("value")),
+        value=_optional_pair(item.get("value")),
         orders=_orders(item.get("orders")),
     )
 
@@ -205,8 +224,8 @@ def _resolve_coupling_records(
 
 
 def _replace_evaluator_constants(expression: _sym.Expression) -> _sym.Expression:
-    # SymJIT 2.19.3 does not currently lower Symbolica's built-in Pi atom,
-    # although ordinary numeric constants and powers are supported.
+    # Persist a backend-independent numeric value; not every evaluator backend
+    # lowers Symbolica's built-in Pi atom.
     return expression.replace(_sym.E("pi"), _sym.E(repr(math.pi)))
 
 

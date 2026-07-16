@@ -10,7 +10,11 @@ import pytest
 import pyamplicol
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol.models import compiler_symbolica as _sym
-from pyamplicol.models.contracts import CompiledCouplingRecord, CompiledModelIR
+from pyamplicol.models.contracts import (
+    CompiledCouplingRecord,
+    CompiledModelIR,
+    CompiledParticleRecord,
+)
 from pyamplicol.models.loading import (
     ModelCompileOptions,
     _load_external_model,
@@ -124,6 +128,72 @@ def test_compiled_model_rejects_process_global_ufo_scalar_symbols() -> None:
             vertex_terms=(),
             oriented_kernels=(),
         )
+
+
+def test_compiled_model_rejects_non_involutive_particle_identity() -> None:
+    particle = CompiledParticleRecord(
+        name="psi",
+        antiname="psi_bar",
+        pdg_code=700_001,
+        spin=2,
+        color=3,
+        mass="ZERO",
+        width="ZERO",
+        charge=0.0,
+        quantum_numbers=(("electric_charge", "0"),),
+        ghost_number=0,
+        propagating=True,
+        goldstoneboson=False,
+        propagator=None,
+    )
+
+    with pytest.raises(ValueError, match="absent antiparticle"):
+        CompiledModelIR(
+            name="invalid-particle-pair",
+            orders=(),
+            parameters=(),
+            particles=(particle,),
+            couplings=(),
+            propagators=(),
+            vertex_terms=(),
+            oriented_kernels=(),
+        )
+
+
+def test_compiled_particle_role_metadata_round_trips() -> None:
+    particle = CompiledParticleRecord(
+        name="x",
+        antiname="x",
+        pdg_code=700_010,
+        spin=3,
+        color=8,
+        mass="ZERO",
+        width="ZERO",
+        charge=0.0,
+        quantum_numbers=(("electric_charge", "0"),),
+        ghost_number=0,
+        propagating=True,
+        goldstoneboson=False,
+        propagator=None,
+    )
+    model = CompiledModelIR(
+        name="role-round-trip",
+        orders=(),
+        parameters=(),
+        particles=(particle,),
+        couplings=(),
+        propagators=(),
+        vertex_terms=(),
+        oriented_kernels=(),
+    )
+
+    restored = CompiledModelIR.from_dict(model.to_dict()).particles[0]
+
+    assert restored.statistics == "boson"
+    assert restored.wavefunction_family == "vector"
+    assert restored.color_role == "adjoint"
+    assert restored.self_conjugate is True
+    assert restored.source_orientation == "self-conjugate"
 
 
 def test_model_cache_inputs_are_content_based(tmp_path: Path) -> None:
