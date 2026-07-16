@@ -510,6 +510,17 @@ def test_process_selection_rejects_ambiguous_pdg_rows() -> None:
         module.select_process_entry(candidates, "d d~ > z g")
 
 
+def test_process_contract_pins_row_and_color_order_multiplicities() -> None:
+    module = _module()
+
+    assert module.expected_process_match_count("d d~ > z g g") == 1
+    assert module.expected_color_order_count("d d~ > z g g") == 2
+    assert module.expected_process_match_count("g g > g g") == 3
+    assert module.expected_color_order_count("g g > g g") == 6
+    assert module.expected_process_match_count("d d~ > d d~") == 2
+    assert module.expected_color_order_count("d d~ > d d~") == 2
+
+
 def test_oracle_rejects_processes_beyond_two_quark_lines() -> None:
     module = _module()
 
@@ -899,6 +910,28 @@ def test_v2_evidence_is_independent_of_temporary_paths(
     _, second, _, _ = _capture_v2(tmp_path / "second", monkeypatch)
 
     assert first == second
+
+
+def test_v2_oracle_rejects_changed_process_row_multiplicity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    monkeypatch.setattr(module, "expected_process_match_count", lambda process: 2)
+
+    with pytest.raises(module.LegacyOracleError, match="row multiplicity"):
+        _capture_v2(tmp_path, monkeypatch, module=module)
+
+
+def test_v2_oracle_rejects_changed_color_order_multiplicity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    monkeypatch.setattr(module, "expected_color_order_count", lambda process: 1)
+
+    with pytest.raises(module.LegacyOracleError, match="color-order count"):
+        _capture_v2(tmp_path, monkeypatch, module=module)
 
 
 def test_v2_oracle_uses_helicity_aggregates_for_multi_flow_lc(

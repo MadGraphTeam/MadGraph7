@@ -67,6 +67,19 @@ def _stress_metric_value(
     sqrt_s = _as_fraction(point.sqrt_s)
     if point.stress_metric.kind == "minimum-final-energy-fraction":
         return min(_as_fraction(momentum[0]) / sqrt_s for momentum in final_momenta)
+    if point.stress_metric.kind == "relative-excess-energy":
+        threshold = sum(
+            (
+                _as_fraction(mass)
+                for mass in point.masses[process.initial_state_count :]
+            ),
+            Fraction(),
+        )
+        if threshold <= 0:
+            raise ReferenceFixtureError(
+                f"threshold stress point {point.id} has no massive final state"
+            )
+        return (sqrt_s - threshold) / threshold
     sqrt_s_squared = sqrt_s * sqrt_s
     return min(
         (_as_fraction(momentum[1]) ** 2 + _as_fraction(momentum[2]) ** 2)

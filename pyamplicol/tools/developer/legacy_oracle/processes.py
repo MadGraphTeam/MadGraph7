@@ -54,6 +54,34 @@ EXPECTED_FORTRAN_PROCESS_ROWS: Mapping[str, ProcessEntry] = {
         (1, -1, 21, 21, 23),
         (2, 3, 4, 1, 5),
     ),
+    "u d~ > w+": ProcessEntry(1, 1, (2, -1, 24), (2, 1, 3)),
+    "d d~ > e- e+": ProcessEntry(1, 1, (1, -1, 11, -11), (2, 1, 3, 4)),
+    "d d~ > u u~": ProcessEntry(2, 1, (1, -1, 2, -2), (2, 1, 3, 4)),
+    "d d~ > d d~": ProcessEntry(2, 1, (1, -1, 1, -1), (2, 1, 3, 4)),
+    "g g > g g": ProcessEntry(1, 1, (21, 21, 21, 21), (1, 2, 3, 4)),
+    "g g > t t~": ProcessEntry(1, 1, (21, 21, 6, -6), (3, 1, 2, 4)),
+}
+EXPECTED_FORTRAN_PDG_MATCH_COUNTS: Mapping[str, int] = {
+    "d d~ > z": 1,
+    "d d~ > z g": 1,
+    "d d~ > z g g": 1,
+    "u d~ > w+": 1,
+    "d d~ > e- e+": 2,
+    "d d~ > u u~": 2,
+    "d d~ > d d~": 2,
+    "g g > g g": 3,
+    "g g > t t~": 2,
+}
+EXPECTED_FORTRAN_COLOR_ORDER_COUNTS: Mapping[str, int] = {
+    "d d~ > z": 1,
+    "d d~ > z g": 1,
+    "d d~ > z g g": 2,
+    "u d~ > w+": 1,
+    "d d~ > e- e+": 1,
+    "d d~ > u u~": 2,
+    "d d~ > d d~": 2,
+    "g g > g g": 6,
+    "g g > t t~": 2,
 }
 
 
@@ -154,6 +182,26 @@ def expected_process_entry(process: str) -> ProcessEntry:
     except KeyError as error:
         raise LegacyOracleError(
             f"no expected Fortran process row is declared for {process!r}"
+        ) from error
+
+
+def expected_process_match_count(process: str) -> int:
+    normalized = _normalized_process_expression(process)
+    try:
+        return EXPECTED_FORTRAN_PDG_MATCH_COUNTS[normalized]
+    except KeyError as error:
+        raise LegacyOracleError(
+            f"no expected Fortran PDG-match count is declared for {process!r}"
+        ) from error
+
+
+def expected_color_order_count(process: str) -> int:
+    normalized = _normalized_process_expression(process)
+    try:
+        return EXPECTED_FORTRAN_COLOR_ORDER_COUNTS[normalized]
+    except KeyError as error:
+        raise LegacyOracleError(
+            f"no expected Fortran color-order count is declared for {process!r}"
         ) from error
 
 

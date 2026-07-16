@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +12,10 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from tools.developer import reference_capture as capture
+from tools.developer.legacy_oracle import processes as legacy_processes
 from tools.developer.reference_capture import artifacts, evidence, pipeline, provenance
+from tools.developer.reference_fixture import model as reference_model
+from tools.developer.reference_fixture import numerics as reference_numerics
 
 _REFERENCE_SCHEMA = json.loads(
     (
@@ -36,20 +40,17 @@ def _run_git(repository: Path, *arguments: str) -> None:
     )
 
 
-def _masses(expression: str) -> tuple[Decimal, ...]:
-    if expression == "d d~ > z":
-        return (Decimal(0), Decimal(0), Decimal("91.188"))
-    if expression == "d d~ > z g":
-        return (Decimal(0), Decimal(0), Decimal("91.188"), Decimal(0))
-    if expression == "d d~ > z g g":
-        return (
-            Decimal(0),
-            Decimal(0),
-            Decimal("91.188"),
-            Decimal(0),
-            Decimal(0),
-        )
-    return (Decimal(0), Decimal(0), Decimal(0), Decimal(0))
+_PROCESS_SPECS = {
+    process.id: process
+    for artifact in artifacts.artifact_capture_specs(Path("unused"))
+    for process in artifact.processes
+}
+_PROCESS_MASSES = {
+    process_id: tuple(
+        Decimal(value) for value in process.expected_external_masses
+    )
+    for process_id, process in _PROCESS_SPECS.items()
+}
 
 
 @pytest.mark.parametrize(
@@ -95,35 +96,34 @@ def test_canonical_decimal_rejects_non_finite_values() -> None:
 
 
 @pytest.mark.parametrize(
-    ("process_id", "expression", "expected_count"),
+    ("process_id", "expected_count"),
     (
-        ("sm_ddbar_z", "d d~ > z", 1),
-        ("sm_ddbar_zg", "d d~ > z g", 4),
-        ("sm_ddbar_zgg", "d d~ > z g g", 4),
-        (
-            "scalars_2to2",
-            "scalar_0 scalar_0 > scalar_0 scalar_0",
-            4,
-        ),
-        (
-            "scalar_gravity_2to2",
-            "scalar_0 scalar_0 > graviton graviton",
-            4,
-        ),
+        ("sm_ddbar_z", 1),
+        ("sm_ddbar_zg", 4),
+        ("sm_ddbar_zgg", 4),
+        ("sm_udbar_wplus", 1),
+        ("sm_ddbar_ee", 4),
+        ("sm_ddbar_uubar", 4),
+        ("sm_ddbar_ddbar", 4),
+        ("sm_gg_gg", 4),
+        ("sm_gg_ttbar", 4),
+        ("scalars_2to2", 4),
+        ("scalar_gravity_2to2", 4),
     ),
 )
 def test_reference_points_are_deterministic_canonical_and_valid(
     process_id: str,
-    expression: str,
     expected_count: int,
 ) -> None:
-    first = capture.build_reference_points(process_id, expression)
-    second = capture.build_reference_points(process_id, expression)
+    process = _PROCESS_SPECS[process_id]
+    masses = _PROCESS_MASSES[process_id]
+    first = capture.build_reference_points(process, masses)
+    second = capture.build_reference_points(process, masses)
 
     assert first == second
     assert len(first) == expected_count
     for point in first:
-        capture.validate_point_kinematics(point, _masses(expression))
+        capture.validate_point_kinematics(point, masses)
         payload = point.as_payload()
         _POINT_VALIDATOR.validate(payload)
         numeric_strings = [
@@ -134,7 +134,7 @@ def test_reference_points_are_deterministic_canonical_and_valid(
             point.as_payload()
         )
 
-    if expression == "d d~ > z":
+    if process.point_policy == "exact-2to1":
         assert [point.point_class for point in first] == ["canonical"]
     else:
         assert [point.point_class for point in first] == [
@@ -165,8 +165,118 @@ def test_reference_points_are_deterministic_canonical_and_valid(
         )
 
 
+def test_builtin_capture_ladder_declares_exact_fortran_rows() -> None:
+    builtin = {
+        process.expression: process
+        for process in _PROCESS_SPECS.values()
+        if process.model_id == "model:builtin-sm"
+    }
+
+    expected_expressions = set(legacy_processes.EXPECTED_FORTRAN_PROCESS_ROWS)
+    assert set(builtin) == expected_expressions
+    assert set(legacy_processes.EXPECTED_FORTRAN_PDG_MATCH_COUNTS) == (
+        expected_expressions
+    )
+    assert set(legacy_processes.EXPECTED_FORTRAN_COLOR_ORDER_COUNTS) == (
+        expected_expressions
+    )
+    for expression, process in builtin.items():
+        row = legacy_processes.expected_process_entry(expression)
+        assert sorted(row.process_pdgs) == sorted(
+            legacy_processes.process_pdgs(expression)
+        )
+        assert (not process.point_seeds) == (process.point_policy == "exact-2to1")
+        assert legacy_processes.expected_process_match_count(expression) >= 1
+        assert legacy_processes.expected_color_order_count(expression) >= 1
+
+
+def test_capture_artifacts_are_ordered_by_final_state_multiplicity() -> None:
+    specs = artifacts.artifact_capture_specs(Path("unused"))
+    multiplicities = [
+        len(process.expression.partition(">")[2].split())
+        for artifact in specs
+        for process in artifact.processes
+    ]
+
+    assert multiplicities == sorted(multiplicities)
+    assert len({artifact.id for artifact in specs}) == len(specs)
+    assert len({artifact.directory_name for artifact in specs}) == len(specs)
+
+
+def test_capture_masses_are_independent_and_checked_against_artifacts() -> None:
+    process = _PROCESS_SPECS["sm_gg_ttbar"]
+    expected = _PROCESS_MASSES[process.id]
+
+    assert artifacts._validated_capture_masses(
+        process,
+        {"external_masses": ["0", "0", "173", "173"]},
+    ) == expected
+    with pytest.raises(capture.CaptureError, match="independent capture contract"):
+        artifacts._validated_capture_masses(
+            process,
+            {"external_masses": ["0", "0", "172.5", "172.5"]},
+        )
+
+
+def test_massive_two_body_stress_point_probes_threshold() -> None:
+    process = _PROCESS_SPECS["sm_gg_ttbar"]
+    point = capture.build_reference_points(
+        process, _PROCESS_MASSES[process.id]
+    )[-1]
+
+    assert point.id.endswith(":stress-near-threshold")
+    assert point.sqrt_s == Decimal("346.000346")
+    assert point.stress_metric == capture.StressMetric(
+        "relative-excess-energy",
+        Decimal("0.000001"),
+    )
+    assert point.momenta[2][1:] != (Decimal(0), Decimal(0), Decimal(0))
+    parsed_point = reference_model.ReferencePoint(
+        id=point.id,
+        process_id=point.process_id,
+        point_class=point.point_class,
+        algorithm=reference_model.PointAlgorithm(
+            point.algorithm_name,
+            point.algorithm_version,
+            point.rng,
+            point.seed,
+        ),
+        sqrt_s=point.sqrt_s,
+        momenta=point.momenta,
+        masses=point.masses,
+        arithmetic_precision_bits=point.arithmetic_precision_bits,
+        round_trip_decimal_digits=point.round_trip_decimal_digits,
+        certified_decimal_digits=point.certified_decimal_digits,
+        stress_metric=reference_model.StressMetric(
+            point.stress_metric.kind,
+            point.stress_metric.value,
+        ),
+    )
+    parsed_process = reference_model.Process(
+        id=process.id,
+        expression=process.expression,
+        external_pdgs=(21, 21, 6, -6),
+        external_labels=(1, 2, 3, 4),
+        external_leg_ids=("g-1", "g-2", "t", "tbar"),
+        external_spins=(3, 3, 2, 2),
+        external_colors=(8, 8, 3, -3),
+        external_masses=point.masses,
+        external_helicity_domains=((-1, 1),) * 4,
+        initial_state_count=2,
+        alias_of=None,
+        final_state_permutation=None,
+    )
+    assert reference_numerics._stress_metric_value(
+        parsed_point,
+        parsed_process,
+    ) == Fraction(1, 1_000_000)
+
+
 def test_three_body_stress_point_is_deliberately_soft() -> None:
-    point = capture.build_reference_points("sm_ddbar_zgg", "d d~ > z g g")[-1]
+    process = _PROCESS_SPECS["sm_ddbar_zgg"]
+    point = capture.build_reference_points(
+        process, _PROCESS_MASSES[process.id]
+    )[-1]
     incoming = point.momenta[0]
     soft = point.momenta[-1]
     incoming_dot_soft = incoming[0] * soft[0] - sum(
@@ -185,7 +295,10 @@ def test_three_body_stress_point_is_deliberately_soft() -> None:
 
 
 def test_three_body_generic_points_avoid_exact_collinear_singularities() -> None:
-    points = capture.build_reference_points("sm_ddbar_zgg", "d d~ > z g g")[:3]
+    process = _PROCESS_SPECS["sm_ddbar_zgg"]
+    points = capture.build_reference_points(
+        process, _PROCESS_MASSES[process.id]
+    )[:3]
 
     def dot(left, right):
         return left[0] * right[0] - sum(
@@ -494,7 +607,13 @@ def test_run_capture_uses_mocked_assembly_and_validation_paths(
         "5" * 64,
     )
     dependencies = capture.DependencySnapshot((), {}, {})
-    process = capture.ProcessCaptureSpec("process", "a b > c", "model")
+    process = capture.ProcessCaptureSpec(
+        "process",
+        "a b > c",
+        "model",
+        ("0", "0", "1"),
+        "exact-2to1",
+    )
     spec = capture.ArtifactCaptureSpec(
         "artifact",
         "artifact",

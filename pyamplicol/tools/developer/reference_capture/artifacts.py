@@ -37,20 +37,97 @@ from .common import (
 )
 from .points import build_reference_points, stable_external_leg_ids
 
-SM_PROCESSES = (
-    ProcessCaptureSpec("sm_ddbar_z", "d d~ > z", "model:builtin-sm"),
-    ProcessCaptureSpec("sm_ddbar_zg", "d d~ > z g", "model:builtin-sm"),
-    ProcessCaptureSpec("sm_ddbar_zgg", "d d~ > z g g", "model:builtin-sm"),
+SM_ONE_BODY_PROCESSES = (
+    ProcessCaptureSpec(
+        "sm_ddbar_z",
+        "d d~ > z",
+        "model:builtin-sm",
+        ("0", "0", "91.188"),
+        "exact-2to1",
+    ),
+    ProcessCaptureSpec(
+        "sm_udbar_wplus",
+        "u d~ > w+",
+        "model:builtin-sm",
+        ("0", "0", "80.41900244575616"),
+        "exact-2to1",
+    ),
+)
+SM_TWO_BODY_PROCESSES = (
+    ProcessCaptureSpec(
+        "sm_ddbar_zg",
+        "d d~ > z g",
+        "model:builtin-sm",
+        ("0", "0", "91.188", "0"),
+        "seeded-two-body",
+        (104729, 104759, 104761),
+    ),
+    ProcessCaptureSpec(
+        "sm_ddbar_ee",
+        "d d~ > e- e+",
+        "model:builtin-sm",
+        ("0", "0", "0", "0"),
+        "seeded-two-body",
+        (196613, 196643, 196657),
+    ),
+    ProcessCaptureSpec(
+        "sm_ddbar_uubar",
+        "d d~ > u u~",
+        "model:builtin-sm",
+        ("0", "0", "0", "0"),
+        "seeded-two-body",
+        (221603, 221621, 221623),
+    ),
+    ProcessCaptureSpec(
+        "sm_ddbar_ddbar",
+        "d d~ > d d~",
+        "model:builtin-sm",
+        ("0", "0", "0", "0"),
+        "seeded-two-body",
+        (234803, 234811, 234817),
+    ),
+    ProcessCaptureSpec(
+        "sm_gg_gg",
+        "g g > g g",
+        "model:builtin-sm",
+        ("0", "0", "0", "0"),
+        "seeded-two-body",
+        (246613, 246631, 246637),
+    ),
+    ProcessCaptureSpec(
+        "sm_gg_ttbar",
+        "g g > t t~",
+        "model:builtin-sm",
+        ("0", "0", "173", "173"),
+        "seeded-two-body",
+        (271603, 271619, 271637),
+    ),
+)
+SM_THREE_BODY_PROCESSES = (
+    ProcessCaptureSpec(
+        "sm_ddbar_zgg",
+        "d d~ > z g g",
+        "model:builtin-sm",
+        ("0", "0", "91.188", "0", "0"),
+        "one-massive-two-massless",
+        (130363, 130367, 130369),
+    ),
 )
 SCALAR_PROCESS = ProcessCaptureSpec(
     "scalars_2to2",
     "scalar_0 scalar_0 > scalar_0 scalar_0",
     "model:scalars-json",
+    ("0", "0", "0", "0"),
+    "seeded-two-body",
+    (155921, 155933, 155947),
 )
 SCALAR_GRAVITY_PROCESS = ProcessCaptureSpec(
     "scalar_gravity_2to2",
     "scalar_0 scalar_0 > graviton graviton",
     "model:scalar-gravity-json",
+    ("0", "0", "0", "0"),
+    "seeded-two-body",
+    (181081, 181087, 181123),
 )
 
 
@@ -63,12 +140,23 @@ def artifact_capture_specs(artifact_root: Path) -> tuple[ArtifactCaptureSpec, ..
     return (
         *(
             ArtifactCaptureSpec(
-                id=f"builtin-sm-{accuracy}",
-                directory_name=f"builtin-sm-{accuracy}",
+                id=f"builtin-sm-one-body-{accuracy}",
+                directory_name=f"builtin-sm-one-body-{accuracy}",
                 model_id="model:builtin-sm",
                 model_source=None,
                 color_accuracy=cast(Literal["lc", "nlc", "full"], accuracy),
-                processes=SM_PROCESSES,
+                processes=SM_ONE_BODY_PROCESSES,
+            )
+            for accuracy in ("lc", "nlc", "full")
+        ),
+        *(
+            ArtifactCaptureSpec(
+                id=f"builtin-sm-two-body-{accuracy}",
+                directory_name=f"builtin-sm-two-body-{accuracy}",
+                model_id="model:builtin-sm",
+                model_source=None,
+                color_accuracy=cast(Literal["lc", "nlc", "full"], accuracy),
+                processes=SM_TWO_BODY_PROCESSES,
             )
             for accuracy in ("lc", "nlc", "full")
         ),
@@ -87,6 +175,17 @@ def artifact_capture_specs(artifact_root: Path) -> tuple[ArtifactCaptureSpec, ..
             model_source=gravity_source,
             color_accuracy="lc",
             processes=(SCALAR_GRAVITY_PROCESS,),
+        ),
+        *(
+            ArtifactCaptureSpec(
+                id=f"builtin-sm-three-body-{accuracy}",
+                directory_name=f"builtin-sm-three-body-{accuracy}",
+                model_id="model:builtin-sm",
+                model_source=None,
+                color_accuracy=cast(Literal["lc", "nlc", "full"], accuracy),
+                processes=SM_THREE_BODY_PROCESSES,
+            )
+            for accuracy in ("lc", "nlc", "full")
         ),
     )
 
@@ -739,7 +838,9 @@ def _case_payload(
         "process_id": process_spec.id,
         "color_accuracy": spec.color_accuracy,
         "point_policy": (
-            "degenerate-2to1" if process_spec.expression == "d d~ > z" else "standard"
+            "degenerate-2to1"
+            if process_spec.point_policy == "exact-2to1"
+            else "standard"
         ),
         "point_ids": [point.id for point in points],
         "coverage": {
@@ -771,6 +872,43 @@ def _case_payload(
             certified_digits,
         ),
     }
+
+
+def _validated_capture_masses(
+    process_spec: ProcessCaptureSpec,
+    process_payload: Mapping[str, object],
+) -> tuple[Decimal, ...]:
+    try:
+        expected = tuple(
+            Decimal(value) for value in process_spec.expected_external_masses
+        )
+        actual = tuple(
+            Decimal(str(value))
+            for value in cast(
+                Sequence[object], process_payload["external_masses"]
+            )
+        )
+    except (ArithmeticError, KeyError) as error:
+        raise CaptureError(
+            f"invalid mass contract for {process_spec.expression!r}"
+        ) from error
+    if any(
+        canonical_decimal(value) != declared
+        for value, declared in zip(
+            expected,
+            process_spec.expected_external_masses,
+            strict=True,
+        )
+    ):
+        raise CaptureError(
+            f"declared masses for {process_spec.expression!r} are not canonical"
+        )
+    if actual != expected:
+        raise CaptureError(
+            f"artifact masses {actual} for {process_spec.expression!r} differ "
+            f"from the independent capture contract {expected}"
+        )
+    return expected
 
 
 def assemble_fixture(
@@ -834,7 +972,10 @@ def assemble_fixture(
                 )
             points = point_payloads.setdefault(
                 process_spec.id,
-                build_reference_points(process_spec.id, process_spec.expression),
+                build_reference_points(
+                    process_spec,
+                    _validated_capture_masses(process_spec, process_payload),
+                ),
             )
             cases.append(
                 _case_payload(

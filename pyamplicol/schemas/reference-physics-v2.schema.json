@@ -594,7 +594,8 @@
         "kind": {
           "enum": [
             "minimum-final-energy-fraction",
-            "minimum-final-transverse-momentum-squared-fraction"
+            "minimum-final-transverse-momentum-squared-fraction",
+            "relative-excess-energy"
           ]
         },
         "value": {

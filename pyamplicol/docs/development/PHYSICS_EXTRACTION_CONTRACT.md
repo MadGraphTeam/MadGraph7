@@ -68,9 +68,9 @@ asset is shipped.
 
 ## Reference Ladder
 
-The compact baseline starts with:
+The first frozen fixture-v2 bundle contains:
 
-- `d d~ > z` and `d d~ > z g` in LC/NLC/full;
+- `d d~ > z`, `d d~ > z g`, and `d d~ > z g g` in LC/NLC/full;
 - scalar contact `scalar_0 scalar_0 > scalar_0 scalar_0`;
 - spin-2 `scalar_0 scalar_0 > graviton graviton`.
 
@@ -80,14 +80,20 @@ independent check covers the summed matrix element and every recorded nonzero
 physical-helicity component. The probe is developer-only, links no LHAPDF,
 and is never imported or packaged by the installed distribution.
 
-Before the model/generation milestone is accepted it expands to:
+The next declarative capture revision first completes all low-multiplicity
+classes before retaining any higher-multiplicity output. It adds `u d~ > w+`,
+`d d~ > e- e+`, mixed- and same-flavour two-quark-line scattering,
+`g g > g g`, and `g g > t t~` in LC/NLC/full. Built-in masses and exact
+Fortran process-row, matching-row, and colour-order counts are independent
+capture contracts. The massive top case includes a high-precision threshold
+point. These cases become release evidence only after a clean candidate built
+from the committed recipe regenerates all fixture and evidence documents.
+
+Before the model/generation milestone is accepted the ladder then expands to:
 
 - process-set `d d~ > z g` and `d d~ > z g g`;
-- `d d~ > t t~` and `g g > t t~ g`;
-- `g g > g g`;
-- charged-current and neutral leptonic examples;
+- `d d~ > t t~` and `g g > t t~ g` at the next multiplicity;
 - identical-vector/Higgs interference;
-- multi-quark-line LC/NLC/full;
 - scalar contacts with two, three, and five final scalars;
 - scalar propagation with mass, width, and coupling variations;
 - two and three final gravitons;

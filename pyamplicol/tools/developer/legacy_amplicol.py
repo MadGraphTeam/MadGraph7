@@ -156,11 +156,17 @@ def _compiler_provenance(repository: Path) -> CompilerProvenance:
 
 _PDG_BY_NAME = _processes._PDG_BY_NAME
 EXPECTED_FORTRAN_PROCESS_ROWS = _processes.EXPECTED_FORTRAN_PROCESS_ROWS
+EXPECTED_FORTRAN_PDG_MATCH_COUNTS = _processes.EXPECTED_FORTRAN_PDG_MATCH_COUNTS
+EXPECTED_FORTRAN_COLOR_ORDER_COUNTS = (
+    _processes.EXPECTED_FORTRAN_COLOR_ORDER_COUNTS
+)
 parse_process_file = _processes.parse_process_file
 process_pdgs = _processes.process_pdgs
 _normalized_process_expression = _processes._normalized_process_expression
 _validate_supported_quark_line_scope = _processes._validate_supported_quark_line_scope
 expected_process_entry = _processes.expected_process_entry
+expected_process_match_count = _processes.expected_process_match_count
+expected_color_order_count = _processes.expected_color_order_count
 select_process_entry = _processes.select_process_entry
 _select_declared_process_entry = _processes._select_declared_process_entry
 matching_process_entries = _processes.matching_process_entries
@@ -475,6 +481,13 @@ def _verify_fixture_v2(
                     generated_process=generation_expression,
                     wanted_pdgs=source_pdgs,
                 )
+                expected_matches = expected_process_match_count(generation_expression)
+                if len(matching_entries) != expected_matches:
+                    raise LegacyOracleError(
+                        f"{case_id}: Fortran process-list row multiplicity "
+                        f"{len(matching_entries)} differs from declared "
+                        f"{expected_matches} for {generation_expression!r}"
+                    )
                 permutation = _permutation(source_pdgs, entry.process_pdgs)
                 row_leg_ids = tuple(source_leg_ids[index] for index in permutation)
                 ordered_color_legs = _ordered_leg_ids(
@@ -526,6 +539,15 @@ def _verify_fixture_v2(
                         momenta=momenta,
                         color_accuracy=color_accuracy,
                     )
+                    expected_orders = expected_color_order_count(
+                        generation_expression
+                    )
+                    if summed.color_orders != expected_orders:
+                        raise LegacyOracleError(
+                            f"{case_id}/{point_id}: Fortran color-order count "
+                            f"{summed.color_orders} differs from declared "
+                            f"{expected_orders} for {generation_expression!r}"
+                        )
                     observed_total = _probe_value_decimal(summed)
                     expected_total = Decimal(str(observation["total"]))
                     if not _decimal_close(observed_total, expected_total):

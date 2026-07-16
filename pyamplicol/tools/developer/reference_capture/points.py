@@ -15,6 +15,7 @@ from .common import (
     CaptureError,
     CapturePoint,
     Momentum,
+    ProcessCaptureSpec,
     StressMetric,
     canonical_decimal,
     decimal_digits_to_bits,
@@ -22,7 +23,6 @@ from .common import (
 
 _PUBLIC_ID_PART_RE = re.compile(r"[^A-Za-z0-9._~-]+")
 _GENERIC_SQRT_S = Decimal("1000")
-_Z_MASS = Decimal("91.188")
 _BINARY64_BITS = 53
 _BINARY64_ROUND_TRIP_DIGITS = 17
 _BINARY64_CERTIFIED_DIGITS = 12
@@ -33,14 +33,7 @@ _DECIMAL_CERTIFIED_DIGITS = 80
 # decimal digits certified by the independent binary64 Fortran oracle.
 _THREE_BODY_STRESS_ENERGY_FRACTION = Decimal("1e-3")
 _THREE_BODY_STRESS_SINE = Decimal("0.2")
-_POINT_SEEDS: Mapping[str, tuple[int, int, int]] = {
-    "d d~ > z g": (104729, 104759, 104761),
-    "d d~ > z g g": (130363, 130367, 130369),
-    "scalar_0 scalar_0 > scalar_0 scalar_0": (155921, 155933, 155947),
-    "scalar_0 scalar_0 > graviton graviton": (181081, 181087, 181123),
-}
-
-
+_THRESHOLD_STRESS_RELATIVE_EXCESS = Decimal("1e-6")
 def _f64_decimal(value: float) -> Decimal:
     return Decimal(canonical_decimal(value))
 
@@ -176,6 +169,61 @@ def _two_body_stress(
     return point
 
 
+def _two_body_threshold_stress(
+    process_id: str,
+    expression: str,
+    masses: tuple[Decimal, Decimal],
+) -> CapturePoint:
+    with localcontext() as context:
+        context.prec = _DECIMAL_WORKING_DIGITS
+        mass_3, mass_4 = masses
+        threshold = +(mass_3 + mass_4)
+        if mass_3 <= 0 or mass_4 <= 0:
+            raise CaptureError(
+                f"threshold stress point requires two massive final legs: "
+                f"{expression}"
+            )
+        sqrt_s = +(threshold * (Decimal(1) + _THRESHOLD_STRESS_RELATIVE_EXCESS))
+        s = +(sqrt_s * sqrt_s)
+        radicand = _lambda(s, mass_3 * mass_3, mass_4 * mass_4)
+        if radicand <= 0:
+            raise CaptureError(
+                f"threshold stress point is below threshold: {expression}"
+            )
+        momentum = +(radicand.sqrt() / (2 * sqrt_s))
+        energy_3 = +(s + mass_3 * mass_3 - mass_4 * mass_4) / (2 * sqrt_s)
+        energy_4 = +(sqrt_s - energy_3)
+        sine = Decimal("0.6")
+        cosine = Decimal("0.8")
+        zero = Decimal(0)
+        momenta = (
+            *_incoming(sqrt_s),
+            (energy_3, +(momentum * sine), zero, +(momentum * cosine)),
+            (energy_4, -(momentum * sine), zero, -(momentum * cosine)),
+        )
+    point = CapturePoint(
+        id=f"point:{process_id}:stress-near-threshold",
+        process_id=process_id,
+        point_class="stress",
+        algorithm_name="decimal-near-threshold-two-body",
+        algorithm_version="1",
+        rng=None,
+        seed=None,
+        sqrt_s=sqrt_s,
+        momenta=momenta,
+        masses=(Decimal(0), Decimal(0), *masses),
+        arithmetic_precision_bits=decimal_digits_to_bits(_DECIMAL_WORKING_DIGITS),
+        round_trip_decimal_digits=_DECIMAL_ROUND_TRIP_DIGITS,
+        certified_decimal_digits=_DECIMAL_CERTIFIED_DIGITS,
+        stress_metric=StressMetric(
+            "relative-excess-energy",
+            _THRESHOLD_STRESS_RELATIVE_EXCESS,
+        ),
+    )
+    validate_point_kinematics(point, point.masses)
+    return point
+
+
 def _boost_z_f64(
     momentum: tuple[float, float, float, float], beta: float
 ) -> tuple[float, float, float, float]:
@@ -213,15 +261,16 @@ def _three_body_generic(
     process_id: str,
     seed: int,
     index: int,
+    mass: Decimal,
 ) -> CapturePoint:
     sqrt_s = float(_GENERIC_SQRT_S)
-    mass = float(_Z_MASS)
+    final_mass = float(mass)
     generator = random.Random(seed)
     soft_energy = sqrt_s * (0.08 + 0.12 * generator.random())
     q_energy = sqrt_s - soft_energy
     q_mass = math.sqrt(sqrt_s * sqrt_s - 2.0 * sqrt_s * soft_energy)
-    hard_energy = (q_mass * q_mass - mass * mass) / (2.0 * q_mass)
-    z_energy = (q_mass * q_mass + mass * mass) / (2.0 * q_mass)
+    hard_energy = (q_mass * q_mass - final_mass * final_mass) / (2.0 * q_mass)
+    massive_energy = (q_mass * q_mass + final_mass * final_mass) / (2.0 * q_mass)
     cosine = generator.uniform(-0.72, 0.72)
     sine = math.sqrt(1.0 - cosine * cosine)
     phi = generator.uniform(0.0, 2.0 * math.pi)
@@ -230,7 +279,7 @@ def _three_body_generic(
     pz = hard_energy * cosine
     beta = -soft_energy / q_energy
     hard = _boost_z_f64((hard_energy, px, py, pz), beta)
-    z_boson = _boost_z_f64((z_energy, -px, -py, -pz), beta)
+    massive = _boost_z_f64((massive_energy, -px, -py, -pz), beta)
     rotation_cosine = generator.uniform(-0.75, 0.75)
     rotation_sine = math.sqrt(1.0 - rotation_cosine * rotation_cosine)
     rotation_phi = generator.uniform(0.0, 2.0 * math.pi)
@@ -242,7 +291,7 @@ def _three_body_generic(
             phi=rotation_phi,
         )
         for momentum in (
-            z_boson,
+            massive,
             hard,
             (soft_energy, 0.0, 0.0, soft_energy),
         )
@@ -265,7 +314,7 @@ def _three_body_generic(
             cast(Momentum, tuple(_f64_decimal(component) for component in row))
             for row in raw
         ),
-        masses=(Decimal(0), Decimal(0), _Z_MASS, Decimal(0), Decimal(0)),
+        masses=(Decimal(0), Decimal(0), mass, Decimal(0), Decimal(0)),
         arithmetic_precision_bits=_BINARY64_BITS,
         round_trip_decimal_digits=_BINARY64_ROUND_TRIP_DIGITS,
         certified_decimal_digits=_BINARY64_CERTIFIED_DIGITS,
@@ -301,16 +350,16 @@ def _boost_decimal(
     return cast(Momentum, (+(gamma * (energy + beta_dot_momentum)), *boosted))
 
 
-def _three_body_stress(process_id: str) -> CapturePoint:
+def _three_body_stress(process_id: str, mass: Decimal) -> CapturePoint:
     with localcontext() as context:
         context.prec = _DECIMAL_WORKING_DIGITS
         sqrt_s = +_GENERIC_SQRT_S
-        mass = +_Z_MASS
+        mass = +mass
         soft_energy = +(sqrt_s * _THREE_BODY_STRESS_ENERGY_FRACTION)
         q_energy = +(sqrt_s - soft_energy)
         q_mass = +(sqrt_s * sqrt_s - 2 * sqrt_s * soft_energy).sqrt()
         hard_energy = +(q_mass * q_mass - mass * mass) / (2 * q_mass)
-        z_energy = +(q_mass * q_mass + mass * mass) / (2 * q_mass)
+        massive_energy = +(q_mass * q_mass + mass * mass) / (2 * q_mass)
         sine = _THREE_BODY_STRESS_SINE
         cosine = +(Decimal(1) - sine * sine).sqrt()
         zero = Decimal(0)
@@ -318,10 +367,10 @@ def _three_body_stress(process_id: str) -> CapturePoint:
         soft_pz = +(soft_energy * cosine)
         beta = (-soft_px / q_energy, zero, -soft_pz / q_energy)
         hard = _boost_decimal((hard_energy, zero, hard_energy, zero), beta)
-        z_boson = _boost_decimal((z_energy, zero, -hard_energy, zero), beta)
+        massive = _boost_decimal((massive_energy, zero, -hard_energy, zero), beta)
         momenta = (
             *_incoming(sqrt_s),
-            z_boson,
+            massive,
             hard,
             (soft_energy, soft_px, zero, soft_pz),
         )
@@ -335,7 +384,7 @@ def _three_body_stress(process_id: str) -> CapturePoint:
         seed=None,
         sqrt_s=sqrt_s,
         momenta=momenta,
-        masses=(Decimal(0), Decimal(0), _Z_MASS, Decimal(0), Decimal(0)),
+        masses=(Decimal(0), Decimal(0), mass, Decimal(0), Decimal(0)),
         arithmetic_precision_bits=decimal_digits_to_bits(_DECIMAL_WORKING_DIGITS),
         round_trip_decimal_digits=_DECIMAL_ROUND_TRIP_DIGITS,
         certified_decimal_digits=_DECIMAL_CERTIFIED_DIGITS,
@@ -345,60 +394,108 @@ def _three_body_stress(process_id: str) -> CapturePoint:
     return point
 
 
+def _exact_two_to_one(
+    process: ProcessCaptureSpec,
+    masses: tuple[Decimal, ...],
+) -> CapturePoint:
+    if len(masses) != 3 or any(mass != 0 for mass in masses[:2]):
+        raise CaptureError(
+            f"exact two-to-one point requires two massless incoming legs: "
+            f"{process.expression}"
+        )
+    final_mass = masses[2]
+    if final_mass <= 0:
+        raise CaptureError(
+            f"exact two-to-one point requires a massive final leg: "
+            f"{process.expression}"
+        )
+    half = final_mass / 2
+    zero = Decimal(0)
+    point = CapturePoint(
+        id=f"point:{process.id}:canonical",
+        process_id=process.id,
+        point_class="canonical",
+        algorithm_name="exact-two-to-one",
+        algorithm_version="1",
+        rng=None,
+        seed=None,
+        sqrt_s=final_mass,
+        momenta=(
+            (half, zero, zero, half),
+            (half, zero, zero, -half),
+            (final_mass, zero, zero, zero),
+        ),
+        masses=masses,
+        arithmetic_precision_bits=_BINARY64_BITS,
+        round_trip_decimal_digits=_BINARY64_ROUND_TRIP_DIGITS,
+        certified_decimal_digits=15,
+        stress_metric=None,
+    )
+    validate_point_kinematics(point, masses)
+    return point
+
+
 def build_reference_points(
-    process_id: str,
-    expression: str,
+    process: ProcessCaptureSpec,
+    masses: tuple[Decimal, ...],
 ) -> tuple[CapturePoint, ...]:
     """Construct the deterministic compact point ladder for one process."""
 
-    if expression == "d d~ > z":
-        half = _Z_MASS / 2
-        zero = Decimal(0)
-        point = CapturePoint(
-            id=f"point:{process_id}:canonical",
-            process_id=process_id,
-            point_class="canonical",
-            algorithm_name="exact-two-to-one",
-            algorithm_version="1",
-            rng=None,
-            seed=None,
-            sqrt_s=_Z_MASS,
-            momenta=(
-                (half, zero, zero, half),
-                (half, zero, zero, -half),
-                (_Z_MASS, zero, zero, zero),
-            ),
-            masses=(zero, zero, _Z_MASS),
-            arithmetic_precision_bits=_BINARY64_BITS,
-            round_trip_decimal_digits=_BINARY64_ROUND_TRIP_DIGITS,
-            certified_decimal_digits=15,
-            stress_metric=None,
+    if process.point_policy == "exact-2to1":
+        if process.point_seeds:
+            raise CaptureError(
+                f"exact point policy for {process.expression!r} must not define seeds"
+            )
+        return (_exact_two_to_one(process, masses),)
+    if len(process.point_seeds) != 3:
+        raise CaptureError(
+            f"point policy for {process.expression!r} requires exactly three seeds"
         )
-        validate_point_kinematics(point, point.masses)
-        return (point,)
-
-    seeds = _POINT_SEEDS.get(expression)
-    if seeds is None:
-        raise CaptureError(f"no strict point policy is defined for {expression!r}")
-    if expression == "d d~ > z g g":
+    if any(mass != 0 for mass in masses[:2]):
+        raise CaptureError(
+            f"reference point policy currently requires massless incoming legs: "
+            f"{process.expression}"
+        )
+    if process.point_policy == "one-massive-two-massless":
+        if len(masses) != 5 or masses[2] <= 0 or any(
+            mass != 0 for mass in masses[3:]
+        ):
+            raise CaptureError(
+                "one-massive-two-massless point policy received incompatible "
+                f"masses for {process.expression!r}"
+            )
         return (
             *(
-                _three_body_generic(process_id, seed, index)
-                for index, seed in enumerate(seeds, start=1)
+                _three_body_generic(process.id, seed, index, masses[2])
+                for index, seed in enumerate(process.point_seeds, start=1)
             ),
-            _three_body_stress(process_id),
+            _three_body_stress(process.id, masses[2]),
         )
-    masses = (
-        (_Z_MASS, Decimal(0))
-        if expression == "d d~ > z g"
-        else (Decimal(0), Decimal(0))
-    )
+    if process.point_policy != "seeded-two-body" or len(masses) != 4:
+        raise CaptureError(
+            f"no strict point policy is defined for {process.expression!r}"
+        )
+    final_masses = (masses[2], masses[3])
     return (
         *(
-            _two_body_generic(process_id, expression, seed, index, masses)
-            for index, seed in enumerate(seeds, start=1)
+            _two_body_generic(
+                process.id,
+                process.expression,
+                seed,
+                index,
+                final_masses,
+            )
+            for index, seed in enumerate(process.point_seeds, start=1)
         ),
-        _two_body_stress(process_id, expression, masses),
+        (
+            _two_body_threshold_stress(
+                process.id,
+                process.expression,
+                final_masses,
+            )
+            if all(mass > 0 for mass in final_masses)
+            else _two_body_stress(process.id, process.expression, final_masses)
+        ),
     )
 
 

@@ -46,6 +46,7 @@ class StressMetric:
     kind: Literal[
         "minimum-final-energy-fraction",
         "minimum-final-transverse-momentum-squared-fraction",
+        "relative-excess-energy",
     ]
     value: Decimal
 
@@ -103,6 +104,13 @@ class ProcessCaptureSpec:
     id: str
     expression: str
     model_id: str
+    expected_external_masses: tuple[str, ...]
+    point_policy: Literal[
+        "exact-2to1",
+        "seeded-two-body",
+        "one-massive-two-massless",
+    ]
+    point_seeds: tuple[int, int, int] = ()
 
 
 @dataclass(frozen=True, slots=True)
