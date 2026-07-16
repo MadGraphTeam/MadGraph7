@@ -92,6 +92,11 @@ jobs:
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
+      - name: Stage the candidate runtime for source-tree tests (30 GiB RSS limit)
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          env PYTHON=$PWD/.venv/bin/python PYAMPLICOL_BUILD_MODE=candidate
+          just source-runtime
       - name: Run lightweight dependency, typing, and CI-tool checks
         run: |
           .venv/bin/python tools/release/check_dependencies.py --candidate --offline
