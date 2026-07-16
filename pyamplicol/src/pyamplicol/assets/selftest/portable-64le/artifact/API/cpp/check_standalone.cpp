@@ -76,7 +76,7 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--json") {
             options.json = true;
         } else if (argument == "--help" || argument == "-h") {
-            std::cout << "usage: check_standalone [--process ID] "
+            std::cout << "usage: check_standalone [--process ID|EXPRESSION] "
                          "[--model-parameters PATH] "
                          "[--set-parameter NAME REAL IMAG] "
                          "[--precision 16] [--json]\n";

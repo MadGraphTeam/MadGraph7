@@ -202,6 +202,24 @@ impl ExecutionRuntime {
         point: &[[f64; 4]],
         out: &mut [Complex<f64>],
     ) -> RusticolResult<()> {
+        Self::write_source_wavefunction_unphased(
+            source,
+            external_count,
+            particle_masses,
+            point,
+            out,
+        )?;
+        apply_source_phase_f64(&source.applied_crossing, out);
+        Ok(())
+    }
+
+    fn write_source_wavefunction_unphased(
+        source: &GenericSourceRecordManifest,
+        external_count: usize,
+        particle_masses: &BTreeMap<i32, f64>,
+        point: &[[f64; 4]],
+        out: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
         if source.source_kind != "external-wavefunction" {
             return Err(RusticolError::invalid_argument(format!(
                 "generic source kind {:?} is not implemented",
@@ -217,12 +235,15 @@ impl ExecutionRuntime {
                 source.source_id, source.leg_label
             )));
         }
-        let momentum = if source.crossing == "negate-incoming-momentum" {
-            negate(point[index])
-        } else {
-            point[index]
+        let source_ir = &source.source_ir;
+        let identity = &source_ir.identity;
+        let family = source_ir.wavefunction_family;
+        let dimension = source_ir.component_dimension;
+        let momentum = match source.applied_crossing.momentum_transform {
+            GenericMomentumTransformManifest::Identity => point[index],
+            GenericMomentumTransformManifest::NegateFourMomentum => negate(point[index]),
         };
-        if source.dimension == 1 && source.wavefunction_kind == "scalar" {
+        if dimension == 1 && family == GenericWavefunctionFamilyManifest::Scalar {
             if out.len() != 1 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 1 but slot has length {}",
@@ -233,7 +254,7 @@ impl ExecutionRuntime {
             out[0] = c64(1.0, 0.0);
             return Ok(());
         }
-        if source.dimension == 2 && source.wavefunction_kind == "fermion" {
+        if dimension == 2 && family == GenericWavefunctionFamilyManifest::Fermion {
             if out.len() != 2 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 2 but slot has length {}",
@@ -250,7 +271,7 @@ impl ExecutionRuntime {
             out.copy_from_slice(&wave);
             return Ok(());
         }
-        if source.dimension == 4 {
+        if dimension == 4 {
             if out.len() != 4 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 4 but slot has length {}",
@@ -258,22 +279,22 @@ impl ExecutionRuntime {
                     out.len()
                 )));
             }
-            let wave = if source.wavefunction_kind == "fermion" {
+            let wave = if family == GenericWavefunctionFamilyManifest::Fermion {
                 let mass = particle_mass_from_map(
                     particle_masses,
-                    source.particle_id,
-                    source.anti_particle_id,
+                    identity.pdg_label,
+                    identity.anti_pdg_label,
                 );
                 if source_is_antiparticle(source)? {
                     ext_antiquark_dirac_massive(momentum, source.source_helicity, mass)
                 } else {
                     ext_quark_dirac_massive(momentum, source.source_helicity, mass)
                 }
-            } else if source.wavefunction_kind == "vector" {
+            } else if family == GenericWavefunctionFamilyManifest::Vector {
                 let mass = particle_mass_from_map(
                     particle_masses,
-                    source.particle_id,
-                    source.anti_particle_id,
+                    identity.pdg_label,
+                    identity.anti_pdg_label,
                 );
                 if mass == 0.0 {
                     ext_gluon(momentum, source.source_helicity)
@@ -286,7 +307,7 @@ impl ExecutionRuntime {
             out.copy_from_slice(&wave);
             return Ok(());
         }
-        if source.dimension == 16 && source.wavefunction_kind == "spin2" {
+        if dimension == 16 && family == GenericWavefunctionFamilyManifest::Spin2 {
             if out.len() != 16 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 16 but slot has length {}",
@@ -299,8 +320,8 @@ impl ExecutionRuntime {
                 source.source_helicity,
                 particle_mass_from_map(
                     particle_masses,
-                    source.particle_id,
-                    source.anti_particle_id,
+                    identity.pdg_label,
+                    identity.anti_pdg_label,
                 ),
             )?;
             out.copy_from_slice(&wave);
@@ -308,12 +329,36 @@ impl ExecutionRuntime {
         }
         Err(RusticolError::invalid_argument(format!(
             "generic source kind {:?} with dimension {} is not implemented",
-            source.wavefunction_kind, source.dimension
+            family.as_str(),
+            dimension
         )))
     }
 
     #[cfg(feature = "symbolica-runtime")]
     pub(super) fn write_source_wavefunction_generic<T>(
+        source: &GenericSourceRecordManifest,
+        external_count: usize,
+        particle_masses: &BTreeMap<i32, f64>,
+        point: &[[T; 4]],
+        out: &mut [Complex<T>],
+    ) -> RusticolResult<()>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        Self::write_source_wavefunction_generic_unphased(
+            source,
+            external_count,
+            particle_masses,
+            point,
+            out,
+        )?;
+        apply_source_phase_generic(&source.applied_crossing, out);
+        Ok(())
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    fn write_source_wavefunction_generic_unphased<T>(
         source: &GenericSourceRecordManifest,
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
@@ -339,12 +384,15 @@ impl ExecutionRuntime {
                 source.source_id, source.leg_label
             )));
         }
-        let momentum = if source.crossing == "negate-incoming-momentum" {
-            negate_generic(&point[index])
-        } else {
-            point[index].clone()
+        let source_ir = &source.source_ir;
+        let identity = &source_ir.identity;
+        let family = source_ir.wavefunction_family;
+        let dimension = source_ir.component_dimension;
+        let momentum = match source.applied_crossing.momentum_transform {
+            GenericMomentumTransformManifest::Identity => point[index].clone(),
+            GenericMomentumTransformManifest::NegateFourMomentum => negate_generic(&point[index]),
         };
-        if source.dimension == 1 && source.wavefunction_kind == "scalar" {
+        if dimension == 1 && family == GenericWavefunctionFamilyManifest::Scalar {
             if out.len() != 1 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 1 but slot has length {}",
@@ -355,7 +403,7 @@ impl ExecutionRuntime {
             out[0] = c_generic(T::from(1.0), T::new_zero());
             return Ok(());
         }
-        if source.dimension == 2 && source.wavefunction_kind == "fermion" {
+        if dimension == 2 && family == GenericWavefunctionFamilyManifest::Fermion {
             if out.len() != 2 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 2 but slot has length {}",
@@ -372,7 +420,7 @@ impl ExecutionRuntime {
             out.clone_from_slice(&wave);
             return Ok(());
         }
-        if source.dimension == 4 {
+        if dimension == 4 {
             if out.len() != 4 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 4 but slot has length {}",
@@ -380,11 +428,11 @@ impl ExecutionRuntime {
                     out.len()
                 )));
             }
-            let wave = if source.wavefunction_kind == "fermion" {
+            let wave = if family == GenericWavefunctionFamilyManifest::Fermion {
                 let mass = particle_mass_from_map(
                     particle_masses,
-                    source.particle_id,
-                    source.anti_particle_id,
+                    identity.pdg_label,
+                    identity.anti_pdg_label,
                 );
                 if mass != 0.0 {
                     return Err(RusticolError::invalid_argument(
@@ -396,11 +444,11 @@ impl ExecutionRuntime {
                 } else {
                     ext_quark_dirac_generic(&momentum, source.source_helicity)
                 }
-            } else if source.wavefunction_kind == "vector" {
+            } else if family == GenericWavefunctionFamilyManifest::Vector {
                 let mass = particle_mass_from_map(
                     particle_masses,
-                    source.particle_id,
-                    source.anti_particle_id,
+                    identity.pdg_label,
+                    identity.anti_pdg_label,
                 );
                 if mass == 0.0 {
                     ext_gluon_generic(&momentum, source.source_helicity)
@@ -413,7 +461,7 @@ impl ExecutionRuntime {
             out.clone_from_slice(&wave);
             return Ok(());
         }
-        if source.dimension == 16 && source.wavefunction_kind == "spin2" {
+        if dimension == 16 && family == GenericWavefunctionFamilyManifest::Spin2 {
             if out.len() != 16 {
                 return Err(RusticolError::invalid_argument(format!(
                     "generic source {} expected dimension 16 but slot has length {}",
@@ -426,8 +474,8 @@ impl ExecutionRuntime {
                 source.source_helicity,
                 T::from(particle_mass_from_map(
                     particle_masses,
-                    source.particle_id,
-                    source.anti_particle_id,
+                    identity.pdg_label,
+                    identity.anti_pdg_label,
                 )),
             )?;
             out.clone_from_slice(&wave);
@@ -435,13 +483,39 @@ impl ExecutionRuntime {
         }
         Err(RusticolError::invalid_argument(format!(
             "generic source kind {:?} with dimension {} is not implemented",
-            source.wavefunction_kind, source.dimension
+            family.as_str(),
+            dimension
         )))
     }
 }
 
+fn apply_source_phase_f64(crossing: &GenericCrossingIrManifest, out: &mut [Complex<f64>]) {
+    if crossing.phase == [1.0, 0.0] {
+        return;
+    }
+    let phase = c64(crossing.phase[0], crossing.phase[1]);
+    for component in out {
+        *component *= phase;
+    }
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn apply_source_phase_generic<T>(crossing: &GenericCrossingIrManifest, out: &mut [Complex<T>])
+where
+    T: RusticolHighPrecisionNumber,
+    Complex<T>: Real + EvaluationDomain,
+{
+    if crossing.phase == [1.0, 0.0] {
+        return;
+    }
+    let phase = c_generic(T::from(crossing.phase[0]), T::from(crossing.phase[1]));
+    for component in out {
+        *component *= &phase;
+    }
+}
+
 fn source_is_antiparticle(source: &GenericSourceRecordManifest) -> RusticolResult<bool> {
-    match source.source_orientation {
+    match source.source_ir.identity.orientation {
         GenericSourceOrientationManifest::Particle => Ok(false),
         GenericSourceOrientationManifest::Antiparticle => Ok(true),
         GenericSourceOrientationManifest::SelfConjugate => {
@@ -456,7 +530,8 @@ fn source_is_antiparticle(source: &GenericSourceRecordManifest) -> RusticolResul
 fn unsupported_source_wavefunction(source: &GenericSourceRecordManifest) -> RusticolError {
     RusticolError::invalid_argument(format!(
         "generic source kind {:?} with dimension {} is not implemented",
-        source.wavefunction_kind, source.dimension
+        source.source_ir.wavefunction_family.as_str(),
+        source.source_ir.component_dimension
     ))
 }
 

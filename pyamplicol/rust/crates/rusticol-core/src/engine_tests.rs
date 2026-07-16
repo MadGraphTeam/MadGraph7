@@ -658,3 +658,35 @@ fn model_parameter_override_batch_is_atomic() {
         .unwrap();
     assert_eq!(runtime.model_parameter_values_f64, vec![0.101]);
 }
+
+#[test]
+fn model_parameter_override_rejects_mass_class_changes_atomically() {
+    let mut runtime = empty_generic_runtime();
+    runtime.model_parameter_values_f64 = vec![91.188];
+    runtime.model_parameter_runtime_slots.insert(
+        "MZ".to_string(),
+        RuntimeParameterSlots {
+            real: 0,
+            imaginary: None,
+        },
+    );
+    runtime
+        .particle_mass_parameter_names
+        .insert(23, "MZ".to_string());
+    runtime.particle_masses.insert(23, 91.188);
+
+    let error = runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("MZ".to_string(), (0.0, 0.0))]))
+        .unwrap_err();
+
+    assert!(error.to_string().contains("mass class"));
+    assert!(error.to_string().contains("regenerate"));
+    assert_eq!(runtime.model_parameter_values_f64, vec![91.188]);
+    assert_eq!(runtime.particle_masses.get(&23), Some(&91.188));
+
+    runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("MZ".to_string(), (100.0, 0.0))]))
+        .expect("massive-to-massive update remains valid");
+    assert_eq!(runtime.model_parameter_values_f64, vec![100.0]);
+    assert_eq!(runtime.particle_masses.get(&23), Some(&100.0));
+}

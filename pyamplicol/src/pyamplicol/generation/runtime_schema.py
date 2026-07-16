@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..models import Model
+from ..models.base import Model
 from .contracts import RuntimeExpressionSchema, runtime_coupling_parameter_names
 from .dag_types import CurrentNode, GenericDAG, InteractionNode
 from .physics_metadata import build_resolved_physics_payload
@@ -196,7 +196,7 @@ def _value_slots(
     def add(current: CurrentNode, variant: str, applies_propagator: bool) -> None:
         nonlocal offset
         current_slot = current_slots[current.id]
-        rule = model.propagator_lowering_rule(
+        propagator = model._propagator_ir(
             current.index.particle_id,
             current.index.chirality,
         )
@@ -219,7 +219,7 @@ def _value_slots(
                 "external_labels": list(current.index.external_labels),
                 "momentum_mask": current.index.momentum_mask,
                 "chirality": current.index.chirality,
-                "propagator": rule.to_json_dict(),
+                "propagator": propagator.to_json_dict(),
                 "used_as_interaction_input": current.id in interaction_inputs,
                 "used_as_amplitude_input": current.id in amplitude_inputs,
             }
@@ -229,16 +229,18 @@ def _value_slots(
         if current.is_source:
             add(current, "source", False)
             continue
-        rule = model.propagator_lowering_rule(
+        propagator = model._propagator_ir(
             current.index.particle_id,
             current.index.chirality,
         )
-        needs_propagated = current.id in interaction_inputs and rule.applies_propagator
+        needs_propagated = (
+            current.id in interaction_inputs and propagator.applies_propagator
+        )
         needs_unpropagated = current.id in amplitude_inputs
         if (
             needs_unpropagated
             or not needs_propagated
-            or (current.id in interaction_inputs and not rule.applies_propagator)
+            or (current.id in interaction_inputs and not propagator.applies_propagator)
         ):
             add(current, "unpropagated", False)
         if needs_propagated:
@@ -635,6 +637,38 @@ def _source_record(
     source_start = sum(
         dag.currents[source_id].dimension for source_id in dag.sources[:source_index]
     )
+    source_ir = model._source_ir(current.index.particle_id)
+    applied_crossing = (
+        source_ir.crossing
+        if leg is not None and leg.is_initial
+        else type(source_ir.crossing).identity()
+    )
+    expected_states = {
+        (
+            state.helicity,
+            state.chirality,
+            state.spin_state,
+        )
+        for state in (
+            applied_crossing.apply(declared_state)
+            for declared_state in source_ir.states
+        )
+    }
+    current_state = (
+        int(current.source_helicity),
+        int(current.index.chirality),
+        current.index.spin_state,
+    )
+    if current_state not in expected_states:
+        raise ValueError(
+            f"source current {current_id} state {current_state!r} is not declared "
+            f"by model source metadata"
+        )
+    crossing = (
+        "negate-incoming-momentum"
+        if applied_crossing.momentum_transform == "negate-four-momentum"
+        else "identity"
+    )
     return {
         "source_id": source_index,
         "current_id": current_id,
@@ -646,18 +680,17 @@ def _source_record(
         "leg_label": current.source_leg_label,
         "input_momentum_slot": None if leg is None else leg.label - 1,
         "side": None if leg is None else leg.side,
-        "crossing": (
-            "negate-incoming-momentum"
-            if leg is not None and leg.is_initial
-            else "identity"
-        ),
+        "crossing": crossing,
         "physical_pdg": None if leg is None else leg.pdg,
         "outgoing_pdg": current.index.particle_id,
         "particle_id": current.index.particle_id,
-        "anti_particle_id": model.anti_particle(current.index.particle_id),
+        "anti_particle_id": source_ir.identity.anti_pdg_label,
         "source_kind": "external-wavefunction",
-        "wavefunction_kind": model.source_wavefunction_kind(current.index.particle_id),
-        "source_orientation": model.source_orientation(current.index.particle_id),
+        "wavefunction_kind": source_ir.wavefunction_family,
+        "source_orientation": source_ir.identity.orientation,
+        "source_basis": source_ir.basis,
+        "source_ir": source_ir.to_json_dict(),
+        "applied_crossing": applied_crossing.to_json_dict(),
         "source_helicity": current.source_helicity,
         "chirality": current.index.chirality,
         "spin_state": _spin_state(current.index.spin_state),
@@ -775,11 +808,11 @@ def _input_value_slot(
     if current.is_source:
         variant = "source"
     else:
-        rule = model.propagator_lowering_rule(
+        propagator = model._propagator_ir(
             current.index.particle_id,
             current.index.chirality,
         )
-        variant = "propagated" if rule.applies_propagator else "unpropagated"
+        variant = "propagated" if propagator.applies_propagator else "unpropagated"
     try:
         return value_slots[(current.id, variant)]
     except KeyError as exc:

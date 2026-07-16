@@ -6,7 +6,18 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any
+from typing import Any, cast
+
+from ._physics_ir import (
+    CrossingIR,
+    ParticleIdentityIR,
+    ParticleOrientation,
+    ParticleStatistics,
+    PropagatorIR,
+    SourceIR,
+    SourceStateIR,
+    WavefunctionFamily,
+)
 
 
 @dataclass(frozen=True)
@@ -205,6 +216,12 @@ class Model:
     compiled: Any | None = field(default=None, repr=False, compare=False)
     particles: dict[int, Particle] = field(default_factory=dict)
     vertices: tuple[Vertex, ...] = ()
+    _source_ir_by_particle: dict[int, SourceIR] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     @cached_property
     def _species_by_pdg(self) -> dict[int, Particle]:
@@ -292,16 +309,6 @@ class Model:
 
     def is_singlet(self, pdg: int) -> bool:
         return self.color_rep(pdg) == 1
-
-    def source_helicity_crossing_sign(self, particle_id: int) -> int:
-        """Return the model-owned helicity sign used for an initial source.
-
-        The current optimized basis reverses helicity for crossed massless
-        adjoint vectors. Keeping that decision at the model boundary prevents
-        generation from identifying a particle by its name or PDG code.
-        """
-
-        return -1 if self.is_massless_adjoint_vector(particle_id) else 1
 
     def build_tensor_library(self) -> Any:
         raise NotImplementedError
@@ -451,6 +458,176 @@ class Model:
                 "Majorana/FNV source wavefunctions are not implemented"
             )
         return orientation
+
+    def _particle_identity_ir(self, particle_id: int) -> ParticleIdentityIR:
+        """Return canonical oriented identity without assigning an SM role."""
+
+        particle_id = int(particle_id)
+        particle = self.particle(particle_id)
+        anti_particle_id = int(self.anti_particle(particle_id))
+        self_conjugate = particle_id == anti_particle_id
+        canonical_id = f"model:{self.name}:state:{particle_id}"
+        anti_canonical_id = f"model:{self.name}:state:{anti_particle_id}"
+        return ParticleIdentityIR(
+            canonical_id=canonical_id,
+            species_id=f"model:{self.name}:species:{particle.pdg}",
+            anti_canonical_id=anti_canonical_id,
+            display_name=f"pdg_{particle_id}",
+            anti_display_name=f"pdg_{anti_particle_id}",
+            pdg_label=particle_id,
+            anti_pdg_label=anti_particle_id,
+            orientation=cast(ParticleOrientation, self.source_orientation(particle_id)),
+            self_conjugate=self_conjugate,
+        )
+
+    def _source_crossing_ir(self, particle_id: int) -> CrossingIR:
+        """Return the model-owned transform from outgoing to incoming source."""
+
+        particle_id = int(particle_id)
+        if self.is_chiral_eligible(particle_id):
+            return CrossingIR(chirality_factor=-1, spin_state_factor=-1)
+        if self.is_massless_adjoint_vector(particle_id):
+            return CrossingIR(helicity_factor=-1, spin_state_factor=-1)
+        return CrossingIR()
+
+    def _source_ir(self, particle_id: int) -> SourceIR:
+        """Return the canonical source contract for one oriented particle.
+
+        A compiled model's structural metadata is immutable during generation.
+        Caching here ensures DAG construction, physics metadata, and execution
+        schemas all consume the same contract object.
+        """
+
+        particle_id = int(particle_id)
+        cache = self.__dict__.setdefault("_source_ir_by_particle", {})
+        cached = cache.get(particle_id)
+        if cached is not None:
+            return cached
+        source_ir = self._build_source_ir(particle_id)
+        return cache.setdefault(particle_id, source_ir)
+
+    def _build_source_ir(self, particle_id: int) -> SourceIR:
+        """Build an uncached source contract for an oriented particle."""
+
+        states = tuple(
+            SourceStateIR(
+                helicity=int(state.helicity),
+                chirality=int(state.chirality),
+                spin_state=state.spin_state,
+            )
+            for state in self.source_spin_states(particle_id)
+        )
+        dimensions = {
+            int(self.current_dimension(particle_id, state.chirality))
+            for state in states
+        }
+        if len(dimensions) != 1:
+            raise ValueError(
+                f"source {particle_id} has state-dependent component dimensions: "
+                f"{sorted(dimensions)}"
+            )
+        wavefunction_family = self.source_wavefunction_kind(particle_id)
+        if wavefunction_family not in {
+            "scalar",
+            "fermion",
+            "vector",
+            "spin2",
+            "ghost",
+            "auxiliary",
+        }:
+            raise ValueError(
+                f"source {particle_id} has unsupported wavefunction family "
+                f"{wavefunction_family!r}"
+            )
+        auxiliary = self.auxiliary_kind(particle_id)
+        statistics: ParticleStatistics
+        if auxiliary is not None:
+            statistics = "auxiliary"
+        elif self.spin(particle_id) < 0:
+            statistics = "ghost"
+        elif self.is_fermion(particle_id):
+            statistics = "fermion"
+        else:
+            statistics = "boson"
+        return SourceIR(
+            identity=self._particle_identity_ir(particle_id),
+            statistics=statistics,
+            wavefunction_family=cast(WavefunctionFamily, wavefunction_family),
+            component_dimension=dimensions.pop(),
+            states=states,
+            crossing=self._source_crossing_ir(particle_id),
+            basis=self._current_basis(particle_id, states[0].chirality),
+            mass_parameter=self._runtime_parameter_name(particle_id, "mass"),
+            width_parameter=self._runtime_parameter_name(particle_id, "width"),
+        )
+
+    def _propagator_ir(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> PropagatorIR:
+        """Project the active propagator lowering into a typed model contract."""
+
+        particle_id = int(particle_id)
+        chirality = int(chirality)
+        rule = self.propagator_lowering_rule(particle_id, chirality)
+        kernel = rule.kernel.casefold()
+        gauge = None
+        if "feynman" in kernel:
+            gauge = "feynman"
+        elif "unitary" in kernel:
+            gauge = "unitary"
+        elif "de_donder" in kernel:
+            gauge = "de-donder"
+        elif "fierz_pauli" in kernel:
+            gauge = "fierz-pauli"
+        elif "custom" in kernel:
+            gauge = "model-supplied"
+        auxiliary_policy = None
+        if not rule.applies_propagator:
+            auxiliary_policy = self.auxiliary_kind(particle_id) or rule.kernel
+        numerator, denominator = _propagator_formula_metadata(rule.kernel)
+        return PropagatorIR(
+            identity=self._particle_identity_ir(particle_id),
+            chirality=chirality,
+            backend=rule.backend,
+            basis=self._current_basis(particle_id, chirality),
+            applies_propagator=rule.applies_propagator,
+            kernel=rule.kernel,
+            full_tensor_network_ready=rule.full_tensor_network_ready,
+            gauge=gauge,
+            numerator=numerator,
+            denominator=denominator,
+            mass_parameter=self._runtime_parameter_name(particle_id, "mass"),
+            width_parameter=self._runtime_parameter_name(particle_id, "width"),
+            auxiliary_policy=auxiliary_policy,
+            description=rule.description,
+        )
+
+    def _current_basis(self, particle_id: int, chirality: int = 0) -> str:
+        dimension = int(self.current_dimension(particle_id, chirality))
+        auxiliary = self.auxiliary_kind(particle_id)
+        if auxiliary is not None:
+            return f"auxiliary:{auxiliary}"
+        if self.is_fermion(particle_id):
+            return "weyl-chiral" if dimension == 2 else "dirac"
+        family = self.source_wavefunction_kind(particle_id)
+        if family == "scalar" and dimension == 1:
+            return "scalar"
+        if family == "vector" and dimension == 4:
+            return "lorentz-vector"
+        if family == "spin2" and dimension == 16:
+            return "lorentz-rank-2"
+        if dimension == 6:
+            return "antisymmetric-lorentz-pair"
+        return f"components:{dimension}"
+
+    def _runtime_parameter_name(self, particle_id: int, kind: str) -> str | None:
+        provider = getattr(self, f"runtime_{kind}_parameter_name", None)
+        if not callable(provider):
+            return None
+        name = provider(int(particle_id))
+        return None if name is None else str(name)
 
     def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
         """Return model-owned averaging, symmetry, color, and coupling factors."""
@@ -729,6 +906,38 @@ class Model:
             return self._property_sign_by_pdg[pdg]
         except KeyError as exc:
             raise KeyError(f"particle not in model: {pdg}") from exc
+
+
+def _propagator_formula_metadata(kernel: str) -> tuple[str | None, str | None]:
+    """Return descriptive formulas for the implemented propagator kernel."""
+
+    normalized = kernel.casefold()
+    if "no_propagator" in normalized or "embedded_propagator" in normalized:
+        return ("identity", "1")
+    if "custom" in normalized:
+        return (None, None)
+    if "weyl" in normalized:
+        return ("i*weyl_slash(momentum)", "momentum_squared")
+    if "dirac" in normalized:
+        return (
+            "i*(dirac_slash(momentum)+oriented_mass)",
+            "momentum_squared-mass_squared+i*mass*width",
+        )
+    if "massless_vector" in normalized or "feynman" in normalized:
+        return ("-i*metric", "momentum_squared")
+    if "massive_vector" in normalized or "unitary" in normalized:
+        return (
+            "-i*(metric-momentum_outer/mass_squared)",
+            "momentum_squared-mass_squared+i*mass*width",
+        )
+    if "spin2" in normalized:
+        return (
+            "i*spin2_projector",
+            "momentum_squared-mass_squared+i*mass*width",
+        )
+    if "scalar" in normalized:
+        return ("i", "momentum_squared-mass_squared+i*mass*width")
+    return (None, None)
 
 
 from .expressions import (  # noqa: E402

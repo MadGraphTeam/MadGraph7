@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from .._internal.physics.symbols import symbols
+from ._physics_ir import PropagatorIR
 from .base import (
     PropagatorLoweringRule,
 )
@@ -181,6 +183,32 @@ class ExternalModelEvaluationMixin:
             kernel=kernels[spin],
             description="UFO propagator with runtime mass and width",
         )
+
+    def _propagator_ir(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> PropagatorIR:
+        metadata = super()._propagator_ir(particle_id, chirality)
+        custom = self._propagator_record(particle_id)
+        if custom is not None and custom.custom:
+            return replace(
+                metadata,
+                numerator=custom.numerator,
+                denominator=custom.denominator,
+                custom_source=custom.name,
+                gauge="model-supplied",
+            )
+        spin = self.spin(particle_id)
+        massive = complex(self.mass(particle_id)).real != 0.0
+        if spin == 3:
+            return replace(metadata, gauge="unitary" if massive else "feynman")
+        if spin == 5:
+            return replace(
+                metadata,
+                gauge="fierz-pauli" if massive else "de-donder",
+            )
+        return metadata
 
     def propagator_component_expression(
         self,
@@ -516,9 +544,9 @@ class ExternalModelEvaluationMixin:
         for leg in (1, 2):
             library.register(
                 _sym.LibraryTensor.dense(
-                    _sym.TensorName(
-                        self._model_symbols.ufo_momentum_tensor_name(leg)
-                    )(minkowski),
+                    _sym.TensorName(self._model_symbols.ufo_momentum_tensor_name(leg))(
+                        minkowski
+                    ),
                     momenta,
                 )
             )

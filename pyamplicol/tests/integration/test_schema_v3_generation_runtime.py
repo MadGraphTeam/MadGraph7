@@ -107,6 +107,7 @@ def _case_payload(
             "current_count": topology["currents"],
             "interaction_count": topology["interactions"],
             "amplitude_root_count": topology["roots"],
+            "reduction_group_count": topology["reduction_groups"],
         },
     }
     return reference, [point["momenta"]], resolved
@@ -148,12 +149,29 @@ def test_current_source_generates_and_evaluates_schema_v3(
     execution = json.loads(
         (process_root / "execution.json").read_text(encoding="utf-8")
     )
+    physics = json.loads((process_root / "physics.json").read_text(encoding="utf-8"))
     assert execution["schema_version"] == 3
     assert execution["kind"] == "pyamplicol-runtime-execution"
     assert execution["runtime_schema"]["kind"] == ("pyamplicol-runtime-execution-plan")
     assert all(
         parameter["name"] != "runtime.lc_sector_id"
         for parameter in execution["runtime_schema"]["model_parameters"]
+    )
+    assert (
+        execution["dag_summary"]["current_count"]
+        == reference["topology"]["current_count"]
+    )
+    assert (
+        execution["dag_summary"]["interaction_count"]
+        == reference["topology"]["interaction_count"]
+    )
+    assert (
+        execution["dag_summary"]["amplitude_root_count"]
+        == reference["topology"]["amplitude_root_count"]
+    )
+    assert (
+        len(physics["reduction"]["groups"])
+        == reference["topology"]["reduction_group_count"]
     )
 
     runtime = Runtime.load(artifact)
@@ -357,10 +375,16 @@ def test_current_source_external_sm_matches_builtin_reference(
                 encoding="utf-8"
             )
         )
+        physics = json.loads(
+            (artifact / "processes" / process_id / "physics.json").read_text(
+                encoding="utf-8"
+            )
+        )
         topology = case["topology"]
         assert execution["dag_summary"]["current_count"] == topology["currents"]
         assert execution["dag_summary"]["interaction_count"] == topology["interactions"]
         assert execution["dag_summary"]["amplitude_root_count"] == topology["roots"]
+        assert len(physics["reduction"]["groups"]) == topology["reduction_groups"]
 
         runtime = Runtime.load(artifact, process=process_id)
         assert runtime.physics.helicity_coverage == "complete"
@@ -466,3 +490,47 @@ def test_external_sm_mass_overrides_refresh_sources_and_derived_masses(
 
     assert abs(changed - baseline) > max(1.0e-14, abs(baseline) * 1.0e-8)
     assert restored == pytest.approx(baseline, rel=1.0e-12, abs=1.0e-15)
+
+
+def test_runtime_rejects_external_mass_class_changes_atomically(
+    tmp_path: Path,
+) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    artifact = tmp_path / "external-sm-runtime-mass-class"
+    Generator(
+        RunConfig(
+            action="generate",
+            model=ModelConfig(cache=False),
+            color=ColorConfig(accuracy="lc"),
+        )
+    ).generate(
+        "d d~ > z",
+        artifact,
+        model=ModelSource.from_path(EXTERNAL_SM_SOURCES["json"]),
+    )
+    outer = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process_id = outer["processes"][0]["id"]
+    validation = json.loads(
+        (artifact / "processes" / process_id / "validation-momenta.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    momenta = (
+        tuple(
+            tuple(float(component) for component in particle["momentum"])
+            for particle in validation["points"][0]
+        ),
+    )
+    runtime = Runtime.load(artifact)
+    baseline = runtime.evaluate(momenta)[0]
+
+    with pytest.raises(EvaluationError, match=r"mass class.*regenerate"):
+        runtime.set_model_parameters({"MZ": 0.0})
+
+    assert runtime.evaluate(momenta)[0] == pytest.approx(
+        baseline,
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )

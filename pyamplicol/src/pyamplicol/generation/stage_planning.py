@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-from ..models import Model
+from ..models.base import Model
 from .contracts import StageCompilationInput
 from .dag_types import GenericDAG
 from .stage_expressions import (

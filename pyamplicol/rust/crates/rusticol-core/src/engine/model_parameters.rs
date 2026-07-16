@@ -85,90 +85,44 @@ impl ExecutionRuntime {
                 )));
             }
         }
-        let previous_values = std::mem::replace(&mut self.model_parameter_values_f64, proposed);
-        let previous_masses = self.particle_masses.clone();
-        let previous_normalization = self.normalization_factor;
-        if let Err(error) = self.refresh_derived_model_parameters() {
-            self.model_parameter_values_f64 = previous_values;
-            self.particle_masses = previous_masses;
-            self.normalization_factor = previous_normalization;
-            return Err(error);
-        }
-        self.refresh_particle_mass_parameters();
+        refresh_derived_model_parameter_values(
+            self.model_parameter_evaluator.as_mut(),
+            &mut proposed,
+        )?;
+        let proposed_masses = self.particle_mass_parameters_for(&proposed);
+        validate_particle_mass_class_stability(&self.particle_masses, &proposed_masses)?;
+        self.model_parameter_values_f64 = proposed;
+        self.particle_masses = proposed_masses;
         self.refresh_normalization_factor();
         Ok(())
     }
 
     pub(super) fn refresh_derived_model_parameters(&mut self) -> RusticolResult<()> {
-        let Some(runtime) = self.model_parameter_evaluator.as_mut() else {
-            return Ok(());
-        };
-        let parameters = runtime
-            .input_parameter_indices
-            .iter()
-            .map(|index| {
-                self.model_parameter_values_f64
-                    .get(*index)
-                    .copied()
-                    .map(|value| c64(value, 0.0))
-                    .ok_or_else(|| {
-                        RusticolError::invalid_argument(format!(
-                            "model-parameter evaluator input index {index} is out of range"
-                        ))
-                    })
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let evaluated = runtime.evaluator.evaluate_single_row(&parameters)?;
-        for output in &runtime.outputs {
-            let value = evaluated.get(output.output_index).ok_or_else(|| {
-                RusticolError::invalid_argument(format!(
-                    "model-parameter evaluator output {} for {:?} is absent",
-                    output.output_index, output.runtime_name
-                ))
-            })?;
-            let Some(real) = self
-                .model_parameter_values_f64
-                .get_mut(output.real_parameter_index)
-            else {
-                return Err(RusticolError::invalid_argument(format!(
-                    "derived model-parameter real slot {} is out of range",
-                    output.real_parameter_index
-                )));
-            };
-            *real = value.re;
-            let Some(imaginary) = self
-                .model_parameter_values_f64
-                .get_mut(output.imag_parameter_index)
-            else {
-                return Err(RusticolError::invalid_argument(format!(
-                    "derived model-parameter imaginary slot {} is out of range",
-                    output.imag_parameter_index
-                )));
-            };
-            *imaginary = value.im;
-        }
-        Ok(())
+        refresh_derived_model_parameter_values(
+            self.model_parameter_evaluator.as_mut(),
+            &mut self.model_parameter_values_f64,
+        )
     }
 
-    pub(super) fn refresh_particle_mass_parameters(&mut self) {
+    fn particle_mass_parameters_for(&self, values: &[f64]) -> BTreeMap<i32, f64> {
+        let mut particle_masses = self.particle_masses.clone();
         for parameter in &self.model_parameters {
             if parameter.kind == "particle_mass"
                 && let Some(pdg) = parameter.pdg
-                && let Some(value) = self
-                    .model_parameter_values_f64
-                    .get(parameter.parameter_index)
+                && let Some(value) = values.get(parameter.parameter_index)
             {
-                self.particle_masses.insert(pdg, *value);
+                particle_masses.insert(pdg, *value);
             }
         }
         for (pdg, name) in &self.particle_mass_parameter_names {
             let Some(slots) = self.model_parameter_runtime_slots.get(name) else {
                 continue;
             };
-            if let Some(value) = self.model_parameter_values_f64.get(slots.real) {
-                self.particle_masses.insert(*pdg, *value);
+            if let Some(value) = values.get(slots.real) {
+                particle_masses.insert(*pdg, *value);
             }
         }
+        particle_masses
     }
 
     pub(super) fn refresh_normalization_factor(&mut self) {
@@ -200,4 +154,79 @@ impl ExecutionRuntime {
         self.normalization_factor = self.normalization_color_factor * global_coupling_factor
             / (self.normalization_average_factor * self.normalization_identical_factor);
     }
+}
+
+fn refresh_derived_model_parameter_values(
+    runtime: Option<&mut ModelParameterEvaluatorRuntime>,
+    values: &mut [f64],
+) -> RusticolResult<()> {
+    let Some(runtime) = runtime else {
+        return Ok(());
+    };
+    let parameters = runtime
+        .input_parameter_indices
+        .iter()
+        .map(|index| {
+            values
+                .get(*index)
+                .copied()
+                .map(|value| c64(value, 0.0))
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "model-parameter evaluator input index {index} is out of range"
+                    ))
+                })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let evaluated = runtime.evaluator.evaluate_single_row(&parameters)?;
+    for output in &runtime.outputs {
+        let value = evaluated.get(output.output_index).ok_or_else(|| {
+            RusticolError::invalid_argument(format!(
+                "model-parameter evaluator output {} for {:?} is absent",
+                output.output_index, output.runtime_name
+            ))
+        })?;
+        let Some(real) = values.get_mut(output.real_parameter_index) else {
+            return Err(RusticolError::invalid_argument(format!(
+                "derived model-parameter real slot {} is out of range",
+                output.real_parameter_index
+            )));
+        };
+        *real = value.re;
+        let Some(imaginary) = values.get_mut(output.imag_parameter_index) else {
+            return Err(RusticolError::invalid_argument(format!(
+                "derived model-parameter imaginary slot {} is out of range",
+                output.imag_parameter_index
+            )));
+        };
+        *imaginary = value.im;
+    }
+    Ok(())
+}
+
+fn validate_particle_mass_class_stability(
+    previous: &BTreeMap<i32, f64>,
+    proposed: &BTreeMap<i32, f64>,
+) -> RusticolResult<()> {
+    for (pdg, previous_mass) in previous {
+        let Some(proposed_mass) = proposed.get(pdg) else {
+            continue;
+        };
+        if (*previous_mass == 0.0) != (*proposed_mass == 0.0) {
+            return Err(RusticolError::invalid_argument(format!(
+                "model-parameter update changes particle {pdg} from a {} to a {} mass class; regenerate the process artifact for that mass class",
+                if *previous_mass == 0.0 {
+                    "massless"
+                } else {
+                    "massive"
+                },
+                if *proposed_mass == 0.0 {
+                    "massless"
+                } else {
+                    "massive"
+                },
+            )));
+        }
+    }
+    Ok(())
 }

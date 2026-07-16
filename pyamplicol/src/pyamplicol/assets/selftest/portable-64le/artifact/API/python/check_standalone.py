@@ -148,7 +148,10 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Resolved pyAmpliCol Python API example"
     )
-    parser.add_argument("--process")
+    parser.add_argument(
+        "--process",
+        help="stable process/alias ID or exact concrete process expression",
+    )
     parser.add_argument("--model-parameters")
     parser.add_argument(
         "--set-parameter",

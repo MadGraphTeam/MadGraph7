@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from ..color.plan import GenericColorPlan
-from ..models import Model, Vertex
+from ..models.base import Model, Vertex
 from ..processes.ir import ProcessLegIR
 from .dag_ordering import (
     _closure_combination_matches_word,
@@ -870,10 +870,7 @@ class ColorEngine:
             return extras
         if coloured_segment not in self._shared_lc_segments:
             reversed_segment = tuple(reversed(coloured_segment))
-            if not (
-                allow_reversed
-                and reversed_segment in self._shared_lc_segments
-            ):
+            if not (allow_reversed and reversed_segment in self._shared_lc_segments):
                 return None
         return (*coloured_segment, *extras)
 

@@ -8,7 +8,7 @@ from typing import Any
 
 from .._internal.physics.parameters import ParamBuilder
 from .._internal.physics.symbols import symbols
-from ..models import Model
+from ..models.base import Model
 from .contracts import StageCompilationInput
 from .contracts import (
     runtime_coupling_parameter_names as _runtime_coupling_parameter_names,

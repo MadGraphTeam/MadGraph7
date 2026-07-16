@@ -15,7 +15,8 @@ from pyamplicol.generation.dag_ordering import (
     _canonical_sink_mask,
     _lc_color_order_reachable_masks,
 )
-from pyamplicol.models import BuiltinSMModel, Model, Particle, Vertex
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.base import Model, Particle, Vertex
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,

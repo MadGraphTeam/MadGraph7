@@ -243,11 +243,25 @@ fn parse_execution_payload(bytes: &[u8], path: &str) -> RusticolResult<Execution
             header.kind
         )));
     }
-    serde_json::from_slice(bytes).map_err(|error| {
-        RusticolError::serialization(format!(
-            "could not parse schema-v3 evaluator manifest {path:?}: {error}"
-        ))
-    })
+    serde_json::from_slice(bytes).map_err(|error| execution_manifest_parse_error(path, error))
+}
+
+pub(super) fn execution_manifest_parse_error(
+    path: &str,
+    error: serde_json::Error,
+) -> RusticolError {
+    let detail = error.to_string();
+    if ["source_ir", "applied_crossing", "source_basis"]
+        .iter()
+        .any(|field| detail.contains(&format!("missing field `{field}`")))
+    {
+        return RusticolError::compatibility(format!(
+            "schema-v3 evaluator manifest {path:?} predates typed source metadata; regenerate the artifact with `pyamplicol generate`"
+        ));
+    }
+    RusticolError::serialization(format!(
+        "could not parse schema-v3 evaluator manifest {path:?}: {detail}"
+    ))
 }
 
 pub(super) fn execution_manifest_path(

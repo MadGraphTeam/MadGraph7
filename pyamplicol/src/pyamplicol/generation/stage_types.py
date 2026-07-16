@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..models import Model
+from ..models.base import Model
 
 
 @dataclass(frozen=True)

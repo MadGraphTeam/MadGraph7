@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from ..color.plan import GenericColorPlan, build_color_plan
-from ..models import (
+from ..models.base import (
     CouplingOrders,
     Model,
     QuantumFlow,
@@ -465,18 +465,13 @@ class GenericDAGCompiler:
                                 == (-1.0, 0.0)
                             )
                             result_reflection_proven = (
-                                (
-                                    shared_lc_all_ordering_symmetry
-                                    and all_adjoint_vector_current(left.index)
-                                    and all_adjoint_vector_current(right.index)
-                                )
-                                or local_two_source_reflection
-                            )
-                            if (
-                                result_reflection_proven
-                                and max(left.index.external_labels)
-                                >= max(right.index.external_labels)
-                            ):
+                                shared_lc_all_ordering_symmetry
+                                and all_adjoint_vector_current(left.index)
+                                and all_adjoint_vector_current(right.index)
+                            ) or local_two_source_reflection
+                            if result_reflection_proven and max(
+                                left.index.external_labels
+                            ) >= max(right.index.external_labels):
                                 continue
                             ordered_external_labels = (
                                 color_engine.ordered_combination_labels(
@@ -486,18 +481,14 @@ class GenericDAGCompiler:
                                 )
                             )
                             if ordered_external_labels is None and not (
-                                left_reflection_reusable
-                                or right_reflection_reusable
+                                left_reflection_reusable or right_reflection_reusable
                             ):
                                 continue
                             order_variants: tuple[
                                 tuple[tuple[int, ...], tuple[float, float]],
                                 ...,
                             ]
-                            if (
-                                left_reflection_reusable
-                                or right_reflection_reusable
-                            ):
+                            if left_reflection_reusable or right_reflection_reusable:
                                 variants: list[
                                     tuple[tuple[int, ...], tuple[float, float]]
                                 ] = []
@@ -509,9 +500,7 @@ class GenericDAGCompiler:
                                     right.index.ordered_external_labels,
                                     left_all_adjoint=left_reflection_reusable,
                                     right_all_adjoint=right_reflection_reusable,
-                                    result_reflection_proven=(
-                                        result_reflection_proven
-                                    ),
+                                    result_reflection_proven=(result_reflection_proven),
                                 ):
                                     projected = (
                                         color_engine.shared_lc_ordered_proposed_labels(
@@ -600,7 +589,9 @@ class GenericDAGCompiler:
                                             is_source=False,
                                         )
                                         if local_two_source_reflection:
-                                            locally_reflectable_current_ids.add(result.id)
+                                            locally_reflectable_current_ids.add(
+                                                result.id
+                                            )
                                         signed_color_weight = _complex_weight_mul(
                                             _complex_weight_mul(
                                                 color_flow.weight,
@@ -738,34 +729,22 @@ class GenericDAGCompiler:
             if leg.outgoing_pdg is None:
                 continue
             particle_id = int(leg.outgoing_pdg)
+            source_ir = self.model._source_ir(particle_id)
             for color_state in color_engine.source_states_for_leg(leg):
                 if not _lc_line_groups_within_limit(
                     color_state,
                     self.max_lc_current_line_groups,
                 ):
                     continue
-                for source_state in self.model.source_spin_states(particle_id):
+                for declared_state in source_ir.states:
+                    source_state = (
+                        source_ir.crossing.apply(declared_state)
+                        if leg.is_initial
+                        else declared_state
+                    )
                     chirality = source_state.chirality
                     source_helicity = source_state.helicity
                     spin_state = source_state.spin_state
-                    if leg.is_initial and self.model.is_chiral_eligible(particle_id):
-                        chirality = -chirality
-                        spin_state = chirality
-                    elif (
-                        leg.is_initial
-                        and (
-                            crossing_sign := self.model.source_helicity_crossing_sign(
-                                particle_id
-                            )
-                        )
-                        != 1
-                    ):
-                        source_helicity *= crossing_sign
-                        if not isinstance(spin_state, int):
-                            raise TypeError(
-                                "crossed source spin_state must be an integer"
-                            )
-                        spin_state *= crossing_sign
                     if (
                         self.selected_source_helicities is not None
                         and (

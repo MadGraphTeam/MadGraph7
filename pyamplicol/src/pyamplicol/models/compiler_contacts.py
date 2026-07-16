@@ -287,10 +287,8 @@ def _execute_dense_tensor(
     *,
     axis_labels: Sequence[str],
 ) -> tuple[object, ...]:
-    if (
-        not axis_labels
-        and expression.get_all_symbols()
-        == expression.get_all_symbols(include_function_symbols=False)
+    if not axis_labels and set(expression.get_all_symbols()) == set(
+        expression.get_all_symbols(include_function_symbols=False)
     ):
         # A rank-zero expression with no function indeterminates contains no
         # tensor heads to contract. Spenso need not construct a tensor network.

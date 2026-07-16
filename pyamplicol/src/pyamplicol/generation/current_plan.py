@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from ..color.plan import GenericColorPlan
-from ..models import Model
+from ..models.base import Model
 from ..processes.ir import CanonicalProcessIR
 from .dag_algorithms import contributing_color_sector_ids
 from .dag_compiler import GenericDAGCompiler

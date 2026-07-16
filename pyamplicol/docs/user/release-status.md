@@ -39,9 +39,14 @@ published on PyPI.
 - Built-in SM compatibility code is isolated under `models.builtin`, and shared
   generation uses structural particle and color roles. Exact normalized
   color/Lorentz certificates now recover built-in graph topology across the
-  documented n<=4 external-SM family ladder. The remaining model-independence
-  gate is to complete typed source/crossing/propagator/contraction records and
-  the relabeled-PDG and reordered-tensor adversarial fixtures.
+  documented n<=4 external-SM family ladder. Typed source and crossing records
+  now drive Python and Rust runtimes without SM-PDG fallbacks. Runtime model
+  cards may vary nonzero masses but must regenerate an artifact when changing
+  a particle between massive and massless state spaces. Artifacts made before
+  this typed source contract request regeneration explicitly. The
+  remaining model-independence gate is to make propagator/gauge/Goldstone and
+  contraction records authoritative, prove colored-contact reductions, and
+  complete the relabeled-PDG and reordered-tensor adversarial fixtures.
 - External `generate --dry-run` currently requires a previously compiled model
   or populated model cache; it does not compile a trusted source as a planning
   side effect.

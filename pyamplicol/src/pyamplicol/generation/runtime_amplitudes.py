@@ -9,7 +9,7 @@ from ..color import (
     ColorGroupDescriptor,
     build_color_contraction_plan,
 )
-from ..models import Model
+from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import AmplitudeRoot, CurrentNode, GenericDAG
 

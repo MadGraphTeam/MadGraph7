@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
+from ._physics_ir import ParticleIdentityIR, ParticleOrientation
 from .base import (
     Particle,
     QuantumFlow,
@@ -161,6 +162,26 @@ class ExternalModelCatalogMixin:
             )
         return record.source_orientation
 
+    def _particle_identity_ir(self, particle_id: int) -> ParticleIdentityIR:
+        record = self._particle_records_by_pdg[int(particle_id)]
+        anti_record = self._particle_records_by_name[record.antiname]
+        species_record = (
+            record
+            if record.source_orientation in {"particle", "self-conjugate"}
+            else anti_record
+        )
+        return ParticleIdentityIR(
+            canonical_id=f"model:{self.name}:state:{record.name}",
+            species_id=f"model:{self.name}:species:{species_record.name}",
+            anti_canonical_id=f"model:{self.name}:state:{anti_record.name}",
+            display_name=record.name,
+            anti_display_name=anti_record.name,
+            pdg_label=int(record.pdg_code),
+            anti_pdg_label=int(anti_record.pdg_code),
+            orientation=cast(ParticleOrientation, record.source_orientation),
+            self_conjugate=bool(record.self_conjugate),
+        )
+
     def allowed_quantum_flows(
         self,
         vertex: Vertex,
@@ -269,9 +290,9 @@ class ExternalModelCatalogMixin:
     ) -> tuple[float, float] | None:
         """Return an exact lowered-kernel reflection certificate, if present."""
 
-        return dict(
-            self._symmetry_certificates.adjoint_current_reflection_phases
-        ).get(vertex.kind)
+        return dict(self._symmetry_certificates.adjoint_current_reflection_phases).get(
+            vertex.kind
+        )
 
     def lc_trace_reflection_equivalence_is_proven(self, process: Any) -> bool:
         """Recognize reflection folding for a certified Yang--Mills sector."""

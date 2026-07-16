@@ -17,7 +17,7 @@ from ..evaluators.execution_schema import (
     aggregate_runtime_capabilities,
     evaluator_runtime_capabilities,
 )
-from ..models import Model
+from ..models.base import Model
 from .contracts import StageCompilationInput
 from .dag_types import GenericDAG
 from .stage_parameters import _dict, _list, _logical_model_parameter_symbols

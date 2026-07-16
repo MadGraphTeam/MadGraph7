@@ -7,7 +7,7 @@ from collections import deque
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
-from ..models import CouplingOrders, Model, Vertex
+from ..models.base import CouplingOrders, Model, Vertex
 from ..processes.ir import CanonicalProcessIR
 from .dag_ordering import _closure_contraction_name, _labels_mask
 from .dag_types import ColorState

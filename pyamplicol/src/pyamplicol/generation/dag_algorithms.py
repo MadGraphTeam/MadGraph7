@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
 
 from ..color.plan import GenericColorPlan, build_color_plan
-from ..models import Model, Vertex
+from ..models.base import Model, Vertex
 from ..processes.ir import CanonicalProcessIR
 from .dag_color import ColorEngine
 from .dag_ordering import (

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 RUSTICOL_CONFIG ?= rusticol-config
-FC = gfortran
+FC ?= gfortran
 ARTIFACT_DIR := $(abspath ../..)
 BUILD_DIR ?= $(abspath ../../..)/.pyamplicol-api-build/$(notdir $(ARTIFACT_DIR))/fortran
 TARGET := $(BUILD_DIR)/check_standalone
@@ -18,7 +18,8 @@ check_standalone: $(TARGET)
 $(BUILD_DIR):
 	mkdir -p "$@"
 
-$(TARGET): check_standalone.f90 $(RUSTICOL_FORTRAN) | $(BUILD_DIR)
+$(TARGET): check_standalone.f90 | $(BUILD_DIR)
+	test -f "$(RUSTICOL_FORTRAN)"
 	$(FC) $(FFLAGS) -J"$(BUILD_DIR)" "$(RUSTICOL_FORTRAN)" "$<" -o "$@" $(LDLIBS)
 
 run: $(TARGET)

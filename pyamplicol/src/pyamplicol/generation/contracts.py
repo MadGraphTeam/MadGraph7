@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from ..models import Model
+from ..models.base import Model
 from .dag_types import GenericDAG
 
 LC_SECTOR_SELECTOR_PARAMETER = "runtime.lc_sector_id"

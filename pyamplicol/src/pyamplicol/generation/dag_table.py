@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from ..models import Model
+from ..models.base import Model
 from .dag_types import CurrentIndex, CurrentNode
 
 

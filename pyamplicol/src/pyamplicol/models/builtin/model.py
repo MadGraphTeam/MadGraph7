@@ -6,8 +6,9 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any
+from typing import Any, cast
 
+from .._physics_ir import ParticleIdentityIR, ParticleOrientation
 from ..base import (
     CouplingOrders,
     Model,
@@ -18,6 +19,7 @@ from ..base import (
 from .definitions import BuiltinSMDefinitionMixin
 from .expressions import _builtin_vertex_result_chiralities
 from .lowering import BuiltinSMLoweringMixin
+from .process_catalog import PDGS
 
 _ELECTRIC_CHARGE_BY_PARTICLE = {
     1: "-1/3",
@@ -124,6 +126,25 @@ class BuiltinModel(Model):
                 else f"-{expression}"
             )
         return (("electric_charge", expression),)
+
+    def _particle_identity_ir(self, particle_id: int) -> ParticleIdentityIR:
+        particle_id = int(particle_id)
+        anti_particle_id = int(self.anti_particle(particle_id))
+        particle = self.particle(particle_id)
+        display_name = _display_name(particle_id)
+        anti_display_name = _display_name(anti_particle_id)
+        species_name = _display_name(particle.pdg)
+        return ParticleIdentityIR(
+            canonical_id=f"model:{self.name}:state:{display_name}",
+            species_id=f"model:{self.name}:species:{species_name}",
+            anti_canonical_id=f"model:{self.name}:state:{anti_display_name}",
+            display_name=display_name,
+            anti_display_name=anti_display_name,
+            pdg_label=particle_id,
+            anti_pdg_label=anti_particle_id,
+            orientation=cast(ParticleOrientation, self.source_orientation(particle_id)),
+            self_conjugate=particle_id == anti_particle_id,
+        )
 
     def propagator_lowering_rule(
         self,
@@ -406,6 +427,13 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
 
     def coupling_order_hierarchies(self) -> dict[str, int]:
         return {"QCD": 1, "QED": 2}
+
+
+def _display_name(particle_id: int) -> str:
+    candidates = [name for name, pdg in PDGS.items() if int(pdg) == particle_id]
+    if not candidates:
+        return f"pdg_{particle_id}"
+    return min(candidates, key=lambda name: (len(name), name))
 
 
 __all__ = ["BuiltinModel", "BuiltinSMModel"]

@@ -4,18 +4,6 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-from .base import (
-    CouplingOrders,
-    Model,
-    Particle,
-    PropagatorLoweringRule,
-    QuantumFlow,
-    SourceSpinState,
-    Vertex,
-    VertexEvaluationEquivalence,
-    VertexLoweringRule,
-)
-
 _LAZY_EXPORTS = {
     "BuiltinSMModel": (".builtin", "BuiltinSMModel"),
     "CompiledModel": (".loading", "CompiledModel"),
@@ -42,16 +30,7 @@ __all__ = [
     "BuiltinSMModel",
     "CompiledModel",
     "CompiledUFOModel",
-    "CouplingOrders",
-    "Model",
     "ModelCompileOptions",
-    "Particle",
-    "PropagatorLoweringRule",
-    "QuantumFlow",
-    "SourceSpinState",
-    "Vertex",
-    "VertexEvaluationEquivalence",
-    "VertexLoweringRule",
     "compile_builtin_model_ir",
     "compile_model_source",
     "compile_ufo_model_ir",

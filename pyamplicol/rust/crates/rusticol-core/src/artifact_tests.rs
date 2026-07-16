@@ -350,6 +350,38 @@ fn minimal_execution_manifest(
             "dimension": 1,
         })
     };
+    let crossing_ir = || {
+        json!({
+            "momentum_transform": "negate-four-momentum",
+            "helicity_factor": 1,
+            "chirality_factor": 1,
+            "spin_state_factor": 1,
+            "phase": [1.0, 0.0],
+        })
+    };
+    let source_ir = |particle_id: i32, anti_particle_id: i32, orientation: &str| {
+        json!({
+            "identity": {
+                "canonical_id": format!("model:minimal:state:{particle_id}"),
+                "species_id": "model:minimal:species:1",
+                "anti_canonical_id": format!("model:minimal:state:{anti_particle_id}"),
+                "display_name": format!("state_{particle_id}"),
+                "anti_display_name": format!("state_{anti_particle_id}"),
+                "pdg_label": particle_id,
+                "anti_pdg_label": anti_particle_id,
+                "orientation": orientation,
+                "self_conjugate": false,
+            },
+            "statistics": "boson",
+            "wavefunction_family": "scalar",
+            "component_dimension": 1,
+            "states": [{"helicity": 0, "chirality": 0, "spin_state": 1}],
+            "crossing": crossing_ir(),
+            "basis": "scalar",
+            "mass_parameter": null,
+            "width_parameter": null,
+        })
+    };
     let real_inputs = (2..14).collect::<Vec<_>>();
     let current_storage = json!({
         "component_count": 2,
@@ -406,10 +438,12 @@ fn minimal_execution_manifest(
                 "value_slot": value_slot(0, 0, 0),
                 "source_parameter_start": 0, "source_parameter_stop": 1,
                 "leg_label": 1, "input_momentum_slot": 0, "side": "initial",
-                "crossing": "identity", "physical_pdg": 1, "outgoing_pdg": 1,
+                "crossing": "negate-incoming-momentum", "physical_pdg": 1, "outgoing_pdg": 1,
                 "particle_id": 1, "anti_particle_id": -1,
                 "source_kind": "external-wavefunction",
                 "wavefunction_kind": "scalar", "source_orientation": "particle",
+                "source_basis": "scalar", "source_ir": source_ir(1, -1, "particle"),
+                "applied_crossing": crossing_ir(),
                 "source_helicity": 0,
                 "chirality": 0, "spin_state": 1, "dimension": 1,
                 "helicity_ancestry": 1, "color_state": {}
@@ -420,10 +454,12 @@ fn minimal_execution_manifest(
                 "value_slot": value_slot(1, 1, 1),
                 "source_parameter_start": 1, "source_parameter_stop": 2,
                 "leg_label": 2, "input_momentum_slot": 1, "side": "initial",
-                "crossing": "identity", "physical_pdg": -1, "outgoing_pdg": -1,
+                "crossing": "negate-incoming-momentum", "physical_pdg": -1, "outgoing_pdg": -1,
                 "particle_id": -1, "anti_particle_id": 1,
                 "source_kind": "external-wavefunction",
                 "wavefunction_kind": "scalar", "source_orientation": "antiparticle",
+                "source_basis": "scalar", "source_ir": source_ir(-1, 1, "antiparticle"),
+                "applied_crossing": crossing_ir(),
                 "source_helicity": 0,
                 "chirality": 0, "spin_state": 1, "dimension": 1,
                 "helicity_ancestry": 1, "color_state": {}

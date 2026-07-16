@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from ..color.plan import GenericColorPlan, LCColorSector
-from ..models import Model
+from ..models.base import Model
 from ..processes.ir import CanonicalProcessIR
 from .dag_types import CurrentIndex
 

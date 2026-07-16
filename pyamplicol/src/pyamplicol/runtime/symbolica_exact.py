@@ -558,18 +558,93 @@ def _source_wavefunction(
         momentum = point[leg_label - 1]
     except IndexError as exc:
         raise ArtifactError("source references an absent external leg") from exc
-    if source.get("crossing") == "negate-incoming-momentum":
+    source_ir, identity, crossing = _validated_source_ir(source)
+    if crossing["momentum_transform"] == "negate-four-momentum":
         momentum = cast(
             tuple[Decimal, Decimal, Decimal, Decimal],
             tuple(-component for component in momentum),
         )
-    dimension = _json_integer(source["dimension"])
-    particle_id = _json_integer(source["particle_id"])
-    anti_particle_id = _json_integer(source["anti_particle_id"])
+    dimension = _json_integer(source_ir["component_dimension"])
+    particle_id = _json_integer(identity["pdg_label"])
+    anti_particle_id = _json_integer(identity["anti_pdg_label"])
     helicity = _json_integer(source["source_helicity"])
     chirality = _json_integer(source["chirality"])
-    kind = str(source["wavefunction_kind"])
-    orientation = str(source["source_orientation"])
+    kind = str(source_ir["wavefunction_family"])
+    orientation = str(identity["orientation"])
+    wave: tuple[_ComplexDecimal, ...]
+    if dimension == 1 and kind == "scalar":
+        wave = ((_ONE, _ZERO),)
+    elif kind == "fermion" and orientation == "self-conjugate":
+        raise CompatibilityError(
+            "self-conjugate fermion source wavefunctions are unsupported"
+        )
+    elif dimension == 2 and kind == "fermion":
+        wave = (
+            _antiquark_weyl(momentum, helicity, chirality)
+            if orientation == "antiparticle"
+            else _quark_weyl(momentum, helicity, chirality)
+        )
+    elif dimension == 4 and kind == "fermion":
+        mass = _particle_mass(
+            schema,
+            particle_id,
+            anti_particle_id,
+            model_parameters,
+        )
+        wave = (
+            _antiquark_dirac(momentum, helicity, mass)
+            if orientation == "antiparticle"
+            else _quark_dirac(momentum, helicity, mass)
+        )
+    elif dimension == 4 and kind == "vector":
+        mass = _particle_mass(
+            schema,
+            particle_id,
+            anti_particle_id,
+            model_parameters,
+        )
+        wave = (
+            _massless_vector(momentum, helicity)
+            if mass == 0
+            else _massive_vector(momentum, helicity, mass)
+        )
+    elif dimension == 16 and kind == "spin2":
+        mass = _particle_mass(
+            schema,
+            particle_id,
+            anti_particle_id,
+            model_parameters,
+        )
+        wave = _spin2(momentum, helicity, mass)
+    else:
+        raise CompatibilityError(
+            f"high-precision source kind {kind!r} with dimension {dimension} "
+            "is unsupported"
+        )
+    phase = _crossing_phase(crossing)
+    return tuple(_complex_mul(component, phase) for component in wave)
+
+
+def _validated_source_ir(
+    source: Mapping[str, object],
+) -> tuple[
+    Mapping[str, object],
+    Mapping[str, object],
+    Mapping[str, object],
+]:
+    try:
+        source_ir = cast(Mapping[str, object], source["source_ir"])
+        identity = cast(Mapping[str, object], source_ir["identity"])
+        declared_crossing = cast(Mapping[str, object], source_ir["crossing"])
+        applied_crossing = cast(Mapping[str, object], source["applied_crossing"])
+    except (KeyError, TypeError) as exc:
+        raise ArtifactError(
+            "source is missing typed SourceIR/CrossingIR metadata"
+        ) from exc
+
+    particle_id = _json_integer(identity["pdg_label"])
+    anti_particle_id = _json_integer(identity["anti_pdg_label"])
+    orientation = str(identity["orientation"])
     if orientation not in {"particle", "antiparticle", "self-conjugate"}:
         raise ArtifactError(f"source has invalid orientation {orientation!r}")
     if anti_particle_id == 0 or (
@@ -578,53 +653,110 @@ def _source_wavefunction(
         raise ArtifactError(
             "source orientation is inconsistent with its antiparticle relation"
         )
-    if dimension == 1 and kind == "scalar":
-        return ((_ONE, _ZERO),)
-    if kind == "fermion" and orientation == "self-conjugate":
-        raise CompatibilityError(
-            "self-conjugate fermion source wavefunctions are unsupported"
-        )
-    if dimension == 2 and kind == "fermion":
-        return (
-            _antiquark_weyl(momentum, helicity, chirality)
-            if orientation == "antiparticle"
-            else _quark_weyl(momentum, helicity, chirality)
-        )
-    if dimension == 4 and kind == "fermion":
-        mass = _particle_mass(
-            schema,
-            particle_id,
-            anti_particle_id,
-            model_parameters,
-        )
-        return (
-            _antiquark_dirac(momentum, helicity, mass)
-            if orientation == "antiparticle"
-            else _quark_dirac(momentum, helicity, mass)
-        )
-    if dimension == 4 and kind == "vector":
-        mass = _particle_mass(
-            schema,
-            particle_id,
-            anti_particle_id,
-            model_parameters,
-        )
-        return (
-            _massless_vector(momentum, helicity)
-            if mass == 0
-            else _massive_vector(momentum, helicity, mass)
-        )
-    if dimension == 16 and kind == "spin2":
-        mass = _particle_mass(
-            schema,
-            particle_id,
-            anti_particle_id,
-            model_parameters,
-        )
-        return _spin2(momentum, helicity, mass)
-    raise CompatibilityError(
-        f"high-precision source kind {kind!r} with dimension {dimension} is unsupported"
+
+    side = str(source["side"])
+    expected_crossing = (
+        declared_crossing
+        if side == "initial"
+        else {
+            "momentum_transform": "identity",
+            "helicity_factor": 1,
+            "chirality_factor": 1,
+            "spin_state_factor": 1,
+            "phase": [1.0, 0.0],
+        }
     )
+    if dict(applied_crossing) != dict(expected_crossing):
+        raise ArtifactError(
+            "source applied crossing is inconsistent with its side and SourceIR"
+        )
+    transform = str(applied_crossing["momentum_transform"])
+    if transform not in {"identity", "negate-four-momentum"}:
+        raise ArtifactError(f"source has unsupported momentum transform {transform!r}")
+    _crossing_phase(applied_crossing)
+
+    dimension = _json_integer(source_ir["component_dimension"])
+    family = str(source_ir["wavefunction_family"])
+    basis = str(source_ir["basis"])
+    flattened = {
+        "particle_id": particle_id,
+        "anti_particle_id": anti_particle_id,
+        "source_orientation": orientation,
+        "wavefunction_kind": family,
+        "dimension": dimension,
+        "source_basis": basis,
+        "crossing": (
+            "negate-incoming-momentum"
+            if transform == "negate-four-momentum"
+            else "identity"
+        ),
+    }
+    for key, expected in flattened.items():
+        actual = source.get(key)
+        if actual != expected:
+            raise ArtifactError(
+                f"source flattened field {key!r} disagrees with typed metadata"
+            )
+
+    state = (
+        _json_integer(source["source_helicity"]),
+        _json_integer(source["chirality"]),
+        _hashable_spin_state(source["spin_state"]),
+    )
+    transformed_states = {
+        _apply_source_crossing_state(
+            declared,
+            applied_crossing,
+        )
+        for declared in cast(Sequence[Mapping[str, object]], source_ir["states"])
+    }
+    if state not in transformed_states:
+        raise ArtifactError("source state is not declared by its typed SourceIR")
+    return source_ir, identity, applied_crossing
+
+
+def _apply_source_crossing_state(
+    state: Mapping[str, object],
+    crossing: Mapping[str, object],
+) -> tuple[int, int, object]:
+    spin_state = state["spin_state"]
+    spin_factor = _json_integer(crossing["spin_state_factor"])
+    if spin_factor != 1:
+        if isinstance(spin_state, bool) or not isinstance(spin_state, int):
+            raise ArtifactError(
+                "crossing cannot multiply a structured source spin state"
+            )
+        spin_state *= spin_factor
+    return (
+        _json_integer(state["helicity"]) * _json_integer(crossing["helicity_factor"]),
+        _json_integer(state["chirality"]) * _json_integer(crossing["chirality_factor"]),
+        _hashable_spin_state(spin_state),
+    )
+
+
+def _crossing_phase(crossing: Mapping[str, object]) -> _ComplexDecimal:
+    raw_phase = crossing.get("phase")
+    if not isinstance(raw_phase, Sequence) or isinstance(raw_phase, (str, bytes)):
+        raise ArtifactError("source crossing phase must be a complex pair")
+    if len(raw_phase) != 2:
+        raise ArtifactError("source crossing phase must be a complex pair")
+    try:
+        phase = (Decimal(str(raw_phase[0])), Decimal(str(raw_phase[1])))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ArtifactError(
+            "source crossing phase must be a finite complex pair"
+        ) from exc
+    if not phase[0].is_finite() or not phase[1].is_finite():
+        raise ArtifactError("source crossing phase must be a finite complex pair")
+    if phase == (_ZERO, _ZERO):
+        raise ArtifactError("source crossing phase must be nonzero")
+    return phase
+
+
+def _hashable_spin_state(value: object) -> object:
+    if isinstance(value, list):
+        return tuple(_hashable_spin_state(item) for item in value)
+    return value
 
 
 def _particle_mass(

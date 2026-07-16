@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..models import Model
+from ..models.base import Model
 from .contracts import (
     runtime_coupling_parameter_names as _runtime_coupling_parameter_names,
 )

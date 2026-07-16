@@ -381,6 +381,8 @@ fn validate_generic_sources(manifest: &ExecutionManifest) -> RusticolResult<()> 
     }
     let current_slots = &schema.current_storage.current_slots;
     let mut source_offset = 0usize;
+    let mut source_ir_by_momentum_slot = BTreeMap::new();
+    let mut source_ir_by_canonical_id = BTreeMap::new();
     for (index, source) in schema.source_fill.sources.iter().enumerate() {
         if source.source_id != index {
             return Err(RusticolError::artifact(format!(
@@ -422,34 +424,35 @@ fn validate_generic_sources(manifest: &ExecutionManifest) -> RusticolResult<()> 
                 source.source_kind
             )));
         }
-        validate_source_wavefunction_metadata(index, source)?;
         if source.side != "initial" && source.side != "final" {
             return Err(RusticolError::artifact(format!(
                 "generic source {index} has invalid side {:?}",
                 source.side
             )));
         }
-        let max_helicity = if source.wavefunction_kind == "spin2" {
-            2
-        } else {
-            1
-        };
+        validate_source_wavefunction_metadata(index, source)?;
+        validate_consistent_source_ir(
+            &mut source_ir_by_momentum_slot,
+            &mut source_ir_by_canonical_id,
+            index,
+            source,
+        )?;
+        let max_helicity =
+            if source.source_ir.wavefunction_family == GenericWavefunctionFamilyManifest::Spin2 {
+                2
+            } else {
+                1
+            };
         if source.physical_pdg == 0
             || source.outgoing_pdg != source.particle_id
-            || source.chirality.abs() > 1
-            || source.source_helicity.abs() > max_helicity
+            || source.chirality.unsigned_abs() > 1
+            || source.source_helicity.unsigned_abs() > max_helicity
             || source.spin_state.is_null()
             || !positive_json_integer(&source.helicity_ancestry)
             || source.color_state.is_null()
         {
             return Err(RusticolError::artifact(format!(
                 "generic source {index} has invalid physics metadata"
-            )));
-        }
-        if source.crossing != "identity" && source.crossing != "negate-incoming-momentum" {
-            return Err(RusticolError::artifact(format!(
-                "generic source {index} has unsupported crossing {:?}",
-                source.crossing
             )));
         }
         let particle = schema
@@ -461,9 +464,13 @@ fn validate_generic_sources(manifest: &ExecutionManifest) -> RusticolResult<()> 
                     source.input_momentum_slot
                 ))
             })?;
-        if particle.label != source.leg_label {
+        if particle.label != source.leg_label
+            || particle.role != source.side
+            || particle.pdg != source.physical_pdg
+            || particle.outgoing_pdg != source.outgoing_pdg
+        {
             return Err(RusticolError::artifact(format!(
-                "generic source {index} leg label does not match momentum slot"
+                "generic source {index} does not match its external particle"
             )));
         }
         source_offset = source.source_parameter_stop;
@@ -476,37 +483,275 @@ fn validate_generic_sources(manifest: &ExecutionManifest) -> RusticolResult<()> 
     Ok(())
 }
 
+pub(super) fn validate_consistent_source_ir(
+    source_ir_by_momentum_slot: &mut BTreeMap<usize, GenericSourceIrManifest>,
+    source_ir_by_canonical_id: &mut BTreeMap<String, GenericSourceIrManifest>,
+    index: usize,
+    source: &GenericSourceRecordManifest,
+) -> RusticolResult<()> {
+    if let Some(canonical) = source_ir_by_momentum_slot.get(&source.input_momentum_slot) {
+        if canonical != &source.source_ir {
+            return Err(RusticolError::artifact(format!(
+                "generic source {index} disagrees with canonical SourceIR metadata for momentum slot {}",
+                source.input_momentum_slot
+            )));
+        }
+    } else {
+        source_ir_by_momentum_slot.insert(source.input_momentum_slot, source.source_ir.clone());
+    }
+
+    let identity = &source.source_ir.identity;
+    if let Some(canonical) = source_ir_by_canonical_id.get(&identity.canonical_id)
+        && canonical != &source.source_ir
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} disagrees with canonical SourceIR metadata for oriented particle {:?}",
+            identity.canonical_id
+        )));
+    }
+    if let Some(antiparticle) = source_ir_by_canonical_id.get(&identity.anti_canonical_id) {
+        validate_antiparticle_identity_pair(index, identity, &antiparticle.identity)?;
+    }
+    source_ir_by_canonical_id
+        .entry(identity.canonical_id.clone())
+        .or_insert_with(|| source.source_ir.clone());
+    Ok(())
+}
+
+fn validate_antiparticle_identity_pair(
+    index: usize,
+    identity: &GenericParticleIdentityIrManifest,
+    antiparticle: &GenericParticleIdentityIrManifest,
+) -> RusticolResult<()> {
+    let orientations_match = matches!(
+        (identity.orientation, antiparticle.orientation),
+        (
+            GenericSourceOrientationManifest::Particle,
+            GenericSourceOrientationManifest::Antiparticle,
+        ) | (
+            GenericSourceOrientationManifest::Antiparticle,
+            GenericSourceOrientationManifest::Particle,
+        ) | (
+            GenericSourceOrientationManifest::SelfConjugate,
+            GenericSourceOrientationManifest::SelfConjugate,
+        )
+    );
+    if identity.anti_canonical_id != antiparticle.canonical_id
+        || antiparticle.anti_canonical_id != identity.canonical_id
+        || identity.species_id != antiparticle.species_id
+        || identity.anti_pdg_label != antiparticle.pdg_label
+        || antiparticle.anti_pdg_label != identity.pdg_label
+        || identity.anti_display_name != antiparticle.display_name
+        || antiparticle.anti_display_name != identity.display_name
+        || identity.self_conjugate != antiparticle.self_conjugate
+        || !orientations_match
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} has a non-involutive particle/antiparticle identity relation for {:?}",
+            identity.canonical_id
+        )));
+    }
+    Ok(())
+}
+
 pub(super) fn validate_source_wavefunction_metadata(
     index: usize,
     source: &GenericSourceRecordManifest,
 ) -> RusticolResult<()> {
-    if source.anti_particle_id == 0 {
+    let source_ir = &source.source_ir;
+    let identity = &source_ir.identity;
+    if identity.canonical_id.is_empty()
+        || identity.species_id.is_empty()
+        || identity.anti_canonical_id.is_empty()
+        || identity.display_name.is_empty()
+        || identity.anti_display_name.is_empty()
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} has incomplete typed particle identity"
+        )));
+    }
+    if identity.anti_pdg_label == 0 {
         return Err(RusticolError::artifact(format!(
             "generic source {index} has an invalid antiparticle relation"
         )));
     }
-    let self_conjugate = source.particle_id == source.anti_particle_id;
-    if (source.source_orientation == GenericSourceOrientationManifest::SelfConjugate)
-        != self_conjugate
+    let canonical_self_conjugate = identity.canonical_id == identity.anti_canonical_id;
+    let pdg_self_conjugate = identity.pdg_label == identity.anti_pdg_label;
+    if identity.self_conjugate != canonical_self_conjugate
+        || identity.self_conjugate != pdg_self_conjugate
+        || (identity.orientation == GenericSourceOrientationManifest::SelfConjugate)
+            != identity.self_conjugate
     {
         return Err(RusticolError::artifact(format!(
             "generic source {index} orientation is inconsistent with its antiparticle relation"
         )));
     }
-    match (source.wavefunction_kind.as_str(), source.dimension) {
-        ("fermion", 2 | 4) => {
-            if self_conjugate {
+
+    if source_ir.component_dimension == 0
+        || source_ir.states.is_empty()
+        || source_ir.basis.is_empty()
+        || source_ir
+            .mass_parameter
+            .as_ref()
+            .is_some_and(String::is_empty)
+        || source_ir
+            .width_parameter
+            .as_ref()
+            .is_some_and(String::is_empty)
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} has invalid typed SourceIR metadata"
+        )));
+    }
+    validate_crossing_ir(index, "declared", &source_ir.crossing)?;
+    validate_crossing_ir(index, "applied", &source.applied_crossing)?;
+
+    let expected_statistics = match source_ir.wavefunction_family {
+        GenericWavefunctionFamilyManifest::Fermion => GenericParticleStatisticsManifest::Fermion,
+        GenericWavefunctionFamilyManifest::Ghost => GenericParticleStatisticsManifest::Ghost,
+        GenericWavefunctionFamilyManifest::Auxiliary => {
+            GenericParticleStatisticsManifest::Auxiliary
+        }
+        GenericWavefunctionFamilyManifest::Scalar
+        | GenericWavefunctionFamilyManifest::Vector
+        | GenericWavefunctionFamilyManifest::Spin2 => GenericParticleStatisticsManifest::Boson,
+    };
+    if source_ir.statistics != expected_statistics {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} statistics disagree with its wavefunction family"
+        )));
+    }
+
+    match (source_ir.wavefunction_family, source_ir.component_dimension) {
+        (GenericWavefunctionFamilyManifest::Fermion, 2 | 4) => {
+            if identity.self_conjugate {
                 return Err(RusticolError::artifact(format!(
                     "generic source {index} is an unsupported self-conjugate fermion source"
                 )));
             }
         }
-        ("scalar", 1) | ("vector", 4) | ("spin2", 16) => {}
+        (GenericWavefunctionFamilyManifest::Scalar, 1)
+        | (GenericWavefunctionFamilyManifest::Vector, 4)
+        | (GenericWavefunctionFamilyManifest::Spin2, 16) => {}
         (kind, dimension) => {
             return Err(RusticolError::artifact(format!(
-                "generic source {index} has unsupported wavefunction kind {kind:?} with dimension {dimension}"
+                "generic source {index} has unsupported wavefunction kind {:?} with dimension {dimension}",
+                kind.as_str()
             )));
         }
+    }
+
+    for (field, matches) in [
+        ("particle_id", source.particle_id == identity.pdg_label),
+        (
+            "anti_particle_id",
+            source.anti_particle_id == identity.anti_pdg_label,
+        ),
+        (
+            "source_orientation",
+            source.source_orientation == identity.orientation,
+        ),
+        (
+            "wavefunction_kind",
+            source.wavefunction_kind == source_ir.wavefunction_family.as_str(),
+        ),
+        (
+            "dimension",
+            source.dimension == source_ir.component_dimension,
+        ),
+        ("source_basis", source.source_basis == source_ir.basis),
+        (
+            "crossing",
+            source.crossing
+                == source
+                    .applied_crossing
+                    .momentum_transform
+                    .legacy_projection(),
+        ),
+    ] {
+        if !matches {
+            return Err(RusticolError::artifact(format!(
+                "generic source {index} flattened field {field:?} disagrees with typed metadata"
+            )));
+        }
+    }
+
+    match source.side.as_str() {
+        "initial" if source.applied_crossing != source_ir.crossing => {
+            return Err(RusticolError::artifact(format!(
+                "generic source {index} applied crossing does not match its declared SourceIR crossing"
+            )));
+        }
+        "final" if !source.applied_crossing.is_identity() => {
+            return Err(RusticolError::artifact(format!(
+                "generic source {index} final-state applied crossing is not identity"
+            )));
+        }
+        "initial" | "final" => {}
+        _ => {
+            return Err(RusticolError::artifact(format!(
+                "generic source {index} has invalid side {:?}",
+                source.side
+            )));
+        }
+    }
+    let current_spin_state: GenericSourceSpinStateManifest =
+        serde_json::from_value(source.spin_state.clone()).map_err(|_| {
+            RusticolError::artifact(format!(
+                "generic source {index} has an invalid flattened spin state"
+            ))
+        })?;
+    let current_state = GenericSourceStateIrManifest {
+        helicity: source.source_helicity,
+        chirality: source.chirality,
+        spin_state: current_spin_state,
+    };
+    let max_helicity = if source_ir.wavefunction_family == GenericWavefunctionFamilyManifest::Spin2
+    {
+        2
+    } else {
+        1
+    };
+    let mut state_is_declared = false;
+    for (state_index, declared_state) in source_ir.states.iter().enumerate() {
+        if declared_state.chirality.unsigned_abs() > 1
+            || declared_state.helicity.unsigned_abs() > max_helicity
+        {
+            return Err(RusticolError::artifact(format!(
+                "generic source {index} SourceIR state {state_index} is outside the supported helicity/chirality range"
+            )));
+        }
+        let transformed = declared_state
+            .transformed(&source.applied_crossing)
+            .map_err(|message| {
+                RusticolError::artifact(format!(
+                    "generic source {index} SourceIR state {state_index} is invalid: {message}"
+                ))
+            })?;
+        state_is_declared |= transformed == current_state;
+    }
+    if !state_is_declared {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} current state is not declared by its typed SourceIR"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_crossing_ir(
+    index: usize,
+    label: &str,
+    crossing: &GenericCrossingIrManifest,
+) -> RusticolResult<()> {
+    if ![-1, 1].contains(&crossing.helicity_factor)
+        || ![-1, 1].contains(&crossing.chirality_factor)
+        || ![-1, 1].contains(&crossing.spin_state_factor)
+        || !crossing.phase.iter().all(|component| component.is_finite())
+        || crossing.phase == [0.0, 0.0]
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic source {index} has invalid {label} CrossingIR metadata"
+        )));
     }
     Ok(())
 }

@@ -7,7 +7,7 @@ import math
 from collections.abc import Mapping, Sequence
 from itertools import product
 
-from ..models import Model
+from ..models.base import Model
 from .dag_types import GenericDAG
 
 _HELICITY_WEIGHT_TOLERANCE = 1.0e-12
@@ -153,12 +153,15 @@ def _possible_helicity_vectors(
             per_leg.append((0,))
             continue
         particle_id = int(leg.outgoing_pdg)
+        source_ir = model._source_ir(particle_id)
         values: set[int] = set()
-        for state in model.source_spin_states(particle_id):
-            helicity = int(state.helicity)
-            if leg.is_initial:
-                helicity *= model.source_helicity_crossing_sign(particle_id)
-            values.add(helicity)
+        for declared_state in source_ir.states:
+            state = (
+                source_ir.crossing.apply(declared_state)
+                if leg.is_initial
+                else declared_state
+            )
+            values.add(int(state.helicity))
         per_leg.append(tuple(sorted(values)))
     return tuple(tuple(values) for values in product(*per_leg))
 

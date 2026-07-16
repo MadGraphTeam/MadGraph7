@@ -484,6 +484,164 @@ enum GenericSourceOrientationManifest {
     SelfConjugate,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum GenericParticleStatisticsManifest {
+    Boson,
+    Fermion,
+    Ghost,
+    Auxiliary,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum GenericWavefunctionFamilyManifest {
+    Scalar,
+    Fermion,
+    Vector,
+    Spin2,
+    Ghost,
+    Auxiliary,
+}
+
+impl GenericWavefunctionFamilyManifest {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Scalar => "scalar",
+            Self::Fermion => "fermion",
+            Self::Vector => "vector",
+            Self::Spin2 => "spin2",
+            Self::Ghost => "ghost",
+            Self::Auxiliary => "auxiliary",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum GenericMomentumTransformManifest {
+    Identity,
+    NegateFourMomentum,
+}
+
+impl GenericMomentumTransformManifest {
+    const fn legacy_projection(self) -> &'static str {
+        match self {
+            Self::Identity => "identity",
+            Self::NegateFourMomentum => "negate-incoming-momentum",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(untagged)]
+enum GenericSourceSpinStateManifest {
+    Scalar(i32),
+    Components(Vec<i32>),
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct GenericSourceStateIrManifest {
+    helicity: i32,
+    chirality: i32,
+    spin_state: GenericSourceSpinStateManifest,
+}
+
+impl GenericSourceStateIrManifest {
+    fn transformed(&self, crossing: &GenericCrossingIrManifest) -> Result<Self, &'static str> {
+        let helicity = self
+            .helicity
+            .checked_mul(crossing.helicity_factor)
+            .ok_or("source crossing overflows the helicity state")?;
+        let chirality = self
+            .chirality
+            .checked_mul(crossing.chirality_factor)
+            .ok_or("source crossing overflows the chirality state")?;
+        let spin_state = match (&self.spin_state, crossing.spin_state_factor) {
+            (state, 1) => state.clone(),
+            (GenericSourceSpinStateManifest::Scalar(state), factor) => {
+                GenericSourceSpinStateManifest::Scalar(
+                    state
+                        .checked_mul(factor)
+                        .ok_or("source crossing overflows the spin state")?,
+                )
+            }
+            (GenericSourceSpinStateManifest::Components(_), _) => {
+                return Err("crossing cannot multiply a structured source spin state");
+            }
+        };
+        Ok(Self {
+            helicity,
+            chirality,
+            spin_state,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct GenericCrossingIrManifest {
+    momentum_transform: GenericMomentumTransformManifest,
+    helicity_factor: i32,
+    chirality_factor: i32,
+    spin_state_factor: i32,
+    phase: [f64; 2],
+}
+
+impl GenericCrossingIrManifest {
+    fn is_identity(&self) -> bool {
+        self.momentum_transform == GenericMomentumTransformManifest::Identity
+            && self.helicity_factor == 1
+            && self.chirality_factor == 1
+            && self.spin_state_factor == 1
+            && self.phase == [1.0, 0.0]
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct GenericParticleIdentityIrManifest {
+    canonical_id: String,
+    species_id: String,
+    anti_canonical_id: String,
+    display_name: String,
+    anti_display_name: String,
+    pdg_label: i32,
+    anti_pdg_label: i32,
+    orientation: GenericSourceOrientationManifest,
+    self_conjugate: bool,
+}
+
+fn deserialize_required_nullable_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Value::deserialize(deserializer)? {
+        Value::Null => Ok(None),
+        Value::String(value) => Ok(Some(value)),
+        _ => Err(<D::Error as serde::de::Error>::custom(
+            "expected a string or null",
+        )),
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct GenericSourceIrManifest {
+    identity: GenericParticleIdentityIrManifest,
+    statistics: GenericParticleStatisticsManifest,
+    wavefunction_family: GenericWavefunctionFamilyManifest,
+    component_dimension: usize,
+    states: Vec<GenericSourceStateIrManifest>,
+    crossing: GenericCrossingIrManifest,
+    basis: String,
+    #[serde(deserialize_with = "deserialize_required_nullable_string")]
+    mass_parameter: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable_string")]
+    width_parameter: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GenericSourceRecordManifest {
@@ -505,6 +663,9 @@ struct GenericSourceRecordManifest {
     source_kind: String,
     wavefunction_kind: String,
     source_orientation: GenericSourceOrientationManifest,
+    source_basis: String,
+    source_ir: GenericSourceIrManifest,
+    applied_crossing: GenericCrossingIrManifest,
     source_helicity: i32,
     chirality: i32,
     spin_state: Value,
