@@ -18,7 +18,7 @@ Materialize the packaged model assets into a copied example workspace:
 ```console
 pyamplicol examples copy ./pyamplicol-examples
 cd pyamplicol-examples
-pyamplicol external_json_sm.toml
+pyamplicol generate_pp_zjj_from_ufo_sm.toml
 ```
 
 The distribution contains `sm`, `scalars`, and `scalar_gravity` in JSON and UFO

@@ -21,7 +21,7 @@ configuration remain separately recorded with the reason for each adjustment.
 Suppress the reminder and Symbolica startup banner with either interface:
 
 ```console
-pyamplicol external_json_sm.toml --no-symbolica-suggestion
+pyamplicol generate_pp_zjj_from_ufo_sm.toml --no-symbolica-suggestion
 ```
 
 ```toml

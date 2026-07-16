@@ -38,7 +38,7 @@ emit_api_bundle = true
 Run it and override fields without editing the card:
 
 ```console
-pyamplicol external_json_sm.toml \
+pyamplicol generate_pp_zjj_from_ufo_sm.toml \
   --set generation.workers=2 \
   --set evaluator.jit.optimization_level=3
 ```
@@ -156,7 +156,7 @@ Stage-local parameters are mandatory and are not a user toggle.
 from pyamplicol.config import resolve_config
 
 resolution = resolve_config(
-    "external_json_sm.toml",
+    "generate_pp_zjj_from_ufo_sm.toml",
     dedicated={"generation.workers": 4},
     overrides=("generation.workers=2", "generation.workers=1"),
 )

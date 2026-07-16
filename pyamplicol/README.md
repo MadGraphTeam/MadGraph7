@@ -19,7 +19,7 @@ python -m venv .venv
 python -m pip install pyamplicol
 pyamplicol examples copy ./pyamplicol-examples
 cd pyamplicol-examples
-pyamplicol external_json_sm.toml
+pyamplicol generate_pp_zjj_from_ufo_sm.toml
 pyamplicol evaluate_total.toml
 ```
 
@@ -181,7 +181,7 @@ from pyamplicol.config import resolve_config
 
 # Read the same TOML card used by the command-line example. Resolution applies
 # defaults and validates all settings before any expensive work begins.
-resolution = resolve_config("external_json_sm.toml")
+resolution = resolve_config("generate_pp_zjj_from_ufo_sm.toml")
 config = resolution.effective
 
 # Load and compile the external Standard Model selected in the card. The cache

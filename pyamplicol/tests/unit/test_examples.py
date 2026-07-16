@@ -88,7 +88,7 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
         ProcessEntry("u u~ > Z g g", "uubar_Zgg"),
     )
 
-    primary = resolve_config(EXAMPLES / "external_json_sm.toml").effective
+    primary = resolve_config(EXAMPLES / "generate_pp_zjj_from_ufo_sm.toml").effective
     assert primary.process.entries == (ProcessEntry("p p > Z j j"),)
     assert primary.process.multiparticles == {
         "p": ("d", "d~", "g"),
@@ -100,7 +100,7 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
 
     external_sources = {
         "external_ufo_sm.toml": "models/ufo/sm",
-        "external_json_sm.toml": "models/json/sm/sm.json",
+        "generate_pp_zjj_from_ufo_sm.toml": "models/json/sm/sm.json",
         "external_json_scalars.toml": "models/json/scalars/scalars.json",
         "external_json_scalar_gravity.toml": (
             "models/json/scalar_gravity/scalar_gravity.json"

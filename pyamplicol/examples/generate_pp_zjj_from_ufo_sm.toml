@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-# Primary multiprocess example using the serialized external Standard Model.
+# Generate p p > Z j j from the serialized form of the UFO Standard Model.
 # `pyamplicol examples copy` materializes models/json/sm beside this card.
 
 schema_version = 1

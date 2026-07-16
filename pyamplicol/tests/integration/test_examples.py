@@ -169,7 +169,7 @@ def test_packaged_model_helper_materializes_external_card_inputs(
     )
     assert all(path.is_file() for path in expected)
 
-    copied_card = tmp_path / "external_json_sm.toml"
+    copied_card = tmp_path / "generate_pp_zjj_from_ufo_sm.toml"
     shutil.copy2(EXAMPLES / copied_card.name, copied_card)
     config = parse_cli((str(copied_card),)).resolve().effective
     assert Path(config.model.source).is_file()

@@ -14,7 +14,7 @@ The primary example uses the serialized external Standard Model and generates a
 19-subprocess `p p > Z j j` artifact:
 
 ```console
-pyamplicol external_json_sm.toml
+pyamplicol generate_pp_zjj_from_ufo_sm.toml
 pyamplicol evaluate_total.toml
 pyamplicol evaluate_resolved.toml
 pyamplicol benchmark.toml
@@ -28,7 +28,7 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 
 | File | Coverage |
 | --- | --- |
-| `external_json_sm.toml` | Primary portable JSON SM, explicit two-flavor `p`/`j`, LC JIT |
+| `generate_pp_zjj_from_ufo_sm.toml` | Generate a multiprocess `p p > Z j j` artifact from the portable serialized UFO SM |
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
 | `benchmark.toml` | Short benchmark of the same selected subprocess |
