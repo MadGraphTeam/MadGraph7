@@ -19,6 +19,7 @@ def test_maturin_recursively_includes_every_sdist_source_tree() -> None:
         "rust/**/*",
         "schemas/**/*",
         "tests/**/*",
+        "tools/developer/**/*",
         "tools/release/**/*",
         "tools/typing/**/*",
     } <= includes

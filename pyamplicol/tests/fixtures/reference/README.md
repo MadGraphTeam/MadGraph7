@@ -26,3 +26,10 @@ their sum, topology, and the already-correct NLC/full mappings did not change.
 revisions, toolchain, watchdog policy, command templates, and the two fixture
 captures repeated during the standalone bootstrap. Paths under `/tmp` are
 historical output labels only; no fixture depends on them.
+
+`legacy-fortran-v1.json` records an independent replay through the pinned
+Fortran AmpliCol color probe. It covers the built-in-SM `d d~ > z` and
+`d d~ > z g` fixtures in LC, NLC, and full color. The developer-only
+`tools/developer/legacy_amplicol.py` runner regenerates process files, maps
+physical external-leg and helicity orderings explicitly, and checks both
+summed and resolved values with the independent-oracle tolerance.

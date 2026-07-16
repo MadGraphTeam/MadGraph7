@@ -479,14 +479,19 @@ def _patch_sources(runner: Runner, payload: dict[str, Any]) -> None:
             "symbolica": "symbolica",
             "symjit": "symjit",
             "ufo-model-loader": "ufo-model-loader",
+            "legacy-amplicol": "legacy-amplicol",
         }.get(dependency)
         if checkout_name is None:
+            continue
+        checkout = CHECKOUTS / checkout_name
+        if checkout_name == "legacy-amplicol" and not checkout.is_dir():
+            # The independent Fortran oracle is deliberately optional.
             continue
         patch = DEPENDENCIES / str(entry["path"])
         digest = hashlib.sha256(patch.read_bytes()).hexdigest()
         if digest != entry["sha256"]:
             raise SetupError(f"dependency patch digest changed: {patch}")
-        patch_series.append((CHECKOUTS / checkout_name, patch))
+        patch_series.append((checkout, patch))
     # Later patches may overlap lines introduced by earlier ones, so checking
     # each patch independently is not an idempotent test of the final series.
     # Unwind our managed series in reverse order, then replay it from the lock.

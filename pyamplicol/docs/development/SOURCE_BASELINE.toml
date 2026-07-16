@@ -27,4 +27,5 @@ payload_file_count = 66
 existing_matrix_fixture_eligible = false
 reason = "existing fixture records an older dirty source state"
 clean_fixture_sha256 = "43173e8e527676fe9b26467e9f0b6b0d26cd323ecebcac69f56ce64a8b1a85ac"
-capture_manifest_sha256 = "62a06b7229e79dcb2437cf97e6d545ea3c54757cc2a17c60701cfd957cb4cbb5"
+capture_manifest_sha256 = "48ca1b956b2119de633395106f421e4e94830b7503611fe4a6fb103ac6487f55"
+legacy_fortran_fixture_sha256 = "db4277f0316574ad17ca2819b1510d1039ca8197f17705707780ef5151dcf903"

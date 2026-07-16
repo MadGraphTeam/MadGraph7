@@ -2,7 +2,7 @@
 schema_version = 1
 captured_utc = "2026-07-15T14:43:42Z"
 oracle_kind = "clean pre-port pyAmpliCol and Rusticol implementation"
-independent_fortran_oracle = "pending standalone release-physics-suite automation"
+independent_fortran_oracle = "verified by legacy-fortran-v1.json and tools/developer/legacy_amplicol.py"
 
 [source]
 repository = "git@github.com:rikkert-frederix/AmpliCol.git"

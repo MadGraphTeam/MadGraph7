@@ -114,6 +114,7 @@ include = [
   { path = "rust/**/*", format = ["sdist"] },
   { path = "schemas/**/*", format = ["sdist"] },
   { path = "tests/**/*", format = ["sdist"] },
+  { path = "tools/developer/**/*", format = ["sdist"] },
   { path = "tools/release/**/*", format = ["sdist"] },
   { path = "tools/typing/**/*", format = ["sdist"] },
   { path = "_sdk/**/*", from = "out-dir", to = "pyamplicol/", crate-name = "rusticol-python" },

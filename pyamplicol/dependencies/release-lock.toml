@@ -179,3 +179,13 @@ sha256 = "bbaa704a7d523a5a6707ba678c670157a6230e20d8ec4ce96f1882dbf7a52033"
 dependency = "ufo-model-loader"
 path = "patches/ufo-model-loader/0001-fix-sparse-json-restrictions.patch"
 sha256 = "34b70eb92402070e8aabaae8deb9a25ef09e6a6beb05537568d37aed6a972737"
+
+[[patches]]
+dependency = "legacy-amplicol"
+path = "patches/legacy-amplicol/0001-build-color-probe-without-lhapdf.patch"
+sha256 = "b6e26676a36c7503a21fddbab5760b7a4f002888b497ce9ff40c496181a67062"
+
+[[patches]]
+dependency = "legacy-amplicol"
+path = "patches/legacy-amplicol/0002-report-complete-recursion-kinds.patch"
+sha256 = "83558c260a9e07bfbd2d2f95aa8a8f9aa82bbebc5624e24cc776d17705b4ad85"

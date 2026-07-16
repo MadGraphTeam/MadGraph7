@@ -476,7 +476,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
             )
         )
         assert build_info["publishable"] is False
-        assert len(build_info["dependency_lock_digest"]) == 12
+        assert len(build_info["candidate_fingerprint"]) == 12
         target = "aarch64-apple-darwin"
         backend._stage_selftest_fixture(overlay, target)
         selftest_manifest = json.loads(
@@ -806,6 +806,12 @@ def test_candidate_digest_covers_state_sources_and_exact_lock_inputs(
         (dependencies / name).write_bytes((ROOT / "dependencies" / name).read_bytes())
     first = backend._candidate_digest(overlay, *inputs)
 
+    source = overlay / "src" / "pyamplicol" / "api.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("# changed source\n", encoding="utf-8")
+    source_tree_changed = backend._candidate_digest(overlay, *inputs)
+    assert source_tree_changed != first
+
     state = json.loads(inputs[2].read_text(encoding="utf-8"))
     state["python_runtime_lock_sha256"] = "0" * 64
     inputs[2].write_text(json.dumps(state), encoding="utf-8")
@@ -818,7 +824,7 @@ def test_candidate_digest_covers_state_sources_and_exact_lock_inputs(
     state["sources"]["symbolica"]["worktree_sha256"] = "f" * 64
     inputs[2].write_text(json.dumps(state), encoding="utf-8")
     source_changed = backend._candidate_digest(overlay, *inputs)
-    assert source_changed != first
+    assert source_changed not in {first, source_tree_changed}
 
     inputs[0].write_bytes(inputs[0].read_bytes() + b"\n# identity change\n")
     state["candidate_lock_sha256"] = hashlib.sha256(inputs[0].read_bytes()).hexdigest()

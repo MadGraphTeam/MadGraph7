@@ -181,6 +181,7 @@ _CANONICAL_SDIST_TREES = {
     "schemas",
     "src",
     "tests",
+    "tools/developer",
     "tools/release",
     "tools/typing",
 }

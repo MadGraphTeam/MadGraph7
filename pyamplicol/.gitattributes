@@ -10,5 +10,5 @@
 *.pdf binary
 *.a binary
 *.bin binary
-dependencies/patches/** whitespace=-trailing-space
+dependencies/patches/** whitespace=-trailing-space,-space-before-tab
 licenses/rust/** -text whitespace=-trailing-space

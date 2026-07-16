@@ -52,6 +52,7 @@ ALLOWLIST = (
     "schemas",
     "src",
     "tests",
+    "tools/developer",
     "tools/release",
     "tools/typing",
 )
@@ -704,6 +705,12 @@ def _candidate_digest(
         installer_state,
     )
     digest = hashlib.sha256()
+    for path in sorted(item for item in overlay.rglob("*") if item.is_file()):
+        _digest_item(
+            digest,
+            f"source/{path.relative_to(overlay).as_posix()}",
+            path.read_bytes(),
+        )
     lock = overlay / "dependencies" / "release-lock.toml"
     _digest_item(digest, "release-lock.toml", lock.read_bytes())
     runtime_lock = overlay / "dependencies" / "python-runtime-lock.toml"
@@ -785,7 +792,7 @@ def _mark_candidate(overlay: Path) -> None:
             {
                 "schema_version": 1,
                 "publishable": False,
-                "dependency_lock_digest": digest,
+                "candidate_fingerprint": digest,
                 "version": f"0.1.0.dev0+candidate.{digest}",
             },
             indent=2,

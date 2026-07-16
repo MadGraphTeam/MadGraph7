@@ -36,6 +36,11 @@ python-integration:
 python-physics:
     {{python}} -m pytest tests/integration/test_schema_v3_generation_runtime.py tests/unit/test_reference_fixtures.py tests/unit/test_color_contraction_safety.py -q
 
+# Developer-only independent Fortran oracle. `just dev-install` includes the
+# pinned checkout unless it was called with --without-legacy-amplicol.
+legacy-physics:
+    {{python}} tools/developer/legacy_amplicol.py --jobs 5
+
 installed-smoke:
     {{python}} -m pyamplicol.selftest
     {{python}} -m pyamplicol self-test --format json

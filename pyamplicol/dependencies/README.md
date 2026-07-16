@@ -27,4 +27,9 @@ their declared external defaults. It is applied locally to the pinned public
 revision; contributor setup never depends on an unpublished upstream branch.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
-only as an independent validation and benchmarking reference.
+only as an independent validation and benchmarking reference. Two narrow,
+checksummed patches remove the unnecessary LHAPDF link from its direct color
+probe and expose complete recursion-kind diagnostics. They do not modify
+amplitude physics. `just legacy-physics` builds that probe and checks the
+tracked low-multiplicity LC/NLC/full fixture, including every recorded
+nonzero helicity component, against the pinned Fortran implementation.

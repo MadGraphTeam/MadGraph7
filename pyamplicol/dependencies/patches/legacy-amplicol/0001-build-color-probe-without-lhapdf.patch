@@ -1,0 +1,24 @@
+diff --git a/makefile b/makefile
+--- a/makefile
++++ b/makefile
+@@ -119,8 +119,8 @@ amplitude_QCD.o matrix_element_regression.o
+ FILES_M_COLOR_PROBE = bitset.o pdf.o NNPDFDriver.o ranmar.o phase_space.o \
+ LUPdecompose.o phase_space_gen23.o color_algebra.o math_functions.o \
+ feynmanrules.o particles.o amplitude_QCD.o common.o phase_space_genpt.o \
+-phase_space_haag.o cuts.o pdf_wrap.o read_process_file.o multichannel.o \
+-handling_processes.o simple_integrator.o helper_modules.o pdf_lhapdf62.o
++phase_space_haag.o cuts.o read_process_file.o multichannel.o \
++handling_processes.o simple_integrator.o helper_modules.o
+ 
+ # ----------------------------------------------------------------------
+ # 5. Build executables
+@@ -144,8 +144,7 @@ amplicol_color_library_probe: $(filter-out amplicol_generate.o,$(FILES_M_INT_QCD
+ 	$(LHAPDF_LDFLAGS) -lstdc++ $(STDLIB_LDLIBS) -Wl,-rpath,$(PWD)
+ 
+ amplicol_color_probe: $(FILES_M_COLOR_PROBE) amplicol_color_probe.o
+-	$(FC) $(FFLAGS) -o $@ amplicol_color_probe.o $(FILES_M_COLOR_PROBE) \
+-	$(LHAPDF_LDFLAGS) -lstdc++ $(STDLIB_LDLIBS)
++	$(FC) $(FFLAGS) -o $@ amplicol_color_probe.o $(FILES_M_COLOR_PROBE)
+ 
+ amplicol_reweight: $(FILES_M_RWGT_QCD)
+ 	$(FC) $(FFLAGS) -o $@ $(FILES_M_RWGT_QCD)

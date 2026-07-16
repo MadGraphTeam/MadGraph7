@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REFERENCE_ROOT = ROOT / "tests" / "fixtures" / "reference"
 FIXTURE = REFERENCE_ROOT / "physics-v1.json"
 CAPTURE = REFERENCE_ROOT / "CAPTURE.toml"
+LEGACY_FORTRAN = REFERENCE_ROOT / "legacy-fortran-v1.json"
 BASELINE = ROOT / "docs" / "development" / "SOURCE_BASELINE.toml"
 
 
@@ -61,3 +62,6 @@ def test_reference_capture_matches_the_pinned_clean_baseline() -> None:
     }
     assert baseline["reference_fixtures"]["clean_fixture_sha256"] == _sha256(FIXTURE)
     assert baseline["reference_fixtures"]["capture_manifest_sha256"] == _sha256(CAPTURE)
+    assert baseline["reference_fixtures"]["legacy_fortran_fixture_sha256"] == _sha256(
+        LEGACY_FORTRAN
+    )

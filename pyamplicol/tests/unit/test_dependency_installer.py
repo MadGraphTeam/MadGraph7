@@ -64,6 +64,25 @@ def test_ufo_loader_uses_public_base_and_checksummed_local_patch() -> None:
     ]
 
 
+def test_legacy_oracle_patches_are_local_and_checksummed() -> None:
+    module = _module()
+    payload = module._lock()
+    patches = [
+        entry
+        for entry in payload["patches"]
+        if entry["dependency"] == "legacy-amplicol"
+    ]
+    assert [entry["path"] for entry in patches] == [
+        "patches/legacy-amplicol/0001-build-color-probe-without-lhapdf.patch",
+        "patches/legacy-amplicol/0002-report-complete-recursion-kinds.patch",
+    ]
+    for entry in patches:
+        patch = module.DEPENDENCIES / entry["path"]
+        assert patch.is_file()
+        digest = module.hashlib.sha256(patch.read_bytes()).hexdigest()
+        assert digest == entry["sha256"]
+
+
 def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> None:
     module = _module()
     requirements = module._runtime_requirements_text()

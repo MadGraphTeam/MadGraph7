@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -69,6 +70,51 @@ def test_deployment_copies_the_complete_installed_examples_tree(tmp_path: Path) 
         "copy",
         os.fspath(destination),
     ]
+
+
+def test_candidate_deployment_builds_fresh_instead_of_reusing_stale_wheel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    retained = tmp_path / "retained"
+    retained.mkdir()
+    stale = retained / "pyamplicol-0.1.0.dev0+candidate.stale-cp311-abi3-test.whl"
+    stale.write_bytes(b"stale")
+    scratch = tmp_path / "scratch"
+    selected: list[Path] = []
+
+    @contextmanager
+    def fake_temporary(_prefix: str):
+        scratch.mkdir()
+        yield scratch
+
+    def fake_run(command, **_kwargs):
+        outdir = Path(command[command.index("--outdir") + 1])
+        fresh = outdir / "pyamplicol-0.1.0.dev0+candidate.fresh-cp311-abi3-test.whl"
+        fresh.write_bytes(b"fresh")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    def fake_select(wheels, _tags):
+        candidates = list(wheels)
+        assert len(candidates) == 1
+        assert candidates[0].parent == scratch
+        assert candidates[0] != stale
+        return candidates[0]
+
+    def fake_deployment(wheel, **_kwargs):
+        selected.append(wheel)
+
+    monkeypatch.setattr(deployment, "check_dependency_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(deployment, "external_temporary_directory", fake_temporary)
+    monkeypatch.setattr(deployment, "run", fake_run)
+    monkeypatch.setattr(deployment, "interpreter_tags", lambda _python: ["test"])
+    monkeypatch.setattr(deployment, "select_compatible_wheel", fake_select)
+    monkeypatch.setattr(deployment, "wheelhouse_directories", lambda _path: [])
+    monkeypatch.setattr(deployment, "test_deployment", fake_deployment)
+
+    assert deployment.main(["--candidate", "--artifact-dir", os.fspath(retained)]) == 0
+    assert selected and selected[0].read_bytes() == b"fresh"
+    assert stale.read_bytes() == b"stale"
 
 
 def test_release_native_sdk_smoke_requires_both_compilers(

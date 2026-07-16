@@ -1,0 +1,80 @@
+{
+  "cases": {
+    "builtin_sm_ddbar_z_full": {
+      "color_accuracy": "full",
+      "fortran_topology": {
+        "amplitudes": 1,
+        "color_orders": 1,
+        "currents": 4,
+        "vertices": 1
+      },
+      "max_resolved_relative_difference": 0.0,
+      "process": "d d~ > z",
+      "total": 142.1065337287299
+    },
+    "builtin_sm_ddbar_z_lc": {
+      "color_accuracy": "lc",
+      "fortran_topology": {
+        "amplitudes": 1,
+        "color_orders": 1,
+        "currents": 4,
+        "vertices": 1
+      },
+      "max_resolved_relative_difference": 2.1284067746028536e-16,
+      "process": "d d~ > z",
+      "total": 142.1065337287299
+    },
+    "builtin_sm_ddbar_z_nlc": {
+      "color_accuracy": "nlc",
+      "fortran_topology": {
+        "amplitudes": 1,
+        "color_orders": 1,
+        "currents": 4,
+        "vertices": 1
+      },
+      "max_resolved_relative_difference": 0.0,
+      "process": "d d~ > z",
+      "total": 142.1065337287299
+    },
+    "builtin_sm_ddbar_zg_full": {
+      "color_accuracy": "full",
+      "fortran_topology": {
+        "amplitudes": 1,
+        "color_orders": 1,
+        "currents": 7,
+        "vertices": 4
+      },
+      "max_resolved_relative_difference": 8.809602410999885e-14,
+      "process": "d d~ > z g",
+      "total": 0.36154106787336965
+    },
+    "builtin_sm_ddbar_zg_lc": {
+      "color_accuracy": "lc",
+      "fortran_topology": {
+        "amplitudes": 1,
+        "color_orders": 1,
+        "currents": 7,
+        "vertices": 4
+      },
+      "max_resolved_relative_difference": 8.826279974905955e-14,
+      "process": "d d~ > z g",
+      "total": 0.4067337013575408
+    },
+    "builtin_sm_ddbar_zg_nlc": {
+      "color_accuracy": "nlc",
+      "fortran_topology": {
+        "amplitudes": 1,
+        "color_orders": 1,
+        "currents": 7,
+        "vertices": 4
+      },
+      "max_resolved_relative_difference": 8.809602410999885e-14,
+      "process": "d d~ > z g",
+      "total": 0.36154106787336965
+    }
+  },
+  "fixture": "physics-v1.json",
+  "oracle": "legacy-fortran-amplicol-color-probe",
+  "revision": "643bc6f99d7b2249af0a85204768df243e612411",
+  "schema_version": 1
+}

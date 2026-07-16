@@ -15,6 +15,7 @@ import tempfile
 import tomllib
 import zipfile
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
@@ -40,6 +41,8 @@ from _common import (
     build_mode,
     check_dependency_gate,
     clean_environment,
+    exactly_one,
+    external_temporary_directory,
     is_relative_to,
     run,
     runtime_environment,
@@ -740,23 +743,33 @@ def _native_sdk_smoke(
     return True
 
 
-def _build_if_needed(mode: str, artifact_directory: Path) -> None:
-    if list(artifact_directory.glob("pyamplicol-*.whl")):
-        return
-    if mode == "candidate":
-        artifact_directory.mkdir(parents=True, exist_ok=True)
-        run(
-            [
-                sys.executable,
-                "-m",
-                "build",
-                "--wheel",
-                "--outdir",
-                artifact_directory,
-            ],
-            cwd=ROOT,
-            env=clean_environment(mode="candidate"),
+def _build_fresh_candidate_wheel(artifact_directory: Path) -> Path:
+    artifact_directory.mkdir(parents=True, exist_ok=True)
+    if list(artifact_directory.iterdir()):
+        raise ReleaseError(
+            "candidate deployment build directory must start empty: "
+            f"{artifact_directory}"
         )
+    run(
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--wheel",
+            "--outdir",
+            artifact_directory,
+        ],
+        cwd=ROOT,
+        env=clean_environment(mode="candidate"),
+    )
+    return exactly_one(
+        list(artifact_directory.glob("pyamplicol-*.whl")),
+        "fresh candidate deployment wheel",
+    )
+
+
+def _build_release_if_needed(artifact_directory: Path) -> None:
+    if list(artifact_directory.glob("pyamplicol-*.whl")):
         return
     run(
         [
@@ -940,24 +953,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     artifact_directory = args.artifact_dir or (
         CANDIDATE_ARTIFACTS if mode == "candidate" else DIST
     )
-    if args.wheel is None and not args.no_build:
-        _build_if_needed(mode, artifact_directory)
-    wheels = (
-        [args.wheel]
-        if args.wheel is not None
-        else sorted(artifact_directory.glob("pyamplicol-*.whl"))
-    )
-    wheel = select_compatible_wheel(wheels, interpreter_tags(args.python))
-    wheelhouses = [path.resolve() for path in args.wheelhouse]
-    if mode == "candidate" and not wheelhouses:
-        wheelhouses = wheelhouse_directories(DEPENDENCY_WHEELHOUSE)
-    test_deployment(
-        wheel,
-        target_python=args.python,
-        mode=mode,
-        wheelhouses=wheelhouses,
-        keep=args.keep,
-    )
+    with ExitStack() as stack:
+        if args.wheel is not None:
+            wheels = [args.wheel]
+        elif mode == "candidate" and not args.no_build:
+            scratch = stack.enter_context(
+                external_temporary_directory("pyamplicol-candidate-deployment-build-")
+            )
+            wheels = [_build_fresh_candidate_wheel(scratch)]
+        else:
+            if not args.no_build:
+                _build_release_if_needed(artifact_directory)
+            wheels = sorted(artifact_directory.glob("pyamplicol-*.whl"))
+        wheel = select_compatible_wheel(wheels, interpreter_tags(args.python))
+        wheelhouses = [path.resolve() for path in args.wheelhouse]
+        if mode == "candidate" and not wheelhouses:
+            wheelhouses = wheelhouse_directories(DEPENDENCY_WHEELHOUSE)
+        test_deployment(
+            wheel,
+            target_python=args.python,
+            mode=mode,
+            wheelhouses=wheelhouses,
+            keep=args.keep,
+        )
     return 0
 
 

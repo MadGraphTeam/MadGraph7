@@ -71,6 +71,12 @@ The compact baseline starts with:
 - scalar contact `scalar_0 scalar_0 > scalar_0 scalar_0`;
 - spin-2 `scalar_0 scalar_0 > graviton graviton`.
 
+The built-in-SM `d d~ > z` and `d d~ > z g` rows are also replayed through
+the pinned Fortran AmpliCol color probe in LC, NLC, and full color. This
+independent check covers the summed matrix element and every recorded nonzero
+physical-helicity component. The probe is developer-only, links no LHAPDF,
+and is never imported or packaged by the installed distribution.
+
 Before the model/generation milestone is accepted it expands to:
 
 - process-set `d d~ > z g` and `d d~ > z g g`;
