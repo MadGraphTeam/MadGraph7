@@ -122,3 +122,26 @@ def test_package_version_prefers_the_staged_source_runtime(
     monkeypatch.setattr(versions, "_SOURCE_BUILD_INFO_PATH", build_info)
 
     assert versions.package_version() == "0.1.0.dev0+candidate.current"
+
+
+def test_source_runtime_stages_an_existing_local_wheel_directory(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _module()
+    wheel_directory = tmp_path / "wheelhouse"
+    wheel_directory.mkdir()
+    wheel = wheel_directory / "pyamplicol-test.whl"
+    _wheel(wheel)
+    observed: dict[str, object] = {}
+
+    def fake_stage_runtime(path: Path, *, mode: str, audit: bool = True):
+        observed.update(path=path, mode=mode, audit=audit)
+        return {"wheel": path.name}
+
+    monkeypatch.setattr(module, "stage_runtime", fake_stage_runtime)
+
+    report = module.stage_from_directory(wheel_directory, mode="candidate")
+
+    assert report == {"wheel": wheel.name}
+    assert observed == {"path": wheel, "mode": "candidate", "audit": False}

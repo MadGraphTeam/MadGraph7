@@ -177,20 +177,46 @@ def build_and_stage(*, python: Path, mode: str) -> dict[str, object]:
             list(temporary.glob("pyamplicol-*.whl")),
             "fresh source-test wheel",
         )
-        return stage_runtime(wheel, mode=mode)
+        # Source staging consumes the backend's unrepaired local wheel. Release
+        # artifact auditing, including final manylinux tags, runs separately.
+        return stage_runtime(wheel, mode=mode, audit=False)
+
+
+def stage_from_directory(directory: Path, *, mode: str) -> dict[str, object]:
+    """Stage the one candidate wheel already retained in ``directory``."""
+
+    directory = directory.expanduser().resolve(strict=True)
+    if not directory.is_dir():
+        raise ReleaseError(
+            f"source runtime wheel directory is not a directory: {directory}"
+        )
+    wheel = exactly_one(
+        list(directory.glob("pyamplicol-*.whl")),
+        "existing source-test wheel",
+    )
+    return stage_runtime(wheel, mode=mode, audit=False)
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", action="store_true")
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
+    parser.add_argument(
+        "--wheel-directory",
+        type=Path,
+        help="stage an already built local wheel instead of rebuilding it",
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     mode = build_mode(candidate=args.candidate)
-    report = build_and_stage(python=args.python, mode=mode)
+    report = (
+        stage_from_directory(args.wheel_directory, mode=mode)
+        if args.wheel_directory is not None
+        else build_and_stage(python=args.python, mode=mode)
+    )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 

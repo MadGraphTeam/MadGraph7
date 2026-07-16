@@ -95,8 +95,9 @@ jobs:
       - name: Stage the candidate runtime for source-tree tests (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
-          env PYTHON=$PWD/.venv/bin/python PYAMPLICOL_BUILD_MODE=candidate
-          just source-runtime
+          .venv/bin/python tools/developer/prepare_source_runtime.py
+          --candidate
+          --wheel-directory .artifacts/candidate
       - name: Run lightweight dependency, typing, and CI-tool checks
         run: |
           .venv/bin/python tools/release/check_dependencies.py --candidate --offline
