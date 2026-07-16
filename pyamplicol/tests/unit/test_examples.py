@@ -117,7 +117,7 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     resolved = resolve_config(EXAMPLES / "evaluate_resolved.toml").effective
     assert not total.evaluation.resolved
     assert resolved.evaluation.resolved
-    assert total.evaluation.process == resolved.evaluation.process == "p_p_to_z_j_j_4"
+    assert total.evaluation.process == resolved.evaluation.process == "d d~ > z g g"
     assert resolve_config(EXAMPLES / "benchmark.toml").effective.action == "benchmark"
 
 

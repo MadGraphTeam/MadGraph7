@@ -744,6 +744,31 @@ fn valid_manifest_verifies_all_payloads() {
 
     assert_eq!(verified.manifest().schema_version, 3);
     assert_eq!(verified.select_process(None).unwrap().requested_id, "p0");
+    assert_eq!(
+        verified
+            .select_process(Some("  a   b  >  c "))
+            .expect("select process by normalized expression")
+            .requested_id,
+        "p0"
+    );
+}
+
+#[test]
+fn ambiguous_process_expression_lists_stable_ids() {
+    let artifact = TestArtifact::new();
+    let verified = VerifiedArtifact::open(&artifact.root).expect("valid artifact");
+    let mut manifest = verified.manifest().clone();
+    let mut duplicate = manifest.processes[0].clone();
+    duplicate.id = "p1".to_string();
+    manifest.processes.push(duplicate);
+
+    let error = manifest
+        .select_process(Some("a b > c"))
+        .expect_err("duplicate expressions must be ambiguous");
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
+    assert!(error.to_string().contains("ambiguous"));
+    assert!(error.to_string().contains("p0, p1"));
 }
 
 #[test]
@@ -1141,6 +1166,17 @@ fn non_self_inverse_alias_pdg_order_is_verified() {
     );
     assert_eq!(
         selected.alias.expect("alias metadata").external_pdgs,
+        vec![1, -1, 22, 23, 21]
+    );
+    let selected_by_expression = verified
+        .select_process(Some("d   d~ > a z g"))
+        .expect("select three-cycle alias by expression");
+    assert_eq!(selected_by_expression.requested_id, "cycled");
+    assert_eq!(
+        selected_by_expression
+            .alias
+            .expect("alias metadata selected by expression")
+            .external_pdgs,
         vec![1, -1, 22, 23, 21]
     );
 

@@ -32,7 +32,7 @@ fn sdk<T>(result: rusticol::Result<T>) -> Result<T, String> {
 }
 
 fn usage() -> &'static str {
-    "usage: check_standalone [--process ID] [--model-parameters PATH] \
+    "usage: check_standalone [--process ID|EXPRESSION] [--model-parameters PATH] \
 [--set-parameter NAME REAL IMAG] [--precision 16] [--json]"
 }
 

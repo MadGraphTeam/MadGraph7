@@ -521,6 +521,24 @@ def test_mixed_lc_bundle_agrees_for_all_processes_and_parameter_updates(
         assert direct_total != pytest.approx(baseline_total, rel=1.0e-10)
 
 
+@pytest.mark.parametrize(
+    ("expression", "stable_id"),
+    tuple(zip(_MIXED_PROCESSES, _MIXED_NAMES, strict=True)),
+)
+def test_all_languages_select_processes_by_concrete_expression(
+    generated_bundles: dict[str, _BuiltBundle],
+    expression: str,
+    stable_id: str,
+) -> None:
+    bundle = generated_bundles["mixed"]
+    selector = "  ".join(expression.split())
+    payloads = _all_languages(bundle, process=selector)
+
+    _assert_language_payloads(payloads)
+    assert payloads["python"]["process"] == expression
+    assert payloads["python"]["process_key"] == stable_id
+
+
 def test_single_process_bundle_uses_default_process_without_selector(
     generated_bundles: dict[str, _BuiltBundle],
 ) -> None:

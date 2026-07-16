@@ -187,7 +187,7 @@ contains
       case ("--json")
         json = .true.
       case ("--help", "-h")
-        write(*, '(A)') "usage: check_standalone [--process ID] " // &
+        write(*, '(A)') "usage: check_standalone [--process ID|EXPRESSION] " // &
             "[--model-parameters PATH] [--set-parameter NAME REAL IMAG] " // &
             "[--precision 16] [--json]"
         stop 0

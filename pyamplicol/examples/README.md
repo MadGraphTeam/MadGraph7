@@ -20,9 +20,9 @@ pyamplicol evaluate_resolved.toml
 pyamplicol benchmark.toml
 ```
 
-`evaluate_total.toml` selects `p_p_to_z_j_j_4`, the concrete
-`d d~ > Z g g` process. Its parameter card updates the genuine UFO external
-inputs `aS` and `MZ`.
+`evaluate_total.toml` selects the concrete `d d~ > z g g` process by its
+readable expression. The equivalent stable ID is `p_p_to_z_j_j_4`. Its
+parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 
 ## Run Cards
 
@@ -66,7 +66,7 @@ Evaluate with a parameter card plus a direct override:
 ```console
 python python/runtime_evaluation.py \
   artifacts/pp_zjj data/pp_zjj_momenta.json \
-  --process p_p_to_z_j_j_4 \
+  --process 'd d~ > z g g' \
   --parameters data/model_parameters.json \
   --set-parameter aS=0.1165
 ```
@@ -75,7 +75,7 @@ Benchmark the selected process:
 
 ```console
 python python/benchmark.py artifacts/pp_zjj \
-  --process p_p_to_z_j_j_4 \
+  --process 'd d~ > z g g' \
   --momenta data/pp_zjj_momenta.json
 ```
 
@@ -94,9 +94,9 @@ sum them, and compare with the optimized total:
 
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \
-  --process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json
+  --process 'd d~ > z g g' --set-parameter aS 0.117 0 --json
 make -C artifacts/pp_zjj/API/rust run \
-  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --precision 16 --json'
+  ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --precision 16 --json'
 make -C artifacts/pp_zjj/API/cpp run \
   ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/fortran run \

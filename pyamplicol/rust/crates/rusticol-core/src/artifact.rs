@@ -390,10 +390,50 @@ impl ArtifactManifest {
                 });
             }
         }
+
+        let requested_expression = normalize_process_expression(selected_id);
+        let mut expression_matches = Vec::new();
+        for process in &self.processes {
+            if normalize_process_expression(&process.expression) == requested_expression {
+                expression_matches.push(ArtifactSelection {
+                    process: process.clone(),
+                    requested_id: process.id.clone(),
+                    alias: None,
+                });
+            }
+            for alias in &process.aliases {
+                if normalize_process_expression(&alias.expression) == requested_expression {
+                    expression_matches.push(ArtifactSelection {
+                        process: process.clone(),
+                        requested_id: alias.id.clone(),
+                        alias: Some(alias.clone()),
+                    });
+                }
+            }
+        }
+        match expression_matches.len() {
+            1 => return Ok(expression_matches.pop().expect("one expression match")),
+            count if count > 1 => {
+                let mut matching_ids = expression_matches
+                    .iter()
+                    .map(|selection| selection.requested_id.as_str())
+                    .collect::<Vec<_>>();
+                matching_ids.sort_unstable();
+                return Err(RusticolError::selector(format!(
+                    "process expression {selected_id:?} is ambiguous; select one of these stable ids: {}",
+                    matching_ids.join(", ")
+                )));
+            }
+            _ => {}
+        }
         Err(RusticolError::selector(format!(
-            "unknown process or alias id {selected_id:?}"
+            "unknown process id, alias id, or concrete process expression {selected_id:?}"
         )))
     }
+}
+
+fn normalize_process_expression(expression: &str) -> String {
+    expression.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn validate_artifact_identity(manifest: &Value, bytes: &[u8]) -> RusticolResult<()> {

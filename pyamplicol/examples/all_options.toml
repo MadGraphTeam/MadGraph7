@@ -113,8 +113,8 @@ extra_flags = ["-fno-math-errno"]
 [evaluation]
 # evaluation.artifact: Optional schema-v3 artifact path. Default null.
 artifact = "artifacts/pp_zjj_all_options"
-# evaluation.process: Optional process name/alias within a set. Default null.
-process = "p_p_to_z_j_j_4"
+# evaluation.process: Optional stable ID/alias or concrete expression. Default null.
+process = "d d~ > z g g"
 # evaluation.precision: Positive decimal-digit request. Default 16.
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.

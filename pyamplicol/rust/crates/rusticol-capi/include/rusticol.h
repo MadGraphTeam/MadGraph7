@@ -41,6 +41,7 @@ int rusticol_supported_runtime_capabilities_json(
 );
 int rusticol_last_error_message(char *buffer, size_t capacity, size_t *required);
 
+/* process_key may be a stable process/alias ID or a concrete expression. */
 int rusticol_runtime_load(
     const char *process_dir,
     const char *process_key,

@@ -137,6 +137,7 @@ exclude = [
   "docs/*.run.xml",
   "docs/*.synctex.gz",
   "docs/*.toc",
+  "flake.nix",
   "outputs/**",
   "PYPI_DEPLOYMENT_TEST/**",
   "target/**",

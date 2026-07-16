@@ -31,19 +31,34 @@ checkout. Current publication gates are listed in
 
 The example deliberately defines a two-flavor `p`/`j` set containing `d`,
 `d~`, and `g`. The current planner reduces the cartesian request to 19 physical
-concrete processes. Their stable runtime names are distinct from the output
-directory; for example, `p_p_to_z_j_j_4` is `d d~ > Z g g` inside
-`artifacts/pp_zjj`.
+concrete processes. Select one using its readable concrete expression or its
+stable runtime ID. For example, `d d~ > z g g` has the stable ID
+`p_p_to_z_j_j_4` inside `artifacts/pp_zjj`.
+
+Inspect the complete output inventory before selecting a process:
+
+```console
+pyamplicol inspect artifacts/pp_zjj
+```
+
+The human view is a colored table of artifact, process, alias, coverage, and
+runtime metadata. Add `--format json` for the corresponding machine-readable
+inventory, or `--process 'd d~ > z g g'` for detailed physics metadata for one
+entry.
 
 Runtime parameters can be supplied as one atomic JSON update or as direct UFO
 external-parameter overrides:
 
 ```console
 pyamplicol evaluate artifacts/pp_zjj \
-  --process p_p_to_z_j_j_4 \
+  --process 'd d~ > z g g' \
   --momenta data/pp_zjj_momenta.json \
   --model-parameters data/model_parameters.json
 ```
+
+The equivalent machine-stable selector is `--process p_p_to_z_j_j_4`.
+Whitespace is normalized for expression selectors; concrete particle names and
+ordering remain significant.
 
 `data/model_parameters.json` updates the real model inputs `aS` and `MZ`.
 Unknown, immutable, or invalid entries reject the complete update.
@@ -56,6 +71,7 @@ Unknown, immutable, or invalid entries reject the complete update.
 | Build and install this source tree | `python -m pip install .` | Published packages only |
 | Retain a local wheel | `just wheel` | Published packages only; writes `dist/` |
 | Install the matching retained wheel | `just install-wheel PYTHON=/path/to/python` | Existing or newly built wheel |
+| Enter the complete Nix contributor shell | `nix develop` | Python/Rust/native/Fortran/TeX toolchains |
 | Prepare a contributor environment | `just dev-install` | Pinned, non-publishable candidate inputs |
 
 Source builds require Python 3.11 or newer, Rust 1.89 or newer, and a C/C++
@@ -66,10 +82,17 @@ native SDK is staged into a built wheel, so install that wheel before using
 Contributor setup is source-checkout-only:
 
 ```console
+nix develop  # optional on Nix/NixOS; supplies every system tool
 just dev-install
 PYTHON=.venv/bin/python just dev-test
 just --list
 ```
+
+The repository flake supplies Python 3.11, the pinned Rust toolchain, C/C++ and
+Fortran compilers, native libraries, PDF utilities, and a complete TeX setup.
+`just dev-install` remains responsible for the lock-controlled Python packages
+and candidate dependency checkouts; the flake deliberately does not duplicate
+them.
 
 Strict source and wheel builds use `dependencies/release-lock.toml` and fail
 closed while a required published dependency remains unverified. Contributor
@@ -193,7 +216,7 @@ from pathlib import Path
 
 from pyamplicol import Runtime
 
-runtime = Runtime.load("artifacts/pp_zjj", process="p_p_to_z_j_j_4")
+runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > z g g")
 runtime.set_model_parameters({"aS": 0.117, "MZ": 91.188})
 momenta = json.loads(Path("data/pp_zjj_momenta.json").read_text())
 
@@ -238,10 +261,10 @@ compare with the optimized total:
 
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \
-  --process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json
+  --process 'd d~ > z g g' --set-parameter aS 0.117 0 --json
 
 make -C artifacts/pp_zjj/API/rust run \
-  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --precision 16 --json'
+  ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --precision 16 --json'
 make -C artifacts/pp_zjj/API/cpp run \
   ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/fortran run \

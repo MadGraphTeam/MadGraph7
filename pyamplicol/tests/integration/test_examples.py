@@ -69,7 +69,7 @@ def test_copied_card_rebases_relative_paths_to_user_directory(tmp_path: Path) ->
 
     config = parse_cli((str(copied),)).resolve().effective
     assert config.evaluation.artifact == (tmp_path / "artifacts/pp_zjj")
-    assert config.evaluation.process == "p_p_to_z_j_j_4"
+    assert config.evaluation.process == "d d~ > z g g"
     assert config.evaluation.momenta == (tmp_path / "data/pp_zjj_momenta.json")
     assert config.evaluation.model_parameters == (
         tmp_path / "data/model_parameters.json"

@@ -274,6 +274,8 @@ class Runtime:
         model_parameters: ModelParameters | None = None,
         mute_warnings: bool = False,
     ) -> Runtime:
+        """Load one process by stable ID, alias ID, or concrete expression."""
+
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
         parameters = dict(model_parameters) if model_parameters is not None else None
         backend = _get_runtime_loader()(

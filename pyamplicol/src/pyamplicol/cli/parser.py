@@ -404,7 +404,10 @@ def _add_evaluation_options(
     if include_artifact:
         parser.add_argument("artifact", type=Path, nargs="?", default=None)
     parser.add_argument(
-        "--process", dest="evaluation.process", default=argparse.SUPPRESS
+        "--process",
+        dest="evaluation.process",
+        default=argparse.SUPPRESS,
+        help="stable process/alias ID or exact concrete process expression",
     )
     parser.add_argument(
         "--precision",
@@ -536,11 +539,17 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = subparsers.add_parser(
         "inspect",
         parents=[common],
-        help="Inspect a generated artifact.",
+        help="Summarize a generated artifact and its processes.",
     )
     inspect.add_argument("artifact", type=Path, nargs="?", default=None)
     inspect.add_argument(
-        "--process", dest="evaluation.process", default=argparse.SUPPRESS
+        "--process",
+        dest="evaluation.process",
+        default=argparse.SUPPRESS,
+        help=(
+            "show detailed physics for one stable process/alias ID or exact "
+            "concrete process expression"
+        ),
     )
 
     model = subparsers.add_parser(

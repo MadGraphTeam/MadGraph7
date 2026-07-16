@@ -16,6 +16,8 @@ from pyamplicol.config import (
 )
 from pyamplicol.reporting import ProgressSink
 
+ROOT = Path(__file__).resolve().parents[2]
+
 
 class _Services:
     def __init__(self, *, fail: bool = False) -> None:
@@ -114,3 +116,22 @@ def test_cli_failures_write_only_diagnostics_to_stderr(tmp_path: Path) -> None:
     assert status == 2
     assert stdout.getvalue() == ""
     assert "generation rejected" in stderr.getvalue()
+
+
+def test_inspect_cli_lists_artifact_processes_as_json() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    artifact = ROOT / "src/pyamplicol/assets/selftest/portable-64le/artifact"
+
+    status = run_cli(
+        ("inspect", str(artifact), "--format", "json", "--progress", "off"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload["kind"] == "pyamplicol-artifact-inspection"
+    assert payload["default_process_id"] == "d_dbar_to_z"
+    assert payload["processes"][0]["expression"] == "d d~ > z"
+    assert stderr.getvalue() == ""

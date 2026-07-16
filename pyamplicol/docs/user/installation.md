@@ -90,6 +90,24 @@ just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
 
+On Nix or NixOS, the repository includes a developer shell:
+
+```console
+nix develop
+just dev-install
+PYTHON=.venv/bin/python just dev-test
+```
+
+The flake provides Python 3.11, Rust 1.89, C/C++ and Fortran compilers, native
+build libraries, PDF inspection utilities, and the full TeX distribution used
+to rebuild the performance report. It intentionally omits pyAmpliCol's Python
+runtime, test, and patched candidate packages: `just dev-install` installs
+those into `.venv` from the repository's contributor locks.
+
+The flake is a source-checkout contributor tool rather than part of the PyPI
+source distribution, because that distribution excludes the candidate
+dependency installer and accepts published dependencies only.
+
 This mode uses pinned candidate dependency inputs and marks its wheels
 non-publishable. To omit the optional independent legacy-Fortran oracle:
 

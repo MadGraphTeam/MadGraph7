@@ -49,17 +49,27 @@ artifacts/pp_zjj/API/
 
 The drivers load metadata, select a concrete process, accept a JSON
 model-parameter card and direct overrides, evaluate all resolved components,
-sum them explicitly, and compare with the optimized total. Run the primary
-subprocess with:
+sum them explicitly, and compare with the optimized total. `--process` accepts
+either the exact concrete expression stored in the artifact or its stable
+process/alias ID. These selectors are equivalent:
+
+```console
+--process 'd d~ > z g g'
+--process p_p_to_z_j_j_4
+```
+
+Whitespace is normalized for expression selectors, while particle names and
+ordering remain significant. Ambiguous expressions are rejected with the
+matching stable IDs. Run the primary subprocess with:
 
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \
-  --process p_p_to_z_j_j_4 \
+  --process 'd d~ > z g g' \
   --set-parameter aS 0.117 0 \
   --json
 
 make -C artifacts/pp_zjj/API/rust run \
-  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --precision 16 --json'
+  ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --precision 16 --json'
 make -C artifacts/pp_zjj/API/cpp run \
   ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/fortran run \
@@ -80,7 +90,7 @@ are not required:
 ```console
 make -C artifacts/pp_zjj/API/rust
 make -C artifacts/pp_zjj/API/rust run \
-  ARGS='--process p_p_to_z_j_j_4 --precision 16'
+  ARGS='--process "d d~ > z g g" --precision 16'
 ```
 
 The generated wrapper owns the opaque runtime handle, frees it on drop, exposes
@@ -96,7 +106,7 @@ total/resolved f64 evaluation:
 ```cpp
 #include <rusticol.hpp>
 
-rusticol::Runtime runtime("artifacts/pp_zjj", "p_p_to_z_j_j_4");
+rusticol::Runtime runtime("artifacts/pp_zjj", "d d~ > z g g");
 runtime.set_model_parameter("aS", 0.117);
 auto total = runtime.evaluate(flat_momenta, point_count);
 auto resolved = runtime.evaluate_resolved(flat_momenta, point_count);
@@ -136,9 +146,13 @@ Complete hand-written C++ and Fortran examples are in
 make -C examples/native
 examples/native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_4 \
   examples/data/model_parameters.json
-examples/native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_4 \
+examples/native/runtime_fortran artifacts/pp_zjj 'd d~ > z g g' \
   examples/data/model_parameters.json
 ```
+
+The C ABI, C++ wrapper, Fortran module, and generated Rust wrapper use the same
+Rusticol resolver. After loading, `process_key()` returns the stable ID even
+when the caller selected the process by expression.
 
 ## Runtime Capability
 

@@ -6,19 +6,50 @@
 particle, helicity, color, reduction, and model-parameter metadata. The native
 extension is imported only when an artifact is loaded.
 
+## Inspect An Artifact
+
+List every generated process and stable ID without loading executable evaluator
+state:
+
+```console
+pyamplicol inspect artifacts/pp_zjj
+```
+
+The terminal view uses aligned colored tables for artifact/model/runtime
+metadata, concrete processes, crossing aliases, helicity and color coverage,
+payload size, and dependencies. The same complete inventory is available as
+JSON:
+
+```console
+pyamplicol inspect artifacts/pp_zjj --format json
+```
+
+To inspect the detailed resolved-physics metadata for one process, select it by
+expression or stable ID:
+
+```console
+pyamplicol inspect artifacts/pp_zjj --process 'd d~ > z g g'
+pyamplicol inspect artifacts/pp_zjj --process p_p_to_z_j_j_4
+```
+
 ## Load A Concrete Process
 
-Multiprocess artifacts require a stable process name or alias:
+Multiprocess artifacts accept either a readable concrete expression or a
+stable process/alias ID:
 
 ```python
 from pyamplicol import Runtime
 
-runtime = Runtime.load("artifacts/pp_zjj", process="p_p_to_z_j_j_4")
+runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > z g g")
 print(runtime.physics.process)  # d d~ > Z g g
 print(runtime.physics.external_particles)
 print(runtime.physics.helicity_ids)
 print(runtime.physics.color_flow_ids)
 ```
+
+The equivalent stable selector is `process="p_p_to_z_j_j_4"`. Expression
+matching normalizes whitespace but preserves concrete particle names and
+ordering.
 
 Artifact schema, payload paths and hashes, target compatibility, and runtime ABI
 are validated before executable state is loaded.
@@ -38,7 +69,7 @@ Apply a complete JSON object while loading:
 ```python
 runtime = Runtime.load(
     "artifacts/pp_zjj",
-    process="p_p_to_z_j_j_4",
+    process="d d~ > z g g",
     model_parameters={"aS": 0.117, "MZ": 91.188},
 )
 ```
@@ -57,7 +88,7 @@ the same contract:
 
 ```console
 pyamplicol evaluate artifacts/pp_zjj \
-  --process p_p_to_z_j_j_4 \
+  --process 'd d~ > z g g' \
   --model-parameters data/model_parameters.json \
   --momenta data/pp_zjj_momenta.json
 ```

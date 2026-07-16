@@ -242,10 +242,15 @@ class DefaultCliServices:
 
     def inspect(self, config: RunConfig, progress: ProgressSink) -> object:
         del progress
-        from pyamplicol.api import Runtime
-
         if config.evaluation.artifact is None:
             raise ConfigurationError("inspect requires evaluation.artifact")
+        if config.evaluation.process is None:
+            from pyamplicol.artifacts import inspect_artifact
+
+            return inspect_artifact(config.evaluation.artifact)
+
+        from pyamplicol.api import Runtime
+
         return Runtime.load(
             config.evaluation.artifact,
             process=config.evaluation.process,

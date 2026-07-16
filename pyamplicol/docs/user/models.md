@@ -89,10 +89,11 @@ p = ["d", "d~", "g"]
 j = ["d", "d~", "g"]
 ```
 
-The external SM uses its declared particle names, including uppercase `Z`.
-The current generation filter retains 19 concrete processes. Stable names such
-as `p_p_to_z_j_j_4` identify subprocesses inside the shared artifact; they are
-not output-directory names.
+The external SM uses its declared particle names when parsing generation
+requests. The current generation filter retains 19 concrete processes. A
+runtime may select one through the concrete expression recorded by artifact
+inspection or a stable name such as `p_p_to_z_j_j_4`; neither is an output
+directory name.
 
 Explicit process sets are also supported:
 
