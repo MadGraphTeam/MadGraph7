@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-07-16T06:33:38Z",
+  "captured_at": "2026-07-16T08:30:24Z",
   "dependency_ids": [
     "dependency:analytic-oracles"
   ],
@@ -12,7 +12,7 @@
     "implementation": "tools/developer/analytic_oracles.py Decimal formulas",
     "independence_statement": "Closed-form scalar formulas consume only captured momenta and model defaults; they do not import generation or runtime evaluators.",
     "name": "Independent closed-form scalar oracles",
-    "revision": "33b7a2420258d63e8503c5e03fdb3a0f13d339d1",
+    "revision": "54045e93070c87caab43063eae7c1807fb4ae70d",
     "tolerance_ceiling": {
       "absolute": "0.000000000000001",
       "relative": "0.000000000001"
@@ -35,7 +35,7 @@
         "point=point:scalars_2to2:generic-1"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "595f0a66e7fe59484fdb316b8f865677634a225fa6accbf92663117f9433ca5b",
+      "evidence_record_sha256": "407b10ad06eec811330bb380f4dd8fd6b3c317eeb3532ddbccebb07126ac388c",
       "helicity_ids": [
         "h:+0,+0,+0,+0"
       ],
@@ -50,7 +50,7 @@
         ]
       ],
       "oracle_output_sha256": "dcd1e9621a78ddb55f07befcae557d301c4028c2ded7682de79af7c30e991bcd",
-      "physics_case_sha256": "1bb8105e974a26a07aa7f5883a8b0ca993221165c7463428987352c1e4b127eb",
+      "physics_case_sha256": "6c7aab7fe96336599c451077935929599de9073a62146baea8c6a89c52661eca",
       "point_id": "point:scalars_2to2:generic-1",
       "process_identity": {
         "color_order_count": 1,
@@ -97,7 +97,7 @@
         "point=point:scalars_2to2:generic-2"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "b126491a9e8bb82b48752fc2a770295f62cb40d08221e38626c308a2a873cd23",
+      "evidence_record_sha256": "3b82d21faf8b40ad57a791b5ea65c7aeada9236833801cb7583893e52efb7d1c",
       "helicity_ids": [
         "h:+0,+0,+0,+0"
       ],
@@ -112,7 +112,7 @@
         ]
       ],
       "oracle_output_sha256": "5e42e72679d7ac0cb61e45f4cf2088c569f938b85b18b176faf3577b8dc00f85",
-      "physics_case_sha256": "1bb8105e974a26a07aa7f5883a8b0ca993221165c7463428987352c1e4b127eb",
+      "physics_case_sha256": "6c7aab7fe96336599c451077935929599de9073a62146baea8c6a89c52661eca",
       "point_id": "point:scalars_2to2:generic-2",
       "process_identity": {
         "color_order_count": 1,
@@ -159,7 +159,7 @@
         "point=point:scalars_2to2:generic-3"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "ddc5fad45422b45e7be07a10324f45be7408ce95a100478a0eb5aa8fea9f396c",
+      "evidence_record_sha256": "7755c0e119c47854195d85ae56879391ea102fd973b086160b7743abf09c38c7",
       "helicity_ids": [
         "h:+0,+0,+0,+0"
       ],
@@ -174,7 +174,7 @@
         ]
       ],
       "oracle_output_sha256": "2e8f6dc5e31e28d606cd01f71fb81930adea4d2d180ddd7f98abd91549c60890",
-      "physics_case_sha256": "1bb8105e974a26a07aa7f5883a8b0ca993221165c7463428987352c1e4b127eb",
+      "physics_case_sha256": "6c7aab7fe96336599c451077935929599de9073a62146baea8c6a89c52661eca",
       "point_id": "point:scalars_2to2:generic-3",
       "process_identity": {
         "color_order_count": 1,
@@ -221,7 +221,7 @@
         "point=point:scalars_2to2:stress-near-collinear"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "42ebcf5dfab632ee181ff797dc656510b87e5e3a7fff12b557082d71b13741e8",
+      "evidence_record_sha256": "fdf3d29e1c6332dff190eb391e1d5f94437e33495834d186991f8780c6d64cbc",
       "helicity_ids": [
         "h:+0,+0,+0,+0"
       ],
@@ -236,7 +236,7 @@
         ]
       ],
       "oracle_output_sha256": "2e1ccda21a5ea249a4fe6ec98c0b5b0440722530526fe0ea851ff8290b0f6999",
-      "physics_case_sha256": "1bb8105e974a26a07aa7f5883a8b0ca993221165c7463428987352c1e4b127eb",
+      "physics_case_sha256": "6c7aab7fe96336599c451077935929599de9073a62146baea8c6a89c52661eca",
       "point_id": "point:scalars_2to2:stress-near-collinear",
       "process_identity": {
         "color_order_count": 1,
@@ -283,7 +283,7 @@
         "point=point:scalar_gravity_2to2:generic-1"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "04edb59d2cb9419138eca34b7fa1758d15ced2557738e389e22ca9ab4bfdada4",
+      "evidence_record_sha256": "f42628d6a7b442331bcf25a6bb00b7efb7a96f7e08d4d4d40ade9fcbeba006b4",
       "helicity_ids": [
         "h:+0,+0,-2,-2",
         "h:+0,+0,-2,+2",
@@ -310,7 +310,7 @@
         ]
       ],
       "oracle_output_sha256": "94781f9c11685c8369617a1840ab4f763ea4da0e512795083afaf7d81d799a2d",
-      "physics_case_sha256": "6e3e35ff196b5ce1167f0f90c5960e246067d631f5638ab1b412a34ebfa15430",
+      "physics_case_sha256": "f34ef0ce85a69fc7f40ac6c3bea4eba7dacbd383e3b4507505ec0028e700143e",
       "point_id": "point:scalar_gravity_2to2:generic-1",
       "process_identity": {
         "color_order_count": 1,
@@ -357,7 +357,7 @@
         "point=point:scalar_gravity_2to2:generic-2"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "4c52322b996acc8acb40b4e2f9506bb0311f4b3615fff2848a19fbea919c7691",
+      "evidence_record_sha256": "b34edd33e9f66e14766f6fc57800b22b54f9bb2d48b0759a907a7d958d19f726",
       "helicity_ids": [
         "h:+0,+0,-2,-2",
         "h:+0,+0,-2,+2",
@@ -384,7 +384,7 @@
         ]
       ],
       "oracle_output_sha256": "678ce97b2ad8d686c31183083b0ef3be072cf5afe0d5801a6517168bacbf8686",
-      "physics_case_sha256": "6e3e35ff196b5ce1167f0f90c5960e246067d631f5638ab1b412a34ebfa15430",
+      "physics_case_sha256": "f34ef0ce85a69fc7f40ac6c3bea4eba7dacbd383e3b4507505ec0028e700143e",
       "point_id": "point:scalar_gravity_2to2:generic-2",
       "process_identity": {
         "color_order_count": 1,
@@ -431,7 +431,7 @@
         "point=point:scalar_gravity_2to2:generic-3"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "b916068b8c42f9bdd7568dfdc958dea4a3f994ec1a06a473a42279680929668e",
+      "evidence_record_sha256": "1134177a2c106806558a7423210aa048ec82978eaf904ae198388b6c77c4f1e6",
       "helicity_ids": [
         "h:+0,+0,-2,-2",
         "h:+0,+0,-2,+2",
@@ -458,7 +458,7 @@
         ]
       ],
       "oracle_output_sha256": "3e9417e0f4fb6077512f4f183aea24d0e5f9288181808192268086097680b462",
-      "physics_case_sha256": "6e3e35ff196b5ce1167f0f90c5960e246067d631f5638ab1b412a34ebfa15430",
+      "physics_case_sha256": "f34ef0ce85a69fc7f40ac6c3bea4eba7dacbd383e3b4507505ec0028e700143e",
       "point_id": "point:scalar_gravity_2to2:generic-3",
       "process_identity": {
         "color_order_count": 1,
@@ -505,7 +505,7 @@
         "point=point:scalar_gravity_2to2:stress-near-collinear"
       ],
       "coverage": "resolved",
-      "evidence_record_sha256": "eb983a88dbb9de7e08b322026d7996d9664b872d8b6e5c5379d36bdc596b930b",
+      "evidence_record_sha256": "b7efb4934037768650f2d4f25024f0bb332183f555b63ce48ff4058a02653037",
       "helicity_ids": [
         "h:+0,+0,-2,-2",
         "h:+0,+0,-2,+2",
@@ -532,7 +532,7 @@
         ]
       ],
       "oracle_output_sha256": "6bedd892437584afbacd001c03af24ba446c5c62806c202584dc41efdebe30cf",
-      "physics_case_sha256": "6e3e35ff196b5ce1167f0f90c5960e246067d631f5638ab1b412a34ebfa15430",
+      "physics_case_sha256": "f34ef0ce85a69fc7f40ac6c3bea4eba7dacbd383e3b4507505ec0028e700143e",
       "point_id": "point:scalar_gravity_2to2:stress-near-collinear",
       "process_identity": {
         "color_order_count": 1,

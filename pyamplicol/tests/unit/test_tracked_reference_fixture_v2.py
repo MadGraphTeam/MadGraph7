@@ -21,10 +21,23 @@ def _tracked_fixture() -> ReferenceFixture:
 
 def test_tracked_reference_bundle_is_complete_and_revision_bound() -> None:
     fixture = _tracked_fixture()
+    sm_processes = {
+        "sm_ddbar_z",
+        "sm_udbar_wplus",
+        "sm_ddbar_zg",
+        "sm_ddbar_ee",
+        "sm_ddbar_uubar",
+        "sm_ddbar_ddbar",
+        "sm_gg_gg",
+        "sm_gg_ttbar",
+        "sm_ddbar_zgg",
+    }
     expected_cases = {
-        *(f"case:sm_ddbar_z:{accuracy}" for accuracy in ("lc", "nlc", "full")),
-        *(f"case:sm_ddbar_zg:{accuracy}" for accuracy in ("lc", "nlc", "full")),
-        *(f"case:sm_ddbar_zgg:{accuracy}" for accuracy in ("lc", "nlc", "full")),
+        *(
+            f"case:{process}:{accuracy}"
+            for process in sm_processes
+            for accuracy in ("lc", "nlc", "full")
+        ),
         "case:scalars_2to2:lc",
         "case:scalar_gravity_2to2:lc",
     }

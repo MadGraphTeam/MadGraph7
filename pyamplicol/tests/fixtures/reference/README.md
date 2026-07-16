@@ -18,6 +18,11 @@ color component. Structural zeros, normalization, topology, reduction maps,
 input hashes, independent-oracle output hashes, and exact dependency provenance
 are part of the validated contract.
 
+The built-in-SM ladder covers neutral and charged currents, leptons, mixed- and
+same-flavour two-quark-line scattering, pure gluons, top-pair production, and
+the retained one-, two-, and three-body Z ladder in LC, NLC, and full color.
+The external-model slice covers scalar contact and scalar-gravity interactions.
+
 The bundle was captured from the clean installed candidate identified in
 `CAPTURE.toml`. Generated process artifacts are intentionally not committed,
 but remain in the ignored revision-scoped `.artifacts/reference-fixture-v2/`

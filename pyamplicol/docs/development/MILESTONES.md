@@ -51,9 +51,10 @@ evidence; they do not commit, push, or update shared release metadata.
 | Current-source validation audit | Confucius + Main | Complete | Source tests now build one fresh audited candidate wheel, stage only ignored native runtime/SDK resources, and use an external candidate-identity marker. This prevents stale site-packages code and candidate metadata from contaminating source tests or release sdists | Pending |
 | Expanded physics-ladder review | Pauli | Complete | The next fixture contract must record multiple generic and stress points, exact external-row identity, complete resolved axes and structural zeros, and full independent-oracle evidence. Multi-flow LC comparisons use per-helicity aggregates; legacy accuracy outputs are cumulative, and the pinned oracle cannot validate more than two quark lines | Pending |
 | Reference fixture v2 capture infrastructure | Main | Complete | Strict schemas and typed readers cover model-derived axes, exact decimal points, normalization, topology, LC partitions and contracted many-to-one reductions, whole-record evidence hashes, installed-candidate/source provenance, independent analytic and pinned-Fortran evidence, and manifest-last atomic publication | `9292dfb`--`33b7a24` |
-| First real reference fixture v2 bundle | Main | Complete | Clean candidate `33b7a242...` produced 11 cases over 17 exact points. Twenty-seven pinned-Fortran records agree with p80 totals to at worst `1.59e-12`; eight analytic records agree to at worst `2.29e-16`. Five complete process artifacts are retained under the revision-scoped ignored artifact root, and release/source gates consume the atomic v2 bundle | `c10d5fd` |
-| Low-multiplicity fixture-ladder review | Boole + Main | Complete | Charged-current, leptonic, mixed-flavour two-line, same-flavour exchange, pure-gluon, and top-pair recipes are ordered before the retained three-body tier. Massive pairs use a quantified threshold point; exact Fortran row, matching-row, and colour-order multiplicities are pinned | This commit |
-| Fixture release-gate re-audit | Parfit + Main | Complete | Candidate-derived masses were replaced by independently declared mass contracts; wheel scope remains free of legacy AmpliCol and local loader dependencies. The tracked bundle remains the prior revision's release evidence until the clean-revision recapture commit | This commit |
+| First real reference fixture v2 bundle | Main | Complete | Clean candidate `33b7a242...` produced the initial 11-case, 17-point atomic bundle. Twenty-seven pinned-Fortran records agreed with p80 totals to at worst `1.59e-12`; eight analytic records agreed to at worst `2.29e-16`. Its five complete process artifacts remain retained for historical comparison; the expanded bundle below supersedes it in release/source gates | `c10d5fd` |
+| Low-multiplicity fixture-ladder review | Boole + Main | Complete | Charged-current, leptonic, mixed-flavour two-line, same-flavour exchange, pure-gluon, and top-pair recipes are ordered before the retained three-body tier. Massive pairs use a quantified threshold point; exact Fortran row, matching-row, and colour-order multiplicities are pinned | `a1bf444` |
+| Fixture release-gate re-audit | Parfit + Main | Complete | Candidate-derived masses were replaced by independently declared mass contracts; wheel scope remains free of legacy AmpliCol and local loader dependencies | `a1bf444` |
+| Expanded reference fixture v2 bundle | Main | Complete | Clean candidate `54045e93070c...` produced 29 cases over 38 exact points. Ninety pinned-Fortran records agree with summed p80 totals to at worst `2.06e-11`; eight analytic records agree to at worst `2.29e-16`. Bounded binary64 residue is canonicalized only for independently proven structural zeros. Eleven complete process artifacts remain under the revision-scoped ignored artifact root | This commit |
 
 ## Agent Handoff
 
@@ -74,10 +75,9 @@ commits that milestone.
 
 ## Current Critical Path
 
-1. Build one exact candidate from the committed declarative ladder recipe, then
-   regenerate the atomic fixture-v2 bundle under the 30 GB watchdog. Validate
-   charged-current, leptonic, mixed- and same-flavour two-line, pure-gluon, and
-   top cases in LC/NLC/full before retaining the three-body tier.
+1. Validate the externally loaded UFO/JSON SM against the built-in low-
+   multiplicity ladder before increasing multiplicity, preserving resolved
+   values and generation/runtime behavior.
 2. Exercise the lazy Symbolica precision fallback and non-JIT evaluator
    artifacts without changing the direct SymJIT f64 loader or introducing a
    second SymJIT decoder.

@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 schema_version = 2
 fixture_bundle = "reference-fixture-v2.manifest.json"
-captured_utc = "2026-07-16T06:33:38Z"
+captured_utc = "2026-07-16T08:30:24Z"
 memory_watchdog_gb = 30
 
 [source]
 repository = "https://github.com/mg5amcnlo/pyamplicol.git"
-revision = "33b7a2420258d63e8503c5e03fdb3a0f13d339d1"
-tree_sha256 = "0f564033ece3168ff5ed0cb288bce07905de0a95fddc66d21ad6b7807379b962"
+revision = "54045e93070c87caab43063eae7c1807fb4ae70d"
+tree_sha256 = "b1df109c5ff447ffeb26b0fa8d6f09a0b1649e58de638100181498ba45e80e76"
 working_tree_clean = true
-installed_candidate = "0.1.0.dev0+candidate.226e72f54b6c"
+installed_candidate = "0.1.0.dev0+candidate.38e8137f79f7"
 
 [capture]
 tool = "tools/developer/capture_reference_fixture_v2.py"
-artifact_root = ".artifacts/reference-fixture-v2/33b7a2420258d63e8503c5e03fdb3a0f13d339d1"
+artifact_root = ".artifacts/reference-fixture-v2/54045e93070c87caab43063eae7c1807fb4ae70d"
 artifact_mode = "generate"
 legacy_jobs = 5
 command = [
@@ -30,7 +30,7 @@ command = [
 file = "legacy-fortran-v2.json"
 repository = "https://github.com/rikkert-frederix/AmpliCol.git"
 revision = "643bc6f99d7b2249af0a85204768df243e612411"
-records = 27
+records = 90
 validation_profile = "binary64"
 
 [evidence.analytic]
@@ -41,11 +41,21 @@ validation_profile = "high-precision"
 
 [coverage]
 models = ["built-in-sm", "scalars-json", "scalar-gravity-json"]
-builtin_sm_processes = ["d d~ > z", "d d~ > z g", "d d~ > z g g"]
+builtin_sm_processes = [
+  "d d~ > z",
+  "u d~ > w+",
+  "d d~ > z g",
+  "d d~ > e- e+",
+  "d d~ > u u~",
+  "d d~ > d d~",
+  "g g > g g",
+  "g g > t t~",
+  "d d~ > z g g",
+]
 color_accuracies = ["lc", "nlc", "full"]
 external_processes = [
   "scalar_0 scalar_0 > scalar_0 scalar_0",
   "scalar_0 scalar_0 > graviton graviton",
 ]
-case_count = 11
-point_count = 17
+case_count = 29
+point_count = 38

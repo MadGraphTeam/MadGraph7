@@ -62,7 +62,7 @@ def test_current_reference_capture_matches_v2_bundle() -> None:
     assert capture["source"]["working_tree_clean"] is True
     assert capture["coverage"]["case_count"] == len(physics["cases"])
     assert capture["coverage"]["point_count"] == len(physics["points"])
-    assert capture["evidence"]["legacy_fortran"]["records"] == 27
+    assert capture["evidence"]["legacy_fortran"]["records"] == 90
     assert capture["evidence"]["analytic"]["records"] == 8
     assert {record["path"] for record in bundle["files"]} == {
         "analytic-oracles-v2.json",
