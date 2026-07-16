@@ -33,7 +33,6 @@ from .contracts import (
 )
 
 _DIRECT_FOUR_POINT_CONTACT_TENSOR_VOLUME = 4_096
-_DIRECT_FOUR_POINT_CONTACT_OPEN_INDEX_RANK = 2
 _HOST_PLATFORM = sys.platform
 
 
@@ -144,17 +143,14 @@ def _contact_partial_component_expressions(
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
     tensor_volume = math.prod(_spin_dimension(particle.spin) for particle in particles)
-    open_index_rank = sum(
-        len(_spin_representations(particles[leg].spin)) for leg in open_legs
-    )
     input_legs = ((left_leg, "left"), (right_leg, "right"))
     if (
-        open_index_rank > _DIRECT_FOUR_POINT_CONTACT_OPEN_INDEX_RANK
+        any(particles[leg].spin == 5 for leg in open_legs)
         and _HOST_PLATFORM.startswith("linux")
     ):
-        # Spenso aborts while materializing some high-rank open tensors on
-        # Linux. Resolve one physical output index at a time so every network
-        # has at most one external particle's tensor rank.
+        # Spenso aborts while materializing some open spin-2 tensors on Linux,
+        # including a single rank-two output. Resolve one physical output
+        # component at a time before constructing the remaining network.
         result = _execute_contact_partial_sliced(
             expression,
             library,

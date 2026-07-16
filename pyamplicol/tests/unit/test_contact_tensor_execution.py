@@ -13,7 +13,7 @@ from pyamplicol.models.compiler_kernels import (
     _spin_representations,
     _spin_slots,
 )
-from pyamplicol.models.contracts import CompiledParticleRecord
+from pyamplicol.models.contracts import CompiledParticleRecord, CompiledVertexTerm
 
 
 def _particle(name: str, pdg: int, *, spin: int) -> CompiledParticleRecord:
@@ -283,3 +283,66 @@ def test_sliced_spin2_contact_partial_preserves_dense_axis_order() -> None:
     assert tuple(item.to_canonical_string() for item in sliced) == tuple(
         item.to_canonical_string() for item in direct
     )
+
+
+def test_linux_single_spin2_output_uses_sliced_contact_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _sym._ensure_symbolica()
+    particles = (
+        _particle("s0", 9_400_000, spin=1),
+        _particle("s1", 9_400_001, spin=1),
+        _particle("s2", 9_400_002, spin=1),
+        _particle("h0", 9_400_003, spin=5),
+    )
+    particle_by_name = {particle.name: particle for particle in particles}
+    term = CompiledVertexTerm(
+        id=1,
+        vertex="single-spin2-contact",
+        particles=tuple(particle.name for particle in particles),
+        color_index=0,
+        lorentz_index=0,
+        color_source="1",
+        color_expression="1",
+        lorentz_name="L_single_spin2",
+        lorentz_source="1",
+        lorentz_expression="1",
+        coupling="GC_single_spin2",
+        coupling_expression="1",
+        coupling_orders=(),
+    )
+    calls: list[tuple[int, ...]] = []
+
+    def sliced(
+        _expression: object,
+        _library: object,
+        _particles: object,
+        *,
+        input_legs: object,
+        open_legs: tuple[int, ...],
+        kind: int,
+        model_symbols: object,
+    ) -> tuple[object, ...]:
+        del input_legs, kind, model_symbols
+        calls.append(open_legs)
+        return tuple(_sym.E(str(index + 1)) for index in range(16))
+
+    def unexpected_dense(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Linux spin-2 outputs must use the sliced path")
+
+    monkeypatch.setattr(contacts, "_HOST_PLATFORM", "linux")
+    monkeypatch.setattr(contacts, "_execute_contact_partial_sliced", sliced)
+    monkeypatch.setattr(contacts, "_execute_dense_tensor", unexpected_dense)
+
+    result = contacts._contact_partial_component_expressions(
+        term,
+        particle_by_name,
+        left_leg=0,
+        right_leg=1,
+        open_legs=(2, 3),
+        kind=41,
+        model_symbols=symbols.model("single-spin2-contact-test"),
+    )
+
+    assert calls == [(2, 3)]
+    assert result == tuple(str(index + 1) for index in range(16))
