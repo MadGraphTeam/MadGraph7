@@ -5,14 +5,38 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "build_backend"))
 
 import _pyamplicol_build as backend  # noqa: E402
+
+
+def _python_test_loader_updates(arguments: list[str]) -> dict[str, str]:
+    """Expose only the selected interpreter's shared library to Rust tests."""
+
+    if arguments[:1] != ["test"] or not sys.platform.startswith("linux"):
+        return {}
+
+    directories: list[Path] = []
+    for variable in ("LIBDIR", "LIBPL"):
+        value = sysconfig.get_config_var(variable)
+        if not value:
+            continue
+        directory = Path(str(value)).resolve()
+        if directory.is_dir() and directory not in directories:
+            directories.append(directory)
+    if not directories:
+        raise RuntimeError(
+            "the selected Python interpreter does not report a usable shared-library "
+            "directory; Rust PyO3 tests cannot be launched"
+        )
+    return {"LD_LIBRARY_PATH": os.pathsep.join(map(str, directories))}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -32,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
             "CARGO_TARGET_DIR": str(target),
             "PYTHONDONTWRITEBYTECODE": "1",
         }
+        updates.update(_python_test_loader_updates(arguments))
         if sys.platform == "darwin":
             updates["MACOSX_DEPLOYMENT_TARGET"] = "11.0"
         environment = backend._clean_environment(updates)

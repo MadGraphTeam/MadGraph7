@@ -68,3 +68,27 @@ def test_run_cargo_uses_clean_overlay(
     assert options["env"]["CARGO_TARGET_DIR"] == str(target)
     if module.sys.platform == "darwin":
         assert options["env"]["MACOSX_DEPLOYMENT_TARGET"] == "11.0"
+
+
+def test_rust_tests_use_only_the_selected_python_loader_directories(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    libdir = tmp_path / "lib"
+    libpl = tmp_path / "config"
+    libdir.mkdir()
+    libpl.mkdir()
+    values = {"LIBDIR": str(libdir), "LIBPL": str(libpl)}
+
+    monkeypatch.setattr(module.sys, "platform", "linux")
+    monkeypatch.setattr(
+        module.sysconfig,
+        "get_config_var",
+        lambda name: values.get(name),
+    )
+
+    assert module._python_test_loader_updates(["test", "--workspace"]) == {
+        "LD_LIBRARY_PATH": f"{libdir}{module.os.pathsep}{libpl}"
+    }
+    assert module._python_test_loader_updates(["check", "--workspace"]) == {}
