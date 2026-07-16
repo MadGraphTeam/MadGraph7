@@ -1,0 +1,313 @@
+diff --git a/crates/spenso/src/network/mod.rs b/crates/spenso/src/network/mod.rs
+index e5a198eb..2f5a60de 100644
+--- a/crates/spenso/src/network/mod.rs
++++ b/crates/spenso/src/network/mod.rs
+@@ -56,7 +56,10 @@ use crate::{
+ use eyre::eyre;
+ 
+ #[cfg(feature = "shadowing")]
+-use symbolica::atom::{Atom, AtomCore, AtomView};
++use symbolica::{
++    LicenseManager,
++    atom::{Atom, AtomCore, AtomView},
++};
+ 
+ #[cfg(feature = "shadowing")]
+ pub mod tags;
+@@ -184,23 +187,30 @@ where
+             );
+         }
+ 
+-        let merged = entries
+-            .into_iter()
+-            .collect::<Vec<_>>()
+-            .into_par_iter()
+-            .filter_map(|(index, atoms)| {
+-                let atom = match atoms.len() {
+-                    0 => Atom::Zero,
+-                    1 => atoms
+-                        .into_iter()
+-                        .next()
+-                        .expect("single atom exists")
+-                        .to_owned(),
+-                    _ => Atom::add_many(&atoms),
+-                };
+-                (!atom.as_view().is_zero()).then_some((index, atom))
+-            })
+-            .collect::<Vec<_>>();
++        let entries = entries.into_iter().collect::<Vec<_>>();
++        let merge_entry = |(index, atoms): (FlatIndex, Vec<AtomView<'_>>)| {
++            let atom = match atoms.len() {
++                0 => Atom::Zero,
++                1 => atoms
++                    .into_iter()
++                    .next()
++                    .expect("single atom exists")
++                    .to_owned(),
++                _ => Atom::add_many(&atoms),
++            };
++            (!atom.as_view().is_zero()).then_some((index, atom))
++        };
++        let merged = if LicenseManager::is_licensed() {
++            entries
++                .into_par_iter()
++                .filter_map(merge_entry)
++                .collect::<Vec<_>>()
++        } else {
++            entries
++                .into_iter()
++                .filter_map(merge_entry)
++                .collect::<Vec<_>>()
++        };
+ 
+         let mut elements = HashMap::with_capacity(merged.len());
+         for (index, atom) in merged {
+@@ -507,10 +517,18 @@ where
+                 .map(|term| FastTensorSumContract::ScaledTerms(vec![term]))
+         } else if terms.len() >= MIN_LAZY_FUSED_NUMERIC_CONTRACT_TERMS {
+             let start = profile::enabled().then(std::time::Instant::now);
+-            let contracted_terms = terms
+-                .par_iter()
+-                .map(|term| plan.contract_term(term))
+-                .collect::<Result<Vec<_>, _>>()?;
++            let contract_term = |term: &&ParamTensor<_>| plan.contract_term(term);
++            let contracted_terms = if LicenseManager::is_licensed() {
++                terms
++                    .par_iter()
++                    .map(contract_term)
++                    .collect::<Result<Vec<_>, _>>()?
++            } else {
++                terms
++                    .iter()
++                    .map(contract_term)
++                    .collect::<Result<Vec<_>, _>>()?
++            };
+             if let Some(start) = start {
+                 let output_entries = contracted_terms
+                     .iter()
+@@ -803,30 +821,40 @@ where
+         &self,
+         groups: HashMap<(FlatIndex, usize, bool), Vec<AtomView<'_>>>,
+     ) -> Result<ParamTensor<S>, ContractionError> {
+-        let contributions = groups
+-            .into_iter()
+-            .collect::<Vec<_>>()
+-            .into_par_iter()
+-            .filter_map(|((flat_index, coefficient_class, left_negative), atoms)| {
+-                let mut contribution = match atoms.len() {
+-                    0 => Atom::Zero,
+-                    1 => atoms
+-                        .into_iter()
+-                        .next()
+-                        .expect("single grouped atom exists")
+-                        .to_owned(),
+-                    _ => Atom::add_many(&atoms),
+-                };
+-                if left_negative {
+-                    contribution = -contribution;
+-                }
+-                contribution = multiply_atom_by_numeric_coefficient(
+-                    contribution,
+-                    &self.coefficient_classes[coefficient_class],
+-                );
+-                (!contribution.as_view().is_zero()).then_some((flat_index, contribution))
+-            })
+-            .collect::<Vec<_>>();
++        let groups = groups.into_iter().collect::<Vec<_>>();
++        let finish_group = |((flat_index, coefficient_class, left_negative), atoms): (
++            (FlatIndex, usize, bool),
++            Vec<AtomView<'_>>,
++        )| {
++            let mut contribution = match atoms.len() {
++                0 => Atom::Zero,
++                1 => atoms
++                    .into_iter()
++                    .next()
++                    .expect("single grouped atom exists")
++                    .to_owned(),
++                _ => Atom::add_many(&atoms),
++            };
++            if left_negative {
++                contribution = -contribution;
++            }
++            contribution = multiply_atom_by_numeric_coefficient(
++                contribution,
++                &self.coefficient_classes[coefficient_class],
++            );
++            (!contribution.as_view().is_zero()).then_some((flat_index, contribution))
++        };
++        let contributions = if LicenseManager::is_licensed() {
++            groups
++                .into_par_iter()
++                .filter_map(finish_group)
++                .collect::<Vec<_>>()
++        } else {
++            groups
++                .into_iter()
++                .filter_map(finish_group)
++                .collect::<Vec<_>>()
++        };
+ 
+         Ok(ParamTensor::composite(DataTensor::Sparse(SparseTensor {
+             elements: self.collect_output_groups(contributions),
+@@ -839,29 +867,39 @@ where
+         &self,
+         groups: HashMap<(FlatIndex, usize, bool), Vec<Atom>>,
+     ) -> Result<ParamTensor<S>, ContractionError> {
+-        let contributions = groups
+-            .into_iter()
+-            .collect::<Vec<_>>()
+-            .into_par_iter()
+-            .filter_map(|((flat_index, coefficient_class, left_negative), atoms)| {
+-                let mut contribution = match atoms.len() {
+-                    0 => Atom::Zero,
+-                    1 => atoms
+-                        .into_iter()
+-                        .next()
+-                        .expect("single grouped atom exists"),
+-                    _ => Atom::add_many(&atoms),
+-                };
+-                if left_negative {
+-                    contribution = -contribution;
+-                }
+-                contribution = multiply_atom_by_numeric_coefficient(
+-                    contribution,
+-                    &self.coefficient_classes[coefficient_class],
+-                );
+-                (!contribution.as_view().is_zero()).then_some((flat_index, contribution))
+-            })
+-            .collect::<Vec<_>>();
++        let groups = groups.into_iter().collect::<Vec<_>>();
++        let finish_group = |((flat_index, coefficient_class, left_negative), atoms): (
++            (FlatIndex, usize, bool),
++            Vec<Atom>,
++        )| {
++            let mut contribution = match atoms.len() {
++                0 => Atom::Zero,
++                1 => atoms
++                    .into_iter()
++                    .next()
++                    .expect("single grouped atom exists"),
++                _ => Atom::add_many(&atoms),
++            };
++            if left_negative {
++                contribution = -contribution;
++            }
++            contribution = multiply_atom_by_numeric_coefficient(
++                contribution,
++                &self.coefficient_classes[coefficient_class],
++            );
++            (!contribution.as_view().is_zero()).then_some((flat_index, contribution))
++        };
++        let contributions = if LicenseManager::is_licensed() {
++            groups
++                .into_par_iter()
++                .filter_map(finish_group)
++                .collect::<Vec<_>>()
++        } else {
++            groups
++                .into_iter()
++                .filter_map(finish_group)
++                .collect::<Vec<_>>()
++        };
+ 
+         Ok(ParamTensor::composite(DataTensor::Sparse(SparseTensor {
+             elements: self.collect_output_groups(contributions),
+@@ -882,19 +920,26 @@ where
+                 .push(contribution);
+         }
+ 
+-        output_groups
+-            .into_iter()
+-            .collect::<Vec<_>>()
+-            .into_par_iter()
+-            .filter_map(|(flat_index, atoms)| {
+-                let atom = match atoms.len() {
+-                    0 => Atom::Zero,
+-                    1 => atoms.into_iter().next().expect("single output atom exists"),
+-                    _ => Atom::add_many(&atoms),
+-                };
+-                (!atom.as_view().is_zero()).then_some((flat_index, atom))
+-            })
+-            .collect::<HashMap<_, _>>()
++        let output_groups = output_groups.into_iter().collect::<Vec<_>>();
++        let finish_group = |(flat_index, atoms): (FlatIndex, Vec<Atom>)| {
++            let atom = match atoms.len() {
++                0 => Atom::Zero,
++                1 => atoms.into_iter().next().expect("single output atom exists"),
++                _ => Atom::add_many(&atoms),
++            };
++            (!atom.as_view().is_zero()).then_some((flat_index, atom))
++        };
++        if LicenseManager::is_licensed() {
++            output_groups
++                .into_par_iter()
++                .filter_map(finish_group)
++                .collect::<HashMap<_, _>>()
++        } else {
++            output_groups
++                .into_iter()
++                .filter_map(finish_group)
++                .collect::<HashMap<_, _>>()
++        }
+     }
+ }
+ 
+diff --git a/crates/spenso/src/tensors/parametric.rs b/crates/spenso/src/tensors/parametric.rs
+index 6e48cdb3..35c452e1 100644
+--- a/crates/spenso/src/tensors/parametric.rs
++++ b/crates/spenso/src/tensors/parametric.rs
+@@ -61,6 +61,7 @@ use crate::{
+ use bincode::{Decode, Encode};
+ 
+ use symbolica::{
++    LicenseManager,
+     atom::{Atom, AtomCore, AtomView, FunctionBuilder, Indeterminate, KeyLookup, Symbol},
+     domains::{
+         InternalOrdering,
+@@ -2136,13 +2137,15 @@ where
+         other_iter.reset();
+     }
+ 
+-    let elements = grouped
+-        .into_par_iter()
+-        .filter_map(|(index, terms)| {
+-            let value = grouped_atom_sum(terms);
+-            (!value.as_view().is_zero()).then_some((index, value))
+-        })
+-        .collect();
++    let reduce_group = |(index, terms): (FlatIndex, Vec<Atom>)| {
++        let value = grouped_atom_sum(terms);
++        (!value.as_view().is_zero()).then_some((index, value))
++    };
++    let elements = if LicenseManager::is_licensed() {
++        grouped.into_par_iter().filter_map(reduce_group).collect()
++    } else {
++        grouped.into_iter().filter_map(reduce_group).collect()
++    };
+ 
+     Ok(SparseTensor {
+         zero: Atom::Zero,
+@@ -2217,13 +2220,15 @@ where
+         other_iter.reset();
+     }
+ 
+-    let elements = grouped
+-        .into_par_iter()
+-        .filter_map(|(index, terms)| {
+-            let value = grouped_atom_sum(terms);
+-            (!value.as_view().is_zero()).then_some((index, value))
+-        })
+-        .collect();
++    let reduce_group = |(index, terms): (FlatIndex, Vec<Atom>)| {
++        let value = grouped_atom_sum(terms);
++        (!value.as_view().is_zero()).then_some((index, value))
++    };
++    let elements = if LicenseManager::is_licensed() {
++        grouped.into_par_iter().filter_map(reduce_group).collect()
++    } else {
++        grouped.into_iter().filter_map(reduce_group).collect()
++    };
+ 
+     Ok(SparseTensor {
+         zero: Atom::Zero,

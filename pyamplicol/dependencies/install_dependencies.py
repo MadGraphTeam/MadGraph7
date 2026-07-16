@@ -510,6 +510,7 @@ def _patch_sources(runner: Runner, payload: dict[str, Any]) -> None:
         checkout_name = {
             "symbolica": "symbolica",
             "symjit": "symjit",
+            "gammaloop": "gammaloop",
         }.get(dependency)
         if checkout_name is None:
             continue

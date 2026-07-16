@@ -14,8 +14,9 @@ serialization/runtime compatibility has not been marked verified.
 
 ## Candidate Development Mode
 
-`just dev-install` uses immutable Symbolica/SymJIT source revisions and the
-checksummed Symbolica patches listed in `contributor-lock.toml`. Candidate mode
+`just dev-install` uses immutable Symbolica/SymJIT/GammaLoop source revisions
+and the checksummed candidate patches listed in `contributor-lock.toml`.
+Candidate mode
 exists for development and physics validation only. It installs the verified
 published `ufo-model-loader==0.1.7` wheel directly from the hash-locked runtime
 closure. Artifacts produced in this mode record the candidate revisions and
@@ -30,6 +31,14 @@ oversized stack adjustment. The deliberately synthetic probe that calls the
 low-level stack helper with a frame above 16 MiB still exceeds AArch64's
 immediate range, but that manufactured route is no longer reachable from the
 generated evaluator path. No local SymJIT patch is applied.
+
+The candidate Spenso patch keeps symbolic tensor reductions on the importing
+thread when Symbolica is running in restricted mode. Licensed builds retain
+Spenso's Rayon reductions. Without this guard, a legal tensor network may move
+an `Atom` operation onto a worker, which Symbolica rejects as unlicensed
+multicore use by aborting the process. This candidate patch is excluded from
+wheel and sdist contents and must be released upstream before a strict PyPI
+build can use it.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. The pinned

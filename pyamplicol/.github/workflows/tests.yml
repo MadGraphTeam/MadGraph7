@@ -122,6 +122,7 @@ jobs:
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python -m pytest
+          tests/integration/test_spenso_restricted_mode.py
           tests/integration/test_schema_v3_generation_runtime.py
           -q
       - name: Build and exercise Python, C++, Fortran, and Rust APIs (30 GiB RSS limit)

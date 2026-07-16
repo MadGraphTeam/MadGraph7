@@ -59,3 +59,8 @@ sha256 = "8236948b47eeec4e9de18969b1051f86eb77650c09578de74d09d89a45e9bef2"
 dependency = "symbolica"
 path = "patches/symbolica/0004-export-symjit-application.patch"
 sha256 = "b5a3a43335200bce7441c800bc2f542c215d38de04318146c4dac98f4644dc4e"
+
+[[patches]]
+dependency = "gammaloop"
+path = "patches/gammaloop/0001-respect-symbolica-restricted-mode.patch"
+sha256 = "f82a89007ac47d9cb8ce08a4c33d508718eb157598e9884048751acea121b9bc"
