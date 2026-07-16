@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from ..._internal.physics.symbols import symbols
+from .._physics_ir import PropagatorIR
 from ..base import (
     VertexLoweringRule,
 )
@@ -601,17 +602,22 @@ class BuiltinSMLoweringMixin:
         momentum: Sequence[Any],
         *,
         chirality: int = 0,
+        propagator: PropagatorIR | None = None,
     ) -> tuple[Any, ...]:
-        rule = self.propagator_lowering_rule(particle_id, chirality)
+        metadata = propagator or self._propagator_ir(particle_id, chirality)
+        if metadata.identity.canonical_id != self._particle_identity_ir(
+            particle_id
+        ).canonical_id or metadata.chirality != int(chirality):
+            raise ValueError("propagator metadata does not match the current")
         components = tuple(value)
         current_momentum = tuple(momentum)
-        if not rule.applies_propagator:
+        if not metadata.applies_propagator:
             return components
-        if rule.kernel == "massless_vector_feynman_gauge":
+        if metadata.kind == "vector" and metadata.gauge == "feynman":
             denominator = _minkowski_square_expression(current_momentum)
             prefactor = -1j / denominator
             return tuple(component * prefactor for component in components)
-        if rule.kernel == "massive_vector_unitary_gauge":
+        if metadata.kind == "vector" and metadata.gauge == "unitary":
             mass = self.mass(particle_id)
             width = self.width(particle_id)
             denominator = (
@@ -627,8 +633,8 @@ class BuiltinSMLoweringMixin:
                 (components[index] - current_momentum[index] * longitudinal) * prefactor
                 for index in range(4)
             )
-        if rule.kernel == "weyl_fermion":
-            if particle_id < 0:
+        if metadata.kind == "weyl-fermion":
+            if metadata.identity.orientation == "antiparticle":
                 return _expr_antifermion_propagator_weyl(
                     components,
                     current_momentum,
@@ -639,8 +645,8 @@ class BuiltinSMLoweringMixin:
                 current_momentum,
                 chirality,
             )
-        if rule.kernel == "massive_dirac_fermion":
-            if particle_id < 0:
+        if metadata.kind == "dirac-fermion":
+            if metadata.identity.orientation == "antiparticle":
                 return _expr_antifermion_propagator_dirac(
                     components,
                     current_momentum,
@@ -653,7 +659,7 @@ class BuiltinSMLoweringMixin:
                 self.mass(particle_id),
                 self.width(particle_id),
             )
-        if rule.kernel == "scalar_with_width":
+        if metadata.kind == "scalar":
             mass = self.mass(particle_id)
             width = self.width(particle_id)
             denominator = (
@@ -664,7 +670,8 @@ class BuiltinSMLoweringMixin:
             prefactor = 1j / denominator
             return tuple(component * prefactor for component in components)
         raise ValueError(
-            f"propagator kernel {rule.kernel!r} is not lowered for particle "
+            f"propagator kind {metadata.kind!r} in gauge {metadata.gauge!r} "
+            f"is not lowered for particle "
             f"{particle_id}"
         )
 

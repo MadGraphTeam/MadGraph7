@@ -310,9 +310,12 @@ aliases, isolated under `pyamplicol.models.builtin`. Generic external-model
 behavior is driven by compiled particle, color, Lorentz, propagator, coupling,
 anti-relation, and source-orientation metadata. External models do not inherit
 the complete built-in alias table; define multiparticles explicitly when a
-reproducible expansion matters. The remaining `0.1.0` model-hardening gates
-cover typed source/propagator/contraction records and adversarial relabeled or
-reordered UFO fixtures, rather than additional built-in particle tables.
+reproducible expansion matters. Typed source, crossing, and propagator records
+are authoritative across Python generation and Rusticol execution. The
+remaining `0.1.0` model-hardening gates cover contraction and tensor-order
+records, expression-derived Goldstone classification, and adversarial
+relabeled or reordered UFO fixtures, rather than additional built-in particle
+tables.
 
 `color.accuracy = "lc"` stores every physical leading-color flow. `"nlc"` and
 `"full"` currently mean the supported contracted SU(3) color calculations,

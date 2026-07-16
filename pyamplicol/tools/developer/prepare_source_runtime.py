@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import zipfile
 from collections.abc import Mapping, Sequence
@@ -76,6 +77,60 @@ def _write_atomic(path: Path, data: bytes, *, mode: int = 0o644) -> None:
     os.replace(temporary, path)
 
 
+def _stage_selftest_tree(
+    source_package: Path,
+    members: Mapping[str, bytes],
+    member_modes: Mapping[str, int],
+    *,
+    prefix: str,
+    target: str,
+) -> None:
+    root = source_package / "assets" / "selftest"
+    root.mkdir(parents=True, exist_ok=True)
+    destination = root / target
+    staging = root / f".{target}.staging-{os.getpid()}"
+    previous = root / f".{target}.previous-{os.getpid()}"
+    if staging.exists() or previous.exists():
+        raise ReleaseError("stale source-runtime self-test staging directory exists")
+
+    staging.mkdir()
+    try:
+        for member in sorted(name for name in members if name.startswith(prefix)):
+            relative = PurePosixPath(member).relative_to(prefix)
+            if (
+                relative.is_absolute()
+                or not relative.parts
+                or any(part in {"", ".", ".."} for part in relative.parts)
+            ):
+                raise ReleaseError(f"unsafe source-runtime self-test member: {member}")
+            _write_atomic(
+                staging.joinpath(*relative.parts),
+                members[member],
+                mode=member_modes[member] or 0o644,
+            )
+
+        moved_previous = False
+        if destination.exists():
+            if destination.is_symlink() or not destination.is_dir():
+                raise ReleaseError(
+                    "source-runtime self-test destination is not a plain directory"
+                )
+            os.replace(destination, previous)
+            moved_previous = True
+        try:
+            os.replace(staging, destination)
+        except BaseException:
+            if moved_previous:
+                os.replace(previous, destination)
+            raise
+        if moved_previous:
+            shutil.rmtree(previous)
+    except BaseException:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
+
+
 def stage_runtime(
     wheel: Path,
     *,
@@ -117,7 +172,7 @@ def stage_runtime(
         target = str(sdk_metadata["target"])
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise ReleaseError("source runtime wheel has invalid SDK metadata") from error
-    if not target or "/" in target or "\\" in target:
+    if not target or target in {".", ".."} or "/" in target or "\\" in target:
         raise ReleaseError(f"source runtime wheel has an unsafe target: {target!r}")
 
     selftest_prefix = f"pyamplicol/assets/selftest/{target}/"
@@ -133,12 +188,21 @@ def stage_runtime(
         raise ReleaseError(
             f"source runtime wheel has no self-test fixture for {target}"
         )
-    for member in sorted(selected):
+    for member in sorted(
+        name for name in selected if not name.startswith(selftest_prefix)
+    ):
         _write_atomic(
             _safe_destination(source_package, member),
             members[member],
             mode=member_modes[member] or 0o644,
         )
+    _stage_selftest_tree(
+        source_package,
+        members,
+        member_modes,
+        prefix=selftest_prefix,
+        target=target,
+    )
 
     build_info_name = "pyamplicol/_build_info.json"
     if build_info_name in members:

@@ -561,6 +561,7 @@ def _value_storage(storage: Mapping[str, object]) -> dict[str, object]:
         "external_labels",
         "momentum_mask",
         "chirality",
+        "propagator",
     )
     return {
         "component_count": int(storage["component_count"]),

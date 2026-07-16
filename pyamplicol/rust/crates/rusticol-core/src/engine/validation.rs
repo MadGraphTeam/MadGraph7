@@ -332,6 +332,7 @@ fn validate_generic_value_storage(manifest: &ExecutionManifest) -> RusticolResul
                 "generic value slot {index} does not preserve its current identity"
             )));
         }
+        validate_generic_propagator(index, slot, current)?;
         match slot.variant.as_str() {
             "source" => {
                 if !slot.is_source || slot.applies_propagator {
@@ -366,6 +367,167 @@ fn validate_generic_value_storage(manifest: &ExecutionManifest) -> RusticolResul
         return Err(RusticolError::artifact(
             "generic value storage component_count is inconsistent",
         ));
+    }
+    Ok(())
+}
+
+fn validate_generic_propagator(
+    index: usize,
+    slot: &GenericValueSlotManifest,
+    current: &GenericCurrentSlotManifest,
+) -> RusticolResult<()> {
+    let propagator = &slot.propagator;
+    let identity = &propagator.identity;
+    if propagator.particle_id != slot.particle_id
+        || propagator.chirality != slot.chirality
+        || identity.pdg_label != slot.particle_id
+        || identity.canonical_id.is_empty()
+        || identity.species_id.is_empty()
+        || identity.anti_canonical_id.is_empty()
+        || identity.display_name.is_empty()
+        || identity.anti_display_name.is_empty()
+        || identity.self_conjugate != (identity.pdg_label == identity.anti_pdg_label)
+        || identity.self_conjugate != (identity.canonical_id == identity.anti_canonical_id)
+        || propagator.backend.is_empty()
+        || propagator.basis.is_empty()
+        || propagator.kernel.is_empty()
+        || propagator.description.is_empty()
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic value slot {index} has inconsistent propagator identity"
+        )));
+    }
+    if identity.self_conjugate
+        != matches!(
+            identity.orientation,
+            GenericSourceOrientationManifest::SelfConjugate
+        )
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic value slot {index} has inconsistent propagator orientation"
+        )));
+    }
+    for value in [
+        propagator.numerator.as_ref(),
+        propagator.denominator.as_ref(),
+        propagator.mass_parameter.as_ref(),
+        propagator.width_parameter.as_ref(),
+        propagator.custom_source.as_ref(),
+        propagator.auxiliary_policy.as_ref(),
+    ] {
+        if value.is_some_and(String::is_empty) {
+            return Err(RusticolError::artifact(format!(
+                "generic value slot {index} has empty propagator metadata"
+            )));
+        }
+    }
+    let expected_dimension = match propagator.kind {
+        GenericPropagatorKindManifest::Scalar => Some(1),
+        GenericPropagatorKindManifest::WeylFermion => Some(2),
+        GenericPropagatorKindManifest::DiracFermion | GenericPropagatorKindManifest::Vector => {
+            Some(4)
+        }
+        GenericPropagatorKindManifest::Spin2 => Some(16),
+        GenericPropagatorKindManifest::Identity
+        | GenericPropagatorKindManifest::Custom
+        | GenericPropagatorKindManifest::Unsupported => None,
+    };
+    if expected_dimension.is_some_and(|dimension| dimension != current.dimension) {
+        return Err(RusticolError::artifact(format!(
+            "generic value slot {index} propagator dimension does not match its current"
+        )));
+    }
+    if propagator.kind != GenericPropagatorKindManifest::Unsupported
+        && !propagator.full_tensor_network_ready
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic value slot {index} has an incomplete propagator contract"
+        )));
+    }
+    match propagator.kind {
+        GenericPropagatorKindManifest::Identity => {
+            if propagator.applies_propagator
+                || propagator.mass_class != GenericPropagatorMassClassManifest::NotApplicable
+                || propagator.gauge.is_some()
+                || propagator.auxiliary_policy.is_none()
+            {
+                return Err(RusticolError::artifact(format!(
+                    "generic value slot {index} has an invalid identity propagator"
+                )));
+            }
+        }
+        GenericPropagatorKindManifest::Vector => {
+            if !propagator.applies_propagator
+                || !matches!(
+                    propagator.gauge,
+                    Some(
+                        GenericPropagatorGaugeManifest::Feynman
+                            | GenericPropagatorGaugeManifest::Unitary
+                    )
+                )
+            {
+                return Err(RusticolError::artifact(format!(
+                    "generic value slot {index} has an invalid vector propagator"
+                )));
+            }
+        }
+        GenericPropagatorKindManifest::Spin2 => {
+            if !propagator.applies_propagator
+                || !matches!(
+                    propagator.gauge,
+                    Some(
+                        GenericPropagatorGaugeManifest::DeDonder
+                            | GenericPropagatorGaugeManifest::FierzPauli
+                    )
+                )
+            {
+                return Err(RusticolError::artifact(format!(
+                    "generic value slot {index} has an invalid spin-2 propagator"
+                )));
+            }
+        }
+        GenericPropagatorKindManifest::Custom => {
+            if !propagator.applies_propagator
+                || propagator.gauge != Some(GenericPropagatorGaugeManifest::ModelSupplied)
+                || propagator.custom_source.is_none()
+            {
+                return Err(RusticolError::artifact(format!(
+                    "generic value slot {index} has an invalid custom propagator"
+                )));
+            }
+        }
+        GenericPropagatorKindManifest::Scalar
+        | GenericPropagatorKindManifest::WeylFermion
+        | GenericPropagatorKindManifest::DiracFermion
+        | GenericPropagatorKindManifest::Unsupported => {
+            if !propagator.applies_propagator || propagator.gauge.is_some() {
+                return Err(RusticolError::artifact(format!(
+                    "generic value slot {index} has an invalid standard propagator"
+                )));
+            }
+        }
+    }
+    if propagator.kind != GenericPropagatorKindManifest::Identity
+        && propagator.mass_class == GenericPropagatorMassClassManifest::NotApplicable
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic value slot {index} has an invalid propagator mass class"
+        )));
+    }
+    if propagator.goldstone_policy == GenericGoldstonePolicyManifest::Absorbed
+        && !(propagator.kind == GenericPropagatorKindManifest::Vector
+            && propagator.gauge == Some(GenericPropagatorGaugeManifest::Unitary))
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic value slot {index} has an invalid Goldstone policy"
+        )));
+    }
+    if propagator.goldstone_policy == GenericGoldstonePolicyManifest::ModelSupplied
+        && propagator.kind != GenericPropagatorKindManifest::Custom
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic value slot {index} has an invalid model-supplied Goldstone policy"
+        )));
     }
     Ok(())
 }

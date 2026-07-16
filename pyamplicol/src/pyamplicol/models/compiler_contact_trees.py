@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import math
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
@@ -27,6 +28,9 @@ from .contracts import (
     CompiledVertexTerm,
     _ContactTreeNode,
 )
+
+_DIRECT_DENSE_CONTACT_INPUT_WORK = 1_024
+_MAX_STAGED_CONTACT_INPUT_WORK = 256
 
 
 def _compile_color_singlet_contact_trees(
@@ -389,8 +393,7 @@ def _contact_tree_node_payload(
     if dimension is None:
         raise ValueError("contact tree auxiliary has no component dimension")
     return tuple(
-        model_symbols.kernel_component(kind, side, index)
-        for index in range(dimension)
+        model_symbols.kernel_component(kind, side, index) for index in range(dimension)
     )
 
 
@@ -434,15 +437,6 @@ def _contact_tree_final_component_expressions(
     )
     library = _sym.TensorLibrary.hep_lib_atom()
     expression = _sym.E(term.lorentz_expression)
-    for leg, (components, _momentum) in sorted(payload_by_leg.items()):
-        expression *= _contact_tree_physical_tensor_expression(
-            library,
-            kind=kind,
-            leg=leg,
-            spin=source_particles[leg].spin,
-            components=components,
-            model_symbols=model_symbols,
-        )
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
         library.register(
@@ -453,14 +447,39 @@ def _contact_tree_final_component_expressions(
                 momentum,
             )
         )
-    result = _execute_dense_tensor(
-        expression,
-        library,
-        axis_labels=_spin_axis_labels(
-            source_particles[result_leg].spin,
-            result_leg + 1,
-        ),
+    input_work = math.prod(
+        _spin_dimension(source_particles[leg].spin) for leg in payload_by_leg
     )
+    if input_work > _DIRECT_DENSE_CONTACT_INPUT_WORK and sys.platform.startswith(
+        "linux"
+    ):
+        result = _execute_contact_tensor_staged(
+            expression,
+            library,
+            source_particles,
+            payload_by_leg=payload_by_leg,
+            result_leg=result_leg,
+            kind=kind,
+            model_symbols=model_symbols,
+        )
+    else:
+        for leg, (components, _momentum) in sorted(payload_by_leg.items()):
+            expression *= _contact_tree_physical_tensor_expression(
+                library,
+                kind=kind,
+                leg=leg,
+                spin=source_particles[leg].spin,
+                components=components,
+                model_symbols=model_symbols,
+            )
+        result = _execute_dense_tensor(
+            expression,
+            library,
+            axis_labels=_spin_axis_labels(
+                source_particles[result_leg].spin,
+                result_leg + 1,
+            ),
+        )
     expected = _spin_dimension(source_particles[result_leg].spin)
     if len(result) != expected:
         raise ValueError(
@@ -471,6 +490,108 @@ def _contact_tree_final_component_expressions(
         _replace_evaluator_constants(_as_expression(result[index]))
         for index in range(len(result))
     )
+
+
+def _execute_contact_tensor_staged(
+    expression: _sym.Expression,
+    library: _sym.TensorLibrary,
+    source_particles: Sequence[CompiledParticleRecord],
+    *,
+    payload_by_leg: Mapping[
+        int,
+        tuple[tuple[_sym.Expression, ...], tuple[_sym.Expression, ...]],
+    ],
+    result_leg: int,
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[_sym.Expression, ...]:
+    """Contract high-rank inputs in bounded, model-independent stages."""
+
+    dimensions = tuple(_spin_dimension(particle.spin) for particle in source_particles)
+    input_legs = tuple(sorted(payload_by_leg, key=lambda leg: (-dimensions[leg], leg)))
+    if set(input_legs) != set(range(len(source_particles))) - {result_leg}:
+        raise ValueError("staged contact payload does not cover every input leg")
+    for leg in input_legs:
+        if len(payload_by_leg[leg][0]) != dimensions[leg]:
+            raise ValueError(f"staged contact input leg {leg} has wrong dimension")
+    remaining_legs = list(range(len(source_particles)))
+    pending_legs = list(input_legs)
+    step = 0
+    while pending_legs:
+        stage_legs: list[int] = []
+        stage_work = 1
+        while pending_legs:
+            next_leg = pending_legs[0]
+            next_work = stage_work * dimensions[next_leg]
+            if stage_legs and next_work > _MAX_STAGED_CONTACT_INPUT_WORK:
+                break
+            stage_legs.append(pending_legs.pop(0))
+            stage_work = next_work
+        for leg in stage_legs:
+            expression *= _contact_tree_physical_tensor_expression(
+                library,
+                kind=kind,
+                leg=leg,
+                spin=source_particles[leg].spin,
+                components=payload_by_leg[leg][0],
+                model_symbols=model_symbols,
+            )
+            remaining_legs.remove(leg)
+        axis_labels = tuple(
+            label
+            for remaining_leg in remaining_legs
+            for label in _spin_axis_labels(
+                source_particles[remaining_leg].spin,
+                remaining_leg + 1,
+            )
+        )
+        dense = _execute_dense_tensor(
+            expression,
+            library,
+            axis_labels=axis_labels,
+        )
+        expected = math.prod(dimensions[index] for index in remaining_legs)
+        if len(dense) != expected:
+            raise ValueError(
+                f"staged contact contraction {step} produced {len(dense)} "
+                f"components, expected {expected}"
+            )
+        if not pending_legs:
+            return tuple(_as_expression(component) for component in dense)
+        representations = tuple(
+            representation
+            for remaining_leg in remaining_legs
+            for representation in _spin_representations(
+                source_particles[remaining_leg].spin
+            )
+        )
+        if not representations:
+            if len(dense) != 1:
+                raise ValueError("scalar staged contact must have one component")
+            expression = _as_expression(dense[0])
+            library = _sym.TensorLibrary.hep_lib_atom()
+            continue
+        slots = tuple(
+            slot
+            for remaining_leg in remaining_legs
+            for slot in _spin_slots(
+                source_particles[remaining_leg].spin,
+                remaining_leg + 1,
+            )
+        )
+        library = _sym.TensorLibrary.hep_lib_atom()
+        name = _sym.TensorName(
+            model_symbols.kernel_tensor_name(kind, f"contact_stage_{step}")
+        )
+        library.register(
+            _sym.LibraryTensor.dense(
+                name(*representations),
+                tuple(_as_expression(component) for component in dense),
+            )
+        )
+        expression = name(*slots).to_expression()
+        step += 1
+    raise ValueError("staged contact contraction has no input legs")
 
 
 def eager_color_singlet_vertex_term_components(

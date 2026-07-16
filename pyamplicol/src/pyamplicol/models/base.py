@@ -10,10 +10,14 @@ from typing import Any, cast
 
 from ._physics_ir import (
     CrossingIR,
+    GoldstonePolicy,
     ParticleIdentityIR,
     ParticleOrientation,
     ParticleStatistics,
+    PropagatorGauge,
     PropagatorIR,
+    PropagatorKind,
+    PropagatorMassClass,
     SourceIR,
     SourceStateIR,
     WavefunctionFamily,
@@ -131,6 +135,14 @@ class PropagatorLoweringRule:
     full_tensor_network_ready: bool
     applies_propagator: bool
     kernel: str
+    kind: PropagatorKind
+    mass_class: PropagatorMassClass
+    gauge: PropagatorGauge | None = None
+    numerator: str | None = None
+    denominator: str | None = None
+    custom_source: str | None = None
+    auxiliary_policy: str | None = None
+    goldstone_policy: GoldstonePolicy = "not-applicable"
     description: str = ""
 
     def to_json_dict(self) -> dict[str, object]:
@@ -141,6 +153,14 @@ class PropagatorLoweringRule:
             "full_tensor_network_ready": self.full_tensor_network_ready,
             "applies_propagator": self.applies_propagator,
             "kernel": self.kernel,
+            "kind": self.kind,
+            "mass_class": self.mass_class,
+            "gauge": self.gauge,
+            "numerator": self.numerator,
+            "denominator": self.denominator,
+            "custom_source": self.custom_source,
+            "auxiliary_policy": self.auxiliary_policy,
+            "goldstone_policy": self.goldstone_policy,
             "description": self.description,
         }
 
@@ -217,6 +237,12 @@ class Model:
     particles: dict[int, Particle] = field(default_factory=dict)
     vertices: tuple[Vertex, ...] = ()
     _source_ir_by_particle: dict[int, SourceIR] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _propagator_ir_by_state: dict[tuple[int, int], PropagatorIR] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -570,39 +596,41 @@ class Model:
 
         particle_id = int(particle_id)
         chirality = int(chirality)
+        key = (particle_id, chirality)
+        cache = self.__dict__.setdefault("_propagator_ir_by_state", {})
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
         rule = self.propagator_lowering_rule(particle_id, chirality)
-        kernel = rule.kernel.casefold()
-        gauge = None
-        if "feynman" in kernel:
-            gauge = "feynman"
-        elif "unitary" in kernel:
-            gauge = "unitary"
-        elif "de_donder" in kernel:
-            gauge = "de-donder"
-        elif "fierz_pauli" in kernel:
-            gauge = "fierz-pauli"
-        elif "custom" in kernel:
-            gauge = "model-supplied"
-        auxiliary_policy = None
+        auxiliary_policy = rule.auxiliary_policy
         if not rule.applies_propagator:
-            auxiliary_policy = self.auxiliary_kind(particle_id) or rule.kernel
-        numerator, denominator = _propagator_formula_metadata(rule.kernel)
-        return PropagatorIR(
+            auxiliary_policy = (
+                auxiliary_policy or self.auxiliary_kind(particle_id) or rule.kernel
+            )
+        default_numerator, default_denominator = _propagator_formula_metadata(
+            rule.kind, rule.gauge
+        )
+        result = PropagatorIR(
             identity=self._particle_identity_ir(particle_id),
             chirality=chirality,
+            kind=rule.kind,
             backend=rule.backend,
             basis=self._current_basis(particle_id, chirality),
             applies_propagator=rule.applies_propagator,
             kernel=rule.kernel,
             full_tensor_network_ready=rule.full_tensor_network_ready,
-            gauge=gauge,
-            numerator=numerator,
-            denominator=denominator,
+            mass_class=rule.mass_class,
+            gauge=rule.gauge,
+            numerator=rule.numerator or default_numerator,
+            denominator=rule.denominator or default_denominator,
             mass_parameter=self._runtime_parameter_name(particle_id, "mass"),
             width_parameter=self._runtime_parameter_name(particle_id, "width"),
+            custom_source=rule.custom_source,
             auxiliary_policy=auxiliary_policy,
+            goldstone_policy=rule.goldstone_policy,
             description=rule.description,
         )
+        return cache.setdefault(key, result)
 
     def _current_basis(self, particle_id: int, chirality: int = 0) -> str:
         dimension = int(self.current_dimension(particle_id, chirality))
@@ -731,7 +759,9 @@ class Model:
         momentum: Sequence[Any],
         *,
         chirality: int = 0,
+        propagator: PropagatorIR | None = None,
     ) -> tuple[Any, ...]:
+        del propagator
         raise NotImplementedError
 
     def iter_vertices(self, *, color_accuracy: str = "lc") -> tuple[Vertex, ...]:
@@ -908,34 +938,36 @@ class Model:
             raise KeyError(f"particle not in model: {pdg}") from exc
 
 
-def _propagator_formula_metadata(kernel: str) -> tuple[str | None, str | None]:
+def _propagator_formula_metadata(
+    kind: PropagatorKind,
+    gauge: PropagatorGauge | None,
+) -> tuple[str | None, str | None]:
     """Return descriptive formulas for the implemented propagator kernel."""
 
-    normalized = kernel.casefold()
-    if "no_propagator" in normalized or "embedded_propagator" in normalized:
+    if kind == "identity":
         return ("identity", "1")
-    if "custom" in normalized:
+    if kind == "custom":
         return (None, None)
-    if "weyl" in normalized:
+    if kind == "weyl-fermion":
         return ("i*weyl_slash(momentum)", "momentum_squared")
-    if "dirac" in normalized:
+    if kind == "dirac-fermion":
         return (
             "i*(dirac_slash(momentum)+oriented_mass)",
             "momentum_squared-mass_squared+i*mass*width",
         )
-    if "massless_vector" in normalized or "feynman" in normalized:
+    if kind == "vector" and gauge == "feynman":
         return ("-i*metric", "momentum_squared")
-    if "massive_vector" in normalized or "unitary" in normalized:
+    if kind == "vector" and gauge == "unitary":
         return (
             "-i*(metric-momentum_outer/mass_squared)",
             "momentum_squared-mass_squared+i*mass*width",
         )
-    if "spin2" in normalized:
+    if kind == "spin2":
         return (
             "i*spin2_projector",
             "momentum_squared-mass_squared+i*mass*width",
         )
-    if "scalar" in normalized:
+    if kind == "scalar":
         return ("i", "momentum_squared-mass_squared+i*mass*width")
     return (None, None)
 

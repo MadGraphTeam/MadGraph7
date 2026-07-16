@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from numbers import Real
-from typing import Literal
+from typing import Literal, cast
 
 ParticleOrientation = Literal["particle", "antiparticle", "self-conjugate"]
 ParticleStatistics = Literal["boson", "fermion", "ghost", "auxiliary"]
@@ -19,6 +20,102 @@ WavefunctionFamily = Literal[
     "auxiliary",
 ]
 MomentumTransform = Literal["identity", "negate-four-momentum"]
+PropagatorKind = Literal[
+    "identity",
+    "scalar",
+    "weyl-fermion",
+    "dirac-fermion",
+    "vector",
+    "spin2",
+    "custom",
+    "unsupported",
+]
+PropagatorGauge = Literal[
+    "feynman",
+    "unitary",
+    "de-donder",
+    "fierz-pauli",
+    "model-supplied",
+]
+PropagatorMassClass = Literal["massless", "massive", "not-applicable"]
+GoldstonePolicy = Literal[
+    "not-applicable",
+    "absorbed",
+    "explicit",
+    "model-supplied",
+]
+
+
+def _integer(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{label} must be an integer")
+    return value
+
+
+def _boolean(value: object, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{label} must be a boolean")
+    return value
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("optional propagator metadata must be a string or null")
+    return value
+
+
+def _particle_orientation(value: object) -> ParticleOrientation:
+    if value not in {"particle", "antiparticle", "self-conjugate"}:
+        raise ValueError(f"invalid particle orientation {value!r}")
+    return cast(ParticleOrientation, value)
+
+
+def _propagator_kind(value: object) -> PropagatorKind:
+    if value not in {
+        "identity",
+        "scalar",
+        "weyl-fermion",
+        "dirac-fermion",
+        "vector",
+        "spin2",
+        "custom",
+        "unsupported",
+    }:
+        raise ValueError(f"invalid propagator kind {value!r}")
+    return cast(PropagatorKind, value)
+
+
+def _optional_propagator_gauge(value: object) -> PropagatorGauge | None:
+    if value is None:
+        return None
+    if value not in {
+        "feynman",
+        "unitary",
+        "de-donder",
+        "fierz-pauli",
+        "model-supplied",
+    }:
+        raise ValueError(f"invalid propagator gauge {value!r}")
+    return cast(PropagatorGauge, value)
+
+
+def _goldstone_policy(value: object) -> GoldstonePolicy:
+    if value not in {
+        "not-applicable",
+        "absorbed",
+        "explicit",
+        "model-supplied",
+    }:
+        raise ValueError(f"invalid propagator Goldstone policy {value!r}")
+    return cast(GoldstonePolicy, value)
+
+
+def _propagator_mass_class(value: object) -> PropagatorMassClass:
+    if value not in {"massless", "massive", "not-applicable"}:
+        raise ValueError(f"invalid propagator mass class {value!r}")
+    return cast(PropagatorMassClass, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +177,26 @@ class ParticleIdentityIR:
             "orientation": self.orientation,
             "self_conjugate": self.self_conjugate,
         }
+
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, object]) -> ParticleIdentityIR:
+        return cls(
+            canonical_id=str(payload["canonical_id"]),
+            species_id=str(payload["species_id"]),
+            anti_canonical_id=str(payload["anti_canonical_id"]),
+            display_name=str(payload["display_name"]),
+            anti_display_name=str(payload["anti_display_name"]),
+            pdg_label=_integer(payload["pdg_label"], "particle PDG label"),
+            anti_pdg_label=_integer(
+                payload["anti_pdg_label"],
+                "antiparticle PDG label",
+            ),
+            orientation=_particle_orientation(payload["orientation"]),
+            self_conjugate=_boolean(
+                payload["self_conjugate"],
+                "particle self-conjugacy",
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,26 +368,82 @@ class SourceIR:
 class PropagatorIR:
     identity: ParticleIdentityIR
     chirality: int
+    kind: PropagatorKind
     backend: str
     basis: str
     applies_propagator: bool
     kernel: str
     full_tensor_network_ready: bool
-    gauge: str | None = None
+    mass_class: PropagatorMassClass
+    gauge: PropagatorGauge | None = None
     numerator: str | None = None
     denominator: str | None = None
     mass_parameter: str | None = None
     width_parameter: str | None = None
     custom_source: str | None = None
     auxiliary_policy: str | None = None
+    goldstone_policy: GoldstonePolicy = "not-applicable"
     description: str = ""
 
     def __post_init__(self) -> None:
         if not self.backend or not self.basis or not self.kernel:
             raise ValueError("propagator backend, basis, and kernel must not be empty")
+        if self.kind not in {
+            "identity",
+            "scalar",
+            "weyl-fermion",
+            "dirac-fermion",
+            "vector",
+            "spin2",
+            "custom",
+            "unsupported",
+        }:
+            raise ValueError(f"invalid propagator kind {self.kind!r}")
+        if self.gauge not in {
+            None,
+            "feynman",
+            "unitary",
+            "de-donder",
+            "fierz-pauli",
+            "model-supplied",
+        }:
+            raise ValueError(f"invalid propagator gauge {self.gauge!r}")
+        if self.goldstone_policy not in {
+            "not-applicable",
+            "absorbed",
+            "explicit",
+            "model-supplied",
+        }:
+            raise ValueError(
+                f"invalid propagator Goldstone policy {self.goldstone_policy!r}"
+            )
+        if self.mass_class not in {"massless", "massive", "not-applicable"}:
+            raise ValueError(f"invalid propagator mass class {self.mass_class!r}")
         if not self.applies_propagator and self.auxiliary_policy is None:
             raise ValueError(
                 "a no-propagator current must declare its auxiliary policy"
+            )
+        if not self.applies_propagator and self.kind != "identity":
+            raise ValueError("a no-propagator current must use the identity kind")
+        if self.applies_propagator and self.kind == "identity":
+            raise ValueError("an identity current cannot apply a propagator")
+        if (self.kind == "identity") != (self.mass_class == "not-applicable"):
+            raise ValueError(
+                "only identity currents may use a not-applicable mass class"
+            )
+        if self.kind == "vector" and self.gauge is None:
+            raise ValueError("a vector propagator must declare its gauge")
+        if self.kind == "custom" and (
+            self.gauge != "model-supplied" or not self.custom_source
+        ):
+            raise ValueError(
+                "a custom propagator must declare its model-supplied source"
+            )
+        if self.goldstone_policy == "absorbed" and not (
+            self.kind == "vector" and self.gauge == "unitary"
+        ):
+            raise ValueError(
+                "an absorbed Goldstone mode requires a unitary-gauge vector"
             )
 
     def to_json_dict(self) -> dict[str, object]:
@@ -278,11 +451,13 @@ class PropagatorIR:
             "identity": self.identity.to_json_dict(),
             "particle_id": self.identity.pdg_label,
             "chirality": self.chirality,
+            "kind": self.kind,
             "backend": self.backend,
             "basis": self.basis,
             "applies_propagator": self.applies_propagator,
             "kernel": self.kernel,
             "full_tensor_network_ready": self.full_tensor_network_ready,
+            "mass_class": self.mass_class,
             "gauge": self.gauge,
             "numerator": self.numerator,
             "denominator": self.denominator,
@@ -290,8 +465,43 @@ class PropagatorIR:
             "width_parameter": self.width_parameter,
             "custom_source": self.custom_source,
             "auxiliary_policy": self.auxiliary_policy,
+            "goldstone_policy": self.goldstone_policy,
             "description": self.description,
         }
+
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, object]) -> PropagatorIR:
+        identity = payload.get("identity")
+        if not isinstance(identity, Mapping):
+            raise TypeError("propagator identity must be a mapping")
+        return cls(
+            identity=ParticleIdentityIR.from_json_dict(identity),
+            chirality=_integer(payload["chirality"], "propagator chirality"),
+            kind=_propagator_kind(payload["kind"]),
+            backend=str(payload["backend"]),
+            basis=str(payload["basis"]),
+            applies_propagator=_boolean(
+                payload["applies_propagator"],
+                "propagator application flag",
+            ),
+            kernel=str(payload["kernel"]),
+            full_tensor_network_ready=_boolean(
+                payload["full_tensor_network_ready"],
+                "propagator tensor-network readiness",
+            ),
+            mass_class=_propagator_mass_class(payload["mass_class"]),
+            gauge=_optional_propagator_gauge(payload.get("gauge")),
+            numerator=_optional_string(payload.get("numerator")),
+            denominator=_optional_string(payload.get("denominator")),
+            mass_parameter=_optional_string(payload.get("mass_parameter")),
+            width_parameter=_optional_string(payload.get("width_parameter")),
+            custom_source=_optional_string(payload.get("custom_source")),
+            auxiliary_policy=_optional_string(payload.get("auxiliary_policy")),
+            goldstone_policy=_goldstone_policy(
+                payload.get("goldstone_policy", "not-applicable")
+            ),
+            description=str(payload.get("description", "")),
+        )
 
 
 @dataclass(frozen=True, slots=True)

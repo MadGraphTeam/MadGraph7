@@ -43,10 +43,14 @@ published on PyPI.
   now drive Python and Rust runtimes without SM-PDG fallbacks. Runtime model
   cards may vary nonzero masses but must regenerate an artifact when changing
   a particle between massive and massless state spaces. Artifacts made before
-  this typed source contract request regeneration explicitly. The
-  remaining model-independence gate is to make propagator/gauge/Goldstone and
-  contraction records authoritative, prove colored-contact reductions, and
-  complete the relabeled-PDG and reordered-tensor adversarial fixtures.
+  this typed source contract request regeneration explicitly. Typed propagator
+  records now also drive mass class, gauge, numerator/denominator, auxiliary,
+  and Goldstone policy through generation and Rusticol validation; artifacts
+  without that contract request regeneration. The remaining
+  model-independence gate is to consume authoritative contraction and tensor
+  ordering records, replace the legacy UFO Goldstone-expression classifier,
+  prove colored-contact reductions, and complete the relabeled-PDG and
+  reordered-tensor adversarial fixtures.
 - External `generate --dry-run` currently requires a previously compiled model
   or populated model cache; it does not compile a trusted source as a planning
   side effect.

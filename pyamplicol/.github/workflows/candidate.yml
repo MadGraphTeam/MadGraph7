@@ -60,12 +60,16 @@ jobs:
           command -v make
       - name: Build the pinned candidate environment
         run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
       - name: Run the complete candidate source gate
-        run: PYTHON="$PWD/.venv/bin/python" just source-gate
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          env PYTHON="$PWD/.venv/bin/python" just source-gate
       - name: Test the candidate wheel in an isolated deployment
         run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python tools/release/test_deployment.py
           --candidate
           --python .venv/bin/python
@@ -96,6 +100,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
       - name: Prepare pinned candidate dependency inputs
         run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
           --no-build
@@ -103,6 +108,7 @@ jobs:
         run: python -m pip install "build>=1.2,<2" "maturin==1.14.1"
       - name: Build and audit non-publishable candidate artifacts
         run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/build_release_artifacts.py
           --candidate
           --output-dir .artifacts/candidate-ci
@@ -140,10 +146,12 @@ jobs:
               source "$HOME/.cargo/env"
               PYTHON=/opt/python/cp311-cp311/bin/python
               "$PYTHON" -m pip install "build>=1.2,<2" "maturin==1.14.1"
-              "$PYTHON" dependencies/install_dependencies.py \
+              "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PYTHON" dependencies/install_dependencies.py \
                 --without-legacy-amplicol \
                 --no-build
-              "$PYTHON" tools/release/build_release_artifacts.py \
+              "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PYTHON" tools/release/build_release_artifacts.py \
                 --candidate \
                 --output-dir .artifacts/candidate-ci
             '

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from symbolica import S
+
 from pyamplicol.generation.artifact_writer import _execution_plan
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.runtime_schema import build_runtime_schema
@@ -55,6 +57,26 @@ def test_execution_plan_is_strict_schema_v3_runtime_dto() -> None:
     assert plan["process_key"] == "ddbar_z"
     assert "physics" not in plan
     assert "momentum_conventions" not in plan
+
+    for slot in plan["value_storage"]["value_slots"]:
+        propagator = slot["propagator"]
+        assert propagator["particle_id"] == slot["particle_id"]
+        assert propagator["chirality"] == slot["chirality"]
+        assert propagator["kind"] in {
+            "identity",
+            "scalar",
+            "weyl-fermion",
+            "dirac-fermion",
+            "vector",
+            "spin2",
+            "custom",
+            "unsupported",
+        }
+        assert propagator["mass_class"] in {
+            "massless",
+            "massive",
+            "not-applicable",
+        }
 
     layout = plan["parameter_layout"]
     assert layout["parameter_count_if_flattened"] == (
@@ -129,3 +151,34 @@ def test_external_particle_masses_link_to_runtime_parameters() -> None:
     }
     assert "MW" in derived
     assert "MZ" in model.runtime_derived_parameter_definitions_for(("MW",))["MW"]
+
+
+def test_massless_vector_uses_generation_propagator_contract_with_symbolic_mass() -> (
+    None
+):
+    compiled = compile_model_source(
+        MODEL_ROOT / "json" / "sm" / "sm.json",
+        restriction=str(
+            (MODEL_ROOT / "json" / "sm" / "restrict_default.json").resolve()
+        ),
+        use_cache=False,
+    )
+    model = CompiledUFOModel(compiled)
+    propagator = model._propagator_ir(21)
+    assert propagator.kind == "vector"
+    assert propagator.mass_class == "massless"
+    assert propagator.gauge == "feynman"
+
+    symbolic_mass = S("runtime_mass_probe")
+    runtime_model = model.with_runtime_parameters({"ZERO": symbolic_mass})
+    result = runtime_model.propagator_component_expression(
+        21,
+        tuple(S(f"current_{index}") for index in range(4)),
+        (10.0, 1.0, 2.0, 3.0),
+        propagator=propagator,
+    )
+
+    assert all(
+        "runtime_mass_probe" not in component.to_canonical_string()
+        for component in result
+    )

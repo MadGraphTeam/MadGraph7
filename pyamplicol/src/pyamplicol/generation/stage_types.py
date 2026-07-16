@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
+from ..models._physics_ir import PropagatorIR
 from ..models.base import Model
 
 
@@ -229,6 +230,27 @@ class _RuntimeParameterizedModel:
 
     def propagator_lowering_rule(self, particle_id: int, chirality: int = 0) -> Any:
         return self._base_model.propagator_lowering_rule(particle_id, chirality)
+
+    def propagator_component_expression(
+        self,
+        particle_id: int,
+        value: Sequence[Any],
+        momentum: Sequence[Any],
+        *,
+        chirality: int = 0,
+        propagator: PropagatorIR | None = None,
+    ) -> tuple[Any, ...]:
+        return cast(
+            tuple[Any, ...],
+            type(self._base_model).propagator_component_expression(
+                self,
+                particle_id,
+                value,
+                momentum,
+                chirality=chirality,
+                propagator=propagator,
+            ),
+        )
 
     def is_chiral_eligible(self, pdg: int) -> bool:
         return self._base_model.is_chiral_eligible(pdg)

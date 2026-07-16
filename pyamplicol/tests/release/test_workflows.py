@@ -20,6 +20,15 @@ MANYLINUX_IMAGE = (
     "quay.io/pypa/manylinux_2_28_x86_64@"
     "sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614"
 )
+MEMORY_WATCHDOG = "tools/ci/memory_watchdog.py --limit-gib 30 --"
+
+
+def _guarded_count(workflow: str, command: str) -> int:
+    pattern = re.compile(
+        re.escape(MEMORY_WATCHDOG) + r"(?:\s*\\)?\s+" + command,
+        re.MULTILINE,
+    )
+    return len(pattern.findall(workflow))
 
 
 def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
@@ -99,6 +108,80 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "continue-on-error" not in workflow
 
 
+def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
+    candidate = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
+    release = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
+
+    assert candidate.count(MEMORY_WATCHDOG) == 7
+    assert (
+        _guarded_count(
+            candidate,
+            r'(?:python|"\$PYTHON") dependencies/install_dependencies\.py',
+        )
+        == 3
+    )
+    assert (
+        _guarded_count(
+            candidate,
+            r'env PYTHON="\$PWD/\.venv/bin/python" just source-gate',
+        )
+        == 1
+    )
+    assert (
+        _guarded_count(
+            candidate,
+            r"\.venv/bin/python tools/release/test_deployment\.py",
+        )
+        == 1
+    )
+    assert (
+        _guarded_count(
+            candidate,
+            r'(?:python|"\$PYTHON") tools/release/build_release_artifacts\.py',
+        )
+        == 2
+    )
+
+    assert "ulimit -v" not in release
+    assert release.count(MEMORY_WATCHDOG) == 11
+    assert (
+        _guarded_count(
+            release,
+            r"cargo install just --version 1\.46\.0 --locked",
+        )
+        == 1
+    )
+    assert _guarded_count(release, r'python -m pip install "\.\[test\]"') == 1
+    assert (
+        _guarded_count(
+            release,
+            r'env PYTHON="\$\(command -v python\)" just source-gate',
+        )
+        == 1
+    )
+    assert (
+        _guarded_count(
+            release,
+            r"python tools/developer/legacy_amplicol\.py",
+        )
+        == 1
+    )
+    assert (
+        _guarded_count(
+            release,
+            r'(?:python|"\$PY311") tools/release/build_release_artifacts\.py',
+        )
+        == 3
+    )
+    assert (
+        _guarded_count(
+            release,
+            r'(?:python|"\$PY311") tools/release/test_deployment\.py',
+        )
+        == 4
+    )
+
+
 def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     workflow = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
@@ -126,7 +209,7 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "needs: [full-source-validation, independent-physics-oracle]" in workflow
     assert "Independent Fortran physics oracle" in workflow
     assert "Rebuild and verify pinned Fortran evidence" in workflow
-    assert "ulimit -v 31457280" in workflow
+    assert "ulimit -v" not in workflow
     assert "tests/fixtures/reference/physics-v2.json" in workflow
     assert "tests/fixtures/reference/legacy-fortran-v2.json" in workflow
     assert (

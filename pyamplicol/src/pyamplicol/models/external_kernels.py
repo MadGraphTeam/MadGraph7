@@ -400,8 +400,9 @@ class ExternalModelKernelMixin:
         return self._propagator_records_by_particle_name.get(name)
 
     def _goldstone_is_redundant_in_unitary_gauge(self, goldstone: Any) -> bool:
-        """Return whether a unitary-gauge vector already carries this mode."""
+        """Return whether exactly one declared propagator absorbs this mode."""
 
+        absorbing_vectors: list[str] = []
         for vector in self.compiled.ir.particles:
             if (
                 vector.spin != 3
@@ -417,14 +418,15 @@ class ExternalModelKernelMixin:
                 )
             ):
                 continue
-            propagator = self._propagator_records_by_particle_name.get(vector.name)
-            # pyAmpliCol synthesizes the canonical unitary-gauge projector for
-            # a massive vector unless the UFO supplied a genuinely custom
-            # propagator. In that case a separate Goldstone would double count
-            # the vector's longitudinal mode.
-            if propagator is None or not propagator.custom:
-                return True
-        return False
+            propagator = self._propagator_ir(vector.pdg_code)
+            if propagator.goldstone_policy == "absorbed":
+                absorbing_vectors.append(vector.name)
+        if len(absorbing_vectors) > 1:
+            raise ValueError(
+                f"Goldstone {goldstone.name!r} ambiguously matches absorbing "
+                f"vectors {absorbing_vectors!r}"
+            )
+        return bool(absorbing_vectors)
 
     def _parameter_default(self, name: str) -> complex:
         if name.upper() == "ZERO":

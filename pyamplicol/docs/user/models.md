@@ -134,10 +134,12 @@ color representation, mass/width, propagators, interactions, and exact quantum
 numbers rather than absolute SM PDG ranges. Algebraic certificates derived from
 normalized color/Lorentz tensors, propagators, and coupling relations recover
 the built-in optimized DAG topology for the external-SM n<=4 validation
-ladder. The remaining `0.1.0` hardening gate covers typed
-source/crossing/propagator/contraction records and adversarial relabeling and
-tensor-order fixtures; it does not route external models through the built-in
-implementation.
+ladder. Typed source, crossing, and propagator records now select
+wavefunctions, crossing phases, mass class, gauge policy, and propagator
+kernels without SM PDG tests. The remaining `0.1.0` hardening gate covers
+contraction and tensor-order records, expression-derived Goldstone
+classification, and adversarial relabeling and tensor-order fixtures; it does
+not route external models through the built-in implementation.
 
 ## Supported UFO Subset
 

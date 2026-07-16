@@ -467,6 +467,71 @@ struct GenericValueSlotManifest {
     external_labels: Vec<usize>,
     momentum_mask: u64,
     chirality: i32,
+    propagator: GenericPropagatorIrManifest,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum GenericPropagatorKindManifest {
+    Identity,
+    Scalar,
+    WeylFermion,
+    DiracFermion,
+    Vector,
+    Spin2,
+    Custom,
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum GenericPropagatorMassClassManifest {
+    Massless,
+    Massive,
+    NotApplicable,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum GenericPropagatorGaugeManifest {
+    Feynman,
+    Unitary,
+    DeDonder,
+    FierzPauli,
+    ModelSupplied,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum GenericGoldstonePolicyManifest {
+    NotApplicable,
+    Absorbed,
+    Explicit,
+    ModelSupplied,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericPropagatorIrManifest {
+    identity: GenericParticleIdentityIrManifest,
+    particle_id: i32,
+    chirality: i32,
+    kind: GenericPropagatorKindManifest,
+    backend: String,
+    basis: String,
+    applies_propagator: bool,
+    kernel: String,
+    full_tensor_network_ready: bool,
+    mass_class: GenericPropagatorMassClassManifest,
+    gauge: Option<GenericPropagatorGaugeManifest>,
+    numerator: Option<String>,
+    denominator: Option<String>,
+    mass_parameter: Option<String>,
+    width_parameter: Option<String>,
+    custom_source: Option<String>,
+    auxiliary_policy: Option<String>,
+    goldstone_policy: GenericGoldstonePolicyManifest,
+    description: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

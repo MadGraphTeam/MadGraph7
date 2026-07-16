@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from .._internal.physics.symbols import symbols
-from ._physics_ir import PropagatorIR
+from ._physics_ir import PropagatorGauge, PropagatorIR, PropagatorKind
 from .base import (
     PropagatorLoweringRule,
 )
@@ -126,6 +125,9 @@ class ExternalModelEvaluationMixin:
                 full_tensor_network_ready=True,
                 applies_propagator=False,
                 kernel="ufo_contact_auxiliary_no_propagator",
+                kind="identity",
+                mass_class="not-applicable",
+                auxiliary_policy=auxiliary_kind,
                 description="synthetic UFO contact current with no propagator",
             )
         if chirality != 0 and self.is_chiral_eligible(particle_id):
@@ -136,6 +138,8 @@ class ExternalModelEvaluationMixin:
                 full_tensor_network_ready=True,
                 applies_propagator=True,
                 kernel="ufo_weyl_fermion",
+                kind="weyl-fermion",
+                mass_class="massless",
                 description="UFO massless fermion projected to a Weyl current",
             )
         spin = self.spin(particle_id)
@@ -156,59 +160,63 @@ class ExternalModelEvaluationMixin:
                 full_tensor_network_ready=True,
                 applies_propagator=True,
                 kernel="ufo_custom_propagator",
+                kind="custom",
+                mass_class="massive" if massive else "massless",
+                gauge="model-supplied",
+                numerator=custom.numerator,
+                denominator=custom.denominator,
+                custom_source=custom.name,
+                goldstone_policy="model-supplied",
                 description=(
                     "model-supplied UFO propagator lowered without gauge conversion"
                 ),
             )
-        kernels = {
-            1: "ufo_scalar_propagator",
-            2: "ufo_dirac_propagator",
+        standard_contracts: dict[
+            int,
+            tuple[PropagatorKind, str, PropagatorGauge | None],
+        ] = {
+            1: ("scalar", "ufo_scalar_propagator", None),
+            2: ("dirac-fermion", "ufo_dirac_propagator", None),
             3: (
-                "ufo_massive_vector_propagator"
-                if massive
-                else "ufo_massless_vector_propagator"
+                "vector",
+                (
+                    "ufo_massive_vector_propagator"
+                    if massive
+                    else "ufo_massless_vector_propagator"
+                ),
+                "unitary" if massive else "feynman",
             ),
             5: (
-                "ufo_massive_spin2_fierz_pauli"
-                if massive
-                else "ufo_massless_spin2_de_donder"
+                "spin2",
+                (
+                    "ufo_massive_spin2_fierz_pauli"
+                    if massive
+                    else "ufo_massless_spin2_de_donder"
+                ),
+                "fierz-pauli" if massive else "de-donder",
             ),
         }
+        try:
+            kind, kernel, gauge = standard_contracts[spin]
+        except KeyError as exc:
+            raise ValueError(
+                f"UFO spin code {spin} has no supported propagator contract"
+            ) from exc
         return PropagatorLoweringRule(
             particle_id=particle_id,
             chirality=0,
             backend="symbolica-ufo",
             full_tensor_network_ready=spin in {1, 2, 3, 5},
             applies_propagator=True,
-            kernel=kernels[spin],
+            kernel=kernel,
+            kind=kind,
+            mass_class="massive" if massive else "massless",
+            gauge=gauge,
+            goldstone_policy=(
+                "absorbed" if spin == 3 and massive else "not-applicable"
+            ),
             description="UFO propagator with runtime mass and width",
         )
-
-    def _propagator_ir(
-        self,
-        particle_id: int,
-        chirality: int = 0,
-    ) -> PropagatorIR:
-        metadata = super()._propagator_ir(particle_id, chirality)
-        custom = self._propagator_record(particle_id)
-        if custom is not None and custom.custom:
-            return replace(
-                metadata,
-                numerator=custom.numerator,
-                denominator=custom.denominator,
-                custom_source=custom.name,
-                gauge="model-supplied",
-            )
-        spin = self.spin(particle_id)
-        massive = complex(self.mass(particle_id)).real != 0.0
-        if spin == 3:
-            return replace(metadata, gauge="unitary" if massive else "feynman")
-        if spin == 5:
-            return replace(
-                metadata,
-                gauge="fierz-pauli" if massive else "de-donder",
-            )
-        return metadata
 
     def propagator_component_expression(
         self,
@@ -217,13 +225,16 @@ class ExternalModelEvaluationMixin:
         momentum: Sequence[Any],
         *,
         chirality: int = 0,
+        propagator: PropagatorIR | None = None,
     ) -> tuple[Any, ...]:
-        source_orientation = self._particle_records_by_pdg[
-            int(particle_id)
-        ].source_orientation
-        if self.auxiliary_kind(particle_id) is not None:
+        metadata = propagator or self._propagator_ir(particle_id, chirality)
+        if metadata.identity.canonical_id != self._particle_identity_ir(
+            particle_id
+        ).canonical_id or metadata.chirality != int(chirality):
+            raise ValueError("propagator metadata does not match the current")
+        if not metadata.applies_propagator:
             return tuple(value)
-        if chirality != 0 and self.is_chiral_eligible(particle_id):
+        if metadata.kind == "weyl-fermion":
             components = tuple(value)
             current_momentum = tuple(momentum)
             return (
@@ -232,33 +243,44 @@ class ExternalModelEvaluationMixin:
                     current_momentum,
                     chirality,
                 )
-                if source_orientation == "antiparticle"
+                if metadata.identity.orientation == "antiparticle"
                 else _expr_fermion_propagator_weyl(
                     components,
                     current_momentum,
                     chirality,
                 )
             )
-        custom = self._propagator_record(particle_id)
-        if custom is not None and custom.custom:
+        if metadata.kind == "custom":
+            custom = self._propagator_record(particle_id)
+            if (
+                custom is None
+                or not custom.custom
+                or custom.name != metadata.custom_source
+            ):
+                raise ValueError(
+                    "custom propagator contract does not match its compiled source"
+                )
             return self._evaluate_custom_propagator(
                 particle_id,
                 value,
                 momentum,
             )
-        spin = self.spin(particle_id)
         if len(momentum) != 4:
             raise ValueError("UFO propagators require four-momentum components")
-        mass = self.mass(particle_id)
-        width = self.width(particle_id)
-        if spin == 1:
+        if metadata.mass_class == "massless":
+            mass = 0.0
+            width = 0.0
+        else:
+            mass = self.mass(particle_id)
+            width = self.width(particle_id)
+        if metadata.kind == "scalar":
             if len(value) != 1:
                 raise ValueError("scalar propagator expects one current component")
             denominator = (
                 _minkowski_square_expression(momentum) - mass * mass + 1j * mass * width
             )
             return (1j * value[0] / denominator,)
-        if spin == 2:
+        if metadata.kind == "dirac-fermion":
             components = tuple(value)
             current_momentum = tuple(momentum)
             return (
@@ -268,7 +290,7 @@ class ExternalModelEvaluationMixin:
                     mass,
                     width,
                 )
-                if source_orientation == "antiparticle"
+                if metadata.identity.orientation == "antiparticle"
                 else _expr_fermion_propagator_dirac(
                     components,
                     current_momentum,
@@ -276,18 +298,23 @@ class ExternalModelEvaluationMixin:
                     width,
                 )
             )
-        if spin == 3:
+        if metadata.kind == "vector":
             if len(value) != 4:
                 raise ValueError("vector propagator expects four current components")
             current = tuple(value)
             current_momentum = tuple(momentum)
+            if metadata.gauge == "feynman":
+                denominator = _minkowski_square_expression(current_momentum)
+                return tuple(-1j * component / denominator for component in current)
+            if metadata.gauge != "unitary":
+                raise ValueError(
+                    f"unsupported vector propagator gauge {metadata.gauge!r}"
+                )
             denominator = (
                 _minkowski_square_expression(current_momentum)
                 - mass * mass
                 + 1j * mass * width
             )
-            if mass == 0.0:
-                return tuple(-1j * component / denominator for component in current)
             longitudinal = _expr_minkowski_dot(current, current_momentum) / (
                 mass * mass
             )
@@ -297,7 +324,7 @@ class ExternalModelEvaluationMixin:
                 / denominator
                 for index in range(4)
             )
-        if spin == 5:
+        if metadata.kind == "spin2":
             dimension = self._runtime_parameters.get("dim", 4.0)
             return _expr_spin2_propagator(
                 tuple(value),
@@ -305,9 +332,11 @@ class ExternalModelEvaluationMixin:
                 mass,
                 width,
                 dimension=dimension,
-                massive=mass != 0.0,
+                massive=metadata.mass_class == "massive",
             )
-        raise NotImplementedError(f"generic spin-{spin} propagator is not implemented")
+        raise NotImplementedError(
+            f"generic propagator kind {metadata.kind!r} is not implemented"
+        )
 
     def runtime_parameter_names_for_vertex(self, kind: int) -> tuple[str, ...]:
         return self._kernel(kind).runtime_parameters

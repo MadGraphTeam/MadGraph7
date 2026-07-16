@@ -159,6 +159,9 @@ class BuiltinModel(Model):
                 full_tensor_network_ready=True,
                 applies_propagator=False,
                 kernel="auxiliary_tensor_embedded_propagator",
+                kind="identity",
+                mass_class="not-applicable",
+                auxiliary_policy="antisymmetric-tensor",
                 description=(
                     "auxiliary-tensor propagator factors are embedded in the "
                     "adjacent built-in-SM vertex kernels"
@@ -172,6 +175,9 @@ class BuiltinModel(Model):
                 full_tensor_network_ready=True,
                 applies_propagator=False,
                 kernel="auxiliary_scalar_no_propagator",
+                kind="identity",
+                mass_class="not-applicable",
+                auxiliary_policy="builtin-higgsor-scalar",
                 description=(
                     "Higgsor auxiliary scalar currents are non-propagating in "
                     "the built-in-SM model"
@@ -185,6 +191,9 @@ class BuiltinModel(Model):
                 full_tensor_network_ready=True,
                 applies_propagator=True,
                 kernel="massless_vector_feynman_gauge",
+                kind="vector",
+                mass_class="massless",
+                gauge="feynman",
                 description="massless vector propagator in mostly-minus metric",
             )
         if abs(particle_id) == 24 or particle_id == 23:
@@ -195,6 +204,10 @@ class BuiltinModel(Model):
                 full_tensor_network_ready=True,
                 applies_propagator=True,
                 kernel="massive_vector_unitary_gauge",
+                kind="vector",
+                mass_class="massive",
+                gauge="unitary",
+                goldstone_policy="absorbed",
                 description="massive vector propagator with width",
             )
         if self.is_chiral_eligible(particle_id) and chirality != 0:
@@ -205,6 +218,8 @@ class BuiltinModel(Model):
                 full_tensor_network_ready=True,
                 applies_propagator=True,
                 kernel="weyl_fermion",
+                kind="weyl-fermion",
+                mass_class="massless",
                 description="massless Weyl fermion propagator",
             )
         if self.is_fermion(particle_id) and self.mass(particle_id) != 0.0:
@@ -215,6 +230,8 @@ class BuiltinModel(Model):
                 full_tensor_network_ready=True,
                 applies_propagator=True,
                 kernel="massive_dirac_fermion",
+                kind="dirac-fermion",
+                mass_class="massive",
                 description="massive Dirac fermion propagator",
             )
         if self.is_higgs(particle_id):
@@ -225,6 +242,8 @@ class BuiltinModel(Model):
                 full_tensor_network_ready=True,
                 applies_propagator=True,
                 kernel="scalar_with_width",
+                kind="scalar",
+                mass_class="massive",
                 description="scalar propagator with optional width",
             )
         return PropagatorLoweringRule(
@@ -234,6 +253,8 @@ class BuiltinModel(Model):
             full_tensor_network_ready=False,
             applies_propagator=True,
             kernel="unknown",
+            kind="unsupported",
+            mass_class=("massive" if self.mass(particle_id) != 0.0 else "massless"),
             description="no built-in-model propagator lowering is registered",
         )
 

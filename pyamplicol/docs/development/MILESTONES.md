@@ -8,8 +8,8 @@ evidence; they do not commit, push, or update shared release metadata.
 | Bootstrap and clean baselines | Main orchestrator | Complete | Plan preserved outside the nested repository; independent branch; 0BSD and fail-closed dependency/legal gates; canonical published Cargo lock separated from the ignored candidate lock; deterministic model assets and compact reference fixtures present; the complete source gate and isolated candidate deployment pass under the 30 GB watchdog | `d9f49fb` |
 | Mixed Maturin build and SDK | Main + Rust workers | In progress | Split core/Python/C API workspace, portable target contract, and SDK resources implemented; the fresh macOS arm64 candidate wheel passes SDK/archive checks, a Symbolica-import-blocked direct-SymJIT physics self-test, and Python/C++17/Fortran deployment; the other release targets remain | Pending |
 | Typed Python API and configuration | Turing + Franklin + Epicurus + Main | In progress | Immutable schema-v1 config, requested/effective provenance, quiet lazy root import, truthful public typing gate, centralized programmatic license clamps, complete LC generation coverage, and named process-set runtime identity implemented; final API review remains | Pending |
-| Models, DAG, and schema v3 | Planck + Darwin + Maxwell + Main | In progress | Model assets, generic compilation, schema-v3 manifests, physics metadata, resolved reductions, full compiler-source cache fingerprinting, truthful validation samples/tolerances, and selector-free LC expressions implemented; the revision-scoped v2 bundle now certifies 11 built-in/external/scalar cases over 17 exact points with independent Fortran or analytic evidence; broader process coverage remains | Pending |
-| Model independence hardening | Main + physics/model reviewers | In progress | Hand-written SM model, lowering, tensors, process catalog, selection, and validation are quarantined under `models.builtin`; shared process/color/DAG code consumes structural statistics, representation, anti-relation, source-orientation, and exact quantum-flow metadata; unsafe helicity/reflection reductions fail closed. One canonical typed `SourceIR`/`CrossingIR` contract per oriented particle now drives DAG construction, physical-helicity enumeration, Python exact source filling, and Rusticol f64/high-precision source filling, including complex crossing phases. Repeated records agree both per leg and per oriented particle, represented antiparticles form an involution, and runtime mass updates cannot invalidate the generated mass/helicity class. Older schema-v3 artifacts without typed source metadata fail with an actionable regeneration error. The validated slice preserves currents, interactions, roots, reduction groups, and resolved values across built-in, UFO/JSON SM, scalar, and scalar-gravity cases. Authoritative propagator/gauge/Goldstone policy, contraction metadata, colored-contact proofs, and relabeled/reordered adversarial fixtures remain | Pending |
+| Models, DAG, and schema v3 | Planck + Darwin + Maxwell + Main | In progress | Model assets, generic compilation, schema-v3 manifests, physics metadata, resolved reductions, full compiler-source cache fingerprinting, truthful validation samples/tolerances, and selector-free LC expressions implemented; the revision-scoped v2 bundle now certifies 29 built-in/external/scalar cases over 38 exact points with independent Fortran or analytic evidence; broader process coverage remains | Pending |
+| Model independence hardening | Main + physics/model reviewers | In progress | Hand-written SM model, lowering, tensors, process catalog, selection, and validation are quarantined under `models.builtin`; shared process/color/DAG code consumes structural statistics, representation, anti-relation, source-orientation, and exact quantum-flow metadata; unsafe helicity/reflection reductions fail closed. Canonical typed `SourceIR`/`CrossingIR` and `PropagatorIR` contracts now drive DAG construction, physical-helicity enumeration, Python/Rusticol source filling, mass class, gauge policy, and propagator dispatch. Runtime mass updates cannot invalidate the generated state space, and old schema-v3 artifacts without the typed contracts fail with an actionable regeneration error. The validated slice preserves currents, interactions, roots, reduction groups, and resolved values across built-in, UFO/JSON SM, scalar, and scalar-gravity cases. Authoritative contraction/tensor-order metadata, expression-derived Goldstone classification, colored-contact proofs, and relabeled/reordered adversarial fixtures remain | Pending |
 | Examples and documentation | Python workers + Main | In progress | Installed examples, root API bundle, native runners, and clean N/A performance report implemented and visually reviewed; all 20 installed-wheel example tests pass, while final prose review remains | Pending |
 | Deployment and release gates | Main + Ohm + Herschel + Leibniz + reviewers | In progress | Clean-overlay release/candidate Cargo execution, standard wheel/sdist content checks, immutable CI pins, guarded publishing, diagnostics, and self-test implemented; the exact macOS arm64 candidate passes isolated deployment and all 31 installed integration tests. Candidate sdist `ce662c926262...69f18d41` contains one portable saved-SymJIT-MIR source template; cross-target execution and release-mode artifact parity remain | Pending |
 
@@ -55,6 +55,7 @@ evidence; they do not commit, push, or update shared release metadata.
 | Low-multiplicity fixture-ladder review | Boole + Main | Complete | Charged-current, leptonic, mixed-flavour two-line, same-flavour exchange, pure-gluon, and top-pair recipes are ordered before the retained three-body tier. Massive pairs use a quantified threshold point; exact Fortran row, matching-row, and colour-order multiplicities are pinned | `a1bf444` |
 | Fixture release-gate re-audit | Parfit + Main | Complete | Candidate-derived masses were replaced by independently declared mass contracts; wheel scope remains free of legacy AmpliCol and local loader dependencies | `a1bf444` |
 | Expanded reference fixture v2 bundle | Main | Complete | Clean candidate `54045e93070c...` produced 29 cases over 38 exact points. Ninety pinned-Fortran records agree with summed p80 totals to at worst `2.06e-11`; eight analytic records agree to at worst `2.29e-16`. Bounded binary64 residue is canonicalized only for independently proven structural zeros. Eleven complete process artifacts remain under the revision-scoped ignored artifact root | This commit |
+| CI memory containment | Carver + Main | Complete | Every candidate and release workflow entry point that can build dependencies, compile native artifacts, generate physics data, or run installed deployment tests is guarded by the repository 30 GiB process-tree watchdog; workflow tests pin the guarded command inventory | Pending |
 
 ## Agent Handoff
 
@@ -75,9 +76,9 @@ commits that milestone.
 
 ## Current Critical Path
 
-1. Validate the externally loaded UFO/JSON SM against the built-in low-
-   multiplicity ladder before increasing multiplicity, preserving resolved
-   values and generation/runtime behavior.
+1. Extend the externally loaded UFO/JSON SM validation ladder beyond the
+   completed low-multiplicity reference bundle while preserving resolved
+   values, topology, and generation/runtime behavior.
 2. Exercise the lazy Symbolica precision fallback and non-JIT evaluator
    artifacts without changing the direct SymJIT f64 loader or introducing a
    second SymJIT decoder.
@@ -86,11 +87,11 @@ commits that milestone.
    saved-SymJIT-MIR self-test fixture.
 4. Resolve remaining alias/model metadata cases and
    complete the full release workflow test contract.
-5. Complete the active model-independence hardening pass: make `PropagatorIR`
-   authoritative for gauge and Goldstone policy, consume `ContractionIR`,
-   prove colored-contact and all-adjoint
-   reductions from canonical expressions, and run relabeled-PDG and
-   reordered-tensor invariance checks before restoring topology/performance gates.
+5. Complete the active model-independence hardening pass: consume
+   `ContractionIR` and tensor-order metadata, replace the legacy UFO Goldstone
+   expression classifier, prove colored-contact and all-adjoint reductions
+   from canonical expressions, and run relabeled-PDG and reordered-tensor
+   invariance checks before restoring topology/performance gates.
 6. Complete release-mode sdist/wheel parity once the exact upstream dependency
    releases exist; candidate-mode source, wheel, SDK, and isolated
    deployment gates are validated in the bootstrap milestone.

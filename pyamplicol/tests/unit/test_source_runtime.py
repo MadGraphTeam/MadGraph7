@@ -22,9 +22,8 @@ def _module():
     return module
 
 
-def _wheel(path: Path) -> None:
+def _wheel(path: Path, *, target: str = "aarch64-apple-darwin") -> None:
     version = "0.1.0.dev0+candidate.testsource"
-    target = "aarch64-apple-darwin"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             f"pyamplicol-{version}.dist-info/METADATA",
@@ -79,6 +78,12 @@ def test_source_runtime_stages_only_audited_generated_resources(
     tracked_config = package / "_sdk/config.py"
     tracked_config.parent.mkdir()
     tracked_config.write_text("tracked\n", encoding="utf-8")
+    stale_selftest = (
+        package
+        / "assets/selftest/aarch64-apple-darwin/artifact/evaluators/stale.symjit"
+    )
+    stale_selftest.parent.mkdir(parents=True)
+    stale_selftest.write_bytes(b"stale")
     _wheel(wheel)
 
     report = module.stage_runtime(
@@ -95,6 +100,7 @@ def test_source_runtime_stages_only_audited_generated_resources(
     assert (
         package / "assets/selftest/aarch64-apple-darwin/artifact/artifact.json"
     ).is_file()
+    assert not stale_selftest.exists()
     driver = (
         package
         / "assets/selftest/aarch64-apple-darwin/artifact/API/python/"
@@ -122,6 +128,27 @@ def test_package_version_prefers_the_staged_source_runtime(
     monkeypatch.setattr(versions, "_SOURCE_BUILD_INFO_PATH", build_info)
 
     assert versions.package_version() == "0.1.0.dev0+candidate.current"
+
+
+def test_source_runtime_rejects_dot_target(tmp_path: Path) -> None:
+    module = _module()
+    wheel = tmp_path / "pyamplicol-test.whl"
+    package = tmp_path / "src/pyamplicol"
+    package.mkdir(parents=True)
+    _wheel(wheel, target="..")
+
+    try:
+        module.stage_runtime(
+            wheel,
+            source_package=package,
+            source_build_info=tmp_path / "build-info.json",
+            mode="candidate",
+            audit=False,
+        )
+    except module.ReleaseError as error:
+        assert "unsafe target" in str(error)
+    else:
+        raise AssertionError("unsafe dot target was accepted")
 
 
 def test_source_runtime_stages_an_existing_local_wheel_directory(

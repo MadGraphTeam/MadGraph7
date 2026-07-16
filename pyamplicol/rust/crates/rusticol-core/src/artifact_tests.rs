@@ -382,6 +382,41 @@ fn minimal_execution_manifest(
             "width_parameter": null,
         })
     };
+    let propagator_ir = |particle_id: i32, anti_particle_id: i32, orientation: &str| {
+        json!({
+            "identity": {
+                "canonical_id": format!("model:minimal:state:{particle_id}"),
+                "species_id": "model:minimal:species:1",
+                "anti_canonical_id": format!(
+                    "model:minimal:state:{anti_particle_id}"
+                ),
+                "display_name": format!("state_{particle_id}"),
+                "anti_display_name": format!("state_{anti_particle_id}"),
+                "pdg_label": particle_id,
+                "anti_pdg_label": anti_particle_id,
+                "orientation": orientation,
+                "self_conjugate": false,
+            },
+            "particle_id": particle_id,
+            "chirality": 0,
+            "kind": "scalar",
+            "backend": "test",
+            "basis": "scalar",
+            "applies_propagator": true,
+            "kernel": "test_scalar",
+            "full_tensor_network_ready": true,
+            "mass_class": "massless",
+            "gauge": null,
+            "numerator": "i",
+            "denominator": "momentum_squared-mass_squared+i*mass*width",
+            "mass_parameter": null,
+            "width_parameter": null,
+            "custom_source": null,
+            "auxiliary_policy": null,
+            "goldstone_policy": "not-applicable",
+            "description": "test scalar propagator",
+        })
+    };
     let real_inputs = (2..14).collect::<Vec<_>>();
     let current_storage = json!({
         "component_count": 2,
@@ -417,7 +452,8 @@ fn minimal_execution_manifest(
                 "current_component_start": 0, "current_component_stop": 1,
                 "is_source": true, "applies_propagator": false, "particle_id": 1,
                 "external_mask": 1, "external_labels": [], "momentum_mask": 1,
-                "chirality": 0
+                "chirality": 0,
+                "propagator": propagator_ir(1, -1, "particle")
             },
             {
                 "value_slot_id": 1, "current_id": 1, "variant": "source",
@@ -425,7 +461,8 @@ fn minimal_execution_manifest(
                 "current_component_start": 1, "current_component_stop": 2,
                 "is_source": true, "applies_propagator": false, "particle_id": -1,
                 "external_mask": 2, "external_labels": [], "momentum_mask": 2,
-                "chirality": 0
+                "chirality": 0,
+                "propagator": propagator_ir(-1, 1, "antiparticle")
             }
         ],
     });

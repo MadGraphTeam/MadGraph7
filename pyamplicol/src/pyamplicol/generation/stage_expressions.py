@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ..models._physics_ir import PropagatorIR
 from ..models.base import Model
 from .contracts import (
     runtime_coupling_parameter_names as _runtime_coupling_parameter_names,
@@ -233,6 +234,9 @@ def _compile_current_stage_blueprint(
                         total,
                         momentum_components_by_mask[int(current_slot["momentum_mask"])],
                         chirality=int(current_slot["chirality"]),
+                        propagator=PropagatorIR.from_json_dict(
+                            _dict(slot["propagator"])
+                        ),
                     )
                     if variant == "propagated"
                     else total

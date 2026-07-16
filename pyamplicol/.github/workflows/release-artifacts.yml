@@ -37,10 +37,14 @@ jobs:
         run: python tools/release/check_dependencies.py
       - name: Install the project and source-test tools
         run: |
-          cargo install just --version 1.46.0 --locked
-          python -m pip install ".[test]"
+          python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            cargo install just --version 1.46.0 --locked
+          python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            python -m pip install ".[test]"
       - name: Run complete release source gate
-        run: PYTHON="$(command -v python)" just source-gate
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          env PYTHON="$(command -v python)" just source-gate
 
   independent-physics-oracle:
     name: Independent Fortran physics oracle
@@ -60,8 +64,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ulimit -v 31457280
-          python tools/developer/legacy_amplicol.py \
+          python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            python tools/developer/legacy_amplicol.py \
             --prepare-checkout \
             --fixture tests/fixtures/reference/physics-v2.json \
             --jobs 2 \
@@ -84,6 +88,7 @@ jobs:
         run: python -m pip install "build>=1.2,<2" "maturin==1.14.1"
       - name: Build the one retained sdist
         run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/build_release_artifacts.py
           --sdist-only
           --output-dir .artifacts/release-source
@@ -130,6 +135,7 @@ jobs:
           "twine>=6,<7"
       - name: Build and audit from retained sdist
         run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/build_release_artifacts.py
           --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz
           --output-dir .artifacts/platform
@@ -157,6 +163,7 @@ jobs:
           printf 'FC=%s\n' "$fc" >> "$GITHUB_ENV"
       - name: Test installed wheel on CPython 3.11
         run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/test_deployment.py
           --python "$(command -v python)"
           --wheel .artifacts/platform/pyamplicol-*.whl
@@ -166,6 +173,7 @@ jobs:
           python-version: "3.14"
       - name: Test installed abi3 wheel on CPython 3.14
         run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/test_deployment.py
           --python "$(command -v python)"
           --wheel .artifacts/platform/pyamplicol-*.whl
@@ -216,14 +224,17 @@ jobs:
               PY314=/opt/python/cp314-cp314/bin/python
               "$PY311" -m pip install \
                 "build>=1.2,<2" "maturin==1.14.1" "twine>=6,<7"
-              "$PY311" tools/release/build_release_artifacts.py \
+              "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PY311" tools/release/build_release_artifacts.py \
                 --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz \
                 --output-dir .artifacts/platform
-              "$PY311" tools/release/test_deployment.py \
+              "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PY311" tools/release/test_deployment.py \
                 --python "$PY311" \
                 --wheel .artifacts/platform/pyamplicol-*.whl \
                 --no-build
-              "$PY311" tools/release/test_deployment.py \
+              "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PY311" tools/release/test_deployment.py \
                 --python "$PY314" \
                 --wheel .artifacts/platform/pyamplicol-*.whl \
                 --no-build

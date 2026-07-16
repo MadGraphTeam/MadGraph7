@@ -11,7 +11,7 @@ from pyamplicol.generation.artifact_writer import _execution_plan
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.runtime_schema import build_runtime_schema
 from pyamplicol.models import BuiltinSMModel
-from pyamplicol.models._physics_ir import CrossingIR
+from pyamplicol.models._physics_ir import CrossingIR, PropagatorIR
 from pyamplicol.models.base import Model, Particle
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.contracts import CompiledParticleRecord
@@ -249,19 +249,26 @@ def test_propagator_ir_records_basis_gauge_and_formula() -> None:
 
     massless_vector = model._propagator_ir(21)
     assert massless_vector.basis == "lorentz-vector"
+    assert massless_vector.kind == "vector"
+    assert massless_vector.mass_class == "massless"
     assert massless_vector.gauge == "feynman"
     assert massless_vector.numerator == "-i*metric"
     assert massless_vector.denominator == "momentum_squared"
 
     massive_vector = model._propagator_ir(23)
     assert massive_vector.gauge == "unitary"
+    assert massive_vector.mass_class == "massive"
+    assert massive_vector.goldstone_policy == "absorbed"
     assert massive_vector.mass_parameter is None
     assert massive_vector.denominator == ("momentum_squared-mass_squared+i*mass*width")
 
     auxiliary = model._propagator_ir(-21)
     assert auxiliary.applies_propagator is False
+    assert auxiliary.kind == "identity"
+    assert auxiliary.mass_class == "not-applicable"
     assert auxiliary.basis == "auxiliary:antisymmetric-tensor"
     assert auxiliary.auxiliary_policy == "antisymmetric-tensor"
+    assert PropagatorIR.from_json_dict(massive_vector.to_json_dict()) == massive_vector
 
 
 def test_external_self_conjugate_fermion_source_fails_clearly() -> None:
