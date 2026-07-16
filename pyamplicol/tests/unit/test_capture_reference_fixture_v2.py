@@ -75,14 +75,14 @@ def test_compiled_model_contract_hash_excludes_only_timing_diagnostics() -> None
         "kind": "pyamplicol-compiled-model",
         "source": {"digest": "abc"},
         "ir": {"particles": [{"pdg_code": 1}]},
-        "parameter_defaults": {"ZERO": [0.0, 0.0]},
-        "conversion_seconds": 1.25,
-        "phase_timings": {"lower": 0.5},
+        "parameter_defaults": {"ZERO": [Decimal("0.0"), Decimal("0.0")]},
+        "conversion_seconds": Decimal("1.25"),
+        "phase_timings": {"lower": Decimal("0.5")},
     }
     baseline = artifacts._compiled_model_contract_sha256(compiled)
 
-    compiled["conversion_seconds"] = 99.0
-    compiled["phase_timings"] = {"lower": 42.0}
+    compiled["conversion_seconds"] = Decimal("99.0")
+    compiled["phase_timings"] = {"lower": Decimal("42.0")}
     assert artifacts._compiled_model_contract_sha256(compiled) == baseline
 
     compiled["ir"] = {"particles": [{"pdg_code": 2}]}

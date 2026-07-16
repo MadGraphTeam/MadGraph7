@@ -244,13 +244,36 @@ def _compiled_model_contract_sha256(compiled: Mapping[str, object]) -> str:
         for key, value in compiled.items()
         if key not in {"conversion_seconds", "phase_timings"}
     }
-    encoded = json.dumps(
-        semantic_payload,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("ascii")
+    encoded = _canonical_json_bytes(semantic_payload)
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    if value is None:
+        return b"null"
+    if isinstance(value, bool):
+        return b"true" if value else b"false"
+    if isinstance(value, int):
+        return str(value).encode("ascii")
+    if isinstance(value, (Decimal, float)):
+        return canonical_decimal(value).encode("ascii")
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=True).encode("ascii")
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise CaptureError("canonical compiled-model JSON has a non-string key")
+        members = (
+            json.dumps(key, ensure_ascii=True).encode("ascii")
+            + b":"
+            + _canonical_json_bytes(value[key])
+            for key in sorted(cast(Mapping[str, object], value))
+        )
+        return b"{" + b",".join(members) + b"}"
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, str)):
+        return b"[" + b",".join(_canonical_json_bytes(item) for item in value) + b"]"
+    raise CaptureError(
+        f"canonical compiled-model JSON contains unsupported {type(value).__name__}"
+    )
 
 
 def _model_payload(
