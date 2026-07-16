@@ -249,15 +249,30 @@ def _three_body_generic(
     return point
 
 
-def _boost_z_decimal(momentum: Momentum, beta: Decimal) -> Momentum:
-    gamma = Decimal(1) / (Decimal(1) - beta * beta).sqrt()
+def _boost_decimal(
+    momentum: Momentum,
+    beta: tuple[Decimal, Decimal, Decimal],
+) -> Momentum:
+    beta_square = sum((component * component for component in beta), Decimal(0))
+    if beta_square == 0:
+        return momentum
+    if beta_square >= 1:
+        raise CaptureError("decimal boost velocity is not subluminal")
+    gamma = Decimal(1) / (Decimal(1) - beta_square).sqrt()
     energy, px, py, pz = momentum
-    return (
-        +(gamma * (energy + beta * pz)),
-        +px,
-        +py,
-        +(gamma * (pz + beta * energy)),
+    spatial = (px, py, pz)
+    beta_dot_momentum = sum(
+        (left * right for left, right in zip(beta, spatial, strict=True)),
+        Decimal(0),
     )
+    spatial_factor = (
+        gamma - Decimal(1)
+    ) * beta_dot_momentum / beta_square + gamma * energy
+    boosted = tuple(
+        +(component + spatial_factor * velocity)
+        for component, velocity in zip(spatial, beta, strict=True)
+    )
+    return cast(Momentum, (+(gamma * (energy + beta_dot_momentum)), *boosted))
 
 
 def _three_body_stress(process_id: str) -> CapturePoint:
@@ -270,25 +285,25 @@ def _three_body_stress(process_id: str) -> CapturePoint:
         q_mass = +(sqrt_s * sqrt_s - 2 * sqrt_s * soft_energy).sqrt()
         hard_energy = +(q_mass * q_mass - mass * mass) / (2 * q_mass)
         z_energy = +(q_mass * q_mass + mass * mass) / (2 * q_mass)
-        sine = Decimal("1e-8")
+        sine = Decimal("1e-3")
         cosine = +(Decimal(1) - sine * sine).sqrt()
-        px = +(hard_energy * sine)
-        pz = +(hard_energy * cosine)
         zero = Decimal(0)
-        beta = -soft_energy / q_energy
-        hard = _boost_z_decimal((hard_energy, px, zero, pz), beta)
-        z_boson = _boost_z_decimal((z_energy, -px, zero, -pz), beta)
+        soft_px = +(soft_energy * sine)
+        soft_pz = +(soft_energy * cosine)
+        beta = (-soft_px / q_energy, zero, -soft_pz / q_energy)
+        hard = _boost_decimal((hard_energy, zero, hard_energy, zero), beta)
+        z_boson = _boost_decimal((z_energy, zero, -hard_energy, zero), beta)
         momenta = (
             *_incoming(sqrt_s),
             z_boson,
             hard,
-            (soft_energy, zero, zero, soft_energy),
+            (soft_energy, soft_px, zero, soft_pz),
         )
     point = CapturePoint(
         id=f"point:{process_id}:stress-soft-collinear",
         process_id=process_id,
         point_class="stress",
-        algorithm_name="decimal-soft-collinear-sequential-three-body",
+        algorithm_name="decimal-soft-near-collinear-sequential-three-body",
         algorithm_version="1",
         rng=None,
         seed=None,
