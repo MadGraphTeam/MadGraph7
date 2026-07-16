@@ -232,11 +232,11 @@ def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
             left_id=current_id_map[root.left_id],
             right_id=current_id_map[root.right_id],
             color_weight=root.color_weight,
+            contraction_ir=root.contraction_ir,
             color_sector_id=root.color_sector_id,
             vertex_kind=root.vertex_kind,
             vertex_particles=root.vertex_particles,
             coupling=root.coupling,
-            contraction=root.contraction,
             helicity_weight=root.helicity_weight,
         )
         for new_id, root in enumerate(dag.amplitude_roots)
@@ -319,11 +319,11 @@ def prune_global_helicity_flip_equivalent_roots(
                     left_id=root.left_id,
                     right_id=root.right_id,
                     color_weight=root.color_weight,
+                    contraction_ir=root.contraction_ir,
                     color_sector_id=root.color_sector_id,
                     vertex_kind=root.vertex_kind,
                     vertex_particles=root.vertex_particles,
                     coupling=root.coupling,
-                    contraction=root.contraction,
                     helicity_weight=root.helicity_weight * weight,
                 )
             )
@@ -615,11 +615,11 @@ def filter_dag_to_color_sectors(
                 left_id=current_id_map[root.left_id],
                 right_id=current_id_map[root.right_id],
                 color_weight=root.color_weight,
+                contraction_ir=root.contraction_ir,
                 color_sector_id=root.color_sector_id,
                 vertex_kind=root.vertex_kind,
                 vertex_particles=root.vertex_particles,
                 coupling=root.coupling,
-                contraction=root.contraction,
                 helicity_weight=root.helicity_weight,
             )
         )

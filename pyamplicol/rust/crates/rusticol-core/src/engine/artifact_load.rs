@@ -259,6 +259,11 @@ pub(super) fn execution_manifest_parse_error(
             "schema-v3 evaluator manifest {path:?} predates typed source metadata; regenerate the artifact with `pyamplicol generate`"
         ));
     }
+    if detail.contains("missing field `contraction_ir`") {
+        return RusticolError::compatibility(format!(
+            "schema-v3 evaluator manifest {path:?} predates typed amplitude-contraction metadata; regenerate the artifact with `pyamplicol generate`"
+        ));
+    }
     RusticolError::serialization(format!(
         "could not parse schema-v3 evaluator manifest {path:?}: {detail}"
     ))

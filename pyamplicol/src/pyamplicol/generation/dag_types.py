@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ..color.plan import GenericColorPlan, LCColorSector
+from ..models._physics_ir import ContractionIR
 from ..models.base import QuantumNumberFlow
 from ..processes.ir import CanonicalProcessIR
 
@@ -276,12 +277,22 @@ class AmplitudeRoot:
     left_id: int
     right_id: int
     color_weight: tuple[float, float]
+    contraction_ir: ContractionIR
     color_sector_id: int | None = None
     vertex_kind: int | None = None
     vertex_particles: tuple[int, int, int] | None = None
     coupling: tuple[float, float] = (1.0, 0.0)
-    contraction: str = ""
     helicity_weight: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contraction_ir, ContractionIR):
+            raise TypeError("amplitude root requires a frozen ContractionIR")
+
+    @property
+    def contraction(self) -> str:
+        """Display/wire projection retained for schema compatibility."""
+
+        return self.contraction_ir.name
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -299,6 +310,7 @@ class AmplitudeRoot:
             ),
             "coupling": list(self.coupling),
             "contraction": self.contraction,
+            "contraction_ir": self.contraction_ir.to_json_dict(),
             "helicity_weight": self.helicity_weight,
         }
 

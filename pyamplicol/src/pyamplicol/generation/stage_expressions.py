@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..models._physics_ir import PropagatorIR
+from ..models._physics_ir import ContractionIR, PropagatorIR
 from ..models.base import Model
 from .contracts import (
     runtime_coupling_parameter_names as _runtime_coupling_parameter_names,
@@ -23,6 +23,7 @@ from .stage_parameters import (
     _list,
     _model_symbolica_functions,
     _momentum_components,
+    _project_components,
     _runtime_coupling,
     _specialize_stage_symbolica_functions,
     _stage_input_momentum_slot_ids,
@@ -364,7 +365,7 @@ def _compile_amplitude_stage_blueprint(
                 model_parameter_symbols=local_inputs.model_parameter_symbols,
                 value_slots=value_slots,
             )
-        except ValueError as error:
+        except (TypeError, ValueError) as error:
             blockers.append(f"amplitude root {root['root_id']}: {error}")
             continue
         start = len(outputs)
@@ -538,16 +539,36 @@ def _amplitude_root_expression(
     model_parameter_symbols: Mapping[str, Any],
     value_slots: dict[int, dict[str, Any]],
 ) -> Any:
-    left = _value_components(_dict(root["left_value_slot"]), value_symbols)
-    right = _value_components(_dict(root["right_value_slot"]), value_symbols)
+    left_value_slot = _dict(root["left_value_slot"])
+    right_value_slot = _dict(root["right_value_slot"])
+    left = _value_components(left_value_slot, value_symbols)
+    right = _value_components(right_value_slot, value_symbols)
+    left_value_metadata = _amplitude_value_slot_metadata(
+        left_value_slot,
+        value_slots,
+    )
+    right_value_metadata = _amplitude_value_slot_metadata(
+        right_value_slot,
+        value_slots,
+    )
     kind = str(root["kind"])
-    contraction = str(root.get("contraction", ""))
+    contraction_ir = _root_contraction_ir(root)
     coupling = _runtime_coupling(root, model_parameter_symbols)
     color_weight = _coupling(root.get("color_weight"))
-    weight = color_weight[0] + 1j * color_weight[1]
     if kind == "direct-contraction":
-        return weight * _contract_components(contraction, left, right)
+        _validate_direct_contraction_metadata(
+            contraction_ir,
+            left_value_slot,
+            right_value_slot,
+            left_value_metadata,
+            right_value_metadata,
+        )
+        return _apply_amplitude_color_weight(
+            color_weight,
+            _contract_components(contraction_ir, left, right),
+        )
     if kind == "vertex-closure":
+        _validate_scalar_projection(contraction_ir)
         vertex_kind = root.get("vertex_kind")
         particles = root.get("vertex_particles")
         if (
@@ -562,14 +583,111 @@ def _amplitude_root_expression(
             right,
             result_particle_id=int(particles[2]),
             result_chirality=0,
+            left_chirality=int(left_value_metadata["chirality"]),
+            right_chirality=int(right_value_metadata["chirality"]),
             coupling=coupling,
         )
-        if contraction == "scalar" and len(components) == 1:
-            return weight * components[0]
-        raise ValueError(
-            f"vertex closure contraction {contraction!r} is not scalar-lowered"
+        return _apply_amplitude_color_weight(
+            color_weight,
+            _project_components(contraction_ir, components),
         )
     raise ValueError(f"unsupported amplitude root kind {kind!r}")
+
+
+def _root_contraction_ir(root: Mapping[str, Any]) -> ContractionIR:
+    payload = root.get("contraction_ir")
+    if not isinstance(payload, Mapping):
+        raise TypeError("amplitude root contraction_ir must be a mapping")
+    contraction_ir = ContractionIR.from_json_dict(payload)
+    if root.get("contraction") != contraction_ir.name:
+        raise ValueError(
+            "amplitude root contraction projection does not match ContractionIR"
+        )
+    return contraction_ir
+
+
+def _amplitude_value_slot_metadata(
+    reference: Mapping[str, Any],
+    value_slots: Mapping[int, dict[str, Any]],
+) -> dict[str, Any]:
+    try:
+        value_slot_id = int(reference["value_slot_id"])
+        return value_slots[value_slot_id]
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("amplitude root references an unknown value slot") from error
+
+
+def _validate_direct_contraction_metadata(
+    contraction_ir: ContractionIR,
+    left_reference: Mapping[str, Any],
+    right_reference: Mapping[str, Any],
+    left_value_slot: Mapping[str, Any],
+    right_value_slot: Mapping[str, Any],
+) -> None:
+    dimension = len(contraction_ir.coefficients)
+    for side, reference, value_slot, basis in (
+        (
+            "left",
+            left_reference,
+            left_value_slot,
+            contraction_ir.left_basis,
+        ),
+        (
+            "right",
+            right_reference,
+            right_value_slot,
+            contraction_ir.right_basis,
+        ),
+    ):
+        if (
+            int(reference.get("dimension", -1)) != dimension
+            or int(value_slot.get("dimension", -1)) != dimension
+        ):
+            raise ValueError(
+                f"direct contraction {side} value slot dimension does not match "
+                "ContractionIR"
+            )
+        propagator = value_slot.get("propagator")
+        if not isinstance(propagator, Mapping) or propagator.get("basis") != basis:
+            raise ValueError(
+                f"direct contraction {side} value slot basis does not match "
+                "ContractionIR"
+            )
+
+    left_chirality = int(left_value_slot["chirality"])
+    right_chirality = int(right_value_slot["chirality"])
+    relation_matches = (
+        contraction_ir.chirality_relation == "any"
+        or (
+            contraction_ir.chirality_relation == "equal"
+            and left_chirality == right_chirality
+        )
+        or (
+            contraction_ir.chirality_relation == "opposite"
+            and left_chirality == -right_chirality
+        )
+    )
+    if not relation_matches:
+        raise ValueError("direct contraction violates ContractionIR chirality relation")
+
+
+def _validate_scalar_projection(contraction_ir: ContractionIR) -> None:
+    if (
+        len(contraction_ir.coefficients) != 1
+        or contraction_ir.left_basis != "scalar"
+        or contraction_ir.right_basis != "scalar"
+        or contraction_ir.chirality_relation != "any"
+    ):
+        raise ValueError("vertex closure does not declare a scalar projection IR")
+
+
+def _apply_amplitude_color_weight(
+    color_weight: tuple[Any, Any],
+    expression: Any,
+) -> Any:
+    if color_weight == (1.0, 0.0):
+        return expression
+    return (color_weight[0] + 1j * color_weight[1]) * expression
 
 
 def _interaction_item_id(

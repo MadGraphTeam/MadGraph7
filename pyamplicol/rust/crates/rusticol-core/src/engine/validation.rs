@@ -239,7 +239,7 @@ fn validate_generic_current_storage(manifest: &ExecutionManifest) -> RusticolRes
                 "generic current slot {index} has invalid physics identity"
             )));
         }
-        if slot.chirality.abs() > 1 {
+        if !valid_current_chirality(slot.chirality) {
             return Err(RusticolError::artifact(format!(
                 "generic current slot {index} has invalid quantum-flow metadata"
             )));
@@ -1103,9 +1103,21 @@ fn validate_generic_interaction(
             )));
         }
     }
-    validate_slot_ref(&interaction.left_slot, interaction.left_current_id)?;
-    validate_slot_ref(&interaction.right_slot, interaction.right_current_id)?;
-    validate_slot_ref(&interaction.result_slot, interaction.result_current_id)?;
+    validate_slot_ref(
+        &interaction.left_slot,
+        interaction.left_current_id,
+        current_storage,
+    )?;
+    validate_slot_ref(
+        &interaction.right_slot,
+        interaction.right_current_id,
+        current_storage,
+    )?;
+    validate_slot_ref(
+        &interaction.result_slot,
+        interaction.result_current_id,
+        current_storage,
+    )?;
     validate_value_slot_ref(
         &interaction.left_value_slot,
         interaction.left_current_id,
@@ -1244,19 +1256,17 @@ fn validate_generic_amplitudes(manifest: &ExecutionManifest) -> RusticolResult<(
                 "generic amplitude root {index} has inconsistent physics metadata"
             )));
         }
-        if root.kind == "vertex-closure"
-            && (root.vertex_kind.is_none()
-                || root
-                    .vertex_particles
-                    .as_ref()
-                    .is_none_or(|particles| particles.len() != 3))
-        {
-            return Err(RusticolError::artifact(format!(
-                "generic vertex-closure root {index} is missing vertex metadata"
-            )));
-        }
-        validate_slot_ref(&root.left_slot, root.left_current_id)?;
-        validate_slot_ref(&root.right_slot, root.right_current_id)?;
+        validate_amplitude_root_kind(index, root, &schema.current_storage)?;
+        validate_slot_ref(
+            &root.left_slot,
+            root.left_current_id,
+            &schema.current_storage,
+        )?;
+        validate_slot_ref(
+            &root.right_slot,
+            root.right_current_id,
+            &schema.current_storage,
+        )?;
         validate_value_slot_ref(
             &root.left_value_slot,
             root.left_current_id,
@@ -1275,8 +1285,194 @@ fn validate_generic_amplitudes(manifest: &ExecutionManifest) -> RusticolResult<(
             )?),
             &schema.value_storage,
         )?;
+        validate_amplitude_contraction(
+            index,
+            root,
+            &schema.current_storage,
+            &schema.value_storage,
+        )?;
     }
     Ok(())
+}
+
+pub(super) fn validate_amplitude_contraction(
+    index: usize,
+    root: &GenericAmplitudeRootManifest,
+    current_storage: &GenericCurrentStorageManifest,
+    value_storage: &GenericValueStorageManifest,
+) -> RusticolResult<()> {
+    let contraction = &root.contraction_ir;
+    if contraction.name.is_empty()
+        || contraction.left_basis.is_empty()
+        || contraction.right_basis.is_empty()
+        || contraction.coefficients.is_empty()
+        || contraction
+            .metric_signature
+            .as_ref()
+            .is_some_and(String::is_empty)
+        || contraction
+            .coefficients
+            .iter()
+            .flatten()
+            .any(|component| !component.is_finite())
+        || !contraction
+            .coefficients
+            .iter()
+            .any(|coefficient| *coefficient != [0.0, 0.0])
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic amplitude root {index} has invalid typed contraction metadata"
+        )));
+    }
+    if root.contraction != contraction.name {
+        return Err(RusticolError::artifact(format!(
+            "generic amplitude root {index} contraction projection does not match ContractionIR"
+        )));
+    }
+
+    if root.kind == "vertex-closure" {
+        if contraction.coefficients.len() != 1
+            || contraction.left_basis != "scalar"
+            || contraction.right_basis != "scalar"
+            || contraction.chirality_relation != GenericContractionChiralityRelationManifest::Any
+        {
+            return Err(RusticolError::artifact(format!(
+                "generic vertex-closure root {index} does not declare a scalar projection"
+            )));
+        }
+        return Ok(());
+    }
+
+    let left_current = current_storage
+        .current_slots
+        .get(root.left_current_id)
+        .ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "generic amplitude root {index} references a missing left current"
+            ))
+        })?;
+    let right_current = current_storage
+        .current_slots
+        .get(root.right_current_id)
+        .ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "generic amplitude root {index} references a missing right current"
+            ))
+        })?;
+    let left_value = value_storage
+        .value_slots
+        .get(root.left_value_slot.value_slot_id)
+        .ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "generic amplitude root {index} references a missing left value slot"
+            ))
+        })?;
+    let right_value = value_storage
+        .value_slots
+        .get(root.right_value_slot.value_slot_id)
+        .ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "generic amplitude root {index} references a missing right value slot"
+            ))
+        })?;
+    if contraction.coefficients.len() != root.left_value_slot.dimension
+        || contraction.coefficients.len() != root.right_value_slot.dimension
+        || contraction.left_basis != left_value.propagator.basis
+        || contraction.right_basis != right_value.propagator.basis
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic amplitude root {index} ContractionIR does not match its value slots"
+        )));
+    }
+    let chirality_matches = contraction_chiralities_match(
+        contraction.chirality_relation,
+        left_current.chirality,
+        right_current.chirality,
+    );
+    if !chirality_matches {
+        return Err(RusticolError::artifact(format!(
+            "generic amplitude root {index} violates its ContractionIR chirality relation"
+        )));
+    }
+    Ok(())
+}
+
+pub(super) fn validate_amplitude_root_kind(
+    index: usize,
+    root: &GenericAmplitudeRootManifest,
+    current_storage: &GenericCurrentStorageManifest,
+) -> RusticolResult<()> {
+    match root.kind.as_str() {
+        "direct-contraction" => {
+            if root.vertex_kind.is_some() || root.vertex_particles.is_some() {
+                return Err(RusticolError::artifact(format!(
+                    "generic direct-contraction root {index} carries vertex metadata"
+                )));
+            }
+        }
+        "vertex-closure" => {
+            let vertex_kind = root.vertex_kind.filter(|kind| *kind > 0).ok_or_else(|| {
+                RusticolError::artifact(format!(
+                    "generic vertex-closure root {index} has an invalid vertex kind"
+                ))
+            })?;
+            let particles = root
+                .vertex_particles
+                .as_ref()
+                .filter(|values| values.len() == 3)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "generic vertex-closure root {index} is missing vertex particles"
+                    ))
+                })?;
+            let left = current_storage
+                .current_slots
+                .get(root.left_current_id)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "generic vertex-closure root {index} references a missing left current"
+                    ))
+                })?;
+            let right = current_storage
+                .current_slots
+                .get(root.right_current_id)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "generic vertex-closure root {index} references a missing right current"
+                    ))
+                })?;
+            if particles[0] != left.particle_id || particles[1] != right.particle_id {
+                return Err(RusticolError::artifact(format!(
+                    "generic vertex-closure root {index} vertex {vertex_kind} does not match its input currents"
+                )));
+            }
+        }
+        _ => {
+            return Err(RusticolError::artifact(format!(
+                "generic amplitude root {index} has unsupported kind {:?}",
+                root.kind
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn valid_current_chirality(chirality: i32) -> bool {
+    (-1..=1).contains(&chirality)
+}
+
+pub(super) fn contraction_chiralities_match(
+    relation: GenericContractionChiralityRelationManifest,
+    left: i32,
+    right: i32,
+) -> bool {
+    match relation {
+        GenericContractionChiralityRelationManifest::Any => true,
+        GenericContractionChiralityRelationManifest::Equal => left == right,
+        GenericContractionChiralityRelationManifest::Opposite => {
+            right.checked_neg().is_some_and(|opposite| left == opposite)
+        }
+    }
 }
 
 fn validate_generic_stage_evaluators(manifest: &ExecutionManifest) -> RusticolResult<()> {
@@ -1578,13 +1774,34 @@ fn evaluator_manifest_io_len(manifest: &EvaluatorManifest) -> RusticolResult<(us
     }
 }
 
-fn validate_slot_ref(slot: &GenericSlotRefManifest, current_id: usize) -> RusticolResult<()> {
+pub(super) fn validate_slot_ref(
+    slot: &GenericSlotRefManifest,
+    current_id: usize,
+    current_storage: &GenericCurrentStorageManifest,
+) -> RusticolResult<()> {
     if slot.current_id != current_id
         || slot.component_stop != slot.component_start + slot.dimension
         || slot.dimension == 0
     {
         return Err(RusticolError::artifact(format!(
             "generic slot reference for current {current_id} is inconsistent"
+        )));
+    }
+    let storage_slot = current_storage
+        .current_slots
+        .get(current_id)
+        .ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "generic slot reference for current {current_id} points outside current storage"
+            ))
+        })?;
+    if storage_slot.current_id != slot.current_id
+        || storage_slot.component_start != slot.component_start
+        || storage_slot.component_stop != slot.component_stop
+        || storage_slot.dimension != slot.dimension
+    {
+        return Err(RusticolError::artifact(format!(
+            "generic slot reference for current {current_id} does not match current storage"
         )));
     }
     Ok(())

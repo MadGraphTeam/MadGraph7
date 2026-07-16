@@ -516,6 +516,14 @@ fn minimal_execution_manifest(
             "vertex_kind": null, "vertex_particles": null,
             "coupling": [1.0, 0.0], "color_weight": [1.0, 0.0],
             "color_sector_id": 0, "contraction": "minimal-test",
+            "contraction_ir": {
+                "name": "minimal-test",
+                "left_basis": "scalar",
+                "right_basis": "scalar",
+                "coefficients": [[1.0, 0.0]],
+                "chirality_relation": "any",
+                "metric_signature": null
+            },
             "coherent_group_id": 7, "helicity_weight": 1.0,
             "all_sector_weight": 1.0
         }],

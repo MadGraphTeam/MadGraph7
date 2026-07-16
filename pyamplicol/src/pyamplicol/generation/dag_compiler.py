@@ -19,10 +19,9 @@ from .dag_color import ColorEngine
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
-    _closure_contraction_name,
     _closure_side_reachable_masks,
     _complex_weight_mul,
-    _direct_contraction_kind,
+    _direct_contraction_ir,
     _labels_mask,
     _labels_projected_to_word,
     _lc_all_adjoint_symmetry_order_variants,
@@ -855,16 +854,16 @@ class GenericDAGCompiler:
                     )
                     if not color_flows:
                         continue
-                    direct = _direct_contraction_kind(
+                    direct_contraction_ir = _direct_contraction_ir(
                         self.model,
                         left.index,
                         right.index,
                     )
                     for color_flow in color_flows:
-                        if direct is not None:
+                        if direct_contraction_ir is not None:
                             direct_key: tuple[object, ...] = (
                                 "direct",
-                                direct,
+                                direct_contraction_ir,
                                 left_id,
                                 right_id,
                                 color_flow.state,
@@ -878,8 +877,8 @@ class GenericDAGCompiler:
                                         left_id=left_id,
                                         right_id=right_id,
                                         color_weight=color_flow.weight,
+                                        contraction_ir=direct_contraction_ir,
                                         color_sector_id=color_flow.state.sector_id,
-                                        contraction=direct,
                                     )
                                 )
                         for vertex in self.model.vertices_accepting(
@@ -906,11 +905,10 @@ class GenericDAGCompiler:
                                 self.max_coupling_orders,
                             ):
                                 continue
-                            closure_contraction = _closure_contraction_name(
-                                self.model,
+                            closure_contraction_ir = self.model.closure_contraction_ir(
                                 vertex.particles[2],
                             )
-                            if closure_contraction != "scalar":
+                            if closure_contraction_ir is None:
                                 continue
                             if not self.model.allowed_quantum_flows(
                                 vertex,
@@ -942,11 +940,11 @@ class GenericDAGCompiler:
                                             color_accuracy=process_ir.color_accuracy,
                                         ),
                                     ),
+                                    contraction_ir=closure_contraction_ir,
                                     color_sector_id=color_flow.state.sector_id,
                                     vertex_kind=vertex.kind,
                                     vertex_particles=vertex.particles,
                                     coupling=vertex.coupling,
-                                    contraction=closure_contraction,
                                 )
                             )
         return roots

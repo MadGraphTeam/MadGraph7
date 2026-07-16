@@ -76,6 +76,7 @@ def build_runtime_amplitude_stage(
                 "color_weight": list(root.color_weight),
                 "color_sector_id": _root_color_sector_id(dag, root),
                 "contraction": root.contraction,
+                "contraction_ir": root.contraction_ir.to_json_dict(),
                 "coherent_group_id": group_id,
                 "helicity_weight": root.helicity_weight,
                 "all_sector_weight": all_sector_weight,

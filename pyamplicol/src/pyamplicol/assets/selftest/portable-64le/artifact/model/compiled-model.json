@@ -17,7 +17,7 @@
     "declared_functions": [],
     "expression_functions": [],
     "form_factor_count": 0,
-    "has_custom_propagators": true,
+    "has_custom_propagators": false,
     "max_vertex_valence": 3,
     "parameter_count": 10,
     "particle_count": 38,
@@ -35,7 +35,7 @@
     "verified_kernel_evaluation_class_count": 0,
     "vertex_count": 211
   },
-  "conversion_seconds": 0.015564542030915618,
+  "conversion_seconds": 0.020858624950051308,
   "ir": {
     "couplings": [],
     "max_vertex_valence": 3,
@@ -12070,14 +12070,14 @@
     ]
   },
   "phase_timings": {
-    "model_loading": 0.0018292497843503952,
-    "preflight": 0.00048395805060863495,
-    "tensor_lowering": 0.013235833961516619,
-    "total": 0.015564542030915618
+    "model_loading": 0.001804957864806056,
+    "preflight": 0.00047924998216331005,
+    "tensor_lowering": 0.018549167085438967,
+    "total": 0.020858624950051308
   },
   "producer": {
     "compiled_model_schema_version": 7,
-    "model_compiler_sha256": "7dcfe81e36d8e7501daae2c6932c9e07e68607bce3a50796dfc81003547d4854",
+    "model_compiler_sha256": "6c8ce0b243d55835ee7fd1c60572bb891c36f93ffaa150809341e05ca81bafbd",
     "model_compiler_version": 6,
     "model_environment_policy": "sanitize-historical-scalar-options-v1",
     "pyamplicol": "0.1.0.dev0+candidate.6fd8596e743e",

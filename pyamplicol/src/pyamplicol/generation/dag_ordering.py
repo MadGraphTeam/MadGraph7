@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from ..color.plan import GenericColorPlan, LCColorSector
+from ..models._physics_ir import ContractionIR
 from ..models.base import Model
 from ..processes.ir import CanonicalProcessIR
 from .dag_types import CurrentIndex
@@ -33,49 +34,17 @@ def _known_fermion_statistics(model: Model, particle_id: int) -> bool | None:
         return None
 
 
-def _direct_contraction_kind(
+def _direct_contraction_ir(
     model: Model,
     left: CurrentIndex,
     right: CurrentIndex,
-) -> str | None:
-    if model.anti_particle(left.particle_id) != right.particle_id:
-        return None
-    left_dimension = model.current_dimension(left.particle_id, left.chirality)
-    right_dimension = model.current_dimension(right.particle_id, right.chirality)
-    if left_dimension != right_dimension:
-        return None
-    if left_dimension == 1:
-        return "scalar"
-    if left_dimension == 2:
-        if left.chirality != -right.chirality:
-            return None
-        return "weyl"
-    if left_dimension == 4:
-        left_is_fermion = _known_fermion_statistics(model, left.particle_id)
-        right_is_fermion = _known_fermion_statistics(model, right.particle_id)
-        if left_is_fermion is None or right_is_fermion is None:
-            return None
-        if left_is_fermion != right_is_fermion:
-            return None
-        if left_is_fermion:
-            return "dirac"
-        return "lorentz"
-    if left_dimension == 6:
-        return "antisymmetric-tensor"
-    return None
-
-
-def _closure_contraction_name(model: Model, particle_id: int) -> str:
-    dimension = model.current_dimension(particle_id, 0)
-    if dimension == 1:
-        return "scalar"
-    if dimension == 2:
-        return "weyl"
-    if dimension == 4:
-        return "lorentz"
-    if dimension == 6:
-        return "antisymmetric-tensor"
-    return "model-vertex"
+) -> ContractionIR | None:
+    return model.direct_contraction_ir(
+        left.particle_id,
+        right.particle_id,
+        left_chirality=left.chirality,
+        right_chirality=right.chirality,
+    )
 
 
 def _sector_group_indices_for_label(

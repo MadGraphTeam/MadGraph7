@@ -109,3 +109,19 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
     content = dict(manifest)
     claimed = content.pop("artifact_id")
     assert claimed == hashlib.sha256(module._canonical_json(content)).hexdigest()
+
+
+def test_staged_selftest_fixture_loads_with_the_current_native_runtime() -> None:
+    native = pytest.importorskip("pyamplicol._rusticol")
+    from pyamplicol import Runtime
+
+    fixture = FIXTURE.parent / str(native.target_info().triple)
+    if not fixture.is_dir():
+        pytest.skip("the source runtime has not staged its target self-test fixture")
+    expected = json.loads((fixture / "expected.json").read_text(encoding="utf-8"))
+    runtime = Runtime.load(fixture / expected["artifact_path"], mute_warnings=True)
+
+    total = runtime.evaluate(expected["momenta"])
+    expected_total = [complex(real, imag) for real, imag in expected["total"]]
+
+    assert total == pytest.approx(expected_total, rel=1.0e-12, abs=1.0e-15)

@@ -20,7 +20,7 @@ accuracy = "lc"
 
 [generation]
 output = "."
-mode = "error"
+mode = "replace"
 workers = 1
 emit_api_bundle = true
 

@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from .._internal.physics.parameters import ParamBuilder
 from .._internal.physics.symbols import symbols
+from ..models._physics_ir import ContractionIR
 from ..models.base import Model
 from .contracts import StageCompilationInput
 from .contracts import (
@@ -21,28 +22,58 @@ _MODEL_FUNCTION_INLINE_MAX_BYTES = 1024
 
 
 def _contract_components(
-    contraction: str, left: Sequence[Any], right: Sequence[Any]
+    contraction_ir: ContractionIR,
+    left: Sequence[Any],
+    right: Sequence[Any],
 ) -> Any:
-    if contraction == "scalar":
-        return left[0] * right[0]
-    if contraction == "weyl":
-        return left[0] * right[0] + left[1] * right[1]
-    if contraction == "dirac":
-        return sum(
-            left[index] * right[index] for index in range(min(len(left), len(right)))
+    dimension = len(contraction_ir.coefficients)
+    if len(left) != dimension or len(right) != dimension:
+        raise ValueError(
+            f"contraction {contraction_ir.name!r} requires {dimension} components, "
+            f"got {len(left)} and {len(right)}"
         )
-    if contraction == "lorentz":
-        return (
-            left[0] * right[0]
-            - left[1] * right[1]
-            - left[2] * right[2]
-            - left[3] * right[3]
+    return _sum_contraction_terms(
+        _apply_contraction_coefficient(
+            coefficient,
+            left[index] * right[index],
         )
-    if contraction == "antisymmetric-tensor":
-        return sum(
-            left[index] * right[index] for index in range(min(len(left), len(right)))
+        for index, coefficient in enumerate(contraction_ir.coefficients)
+    )
+
+
+def _project_components(
+    contraction_ir: ContractionIR,
+    components: Sequence[Any],
+) -> Any:
+    dimension = len(contraction_ir.coefficients)
+    if len(components) != dimension:
+        raise ValueError(
+            f"projection {contraction_ir.name!r} requires {dimension} components, "
+            f"got {len(components)}"
         )
-    raise ValueError(f"unsupported direct contraction {contraction!r}")
+    return _sum_contraction_terms(
+        _apply_contraction_coefficient(coefficient, components[index])
+        for index, coefficient in enumerate(contraction_ir.coefficients)
+    )
+
+
+def _apply_contraction_coefficient(
+    coefficient: tuple[float, float],
+    expression: Any,
+) -> Any:
+    if coefficient == (1.0, 0.0):
+        return expression
+    if coefficient == (-1.0, 0.0):
+        return -expression
+    return complex(*coefficient) * expression
+
+
+def _sum_contraction_terms(terms: Iterable[Any]) -> Any:
+    iterator = iter(terms)
+    result = next(iterator)
+    for term in iterator:
+        result = result + term
+    return result
 
 
 def _stage_input_momentum_slot_ids(

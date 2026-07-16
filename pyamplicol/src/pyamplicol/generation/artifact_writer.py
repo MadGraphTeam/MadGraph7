@@ -681,6 +681,7 @@ def _amplitude_stage(stage: Mapping[str, object]) -> dict[str, object]:
                 "color_weight",
                 "color_sector_id",
                 "contraction",
+                "contraction_ir",
                 "coherent_group_id",
                 "helicity_weight",
                 "all_sector_weight",

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Real
 from typing import Literal, cast
@@ -514,19 +514,56 @@ class ContractionIR:
     metric_signature: str | None = None
 
     def __post_init__(self) -> None:
+        for field_name in ("name", "left_basis", "right_basis"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                raise TypeError(f"contraction {field_name} must be a string")
         if not self.name or not self.left_basis or not self.right_basis:
             raise ValueError("contraction name and bases must not be empty")
+        if isinstance(self.coefficients, (str, bytes)) or not isinstance(
+            self.coefficients, Sequence
+        ):
+            raise TypeError("contraction coefficients must be a sequence")
         if not self.coefficients:
             raise ValueError("contraction must declare component coefficients")
-        if not all(
-            len(value) == 2 and all(math.isfinite(component) for component in value)
-            for value in self.coefficients
-        ):
-            raise ValueError("contraction coefficients must be finite complex pairs")
+        coefficients: list[tuple[float, float]] = []
+        for index, value in enumerate(self.coefficients):
+            if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+                raise TypeError(
+                    f"contraction coefficient {index} must be a complex pair"
+                )
+            if len(value) != 2:
+                raise ValueError(
+                    "contraction coefficients must be finite complex pairs"
+                )
+            if any(
+                isinstance(component, bool) or not isinstance(component, Real)
+                for component in value
+            ):
+                raise TypeError(
+                    "contraction coefficient components must be real numbers"
+                )
+            coefficient = (float(value[0]), float(value[1]))
+            if not all(math.isfinite(component) for component in coefficient):
+                raise ValueError(
+                    "contraction coefficients must be finite complex pairs"
+                )
+            coefficients.append(coefficient)
+        normalized_coefficients = tuple(coefficients)
+        if not any(value != (0.0, 0.0) for value in normalized_coefficients):
+            raise ValueError("contraction must have a nonzero component coefficient")
+        object.__setattr__(self, "coefficients", normalized_coefficients)
+        if not isinstance(self.chirality_relation, str):
+            raise TypeError("contraction chirality relation must be a string")
         if self.chirality_relation not in {"any", "equal", "opposite"}:
             raise ValueError(
                 f"invalid contraction chirality relation {self.chirality_relation!r}"
             )
+        if self.metric_signature is not None:
+            if not isinstance(self.metric_signature, str):
+                raise TypeError("contraction metric signature must be a string or null")
+            if not self.metric_signature:
+                raise ValueError("contraction metric signature must not be empty")
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -537,3 +574,77 @@ class ContractionIR:
             "chirality_relation": self.chirality_relation,
             "metric_signature": self.metric_signature,
         }
+
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, object]) -> ContractionIR:
+        if not isinstance(payload, Mapping):
+            raise TypeError("contraction IR must be a mapping")
+        required_fields = {
+            "name",
+            "left_basis",
+            "right_basis",
+            "coefficients",
+            "chirality_relation",
+            "metric_signature",
+        }
+        fields = set(payload)
+        missing = required_fields - fields
+        if missing:
+            names = ", ".join(sorted(missing))
+            raise ValueError(f"contraction IR is missing required fields: {names}")
+        unknown = fields - required_fields
+        if unknown:
+            names = ", ".join(sorted(str(name) for name in unknown))
+            raise ValueError(f"contraction IR has unknown fields: {names}")
+
+        coefficients = payload["coefficients"]
+        if isinstance(coefficients, (str, bytes)) or not isinstance(
+            coefficients, Sequence
+        ):
+            raise TypeError("contraction coefficients must be an array")
+        parsed_coefficients: list[tuple[float, float]] = []
+        for index, value in enumerate(coefficients):
+            if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+                raise TypeError(
+                    f"contraction coefficient {index} must be a complex pair"
+                )
+            if len(value) != 2:
+                raise ValueError(
+                    f"contraction coefficient {index} must have two components"
+                )
+            if any(
+                isinstance(component, bool) or not isinstance(component, Real)
+                for component in value
+            ):
+                raise TypeError(
+                    "contraction coefficient components must be real numbers"
+                )
+            parsed_coefficients.append((float(value[0]), float(value[1])))
+
+        name = payload["name"]
+        left_basis = payload["left_basis"]
+        right_basis = payload["right_basis"]
+        if not isinstance(name, str):
+            raise TypeError("contraction name must be a string")
+        if not isinstance(left_basis, str) or not isinstance(right_basis, str):
+            raise TypeError("contraction bases must be strings")
+        metric_signature = payload["metric_signature"]
+        if metric_signature is not None and not isinstance(metric_signature, str):
+            raise TypeError("contraction metric signature must be a string or null")
+        chirality_relation = payload["chirality_relation"]
+        if not isinstance(chirality_relation, str):
+            raise TypeError("contraction chirality relation must be a string")
+        if chirality_relation not in {"any", "equal", "opposite"}:
+            raise ValueError(
+                f"invalid contraction chirality relation {chirality_relation!r}"
+            )
+        return cls(
+            name=name,
+            left_basis=left_basis,
+            right_basis=right_basis,
+            coefficients=tuple(parsed_coefficients),
+            chirality_relation=cast(
+                Literal["any", "equal", "opposite"], chirality_relation
+            ),
+            metric_signature=metric_signature,
+        )

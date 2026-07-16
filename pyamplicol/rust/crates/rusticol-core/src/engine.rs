@@ -881,10 +881,31 @@ struct GenericAmplitudeRootManifest {
     #[serde(default)]
     color_sector_id: Option<i64>,
     contraction: String,
+    contraction_ir: GenericContractionIrManifest,
     coherent_group_id: Option<Value>,
     helicity_weight: f64,
     #[serde(default)]
     all_sector_weight: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum GenericContractionChiralityRelationManifest {
+    Any,
+    Equal,
+    Opposite,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericContractionIrManifest {
+    name: String,
+    left_basis: String,
+    right_basis: String,
+    coefficients: Vec<[f64; 2]>,
+    chirality_relation: GenericContractionChiralityRelationManifest,
+    #[serde(deserialize_with = "deserialize_required_nullable_string")]
+    metric_signature: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1399,3 +1420,7 @@ mod source_metadata_tests;
 #[cfg(test)]
 #[path = "engine/quantum_number_flow_tests.rs"]
 mod quantum_number_flow_tests;
+
+#[cfg(test)]
+#[path = "engine/contraction_metadata_tests.rs"]
+mod contraction_metadata_tests;

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from ..models.base import CouplingOrders, Model, Vertex
 from ..processes.ir import CanonicalProcessIR
-from .dag_ordering import _closure_contraction_name, _labels_mask
+from .dag_ordering import _labels_mask
 from .dag_types import ColorState
 
 if TYPE_CHECKING:
@@ -235,9 +235,7 @@ def _useful_states_by_mask(
                 right_orders_set = right_species.get(right_particle)
                 if not right_orders_set:
                     continue
-                if _species_direct_contraction_kind(
-                    model, left_particle, right_particle
-                ):
+                if model.direct_contraction_possible(left_particle, right_particle):
                     for left_orders in left_orders_set:
                         for right_orders in right_orders_set:
                             total_orders = _combine_coupling_order_tuples(
@@ -270,10 +268,7 @@ def _useful_states_by_mask(
                         or model.skip_duplicate_vertex_orientation(vertex)
                     ):
                         continue
-                    if (
-                        _closure_contraction_name(model, vertex.particles[2])
-                        != "scalar"
-                    ):
+                    if model.closure_contraction_ir(vertex.particles[2]) is None:
                         continue
                     vertex_orders = model.vertex_coupling_orders(vertex)
                     for left_orders in left_orders_set:
@@ -452,9 +447,7 @@ def _closure_total_coupling_orders(
                 right_orders_set = right_species.get(right_particle)
                 if not right_orders_set:
                     continue
-                if _species_direct_contraction_kind(
-                    model, left_particle, right_particle
-                ):
+                if model.direct_contraction_possible(left_particle, right_particle):
                     for left_orders in left_orders_set:
                         for right_orders in right_orders_set:
                             total_orders = _combine_coupling_order_tuples(
@@ -479,10 +472,7 @@ def _closure_total_coupling_orders(
                         or model.skip_duplicate_vertex_orientation(vertex)
                     ):
                         continue
-                    if (
-                        _closure_contraction_name(model, vertex.particles[2])
-                        != "scalar"
-                    ):
+                    if model.closure_contraction_ir(vertex.particles[2]) is None:
                         continue
                     vertex_orders = model.vertex_coupling_orders(vertex)
                     for left_orders in left_orders_set:
@@ -544,31 +534,6 @@ def _coupling_orders_dominate(left: CouplingOrders, right: CouplingOrders) -> bo
     return all(left_map.get(key, 0) <= right_map.get(key, 0) for key in keys) and any(
         left_map.get(key, 0) < right_map.get(key, 0) for key in keys
     )
-
-
-def _species_direct_contraction_kind(
-    model: Model,
-    left_particle: int,
-    right_particle: int,
-) -> str | None:
-    if model.anti_particle(left_particle) != right_particle:
-        return None
-    try:
-        dimension = model.dimension(left_particle)
-        right_dimension = model.dimension(right_particle)
-    except KeyError:
-        return None
-    if dimension != right_dimension:
-        return None
-    if dimension == 1:
-        return "scalar"
-    if dimension == 2:
-        return "weyl"
-    if dimension == 4:
-        return "lorentz"
-    if dimension == 6:
-        return "antisymmetric-tensor"
-    return None
 
 
 def _mask_allowed_by_reachability(
