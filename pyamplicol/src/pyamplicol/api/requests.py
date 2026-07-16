@@ -1,0 +1,300 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, TypeAlias
+
+from pyamplicol.models.loading import CompiledModel
+
+from .errors import ModelError
+
+ModelSourceKind: TypeAlias = Literal["built-in-sm", "ufo", "json", "compiled"]
+_PROCESS_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+
+
+@dataclass(frozen=True, slots=True)
+class ModelSource:
+    kind: ModelSourceKind
+    path: Path | None = None
+    restriction: Path | None = None
+    simplify: bool = True
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("built-in-sm", "ufo", "json", "compiled"):
+            raise ModelError(f"unsupported model source kind {self.kind!r}")
+        if not isinstance(self.simplify, bool):
+            raise ModelError("model simplify must be a boolean")
+        if self.path is not None:
+            try:
+                resolved_path = (
+                    Path(os.fspath(self.path)).expanduser().resolve(strict=False)
+                )
+            except TypeError as exc:
+                raise ModelError("model path must be path-like or null") from exc
+            object.__setattr__(self, "path", resolved_path)
+        if self.restriction is not None:
+            try:
+                resolved_restriction = (
+                    Path(os.fspath(self.restriction)).expanduser().resolve(strict=False)
+                )
+            except TypeError as exc:
+                raise ModelError("model restriction must be path-like or null") from exc
+            object.__setattr__(self, "restriction", resolved_restriction)
+        if self.kind == "built-in-sm":
+            if self.path is not None:
+                raise ModelError("the built-in Standard Model has no source path")
+        elif self.kind in ("ufo", "json") and (
+            self.path is None or not self.path.is_absolute()
+        ):
+            raise ModelError("external model paths must be absolute")
+        elif self.path is not None and not self.path.is_absolute():
+            raise ModelError("compiled model paths must be absolute")
+        if self.restriction is not None and not self.restriction.is_absolute():
+            raise ModelError("model restriction paths must be absolute")
+
+    @classmethod
+    def built_in_sm(cls) -> ModelSource:
+        return cls(kind="built-in-sm")
+
+    @classmethod
+    def from_path(
+        cls,
+        path: os.PathLike[str] | str,
+        restriction: os.PathLike[str] | str | None = None,
+        simplify: bool = True,
+    ) -> ModelSource:
+        """Resolve an external source kind without importing Symbolica."""
+
+        source = Path(os.fspath(path)).expanduser().resolve(strict=False)
+        if not source.exists():
+            raise ModelError(f"model source does not exist: {source}")
+        if source.is_dir():
+            kind: ModelSourceKind = "ufo"
+        elif source.is_file() and source.suffix.lower() == ".json":
+            lowered_name = source.name.lower()
+            kind = (
+                "compiled"
+                if lowered_name.endswith(
+                    (".pyamplicol-model.json", ".compiled-model.json")
+                )
+                else "json"
+            )
+        elif source.is_file():
+            kind = "compiled"
+        else:
+            raise ModelError(f"model source is not a file or directory: {source}")
+
+        restriction_path: Path | None = None
+        if restriction is not None:
+            restriction_path = Path(os.fspath(restriction)).expanduser()
+            if not restriction_path.is_absolute():
+                base = source if source.is_dir() else source.parent
+                restriction_path = base / restriction_path
+            restriction_path = restriction_path.resolve(strict=False)
+            if kind in ("ufo", "json") and not restriction_path.is_file():
+                raise ModelError(
+                    f"model restriction file does not exist: {restriction_path}"
+                )
+        return cls(
+            kind=kind,
+            path=source,
+            restriction=restriction_path,
+            simplify=simplify,
+        )
+
+    def compile(
+        self,
+        *,
+        cache_dir: os.PathLike[str] | str | None = None,
+        use_cache: bool = True,
+        require_supported: bool = True,
+    ) -> CompiledModel:
+        """Compile or load this source and return the canonical compiled model."""
+
+        if self.kind == "built-in-sm":
+            source: str | Path = "built-in-sm"
+        elif self.path is not None:
+            source = self.path
+        else:
+            raise ModelError("an in-memory compiled model source cannot be reloaded")
+        resolved_cache: Path | None = None
+        if cache_dir is not None:
+            try:
+                resolved_cache = (
+                    Path(os.fspath(cache_dir)).expanduser().resolve(strict=False)
+                )
+            except TypeError as exc:
+                raise ModelError(
+                    "model cache directory must be path-like or null"
+                ) from exc
+        from pyamplicol.models.loading import compile_model_source
+
+        try:
+            return compile_model_source(
+                source,
+                restriction=(
+                    "default" if self.restriction is None else str(self.restriction)
+                ),
+                simplify=self.simplify,
+                cache_dir=resolved_cache,
+                use_cache=use_cache,
+                require_supported=require_supported,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise ModelError(str(exc)) from exc
+
+
+def _validate_delimiters(expression: str) -> None:
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack: list[str] = []
+    for character in expression:
+        if character in "([{":
+            stack.append(character)
+        elif character in pairs and (not stack or stack.pop() != pairs[character]):
+            raise ValueError("process expression has unbalanced delimiters")
+    if stack:
+        raise ValueError("process expression has unbalanced delimiters")
+
+
+def _default_process_name(expression: str) -> str:
+    readable = expression.replace("~", "bar")
+    readable = readable.replace(">", "_to_")
+    readable = re.sub(r"[^A-Za-z0-9]+", "_", readable).strip("_").lower()
+    if not readable or not readable[0].isalpha():
+        readable = f"process_{readable}" if readable else "process"
+    if len(readable) <= 72:
+        return readable
+    digest = hashlib.sha256(expression.encode("utf-8")).hexdigest()[:10]
+    return f"{readable[:61]}_{digest}"
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessRequest:
+    expression: str
+    name: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.expression, str) or not self.expression:
+            raise ValueError("process expression must be a non-empty string")
+        if not isinstance(self.name, str) or not _PROCESS_NAME.fullmatch(self.name):
+            raise ValueError(
+                "process name must start with a letter and contain only "
+                "letters, digits, '.', '_', or '-'"
+            )
+
+    @classmethod
+    def parse(cls, expression: str, *, name: str | None = None) -> ProcessRequest:
+        if not isinstance(expression, str):
+            raise TypeError("process expression must be a string")
+        if "\n" in expression or "\r" in expression:
+            raise ValueError("one ProcessRequest may contain only one line")
+        normalized = " ".join(expression.split())
+        if not normalized:
+            raise ValueError("process expression must not be empty")
+        _validate_delimiters(normalized)
+        if ">" not in normalized:
+            raise ValueError("process expression must contain '>'")
+        for segment in normalized.split(","):
+            if ">" not in segment:
+                continue
+            if segment.count(">") != 1:
+                raise ValueError("each process clause must contain exactly one arrow")
+            sides = segment.split(">")
+            if any(not side.strip() for side in sides):
+                raise ValueError("each process arrow must have particles on both sides")
+        selected_name = _default_process_name(normalized) if name is None else name
+        return cls(expression=normalized, name=selected_name)
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessAlias:
+    name: str
+    process_name: str
+    particle_permutation: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not _PROCESS_NAME.fullmatch(self.name):
+            raise ValueError(f"invalid process alias name {self.name!r}")
+        if not _PROCESS_NAME.fullmatch(self.process_name):
+            raise ValueError(f"invalid aliased process name {self.process_name!r}")
+        permutation = tuple(self.particle_permutation)
+        if any(
+            isinstance(item, bool) or not isinstance(item, int) or item < 0
+            for item in permutation
+        ):
+            raise ValueError("particle_permutation must contain non-negative integers")
+        if permutation and sorted(permutation) != list(range(len(permutation))):
+            raise ValueError("particle_permutation must be a complete permutation")
+        object.__setattr__(self, "particle_permutation", permutation)
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessSet:
+    requests: tuple[ProcessRequest, ...]
+    aliases: tuple[ProcessAlias, ...] = ()
+
+    def __post_init__(self) -> None:
+        requests = tuple(self.requests)
+        aliases = tuple(self.aliases)
+        if not requests:
+            raise ValueError("a ProcessSet must contain at least one request")
+        if not all(isinstance(request, ProcessRequest) for request in requests):
+            raise TypeError("ProcessSet.requests must contain ProcessRequest objects")
+        if not all(isinstance(alias, ProcessAlias) for alias in aliases):
+            raise TypeError("ProcessSet.aliases must contain ProcessAlias objects")
+        request_names = tuple(request.name for request in requests)
+        if len(set(request_names)) != len(request_names):
+            raise ValueError("ProcessSet request names must be unique")
+        alias_names = tuple(alias.name for alias in aliases)
+        if len(set(alias_names)) != len(alias_names):
+            raise ValueError("ProcessSet alias names must be unique")
+        if set(alias_names).intersection(request_names):
+            raise ValueError("process alias names may not shadow request names")
+        unknown_targets = {
+            alias.process_name
+            for alias in aliases
+            if alias.process_name not in request_names
+        }
+        if unknown_targets:
+            raise ValueError(
+                "process aliases refer to unknown requests: "
+                + ", ".join(sorted(unknown_targets))
+            )
+        object.__setattr__(self, "requests", requests)
+        object.__setattr__(self, "aliases", aliases)
+
+    @classmethod
+    def from_expressions(
+        cls,
+        expressions: Iterable[str],
+        *,
+        names: Sequence[str] = (),
+        aliases: Iterable[ProcessAlias] = (),
+    ) -> ProcessSet:
+        expression_tuple = tuple(expressions)
+        name_tuple = tuple(names)
+        if name_tuple and len(name_tuple) != len(expression_tuple):
+            raise ValueError("process names must be empty or aligned with expressions")
+        requests = tuple(
+            ProcessRequest.parse(
+                expression,
+                name=name_tuple[index] if name_tuple else None,
+            )
+            for index, expression in enumerate(expression_tuple)
+        )
+        return cls(requests=requests, aliases=tuple(aliases))
+
+
+__all__ = [
+    "CompiledModel",
+    "ModelSource",
+    "ModelSourceKind",
+    "ProcessAlias",
+    "ProcessRequest",
+    "ProcessSet",
+]

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: 0BSD
+
+[package]
+name = "rusticol-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["f64-symjit"]
+f64-symjit = ["dep:num-complex", "dep:symjit"]
+symbolica-runtime = ["dep:symbolica"]
+
+[dependencies]
+bincode.workspace = true
+num-complex = { version = "0.4", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+symbolica = { version = "=2.1.0", default-features = false, features = ["bincode", "gmp"], optional = true }
+symjit = { version = "=2.18.9", default-features = false, optional = true }
+thiserror.workspace = true
+wide.workspace = true

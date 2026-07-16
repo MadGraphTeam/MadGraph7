@@ -1,0 +1,319 @@
+% SPDX-License-Identifier: 0BSD
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=22mm,headheight=21pt]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{pdflscape}
+\usepackage{siunitx}
+\usepackage[table]{xcolor}
+
+\definecolor{ReportInk}{HTML}{17212B}
+\definecolor{ReportBlue}{HTML}{145A86}
+\definecolor{ReportGreen}{HTML}{287A58}
+\definecolor{ReportRule}{HTML}{CBD3DA}
+\definecolor{ReportMuted}{HTML}{66717C}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=ReportBlue,
+  urlcolor=ReportBlue,
+  pdftitle={pyAmpliCol 0.1.0 Methodology and Performance Report},
+  pdfauthor={Rikkert Frederix, Valentin Hirschi, and Timea Vitos}
+}
+\sisetup{detect-all,scientific-notation=true,round-mode=figures,round-precision=3}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\setcounter{secnumdepth}{2}
+\setcounter{tocdepth}{2}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{ReportInk}{pyAmpliCol 0.1.0}}
+\fancyhead[R]{\textcolor{ReportMuted}{Methodology and performance}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ReportRule}\leaders\hrule height \headrulewidth\hfill}}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\PAC}{\texttt{pyAmpliCol}}
+\newcommand{\AC}{\texttt{AmpliCol}}
+\newcommand{\ReportNA}{\textcolor{ReportMuted}{\textsc{n/a}}}
+\newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
+\newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
+\newcommand{\ReportMatrixLegend}{\ReportTableNote{A populated cell reports generation time and summed wall time per phase-space point. Release cells are intentionally N/A; applicability and independent-reference slots remain in JSON.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Cells use the matrix generation-time and summed-runtime convention. Variant overrides are machine-readable in JSON.}}
+\newcommand{\ReportLandscapeFooter}{\vfill\noindent\footnotesize\textcolor{ReportMuted}{pyAmpliCol 0.1.0 \hfill Methodology and performance \hfill \thepage}\par}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  frame=single,
+  rulecolor=\color{ReportRule},
+  breaklines=true,
+  showstringspaces=false,
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
+
+\title{\vspace{-1.4cm}\textbf{pyAmpliCol 0.1.0}\\[0.35em]
+  \Large Methodology and Performance Report}
+\author{Rikkert Frederix \and Valentin Hirschi \and Timea Vitos}
+\date{Release 0.1.0}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report defines the public theory, validation, and performance methodology
+for \PAC{}, release 0.1.0. It fixes the canonical process coverage for the
+built-in Standard Model, an externally loaded Standard Model, a scalar contact
+model, and a scalar-gravity model. The release result caches are intentionally
+reset: every table entry is \ReportNA. Consequently this document makes no
+numerical performance claim. Its tables are a reproducible publication surface
+for measurements produced later with the released typed API and recorded with
+their effective configuration and environment.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope}
+
+\PAC{} generates tree-level scattering-amplitude artifacts and evaluates them
+through the Rusticol runtime. The Python layer resolves models and processes,
+constructs a shared-current directed acyclic graph (DAG), lowers bounded stages
+to Symbolica evaluators, and writes a schema-v3 process artifact. The runtime
+loads that artifact and provides summed and resolved evaluation through one
+physics contract to Python, C++17, and Fortran 2008 clients.
+
+The report has three purposes:
+\begin{enumerate}
+  \item specify the observables and conditions required for a publishable
+        benchmark;
+  \item preserve a stable matrix of representative process families and colour
+        approximations; and
+  \item separate measured data from prose by rendering all result tables from
+        validated JSON caches.
+\end{enumerate}
+
+An \ReportNA{} entry means that the standalone release has no recorded
+measurement for that slot. It is neither a zero, a failure, nor a value carried
+over from another implementation.
+
+\section{Current Recursion and Model Lowering}
+
+\subsection{Shared-current DAG}
+
+For an external subset $I$, particle state $t$, and local spin or flow label
+$\chi$, an off-shell current has the schematic recursion
+\begin{equation}
+  J^{\alpha}_{t,\chi}(I)
+  = P^{\alpha}{}_{\beta}(t,p_I)
+    \sum_{I=A\mathbin{\dot\cup}B}
+    V^{\beta}{}_{\gamma\delta}(t_A,t_B\!\to t)
+    J^{\gamma}_{t_A,\chi_A}(A)
+    J^{\delta}_{t_B,\chi_B}(B),
+  \qquad p_I=\sum_{i\in I}p_i .
+  \label{eq:recursion}
+\end{equation}
+Current identity includes the particle, external labels, helicity ancestry,
+chirality or spin state, flavour and charge flow, colour state, momentum mask,
+and any auxiliary-current kind. Contributions with the same complete identity
+share one node. A topological sweep therefore evaluates each retained current
+once per phase-space point and reuses it in all dependent amplitudes.
+
+External UFO or serialized JSON sources are compiled to the same canonical
+model representation as the process generator consumes. Particle metadata,
+interactions, coupling orders, Lorentz tensors, colour tensors, propagators,
+and runtime parameters come from that representation. UFO directories contain
+trusted executable Python; serialized JSON is the portable data-only source.
+
+\subsection{Contact terms and spin two}
+
+A vertex with valence above three is lowered to a deterministic tree of
+non-propagating auxiliary currents. The construction inserts the original
+coupling once and introduces no pole. Direct contraction of the original
+contact tensor is the validation oracle for the scalar-contact ladder.
+
+The scalar-gravity ladder exercises rank-two external states and
+momentum-dependent interactions. For a massless graviton, the helicity-two
+polarization tensor is represented as
+\begin{equation}
+  \epsilon^{\mu\nu}_{\pm 2}
+  = \epsilon^{\mu}_{\pm}\epsilon^{\nu}_{\pm} .
+\end{equation}
+Validation checks symmetry, transversality, tracelessness, normalization, and
+agreement between ordinary and higher-precision evaluation.
+
+\section{Colour and Runtime Semantics}
+
+The process matrices use three colour contracts:
+\begin{center}
+\begin{tabular}{@{}L{0.45in}L{5.85in}@{}}
+\textbf{LC} & Leading-colour ordered amplitudes with physical colour-flow selectors. \\
+\textbf{NLC} & The leading term plus the first retained $1/N_c^2$-suppressed contribution. \\
+\textbf{Full} & The complete supported sparse colour metric for the generated amplitude basis. \\
+\end{tabular}
+\end{center}
+
+The optimized \texttt{Runtime.evaluate()} path returns one summed matrix
+element per point.\par
+The resolved method \texttt{Runtime.}\allowbreak\texttt{evaluate\_resolved()} exposes LC values with
+axes \texttt{(point, helicity, flow)}. NLC and full-colour artifacts expose one
+already contracted colour component per helicity. Summing all non-point axes
+must reproduce the optimized total. Public selectors use physical helicity and
+flow identifiers; graph-local colour-sector identifiers are not report inputs.
+
+All language bindings load the same process manifest and evaluator payloads.
+Cross-language agreement therefore validates the runtime interfaces and data
+layout. A separately generated reference is required for an independent
+physics comparison.
+
+The default JIT artifact embeds a self-contained SymJIT application for f64
+evaluation. Rusticol executes that payload without importing Symbolica or
+requiring a Symbolica license after generation. Higher-precision Python
+evaluation and artifacts generated with the ASM or C++ evaluator backends
+retain an explicit Symbolica runtime capability.
+
+\section{Benchmark Methodology}
+
+\subsection{Configuration contract}
+
+Each measurement begins from an immutable resolved configuration. Unless a
+table variant says otherwise, the report contract uses the release defaults:
+JIT O3, evaluator batch size 128, output chunk size 128, stage-local parameter
+layout, ten Horner iterations, backend-default common-pair elimination, a
+ten-second benchmark target, two warmup runs, and at least five timed samples.
+Requested and effective configurations are stored separately so resource or
+license adjustments remain visible.
+
+Generation time is wall time for one explicit \texttt{Generator.generate()}
+operation starting from the declared model source and ending with a committed,
+loadable artifact. Model-source conversion, process generation, evaluator
+compilation, and API-bundle emission must be identified separately when they
+are measured separately. Existing artifacts may be benchmarked, but their
+generation slot remains \ReportNA{} unless a matching generation measurement
+is available.
+
+Runtime measurements use \texttt{BenchmarkRunner} and the summed
+\texttt{Runtime.evaluate()} observable. A cache entry records sample count,
+wall and evaluator time per point, standard deviation, standard error, relative
+standard error, effective settings, and environment. Comparisons are valid only
+for the same process, colour accuracy, parameters, phase-space ensemble,
+precision, selectors, and normalization.
+
+\subsection{Numerical validation}
+
+The matrix element and its independent reference are evaluated at the same
+deterministic points with the same parameter card. Shared-core language checks
+use relative tolerance $10^{-12}$ and absolute tolerance $10^{-15}$.
+Independent reference comparisons use relative tolerance $10^{-8}$, with
+higher precision used to diagnose unstable points. A populated result must
+also satisfy the resolved-sum identity and preserve expected structural zeros.
+
+No timing is accepted as a numerical validation result. Conversely, a valid
+matrix element does not populate generation or runtime fields without a
+matching timing run.
+
+\subsection{Publication workflow}
+
+The report service validates all cache entries, renders every table in a
+staging directory, optionally compiles the PDF there, and publishes the JSON,
+TeX, and PDF set only after all steps succeed. Failed refreshes leave the
+previous published set in place. Physics generation and benchmarking are not
+implicit report operations.
+
+\clearpage
+\begin{landscape}
+\pagestyle{empty}
+\section{Standard-Model Process Matrices}
+
+The canonical matrix spans electroweak vector production, charged-current and
+leptonic channels, heavy-quark production, pure gluons, multi-boson final
+states, Higgs-associated final states, and three- and four-quark-line cases.
+Here $n$ is the number of final-state particles. LC coverage retains the
+established grid through $n=9$, with the four bounded families ending at
+$n=8$. NLC and full-colour grids retain $n=1,\ldots,5$; cells below a family's
+minimum physical multiplicity remain explicitly marked \ReportNA{} and carry
+an applicability flag in JSON.
+
+The external-SM matrices use the same process definitions and colour contracts
+as the built-in matrices. Their model source is the packaged Standard Model
+loaded through the external JSON/UFO compilation path, so the comparison
+isolates model-source and generic-lowering behaviour without changing the
+requested physics.
+
+\input{result_matrix_builtin_sm_lc_table.tex}
+\ReportMatrixLegend
+\ReportLandscapeFooter
+\clearpage
+\input{result_matrix_builtin_sm_nlc_table.tex}
+\vspace{1.2em}
+\input{result_matrix_builtin_sm_full_table.tex}
+\ReportMatrixLegend
+\ReportLandscapeFooter
+\clearpage
+\input{result_matrix_external_sm_lc_table.tex}
+\ReportMatrixLegend
+\ReportLandscapeFooter
+\clearpage
+\input{result_matrix_external_sm_nlc_table.tex}
+\vspace{1.2em}
+\input{result_matrix_external_sm_full_table.tex}
+\ReportMatrixLegend
+\ReportLandscapeFooter
+\end{landscape}
+\pagestyle{fancy}
+
+\clearpage
+\begin{landscape}
+\pagestyle{empty}
+\section{Z-plus-Jets Evaluator Ladders}
+
+The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
+with JIT O1, JIT O3, ASM O3, and C++ O3 evaluator configurations. They retain
+final-state multiplicities $n=1,\ldots,9$ for the built-in model and
+$n=1,\ldots,6$ for the external-model campaign. Variant overrides are stored
+as typed dotted configuration paths in the cache rather than inferred from
+table labels.
+
+\input{result_z_builtin_sm_table.tex}
+\vspace{1.5em}
+\input{result_z_external_sm_table.tex}
+\ReportLadderLegend
+\ReportLandscapeFooter
+\end{landscape}
+\pagestyle{fancy}
+
+\section{Colour-Singlet Model Ladders}
+
+The scalar-contact ladder retains $n=2,\ldots,8$ final scalars. It tests generic
+high-valence contact decomposition, identical-particle normalization, and
+source parity without Standard-Model-specific kernels. The scalar-gravity
+ladder retains $n=2,\ldots,4$ final gravitons and exercises spin-two
+wavefunctions, tensor propagators, and momentum-dependent vertices. Since all
+external particles in these fixtures are colour singlets, LC, NLC, and full
+colour reduce to the same unit colour contraction.
+
+\input{result_scalar_contact_table.tex}
+\input{result_scalar_gravity_table.tex}
+
+\section{Interpretation}
+
+This release establishes coverage and methodology, not a baseline. Performance
+regression gates should be enabled only after the same release artifact has
+produced a complete, reviewed baseline on named hardware. Until then, consumers
+should treat every \ReportNA{} entry as unavailable and should not interpolate,
+copy, or estimate a value from neighbouring multiplicities or model profiles.
+
+The machine-readable caches under \texttt{docs/results/} are authoritative for
+table completeness and measurement provenance. The TeX inputs and this PDF are
+derived publication artifacts.
+
+\end{document}

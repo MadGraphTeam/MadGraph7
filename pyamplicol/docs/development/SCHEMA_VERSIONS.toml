@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+api = 1
+toml = 1
+compiled_model = 6
+process_artifact = 3
+runtime_physics_metadata = 1
+c_abi = 1
+symbolica_serialization = "candidate-e4167e7-bincode2"

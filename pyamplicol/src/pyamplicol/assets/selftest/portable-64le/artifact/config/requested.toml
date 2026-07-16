@@ -1,0 +1,76 @@
+action = "generate"
+schema_version = 1
+
+[model]
+source = "built-in-sm"
+simplify = true
+cache = true
+
+[process]
+entries = []
+flavor_scheme = 5
+coupling_order_policy = "minimal"
+
+[process.multiparticles]
+
+[process.max_coupling_orders]
+
+[color]
+accuracy = "lc"
+
+[generation]
+mode = "error"
+workers = 1
+emit_api_bundle = true
+
+[generation.validation]
+enabled = true
+samples = 10
+seed = 12345
+relative_tolerance = 1e-12
+absolute_tolerance = 1e-300
+post_build_validation = true
+
+[evaluator]
+backend = "jit"
+batch_size = 128
+output_chunk_size = 128
+
+[evaluator.optimization]
+horner_iterations = 10
+cores = 1
+max_horner_variables = 1000
+max_common_pair_cache_entries = 5000000
+max_common_pair_distance = 1000
+collect_factors = "auto"
+
+[evaluator.jit]
+optimization_level = 1
+
+[evaluator.cpp]
+optimization = "O3"
+native_arch = false
+extra_flags = []
+
+[evaluation]
+precision = 16
+resolved = false
+helicity_ids = []
+color_flow_ids = []
+
+[benchmark]
+target_runtime = 10.0
+batch_size = 128
+warmup_runs = 2
+minimum_samples = 5
+helicity_ids = []
+color_flow_ids = []
+
+[output]
+format = "human"
+color = "auto"
+progress = "auto"
+log_level = "info"
+
+[symbolica]
+suggest_license = true

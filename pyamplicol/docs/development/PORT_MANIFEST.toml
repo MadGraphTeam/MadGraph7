@@ -1,0 +1,191 @@
+# SPDX-License-Identifier: 0BSD
+schema_version = 1
+
+[source]
+repository = "git@github.com:rikkert-frederix/AmpliCol.git"
+revision = "643bc6f99d7b2249af0a85204768df243e612411"
+policy = "Git objects only; working-tree and ignored files are ineligible"
+
+[[reference_inputs]]
+component = "color"
+path = "pyAmpliCol/src/pyamplicol/color_contraction.py"
+blob = "de7a7660c56176b0a1e2eda2babbc60938796e47"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/color/contraction.py", "src/pyamplicol/color/contraction_factors.py", "src/pyamplicol/color/contraction_trace.py", "src/pyamplicol/color/contraction_types.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "color"
+path = "pyAmpliCol/src/pyamplicol/color_plan.py"
+blob = "8dbb6b4bf81d0bb9f5713520e751140590f3f2ff"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/color/plan.py", "src/pyamplicol/color/plan_build.py", "src/pyamplicol/color/plan_replay.py", "src/pyamplicol/color/plan_types.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "physics"
+path = "pyAmpliCol/src/pyamplicol/core_types.py"
+blob = "c4f4821c7a439171031aa2fd01354f01bc6a7383"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/_internal/physics/types.py", "src/pyamplicol/generation/dag_types.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "generation"
+path = "pyAmpliCol/src/pyamplicol/current_plan.py"
+blob = "918d2dbacc9c731f188fd2cef8b0201f63266b68"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/generation/current_plan.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "generation"
+path = "pyAmpliCol/src/pyamplicol/generic_dag.py"
+blob = "fdbc2b851551b0d7652d757fda6eaace7cd0344d"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/generation/dag_algorithms.py", "src/pyamplicol/generation/dag_color.py", "src/pyamplicol/generation/dag_compiler.py", "src/pyamplicol/generation/dag_ordering.py", "src/pyamplicol/generation/dag_reachability.py", "src/pyamplicol/generation/dag_table.py", "src/pyamplicol/generation/dag_types.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "evaluators"
+path = "pyAmpliCol/src/pyamplicol/generic_stage_compiler.py"
+blob = "92ea7bb5c93d2e3522be69a739409505f5adb929"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/generation/stage_compiler.py", "src/pyamplicol/generation/stage_artifacts.py", "src/pyamplicol/generation/stage_expressions.py", "src/pyamplicol/generation/stage_parameters.py", "src/pyamplicol/generation/stage_planning.py", "src/pyamplicol/generation/stage_settings.py", "src/pyamplicol/generation/stage_types.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "generation"
+path = "pyAmpliCol/src/pyamplicol/lowering.py"
+blob = "5fb8991b380c48f96c24383b1a18c5540971ac9a"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/generation/lowering.py", "src/pyamplicol/generation/lowering_reports.py", "src/pyamplicol/generation/lowering_shared.py", "src/pyamplicol/generation/lowering_tensor.py", "src/pyamplicol/generation/lowering_types.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "models"
+path = "pyAmpliCol/src/pyamplicol/model.py"
+blob = "8ffde00cf5651445a7740aa8f918df85d21c0031"
+strategy = "preserve-built-in-behavior"
+destination = ["src/pyamplicol/models/builtin.py", "src/pyamplicol/models/builtin_definitions.py", "src/pyamplicol/models/builtin_lowering.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "models"
+path = "pyAmpliCol/src/pyamplicol/model_processes.py"
+blob = "b8265f40536aa420307e14b6d76ebaba69bd90df"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/processes/model.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "physics"
+path = "pyAmpliCol/src/pyamplicol/params.py"
+blob = "bc56375333763252011fd2d82cedd7de50d30d9a"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/_internal/physics/parameters.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "physics"
+path = "pyAmpliCol/src/pyamplicol/phase_space.py"
+blob = "ec41086491f4894a9e8d8d589152eaf6ac1d633f"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/generation/phase_space.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "processes"
+path = "pyAmpliCol/src/pyamplicol/process_ir.py"
+blob = "8b6e2aeed8e4f94b2d767cc157a430b887a71217"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/processes/ir.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "processes"
+path = "pyAmpliCol/src/pyamplicol/processes.py"
+blob = "226fd0057433e33646ededc350a62529d4490fb1"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/processes/core.py", "src/pyamplicol/processes/enumeration.py", "src/pyamplicol/processes/selection.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "evaluators"
+path = "pyAmpliCol/src/pyamplicol/symbolica_evaluator.py"
+blob = "866a160df8e0575d948608cadd5e39de7c550bc3"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/evaluators/symbolica.py", "src/pyamplicol/evaluators/symbolica_adapters.py", "src/pyamplicol/evaluators/symbolica_compile.py", "src/pyamplicol/evaluators/symbolica_helpers.py", "src/pyamplicol/evaluators/symbolica_settings.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "physics"
+path = "pyAmpliCol/src/pyamplicol/symbols.py"
+blob = "c6cf6cf01b87785d3273eb3031201b38130f4f15"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/_internal/physics/symbols.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "models"
+path = "pyAmpliCol/src/pyamplicol/ufo_ir.py"
+blob = "e92a8bac354ace7576d6be09d767b6588a562543"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/models/contracts.py", "src/pyamplicol/models/compiler_records.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "models"
+path = "pyAmpliCol/src/pyamplicol/ufo_model.py"
+blob = "6b3e617359d5b155b6c75392c1cca7b0da8e20a7"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/models/external.py", "src/pyamplicol/models/compiler.py", "src/pyamplicol/models/compiler_contact_trees.py", "src/pyamplicol/models/compiler_contacts.py", "src/pyamplicol/models/compiler_entry.py", "src/pyamplicol/models/compiler_kernels.py", "src/pyamplicol/models/compiler_records.py", "src/pyamplicol/models/compiler_symbolica.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "models"
+path = "pyAmpliCol/src/pyamplicol/ufo_tensors.py"
+blob = "2644d263508d3f96aa4214c0a084f3435397f8f0"
+strategy = "selective-rewrite"
+destination = ["src/pyamplicol/models/tensors.py"]
+status = "ported"
+
+[[reference_inputs]]
+component = "rust-runtime"
+path = "rusticol/src/lib.rs"
+blob = "40d762b63b197cae7c16f4eed555eea9114551c4"
+strategy = "split-and-port"
+destination = ["rust/crates/rusticol-core/src"]
+status = "ported"
+
+[[reference_inputs]]
+component = "rust-c-api"
+path = "rusticol/rusticol-capi/src/lib.rs"
+blob = "871cb5d0132dde40bb17c9171915ad96acb35f63"
+strategy = "split-and-port"
+destination = ["rust/crates/rusticol-capi/src/lib.rs"]
+status = "ported"
+
+[[reference_inputs]]
+component = "rust-sdk"
+path = "rusticol/include/rusticol.h"
+blob = "3c7f7fbae976635e18611f91dc61c9ad2f43b3ee"
+strategy = "adapt-schema-v3"
+destination = ["rust/crates/rusticol-capi/include/rusticol.h"]
+status = "ported"
+
+[[reference_inputs]]
+component = "rust-sdk"
+path = "rusticol/include/rusticol.hpp"
+blob = "2480e25aa665fa2284f624d47bd0ddf1592059d2"
+strategy = "adapt-schema-v3"
+destination = ["rust/crates/rusticol-capi/include/rusticol.hpp"]
+status = "ported"
+
+[[reference_inputs]]
+component = "rust-sdk"
+path = "rusticol/fortran/rusticol.f90"
+blob = "48cb52fc2fc19f4d8aa4ec62e5c75ae90219c2ff"
+strategy = "adapt-schema-v3"
+destination = ["rust/crates/rusticol-capi/fortran/rusticol.f90"]
+status = "ported"

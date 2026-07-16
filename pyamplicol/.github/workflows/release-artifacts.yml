@@ -1,0 +1,326 @@
+name: Validated release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      signed_tag:
+        description: Signed release tag to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-artifacts-${{ inputs.signed_tag }}
+  cancel-in-progress: false
+
+jobs:
+  verify-release-tag:
+    name: Verify signed release tag
+    runs-on: ubuntu-24.04
+    outputs:
+      source_commit: ${{ steps.tag.outputs.source_commit }}
+      workflow_commit: ${{ steps.tag.outputs.workflow_commit }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.signed_tag }}
+      - id: tag
+        name: Verify signed tag and pin commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.signed_tag }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
+        run: |
+          expected_tag="$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          with Path("Cargo.toml").open("rb") as stream:
+              version = tomllib.load(stream)["workspace"]["package"]["version"]
+          print(f"v{version}")
+          PY
+          )"
+          test "$RELEASE_TAG" = "$expected_tag" || {
+            echo "release tag must be exactly $expected_tag" >&2
+            exit 2
+          }
+          tag_ref="refs/tags/$RELEASE_TAG"
+          test "$(git cat-file -t "$tag_ref")" = tag
+          tag_object="$(git rev-parse "$tag_ref")"
+          test "$(gh api "/repos/$GITHUB_REPOSITORY/git/tags/$tag_object" \
+            --jq '.verification.verified')" = true
+          commit="$(git rev-parse "${tag_ref}^{commit}")"
+          printf 'source_commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          printf 'workflow_commit=%s\n' "$WORKFLOW_COMMIT" >> "$GITHUB_OUTPUT"
+          test "$(git rev-parse HEAD)" = "$commit"
+
+  full-source-validation:
+    name: Full source validation gate
+    needs: verify-release-tag
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+      PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.verify-release-tag.outputs.source_commit }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Install required C++17 and Fortran 2008 toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          command -v c++
+          command -v gfortran
+          command -v make
+      - name: Verify exact published dependency inputs
+        run: python tools/release/check_dependencies.py
+      - name: Install the project and source-test tools
+        run: |
+          cargo install just --version 1.46.0 --locked
+          python -m pip install ".[test]"
+      - name: Run complete release source gate
+        run: PYTHON="$(command -v python)" just source-gate
+
+  legal-release-gate:
+    name: Native dependency legal gate
+    needs: [verify-release-tag, full-source-validation]
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_HOME: ${{ runner.temp }}/pyamplicol-legal-cargo
+    outputs:
+      source_commit: ${{ steps.commit.outputs.source_commit }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.verify-release-tag.outputs.source_commit }}
+      - id: commit
+        env:
+          VERIFIED_SOURCE_COMMIT: ${{ needs.verify-release-tag.outputs.source_commit }}
+        run: printf 'source_commit=%s\n' "$VERIFIED_SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Fetch locked native legal closures into an isolated Cargo home
+        run: >-
+          python tools/release/check_rust_licenses.py
+          --fetch-locked-release-targets
+      - name: Enforce native dependency legal gate
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: python tools/release/check_legal_inventory.py --mode release
+
+  retained-sdist:
+    needs: legal-release-gate
+    name: Build retained source distribution
+    runs-on: ubuntu-24.04
+    outputs:
+      source_commit: ${{ needs.legal-release-gate.outputs.source_commit }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.legal-release-gate.outputs.source_commit }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Install build tools
+        run: python -m pip install "build>=1.2,<2" "maturin==1.14.1"
+      - name: Build the one retained sdist
+        run: >-
+          python tools/release/build_release_artifacts.py
+          --sdist-only
+          --output-dir .artifacts/release-source
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-retained-sdist
+          path: .artifacts/release-source/
+          if-no-files-found: error
+          retention-days: 90
+
+  macos-wheels:
+    name: macOS release wheel and native deployment (${{ matrix.target }})
+    needs: retained-sdist
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: macos-arm64
+          - runner: macos-15-intel
+            target: macos-x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      PYAMPLICOL_BUILD_MODE: release
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.retained-sdist.outputs.source_commit }}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: pyamplicol-retained-sdist
+          path: .artifacts/retained
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Install build and deployment tools
+        run: >-
+          python -m pip install
+          "build>=1.2,<2"
+          "maturin==1.14.1"
+          "twine>=6,<7"
+      - name: Build from and compare with retained sdist
+        run: >-
+          python tools/release/build_release_artifacts.py
+          --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz
+          --output-dir .artifacts/platform
+      - name: Require C++17 and Fortran 2008 SDK toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v make
+          cxx="$(command -v c++)"
+          fc="$(command -v gfortran || true)"
+          if [[ -z "$fc" ]]; then
+            brew install gcc
+            prefix="$(brew --prefix gcc)"
+            for candidate in "$prefix/bin/gfortran" "$prefix"/bin/gfortran-*; do
+              if [[ -x "$candidate" ]]; then
+                fc="$candidate"
+                break
+              fi
+            done
+          fi
+          [[ -n "$fc" && -x "$fc" ]]
+          "$cxx" --version
+          "$fc" --version
+          printf 'CXX=%s\n' "$cxx" >> "$GITHUB_ENV"
+          printf 'FC=%s\n' "$fc" >> "$GITHUB_ENV"
+      - name: Test installed wheel on CPython 3.11
+        run: >-
+          python tools/release/test_deployment.py
+          --python "$(command -v python)"
+          --wheel .artifacts/platform/pyamplicol-*.whl
+          --no-build
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+      - name: Test installed abi3 wheel on CPython 3.14
+        run: >-
+          python tools/release/test_deployment.py
+          --python "$(command -v python)"
+          --wheel .artifacts/platform/pyamplicol-*.whl
+          --no-build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-release-${{ matrix.target }}
+          path: .artifacts/platform/
+          if-no-files-found: error
+          retention-days: 90
+
+  manylinux-wheel:
+    name: manylinux release wheel and native deployment
+    needs: retained-sdist
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.retained-sdist.outputs.source_commit }}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: pyamplicol-retained-sdist
+          path: .artifacts/retained
+      - name: Build and deploy-test in manylinux_2_28 x86_64
+        run: |
+          docker run --rm \
+            -v "$PWD:/io" \
+            -w /io \
+            -e PYAMPLICOL_BUILD_MODE=release \
+            quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614 \
+            /bin/bash -euxo pipefail -c '
+              git config --global --add safe.directory /io
+              yum install -y gcc-c++ gcc-gfortran make
+              command -v c++
+              command -v gfortran
+              command -v make
+              curl --proto "=https" --tlsv1.2 -sSf \
+                -o /tmp/rustup-init \
+                https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init
+              echo "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c  /tmp/rustup-init" \
+                | sha256sum --check --strict
+              chmod +x /tmp/rustup-init
+              /tmp/rustup-init -y --profile minimal --default-toolchain 1.89.0
+              source "$HOME/.cargo/env"
+              PY311=/opt/python/cp311-cp311/bin/python
+              PY314=/opt/python/cp314-cp314/bin/python
+              "$PY311" -m pip install \
+                "build>=1.2,<2" "maturin==1.14.1" "twine>=6,<7"
+              "$PY311" tools/release/build_release_artifacts.py \
+                --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz \
+                --output-dir .artifacts/platform
+              "$PY311" tools/release/test_deployment.py \
+                --python "$PY311" \
+                --wheel .artifacts/platform/pyamplicol-*.whl \
+                --no-build
+              "$PY311" tools/release/test_deployment.py \
+                --python "$PY314" \
+                --wheel .artifacts/platform/pyamplicol-*.whl \
+                --no-build
+            '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-release-manylinux-x86_64
+          path: .artifacts/platform/
+          if-no-files-found: error
+          retention-days: 90
+
+  validated-bundle:
+    name: Assemble validated release bundle
+    needs: [retained-sdist, macos-wheels, manylinux-wheel]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.retained-sdist.outputs.source_commit }}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          pattern: pyamplicol-*
+          path: .artifacts/incoming
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install artifact validation tools
+        run: python -m pip install "twine>=6,<7"
+      - name: Assemble exact validated bundle
+        env:
+          SOURCE_COMMIT: ${{ needs.retained-sdist.outputs.source_commit }}
+          SOURCE_TAG: ${{ inputs.signed_tag }}
+        run: |
+          python tools/release/publish_dry_run.py
+          --artifact-dir .artifacts/incoming
+          --bundle-dir .artifacts/validated
+          --no-build
+          --require-all-targets
+          --source-commit "$SOURCE_COMMIT"
+          --source-tag "$SOURCE_TAG"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-validated-release
+          path: .artifacts/validated/
+          if-no-files-found: error
+          retention-days: 90

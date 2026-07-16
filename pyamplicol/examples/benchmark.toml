@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# Short benchmark of the optimized summed runtime path.
+
+schema_version = 1
+action = "benchmark"
+
+[evaluation]
+artifact = "artifacts/builtin_sm_lc"
+process = "ddbar_zg"
+momenta = "data/ddbar_zg_momenta.json"
+
+[benchmark]
+target_runtime = 1.0
+batch_size = 128
+warmup_runs = 2
+minimum_samples = 5
+helicity_ids = []
+color_flow_ids = []
+
+[output]
+format = "json"
+progress = "log"

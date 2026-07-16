@@ -1,0 +1,160 @@
+diff --git a/rust/allocator.rs b/rust/allocator.rs
+index 0204d6e..8eed15f 100644
+--- a/rust/allocator.rs
++++ b/rust/allocator.rs
+@@ -841,7 +841,9 @@ impl GreedyAllocator {
+                     self.push(Instruction::Uni { op, dst, s1 })
+                 }
+                 Instruction::Bi { op, dst, s1, s2 } => {
+-                    if self.config.is_sse() || self.config.is_arm64() {
++                    if self.config.is_sse()
++                        || (self.config.is_arm64() && self.config.opt_level() < 3)
++                    {
+                         let (dst, _) = self.allocate(dst, None);
+                         let s1 = self.deallocate(ip, s1);
+                         let s2 = self.deallocate(ip, s2);
+diff --git a/rust/arm/complex.rs b/rust/arm/complex.rs
+index bf1f91c..4e4d675 100644
+--- a/rust/arm/complex.rs
++++ b/rust/arm/complex.rs
+@@ -655,16 +655,17 @@ impl Generator for ArmComplexGenerator {
+ 
+     fn save_used_registers(&mut self, used: &[u8]) {
+         for r in used {
+-            if *r >= 22 {
+-                self.save_stack(reg(*r), *r as u32 - 14);
++            // Logical registers 19..=26 map to the ABI-preserved v8..=v15.
++            if *r >= 19 {
++                self.save_stack(reg(*r), *r as u32 - 11);
+             }
+         }
+     }
+ 
+     fn load_used_registers(&mut self, used: &[u8]) {
+         for r in used {
+-            if *r >= 22 {
+-                self.load_stack(reg(*r), *r as u32 - 14);
++            if *r >= 19 {
++                self.load_stack(reg(*r), *r as u32 - 11);
+             }
+         }
+     }
+diff --git a/rust/arm/vector.rs b/rust/arm/vector.rs
+index 916c1b2..3727687 100644
+--- a/rust/arm/vector.rs
++++ b/rust/arm/vector.rs
+@@ -346,25 +346,34 @@ impl Generator for ArmSimdGenerator {
+         let xt = Reg::Gen(2);
+         let yt = Reg::Gen(3);
+ 
+-        if xd != x1 && xd != x2 {
+-            self.times(xd, x1, x2); // xt := x1 * x2
+-            self.emit(arm! {fmls q(ϕ(xd)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
+-            self.times(yd, x1, y2); // yt := x1 * y2
+-            self.emit(arm! {fmla q(ϕ(yd)), q(ϕ(x2)), q(ϕ(y1))}); // xt := x1 * y2 + x2 * y1
+-        } else if xd == x1 && xd != x2 {
+-            self.times(xt, x1, x2); // xt := x1 * x2
+-            self.emit(arm! {fmls q(ϕ(xt)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
+-            self.times(yd, x2, y1); // yt := x1 * y2
+-            self.emit(arm! {fmla q(ϕ(yd)), q(ϕ(x1)), q(ϕ(y2))}); // xt := x1 * y2 + x2 * y1
+-            self.fmov(xd, xt);
+-        } else if xd != x1 && xd == x2 {
+-            self.times(xt, x1, x2); // xt := x1 * x2
+-            self.emit(arm! {fmls q(ϕ(xt)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
+-            self.times(yd, x1, y2); // yt := x1 * y2
+-            self.emit(arm! {fmla q(ϕ(yd)), q(ϕ(x2)), q(ϕ(y1))}); // xt := x1 * y2 + x2 * y1
+-            self.fmov(xd, xt);
++        if self.config.opt_level() < 3 {
++            if xd != x1 && xd != x2 {
++                self.times(xd, x1, x2); // xt := x1 * x2
++                self.emit(arm! {fmls q(ϕ(xd)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
++                self.times(yd, x1, y2); // yt := x1 * y2
++                self.emit(arm! {fmla q(ϕ(yd)), q(ϕ(x2)), q(ϕ(y1))}); // xt := x1 * y2 + x2 * y1
++            } else if xd == x1 && xd != x2 {
++                self.times(xt, x1, x2); // xt := x1 * x2
++                self.emit(arm! {fmls q(ϕ(xt)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
++                self.times(yd, x2, y1); // yt := x1 * y2
++                self.emit(arm! {fmla q(ϕ(yd)), q(ϕ(x1)), q(ϕ(y2))}); // xt := x1 * y2 + x2 * y1
++                self.fmov(xd, xt);
++            } else if xd != x1 && xd == x2 {
++                self.times(xt, x1, x2); // xt := x1 * x2
++                self.emit(arm! {fmls q(ϕ(xt)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
++                self.times(yd, x1, y2); // yt := x1 * y2
++                self.emit(arm! {fmla q(ϕ(yd)), q(ϕ(x2)), q(ϕ(y1))}); // xt := x1 * y2 + x2 * y1
++                self.fmov(xd, xt);
++            } else {
++                // xd == x1 && xd == x2
++                self.times(xt, x1, x2); // xt := x1 * x2
++                self.emit(arm! {fmls q(ϕ(xt)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
++                self.times(yt, x1, y2); // yt := x1 * y2
++                self.emit(arm! {fmla q(ϕ(yt)), q(ϕ(x2)), q(ϕ(y1))}); // xt := x1 * y2 + x2 * y1
++                self.fmov(xd, xt);
++                self.fmov(yd, yt);
++            }
+         } else {
+-            // xd == x1 && xd == x2
+             self.times(xt, x1, x2); // xt := x1 * x2
+             self.emit(arm! {fmls q(ϕ(xt)), q(ϕ(y1)), q(ϕ(y2))}); // xt := x1 * x2 - y1 * y2
+             self.times(yt, x1, y2); // yt := x1 * y2
+@@ -780,16 +789,17 @@ impl Generator for ArmSimdGenerator {
+ 
+     fn save_used_registers(&mut self, used: &[u8]) {
+         for r in used {
+-            if *r >= 22 {
+-                self.save_stack(reg(*r), *r as u32 - 14);
++            // Logical registers 19..=26 map to the ABI-preserved v8..=v15.
++            if *r >= 19 {
++                self.save_stack(reg(*r), *r as u32 - 11);
+             }
+         }
+     }
+ 
+     fn load_used_registers(&mut self, used: &[u8]) {
+         for r in used {
+-            if *r >= 22 {
+-                self.load_stack(reg(*r), *r as u32 - 14);
++            if *r >= 19 {
++                self.load_stack(reg(*r), *r as u32 - 11);
+             }
+         }
+     }
+diff --git a/rust/builder.rs b/rust/builder.rs
+index 5f5c198..c88b826 100644
+--- a/rust/builder.rs
++++ b/rust/builder.rs
+@@ -318,17 +318,13 @@ impl Builder {
+     }
+ 
+     fn save_registers(mir: &Mir, ir: &mut impl Generator) {
+-        if ir.count_shadows() < mir.config.count_scratch() {
+-            let used = mir.used_registers();
+-            ir.save_used_registers(&used);
+-        }
++        let used = mir.used_registers();
++        ir.save_used_registers(&used);
+     }
+ 
+     fn restore_registers(mir: &Mir, ir: &mut impl Generator) {
+-        if ir.count_shadows() < mir.config.count_scratch() {
+-            let used = mir.used_registers();
+-            ir.load_used_registers(&used);
+-        }
++        let used = mir.used_registers();
++        ir.load_used_registers(&used);
+     }
+ 
+     pub fn compile_from_mir(
+diff --git a/rust/config.rs b/rust/config.rs
+index 1209c6c..cf2a00f 100644
+--- a/rust/config.rs
++++ b/rust/config.rs
+@@ -340,7 +340,8 @@ impl Config {
+ 
+     pub fn available_registers(&self) -> u8 {
+         if self.is_arm64() && self.opt_level() == 3 {
+-            32
++            // q29-q31 are reserved as code-generator temporaries.
++            29
+         } else {
+             16
+         }

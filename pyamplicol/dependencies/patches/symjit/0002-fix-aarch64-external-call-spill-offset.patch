@@ -1,0 +1,61 @@
+diff --git a/rust/arm/complex.rs b/rust/arm/complex.rs
+index 4e4d675..d84658d 100644
+--- a/rust/arm/complex.rs
++++ b/rust/arm/complex.rs
+@@ -79,6 +79,6 @@ impl ArmComplexGenerator {
+         self.load_x_from_label(0, &format!("_env_{}_", op));
+         let ofs = SPILL_AREA as u32 * REG_SIZE;
+-        self.emit(arm! {add x(1), x(31), #ofs});
++        add_x_from_sp(&mut self.a, 1, ofs);
+         self.emit(arm! {movz x(2), #num_args});
+         self.emit(arm! {add x(3), x(SP), #0});
+ 
+diff --git a/rust/arm/mod.rs b/rust/arm/mod.rs
+index e8a9bd5..fe42399 100644
+--- a/rust/arm/mod.rs
++++ b/rust/arm/mod.rs
+@@ -62,6 +62,19 @@ fn emit(a: &mut Assembler, w: u32) {
+     a.append_word(w);
+ }
+ 
++fn add_x_from_sp(a: &mut Assembler, dst: u8, offset: u32) {
++    let low = offset & 0x0fff;
++    let high = offset >> 12;
++    if high != 0 {
++        emit(a, arm! {add x(dst), x(31), #high, lsl #12});
++        if low != 0 {
++            emit(a, arm! {add x(dst), x(dst), #low});
++        }
++    } else {
++        emit(a, arm! {add x(dst), x(31), #low});
++    }
++}
++
+ fn load_long(a: &mut Assembler, reg: u8, label: &str) {
+     let data = (a.ip() & 0xfffff000) as u32 | reg as u32;
+ 
+diff --git a/rust/arm/scalar.rs b/rust/arm/scalar.rs
+index 32920e8..a40b497 100644
+--- a/rust/arm/scalar.rs
++++ b/rust/arm/scalar.rs
+@@ -79,6 +79,6 @@ impl ArmScalarGenerator {
+         self.load_x_from_label(0, &format!("_env_{}_", op));
+         let ofs = SPILL_AREA as u32 * REG_SIZE;
+-        self.emit(arm! {add x(1), x(31), #ofs});
++        add_x_from_sp(&mut self.a, 1, ofs);
+         self.emit(arm! {movz x(2), #num_args});
+         self.emit(arm! {add x(3), x(SP), #0});
+ 
+diff --git a/rust/arm/vector.rs b/rust/arm/vector.rs
+index 3727687..a0d7c4c 100644
+--- a/rust/arm/vector.rs
++++ b/rust/arm/vector.rs
+@@ -75,7 +75,7 @@ impl ArmSimdGenerator {
+         let ofs = SPILL_AREA as u32 * REG_SIZE;
+ 
+         self.load_x_from_label(0, &format!("_env_{}_", op));
+-        self.emit(arm! {add x(1), x(SP), #ofs});
++        add_x_from_sp(&mut self.a, 1, ofs);
+         self.emit(arm! {movz x(2), #num_args});
+         self.emit(arm! {add x(3), x(SP), #0});
+ 

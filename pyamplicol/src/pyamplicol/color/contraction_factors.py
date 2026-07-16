@@ -1,0 +1,570 @@
+# SPDX-License-Identifier: 0BSD
+"""Process-specific color-factor algorithms."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from fractions import Fraction
+
+from .contraction_trace import (
+    _check_nlc,
+    _check_nlc_1qqbar,
+    _eval_nc_terms,
+    _eval_trace,
+    _simplify_trace_terms,
+    _simplify_trace_terms_nc_power,
+)
+from .contraction_types import NC, ColorGroupDescriptor
+from .plan import GenericColorPlan, LCColorSector, LCQuarkLine
+
+
+def _pure_gluon_color_factors(
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+    full_col_acc: int,
+) -> tuple[float, float, float]:
+    return (
+        _pure_gluon_color_factor(
+            left,
+            right,
+            n_ord,
+            accuracy="lc",
+            full_col_acc=full_col_acc,
+        ),
+        _pure_gluon_color_factor(
+            left,
+            right,
+            n_ord,
+            accuracy="nlc",
+            full_col_acc=full_col_acc,
+        ),
+        _pure_gluon_color_factor(
+            left,
+            right,
+            n_ord,
+            accuracy="full",
+            full_col_acc=full_col_acc,
+        ),
+    )
+
+
+def _pure_gluon_color_factor(
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+    *,
+    accuracy: str,
+    full_col_acc: int,
+) -> float:
+    iper = _coloured_word(left)
+    jper = _coloured_word(right)
+    if n_ord == 0:
+        return 1.0 if not iper and not jper else 0.0
+    if accuracy == "lc":
+        return float(NC**n_ord) if iper == jper else 0.0
+    if accuracy == "nlc":
+        if iper == jper:
+            return float(NC**n_ord - n_ord * NC ** (n_ord - 2))
+        return float(_check_nlc(tuple(jper), tuple(iper)) * NC ** (n_ord - 2))
+    if accuracy != "full":
+        return 0.0
+    full_terms = _simplify_trace_terms(
+        ((Fraction(1), (tuple(iper), tuple(reversed(jper)))),)
+    )
+    return _eval_nc_terms(
+        full_terms,
+        min_power=max(n_ord - 2 * full_col_acc, 0),
+    )
+
+
+def _one_quark_line_color_factors(
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+) -> tuple[float, float, float]:
+    iper = _coloured_word(left)
+    jper = _coloured_word(right)
+    lc = float(NC ** (n_ord - 1)) if iper == jper else 0.0
+    full = _eval_trace(
+        (tuple((*iper[1:-1], *reversed(jper[1:-1]))),),
+    )
+    if iper == jper:
+        nlc = full
+    else:
+        acc = _check_nlc_1qqbar(tuple(jper[1:-1]), tuple(iper[1:-1]))
+        nlc = full if acc != 0 else 0.0
+    return (lc, nlc, full)
+
+
+def _two_quark_line_color_factors(
+    color_plan: GenericColorPlan,
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+) -> tuple[float, float, float]:
+    reference_start = _two_line_reference_start(color_plan)
+    iper = _rotate_to_reference_start(_coloured_word(left), reference_start)
+    jper = _rotate_to_reference_start(_coloured_word(right), reference_start)
+    reference = (
+        _rotate_to_reference_start(
+            _coloured_word(color_plan.sectors[0]), reference_start
+        )
+        if color_plan.sectors
+        else iper
+    )
+    gi, ui = _two_line_gi_ui(color_plan, iper, reference)
+    gj, uj = _two_line_gi_ui(color_plan, jper, reference)
+    same_flavour = _has_same_flavour_quark_lines(color_plan)
+    lc = 0.0
+    if iper == jper:
+        if ui == 1 and uj == 1:
+            lc = float(NC ** (n_ord - 2))
+        elif ui == 2 and uj == 2 and not same_flavour:
+            lc = float(NC ** (n_ord - 4) * 9.0)
+        elif ui == 2 and uj == 2 and same_flavour:
+            lc = float(NC ** (n_ord - 2))
+    full = _two_quark_line_full_factor(
+        iper,
+        jper,
+        n_ord=n_ord,
+        gi=gi,
+        gj=gj,
+        ui=ui,
+        uj=uj,
+        same_flavour=same_flavour,
+    )
+    nlc = 0.0
+    if abs(full) > 0.0:
+        iper_glu, jper_glu = _two_line_ordered_gluon_strings(
+            color_plan,
+            iper,
+            jper,
+        )
+        iper_ord, jper_ord = _convert_two_line_gluon_strings(
+            n_ord,
+            iper_glu,
+            jper_glu,
+        )
+        acc = _check_nlc_2qqbar_sf(
+            n_ord,
+            iper_ord,
+            jper_ord,
+            gi,
+            gj,
+            ui,
+            uj,
+        )
+        if acc != 0:
+            nlc = full
+    return (lc, nlc, full)
+
+
+def _two_quark_line_full_factor(
+    iper: tuple[int, ...],
+    jper: tuple[int, ...],
+    *,
+    n_ord: int,
+    gi: int,
+    gj: int,
+    ui: int,
+    uj: int,
+    same_flavour: bool,
+) -> float:
+    if ui == uj:
+        traces = (
+            tuple((*iper[1 : 1 + gi], *reversed(jper[1 : 1 + gj]))),
+            tuple((*iper[gi + 3 : n_ord - 1], *reversed(jper[gj + 3 : n_ord - 1]))),
+        )
+        coeff = Fraction(1)
+    elif (ui, uj) in {(1, 2), (2, 1)}:
+        traces = (
+            tuple(
+                (
+                    *iper[1 : 1 + gi],
+                    *reversed(jper[gj + 3 : n_ord - 1]),
+                    *iper[gi + 3 : n_ord - 1],
+                    *reversed(jper[1 : 1 + gj]),
+                )
+            ),
+        )
+        coeff = Fraction(-1)
+    else:
+        return 0.0
+    return _eval_trace(traces, coeff=coeff)
+
+
+def _is_open_line_pair(
+    left: LCColorSector,
+    right: LCColorSector,
+) -> bool:
+    if left.kind != "open-lines" or right.kind != "open-lines":
+        return False
+    return len(left.quark_lines) == len(right.quark_lines)
+
+
+def _multi_quark_line_color_factors(
+    color_plan: GenericColorPlan,
+    left: LCColorSector,
+    right: LCColorSector,
+) -> tuple[float, float, float]:
+    """Generic overlap of multi-open-line colour-flow tensors.
+
+    Each sector is a product of open strings
+    ``(T...T)_{q_i,\bar q_j}``.  The right sector is conjugated, so its gluon
+    string is traversed in reverse order, and the fundamental colour indices
+    form closed alternating left/right cycles.  The resulting traces are reduced
+    with the same Fierz machinery used for pure traces, but we keep powers of
+    ``Nc`` symbolic so that NLC can be obtained by dropping terms beyond the
+    first ``1/Nc**2`` suppression.
+    """
+
+    terms = _open_line_nc_power_terms(left.quark_lines, right.quark_lines)
+    if not terms:
+        return (0.0, 0.0, 0.0)
+    leading_power = color_plan.process.quark_lines.quark_pair_count + len(
+        color_plan.process.gluon_labels
+    )
+    lc = _eval_nc_terms(terms, min_power=leading_power)
+    nlc = _eval_nc_terms(terms, min_power=max(leading_power - 2, 0))
+    full = _eval_nc_terms(terms)
+    return (lc, nlc, full)
+
+
+def _open_line_nc_power_terms(
+    left_lines: tuple[LCQuarkLine, ...],
+    right_lines: tuple[LCQuarkLine, ...],
+) -> Mapping[int, Fraction]:
+    left_by_quark = {line.quark_label: line for line in left_lines}
+    right_by_antiquark = {line.antiquark_label: line for line in right_lines}
+    if set(left_by_quark) != {line.quark_label for line in right_lines}:
+        return {}
+    if {line.antiquark_label for line in left_lines} != set(right_by_antiquark):
+        return {}
+
+    visited: set[int] = set()
+    traces: list[tuple[int, ...]] = []
+    for start in sorted(left_by_quark):
+        if start in visited:
+            continue
+        current = start
+        trace: list[int] = []
+        while current not in visited:
+            visited.add(current)
+            left_line = left_by_quark.get(current)
+            if left_line is None:
+                return {}
+            trace.extend(left_line.gluon_labels)
+            right_line = right_by_antiquark.get(left_line.antiquark_label)
+            if right_line is None:
+                return {}
+            trace.extend(reversed(right_line.gluon_labels))
+            current = right_line.quark_label
+        traces.append(tuple(trace))
+    permutation_sign = -1 if (len(left_lines) - len(traces)) % 2 else 1
+    return _simplify_trace_terms_nc_power(
+        ((Fraction(permutation_sign), 0, tuple(traces)),)
+    )
+
+
+def _coloured_word(sector: LCColorSector) -> tuple[int, ...]:
+    if sector.kind == "single-trace":
+        return tuple(sector.trace_labels)
+    if sector.kind == "open-lines":
+        return tuple(sector.word_labels or sector.color_words[0])
+    return ()
+
+
+def _two_line_reference_start(color_plan: GenericColorPlan) -> int | None:
+    if color_plan.process.quark_labels:
+        return int(color_plan.process.quark_labels[0])
+    return None
+
+
+def _rotate_to_reference_start(
+    word: tuple[int, ...],
+    reference_start: int | None,
+) -> tuple[int, ...]:
+    if reference_start is None or reference_start not in word:
+        return word
+    offset = word.index(reference_start)
+    return word[offset:] + word[:offset]
+
+
+def _two_line_gi_ui(
+    color_plan: GenericColorPlan,
+    word: tuple[int, ...],
+    reference_word: tuple[int, ...],
+) -> tuple[int, int]:
+    quarkish = set(color_plan.process.quark_labels) | set(
+        color_plan.process.antiquark_labels
+    )
+    gi = 0
+    for position in range(1, max(len(word) - 1, 1)):
+        if word[position] in quarkish:
+            gi = position - 1
+            break
+    ui = 1
+    if len(word) >= 2 and len(reference_word) >= 2:
+        same_ends = word[0] == reference_word[0] and word[-1] == reference_word[-1]
+        opposite_ends = word[0] != reference_word[0] and word[-1] != reference_word[-1]
+        ui = 1 if same_ends or opposite_ends else 2
+    return gi, ui
+
+
+def _two_line_ordered_gluon_strings(
+    color_plan: GenericColorPlan,
+    iper: tuple[int, ...],
+    jper: tuple[int, ...],
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    quarkish = set(color_plan.process.quark_labels) | set(
+        color_plan.process.antiquark_labels
+    )
+    return (
+        tuple(label for label in iper if label not in quarkish),
+        tuple(label for label in jper if label not in quarkish),
+    )
+
+
+def _convert_two_line_gluon_strings(
+    n_ord: int,
+    iper: tuple[int, ...],
+    jper: tuple[int, ...],
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Mirror AmpliCol's convert_gluon_string helper.
+
+    The NLC topology tests depend only on the relative order of gluons.  The
+    Fortran routine maps the largest external label to 1, the next largest to
+    2, and so on, separately for the row and column strings.
+    """
+
+    expected = max(n_ord - 4, 0)
+    if len(iper) != expected or len(jper) != expected:
+        return iper, jper
+
+    def convert(word: tuple[int, ...]) -> tuple[int, ...]:
+        ordered = sorted(word, reverse=True)
+        rank = {label: index + 1 for index, label in enumerate(ordered)}
+        return tuple(rank[label] for label in word)
+
+    return convert(iper), convert(jper)
+
+
+def _check_nlc_2qqbar_sf(
+    n_ord: int,
+    iper: tuple[int, ...],
+    jper: tuple[int, ...],
+    ri: int,
+    rj: int,
+    ii: int,
+    jj: int,
+) -> int:
+    """Port of AmpliCol's check_NLC_2qqbar_SF topology filter.
+
+    It returns 99 for LC-like entries, +/-1 for first subleading entries, and
+    0 for NNLC-or-beyond entries.  The final NLC coefficient is still the full
+    trace overlap; this function only decides whether that overlap belongs in
+    the NLC-expanded matrix.
+    """
+
+    m = max(n_ord - 4, 0)
+    if len(iper) != m or len(jper) != m:
+        return 0
+    if (ii, jj) in {(1, 2), (2, 1)}:
+        temp = (
+            iper[:ri]
+            + tuple(reversed(jper[rj:]))
+            + iper[ri:]
+            + tuple(reversed(jper[:rj]))
+        )
+        return -1 if _nlc_pairing_is_planar(temp, m) else 0
+    if (ii, jj) not in {(1, 1), (2, 2)}:
+        return 0
+    if ri == rj and iper == jper:
+        return 99
+
+    aa = iper[:ri]
+    bb = iper[ri:]
+    cc = jper[:rj]
+    dd = jper[rj:]
+    temp2 = aa + tuple(reversed(cc))
+    temp3 = bb + tuple(reversed(dd))
+    disjoint = not (set(temp2) & set(temp3))
+    if disjoint:
+        if aa and (bb == dd or not bb):
+            return _check_nlc_subword(cc, aa, threshold=m - 4)
+        if bb and (aa == cc or not aa):
+            return _check_nlc_subword(dd, bb, threshold=m - rj - 4)
+        return 0
+    return _check_nlc_2qqbar_overlap(aa, bb, cc, dd, m, ri, rj)
+
+
+def _nlc_pairing_is_planar(word: tuple[int, ...], m: int) -> bool:
+    if m == 0:
+        return True
+    positions: dict[int, list[int]] = {label: [] for label in range(1, m + 1)}
+    for offset, label in enumerate(word):
+        if label in positions:
+            positions[label].append(offset)
+    if any(len(item) != 2 for item in positions.values()):
+        return False
+    for first, pair in positions.items():
+        if abs(pair[0] - pair[1]) % 2 != 1:
+            return False
+        for second in range(first + 1, m + 1):
+            if not _intervals_disjoint_or_nested(tuple(pair), tuple(positions[second])):
+                return False
+    return True
+
+
+def _intervals_disjoint_or_nested(
+    first: tuple[int, int],
+    second: tuple[int, int],
+) -> bool:
+    a1, a2 = first
+    b1, b2 = second
+    return (
+        (a1 < b1 and a2 < b1)
+        or (a1 > b2 and a2 > b2)
+        or (a1 > b1 and a2 < b2)
+        or (b1 > a1 and b2 < a2)
+    )
+
+
+def _check_nlc_subword(
+    candidate: tuple[int, ...],
+    target: tuple[int, ...],
+    *,
+    threshold: int,
+) -> int:
+    if candidate == target:
+        return 99
+    if not candidate or len(candidate) != len(target):
+        return 0
+    sign = _check_nlc(candidate, target)
+    if sign == 0:
+        return 0
+    if sign < 0:
+        return sign
+    return sign
+
+
+def _check_nlc_2qqbar_overlap(
+    aa: tuple[int, ...],
+    bb: tuple[int, ...],
+    cc: tuple[int, ...],
+    dd: tuple[int, ...],
+    m: int,
+    ri: int,
+    rj: int,
+) -> int:
+    """Remaining overlapping-sets branch of check_NLC_2qqbar_SF."""
+
+    temp2 = aa + tuple(reversed(cc))
+    temp3 = bb + tuple(reversed(dd))
+    common = set(temp2) & set(temp3)
+    if not common:
+        return 0
+    skipped = None
+    ind_i = ind_j = -1
+    for i, label in enumerate(temp2):
+        if label not in common:
+            continue
+        ind_i = i
+        ind_j = temp3.index(label)
+        skipped = label
+        break
+    if skipped is None:
+        return 0
+    if len(temp2) == 1 or len(temp3) == 1:
+        return 0
+
+    perm: tuple[int, ...]
+    if ind_i < ri and ind_j >= len(bb):
+        # Common generator in the A-D pair.
+        perm = (
+            temp2[ind_i + 1 : ri]
+            + temp2[ri : ri + rj]
+            + temp2[:ind_i]
+            + temp3[ind_j + 1 :]
+            + temp3[: len(bb)]
+            + temp3[len(bb) : ind_j]
+        )
+        itemp4 = temp2[:ind_i] + temp2[ind_i + 1 : ri]
+        itemp5 = tuple(reversed(temp3[ind_j + 1 :])) + tuple(
+            reversed(temp3[len(bb) : ind_j])
+        )
+        if rj == ri - 1 and itemp4 == cc:
+            return 0
+        if rj + 1 == ri and itemp5 == bb:
+            return 0
+    elif ind_i >= ri and ind_j < len(bb):
+        # Common generator in the B-C pair.
+        perm = (
+            temp2[ind_i + 1 :]
+            + temp2[:ri]
+            + temp2[ri:ind_i]
+            + temp3[ind_j + 1 : len(bb)]
+            + temp3[len(bb) :]
+            + temp3[:ind_j]
+        )
+        itemp6 = tuple(reversed(temp2[ind_i + 1 :])) + tuple(reversed(temp2[ri:ind_i]))
+        itemp7 = temp3[:ind_j] + temp3[ind_j + 1 : len(bb)]
+        if rj - 1 == ri and itemp6 == aa:
+            return 0
+        if rj == ri + 1 and itemp7 == dd:
+            return 0
+    else:
+        return 0
+
+    positions: dict[int, list[int]] = {label: [] for label in range(1, m + 1)}
+    for offset, label in enumerate(perm):
+        if label == skipped:
+            continue
+        if label in positions:
+            positions[label].append(offset)
+    for label, pair in positions.items():
+        if label == skipped:
+            continue
+        if len(pair) != 2 or abs(pair[0] - pair[1]) % 2 != 1:
+            return 0
+    for first in range(1, m + 1):
+        if first == skipped:
+            continue
+        for second in range(first + 1, m + 1):
+            if second == skipped:
+                continue
+            if not _intervals_disjoint_or_nested(
+                tuple(positions[first]),
+                tuple(positions[second]),
+            ):
+                return 0
+    return 1
+
+
+def _has_same_flavour_quark_lines(color_plan: GenericColorPlan) -> bool:
+    pdg_by_label: dict[int, int] = {
+        leg.label: abs(int(leg.outgoing_pdg))
+        for leg in color_plan.process.legs
+        if leg.outgoing_pdg is not None
+    }
+    quark_flavours = [
+        pdg_by_label[label]
+        for label in color_plan.process.quark_labels
+        if label in pdg_by_label
+    ]
+    return len(set(quark_flavours)) < len(quark_flavours)
+
+
+def _common_helicity_weight(
+    left: ColorGroupDescriptor,
+    right: ColorGroupDescriptor,
+) -> float:
+    if abs(left.helicity_weight - right.helicity_weight) > 1.0e-12:
+        raise ValueError(
+            "inconsistent helicity weights in color contraction group "
+            f"{left.helicity_key!r}: group {left.group_id} has "
+            f"{left.helicity_weight!r}, group {right.group_id} has "
+            f"{right.helicity_weight!r}"
+        )
+    return left.helicity_weight

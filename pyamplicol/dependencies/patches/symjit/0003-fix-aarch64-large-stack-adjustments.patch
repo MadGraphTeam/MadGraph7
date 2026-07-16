@@ -1,0 +1,78 @@
+diff --git a/rust/arm/mod.rs b/rust/arm/mod.rs
+--- a/rust/arm/mod.rs
++++ b/rust/arm/mod.rs
+@@ -194,15 +194,44 @@ fn add_func(a: &mut Assembler, op: &str, f: Func) {
+ }
+ 
+ fn sub_stack(a: &mut Assembler, size: u32) {
+-    emit(a, arm! {sub sp, sp, #size & 0x0fff});
+-    if size >> 12 != 0 {
+-        emit(a, arm! {sub sp, sp, #size >> 12, lsl #12});
++    let low = size & 0x0fff;
++    if low != 0 {
++        emit(a, arm! {sub sp, sp, #low});
++    }
++    let mut high = size >> 12;
++    while high != 0 {
++        let chunk = high.min(0x0fff);
++        emit(a, arm! {sub sp, sp, #chunk, lsl #12});
++        high -= chunk;
+     }
+ }
+ 
+ fn add_stack(a: &mut Assembler, size: u32) {
+-    if size >> 12 != 0 {
+-        emit(a, arm! {add sp, sp, #size >> 12, lsl #12});
++    let mut high = size >> 12;
++    while high != 0 {
++        let chunk = high.min(0x0fff);
++        emit(a, arm! {add sp, sp, #chunk, lsl #12});
++        high -= chunk;
++    }
++    let low = size & 0x0fff;
++    if low != 0 {
++        emit(a, arm! {add sp, sp, #low});
+     }
+-    emit(a, arm! {add sp, sp, #size & 0x0fff});
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn stack_adjustments_split_immediates_larger_than_sixteen_megabytes() {
++        let size = 0x0100_1010;
++        let mut subtract = Assembler::new();
++        sub_stack(&mut subtract, size);
++        assert_eq!(subtract.bytes().len(), 3 * 4);
++
++        let mut add = Assembler::new();
++        add_stack(&mut add, size);
++        assert_eq!(add.bytes().len(), 3 * 4);
++    }
++}
+diff --git a/rust/arm/vector.rs b/rust/arm/vector.rs
+--- a/rust/arm/vector.rs
++++ b/rust/arm/vector.rs
+@@ -102,18 +102,12 @@ impl ArmSimdGenerator {
+         Ok(())
+     }
+ 
+     fn sub_stack(&mut self, size: u32) {
+-        self.emit(arm! {sub sp, sp, #size & 0x0fff});
+-        if size >> 12 != 0 {
+-            self.emit(arm! {sub sp, sp, #size >> 12, lsl #12});
+-        }
++        sub_stack(&mut self.a, size);
+     }
+ 
+     fn add_stack(&mut self, size: u32) {
+-        if size >> 12 != 0 {
+-            self.emit(arm! {add sp, sp, #size >> 12, lsl #12});
+-        }
+-        self.emit(arm! {add sp, sp, #size & 0x0fff});
++        add_stack(&mut self.a, size);
+     }
+ }
+ 

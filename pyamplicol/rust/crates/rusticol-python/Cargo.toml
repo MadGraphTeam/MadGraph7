@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: 0BSD
+
+[package]
+name = "rusticol-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[lib]
+name = "_rusticol"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+numpy = ["dep:numpy"]
+
+[dependencies]
+numpy = { workspace = true, optional = true }
+pyo3.workspace = true
+rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-symjit"] }
+
+[build-dependencies]
+pyo3-build-config = "0.28"

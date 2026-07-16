@@ -1,0 +1,155 @@
+name: Candidate artifacts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-tool-tests:
+    name: Candidate workflow and release-tool preflight
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install test tools
+        run: python -m pip install "pytest>=8.3,<9" "ruff>=0.9,<1"
+      - name: Focused clean-checkout release tests
+        run: >-
+          python -m pytest
+          tests/release
+          tests/unit/test_dependency_gate.py
+          tests/unit/test_release_*.py
+          -q
+      - name: Release-tool lint
+        run: ruff check tools/release tests/release tests/unit/test_release_*.py
+
+  candidate-source-validation:
+    name: Complete candidate source validation gate
+    needs: release-tool-tests
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: candidate
+      PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Install required C++17 and Fortran 2008 toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          command -v c++
+          command -v gfortran
+          command -v make
+      - name: Build the pinned candidate environment
+        run: >-
+          python dependencies/install_dependencies.py
+          --without-legacy-amplicol
+      - name: Run the complete candidate source gate
+        run: PYTHON="$PWD/.venv/bin/python" just source-gate
+      - name: Test the candidate wheel in an isolated deployment
+        run: >-
+          .venv/bin/python tools/release/test_deployment.py
+          --candidate
+          --python .venv/bin/python
+          --artifact-dir .artifacts/candidate
+          --no-build
+
+  macos-candidate:
+    name: Candidate artifact (${{ matrix.target }})
+    needs: candidate-source-validation
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: macos-arm64
+          - runner: macos-15-intel
+            target: macos-x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      PYAMPLICOL_BUILD_MODE: candidate
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Prepare pinned candidate dependency inputs
+        run: >-
+          python dependencies/install_dependencies.py
+          --without-legacy-amplicol
+          --no-build
+      - name: Install build tools
+        run: python -m pip install "build>=1.2,<2" "maturin==1.14.1"
+      - name: Build and audit non-publishable candidate artifacts
+        run: >-
+          python tools/release/build_release_artifacts.py
+          --candidate
+          --output-dir .artifacts/candidate-ci
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-candidate-${{ matrix.target }}
+          path: .artifacts/candidate-ci/
+          if-no-files-found: error
+          retention-days: 14
+
+  manylinux-candidate:
+    name: Candidate artifact (manylinux-x86_64)
+    needs: candidate-source-validation
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: candidate
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Build and audit non-publishable candidates in manylinux_2_28 x86_64
+        run: |
+          docker run --rm \
+            -v "$PWD:/io" \
+            -w /io \
+            -e PYAMPLICOL_BUILD_MODE=candidate \
+            quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614 \
+            /bin/bash -euxo pipefail -c '
+              git config --global --add safe.directory /io
+              curl --proto "=https" --tlsv1.2 -sSf \
+                -o /tmp/rustup-init \
+                https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init
+              echo "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c  /tmp/rustup-init" \
+                | sha256sum --check --strict
+              chmod +x /tmp/rustup-init
+              /tmp/rustup-init -y --profile minimal --default-toolchain 1.89.0
+              source "$HOME/.cargo/env"
+              PYTHON=/opt/python/cp311-cp311/bin/python
+              "$PYTHON" -m pip install "build>=1.2,<2" "maturin==1.14.1"
+              "$PYTHON" dependencies/install_dependencies.py \
+                --without-legacy-amplicol \
+                --no-build
+              "$PYTHON" tools/release/build_release_artifacts.py \
+                --candidate \
+                --output-dir .artifacts/candidate-ci
+            '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-candidate-manylinux-x86_64
+          path: .artifacts/candidate-ci/
+          if-no-files-found: error
+          retention-days: 14

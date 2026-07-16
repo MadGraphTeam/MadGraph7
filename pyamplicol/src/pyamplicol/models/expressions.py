@@ -1,0 +1,631 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import math
+from collections.abc import Sequence
+from typing import Any
+
+from .base import CouplingOrders, Model, Vertex
+
+
+def _flat_index(indices: tuple[int, ...], dims: tuple[int, ...]) -> int:
+    index = 0
+    for value, dim in zip(indices, dims, strict=True):
+        index = index * dim + value
+    return index
+
+
+def _number(value: complex | float) -> Any:
+    from symbolica import Expression
+
+    return Expression.num(value)
+
+
+def _as_expression(value: Any) -> Any:
+    if isinstance(value, int | float | complex):
+        return _number(value)
+    return value
+
+
+def _minkowski_square_expression(momentum: Sequence[Any]) -> Any:
+    if len(momentum) != 4:
+        raise ValueError("Minkowski momentum needs four components")
+    if all(isinstance(value, int | float | complex) for value in momentum):
+        p0, p1, p2, p3 = momentum
+        return p0 * p0 - p1 * p1 - p2 * p2 - p3 * p3
+    p0, p1, p2, p3 = (_as_expression(value) for value in momentum)
+    return p0 * p0 - p1 * p1 - p2 * p2 - p3 * p3
+
+
+def _model_vertex_result_chiralities(
+    model: Model,
+    vertex: Vertex,
+    left_index: Any,
+    right_index: Any,
+) -> tuple[int, ...]:
+    result_pdg = vertex.particles[2]
+    if model.is_chiral_eligible(result_pdg):
+        input_chirality = _model_fermion_input_chirality(model, left_index, right_index)
+        if input_chirality == 0:
+            return (0,)
+        if not _model_weyl_vertex_allowed(vertex, result_pdg, input_chirality):
+            return ()
+        return (input_chirality,)
+
+    if _model_is_fermion_pair_to_vector_vertex(vertex.kind):
+        left_pdg = _index_particle_id(left_index)
+        right_pdg = _index_particle_id(right_index)
+        left_chirality = (
+            _index_chirality(left_index) if model.is_fermion(left_pdg) else 0
+        )
+        right_chirality = (
+            _index_chirality(right_index) if model.is_fermion(right_pdg) else 0
+        )
+        if (
+            left_chirality != 0
+            and right_chirality != 0
+            and left_chirality != -right_chirality
+        ):
+            return ()
+        if not _model_fermion_pair_vector_coupling_allowed(
+            vertex,
+            left_chirality,
+            right_chirality,
+        ):
+            return ()
+    return (0,)
+
+
+def _model_fermion_input_chirality(
+    model: Model,
+    left_index: Any,
+    right_index: Any,
+) -> int:
+    left_pdg = _index_particle_id(left_index)
+    right_pdg = _index_particle_id(right_index)
+    left_chirality = _index_chirality(left_index)
+    right_chirality = _index_chirality(right_index)
+    if model.is_fermion(left_pdg) and left_chirality != 0:
+        return left_chirality
+    if model.is_fermion(right_pdg) and right_chirality != 0:
+        return right_chirality
+    return 0
+
+
+def _model_weyl_vertex_allowed(
+    vertex: Vertex,
+    result_pdg: int,
+    chirality: int,
+) -> bool:
+    if vertex.kind == 16:
+        return False
+    if vertex.kind in {10, 11, 23, 24}:
+        index = _model_fermion_coupling_index(result_pdg, chirality)
+        return vertex.coupling[index] != 0.0
+    return True
+
+
+def _model_fermion_coupling_index(pdg: int, chirality: int) -> int:
+    if pdg > 0:
+        return 0 if chirality == -1 else 1
+    return 0 if chirality == 1 else 1
+
+
+def _model_is_fermion_pair_to_vector_vertex(kind: int) -> bool:
+    return kind in {8, 9, 21, 22}
+
+
+def _model_fermion_pair_vector_coupling_allowed(
+    vertex: Vertex,
+    left_chirality: int,
+    right_chirality: int,
+) -> bool:
+    if vertex.kind in {8, 9}:
+        return True
+    if left_chirality == 0 or right_chirality == 0:
+        return any(component != 0.0 for component in vertex.coupling)
+    if vertex.kind == 21:
+        index = 0 if left_chirality == -1 and right_chirality == 1 else 1
+        return vertex.coupling[index] != 0.0
+    if vertex.kind == 22:
+        index = 0 if left_chirality == 1 and right_chirality == -1 else 1
+        return vertex.coupling[index] != 0.0
+    return True
+
+
+def _index_particle_id(index: Any) -> int:
+    if hasattr(index, "particle_id"):
+        return int(index.particle_id)
+    return int(index.pdg)
+
+
+def _index_chirality(index: Any) -> int:
+    return int(getattr(index, "chirality", 0))
+
+
+def _index_flavour_flow(index: Any) -> tuple[int, ...]:
+    flow = getattr(index, "flavour_flow", None)
+    if flow is None:
+        return (_index_particle_id(index),)
+    return tuple(int(value) for value in flow)
+
+
+def _index_coupling_orders(index: Any) -> CouplingOrders:
+    orders = getattr(index, "coupling_orders", None)
+    if orders is None:
+        return ()
+    return tuple(
+        sorted(
+            (str(name).upper(), int(value)) for name, value in orders if int(value) != 0
+        )
+    )
+
+
+def _append_flavour_transition(
+    flow: tuple[int, ...],
+    result_particle: int,
+) -> tuple[int, ...]:
+    if flow and flow[-1] == result_particle:
+        return flow
+    return (*flow, result_particle)
+
+
+def _expr_three_vector_current(
+    left: tuple[Any, ...],
+    left_momentum: tuple[Any, ...],
+    right: tuple[Any, ...],
+    right_momentum: tuple[Any, ...],
+) -> tuple[Any, ...]:
+    dot = _expr_minkowski_dot(left, right)
+    left_dot_right_momentum = _expr_minkowski_dot(left, right_momentum)
+    right_dot_left_momentum = _expr_minkowski_dot(right, left_momentum)
+    prefactor = 1j / math.sqrt(2.0)
+    return tuple(
+        prefactor
+        * (
+            dot * (left_momentum[index] - right_momentum[index])
+            + 2.0
+            * (
+                left_dot_right_momentum * right[index]
+                - right_dot_left_momentum * left[index]
+            )
+        )
+        for index in range(4)
+    )
+
+
+def _expr_three_vector_current_coupled(
+    left: tuple[Any, ...],
+    left_momentum: tuple[Any, ...],
+    right: tuple[Any, ...],
+    right_momentum: tuple[Any, ...],
+    coupling: tuple[Any, Any],
+) -> tuple[Any, ...]:
+    dot = _expr_minkowski_dot(left, right)
+    tmp2_momentum = tuple(
+        2.0 * right_momentum[index] + left_momentum[index] for index in range(4)
+    )
+    tmp3_momentum = tuple(
+        -2.0 * left_momentum[index] - right_momentum[index] for index in range(4)
+    )
+    tmp2 = _expr_minkowski_dot(left, tmp2_momentum)
+    tmp3 = _expr_minkowski_dot(right, tmp3_momentum)
+    prefactor = (1j / math.sqrt(2.0)) * coupling[0]
+    return tuple(
+        prefactor
+        * (
+            dot * (left_momentum[index] - right_momentum[index])
+            + tmp2 * right[index]
+            + tmp3 * left[index]
+        )
+        for index in range(4)
+    )
+
+
+def _expr_two_vector_to_tensor(
+    left: tuple[Any, ...],
+    right: tuple[Any, ...],
+) -> tuple[Any, ...]:
+    return (
+        left[0] * right[1] - left[1] * right[0],
+        left[0] * right[2] - left[2] * right[0],
+        left[0] * right[3] - left[3] * right[0],
+        left[1] * right[2] - left[2] * right[1],
+        left[1] * right[3] - left[3] * right[1],
+        left[2] * right[3] - left[3] * right[2],
+    )
+
+
+def _expr_tensor_vector_to_vector(
+    tensor: tuple[Any, ...],
+    vector: tuple[Any, ...],
+) -> tuple[Any, ...]:
+    prefactor = 0.5j
+    return (
+        (tensor[0] * vector[1] + tensor[1] * vector[2] + tensor[2] * vector[3])
+        * prefactor,
+        (tensor[0] * vector[0] + tensor[3] * vector[2] + tensor[4] * vector[3])
+        * prefactor,
+        (tensor[1] * vector[0] - tensor[3] * vector[1] + tensor[5] * vector[3])
+        * prefactor,
+        (tensor[2] * vector[0] - tensor[4] * vector[1] - tensor[5] * vector[2])
+        * prefactor,
+    )
+
+
+def _expr_vector_tensor_to_vector(
+    vector: tuple[Any, ...],
+    tensor: tuple[Any, ...],
+) -> tuple[Any, ...]:
+    prefactor = 0.5j
+    return (
+        (-vector[1] * tensor[0] - vector[2] * tensor[1] - vector[3] * tensor[2])
+        * prefactor,
+        (-vector[0] * tensor[0] - vector[2] * tensor[3] - vector[3] * tensor[4])
+        * prefactor,
+        (-vector[0] * tensor[1] + vector[1] * tensor[3] - vector[3] * tensor[5])
+        * prefactor,
+        (-vector[0] * tensor[2] + vector[1] * tensor[4] + vector[2] * tensor[5])
+        * prefactor,
+    )
+
+
+def _expr_fermion_vector_weyl(
+    fermion: tuple[Any, ...],
+    vector: tuple[Any, ...],
+    chirality: int,
+    *,
+    antifermion: bool,
+    coupling: tuple[Any, Any] | None,
+) -> tuple[Any, ...]:
+    tmp1, tmp2, tmp3, tmp4 = _expr_vector_slash_terms(vector)
+    prefactor = 1j / math.sqrt(2.0)
+    f1, f2 = fermion
+    if antifermion:
+        if chirality == 1:
+            factor = prefactor if coupling is None else prefactor * coupling[0]
+            return (
+                factor * (tmp1 * f1 + tmp4 * f2),
+                factor * (tmp2 * f2 + tmp3 * f1),
+            )
+        if chirality == -1:
+            factor = prefactor if coupling is None else prefactor * coupling[1]
+            return (
+                factor * (tmp2 * f1 - tmp4 * f2),
+                factor * (tmp1 * f2 - tmp3 * f1),
+            )
+    else:
+        if chirality == 1:
+            factor = prefactor if coupling is None else prefactor * coupling[1]
+            return (
+                factor * (tmp2 * f1 - tmp3 * f2),
+                factor * (tmp1 * f2 - tmp4 * f1),
+            )
+        if chirality == -1:
+            factor = prefactor if coupling is None else prefactor * coupling[0]
+            return (
+                factor * (tmp1 * f1 + tmp3 * f2),
+                factor * (tmp2 * f2 + tmp4 * f1),
+            )
+    raise ValueError("fermion-vector Weyl kernel needs nonzero chirality")
+
+
+def _expr_fermion_vector_dirac(
+    fermion: tuple[Any, ...],
+    vector: tuple[Any, ...],
+    *,
+    antifermion: bool,
+    coupling: tuple[Any, Any] | None,
+) -> tuple[Any, ...]:
+    if len(fermion) != 4 or len(vector) != 4:
+        raise ValueError("Dirac fermion-vector current expects dimensions 4 and 4")
+    tmp1, tmp2, tmp3, tmp4 = _expr_vector_slash_terms(vector)
+    prefactor = 1j / math.sqrt(2.0)
+    f1, f2, f3, f4 = fermion
+    if coupling is None:
+        left_coupling = 1.0
+        right_coupling = 1.0
+    else:
+        left_coupling, right_coupling = coupling
+    if antifermion:
+        upper = prefactor * right_coupling
+        lower = prefactor * left_coupling
+        return (
+            upper * (tmp2 * f3 - tmp4 * f4),
+            upper * (tmp1 * f4 - tmp3 * f3),
+            lower * (tmp1 * f1 + tmp4 * f2),
+            lower * (tmp2 * f2 + tmp3 * f1),
+        )
+    upper = prefactor * left_coupling
+    lower = prefactor * right_coupling
+    return (
+        upper * (tmp1 * f3 + tmp3 * f4),
+        upper * (tmp2 * f4 + tmp4 * f3),
+        lower * (tmp2 * f1 - tmp3 * f2),
+        lower * (tmp1 * f2 - tmp4 * f1),
+    )
+
+
+def _expr_fermion_antifermion_to_vector_weyl(
+    *,
+    fermion: tuple[Any, ...],
+    antifermion: tuple[Any, ...],
+    coupling: tuple[Any, Any],
+    fermion_chirality: int,
+    antifermion_chirality: int,
+) -> tuple[Any, ...]:
+    prefactor = 1j / math.sqrt(2.0)
+    left, right = coupling
+    f1, f2 = fermion
+    a1, a2 = antifermion
+    if fermion_chirality == -1 and antifermion_chirality == 1:
+        factor = prefactor * left
+        return (
+            factor * (f1 * a1 + f2 * a2),
+            -factor * (f2 * a1 + f1 * a2),
+            1j * factor * (-f2 * a1 + f1 * a2),
+            factor * (-f1 * a1 + f2 * a2),
+        )
+    if fermion_chirality == 1 and antifermion_chirality == -1:
+        factor = prefactor * right
+        return (
+            factor * (f1 * a1 + f2 * a2),
+            factor * (f1 * a2 + f2 * a1),
+            1j * factor * (-f1 * a2 + f2 * a1),
+            factor * (f1 * a1 - f2 * a2),
+        )
+    return (0j, 0j, 0j, 0j)
+
+
+def _expr_fermion_antifermion_to_vector_dirac(
+    *,
+    fermion: tuple[Any, ...],
+    antifermion: tuple[Any, ...],
+    coupling: tuple[Any, Any],
+) -> tuple[Any, ...]:
+    if len(fermion) != 4 or len(antifermion) != 4:
+        raise ValueError(
+            "Dirac fermion-antifermion vector current expects dimensions 4 and 4"
+        )
+    prefactor = 1j / math.sqrt(2.0)
+    left_coupling, right_coupling = coupling
+    f1, f2, f3, f4 = fermion
+    a1, a2, a3, a4 = antifermion
+    left = (
+        f3 * a1 + f4 * a2,
+        -(f4 * a1 + f3 * a2),
+        1j * (-f4 * a1 + f3 * a2),
+        -f3 * a1 + f4 * a2,
+    )
+    right = (
+        f1 * a3 + f2 * a4,
+        f1 * a4 + f2 * a3,
+        1j * (-f1 * a4 + f2 * a3),
+        f1 * a3 - f2 * a4,
+    )
+    return tuple(
+        prefactor * (left_coupling * left[index] + right_coupling * right[index])
+        for index in range(4)
+    )
+
+
+def _expr_fermion_scalar_to_fermion(
+    fermion: tuple[Any, ...],
+    scalar: tuple[Any, ...],
+    coupling: tuple[Any, Any],
+) -> tuple[Any, ...]:
+    if len(fermion) != 4 or len(scalar) != 1:
+        raise ValueError("Dirac fermion-scalar current expects dimensions 4 and 1")
+    prefactor = -1j / math.sqrt(2.0)
+    return tuple(
+        prefactor * coupling[0] * scalar[0] * component for component in fermion
+    )
+
+
+def _expr_vector_slash_terms(vector: tuple[Any, ...]) -> tuple[Any, Any, Any, Any]:
+    v0, v1, v2, v3 = vector
+    return v0 + v3, v0 - v3, v1 + 1j * v2, v1 - 1j * v2
+
+
+def _expr_quark_propagator_weyl(
+    quark: tuple[Any, ...],
+    momentum: tuple[Any, ...],
+    chirality: int,
+) -> tuple[Any, ...]:
+    energy, px, py, pz = momentum
+    denominator = _minkowski_square_expression(momentum)
+    prefactor = 1j / denominator
+    tmp1 = energy + pz
+    tmp2 = energy - pz
+    tmp3 = px + 1j * py
+    tmp4 = px - 1j * py
+    q1, q2 = quark
+    if chirality == 1:
+        return (
+            (tmp1 * q1 + tmp3 * q2) * prefactor,
+            (tmp2 * q2 + tmp4 * q1) * prefactor,
+        )
+    if chirality == -1:
+        return (
+            (tmp2 * q1 - tmp3 * q2) * prefactor,
+            (tmp1 * q2 - tmp4 * q1) * prefactor,
+        )
+    raise ValueError("Weyl quark propagator expression needs nonzero chirality")
+
+
+def _expr_antiquark_propagator_weyl(
+    antiquark: tuple[Any, ...],
+    momentum: tuple[Any, ...],
+    chirality: int,
+) -> tuple[Any, ...]:
+    energy, px, py, pz = momentum
+    denominator = _minkowski_square_expression(momentum)
+    prefactor = 1j / denominator
+    tmp1 = -(energy + pz)
+    tmp2 = -(energy - pz)
+    tmp3 = -(px + 1j * py)
+    tmp4 = -(px - 1j * py)
+    a1, a2 = antiquark
+    if chirality == 1:
+        return (
+            (tmp2 * a1 - tmp4 * a2) * prefactor,
+            (tmp1 * a2 - tmp3 * a1) * prefactor,
+        )
+    if chirality == -1:
+        return (
+            (tmp1 * a1 + tmp4 * a2) * prefactor,
+            (tmp2 * a2 + tmp3 * a1) * prefactor,
+        )
+    raise ValueError("Weyl antiquark propagator expression needs nonzero chirality")
+
+
+def _expr_quark_propagator_dirac(
+    quark: tuple[Any, ...],
+    momentum: tuple[Any, ...],
+    mass: float,
+    width: float,
+) -> tuple[Any, ...]:
+    if len(quark) != 4 or len(momentum) != 4:
+        raise ValueError("Dirac quark propagator expects four components")
+    energy, px, py, pz = momentum
+    denominator = (
+        _minkowski_square_expression(momentum) - mass * mass + 1j * mass * width
+    )
+    prefactor = 1j / denominator
+    tmp1 = energy + pz
+    tmp2 = energy - pz
+    tmp3 = px + 1j * py
+    tmp4 = px - 1j * py
+    q1, q2, q3, q4 = quark
+    return (
+        (tmp1 * q3 + tmp3 * q4 + mass * q1) * prefactor,
+        (tmp2 * q4 + tmp4 * q3 + mass * q2) * prefactor,
+        (tmp2 * q1 - tmp3 * q2 + mass * q3) * prefactor,
+        (tmp1 * q2 - tmp4 * q1 + mass * q4) * prefactor,
+    )
+
+
+def _expr_antiquark_propagator_dirac(
+    antiquark: tuple[Any, ...],
+    momentum: tuple[Any, ...],
+    mass: float,
+    width: float,
+) -> tuple[Any, ...]:
+    if len(antiquark) != 4 or len(momentum) != 4:
+        raise ValueError("Dirac antiquark propagator expects four components")
+    energy, px, py, pz = momentum
+    denominator = (
+        _minkowski_square_expression(momentum) - mass * mass + 1j * mass * width
+    )
+    prefactor = 1j / denominator
+    tmp1 = -(energy + pz)
+    tmp2 = -(energy - pz)
+    tmp3 = -(px + 1j * py)
+    tmp4 = -(px - 1j * py)
+    a1, a2, a3, a4 = antiquark
+    return (
+        (tmp2 * a3 - tmp4 * a4 + mass * a1) * prefactor,
+        (tmp1 * a4 - tmp3 * a3 + mass * a2) * prefactor,
+        (tmp1 * a1 + tmp4 * a2 + mass * a3) * prefactor,
+        (tmp2 * a2 + tmp3 * a1 + mass * a4) * prefactor,
+    )
+
+
+def _expr_minkowski_dot(
+    left: tuple[Any, ...],
+    right: tuple[Any, ...],
+) -> Any:
+    return (
+        left[0] * right[0]
+        - left[1] * right[1]
+        - left[2] * right[2]
+        - left[3] * right[3]
+    )
+
+
+def _two_gluon_to_tensor_data() -> list[complex]:
+    data = [0j] * (6 * 4 * 4)
+    metric = (1.0, -1.0, -1.0, -1.0)
+    for tensor_index, (i, j) in enumerate(_ANTISYM_PAIRS):
+        data[_flat_index((tensor_index, i, j), (6, 4, 4))] = (
+            1.0 / (metric[i] * metric[j])
+        ) + 0j
+        data[_flat_index((tensor_index, j, i), (6, 4, 4))] = (
+            -1.0 / (metric[j] * metric[i])
+        ) + 0j
+    return data
+
+
+def _tensor_gluon_to_gluon_data() -> list[complex]:
+    data = [0j] * (6 * 4 * 4)
+    prefactor = 0.5j
+    metric = (1.0, -1.0, -1.0, -1.0)
+    rows = {
+        0: ((0, 1, 1), (1, 2, 1), (2, 3, 1)),
+        1: ((0, 0, 1), (3, 2, 1), (4, 3, 1)),
+        2: ((1, 0, 1), (3, 1, -1), (5, 3, 1)),
+        3: ((2, 0, 1), (4, 1, -1), (5, 2, -1)),
+    }
+    for out, entries in rows.items():
+        for tensor_index, gluon_index, sign in entries:
+            data[_flat_index((tensor_index, gluon_index, out), (6, 4, 4))] = (
+                sign * prefactor / metric[gluon_index]
+            )
+    return data
+
+
+def _gluon_tensor_to_gluon_data() -> list[complex]:
+    data = [0j] * (6 * 4 * 4)
+    prefactor = 0.5j
+    metric = (1.0, -1.0, -1.0, -1.0)
+    rows = {
+        0: ((1, 0, -1), (2, 1, -1), (3, 2, -1)),
+        1: ((0, 0, -1), (2, 3, -1), (3, 4, -1)),
+        2: ((0, 1, -1), (1, 3, 1), (3, 5, -1)),
+        3: ((0, 2, -1), (1, 4, 1), (2, 5, 1)),
+    }
+    for out, entries in rows.items():
+        for gluon_index, tensor_index, sign in entries:
+            data[_flat_index((tensor_index, gluon_index, out), (6, 4, 4))] = (
+                sign * prefactor / metric[gluon_index]
+            )
+    return data
+
+
+def _quark_vector_weyl_data(*, chirality: int) -> list[complex]:
+    data = [0j] * (2 * 4 * 2)
+    prefactor = 1j / math.sqrt(2.0)
+    metric = (1.0, -1.0, -1.0, -1.0)
+
+    def add(q_in: int, vector: int, q_out: int, coefficient: complex) -> None:
+        # spenso canonicalizes T(weyl, mink, weyl) storage as
+        # (weyl_in, weyl_out, mink), while expression calls keep the original
+        # slot order.
+        data[_flat_index((q_in, q_out, vector), (2, 2, 4))] = (
+            coefficient / metric[vector]
+        )
+
+    if chirality == 1:
+        add(0, 0, 0, prefactor)
+        add(0, 3, 0, -prefactor)
+        add(1, 1, 0, -prefactor)
+        add(1, 2, 0, -1j * prefactor)
+        add(1, 0, 1, prefactor)
+        add(1, 3, 1, prefactor)
+        add(0, 1, 1, -prefactor)
+        add(0, 2, 1, 1j * prefactor)
+        return data
+    if chirality == -1:
+        add(0, 0, 0, prefactor)
+        add(0, 3, 0, prefactor)
+        add(1, 1, 0, prefactor)
+        add(1, 2, 0, 1j * prefactor)
+        add(1, 0, 1, prefactor)
+        add(1, 3, 1, -prefactor)
+        add(0, 1, 1, prefactor)
+        add(0, 2, 1, -1j * prefactor)
+        return data
+    raise ValueError(f"unsupported Weyl chirality: {chirality}")
+
+
+_ANTISYM_PAIRS = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))

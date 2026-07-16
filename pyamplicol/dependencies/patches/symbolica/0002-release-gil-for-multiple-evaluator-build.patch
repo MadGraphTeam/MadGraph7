@@ -1,0 +1,36 @@
+diff --git a/src/api/python/expression.rs b/src/api/python/expression.rs
+index c68c405..01db37c 100644
+--- a/src/api/python/expression.rs
++++ b/src/api/python/expression.rs
+@@ -7389,6 +7389,7 @@ impl PythonExpression {
+         max_horner_scheme_variables: usize,
+         max_common_pair_cache_entries: usize,
+         max_common_pair_distance: usize,
++        py: Python,
+     ) -> PyResult<PythonExpressionEvaluator> {
+         let mut fn_map = FunctionMap::new();
+ 
+@@ -7461,14 +7462,16 @@ impl PythonExpression {
+             ..OptimizationSettings::default()
+         };
+ 
+-        let params: Vec<_> = params.iter().map(|x| x.expr.clone()).collect();
+-
+-        let exprs = exprs.iter().map(|x| x.expr.as_view()).collect::<Vec<_>>();
++        let params: Vec<_> = params.into_iter().map(|x| x.expr).collect();
++        let exprs: Vec<_> = exprs.into_iter().map(|x| x.expr).collect();
+ 
+-        let eval = Atom::evaluator_multiple(&exprs, &params)
+-            .function_map(fn_map)
+-            .optimization_settings(settings)
+-            .build()
++        let eval = py
++            .detach(move || {
++                Atom::evaluator_multiple(&exprs, &params)
++                    .function_map(fn_map)
++                    .optimization_settings(settings)
++                    .build()
++            })
+             .map_err(|e| {
+                 exceptions::PyValueError::new_err(format!("Could not create evaluator: {e}"))
+             })?;

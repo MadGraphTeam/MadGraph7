@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: 0BSD
+# Trusted external UFO model named "sm".
+# Materialize models/ufo/sm with python/copy_packaged_models.py.
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "models/ufo/sm"
+restriction = "restrict_default.dat"
+simplify = true
+cache = true
+
+[process]
+entries = [{ expression = "d d~ > Z g", name = "ufo_sm_ddbar_Zg" }]
+
+[color]
+accuracy = "lc"
+
+[generation]
+output = "artifacts/external_ufo_sm"
+emit_api_bundle = true
+
+[evaluator]
+backend = "jit"

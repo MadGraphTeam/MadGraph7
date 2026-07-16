@@ -1,0 +1,186 @@
+# SPDX-License-Identifier: 0BSD
+
+[build-system]
+requires = [
+  "maturin==1.14.1",
+  "packaging==26.2",
+]
+build-backend = "_pyamplicol_build"
+backend-path = ["build_backend"]
+
+[project]
+name = "pyamplicol"
+dynamic = ["version"]
+description = "Generator using current recursion to build fast color-ordered matrix-element evaluators"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "0BSD"
+license-files = [
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses/*",
+  "licenses/**/*",
+]
+authors = [
+  { name = "Rikkert Frederix", email = "rikkert.frederix@thep.lu.se" },
+  { name = "Valentin Hirschi", email = "valentin.hirschi@gmail.com" },
+  { name = "Timea Vitos", email = "timea.vitos@thep.lu.se" },
+]
+keywords = [
+  "high-energy physics",
+  "matrix elements",
+  "UFO",
+  "Symbolica",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD Zero Clause License (0BSD)",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Rust",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Typing :: Typed",
+]
+dependencies = [
+  "colorama==0.4.6",
+  "numpy==2.4.2",
+  "platformdirs==4.10.0",
+  "prettytable==3.18.0",
+  "progressbar2==4.5.0",
+  "six==1.17.0",
+  "symbolica==2.1.0",
+  "tomli-w==1.2.0",
+  "ufo-model-loader==0.1.7",
+]
+
+[project.optional-dependencies]
+test = [
+  "build>=1.2,<2",
+  "jsonschema>=4.22,<5",
+  "mypy>=1.13,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.9,<1",
+  "twine>=6,<7",
+  "wheel>=0.45,<1",
+]
+docs = [
+  "pypdf>=5,<6",
+]
+
+[project.scripts]
+pyamplicol = "pyamplicol.cli:main"
+rusticol-config = "pyamplicol._sdk.config:main"
+
+[project.urls]
+Homepage = "https://github.com/mg5amcnlo/pyamplicol"
+Documentation = "https://github.com/mg5amcnlo/pyamplicol#readme"
+Issues = "https://github.com/mg5amcnlo/pyamplicol/issues"
+Source = "https://github.com/mg5amcnlo/pyamplicol"
+
+[tool.maturin]
+manifest-path = "rust/crates/rusticol-python/Cargo.toml"
+python-source = "src"
+python-packages = ["pyamplicol"]
+module-name = "pyamplicol._rusticol"
+bindings = "pyo3"
+features = ["extension-module"]
+locked = true
+strip = true
+compatibility = "manylinux_2_28"
+auditwheel = "repair"
+include = [
+  { path = "LICENSE", format = ["sdist"] },
+  { path = "licenses/**/*", format = ["sdist"] },
+  { path = "THIRD_PARTY_NOTICES.md", format = ["sdist"] },
+  { path = "README.md", format = ["sdist"] },
+  { path = "Cargo.lock", format = ["sdist"] },
+  { path = "Cargo.toml", format = ["sdist"] },
+  { path = "rust-toolchain.toml", format = ["sdist"] },
+  { path = "justfile", format = ["sdist"] },
+  { path = "build_backend/**/*", format = ["sdist"] },
+  { path = "config/release-dependencies.toml", format = ["sdist"] },
+  { path = "dependencies/install_dependencies.py", format = ["sdist"] },
+  { path = "dependencies/patches/**/*", format = ["sdist"] },
+  { path = "dependencies/python-runtime-lock.toml", format = ["sdist"] },
+  { path = "dependencies/release-lock.toml", format = ["sdist"] },
+  { path = "docs/**/*", format = ["sdist"] },
+  { path = "examples/**/*", format = ["sdist"] },
+  { path = "rust/**/*", format = ["sdist"] },
+  { path = "schemas/**/*", format = ["sdist"] },
+  { path = "tests/**/*", format = ["sdist"] },
+  { path = "tools/release/**/*", format = ["sdist"] },
+  { path = "tools/typing/**/*", format = ["sdist"] },
+  { path = "_sdk/**/*", from = "out-dir", to = "pyamplicol/", crate-name = "rusticol-python" },
+]
+exclude = [
+  "**/__pycache__/**",
+  "**/*.pyc",
+  "dependencies/checkouts/**",
+  "docs/archive/**",
+  "docs/*.aux",
+  "docs/*.bbl",
+  "docs/*.bcf",
+  "docs/*.blg",
+  "docs/*.fdb_latexmk",
+  "docs/*.fls",
+  "docs/*.log",
+  "docs/*.out",
+  "docs/*.run.xml",
+  "docs/*.synctex.gz",
+  "docs/*.toc",
+  "outputs/**",
+  "PYPI_DEPLOYMENT_TEST/**",
+  "target/**",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --import-mode=importlib"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [
+  "src/pyamplicol/assets/models/ufo/**",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src"
+explicit_package_bases = true
+follow_imports = "silent"
+files = [
+  "src/pyamplicol/__init__.py",
+  "src/pyamplicol/api",
+  "src/pyamplicol/config/__init__.py",
+  "src/pyamplicol/config/errors.py",
+  "src/pyamplicol/config/models.py",
+  "src/pyamplicol/config/registry.py",
+  "src/pyamplicol/reporting",
+  "src/pyamplicol/runtime",
+  "tools/typing/check_public_typing.py",
+  "tests/typing/consumer_public_api.py",
+  "tests/typing/test_typing_gate.py",
+]
+exclude = [
+  "^src/pyamplicol/assets/models/ufo/",
+  "^src/pyamplicol/assets/api_templates/",
+]
+show_error_codes = true
+warn_unused_configs = true
+
+[tool.coverage.run]
+source = ["pyamplicol"]
+
+[tool.coverage.report]
+show_missing = true

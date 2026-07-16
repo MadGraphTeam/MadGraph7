@@ -1,0 +1,136 @@
+diff --git a/src/ufo_model_loader/commands.py b/src/ufo_model_loader/commands.py
+index 00475ec..f2b5b2f 100644
+--- a/src/ufo_model_loader/commands.py
++++ b/src/ufo_model_loader/commands.py
+@@ -1,6 +1,6 @@
+ import os
+ from ufo_model_loader.model import Model, InputParamCard, ParamCard  # type: ignore
+-from ufo_model_loader.common import DATA_PATH, UFOModelLoaderError, UFOMODELLOADER_WARNINGS_ISSUED, JSONLook, logger, Colour  # type: ignore
++from ufo_model_loader.common import DATA_PATH, UFOModelLoaderError, UFOMODELLOADER_WARNINGS_ISSUED, JSONLook, logger, Colour, optionally_lower_external_parameter_name  # type: ignore
+ from os.path import join as pjoin
+ 
+ 
+@@ -57,6 +57,8 @@ def load_model(input_model_path: str, restriction_name: str | None, simplify_mod
+                         f"Restriction file 'restrict_{restriction_name}.json' not found for JSON model '{model_name}' in directory '{model_base_path}'.")
+                 restriction_card = InputParamCard.from_json_file(
+                     json_path=pjoin(model_base_path, f'restrict_{restriction_name}.json'))
++                restriction_card = _complete_json_restriction_card(
++                    model, restriction_card)
+     else:
+         if INPUT_FORMAT == 'UFO':
+             if os.path.isfile(pjoin(model_base_path, model_name, 'restrict_default.dat')):
+@@ -77,6 +79,9 @@ def load_model(input_model_path: str, restriction_name: str | None, simplify_mod
+             elif os.path.isfile(legacy_default_restriction_path):
+                 restriction_card = InputParamCard.from_json_file(
+                     json_path=legacy_default_restriction_path)
++            if restriction_card is not None:
++                restriction_card = _complete_json_restriction_card(
++                    model, restriction_card)
+ 
+     if restriction_card is not None:
+         model.restriction = restriction_name or 'default'
+@@ -93,6 +98,8 @@ def load_model(input_model_path: str, restriction_name: str | None, simplify_mod
+     else:
+         logger.info("No restriction applied to model '%s%s%s'",
+                     Colour.GREEN, model_name, Colour.END)
++        default_card = InputParamCard.from_model(model)
++        model.apply_input_param_card(default_card, simplify=False)
+ 
+     if wrap_indices_in_lorentz_structures:
+         model.wrap_indices_in_lorentz_structures()
+@@ -116,6 +123,25 @@ def load_model(input_model_path: str, restriction_name: str | None, simplify_mod
+     return model, input_param_card
+ 
+ 
++def _complete_json_restriction_card(
++    model: Model,
++    restriction_card: InputParamCard,
++) -> InputParamCard:
++    """Give sparse JSON restriction cards the same semantics as UFO cards.
++
++    UFO restriction cards are expanded over every external parameter, with
++    omitted entries read as zero.  JSON restriction cards are intentionally
++    sparse, so complete them before applying the restriction to avoid silently
++    retaining unrestricted model defaults.
++    """
++
++    completed = InputParamCard(restriction_card)
++    for parameter in model.get_external_parameters():
++        name = optionally_lower_external_parameter_name(parameter.name)
++        completed.setdefault(name, 0j)
++    return completed
++
++
+ def export_model(model: Model, input_param_card: InputParamCard, output_model_path: str | None = None, json_look: JSONLook = JSONLook.VERBOSE, allow_overwrite=False) -> str | None:
+ 
+     if output_model_path is None:
+diff --git a/src/ufo_model_loader_tests/test_cli.py b/src/ufo_model_loader_tests/test_cli.py
+index 7f85b99..4a5e09c 100644
+--- a/src/ufo_model_loader_tests/test_cli.py
++++ b/src/ufo_model_loader_tests/test_cli.py
+@@ -184,6 +184,65 @@ def test_default_json_restriction_and_extended_metadata_round_trip(tmp_path):
+     ]
+ 
+ 
++def test_sparse_json_restriction_matches_ufo_restriction(tmp_path):
++    full_model, full_card = load_model(
++        input_model_path='sm',
++        restriction_name='full',
++        simplify_model=True,
++    )
++    output_path = export_model(
++        model=full_model,
++        input_param_card=full_card,
++        output_model_path=pjoin(tmp_path, 'sm.json'),
++        json_look=JSONLook.COMPACT,
++        allow_overwrite=True,
++    )
++    assert output_path is not None
++
++    restricted_ufo, sparse_card = load_model(
++        input_model_path='sm',
++        restriction_name=None,
++        simplify_model=True,
++    )
++    with open(
++        pjoin(tmp_path, 'restrict_default.json'),
++        'w',
++        encoding='utf-8',
++    ) as stream:
++        stream.write(sparse_card.to_json(JSONLook.COMPACT))
++
++    restricted_json, _ = load_model(
++        input_model_path=output_path,
++        restriction_name=None,
++        simplify_model=True,
++    )
++
++    compare_models(restricted_json, restricted_ufo)
++
++
++def test_unrestricted_json_load_evaluates_missing_coupling_values(tmp_path):
++    model, input_card = load_model(
++        input_model_path='sm',
++        restriction_name='full',
++        simplify_model=True,
++    )
++    payload = model.to_serializable_model().to_dict()
++    for coupling in payload['couplings']:
++        coupling['value'] = None
++    model_path = pjoin(tmp_path, 'sm.json')
++    with open(model_path, 'w', encoding='utf-8') as stream:
++        json.dump(payload, stream)
++
++    reloaded, reloaded_card = load_model(
++        input_model_path=model_path,
++        restriction_name='full',
++        simplify_model=True,
++    )
++
++    assert reloaded_card == input_card
++    assert all(coupling.value is not None for coupling in reloaded.couplings)
++
++
+ def test_capitalized_ufo_goldstone_metadata_is_preserved():
+     model, _ = load_model(
+         input_model_path='sm',

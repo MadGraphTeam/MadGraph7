@@ -1,0 +1,228 @@
+# SPDX-License-Identifier: 0BSD
+"""Canonical UFO record parsing and expression resolution."""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
+
+from .._internal.physics.symbols import ModelSymbolRegistry
+from . import compiler_symbolica as _sym
+from .contracts import (
+    CompiledCouplingOrder,
+    CompiledCouplingRecord,
+    CompiledParameterRecord,
+    CompiledParticleRecord,
+    CompiledPropagatorRecord,
+)
+
+
+def cast_int_tuple3(value: object) -> tuple[int, int, int]:
+    values = tuple(int(item) for item in _sequence(value))
+    if len(values) != 3:
+        raise ValueError("oriented kernel source legs must have length three")
+    return values[0], values[1], values[2]
+
+
+def _order(item: Mapping[str, object]) -> CompiledCouplingOrder:
+    return CompiledCouplingOrder(
+        name=str(item["name"]),
+        expansion_order=int(item["expansion_order"]),
+        hierarchy=int(item["hierarchy"]),
+    )
+
+
+def _parameter(
+    item: Mapping[str, object],
+    *,
+    model_symbols: ModelSymbolRegistry | None = None,
+) -> CompiledParameterRecord:
+    expression = _optional_string(item.get("expression"))
+    if expression is not None and model_symbols is not None:
+        expression = model_symbols.expression_string(expression)
+    value = _optional_pair(item.get("value"))
+    return CompiledParameterRecord(
+        name=str(item["name"]),
+        nature=str(item["nature"]),
+        parameter_type=str(item["parameter_type"]),
+        value=value,
+        expression=expression,
+        resolved_expression=(
+            expression
+            if expression is not None
+            else _numeric_expression(value or (0.0, 0.0)).to_canonical_string()
+        ),
+        lhablock=_optional_string(item.get("lhablock")),
+        lhacode=tuple(int(value) for value in _sequence(item.get("lhacode"))),
+    )
+
+
+def _particle(item: Mapping[str, object]) -> CompiledParticleRecord:
+    return CompiledParticleRecord(
+        name=str(item["name"]),
+        antiname=str(item["antiname"]),
+        pdg_code=int(item["pdg_code"]),
+        spin=int(item["spin"]),
+        color=int(item["color"]),
+        mass=str(item["mass"]),
+        width=str(item["width"]),
+        charge=float(item.get("charge", 0.0)),
+        ghost_number=int(item.get("ghost_number", 0)),
+        propagating=bool(item.get("propagating", True)),
+        goldstoneboson=bool(item.get("goldstoneboson", False)),
+        propagator=_optional_string(item.get("propagator")),
+    )
+
+
+def _coupling(
+    item: Mapping[str, object],
+    *,
+    model_symbols: ModelSymbolRegistry | None = None,
+) -> CompiledCouplingRecord:
+    expression = str(item["expression"])
+    if model_symbols is not None:
+        expression = model_symbols.expression_string(expression)
+    return CompiledCouplingRecord(
+        name=str(item["name"]),
+        expression=expression,
+        resolved_expression=expression,
+        value=_pair(item.get("value")),
+        orders=_orders(item.get("orders")),
+    )
+
+
+def _propagator(
+    item: Mapping[str, object],
+    particles: Sequence[CompiledParticleRecord],
+) -> CompiledPropagatorRecord:
+    particle_name = str(item["particle"])
+    particle = next(
+        (candidate for candidate in particles if candidate.name == particle_name),
+        None,
+    )
+    linked_name = None if particle is None else particle.propagator
+    name = str(item["name"])
+    return CompiledPropagatorRecord(
+        name=name,
+        particle=particle_name,
+        numerator=str(item["numerator"]),
+        denominator=str(item["denominator"]),
+        custom=linked_name == name and not name.endswith("_propFeynman"),
+    )
+
+
+def _orders(value: object) -> tuple[tuple[str, int], ...]:
+    result = []
+    for pair in _sequence(value):
+        values = _sequence(pair)
+        if len(values) != 2:
+            raise ValueError("coupling order must be [name, value]")
+        result.append((str(values[0]), int(values[1])))
+    return tuple(result)
+
+
+def _pair(value: object) -> tuple[float, float]:
+    pair = _sequence(value)
+    if len(pair) != 2:
+        raise ValueError("complex value must be [real, imaginary]")
+    return float(pair[0]), float(pair[1])
+
+
+def _optional_pair(value: object) -> tuple[float, float] | None:
+    return None if value is None else _pair(value)
+
+
+def _optional_string(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def _resolve_parameter_records(
+    records: Sequence[CompiledParameterRecord],
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[CompiledParameterRecord, ...]:
+    by_name = {record.name: record for record in records}
+    parameter_symbols = {name: model_symbols.symbol(name) for name in by_name}
+    resolved: dict[str, _sym.Expression] = {}
+    active: list[str] = []
+
+    def resolve(name: str) -> _sym.Expression:
+        if name in resolved:
+            return resolved[name]
+        if name in active:
+            cycle = " -> ".join((*active, name))
+            raise ValueError(f"cyclic UFO parameter definitions: {cycle}")
+        record = by_name[name]
+        if record.nature == "external":
+            resolved[name] = parameter_symbols[name]
+            return resolved[name]
+        active.append(name)
+        expression = (
+            model_symbols.expression(record.expression)
+            if record.expression is not None
+            else _numeric_expression(record.value or (0.0, 0.0))
+        )
+        expression_symbols = set(expression.get_all_symbols(False))
+        for dependency, symbol in parameter_symbols.items():
+            if dependency == name or symbol not in expression_symbols:
+                continue
+            expression = expression.replace(symbol, resolve(dependency))
+        active.pop()
+        resolved[name] = _replace_evaluator_constants(expression)
+        return resolved[name]
+
+    return tuple(
+        replace(record, resolved_expression=resolve(record.name).to_canonical_string())
+        for record in records
+    )
+
+
+def _resolve_coupling_records(
+    records: Sequence[CompiledCouplingRecord],
+    parameters: Sequence[CompiledParameterRecord],
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[CompiledCouplingRecord, ...]:
+    replacements = {
+        model_symbols.symbol(parameter.name): _sym.E(parameter.resolved_expression)
+        for parameter in parameters
+        if parameter.nature != "external"
+    }
+    result = []
+    for record in records:
+        expression = model_symbols.expression(record.expression)
+        expression_symbols = set(expression.get_all_symbols(False))
+        for symbol, replacement_expression in replacements.items():
+            if symbol in expression_symbols:
+                expression = expression.replace(symbol, replacement_expression)
+        expression = _replace_evaluator_constants(expression)
+        result.append(
+            replace(
+                record,
+                resolved_expression=expression.to_canonical_string(),
+            )
+        )
+    return tuple(result)
+
+
+def _replace_evaluator_constants(expression: _sym.Expression) -> _sym.Expression:
+    # SymJIT 2.19.3 does not currently lower Symbolica's built-in Pi atom,
+    # although ordinary numeric constants and powers are supported.
+    return expression.replace(_sym.E("pi"), _sym.E(repr(math.pi)))
+
+
+def _numeric_expression(value: tuple[float, float]) -> _sym.Expression:
+    real, imaginary = value
+    return _sym.E(repr(real)) + _sym.E(repr(imaginary)) * _sym.E("1𝑖")  # noqa: RUF001
+
+
+def _sequence(value: object) -> list[object]:
+    return list(value) if isinstance(value, (list, tuple)) else []
+
+
+def _mappings(value: object) -> list[dict[str, object]]:
+    result = []
+    for item in _sequence(value):
+        if not isinstance(item, dict):
+            raise ValueError("compiled model list entry must be an object")
+        result.append({str(key): element for key, element in item.items()})
+    return result

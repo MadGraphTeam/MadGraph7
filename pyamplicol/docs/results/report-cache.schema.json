@@ -1,0 +1,266 @@
+{
+  "$comment": "SPDX-License-Identifier: 0BSD",
+  "$defs": {
+    "measurement": {
+      "additionalProperties": false,
+      "properties": {
+        "effective_config": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "environment": {
+          "type": "object"
+        },
+        "evaluator_seconds_per_point": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "generation_seconds": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "matrix_element": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "relative_standard_error": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "requested_config": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "sample_count": {
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "standard_deviation_seconds_per_point": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "standard_error_seconds_per_point": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "not_available",
+            "ok",
+            "failed"
+          ]
+        },
+        "wall_seconds_per_point": {
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "generation_seconds",
+        "sample_count",
+        "wall_seconds_per_point",
+        "evaluator_seconds_per_point",
+        "standard_deviation_seconds_per_point",
+        "standard_error_seconds_per_point",
+        "relative_standard_error",
+        "matrix_element",
+        "requested_config",
+        "effective_config",
+        "environment"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "report-cache.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "process_matrix"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "color_accuracy",
+          "process_families",
+          "benchmark_contract"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "performance_ladder"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "color_accuracy",
+          "process_family",
+          "benchmark_contract",
+          "variants"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "model_ladder"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "color_accuracy",
+          "process_family",
+          "benchmark_contract"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "$schema": {
+      "const": "report-cache.schema.json"
+    },
+    "benchmark_contract": {
+      "type": "object"
+    },
+    "color_accuracy": {
+      "enum": [
+        "lc",
+        "nlc",
+        "full"
+      ]
+    },
+    "created_by": {
+      "const": "docs/result_tables.py"
+    },
+    "dataset_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "entries": {
+      "type": "array"
+    },
+    "kind": {
+      "enum": [
+        "process_matrix",
+        "performance_ladder",
+        "model_ladder"
+      ]
+    },
+    "model": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "profile": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "built-in-sm",
+            "json"
+          ]
+        }
+      },
+      "required": [
+        "profile",
+        "label",
+        "source_kind"
+      ],
+      "type": "object"
+    },
+    "multiplicities": {
+      "items": {
+        "minimum": 1,
+        "type": "integer"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "multiplicity_convention": {
+      "const": "final_state"
+    },
+    "process_families": {
+      "type": "array"
+    },
+    "process_family": {
+      "type": "string"
+    },
+    "report_version": {
+      "const": "0.1.0"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "spdx_license_identifier": {
+      "const": "0BSD"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "variants": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "$schema",
+    "schema_version",
+    "report_version",
+    "spdx_license_identifier",
+    "kind",
+    "dataset_id",
+    "created_by",
+    "updated_at",
+    "model",
+    "multiplicity_convention",
+    "multiplicities",
+    "entries"
+  ],
+  "title": "pyAmpliCol 0.1.0 performance report cache",
+  "type": "object"
+}

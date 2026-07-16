@@ -1,0 +1,96 @@
+{
+  "$schema": "report-cache.schema.json",
+  "benchmark_contract": {
+    "batch_size": 128,
+    "minimum_samples": 5,
+    "observable": "summed_matrix_element",
+    "runtime_api": "Runtime.evaluate",
+    "target_runtime_seconds": 10.0,
+    "warmup_runs": 2
+  },
+  "color_accuracy": "lc",
+  "created_by": "docs/result_tables.py",
+  "dataset_id": "scalar_gravity",
+  "entries": [
+    {
+      "high_precision_matrix_element": null,
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 2,
+      "process": "scalar_0 scalar_0 > graviton graviton",
+      "relative_difference": null,
+      "status": "not_available"
+    },
+    {
+      "high_precision_matrix_element": null,
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 3,
+      "process": "scalar_0 scalar_0 > graviton graviton graviton",
+      "relative_difference": null,
+      "status": "not_available"
+    },
+    {
+      "high_precision_matrix_element": null,
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 4,
+      "process": "scalar_0 scalar_0 > graviton graviton graviton graviton",
+      "relative_difference": null,
+      "status": "not_available"
+    }
+  ],
+  "kind": "model_ladder",
+  "model": {
+    "label": "Scalar-gravity model",
+    "profile": "scalar-gravity",
+    "source_kind": "json"
+  },
+  "multiplicities": [
+    2,
+    3,
+    4
+  ],
+  "multiplicity_convention": "final_state",
+  "process_family": "scalar_0 scalar_0 > n graviton",
+  "report_version": "0.1.0",
+  "schema_version": 1,
+  "spdx_license_identifier": "0BSD",
+  "updated_at": null
+}

@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: 0BSD
+# Serialized external Standard Model named "sm".
+# Materialize models/json/sm/sm.json with python/copy_packaged_models.py.
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "models/json/sm/sm.json"
+restriction = "restrict_default.json"
+simplify = true
+
+[process]
+entries = [{ expression = "d d~ > Z g", name = "json_sm_ddbar_Zg" }]
+
+[color]
+accuracy = "nlc"
+
+[generation]
+output = "artifacts/external_json_sm"
+emit_api_bundle = true
+
+[evaluator]
+backend = "asm"

@@ -1,0 +1,674 @@
+{
+  "$schema": "report-cache.schema.json",
+  "benchmark_contract": {
+    "batch_size": 128,
+    "minimum_samples": 5,
+    "observable": "summed_matrix_element",
+    "runtime_api": "Runtime.evaluate",
+    "target_runtime_seconds": 10.0,
+    "warmup_runs": 2
+  },
+  "color_accuracy": "lc",
+  "created_by": "docs/result_tables.py",
+  "dataset_id": "z_external_sm",
+  "entries": [
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 1,
+      "process": "d d~ > z",
+      "status": "not_available",
+      "variant": "reference"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 1,
+      "process": "d d~ > z",
+      "status": "not_available",
+      "variant": "jit_o1"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 1,
+      "process": "d d~ > z",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 1,
+      "process": "d d~ > z",
+      "status": "not_available",
+      "variant": "asm_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 1,
+      "process": "d d~ > z",
+      "status": "not_available",
+      "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 2,
+      "process": "d d~ > z g",
+      "status": "not_available",
+      "variant": "reference"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 2,
+      "process": "d d~ > z g",
+      "status": "not_available",
+      "variant": "jit_o1"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 2,
+      "process": "d d~ > z g",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 2,
+      "process": "d d~ > z g",
+      "status": "not_available",
+      "variant": "asm_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 2,
+      "process": "d d~ > z g",
+      "status": "not_available",
+      "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 3,
+      "process": "d d~ > z g g",
+      "status": "not_available",
+      "variant": "reference"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 3,
+      "process": "d d~ > z g g",
+      "status": "not_available",
+      "variant": "jit_o1"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 3,
+      "process": "d d~ > z g g",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 3,
+      "process": "d d~ > z g g",
+      "status": "not_available",
+      "variant": "asm_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 3,
+      "process": "d d~ > z g g",
+      "status": "not_available",
+      "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 4,
+      "process": "d d~ > z g g g",
+      "status": "not_available",
+      "variant": "reference"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 4,
+      "process": "d d~ > z g g g",
+      "status": "not_available",
+      "variant": "jit_o1"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 4,
+      "process": "d d~ > z g g g",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 4,
+      "process": "d d~ > z g g g",
+      "status": "not_available",
+      "variant": "asm_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 4,
+      "process": "d d~ > z g g g",
+      "status": "not_available",
+      "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 5,
+      "process": "d d~ > z g g g g",
+      "status": "not_available",
+      "variant": "reference"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 5,
+      "process": "d d~ > z g g g g",
+      "status": "not_available",
+      "variant": "jit_o1"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 5,
+      "process": "d d~ > z g g g g",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 5,
+      "process": "d d~ > z g g g g",
+      "status": "not_available",
+      "variant": "asm_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 5,
+      "process": "d d~ > z g g g g",
+      "status": "not_available",
+      "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 6,
+      "process": "d d~ > z g g g g g",
+      "status": "not_available",
+      "variant": "reference"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 6,
+      "process": "d d~ > z g g g g g",
+      "status": "not_available",
+      "variant": "jit_o1"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 6,
+      "process": "d d~ > z g g g g g",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 6,
+      "process": "d d~ > z g g g g g",
+      "status": "not_available",
+      "variant": "asm_o3"
+    },
+    {
+      "measurement": {
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "generation_seconds": null,
+        "matrix_element": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "wall_seconds_per_point": null
+      },
+      "n_final": 6,
+      "process": "d d~ > z g g g g g",
+      "status": "not_available",
+      "variant": "cpp_o3"
+    }
+  ],
+  "kind": "performance_ladder",
+  "model": {
+    "label": "External Standard Model (UFO/JSON)",
+    "profile": "external-sm",
+    "source_kind": "json"
+  },
+  "multiplicities": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "multiplicity_convention": "final_state",
+  "process_family": "d d~ > z + (n-1)g",
+  "report_version": "0.1.0",
+  "schema_version": 1,
+  "spdx_license_identifier": "0BSD",
+  "updated_at": null,
+  "variants": [
+    {
+      "config_overrides": {},
+      "key": "reference",
+      "label": "Independent reference"
+    },
+    {
+      "config_overrides": {
+        "evaluator.backend": "jit",
+        "evaluator.jit.optimization_level": 1
+      },
+      "key": "jit_o1",
+      "label": "JIT O1"
+    },
+    {
+      "config_overrides": {
+        "evaluator.backend": "jit",
+        "evaluator.jit.optimization_level": 3
+      },
+      "key": "jit_o3",
+      "label": "JIT O3"
+    },
+    {
+      "config_overrides": {
+        "evaluator.backend": "asm"
+      },
+      "key": "asm_o3",
+      "label": "ASM O3"
+    },
+    {
+      "config_overrides": {
+        "evaluator.backend": "cpp",
+        "evaluator.cpp.optimization": "O3"
+      },
+      "key": "cpp_o3",
+      "label": "C++ O3"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: 0BSD
+schema_version = 1
+
+[source]
+repository = "git@github.com:rikkert-frederix/AmpliCol.git"
+commit = "643bc6f99d7b2249af0a85204768df243e612411"
+pyamplicol_tree = "1d06be6797d797bad1121ae678c9282da9696cd7"
+python_package_tree = "5ef01b65928250e932d8887301940b8b1512ad5e"
+python_tests_tree = "056ad024bee4b21d089c625361b41ff1bc56fe3c"
+rusticol_tree = "38ca46f9879275e75635b4647ef3c88e9148c5be"
+selection_policy = "tracked blobs only; no source working-tree content"
+
+[native_abi]
+c_header_sha256 = "5ce3a39d0f255c5c6f7984d47f732bd86237beb9456e5131a28bbc286a12b0bb"
+cpp_header_sha256 = "8bc4767525a72c5a89a31cc2d365fc2330d111e0771d2ca0e308baa5602621cf"
+fortran_module_sha256 = "4cfeed5acb620eaedc4b34f3dc42e7e4a04fe17d3231f20ac5411e7697d54acc"
+rust_runtime_sha256 = "66545b71183f6c24bc1864243fb3aabd186dfd2eb97609d750c78c2b9c4c1776"
+c_abi_version = 1
+
+[models]
+asset_manifest_sha256 = "91570ed30cf949d21896bc24d68981b5a8a2100b1b89801a8d902fbc6397ee41"
+provenance_sha256 = "6081862a048da4346f026278d580ab33327d321b9147cb4079d1f4e580d45145"
+provenance_status = "release-eligible"
+payload_file_count = 66
+
+[reference_fixtures]
+existing_matrix_fixture_eligible = false
+reason = "existing fixture records an older dirty source state"
+clean_fixture_sha256 = "43173e8e527676fe9b26467e9f0b6b0d26cd323ecebcac69f56ce64a8b1a85ac"
+capture_manifest_sha256 = "62a06b7229e79dcb2437cf97e6d545ea3c54757cc2a17c60701cfd957cb4cbb5"

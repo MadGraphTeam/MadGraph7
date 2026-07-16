@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: 0BSD
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build products
+build/
+dist/
+target/
+wheelhouse/
+*.whl
+*.mod
+src/pyamplicol/_rusticol*.so
+src/pyamplicol/_rusticol*.dylib
+src/pyamplicol/_rusticol*.pyd
+.artifacts/
+.cargo/config.toml
+
+# Managed environments and deployment sandboxes
+.venv/
+venv/
+dependencies/.venv/
+dependencies/checkouts/
+dependencies/candidate-Cargo.lock
+dependencies/candidate-cargo-config.toml
+dependencies/install-state.json
+dependencies/wheelhouse/
+PYPI_DEPLOYMENT_TEST/
+
+# Generated SDK staging
+src/pyamplicol/_sdk/lib/
+src/pyamplicol/_sdk/include/
+src/pyamplicol/_sdk/fortran/
+src/pyamplicol/_sdk/link.json
+src/pyamplicol/_sdk/metadata.json
+
+# Generated process and benchmark output
+outputs/
+docs/.result_outputs/
+docs/*.aux
+docs/*.bbl
+docs/*.bcf
+docs/*.blg
+docs/*.fdb_latexmk
+docs/*.fls
+docs/*.log
+docs/*.out
+docs/*.run.xml
+docs/*.synctex.gz
+docs/*.toc
+
+# Local tooling state
+.trash/
+.agent-work/
+.DS_Store

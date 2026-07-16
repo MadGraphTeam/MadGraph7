@@ -1,0 +1,822 @@
+# SPDX-License-Identifier: 0BSD
+"""Local color-flow state transitions for generic DAG generation."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from ..color.plan import GenericColorPlan
+from ..models import Model, Vertex
+from ..processes.ir import ProcessLegIR
+from .dag_ordering import (
+    _closure_combination_matches_word,
+    _labels_projected_to_word,
+    _lc_word_with_sink_last,
+    _line_local_singlet_extras_allowed,
+    _mask_labels,
+    _ordered_combination_matches_word,
+    _ordered_combination_segment,
+    _sector_group_indices_for_label,
+    _sector_intermediate_order_words,
+    _shared_single_trace_closure_matches_word,
+    _word_contains_ordered_segment,
+)
+from .dag_types import (
+    _LC_FIERZ_SINGLET_BASIS,
+    ColorFlow,
+    ColorState,
+    CurrentIndex,
+    _lc_color_identity_closure_key,
+    _lc_color_identity_closures,
+    _lc_color_identity_closures_compatible,
+)
+
+
+class ColorEngine:
+    """Local colour-flow engine used by the process-generic recursion."""
+
+    def __init__(
+        self,
+        color_plan: GenericColorPlan,
+        model: Model,
+        *,
+        shared_lc_all_ordering_symmetry: bool = False,
+    ) -> None:
+        self.color_plan = color_plan
+        self.model = model
+        self._sector_by_id = {sector.id: sector for sector in color_plan.sectors}
+        self._leg_by_label = {leg.label: leg for leg in color_plan.process.legs}
+        self._label_is_color_singlet: dict[int, bool] = {}
+        for label, leg in self._leg_by_label.items():
+            if leg.outgoing_pdg is None:
+                self._label_is_color_singlet[label] = False
+                continue
+            try:
+                self._label_is_color_singlet[label] = (
+                    self.model.color_rep(leg.outgoing_pdg) == 1
+                )
+            except KeyError:
+                self._label_is_color_singlet[label] = False
+        self._vertex_has_colour_cache: dict[tuple[int, int, int, int], bool] = {}
+        self._ordered_combination_labels_cache: dict[
+            tuple[int, tuple[int, ...], tuple[int, ...], int, int, int, int],
+            tuple[int, ...] | None,
+        ] = {}
+        self._shared_single_trace = (
+            color_plan.color_accuracy in {"nlc", "full"}
+            and bool(color_plan.sectors)
+            and not color_plan.process.quark_labels
+            and not color_plan.process.antiquark_labels
+            and not color_plan.process.singlet_labels
+            and all(sector.kind == "single-trace" for sector in color_plan.sectors)
+        )
+        self._shared_single_trace_words = tuple(
+            word for sector in color_plan.sectors for word in (sector.color_words or ())
+        )
+        self._shared_lc_orderings = (
+            color_plan.color_accuracy == "lc"
+            and bool(color_plan.sectors)
+            and bool(color_plan.coloured_labels)
+        )
+        self._shared_lc_all_ordering_symmetry = bool(
+            shared_lc_all_ordering_symmetry
+            and self._shared_lc_orderings
+            and not color_plan.truncated
+        )
+        pure_gluon_process_symmetry = bool(
+            self._shared_lc_all_ordering_symmetry
+            and all(
+                leg.outgoing_pdg is not None and abs(int(leg.outgoing_pdg)) == 21
+                for leg in color_plan.process.legs
+            )
+        )
+        self._shared_lc_coloured_labels = set(color_plan.coloured_labels)
+        self._shared_lc_singlet_labels = set(color_plan.process.singlet_labels)
+        self._shared_lc_fixed_sink_label = (
+            max(self._shared_lc_coloured_labels)
+            if pure_gluon_process_symmetry and self._shared_lc_coloured_labels
+            else None
+        )
+        self._shared_lc_words_by_sector = tuple(
+            (
+                sector,
+                tuple(
+                    _lc_word_with_sink_last(
+                        word,
+                        self._shared_lc_fixed_sink_label,
+                    )
+                    for word in _sector_intermediate_order_words(sector)
+                ),
+            )
+            for sector in color_plan.sectors
+        )
+        self._shared_lc_sector_ids_by_word: dict[tuple[int, ...], tuple[int, ...]] = {}
+        self._shared_lc_sector_ids_by_segment: dict[
+            tuple[int, ...], tuple[int, ...]
+        ] = {}
+        if self._shared_lc_orderings:
+            sector_ids_by_word: dict[tuple[int, ...], list[int]] = {}
+            sector_ids_by_segment: dict[tuple[int, ...], set[int]] = {}
+            segments: set[tuple[int, ...]] = set()
+            for sector in color_plan.sectors:
+                for word in sector.color_words:
+                    normalized_word = _lc_word_with_sink_last(
+                        word,
+                        self._shared_lc_fixed_sink_label,
+                    )
+                    sector_ids_by_word.setdefault(normalized_word, []).append(
+                        int(sector.id)
+                    )
+                for word in _sector_intermediate_order_words(sector):
+                    normalized_word = _lc_word_with_sink_last(
+                        word,
+                        self._shared_lc_fixed_sink_label,
+                    )
+                    for start in range(len(normalized_word)):
+                        for stop in range(start + 1, len(normalized_word) + 1):
+                            segment = tuple(normalized_word[start:stop])
+                            segments.add(segment)
+                            sector_ids_by_segment.setdefault(segment, set()).add(
+                                int(sector.id)
+                            )
+            self._shared_lc_sector_ids_by_word = {
+                word: tuple(ids) for word, ids in sector_ids_by_word.items()
+            }
+            self._shared_lc_sector_ids_by_segment = {
+                segment: tuple(sorted(ids))
+                for segment, ids in sector_ids_by_segment.items()
+            }
+            self._shared_lc_segments = frozenset(segments)
+        else:
+            self._shared_lc_segments = frozenset()
+
+    def source_states_for_leg(self, leg: ProcessLegIR) -> tuple[ColorState, ...]:
+        if self._shared_lc_orderings:
+            leg_is_singlet = self._label_is_color_singlet.get(leg.label, False)
+            return (
+                ColorState(
+                    accuracy=self.color_plan.color_accuracy,
+                    sector_id=0,
+                    line_groups=() if leg_is_singlet else (0,),
+                ),
+            )
+        if self._shared_single_trace:
+            return (
+                ColorState(
+                    accuracy=self.color_plan.color_accuracy,
+                    sector_id=0,
+                    line_groups=(0,),
+                ),
+            )
+        if not self.color_plan.sectors:
+            return (ColorState(accuracy=self.color_plan.color_accuracy),)
+        states = []
+        leg_is_singlet = self._label_is_color_singlet.get(leg.label, False)
+        for sector in self.color_plan.sectors:
+            groups = (
+                ()
+                if leg_is_singlet
+                else _sector_group_indices_for_label(sector, leg.label)
+            )
+            if groups or leg_is_singlet or not sector.line_label_groups:
+                states.append(
+                    ColorState(
+                        accuracy=self.color_plan.color_accuracy,
+                        sector_id=sector.id,
+                        line_groups=groups,
+                    )
+                )
+        return tuple(states)
+
+    def combine(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+        *,
+        ordered_external_labels: tuple[int, ...] = (),
+    ) -> tuple[ColorFlow, ...]:
+        if left.accuracy != right.accuracy:
+            return ()
+        if not self.color_plan.sectors:
+            return (
+                ColorFlow(
+                    state=ColorState(
+                        accuracy=left.accuracy,
+                        basis_key=tuple(
+                            sorted(set(left.basis_key) | set(right.basis_key))
+                        ),
+                    )
+                ),
+            )
+        if self._shared_single_trace:
+            groups = tuple(sorted(set(left.line_groups) | set(right.line_groups)))
+            return (
+                ColorFlow(
+                    state=ColorState(
+                        accuracy=left.accuracy,
+                        sector_id=0,
+                        line_groups=groups or (0,),
+                    )
+                ),
+            )
+        if self._shared_lc_orderings:
+            groups = self._lc_combined_line_groups(left, right, vertex)
+            if groups is None:
+                return ()
+            projected = self._lc_projected_basis_and_weight(
+                left,
+                right,
+                vertex,
+                ordered_external_labels,
+            )
+            if projected is None:
+                return ()
+            basis_key, weight = projected
+            return (
+                ColorFlow(
+                    state=ColorState(
+                        accuracy=left.accuracy,
+                        sector_id=0,
+                        line_groups=groups,
+                        basis_key=basis_key,
+                    ),
+                    weight=weight,
+                ),
+            )
+        if left.sector_id != right.sector_id:
+            return ()
+        groups = self._lc_combined_line_groups(left, right, vertex)
+        if groups is None:
+            return ()
+        projected = self._lc_projected_basis_and_weight(
+            left,
+            right,
+            vertex,
+            ordered_external_labels,
+        )
+        if projected is None:
+            return ()
+        basis_key, weight = projected
+        return (
+            ColorFlow(
+                state=ColorState(
+                    accuracy=left.accuracy,
+                    sector_id=left.sector_id,
+                    line_groups=groups,
+                    basis_key=basis_key,
+                ),
+                weight=weight,
+            ),
+        )
+
+    def _lc_projected_basis_and_weight(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+        ordered_external_labels: tuple[int, ...],
+    ) -> tuple[tuple[str, ...], tuple[float, float]] | None:
+        basis = set(left.basis_key) | set(right.basis_key)
+        structure = self.model.vertex_color_structure(vertex)
+        reps = tuple(abs(self.model.color_rep(pdg)) for pdg in vertex.particles)
+        has_fierz_singlet = _LC_FIERZ_SINGLET_BASIS in basis
+        weight = (1.0, 0.0)
+
+        if has_fierz_singlet:
+            consumes_singlet_exchange = (
+                structure == "fundamental-generator"
+                and reps[2] == 3
+                and sorted(reps[:2]) == [3, 8]
+            )
+            if not consumes_singlet_exchange:
+                return None
+            basis.remove(_LC_FIERZ_SINGLET_BASIS)
+
+        if (
+            structure == "fundamental-generator"
+            and reps[:2] == (3, 3)
+            and reps[2] == 8
+            and self._lc_labels_close_one_quark_line(ordered_external_labels)
+        ):
+            basis.add(_LC_FIERZ_SINGLET_BASIS)
+            weight = (1.0 / 3.0, 0.0)
+
+        if (
+            self._shared_lc_orderings
+            and structure == "color-identity"
+            and sorted(reps[:2]) == [3, 3]
+            and reps[2] == 1
+        ):
+            colored_labels = tuple(
+                sorted(
+                    label
+                    for label in ordered_external_labels
+                    if label in self._shared_lc_coloured_labels
+                )
+            )
+            if colored_labels:
+                basis.add(_lc_color_identity_closure_key(colored_labels))
+
+        if (
+            self._shared_lc_orderings
+            and not self._shared_lc_basis_has_compatible_sector(
+                basis,
+                ordered_external_labels=ordered_external_labels,
+            )
+        ):
+            return None
+
+        return tuple(sorted(basis)), weight
+
+    def _shared_lc_basis_has_compatible_sector(
+        self,
+        basis_keys: Iterable[str],
+        *,
+        ordered_external_labels: Iterable[int] = (),
+    ) -> bool:
+        closures = _lc_color_identity_closures(basis_keys)
+        if not closures:
+            return True
+        colored_segment = tuple(
+            label
+            for label in ordered_external_labels
+            if label in self._shared_lc_coloured_labels
+        )
+        sector_ids = (
+            self._shared_lc_sector_ids_by_segment.get(colored_segment, ())
+            if colored_segment
+            else tuple(self._sector_by_id)
+        )
+        return any(
+            sector is not None
+            and _lc_color_identity_closures_compatible(closures, sector)
+            for sector_id in sector_ids
+            for sector in (self._sector_by_id.get(sector_id),)
+        )
+
+    def _lc_labels_close_one_quark_line(
+        self,
+        ordered_external_labels: tuple[int, ...],
+    ) -> bool:
+        colored = tuple(
+            label
+            for label in ordered_external_labels
+            if label in self._shared_lc_coloured_labels
+        )
+        if not colored:
+            return False
+        labels = set(colored)
+        for sector, words in self._shared_lc_words_by_sector:
+            if not any(_word_contains_ordered_segment(word, colored) for word in words):
+                continue
+            if any(labels.issubset(set(group)) for group in sector.line_label_groups):
+                return True
+        return False
+
+    def _lc_combined_line_groups(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+    ) -> tuple[int, ...] | None:
+        left_colored = self._particle_has_colour(vertex.particles[0])
+        right_colored = self._particle_has_colour(vertex.particles[1])
+        result_colored = self._particle_has_colour(vertex.particles[2])
+        left_groups = set(left.line_groups)
+        right_groups = set(right.line_groups)
+
+        if not left_colored and not right_colored:
+            if left_groups and right_groups and left_groups != right_groups:
+                return None
+            return tuple(sorted(left_groups | right_groups))
+
+        if left_colored != right_colored:
+            colored_groups = left_groups if left_colored else right_groups
+            singlet_groups = right_groups if left_colored else left_groups
+            if (
+                singlet_groups
+                and colored_groups
+                and not singlet_groups.issubset(colored_groups)
+            ):
+                return None
+            return tuple(sorted(colored_groups or singlet_groups))
+
+        if (
+            not result_colored
+            and left_groups
+            and right_groups
+            and left_groups != right_groups
+        ):
+            return None
+        return tuple(sorted(left_groups | right_groups))
+
+    def _particle_has_colour(self, pdg: int) -> bool:
+        if pdg == 99:
+            return True
+        try:
+            return self.model.color_rep(pdg) != 1
+        except KeyError:
+            return True
+
+    def closure_compatible(
+        self,
+        left: ColorState,
+        right: ColorState,
+        *,
+        full_mask: int,
+    ) -> tuple[ColorFlow, ...]:
+        if left.accuracy != right.accuracy:
+            return ()
+        if not self.color_plan.sectors:
+            return (
+                ColorFlow(
+                    state=ColorState(
+                        accuracy=left.accuracy,
+                        basis_key=tuple(
+                            sorted(set(left.basis_key) | set(right.basis_key))
+                        ),
+                    )
+                ),
+            )
+        if self._shared_single_trace:
+            # Shared single-trace closure needs the endpoint order labels, not
+            # just the state.  _build_amplitude_roots therefore calls
+            # shared_single_trace_closure_flows() with full CurrentIndex data.
+            return ()
+        if left.sector_id != right.sector_id:
+            return ()
+        groups = tuple(sorted(set(left.line_groups) | set(right.line_groups)))
+        sector = self._sector_by_id.get(left.sector_id)
+        if sector is None:
+            return (ColorFlow(state=left),)
+        basis = tuple(sorted(set(left.basis_key) | set(right.basis_key)))
+        if not _lc_color_identity_closures_compatible(
+            _lc_color_identity_closures(basis),
+            sector,
+        ):
+            return ()
+        full_labels = set(_mask_labels(full_mask))
+        sector_labels = set(sector.singlet_labels)
+        for group in sector.line_label_groups:
+            sector_labels.update(group)
+        if full_labels and not full_labels.issubset(sector_labels):
+            return ()
+        return (
+            ColorFlow(
+                state=ColorState(
+                    accuracy=left.accuracy,
+                    sector_id=left.sector_id,
+                    line_groups=groups,
+                )
+            ),
+        )
+
+    def _vertex_has_colour(self, vertex: Vertex) -> bool:
+        key = (vertex.kind, *vertex.particles)
+        cached = self._vertex_has_colour_cache.get(key)
+        if cached is not None:
+            return cached
+        for pdg in vertex.particles:
+            try:
+                if self.model.color_rep(pdg) != 1:
+                    self._vertex_has_colour_cache[key] = True
+                    return True
+            except KeyError:
+                self._vertex_has_colour_cache[key] = True
+                return True
+        self._vertex_has_colour_cache[key] = False
+        return False
+
+    def vertex_allowed(self, vertex: Vertex) -> bool:
+        if 99 not in vertex.particles:
+            return True
+        return self.color_plan.process.quark_lines.quark_pair_count >= 2
+
+    def ordered_combination_allowed(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+        vertex: Vertex,
+    ) -> bool:
+        if not self._vertex_has_colour(vertex):
+            return True
+        if self._shared_lc_orderings:
+            return (
+                self._shared_lc_ordered_combination_labels(
+                    left_index,
+                    right_index,
+                )
+                is not None
+            )
+        sector = self._sector_by_id.get(left_index.color_state.sector_id)
+        if sector is None:
+            return True
+        if sector.kind == "singlet" and all(
+            not word for word in sector.compatibility_words
+        ):
+            return True
+        return any(
+            _ordered_combination_matches_word(
+                left_index.ordered_external_labels,
+                right_index.ordered_external_labels,
+                word,
+            )
+            for word in _sector_intermediate_order_words(sector)
+        )
+
+    def ordered_combination_labels(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+        vertex: Vertex,
+    ) -> tuple[int, ...] | None:
+        cache_key = (
+            left_index.color_state.sector_id,
+            left_index.ordered_external_labels,
+            right_index.ordered_external_labels,
+            vertex.kind,
+            *vertex.particles,
+        )
+        if cache_key in self._ordered_combination_labels_cache:
+            return self._ordered_combination_labels_cache[cache_key]
+        proposed = (
+            *left_index.ordered_external_labels,
+            *right_index.ordered_external_labels,
+        )
+        singlet_order = self._singlet_order_allowed(
+            left_index,
+            right_index,
+            vertex,
+        )
+        if not singlet_order:
+            self._ordered_combination_labels_cache[cache_key] = None
+            return None
+        if self._shared_single_trace:
+            for word in self._shared_single_trace_words:
+                segment = _ordered_combination_segment(
+                    left_index.ordered_external_labels,
+                    right_index.ordered_external_labels,
+                    word,
+                )
+                if segment is not None:
+                    self._ordered_combination_labels_cache[cache_key] = segment
+                    return segment
+            self._ordered_combination_labels_cache[cache_key] = None
+            return None
+        if self._shared_lc_orderings:
+            labels = self._shared_lc_ordered_combination_labels(
+                left_index,
+                right_index,
+            )
+            self._ordered_combination_labels_cache[cache_key] = labels
+            return labels
+        sector = self._sector_by_id.get(left_index.color_state.sector_id)
+        if sector is None:
+            self._ordered_combination_labels_cache[cache_key] = proposed
+            return proposed
+        for word in _sector_intermediate_order_words(sector):
+            segment = _ordered_combination_segment(
+                left_index.ordered_external_labels,
+                right_index.ordered_external_labels,
+                word,
+            )
+            if segment is None:
+                continue
+            word_labels = set(word)
+            extras = tuple(
+                sorted(label for label in proposed if label not in word_labels)
+            )
+            if not _line_local_singlet_extras_allowed(segment, extras, sector):
+                continue
+            labels = (*segment, *extras)
+            self._ordered_combination_labels_cache[cache_key] = labels
+            return labels
+        self._ordered_combination_labels_cache[cache_key] = None
+        return None
+
+    def _singlet_order_allowed(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+        vertex: Vertex,
+    ) -> bool:
+        left_singlet = self._all_external_labels_color_singlet(
+            left_index.external_labels
+        )
+        right_singlet = self._all_external_labels_color_singlet(
+            right_index.external_labels
+        )
+        if left_singlet and not right_singlet:
+            return False
+        if left_singlet and right_singlet:
+            return max(left_index.external_labels) < max(right_index.external_labels)
+        return True
+
+    def _all_external_labels_color_singlet(self, labels: Iterable[int]) -> bool:
+        for label in labels:
+            is_singlet = self._label_is_color_singlet.get(label)
+            if is_singlet is None:
+                return False
+            if not is_singlet:
+                return False
+        return True
+
+    def ordered_closure_allowed(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+    ) -> bool:
+        if self._shared_single_trace:
+            return any(
+                _shared_single_trace_closure_matches_word(
+                    left_index.ordered_external_labels,
+                    right_index.ordered_external_labels,
+                    word,
+                )
+                for word in self._shared_single_trace_words
+            )
+        if self._shared_lc_orderings:
+            return self._shared_lc_closure_word(left_index, right_index) is not None
+        if left_index.color_state.sector_id != right_index.color_state.sector_id:
+            return False
+        sector = self._sector_by_id.get(left_index.color_state.sector_id)
+        if sector is None:
+            return True
+        if sector.kind == "singlet" and all(
+            not word for word in sector.compatibility_words
+        ):
+            return True
+        return any(
+            _closure_combination_matches_word(
+                _labels_projected_to_word(left_index.ordered_external_labels, word),
+                _labels_projected_to_word(right_index.ordered_external_labels, word),
+                word,
+            )
+            for word in sector.compatibility_words
+        )
+
+    def shared_single_trace_closure_flows(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+    ) -> tuple[ColorFlow, ...]:
+        if not self._shared_single_trace:
+            return ()
+        flows: list[ColorFlow] = []
+        seen: set[int] = set()
+        for sector in self.color_plan.sectors:
+            if sector.id in seen:
+                continue
+            if any(
+                _shared_single_trace_closure_matches_word(
+                    left_index.ordered_external_labels,
+                    right_index.ordered_external_labels,
+                    word,
+                )
+                for word in sector.compatibility_words
+            ):
+                seen.add(sector.id)
+                flows.append(
+                    ColorFlow(
+                        state=ColorState(
+                            accuracy=self.color_plan.color_accuracy,
+                            sector_id=sector.id,
+                            line_groups=(0,),
+                        )
+                    )
+                )
+        return tuple(flows)
+
+    @property
+    def shared_single_trace(self) -> bool:
+        return self._shared_single_trace
+
+    def shared_lc_closure_flows(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+    ) -> tuple[ColorFlow, ...]:
+        if not self._shared_lc_orderings:
+            return ()
+        flows: list[ColorFlow] = []
+        closure = self._shared_lc_closure(left_index, right_index)
+        if closure is None:
+            return ()
+        _word, sector_ids = closure
+        for sector_id in sector_ids:
+            flows.append(
+                ColorFlow(
+                    state=ColorState(
+                        accuracy=self.color_plan.color_accuracy,
+                        sector_id=sector_id,
+                        line_groups=(0,),
+                    )
+                )
+            )
+        return tuple(flows)
+
+    @property
+    def shared_lc_orderings(self) -> bool:
+        return self._shared_lc_orderings
+
+    @property
+    def shared_lc_all_ordering_symmetry(self) -> bool:
+        return self._shared_lc_all_ordering_symmetry
+
+    @property
+    def shared_lc_fixed_sink_label(self) -> int | None:
+        return self._shared_lc_fixed_sink_label
+
+    def _shared_lc_ordered_combination_labels(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+    ) -> tuple[int, ...] | None:
+        proposed = (
+            *left_index.ordered_external_labels,
+            *right_index.ordered_external_labels,
+        )
+        return self._shared_lc_ordered_proposed_labels(proposed)
+
+    def shared_lc_ordered_proposed_labels(
+        self,
+        proposed: Iterable[int],
+        *,
+        allow_reversed: bool = False,
+    ) -> tuple[int, ...] | None:
+        if not self._shared_lc_orderings:
+            return None
+        return self._shared_lc_ordered_proposed_labels(
+            tuple(proposed),
+            allow_reversed=allow_reversed,
+        )
+
+    def _shared_lc_ordered_proposed_labels(
+        self,
+        proposed: tuple[int, ...],
+        *,
+        allow_reversed: bool = False,
+    ) -> tuple[int, ...] | None:
+        coloured_segment = tuple(
+            label for label in proposed if label in self._shared_lc_coloured_labels
+        )
+        extras = tuple(
+            sorted(
+                label
+                for label in proposed
+                if label not in self._shared_lc_coloured_labels
+            )
+        )
+        if extras and not set(extras).issubset(self._shared_lc_singlet_labels):
+            return None
+        if not coloured_segment:
+            return extras
+        if coloured_segment not in self._shared_lc_segments:
+            reversed_segment = tuple(reversed(coloured_segment))
+            if not (
+                allow_reversed
+                and self.shared_lc_all_ordering_symmetry
+                and reversed_segment in self._shared_lc_segments
+            ):
+                return None
+        return (*coloured_segment, *extras)
+
+    def _shared_lc_closure_word(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+    ) -> tuple[int, ...] | None:
+        closure = self._shared_lc_closure(left_index, right_index)
+        return None if closure is None else closure[0]
+
+    def _shared_lc_closure(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+        word = tuple(
+            label
+            for label in (
+                *left_index.ordered_external_labels,
+                *right_index.ordered_external_labels,
+            )
+            if label in self._shared_lc_coloured_labels
+        )
+        if not word:
+            return None
+        sector_ids = self._shared_lc_sector_ids_by_word.get(word, ())
+        if not sector_ids:
+            return None
+        closures = _lc_color_identity_closures(
+            (*left_index.color_state.basis_key, *right_index.color_state.basis_key)
+        )
+        compatible_sector_ids = tuple(
+            sector_id
+            for sector_id in sector_ids
+            if (sector := self._sector_by_id.get(sector_id)) is not None
+            and _lc_color_identity_closures_compatible(closures, sector)
+        )
+        if not compatible_sector_ids:
+            return None
+        return word, compatible_sector_ids

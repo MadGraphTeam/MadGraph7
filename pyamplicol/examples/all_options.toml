@@ -1,0 +1,157 @@
+# SPDX-License-Identifier: 0BSD
+# Exhaustive TOML schema-v1 reference. Every current registry leaf is active.
+# This card is for resolution/documentation, not as a recommended physics run.
+
+# action: Required command action. Choices are generate, evaluate, benchmark,
+# inspect, model inspect, model compile, and model processes.
+action = "generate"
+
+# schema_version: Configuration schema. The only current value is 1.
+schema_version = 1
+
+[model]
+# model.source: "built-in-sm" or a UFO directory/JSON/compiled-model path.
+source = "built-in-sm"
+# model.restriction: Optional restriction name/path. Default is null.
+restriction = "restrict_default.dat"
+# model.simplify: Simplify an external model while compiling. Default true.
+simplify = true
+# model.cache: Reuse the content-addressed compiled-model cache. Default true.
+cache = true
+# model.cache_dir: Optional cache directory. Default is platform-specific/null.
+cache_dir = "cache/models"
+
+[process]
+# process.entries: Typed process expressions with optional unique stable names.
+entries = [
+  { expression = "d d~ > z g", name = "ddbar_zg" },
+  { expression = "d d~ > z g g", name = "ddbar_zgg" },
+]
+# process.flavor_scheme: Number of active quark flavors. Default 5.
+flavor_scheme = 5
+# process.max_quark_lines: Optional maximum quark-line count. Default null.
+max_quark_lines = 2
+# process.coupling_order_policy: "minimal" or "explicit". Default minimal.
+coupling_order_policy = "explicit"
+
+# process.multiparticles: User-defined particle-name expansions.
+[process.multiparticles]
+p = ["d", "d~", "u", "u~", "g"]
+j = ["d", "d~", "u", "u~", "g"]
+
+# process.max_coupling_orders: Non-negative limits keyed by coupling-order name.
+[process.max_coupling_orders]
+QCD = 3
+QED = 2
+
+[color]
+# color.accuracy: "lc", "nlc", or "full". Default lc.
+accuracy = "lc"
+
+[generation]
+# generation.output: Optional artifact output path. Default null.
+output = "artifacts/all_options"
+# generation.mode: "error", "append", or "replace". Default error.
+mode = "error"
+# generation.workers: Positive integer or "auto". Default auto.
+workers = "auto"
+# generation.emit_api_bundle: Emit root Python/C++/Fortran API bundle. Default true.
+emit_api_bundle = true
+[generation.validation]
+# generation.validation.enabled: Run generation validation. Default true.
+enabled = true
+# generation.validation.samples: Positive sample count. Default 10.
+samples = 10
+# generation.validation.seed: Non-negative random seed. Default 12345.
+seed = 12345
+# generation.validation.relative_tolerance: Non-negative tolerance. Default 1e-12.
+relative_tolerance = 1e-12
+# generation.validation.absolute_tolerance: Non-negative tolerance. Default 1e-300.
+absolute_tolerance = 1e-300
+# generation.validation.post_build_validation: Validate the built evaluator.
+post_build_validation = true
+
+[evaluator]
+# evaluator.backend: "jit", "asm", or "cpp". Default jit.
+backend = "jit"
+# evaluator.batch_size: Positive evaluation batch size. Default 128.
+batch_size = 128
+# evaluator.output_chunk_size: Positive size or null. Default 128.
+output_chunk_size = 128
+
+[evaluator.optimization]
+# evaluator.optimization.horner_iterations: Non-negative count. Default 10.
+horner_iterations = 10
+# evaluator.optimization.cpe_iterations: Non-negative override. The field is
+# omitted by default so Symbolica selects its backend default; this card uses 0.
+cpe_iterations = 0
+# evaluator.optimization.cores: Positive integer or "auto". Default auto.
+cores = "auto"
+# evaluator.optimization.max_horner_variables: Non-negative limit. Default 1000.
+max_horner_variables = 1000
+# evaluator.optimization.max_common_pair_cache_entries: Default 5000000.
+max_common_pair_cache_entries = 5000000
+# evaluator.optimization.max_common_pair_distance: Default 1000.
+max_common_pair_distance = 1000
+# evaluator.optimization.collect_factors: "auto", true, or false. Default auto.
+collect_factors = "auto"
+
+[evaluator.jit]
+# evaluator.jit.optimization_level: Integer 0 through 3. Default 3.
+optimization_level = 3
+
+[evaluator.cpp]
+# evaluator.cpp.optimization: Compiler optimization token. Default "O3".
+optimization = "O3"
+# evaluator.cpp.compiler: Optional compiler executable. Default null.
+compiler = "c++"
+# evaluator.cpp.native_arch: Opt into recorded host CPU requirements. Default false.
+native_arch = false
+# evaluator.cpp.extra_flags: Allowlisted non-ISA compiler arguments. Default empty.
+extra_flags = ["-fno-math-errno"]
+
+[evaluation]
+# evaluation.artifact: Optional schema-v3 artifact path. Default null.
+artifact = "artifacts/all_options"
+# evaluation.process: Optional process name/alias within a set. Default null.
+process = "ddbar_zg"
+# evaluation.precision: Positive decimal-digit request. Default 16.
+precision = 16
+# evaluation.resolved: Return physical resolved components. Default false.
+resolved = true
+# evaluation.helicity_ids: Stable physical helicity selectors. Default empty.
+helicity_ids = ["h:-1,+1,-1,-1"]
+# evaluation.color_flow_ids: Stable LC flow selectors. Default empty.
+color_flow_ids = ["flow:2,4,1"]
+# evaluation.model_parameters: Optional JSON parameter card path. Default null.
+model_parameters = "data/model_parameters.json"
+# evaluation.momenta: Optional JSON phase-space points path. Default null.
+momenta = "data/ddbar_zg_momenta.json"
+
+[benchmark]
+# benchmark.target_runtime: Positive target duration in seconds. Default 10.0.
+target_runtime = 10.0
+# benchmark.batch_size: Positive benchmark batch size. Default 128.
+batch_size = 128
+# benchmark.warmup_runs: Non-negative warmup count. Default 2.
+warmup_runs = 2
+# benchmark.minimum_samples: Positive minimum measured samples. Default 5.
+minimum_samples = 5
+# benchmark.helicity_ids: Optional benchmark helicity selectors. Default empty.
+helicity_ids = ["h:-1,+1,-1,-1"]
+# benchmark.color_flow_ids: Optional benchmark LC flow selectors. Default empty.
+color_flow_ids = ["flow:2,4,1"]
+
+[output]
+# output.format: "human" or "json". Default human.
+format = "human"
+# output.color: "auto", "always", or "never". Default auto.
+color = "auto"
+# output.progress: "auto", "tty", "log", or "off". Default auto.
+progress = "auto"
+# output.log_level: "debug", "info", "warning", or "error". Default info.
+log_level = "info"
+
+[symbolica]
+# symbolica.suggest_license: Show one restricted-mode license reminder. Default true.
+suggest_license = true

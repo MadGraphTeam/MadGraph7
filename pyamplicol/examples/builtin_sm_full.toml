@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: 0BSD
+# Built-in Standard Model generation with the full color contraction.
+# Resolved runtime output has one contracted color entry per helicity.
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "built-in-sm"
+
+[process]
+entries = [{ expression = "d d~ > z g", name = "ddbar_zg_full" }]
+
+[color]
+accuracy = "full"
+
+[generation]
+output = "artifacts/builtin_sm_full"
+mode = "error"
+emit_api_bundle = true
+
+[evaluator]
+backend = "cpp"
+
+[evaluator.cpp]
+optimization = "O3"
+native_arch = false
+
+[output]
+progress = "log"
