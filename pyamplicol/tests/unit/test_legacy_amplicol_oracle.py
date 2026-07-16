@@ -1062,7 +1062,30 @@ def test_v2_multiflow_aggregate_report_validates_with_fixture(
     } == {"helicity-aggregate"}
 
 
-def test_v2_oracle_requires_exact_structural_zeros(
+def test_v2_oracle_canonicalizes_bounded_structural_zero_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, report, _, _ = _capture_v2(
+        tmp_path,
+        monkeypatch,
+        structural_zero=1.0e-16,
+    )
+
+    fixture = _v2_fixture(module.expected_revision())
+    cases = {case["id"]: case for case in fixture["cases"]}
+    for record in report["records"]:
+        case = cases[record["case_id"]]
+        for index, helicity in enumerate(case["axes"]["helicities"]):
+            if not helicity["structural_zero"]:
+                continue
+            if record["coverage"] == "helicity-aggregate":
+                assert record["observed_helicity_totals"][index] == "0"
+            else:
+                assert all(value == "0" for value in record["observed_values"][index])
+
+
+def test_v2_oracle_rejects_structural_zero_residue_above_tolerance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1074,7 +1097,7 @@ def test_v2_oracle_requires_exact_structural_zeros(
         _capture_v2(
             tmp_path,
             monkeypatch,
-            structural_zero=1.0e-16,
+            structural_zero=1.0e-9,
             module=module,
         )
 

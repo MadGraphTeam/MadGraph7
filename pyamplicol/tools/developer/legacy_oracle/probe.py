@@ -256,6 +256,16 @@ def _decimal_close(actual: Decimal, expected: Decimal) -> bool:
     return abs(actual - expected) <= allowed
 
 
+def _canonical_structural_zero(value: Decimal, *, context: str) -> Decimal:
+    """Validate binary64 residue, then preserve an exact zero in evidence."""
+
+    if not _decimal_close(value, Decimal(0)):
+        raise LegacyOracleError(
+            f"{context}: Fortran did not preserve structural zero ({value})"
+        )
+    return Decimal(0)
+
+
 def _canonical_physics_output_sha256(
     summed: ProbeResult,
     helicity_results: Sequence[ProbeResult],

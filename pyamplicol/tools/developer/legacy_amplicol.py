@@ -30,9 +30,7 @@ if TYPE_CHECKING:
     from tools.developer.legacy_oracle import probe as _probe
     from tools.developer.legacy_oracle import processes as _processes
 else:
-    _ORACLE_PACKAGE = (
-        f"{__package__}.legacy_oracle" if __package__ else "legacy_oracle"
-    )
+    _ORACLE_PACKAGE = f"{__package__}.legacy_oracle" if __package__ else "legacy_oracle"
     _checkout = importlib.import_module(f"{_ORACLE_PACKAGE}.checkout")
     _evidence = importlib.import_module(f"{_ORACLE_PACKAGE}.evidence")
     _model = importlib.import_module(f"{_ORACLE_PACKAGE}.model")
@@ -157,9 +155,7 @@ def _compiler_provenance(repository: Path) -> CompilerProvenance:
 _PDG_BY_NAME = _processes._PDG_BY_NAME
 EXPECTED_FORTRAN_PROCESS_ROWS = _processes.EXPECTED_FORTRAN_PROCESS_ROWS
 EXPECTED_FORTRAN_PDG_MATCH_COUNTS = _processes.EXPECTED_FORTRAN_PDG_MATCH_COUNTS
-EXPECTED_FORTRAN_COLOR_ORDER_COUNTS = (
-    _processes.EXPECTED_FORTRAN_COLOR_ORDER_COUNTS
-)
+EXPECTED_FORTRAN_COLOR_ORDER_COUNTS = _processes.EXPECTED_FORTRAN_COLOR_ORDER_COUNTS
 parse_process_file = _processes.parse_process_file
 process_pdgs = _processes.process_pdgs
 _normalized_process_expression = _processes._normalized_process_expression
@@ -375,6 +371,7 @@ _canonical_decimal = _probe._canonical_decimal
 _probe_value_decimal = _probe._probe_value_decimal
 _lc_row_value_decimal = _probe._lc_row_value_decimal
 _decimal_close = _probe._decimal_close
+_canonical_structural_zero = _probe._canonical_structural_zero
 _canonical_physics_output_sha256 = _probe._canonical_physics_output_sha256
 _resolved_single_lc_row = _probe._resolved_single_lc_row
 
@@ -539,9 +536,7 @@ def _verify_fixture_v2(
                         momenta=momenta,
                         color_accuracy=color_accuracy,
                     )
-                    expected_orders = expected_color_order_count(
-                        generation_expression
-                    )
+                    expected_orders = expected_color_order_count(generation_expression)
                     if summed.color_orders != expected_orders:
                         raise LegacyOracleError(
                             f"{case_id}/{point_id}: Fortran color-order count "
@@ -583,10 +578,11 @@ def _verify_fixture_v2(
                         helicity_sum += aggregate
                         if multi_flow_lc:
                             expected_aggregate = sum(expected_row, Decimal(0))
-                            if bool(helicity["structural_zero"]) and aggregate != 0:
-                                raise LegacyOracleError(
-                                    f"{context}: Fortran did not preserve structural "
-                                    f"zero aggregate ({aggregate})"
+                            normalized_aggregate = aggregate
+                            if bool(helicity["structural_zero"]):
+                                normalized_aggregate = _canonical_structural_zero(
+                                    aggregate,
+                                    context=f"{context} aggregate",
                                 )
                             if not _decimal_close(aggregate, expected_aggregate):
                                 raise LegacyOracleError(
@@ -594,7 +590,9 @@ def _verify_fixture_v2(
                                     f"{aggregate} does not match fixture sum "
                                     f"{expected_aggregate}"
                                 )
-                            helicity_totals.append(_canonical_decimal(aggregate))
+                            helicity_totals.append(
+                                _canonical_decimal(normalized_aggregate)
+                            )
                             helicity_results.append(probe)
                             continue
 
@@ -617,12 +615,18 @@ def _verify_fixture_v2(
                         observed_decimals = tuple(
                             Decimal(value) for value in observed_row
                         )
-                        if bool(helicity["structural_zero"]) and any(
-                            value != 0 for value in observed_decimals
-                        ):
-                            raise LegacyOracleError(
-                                f"{context}: Fortran did not preserve structural zero "
-                                f"({observed_row})"
+                        normalized_aggregate = aggregate
+                        if bool(helicity["structural_zero"]):
+                            observed_decimals = tuple(
+                                _canonical_structural_zero(
+                                    value,
+                                    context=f"{context} color component {index}",
+                                )
+                                for index, value in enumerate(observed_decimals)
+                            )
+                            normalized_aggregate = _canonical_structural_zero(
+                                aggregate,
+                                context=f"{context} aggregate",
                             )
                         if len(observed_decimals) != len(expected_row) or any(
                             not _decimal_close(observed, expected)
@@ -637,12 +641,14 @@ def _verify_fixture_v2(
                                 f"do not match fixture {list(expected_row)}"
                             )
                         resolved_sum = sum(observed_decimals, Decimal(0))
-                        if not _decimal_close(aggregate, resolved_sum):
+                        if not _decimal_close(normalized_aggregate, resolved_sum):
                             raise LegacyOracleError(
                                 f"{context}: resolved Fortran values do not sum to "
                                 f"aggregate {aggregate}"
                             )
-                        resolved_values.append(observed_row)
+                        resolved_values.append(
+                            [_canonical_decimal(value) for value in observed_decimals]
+                        )
                         helicity_results.append(probe)
 
                     if not _decimal_close(helicity_sum, observed_total):
@@ -653,65 +659,61 @@ def _verify_fixture_v2(
                         )
 
                     evidence_record: dict[str, object] = {
-                            "id": expected_evidence_id,
-                            "case_id": case_id,
-                            "point_id": point_id,
-                            "independent_of_pyamplicol": True,
-                            "arithmetic_precision_bits": 53,
-                            "round_trip_decimal_digits": 17,
-                            "certified_decimal_digits": (
-                                FORTRAN_CERTIFIED_DECIMAL_DIGITS
+                        "id": expected_evidence_id,
+                        "case_id": case_id,
+                        "point_id": point_id,
+                        "independent_of_pyamplicol": True,
+                        "arithmetic_precision_bits": 53,
+                        "round_trip_decimal_digits": 17,
+                        "certified_decimal_digits": (FORTRAN_CERTIFIED_DECIMAL_DIGITS),
+                        "arithmetic": "binary64",
+                        "coverage": coverage,
+                        "helicity_ids": [
+                            str(helicity["id"]) for helicity in helicities
+                        ],
+                        "color_ids": [str(color["id"]) for color in colors],
+                        "observed_total": _canonical_decimal(
+                            _probe_value_decimal(summed)
+                        ),
+                        "observed_helicity_totals": (
+                            helicity_totals if multi_flow_lc else None
+                        ),
+                        "observed_values": (None if multi_flow_lc else resolved_values),
+                        "process_identity": {
+                            "expression": expression,
+                            "ordered_external_pdgs": list(entry.process_pdgs),
+                            "ordered_external_leg_ids": list(row_leg_ids),
+                            "source_to_row_permutation": list(permutation),
+                            "row_id": (
+                                f"group:{entry.group}:integral:{entry.integral}"
                             ),
-                            "arithmetic": "binary64",
-                            "coverage": coverage,
-                            "helicity_ids": [
-                                str(helicity["id"]) for helicity in helicities
-                            ],
-                            "color_ids": [str(color["id"]) for color in colors],
-                            "observed_total": _canonical_decimal(
-                                _probe_value_decimal(summed)
-                            ),
-                            "observed_helicity_totals": (
-                                helicity_totals if multi_flow_lc else None
-                            ),
-                            "observed_values": (
-                                None if multi_flow_lc else resolved_values
-                            ),
-                            "process_identity": {
-                                "expression": expression,
-                                "ordered_external_pdgs": list(entry.process_pdgs),
-                                "ordered_external_leg_ids": list(row_leg_ids),
-                                "source_to_row_permutation": list(permutation),
-                                "row_id": (
-                                    f"group:{entry.group}:integral:{entry.integral}"
-                                ),
-                                "color_order_count": summed.color_orders,
-                                "ordered_color_legs": list(ordered_color_legs),
-                            },
-                            "input_sha256": reference._parse_point(
-                                point,
-                                0,
-                            ).input_sha256(),
-                            "physics_case_sha256": str(case["physics_case_sha256"]),
-                            "oracle_output_sha256": _canonical_physics_output_sha256(
-                                summed,
-                                helicity_results,
-                            ),
-                            "command": _stable_command_description(
-                                process=expression,
-                                case_id=case_id,
-                                point_id=point_id,
-                                color_accuracy=color_accuracy,
-                                entry=entry,
-                                pdg_match_count=len(matching_entries),
-                                compiler=compiler,
-                                binary64_input_sha256=binary64_input_sha256,
-                            ),
-                            "tolerances": {
-                                "relative": "0.0000000001",
-                                "absolute": "0.000000000001",
-                            },
-                        }
+                            "color_order_count": summed.color_orders,
+                            "ordered_color_legs": list(ordered_color_legs),
+                        },
+                        "input_sha256": reference._parse_point(
+                            point,
+                            0,
+                        ).input_sha256(),
+                        "physics_case_sha256": str(case["physics_case_sha256"]),
+                        "oracle_output_sha256": _canonical_physics_output_sha256(
+                            summed,
+                            helicity_results,
+                        ),
+                        "command": _stable_command_description(
+                            process=expression,
+                            case_id=case_id,
+                            point_id=point_id,
+                            color_accuracy=color_accuracy,
+                            entry=entry,
+                            pdg_match_count=len(matching_entries),
+                            compiler=compiler,
+                            binary64_input_sha256=binary64_input_sha256,
+                        ),
+                        "tolerances": {
+                            "relative": "0.0000000001",
+                            "absolute": "0.000000000001",
+                        },
+                    }
                     evidence_record["evidence_record_sha256"] = (
                         reference.evidence_record_sha256(evidence_record)
                     )
