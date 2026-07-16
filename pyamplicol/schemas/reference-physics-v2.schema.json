@@ -249,7 +249,8 @@
           "$ref": "#/$defs/sha256"
         },
         "compiled_model_sha256": {
-          "$ref": "#/$defs/sha256"
+          "$ref": "#/$defs/sha256",
+          "description": "Canonical hash of the compiled model contract excluding conversion and phase timing diagnostics."
         },
         "compiled_schema_version": {
           "type": "integer",

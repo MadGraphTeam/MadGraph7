@@ -69,6 +69,26 @@ def test_canonical_decimal_is_fixed_point_and_binary64_honest(
     assert capture.canonical_decimal(value) == expected
 
 
+def test_compiled_model_contract_hash_excludes_only_timing_diagnostics() -> None:
+    compiled = {
+        "schema_version": 6,
+        "kind": "pyamplicol-compiled-model",
+        "source": {"digest": "abc"},
+        "ir": {"particles": [{"pdg_code": 1}]},
+        "parameter_defaults": {"ZERO": [0.0, 0.0]},
+        "conversion_seconds": 1.25,
+        "phase_timings": {"lower": 0.5},
+    }
+    baseline = artifacts._compiled_model_contract_sha256(compiled)
+
+    compiled["conversion_seconds"] = 99.0
+    compiled["phase_timings"] = {"lower": 42.0}
+    assert artifacts._compiled_model_contract_sha256(compiled) == baseline
+
+    compiled["ir"] = {"particles": [{"pdg_code": 2}]}
+    assert artifacts._compiled_model_contract_sha256(compiled) != baseline
+
+
 def test_canonical_decimal_rejects_non_finite_values() -> None:
     with pytest.raises(capture.CaptureError, match="non-finite"):
         capture.canonical_decimal(float("inf"))

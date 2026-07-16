@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import sys
@@ -237,11 +238,25 @@ def _json_number(value: object, where: str) -> str:
     raise CaptureError(f"{where} is not a finite JSON number")
 
 
+def _compiled_model_contract_sha256(compiled: Mapping[str, object]) -> str:
+    semantic_payload = {
+        key: value
+        for key, value in compiled.items()
+        if key not in {"conversion_seconds", "phase_timings"}
+    }
+    encoded = json.dumps(
+        semantic_payload,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _model_payload(
     spec: ArtifactCaptureSpec,
     manifest: Any,
     dependencies: DependencySnapshot,
-    compiled_record: Any,
     compiled: Mapping[str, object],
 ) -> dict[str, object]:
     if compiled.get("schema_version") != manifest.model["compiled_schema_version"]:
@@ -289,7 +304,7 @@ def _model_payload(
         "name": str(manifest.model["name"]),
         "source_kind": str(manifest.model["source_kind"]),
         "content_sha256": str(manifest.model["content_sha256"]),
-        "compiled_model_sha256": str(compiled_record.sha256),
+        "compiled_model_sha256": _compiled_model_contract_sha256(compiled),
         "compiled_schema_version": int(manifest.model["compiled_schema_version"]),
         "restriction": manifest.model.get("restriction"),
         "dependency_ids": [
@@ -774,9 +789,7 @@ def assemble_fixture(
             )
         compiled_record = _payload_record(manifest, "compiled-model", None)
         compiled = _read_json(manifest.root / compiled_record.path)
-        model_payload = _model_payload(
-            spec, manifest, dependencies, compiled_record, compiled
-        )
+        model_payload = _model_payload(spec, manifest, dependencies, compiled)
         previous_model = model_payloads.setdefault(spec.model_id, model_payload)
         if previous_model != model_payload:
             raise CaptureError(

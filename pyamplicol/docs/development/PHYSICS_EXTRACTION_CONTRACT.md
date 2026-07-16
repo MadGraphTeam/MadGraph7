@@ -111,6 +111,9 @@ oracle's certified accuracy. Fast gates may select one generic point from the
 complete fixture, but substantive tracked cases cannot weaken their declared
 physical axes. Each case hash covers its model dependencies, exact points,
 process, and the complete transitive source chain of any process alias.
+Compiled-model identity hashes the canonical semantic payload and excludes only
+conversion-duration and phase-timing diagnostics, which naturally differ
+between otherwise identical color-accuracy builds.
 
 Completeness is not inferred from the emitted axes. Each process records the
 external UFO spin code, color representation, mass, and runtime label in model
