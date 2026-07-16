@@ -285,6 +285,104 @@ def test_sliced_spin2_contact_partial_preserves_dense_axis_order() -> None:
     )
 
 
+def test_sliced_spin2_contact_bounds_symbolic_inputs_and_preserves_mixed_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _sym._ensure_symbolica()
+    registry = symbols.model("bounded-spin2-contact-partial-test")
+    particles = (
+        _particle("scalar_input", 9_350_000, spin=1),
+        _particle("spin2_input", 9_350_001, spin=5),
+        _vector("vector_output", 9_350_002),
+        _particle("spin2_output", 9_350_003, spin=5),
+    )
+    representations = tuple(
+        representation
+        for particle in particles
+        for representation in _spin_representations(particle.spin)
+    )
+    slots = tuple(
+        slot
+        for leg, particle in enumerate(particles, start=1)
+        for slot in _spin_slots(particle.spin, leg)
+    )
+    source_name = _sym.TensorName(registry.qualified_name("bounded_spin2_contact"))
+    source_components = tuple(
+        _sym.E(str(index % 19 - 9)) for index in range(16 * 4 * 16)
+    )
+
+    def source_expression(library: object) -> object:
+        library.register(
+            _sym.LibraryTensor.dense(
+                source_name(*representations),
+                source_components,
+            )
+        )
+        return source_name(*slots).to_expression()
+
+    input_legs = ((0, "left"), (1, "right"))
+    direct_library = _sym.TensorLibrary.hep_lib_atom()
+    direct_expression = source_expression(direct_library)
+    for leg, side in input_legs:
+        direct_expression *= contacts._input_tensor_expression(
+            direct_library,
+            kind=31,
+            side=side,
+            spin=particles[leg].spin,
+            leg=leg + 1,
+            components=contacts._component_symbols(
+                31,
+                side,
+                particles[leg].spin,
+                model_symbols=registry,
+            ),
+            model_symbols=registry,
+        )
+    direct = _execute_dense_tensor(
+        direct_expression,
+        direct_library,
+        axis_labels=tuple(
+            label
+            for leg in (2, 3)
+            for label in _spin_axis_labels(particles[leg].spin, leg + 1)
+        ),
+    )
+
+    original_input_tensor = contacts._input_tensor_expression
+    spin2_component_counts: list[int] = []
+
+    def recording_input_tensor(*args: object, **kwargs: object) -> object:
+        if kwargs.get("spin") == 5:
+            components = kwargs["components"]
+            assert isinstance(components, tuple)
+            spin2_component_counts.append(
+                sum(component.to_canonical_string() != "0" for component in components)
+            )
+        return original_input_tensor(*args, **kwargs)
+
+    monkeypatch.setattr(contacts, "_input_tensor_expression", recording_input_tensor)
+    sliced_library = _sym.TensorLibrary.hep_lib_atom()
+    sliced = contacts._execute_contact_partial_sliced(
+        source_expression(sliced_library),
+        sliced_library,
+        particles,
+        input_legs=input_legs,
+        open_legs=(2, 3),
+        kind=31,
+        model_symbols=registry,
+    )
+
+    assert spin2_component_counts
+    assert set(spin2_component_counts) == {1}
+    assert len(sliced) == len(direct) == 4 * 16
+    for actual, expected in zip(sliced, direct, strict=True):
+        difference = (
+            _sym.E(actual.to_canonical_string())
+            - _sym.E(expected.to_canonical_string())
+        ).expand()
+        assert difference.to_canonical_string() == "0"
+
+
 def test_linux_single_spin2_output_uses_sliced_contact_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
