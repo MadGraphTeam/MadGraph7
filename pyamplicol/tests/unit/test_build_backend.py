@@ -456,6 +456,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         "_candidate_inputs",
         lambda: candidate_inputs,
     )
+    monkeypatch.setattr(backend, "_clean_source_revision", lambda: "a" * 40)
 
     with backend._overlay("candidate") as (overlay, target):
         assert target.parent == overlay.parent
@@ -477,6 +478,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         )
         assert build_info["publishable"] is False
         assert len(build_info["candidate_fingerprint"]) == 12
+        assert build_info["source_revision"] == "a" * 40
         target = "aarch64-apple-darwin"
         backend._stage_selftest_fixture(overlay, target)
         selftest_manifest = json.loads(

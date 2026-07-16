@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import FrozenInstanceError
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -92,9 +93,24 @@ def test_resolved_total_reproduces_fully_summed_values() -> None:
         ),
         helicity_ids=("h0", "h1"),
         color_ids=("c0", "c1"),
-        accuracy="lc",
+        color_accuracy="lc",
     )
     assert resolved.total() == (10.0 + 0j, 26.0 + 0j)
+
+
+def test_resolved_decimal_total_does_not_use_ambient_context_precision() -> None:
+    large = Decimal("10000000000000000000000000000")
+    tiny = Decimal("0.0000000000000000000000000001")
+    resolved = ResolvedEvaluation(
+        values=(((large, tiny),),),
+        helicity_ids=("h0",),
+        color_ids=("c0", "c1"),
+        color_accuracy="lc",
+    )
+
+    assert resolved.total() == (
+        Decimal("10000000000000000000000000000.0000000000000000000000000001"),
+    )
 
 
 def test_process_physics_metadata_is_deeply_immutable() -> None:

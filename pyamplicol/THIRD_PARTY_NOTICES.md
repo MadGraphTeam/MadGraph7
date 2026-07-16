@@ -24,6 +24,19 @@ of pyAmpliCol's redistribution permission are recorded in
 Release artifacts must record the exact Symbolica package, Rust crate,
 serialization ABI, and source revision used to build them.
 
+## Developer-Only Legacy AmpliCol Oracle
+
+Contributors may opt into a pinned checkout of the original Fortran AmpliCol
+repository for independent numerical and performance validation. That checkout
+is not included in pyAmpliCol wheels or source distributions. The pinned
+revision contains no `LICENSE` or `COPYING` file, so its release-lock license
+field is deliberately `NOASSERTION`; this is not a grant or a claim about the
+upstream source's terms.
+
+The three checked-in diagnostic patch files were written for this pyAmpliCol
+project and are distributed under 0BSD. Applying those patches locally does
+not alter or replace whatever terms govern the upstream checkout.
+
 ## SymJIT
 
 SymJIT is a separate Rust dependency used by Symbolica's JIT functionality.

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, localcontext
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -29,6 +29,8 @@ _ComplexDecimal = tuple[Decimal, Decimal]
 _ZERO = Decimal(0)
 _ONE = Decimal(1)
 _TWO = Decimal(2)
+_MINIMUM_SYMBOLICA_ARBITRARY_PRECISION = 40
+_ARITHMETIC_GUARD_DIGITS = 8
 
 
 class _RuntimeState(TypedDict):
@@ -58,6 +60,46 @@ def _complex_mul(left: _ComplexDecimal, right: _ComplexDecimal) -> _ComplexDecim
     return (
         left[0] * right[0] - left[1] * right[1],
         left[0] * right[1] + left[1] * right[0],
+    )
+
+
+def _upcast_decimal(value: Decimal, precision: int) -> Decimal:
+    """Encode ``value`` with at least the precision requested from Symbolica.
+
+    Symbolica honors the precision carried by each input ``Decimal``.  Values
+    such as ``Decimal("500")`` otherwise enter an arbitrary-precision evaluator
+    with only three significant digits and can reduce the precision of an
+    entire instruction chain.  The extra zeroes intentionally do not invent
+    information; they implement pyAmpliCol's documented upcast of input
+    kinematics and intermediate stage values.
+    """
+
+    with localcontext() as context:
+        context.prec = max(precision, len(value.as_tuple().digits), 1) + 2
+        context.rounding = ROUND_HALF_EVEN
+        if value.is_zero():
+            return Decimal((value.as_tuple().sign, (0,), -precision))
+        return Decimal(format(value, f".{precision - 1}E"))
+
+
+def _upcast_complex_inputs(
+    values: Sequence[_ComplexDecimal], precision: int
+) -> tuple[_ComplexDecimal, ...]:
+    return tuple(
+        (
+            _upcast_decimal(real, precision),
+            _upcast_decimal(imaginary, precision),
+        )
+        for real, imaginary in values
+    )
+
+
+def _working_precision(requested_precision: int) -> int:
+    # Symbolica uses a binary64 shortcut at 32 decimal digits. Stay above that
+    # threshold for every request routed through the arbitrary-precision path.
+    return max(
+        requested_precision + _ARITHMETIC_GUARD_DIGITS,
+        _MINIMUM_SYMBOLICA_ARBITRARY_PRECISION,
     )
 
 
@@ -131,10 +173,13 @@ class _ExactEvaluator:
         values: Sequence[_ComplexDecimal],
         precision: int,
     ) -> tuple[_ComplexDecimal, ...]:
+        prepared_values = _upcast_complex_inputs(values, precision)
         outputs: list[_ComplexDecimal] = []
         for evaluator in self.chunks:
             try:
-                result = evaluator.evaluate_complex_with_prec(values, precision)
+                result = evaluator.evaluate_complex_with_prec(
+                    prepared_values, precision
+                )
             except Exception as exc:
                 raise EvaluationError(
                     f"Symbolica high-precision evaluator failed: {exc}"
@@ -198,10 +243,15 @@ class SymbolicaExactExecutor:
         color_flows: Sequence[str] | None,
         precision: int,
     ) -> ResolvedEvaluation:
-        if precision <= 0:
+        if isinstance(precision, bool) or not isinstance(precision, int):
             raise EvaluationError(
-                "precision must be a positive number of decimal digits"
+                "precision must be a positive integer number of decimal digits"
             )
+        if precision < 1:
+            raise EvaluationError(
+                "precision must be a positive integer number of decimal digits"
+            )
+        working_precision = _working_precision(precision)
         points = _prepare_points(momenta, self._physics, self._permutation)
         state_payload = _runtime_state(self._native_runtime)
         parameters = tuple(
@@ -213,9 +263,11 @@ class SymbolicaExactExecutor:
         )
         self._load_evaluators()
         with localcontext() as context:
-            context.prec = max(precision + 8, 32)
+            context.prec = working_precision
+            context.rounding = ROUND_HALF_EVEN
             amplitudes = tuple(
-                self._evaluate_point(point, parameters, precision) for point in points
+                self._evaluate_point(point, parameters, working_precision)
+                for point in points
             )
             values, helicity_ids, color_ids = _reduce_resolved(
                 amplitudes,
@@ -225,11 +277,18 @@ class SymbolicaExactExecutor:
                 helicities,
                 color_flows,
             )
+        with localcontext() as context:
+            context.prec = precision
+            context.rounding = ROUND_HALF_EVEN
+            values = tuple(
+                tuple(tuple(+entry for entry in colors) for colors in helicities)
+                for helicities in values
+            )
         return ResolvedEvaluation(
             values=values,
             helicity_ids=helicity_ids,
             color_ids=color_ids,
-            accuracy=cast(Any, str(self._physics["color_accuracy"])),
+            color_accuracy=cast(Any, str(self._physics["color_accuracy"])),
         )
 
     def _load_evaluators(self) -> None:

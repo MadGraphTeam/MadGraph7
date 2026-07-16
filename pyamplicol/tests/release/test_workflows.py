@@ -128,7 +128,13 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "retention-days: 90" in workflow
     assert "id-token: write" not in workflow
     assert "Full source validation gate" in workflow
-    assert "needs: [verify-release-tag, full-source-validation]" in workflow
+    assert (
+        "needs: [verify-release-tag, full-source-validation, "
+        "independent-physics-oracle]" in workflow
+    )
+    assert "Independent Fortran physics oracle" in workflow
+    assert "Rebuild and verify pinned Fortran evidence" in workflow
+    assert "ulimit -v 31457280" in workflow
     assert "retained-sdist:\n    needs: legal-release-gate" in workflow
     assert "source_commit: ${{ steps.tag.outputs.source_commit }}" in workflow
     assert "workflow_commit: ${{ steps.tag.outputs.workflow_commit }}" in workflow
@@ -185,6 +191,9 @@ def test_complete_source_gate_covers_every_required_suite_serially() -> None:
     assert "examples run builtin_sm_lc" in justfile
     assert "generation.mode=replace" in justfile
     assert justfile.count("PYAMPLICOL_BUILD_MODE=release just source-gate") == 2
+    assert "independent-physics-oracle:" in justfile
+    assert justfile.count("just independent-physics-oracle") == 2
+    assert "--prepare-checkout --jobs 2 --check-output" in justfile
 
 
 def test_publisher_is_manual_hash_checked_and_has_no_build_checkout() -> None:
@@ -205,6 +214,7 @@ def test_publisher_is_manual_hash_checked_and_has_no_build_checkout() -> None:
         "Verify signed release tag",
         "Native dependency legal gate",
         "Full source validation gate",
+        "Independent Fortran physics oracle",
         "Build retained source distribution",
         "macOS release wheel and native deployment (macos-arm64)",
         "macOS release wheel and native deployment (macos-x86_64)",
@@ -213,6 +223,7 @@ def test_publisher_is_manual_hash_checked_and_has_no_build_checkout() -> None:
     ):
         assert required_job in workflow
     assert "Run complete release source gate" in workflow
+    assert "Rebuild and verify pinned Fortran evidence" in workflow
     assert "sha256sum --check --strict SHA256SUMS" in workflow
     assert "actions/checkout" not in workflow
     assert "maturin" not in workflow

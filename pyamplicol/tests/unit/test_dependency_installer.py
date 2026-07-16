@@ -75,6 +75,7 @@ def test_legacy_oracle_patches_are_local_and_checksummed() -> None:
     assert [entry["path"] for entry in patches] == [
         "patches/legacy-amplicol/0001-build-color-probe-without-lhapdf.patch",
         "patches/legacy-amplicol/0002-report-complete-recursion-kinds.patch",
+        "patches/legacy-amplicol/0003-report-lc-row-partitions.patch",
     ]
     for entry in patches:
         patch = module.DEPENDENCIES / entry["path"]

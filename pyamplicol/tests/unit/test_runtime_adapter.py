@@ -165,7 +165,7 @@ class _ExactExecutor:
             values=(((Decimal("1.25"),),),),
             helicity_ids=("h0",),
             color_ids=(color_id,),
-            accuracy=accuracy,
+            color_accuracy=accuracy,
         )
 
 

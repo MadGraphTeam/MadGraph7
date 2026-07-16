@@ -47,9 +47,10 @@ evidence; they do not commit, push, or update shared release metadata.
 | SDK SBOM and release inventory | Lagrange + Main | Complete | The wheel carries Maturin's distribution SBOM plus a deterministic C-API CycloneDX SBOM exposed by `rusticol-config --sbom`; SDK metadata binds its hash, and source and isolated-deployment audits reject undeclared roots, legal files, schemas, resources, local paths, and unresolved Python dependencies | This commit |
 | Selector capability semantics | Hooke + Main | Complete | LC advertises helicity and physical color-flow selectors; NLC/full advertise helicity only while retaining the singleton contracted-color output axis. Python, Rust metadata validation, schemas, high-precision fallbacks, and integration expectations agree | Pending |
 | Trusted-loader requirements re-audit | Meitner + Main | Complete | Shipped direct f64 loading is the same `Config::default()` plus empty external-function map and `Application::load(...).seal()` sequence used by Symbolica. The installed-wheel deployment removes the license, blocks all Symbolica imports, and still passes the physics self-test | Pending |
-| Independent Fortran oracle bootstrap | Main | Complete | The optional pinned AmpliCol checkout receives two checksummed, non-physics patches: one removes an unnecessary LHAPDF link from the direct color probe and one extends recursion diagnostics. `just legacy-physics` independently reproduces six `d d~ > z(+g)` LC/NLC/full totals and every recorded nonzero helicity component with maximum relative difference below `9e-14` | Pending |
+| Independent Fortran oracle bootstrap | Main | Complete | The optional pinned AmpliCol checkout receives three checksummed, non-physics patches: one removes an unnecessary LHAPDF link, one extends recursion diagnostics, and one reports LC contraction-row diagnostics. The v1 replay remains byte-stable; the v2 path validates every physical helicity, resolves genuinely single-flow cases, and certifies multi-flow LC cases through per-helicity aggregates with stable repeated-particle identities and compiler-tolerant numeric replay | Pending |
 | Current-source validation audit | Confucius + Main | Complete | Source tests now build one fresh audited candidate wheel, stage only ignored native runtime/SDK resources, and use an external candidate-identity marker. This prevents stale site-packages code and candidate metadata from contaminating source tests or release sdists | Pending |
 | Expanded physics-ladder review | Pauli | Complete | The next fixture contract must record multiple generic and stress points, exact external-row identity, complete resolved axes and structural zeros, and full independent-oracle evidence. Multi-flow LC comparisons use per-helicity aggregates; legacy accuracy outputs are cumulative, and the pinned oracle cannot validate more than two quark lines | Pending |
+| Reference fixture v2 capture infrastructure | Main | Complete | Strict schemas and typed readers cover model-derived axes, exact decimal points, normalization, topology, canonical reduction partitions, whole-record evidence hashes, installed-candidate/source provenance, independent analytic and pinned-Fortran evidence, and manifest-last atomic publication; real revision-scoped capture remains the next step | This commit |
 
 ## Agent Handoff
 
@@ -70,10 +71,11 @@ commits that milestone.
 
 ## Current Critical Path
 
-1. Introduce fixture schema v2 before broadening the physics ladder: record at
-   least three generic points and one high-precision stress point, exact axes
-   and structural zeros, topology and coverage, decimal expectations, and
-   independent-oracle provenance for every substantive case.
+1. Capture and freeze the first revision-scoped fixture-v2 bundle: at least
+   three generic points and one high-precision stress point, exact axes and
+   structural zeros, topology and coverage, hashed reduction partitions,
+   decimal expectations, and independent-oracle provenance for every
+   substantive case.
 2. Generalize the pinned Fortran oracle to declarative cases, explicit process
    row identity, and multi-flow LC aggregation before adding charged-current,
    leptonic, two-quark-line, pure-gluon, top, and genuine LC/NLC/full hierarchy

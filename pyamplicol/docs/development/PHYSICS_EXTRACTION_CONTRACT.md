@@ -52,6 +52,9 @@ later, separately validated refactor.
   `(point, helicity, flow)` values; NLC/full exposes one contracted color
   component per helicity. Structural zeros remain exact and resolved members
   sum to the compatibility total.
+- A color-singlet LC axis may have an empty ordered color word. Every nonempty
+  LC word contains exactly once every external label whose model-derived color
+  representation is non-singlet.
 
 ## Model Determinism
 
@@ -90,17 +93,34 @@ Before the model/generation milestone is accepted it expands to:
 - two and three final gravitons;
 - reordered final states for permutation reuse.
 
-Use at least three deterministic generic points and one unstable
-high-precision point for each substantive row. Cross-language agreement
-checks one Rust core; release physics additionally requires pinned Fortran,
-analytic scalar, exact-color, and independent spin-2 oracles.
+Use at least three distinct deterministic generic points and one quantified
+unstable high-precision point for each substantive row. Each point records
+the external masses used for its on-shell check, and capture validates both
+four-momentum conservation and mass shells. Cross-language agreement checks
+one Rust core; release physics additionally requires pinned Fortran, analytic
+scalar, exact-color, and independent spin-2 oracles.
 
 Fixture schema v2 must retain decimal-string expectations per point rather
 than round-tripping high-precision values through binary64. It records complete
-helicity and color axes, every structural zero, topology and coverage,
-normalization inputs, model and dependency provenance, and the independent
-oracle used for each point. Fast gates may select one generic point, but the
-tracked evidence remains complete.
+helicity and color axes, every structural zero, topology and coverage, the
+complete reduction-group partition, normalization inputs, model and dependency
+provenance, and the independent oracle used for each point. Arithmetic
+precision, serialization width, and independently certified digits are
+distinct metadata; stored values are never claimed beyond the supporting
+oracle's certified accuracy. Fast gates may select one generic point from the
+complete fixture, but substantive tracked cases cannot weaken their declared
+physical axes. Each case hash covers its model dependencies, exact points,
+process, and the complete transitive source chain of any process alias.
+
+Completeness is not inferred from the emitted axes. Each process records the
+external UFO spin code, color representation, mass, and runtime label in model
+order. The strict reader reconstructs the physical helicity Cartesian product
+and the exact set of labels required in each LC word. Every normalized oracle
+record has a recomputable whole-record hash in addition to any raw-transcript
+digest. Each reduction plan has a separate canonical hash and must partition
+every nonzero physical helicity/color cell exactly once. The three fixture
+documents become readable only after the bundle-v1 hash manifest is published
+last.
 
 The pinned Fortran adapter follows these additional rules:
 
@@ -108,10 +128,18 @@ The pinned Fortran adapter follows these additional rules:
   checkout remains read-only;
 - prefer an exact ordered external-PDG row, and persist the selected group,
   integral, row PDGs, color order, source permutation, and match count;
-- compare a multi-flow LC case to the sum of built-in flows for each physical
-  helicity while retaining individual flows as diagnostics;
+- identify repeated-PDG legs with stable external IDs and compare every
+  physical helicity. A single-flow LC case may be resolved directly; for
+  multiple flows the row-wise quadratic-contraction partitions are diagnostic
+  only, so the independent Fortran evidence certifies the per-helicity
+  aggregate rather than mislabeling those rows as physical resolved cells;
+- require every resolved or helicity-aggregate observation of a structural
+  zero to be exactly zero, independent of numerical tolerances;
 - treat the probe's LC, NLC, and full outputs as cumulative contractions, not
   additive components;
+- compare fresh compiler output numerically with the tracked tolerances while
+  keeping process identity, axes, command, dependency provenance, structural
+  zeros, and capture metadata exact;
 - do not require the legacy oracle for three-quark-line cases, which exceed
   the pinned implementation's supported process class.
 

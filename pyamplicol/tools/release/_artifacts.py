@@ -2333,6 +2333,10 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
                 "src/pyamplicol/_build_info.json",
             }
             or ("MANIFEST" in Path(name).name and name.endswith(".toml"))
+            or (
+                name.startswith("tests/fixtures/reference/")
+                and name.endswith(".json")
+            )
             or name.startswith(".cargo/")
         }
         for name in sorted(scan_names):

@@ -4,6 +4,8 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 import pyamplicol.api.services as service_module
 from pyamplicol.api import (
     BenchmarkResult,
@@ -169,6 +171,26 @@ def test_runtime_accepts_typed_physics_selectors(
     assert backend.selectors["color_flows"] == ("c0",)
 
 
+@pytest.mark.parametrize("precision", (True, False, 1.5, "32"))
+def test_runtime_rejects_non_integer_precision(precision: object) -> None:
+    runtime = Runtime(_RuntimeBackend())
+
+    with pytest.raises(TypeError, match="positive integer"):
+        runtime.evaluate([], precision=precision)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="positive integer"):
+        runtime.evaluate_resolved([], precision=precision)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("precision", (0, -1))
+def test_runtime_rejects_non_positive_precision(precision: int) -> None:
+    runtime = Runtime(_RuntimeBackend())
+
+    with pytest.raises(ValueError, match="positive integer"):
+        runtime.evaluate([], precision=precision)
+    with pytest.raises(ValueError, match="positive integer"):
+        runtime.evaluate_resolved([], precision=precision)
+
+
 def test_resolved_evaluation_preserves_decimal_precision() -> None:
     resolved = ResolvedEvaluation(
         (((Decimal("1.25"), Decimal("2.75")),),),
@@ -176,3 +198,4 @@ def test_resolved_evaluation_preserves_decimal_precision() -> None:
         ("c0", "c1"),
     )
     assert resolved.total() == (Decimal("4.00"),)
+    assert resolved.color_accuracy == resolved.accuracy == "lc"

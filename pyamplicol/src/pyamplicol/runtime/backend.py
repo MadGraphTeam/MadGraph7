@@ -249,7 +249,7 @@ class RusticolRuntimeBackend:
             values=values,
             helicity_ids=tuple(str(value) for value in native.helicity_ids),
             color_ids=tuple(str(value) for value in native.color_ids),
-            accuracy=cast(_Accuracy, str(native.color_accuracy)),
+            color_accuracy=cast(_Accuracy, str(native.color_accuracy)),
         )
 
     def _exact(self) -> SymbolicaExactExecutor:

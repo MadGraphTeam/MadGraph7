@@ -178,7 +178,11 @@ not import Symbolica or execute UFO Python modules.
   Loading and evaluating that artifact through Rusticol does not import
   Symbolica, require a Symbolica license, or inherit restricted-mode generation
   limits. Arbitrary-precision evaluation and non-JIT evaluator artifacts remain
-  Symbolica-backed.
+  Symbolica-backed. Decimal kinematics preserve their supplied digits; values
+  originating as binary64 are upcast with trailing zeros, not treated as if
+  additional input information were available. The requested decimal precision
+  controls arithmetic and output rounding; it is not a certification of that
+  many physically accurate digits.
 - `generation.mode` is `"error"`, `"append"`, or `"replace"`. Schema-v3
   generation writes transactionally and validates payload hashes and runtime
   metadata before reporting success.

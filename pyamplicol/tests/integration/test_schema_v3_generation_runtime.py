@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import warnings
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,10 @@ import pytest
 from pyamplicol import Generator, ModelSource, Runtime
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.config import ColorConfig, ModelConfig, RunConfig
+from tools.developer.analytic_oracles import (
+    scalar_contact_2to2,
+    scalar_gravity_2to2,
+)
 
 REFERENCE = (
     Path(__file__).resolve().parents[1] / "fixtures" / "reference" / "physics-v1.json"
@@ -205,25 +210,60 @@ def test_current_source_external_models_match_reference(
             assert actual.real == pytest.approx(expected_value, rel=1.0e-12)
             assert actual.imag == pytest.approx(0.0, abs=1.0e-15)
 
-    precise = runtime.evaluate_resolved(momenta, precision=32)
-    assert precise.helicity_ids == resolved.helicity_ids
-    assert precise.color_ids == resolved.color_ids
-    for jit_helicity, precise_helicity in zip(
-        resolved.values[0], precise.values[0], strict=True
-    ):
-        for jit_value, precise_value in zip(
-            jit_helicity, precise_helicity, strict=True
+    precise_by_precision = {}
+    for precision in (32, 80):
+        precise = runtime.evaluate_resolved(momenta, precision=precision)
+        precise_by_precision[precision] = precise
+        assert precise.helicity_ids == resolved.helicity_ids
+        assert precise.color_ids == resolved.color_ids
+        for jit_helicity, precise_helicity in zip(
+            resolved.values[0], precise.values[0], strict=True
         ):
-            assert complex(precise_value).real == pytest.approx(
-                jit_value.real,
-                rel=1.0e-12,
-                abs=1.0e-15,
-            )
-            assert complex(precise_value).imag == pytest.approx(
-                jit_value.imag,
-                rel=1.0e-12,
-                abs=1.0e-15,
-            )
+            for jit_value, precise_value in zip(
+                jit_helicity, precise_helicity, strict=True
+            ):
+                assert complex(precise_value).real == pytest.approx(
+                    jit_value.real,
+                    rel=1.0e-12,
+                    abs=1.0e-15,
+                )
+                assert complex(precise_value).imag == pytest.approx(
+                    jit_value.imag,
+                    rel=1.0e-12,
+                    abs=1.0e-15,
+                )
+
+    low_precision = precise_by_precision[32]
+    high_precision = precise_by_precision[80]
+    for low_helicity, high_helicity in zip(
+        low_precision.values[0], high_precision.values[0], strict=True
+    ):
+        for low_value, high_value in zip(low_helicity, high_helicity, strict=True):
+            assert isinstance(low_value, Decimal)
+            assert isinstance(high_value, Decimal)
+            assert abs(low_value - high_value) <= max(
+                abs(high_value), Decimal(1)
+            ) * Decimal("1e-28")
+
+    if case_name == "scalars_2to2_lc":
+        analytic = scalar_contact_2to2()
+    else:
+        analytic_momenta = tuple(
+            tuple(Decimal(str(component)) for component in vector)
+            for vector in reference_momenta[0]
+        )
+        analytic = scalar_gravity_2to2(analytic_momenta)
+    assert high_precision.helicity_ids == analytic.helicity_ids
+    precise_total = high_precision.total()[0]
+    assert isinstance(precise_total, Decimal)
+    assert abs(precise_total - analytic.total) <= max(
+        abs(analytic.total), Decimal(1)
+    ) * Decimal("1e-14")
+    for row, expected in zip(high_precision.values[0], analytic.resolved, strict=True):
+        assert isinstance(row[0], Decimal)
+        assert abs(row[0] - expected) <= max(abs(expected), Decimal(1)) * Decimal(
+            "1e-14"
+        )
 
 
 @pytest.mark.parametrize("source_kind", tuple(EXTERNAL_SM_SOURCES))

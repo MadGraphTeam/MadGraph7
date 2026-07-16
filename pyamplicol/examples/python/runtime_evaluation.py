@@ -57,7 +57,7 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "accuracy": resolved.accuracy,
+                "color_accuracy": resolved.color_accuracy,
                 "helicity_ids": resolved.helicity_ids,
                 "color_flow_ids": resolved.color_flow_ids,
                 "totals": [_json_complex(value) for value in totals],

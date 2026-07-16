@@ -1,0 +1,53 @@
+diff --git a/amplicol_color_probe.f03 b/amplicol_color_probe.f03
+--- a/amplicol_color_probe.f03
++++ b/amplicol_color_probe.f03
+@@ -216,6 +216,9 @@ program amplicol_color_probe
+        matrix2(1)/dble(points),matrix2(2)/dble(points),matrix2(3)/dble(points)
+   write (*,'(a,1x,a,1x,i0,1x,i0,1x,es24.16)') 'AMPICOL_COLOR_PROBE_VALUE',&
+        trim(color_name),igroup,iint,norm_factor*matrix2(iacc_request)/dble(points)
++  if (fixed_helicity .and. iacc_request.eq.1) then
++     call print_lc_flow_contributions()
++  endif
+   write (*,'(a)') repeat('-',78)
+   write (*,'(a)') 'Timing summary                           seconds    percent  note'
+   write (*,'(a)') repeat('-',78)
+@@ -409,6 +412,39 @@ contains
+     enddo
+   end subroutine accumulate_colour
+ 
++  subroutine print_lc_flow_contributions()
++    implicit none
++    integer :: row, val, pos, col, first_pos, last_pos, word_index
++    real(kind=8) :: contribution, contribution_sum
++    complex(kind=8) :: contracted_amplitude, column_amplitude
++
++    contribution_sum = 0d0
++    do row=1,amp%nColOrd
++       contracted_amplitude = (0d0,0d0)
++       do val=1,amp%n_col_vals(1)
++          column_amplitude = (0d0,0d0)
++          first_pos = amp%row_index(row-1,val,1)+1
++          last_pos = amp%row_index(row,val,1)
++          do pos=first_pos,last_pos
++             col = amp%col_index(amp%i_col_i(val,1)+pos)
++             column_amplitude = column_amplitude + amp%amps(col)
++          enddo
++          contracted_amplitude = contracted_amplitude + &
++               column_amplitude*amp%diff_col_vals(val,1)
++       enddo
++       contribution = norm_factor*dble(&
++            contracted_amplitude*conjg(amp%amps(row)))
++       contribution_sum = contribution_sum + contribution
++       write (*,'(a,1x,i0,1x,es24.16)') &
++            'AMPICOL_COLOR_PROBE_FLOW_VALUE',row,contribution
++       write (*,'(a,1x,i0,1x,*(i0,1x))') &
++            'AMPICOL_COLOR_PROBE_FLOW_PERM',row,&
++            (amp%perm(word_index,row),word_index=1,n-amp%n_sing(1))
++    enddo
++    write (*,'(a,1x,es24.16)') &
++         'AMPICOL_COLOR_PROBE_FLOW_SUM',contribution_sum
++  end subroutine print_lc_flow_contributions
++
+   subroutine print_color_matrix()
+     implicit none
+     integer :: iacc_loop, row, val, pos, col, first_pos, last_pos, word_index

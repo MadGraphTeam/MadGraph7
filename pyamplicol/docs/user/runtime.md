@@ -58,7 +58,16 @@ advertise helicity selection alone; their singleton contracted-color axis is an
 output descriptor, and passing `color_flows` is an error. Precision 16 uses the
 native Rusticol path. Other Python precision requests lazily load the retained
 evaluator states with Symbolica's own `Evaluator.load()` API and return decimal
-results. The C++ and Fortran APIs remain f64-only.
+results. Decimal kinematics retain their supplied digits. Binary64-origin
+kinematics and runtime model values are padded with trailing zeros to the
+requested precision; this stabilizes the higher-precision replay without
+claiming to reconstruct information absent from the input. Stage inputs are
+re-padded after every evaluator boundary. Evaluation uses guard digits and
+round-to-nearest-even before publishing the requested number of decimal digits;
+that number controls arithmetic precision and is not a claim of certified
+physical accuracy. Resolved Decimal components are summed exactly rather than
+through Python's ambient Decimal context. The C++ and Fortran APIs remain
+f64-only.
 
 Every artifact records the evaluator capabilities required to load it. The
 default JIT backend stores a self-contained SymJIT application under

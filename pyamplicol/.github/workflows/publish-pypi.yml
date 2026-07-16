@@ -75,6 +75,7 @@ jobs:
               "Verify signed release tag",
               "Native dependency legal gate",
               "Full source validation gate",
+              "Independent Fortran physics oracle",
               "Build retained source distribution",
               "macOS release wheel and native deployment (macos-arm64)",
               "macOS release wheel and native deployment (macos-x86_64)",
@@ -111,6 +112,14 @@ jobs:
           ]
           require(len(source_steps) == 1, "source validation step is not unique")
           require(source_steps[0]["conclusion"] == "success", "source validation step did not succeed")
+
+          oracle_gate = jobs_by_name["Independent Fortran physics oracle"][0]
+          oracle_steps = [
+              step for step in oracle_gate["steps"]
+              if step["name"] == "Rebuild and verify pinned Fortran evidence"
+          ]
+          require(len(oracle_steps) == 1, "independent physics-oracle step is not unique")
+          require(oracle_steps[0]["conclusion"] == "success", "independent physics-oracle step did not succeed")
           PY
       - name: Download the previously validated bundle
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0

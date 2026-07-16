@@ -36,6 +36,33 @@ def _freeze_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
     return frozen
 
 
+def _exact_decimal_sum(values: tuple[Decimal, ...]) -> Decimal:
+    if not values:
+        return Decimal(0)
+    if not all(value.is_finite() for value in values):
+        return sum(values, start=Decimal(0))
+
+    def finite_exponent(value: Decimal) -> int:
+        exponent = value.as_tuple().exponent
+        if not isinstance(exponent, int):
+            raise ValueError("finite Decimal has a non-integral exponent")
+        return exponent
+
+    common_exponent = min(finite_exponent(value) for value in values)
+    total = 0
+    for value in values:
+        sign, digits, _ = value.as_tuple()
+        exponent = finite_exponent(value)
+        coefficient = int("".join(str(digit) for digit in digits) or "0")
+        if sign:
+            coefficient = -coefficient
+        total += coefficient * 10 ** (exponent - common_exponent)
+    if total == 0:
+        return Decimal(0)
+    digits = tuple(int(character) for character in str(abs(total)))
+    return Decimal((int(total < 0), digits, common_exponent))
+
+
 @dataclass(frozen=True, slots=True)
 class ExternalParticle:
     index: int
@@ -362,7 +389,7 @@ class ResolvedEvaluation:
     values: tuple[tuple[tuple[complex | Decimal, ...], ...], ...]
     helicity_ids: tuple[str, ...]
     color_ids: tuple[str, ...]
-    accuracy: Literal["lc", "nlc", "full"] = "lc"
+    color_accuracy: Literal["lc", "nlc", "full"] = "lc"
 
     def __post_init__(self) -> None:
         values = tuple(
@@ -378,7 +405,7 @@ class ResolvedEvaluation:
         helicity_ids = tuple(self.helicity_ids)
         color_ids = tuple(self.color_ids)
         expected_colors = len(color_ids)
-        if self.accuracy != "lc" and expected_colors != 1:
+        if self.color_accuracy != "lc" and expected_colors != 1:
             raise ValueError("NLC/full resolved output has one contracted color axis")
         for point in values:
             if len(point) != len(helicity_ids):
@@ -389,15 +416,21 @@ class ResolvedEvaluation:
                 raise ValueError(
                     "resolved values do not match the contracted color dimension"
                 )
-        if self.accuracy not in ("lc", "nlc", "full"):
-            raise ValueError("accuracy must be 'lc', 'nlc', or 'full'")
+        if self.color_accuracy not in ("lc", "nlc", "full"):
+            raise ValueError("color_accuracy must be 'lc', 'nlc', or 'full'")
         object.__setattr__(self, "values", values)
         object.__setattr__(self, "helicity_ids", helicity_ids)
         object.__setattr__(self, "color_ids", color_ids)
 
     @property
     def color_flow_ids(self) -> tuple[str, ...]:
-        return self.color_ids if self.accuracy == "lc" else ()
+        return self.color_ids if self.color_accuracy == "lc" else ()
+
+    @property
+    def accuracy(self) -> Literal["lc", "nlc", "full"]:
+        """Compatibility alias for :attr:`color_accuracy`."""
+
+        return self.color_accuracy
 
     @property
     def shape(self) -> tuple[int, int, int]:
@@ -411,10 +444,7 @@ class ResolvedEvaluation:
                 if not all(isinstance(entry, Decimal) for entry in entries):
                     raise TypeError("resolved values must not mix Decimal and complex")
                 totals.append(
-                    sum(
-                        (cast(Decimal, entry) for entry in entries),
-                        start=Decimal(0),
-                    )
+                    _exact_decimal_sum(tuple(cast(Decimal, entry) for entry in entries))
                 )
             else:
                 totals.append(sum((complex(entry) for entry in entries), start=0j))

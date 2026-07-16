@@ -787,12 +787,14 @@ def _mark_candidate(overlay: Path) -> None:
 
     package = overlay / "src" / "pyamplicol"
     package.mkdir(parents=True, exist_ok=True)
+    source_revision = _clean_source_revision()
     (package / "_build_info.json").write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "publishable": False,
                 "candidate_fingerprint": digest,
+                "source_revision": source_revision,
                 "version": f"0.1.0.dev0+candidate.{digest}",
             },
             indent=2,
@@ -801,6 +803,56 @@ def _mark_candidate(overlay: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def _clean_source_revision() -> str | None:
+    """Return the exact source revision only for a clean Git checkout.
+
+    Candidate wheels remain useful for ordinary dirty-tree development, where
+    this field is ``null``. Strict reference capture rejects those wheels and
+    therefore cannot accidentally certify uncommitted or ambient source.
+    """
+
+    if not (ROOT / ".git").exists():
+        return None
+    environment = _clean_environment()
+    try:
+        top_level = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=ROOT,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if Path(top_level).resolve() != ROOT.resolve():
+            return None
+        status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            ],
+            cwd=ROOT,
+            env=environment,
+            check=True,
+            capture_output=True,
+        ).stdout
+        if status:
+            return None
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return revision if re.fullmatch(r"[a-f0-9]{40}", revision) else None
 
 
 def _rewrite_candidate_symjit_requirement(overlay: Path) -> None:

@@ -89,9 +89,34 @@ jobs:
       - name: Run complete release source gate
         run: PYTHON="$(command -v python)" just source-gate
 
+  independent-physics-oracle:
+    name: Independent Fortran physics oracle
+    needs: verify-release-tag
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.verify-release-tag.outputs.source_commit }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+      - name: Install the independent oracle toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gfortran make
+      - name: Rebuild and verify pinned Fortran evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -v 31457280
+          python tools/developer/legacy_amplicol.py \
+            --prepare-checkout \
+            --jobs 2 \
+            --check-output tests/fixtures/reference/legacy-fortran-v1.json
+
   legal-release-gate:
     name: Native dependency legal gate
-    needs: [verify-release-tag, full-source-validation]
+    needs: [verify-release-tag, full-source-validation, independent-physics-oracle]
     runs-on: ubuntu-24.04
     env:
       CARGO_HOME: ${{ runner.temp }}/pyamplicol-legal-cargo

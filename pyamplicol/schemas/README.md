@@ -7,6 +7,19 @@ generator, Rusticol, the native SDK, and installed-package self-tests.
   artifact accepted by pyAmpliCol 0.1.
 - `runtime-physics-v1.schema.json` describes public particles, helicities,
   color components, reductions, parameters, and selectors.
+- `reference-physics-v2.schema.json` is the repository/sdist-only contract for
+  exact decimal physics baselines, complete resolved axes, structural zeros,
+  model-derived external spin/color/mass metadata, topology, canonical
+  reduction-group mappings, normalization, payload hashes, and capture
+  provenance.
+- `reference-oracle-evidence-v2.schema.json` records independent analytic or
+  pinned-Fortran evidence. Evidence can certify resolved cells, per-helicity
+  aggregates, or totals according to the oracle's actual semantics; it must
+  not promote diagnostic contraction partitions into physical color flows.
+  This is a developer validation format, not a runtime artifact format.
+- `reference-fixture-bundle-v1.schema.json` is the final commit marker for a
+  captured fixture and its evidence documents. It names and hashes every JSON
+  member; readers reject data files until this manifest is present and valid.
 
 Evaluator plans remain private payloads. The top-level manifest nevertheless
 records their canonical required runtime capabilities so a loader can reject

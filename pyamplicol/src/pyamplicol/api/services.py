@@ -161,6 +161,16 @@ def _validate_progress(progress: ProgressSink | None) -> None:
         raise TypeError("progress must implement ProgressSink.emit(event)")
 
 
+def _validate_precision(precision: int) -> int:
+    if isinstance(precision, bool) or not isinstance(precision, int):
+        raise TypeError("precision must be a positive integer number of decimal digits")
+    if precision < 1:
+        raise ValueError(
+            "precision must be a positive integer number of decimal digits"
+        )
+    return precision
+
+
 def _selector_ids(
     values: Sequence[str | HelicityConfiguration | ColorFlow] | None,
     *,
@@ -289,6 +299,7 @@ class Runtime:
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int = 16,
     ) -> tuple[complex | Decimal, ...]:
+        precision = _validate_precision(precision)
         values = self._backend.evaluate(
             momenta,
             helicities=_selector_ids(
@@ -330,6 +341,7 @@ class Runtime:
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int = 16,
     ) -> ResolvedEvaluation:
+        precision = _validate_precision(precision)
         result = self._backend.evaluate_resolved(
             momenta,
             helicities=_selector_ids(

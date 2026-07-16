@@ -47,6 +47,15 @@ source-runtime:
 legacy-physics:
     {{python}} tools/developer/legacy_amplicol.py --jobs 5
 
+legacy-physics-verify:
+    {{python}} tools/developer/legacy_amplicol.py --jobs 5 --check-output tests/fixtures/reference/legacy-fortran-v1.json
+
+# Release-facing replay of the pinned independent physics evidence. The CI job
+# additionally applies a 30 GiB process limit; local milestone runs invoke this
+# recipe through the repository-external memory watchdog.
+independent-physics-oracle:
+    {{python}} tools/developer/legacy_amplicol.py --prepare-checkout --jobs 2 --check-output tests/fixtures/reference/legacy-fortran-v1.json
+
 installed-smoke:
     PYTHONPATH="$PWD/src" {{python}} -m pyamplicol.selftest
     PYTHONPATH="$PWD/src" {{python}} -m pyamplicol self-test --format json
@@ -116,10 +125,12 @@ test-deployment:
 
 release-artifacts:
     PYAMPLICOL_BUILD_MODE=release just source-gate
+    just independent-physics-oracle
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/check_legal_inventory.py --mode release
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/build_release_artifacts.py
 
 publish-dry-run:
     PYAMPLICOL_BUILD_MODE=release just source-gate
+    just independent-physics-oracle
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/check_legal_inventory.py --mode release
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/publish_dry_run.py

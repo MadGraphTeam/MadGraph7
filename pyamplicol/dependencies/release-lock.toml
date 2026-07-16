@@ -134,6 +134,9 @@ release_status = "developer-build-input-only"
 source_url = "git@github.com:rikkert-frederix/AmpliCol.git"
 revision = "643bc6f99d7b2249af0a85204768df243e612411"
 release_status = "developer-only"
+license = "NOASSERTION"
+redistributed = false
+license_evidence = "No LICENSE or COPYING file exists at the pinned revision"
 
 [[patches]]
 dependency = "symjit"
@@ -189,3 +192,8 @@ sha256 = "b6e26676a36c7503a21fddbab5760b7a4f002888b497ce9ff40c496181a67062"
 dependency = "legacy-amplicol"
 path = "patches/legacy-amplicol/0002-report-complete-recursion-kinds.patch"
 sha256 = "83558c260a9e07bfbd2d2f95aa8a8f9aa82bbebc5624e24cc776d17705b4ad85"
+
+[[patches]]
+dependency = "legacy-amplicol"
+path = "patches/legacy-amplicol/0003-report-lc-row-partitions.patch"
+sha256 = "b80413fe29b9133cfc7dd568979716d365b05a776076879c79d242fc69fc75a2"

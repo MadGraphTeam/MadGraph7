@@ -1272,6 +1272,18 @@ def test_sdist_candidate_identity_and_manifest_path_scan(tmp_path: Path) -> None
     with pytest.raises(ArtifactError, match="direct URL or path"):
         audit_sdist(direct, mode="release")
 
+    direct.unlink()
+    fixture_leak = _sdist(
+        tmp_path,
+        extra_files={
+            "tests/fixtures/reference/physics-v1.json": (
+                b'{"capture_root":"/Users/build/private-checkout"}\n'
+            )
+        },
+    )
+    with pytest.raises(ArtifactError, match="non-relocatable"):
+        audit_sdist(fixture_leak, mode="release")
+
 
 def test_sdist_rejects_unmanifested_source_files(tmp_path: Path) -> None:
     sdist = _sdist(

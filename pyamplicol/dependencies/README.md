@@ -27,9 +27,21 @@ their declared external defaults. It is applied locally to the pinned public
 revision; contributor setup never depends on an unpublished upstream branch.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
-only as an independent validation and benchmarking reference. Two narrow,
-checksummed patches remove the unnecessary LHAPDF link from its direct color
-probe and expose complete recursion-kind diagnostics. They do not modify
+only as an independent validation and benchmarking reference. Three narrow,
+checksummed diagnostic patches remove the unnecessary LHAPDF link from its
+direct color probe and expose complete recursion-kind diagnostics. A third
+checksummed diagnostic patch reports each LC contraction-row partition. This
+resolves the physical color component only for a genuinely single-flow case;
+multi-flow fixtures use the rows only to verify the complete per-helicity
+aggregate. None modifies
 amplitude physics. `just legacy-physics` builds that probe and checks the
-tracked low-multiplicity LC/NLC/full fixture, including every recorded
-nonzero helicity component, against the pinned Fortran implementation.
+tracked low-multiplicity LC/NLC/full fixture, including every physical
+helicity and every independently resolvable color component, against the
+pinned Fortran implementation.
+
+The pinned upstream revision contains no `LICENSE` or `COPYING` file, so the
+release lock records its license as `NOASSERTION`. The checkout is never
+redistributed in a wheel or sdist. The three pyAmpliCol-authored diagnostic
+patches are part of this 0BSD source distribution; that does not assert or
+replace a license for the upstream Fortran source to which a developer applies
+them locally.
