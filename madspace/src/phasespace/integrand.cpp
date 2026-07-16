@@ -29,7 +29,8 @@ Integrand::Integrand(
     const nested_vector2<std::size_t>& active_flavors,
     const std::vector<std::size_t>& flavor_remap,
     const std::vector<double>& flavor_factors,
-    const std::vector<bool>& flavor_mirror
+    const std::vector<bool>& flavor_mirror,
+    const std::vector<me_int_t>& diagram_indices
 ) :
     FunctionGenerator(
         "Integrand",
@@ -132,7 +133,8 @@ Integrand::Integrand(
         std::any_of(flavor_mirror.begin(), flavor_mirror.end(), std::identity{})
     ),
     _flavor_remap(flavor_remap.begin(), flavor_remap.end()),
-    _flavor_factors(flavor_factors) {
+    _flavor_factors(flavor_factors),
+    _diagram_indices(diagram_indices.begin(), diagram_indices.end()) {
     if (pdf_grid) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
@@ -632,7 +634,14 @@ NamedVector<Value> Integrand::build_common_part(
         std::find(me_inputs.begin(), me_inputs.end(), MatrixElement::fixp2_channel_in) !=
         me_inputs.end();
     if (me_wants_fixp2_channel) {
-        xs_args.push_back(fb.batch_gather(indices_acc, args.at("chan_index")));
+        // The ME's channelId gate (m_ij/virtuality override) is keyed on MG5 diagram
+        // numbers, NOT on the internal channel/symfact index that chan_index carries.
+        // Map the sampled permutation (chan_index_in_group) to its diagram number via the
+        // parallel _diagram_indices table; routing chan_index here selects the wrong
+        // diagram's propagators (they disagree for almost every channel).
+        Value diagram_index =
+            fb.gather_int(args.at("chan_index_in_group"), _diagram_indices);
+        xs_args.push_back(fb.batch_gather(indices_acc, diagram_index));
     }
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);

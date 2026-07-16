@@ -60,7 +60,8 @@ public:
         const nested_vector2<std::size_t>& active_flavors = {},
         const std::vector<std::size_t>& flavor_remap = {},
         const std::vector<double>& flavor_factors = {},
-        const std::vector<bool>& flavor_mirror = {}
+        const std::vector<bool>& flavor_mirror = {},
+        const std::vector<me_int_t>& diagram_indices = {}
     );
     std::size_t particle_count() const { return _mapping.particle_count(); }
     bool madnis_training() const { return _madnis_training; }
@@ -137,6 +138,10 @@ private:
     std::vector<me_int_t> _flavor_remap;
     std::vector<double> _flavor_factors;
     std::vector<me_int_t> _flavor_mirror;
+    // MG5 diagram number (0-based) per sampled permutation, parallel to _channel_indices;
+    // routed to the ME as UMAMI_IN_FIXP2_CHANNEL so the m_ij/virtuality gate (keyed on
+    // diagram numbers) selects the right propagators.
+    std::vector<me_int_t> _diagram_indices;
     bool _has_mirror;
     NamedVector<Type> _channel_part_ret_types;
 

@@ -1241,7 +1241,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<double>&,
-                const std::vector<bool>&>(),
+                const std::vector<bool>&,
+                const std::vector<me_int_t>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -1262,7 +1263,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("active_flavors") = nested_vector2<std::size_t>{},
             py::arg("flavor_remap") = std::vector<std::size_t>{},
             py::arg("flavor_factors") = std::vector<double>{},
-            py::arg("flavor_mirror") = std::vector<bool>{}
+            py::arg("flavor_mirror") = std::vector<bool>{},
+            py::arg("diagram_indices") = std::vector<me_int_t>{}
         )
         .def("particle_count", &Integrand::particle_count)
         .def("madnis_training", &Integrand::madnis_training)

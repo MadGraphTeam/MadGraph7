@@ -111,6 +111,9 @@ class Channel:
     name: str
     active_flavors: list[int]
     event_generator: ms.ChannelEventGenerator | None = None
+    # MG5 diagram number (0-based) per sampled permutation, parallel to the channel's
+    # permutation list; routed to the ME so the virtuality/m_ij gate picks the right diagram.
+    diagram_indices: list[int] | None = None
 
 
 @dataclass
@@ -1142,8 +1145,8 @@ class MadgraphSubprocess:
         t_channel_mode = self.t_channel_mode(
             self.process.run_card["phasespace"]["t_channel"]
         )
-        for channel_id, (chan_topologies, chan_permutations, chan_indices, active_flavors) in enumerate(zip(
-            topologies, permutations, channel_weight_indices, all_active_flavors
+        for channel_id, (chan_topologies, chan_permutations, chan_indices, chan_diagram_indices, active_flavors) in enumerate(zip(
+            topologies, permutations, channel_weight_indices, diagram_indices, all_active_flavors
         )):
             topo_count = len(chan_topologies)
             for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
@@ -1174,6 +1177,7 @@ class MadgraphSubprocess:
                     channel_weight_indices = indices,
                     name = f"{channel_id}",
                     active_flavors = active_flavors,
+                    diagram_indices = chan_diagram_indices,
                 ))
 
         chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
@@ -1283,6 +1287,7 @@ class MadgraphSubprocess:
                 name = channel.name,
                 active_flavors = channel.active_flavors,
                 event_generator = channel.event_generator,
+                diagram_indices = channel.diagram_indices,
             ))
 
         flat_channel = flat_phasespace.channels[0]
@@ -1374,6 +1379,7 @@ class MadgraphSubprocess:
                 channel_weight_indices = channel.channel_weight_indices,
                 name = channel.name,
                 active_flavors = channel.active_flavors,
+                diagram_indices = channel.diagram_indices,
             ))
 
         return PhaseSpace(
@@ -1541,6 +1547,7 @@ class MadgraphSubprocess:
                 flavor_remap,
                 flavor_factors,
                 flavor_mirror,
+                channel.diagram_indices or [],
             ))
         #print(integrands[0].function())
         #for i in integrands: print(i.function())
