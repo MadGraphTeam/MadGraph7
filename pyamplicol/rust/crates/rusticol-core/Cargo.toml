@@ -10,12 +10,14 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-default = ["f64-symjit"]
+default = ["f64-compiled", "f64-symjit"]
+f64-compiled = ["dep:libloading", "dep:num-complex"]
 f64-symjit = ["dep:num-complex", "dep:symjit"]
 symbolica-runtime = ["dep:symbolica"]
 
 [dependencies]
 bincode.workspace = true
+libloading = { version = "0.9", optional = true }
 num-complex = { version = "0.4", optional = true }
 serde.workspace = true
 serde_json.workspace = true

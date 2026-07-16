@@ -15,5 +15,5 @@ name = "rusticol_capi"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-symjit"] }
+rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-compiled", "f64-symjit"] }
 serde_json.workspace = true

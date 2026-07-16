@@ -796,6 +796,7 @@ name = "rusticol-core"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "libloading",
  "num-complex",
  "serde",
  "serde_json",

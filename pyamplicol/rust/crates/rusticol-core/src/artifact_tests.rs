@@ -1064,7 +1064,11 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
     validate_manifest(&parsed).expect("mixed process capability union validates");
 }
 
-#[cfg(all(feature = "f64-symjit", not(feature = "symbolica-runtime")))]
+#[cfg(all(
+    feature = "f64-symjit",
+    not(feature = "f64-compiled"),
+    not(feature = "symbolica-runtime")
+))]
 #[test]
 fn selected_unsupported_process_capability_preflights_before_payloads() {
     let mut artifact = TestArtifact::new();
@@ -1099,7 +1103,11 @@ fn mixed_backend_process_set_loads_selected_direct_symjit_process() {
     assert_eq!(runtime.metadata().external_pdg_order, vec![1, -1, 22]);
 }
 
-#[cfg(all(feature = "f64-symjit", not(feature = "symbolica-runtime")))]
+#[cfg(all(
+    feature = "f64-symjit",
+    not(feature = "f64-compiled"),
+    not(feature = "symbolica-runtime")
+))]
 #[test]
 fn mixed_backend_process_set_rejects_unsupported_selection_before_tampered_payload() {
     let artifact = mixed_backend_runtime_artifact();

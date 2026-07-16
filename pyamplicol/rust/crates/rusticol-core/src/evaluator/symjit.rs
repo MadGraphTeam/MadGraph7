@@ -424,14 +424,28 @@ mod tests {
 
     #[cfg(not(feature = "symbolica-runtime"))]
     #[test]
-    fn unsupported_symbolica_evaluators_are_rejected_before_payload_access() {
+    fn unsupported_legacy_jit_evaluator_is_rejected_before_payload_access() {
+        let manifest = EvaluatorManifest::Jit {
+            runtime_capability: SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY.to_string(),
+            input_len: 2,
+            output_len: 1,
+            evaluator_state_path: "absent-legacy-jit-state.bin".to_string(),
+        };
+
+        let error = match EvaluatorGroup::load(&manifest, Path::new("/absent-artifact-root")) {
+            Ok(_) => panic!("unsupported capability must win over absent payload"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.kind(),
+            crate::RusticolErrorKind::UnsupportedRuntimeCapability
+        );
+    }
+
+    #[cfg(not(feature = "f64-compiled"))]
+    #[test]
+    fn unsupported_compiled_evaluators_are_rejected_before_payload_access() {
         let manifests = [
-            EvaluatorManifest::Jit {
-                runtime_capability: SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY.to_string(),
-                input_len: 2,
-                output_len: 1,
-                evaluator_state_path: "absent-legacy-jit-state.bin".to_string(),
-            },
             EvaluatorManifest::CompiledComplex {
                 runtime_capability: SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY.to_string(),
                 function_name: "evaluate".to_string(),

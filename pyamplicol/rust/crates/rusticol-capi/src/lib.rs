@@ -1142,7 +1142,7 @@ mod tests {
     }
 
     #[test]
-    fn static_c_api_advertises_only_primary_symbolica_free_f64_capability() {
+    fn static_c_api_advertises_all_symbolica_free_f64_capabilities() {
         let mut required = 0;
         // SAFETY: This is a zero-capacity query with writable required-size storage.
         let status = unsafe {
@@ -1164,7 +1164,11 @@ mod tests {
         let json = unsafe { CStr::from_ptr(buffer.as_ptr()) }.to_str().unwrap();
         assert_eq!(
             serde_json::from_str::<Vec<String>>(json).unwrap(),
-            vec!["symjit.application.complex-f64.v1".to_string()]
+            vec![
+                "symbolica.compiled-asm.complex-f64.v1".to_string(),
+                "symbolica.compiled-cpp.complex-f64.v1".to_string(),
+                "symjit.application.complex-f64.v1".to_string(),
+            ]
         );
     }
 

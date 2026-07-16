@@ -12,8 +12,8 @@ use std::time::Instant;
 use symbolica::evaluate::JITCompiledEvaluator;
 #[cfg(feature = "symbolica-runtime")]
 use symbolica::prelude::{
-    BatchEvaluator, CompiledComplexEvaluator, Complex, DoubleFloat, EvaluationDomain,
-    ExpressionEvaluator, Float, JITCompilationSettings, Rational, Real, RealLike,
+    BatchEvaluator, Complex, DoubleFloat, EvaluationDomain, ExpressionEvaluator, Float,
+    JITCompilationSettings, Rational, Real, RealLike,
 };
 
 use crate::{
@@ -32,6 +32,7 @@ pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
     "symbolica.legacy-jit-container.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-cpp.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
+#[cfg(feature = "f64-symjit")]
 pub const SYMJIT_APPLICATION_STORAGE_ABI: &str = "symjit-application-storage-v3";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -62,9 +63,9 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         #[cfg(feature = "symbolica-runtime")]
         SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
-        #[cfg(feature = "symbolica-runtime")]
+        #[cfg(feature = "f64-compiled")]
         SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY,
-        #[cfg(feature = "symbolica-runtime")]
+        #[cfg(feature = "f64-compiled")]
         SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY,
     ];
     capabilities.sort_unstable();
@@ -974,8 +975,8 @@ struct EvaluatorGroup {
 enum F64Evaluator {
     #[cfg(feature = "f64-symjit")]
     SymjitApplication(SymjitApplicationEvaluator),
-    #[cfg(feature = "symbolica-runtime")]
-    Compiled(CompiledComplexEvaluator),
+    #[cfg(feature = "f64-compiled")]
+    Compiled(CompiledComplexF64Evaluator),
     #[cfg(feature = "symbolica-runtime")]
     Jit(JITCompiledEvaluator<Complex<f64>>),
 }

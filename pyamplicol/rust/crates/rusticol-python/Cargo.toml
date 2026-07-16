@@ -22,7 +22,7 @@ numpy = ["dep:numpy"]
 [dependencies]
 numpy = { workspace = true, optional = true }
 pyo3.workspace = true
-rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-symjit"] }
+rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-compiled", "f64-symjit"] }
 
 [build-dependencies]
 pyo3-build-config = "0.28"

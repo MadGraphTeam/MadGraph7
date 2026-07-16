@@ -2,7 +2,11 @@
 
 //! Python-independent Rusticol runtime core.
 
-#[cfg(not(any(feature = "f64-symjit", feature = "symbolica-runtime")))]
+#[cfg(not(any(
+    feature = "f64-compiled",
+    feature = "f64-symjit",
+    feature = "symbolica-runtime"
+)))]
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;

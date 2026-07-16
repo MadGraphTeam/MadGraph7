@@ -150,10 +150,8 @@ impl LoadedEvaluator {
         match &mut self.eval {
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => eval.evaluate_batch(batch_size, params, out),
-            #[cfg(feature = "symbolica-runtime")]
-            F64Evaluator::Compiled(eval) => eval
-                .evaluate_batch(batch_size, params, out)
-                .map_err(RusticolError::evaluation),
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(eval) => eval.evaluate_batch(batch_size, params, out),
             #[cfg(feature = "symbolica-runtime")]
             F64Evaluator::Jit(eval) => {
                 if params.len() != batch_size * self.input_len {
@@ -320,7 +318,7 @@ pub(crate) fn flatten_evaluators(
             evaluator_state_path,
             number_type,
         } => {
-            #[cfg(feature = "symbolica-runtime")]
+            #[cfg(feature = "f64-compiled")]
             {
                 let _ = runtime_capability;
                 if number_type != "complex" {
@@ -329,30 +327,35 @@ pub(crate) fn flatten_evaluators(
                     )));
                 }
                 let library = artifact_path(root, library_path)?;
-                let eval =
-                    CompiledComplexEvaluator::load(&library, function_name).map_err(|err| {
-                        RusticolError::evaluation(format!(
-                            "could not load compiled evaluator {} from {}: {err}",
-                            function_name,
-                            library.display()
-                        ))
-                    })?;
+                let eval = CompiledComplexF64Evaluator::load(
+                    &library,
+                    function_name,
+                    *input_len,
+                    *output_len,
+                )?;
+                #[cfg(feature = "symbolica-runtime")]
                 let exact_eval_path = evaluator_state_path
                     .as_deref()
                     .map(|state_path| artifact_path(root, state_path))
                     .transpose()?;
+                #[cfg(not(feature = "symbolica-runtime"))]
+                let _ = evaluator_state_path;
                 output.push(LoadedEvaluator {
                     eval: F64Evaluator::Compiled(eval),
+                    #[cfg(feature = "symbolica-runtime")]
                     exact_eval: None,
+                    #[cfg(feature = "symbolica-runtime")]
                     exact_eval_path,
+                    #[cfg(feature = "symbolica-runtime")]
                     double_eval: None,
+                    #[cfg(feature = "symbolica-runtime")]
                     arb_eval: None,
                     input_len: *input_len,
                     output_len: *output_len,
                 });
                 Ok(())
             }
-            #[cfg(not(feature = "symbolica-runtime"))]
+            #[cfg(not(feature = "f64-compiled"))]
             {
                 let _ = (
                     function_name,
@@ -456,7 +459,11 @@ fn validate_and_insert_capability(
     Ok(())
 }
 
-#[cfg(any(not(feature = "f64-symjit"), not(feature = "symbolica-runtime")))]
+#[cfg(any(
+    not(feature = "f64-compiled"),
+    not(feature = "f64-symjit"),
+    not(feature = "symbolica-runtime")
+))]
 fn unsupported_capability(capability: &str) -> RusticolError {
     RusticolError::unsupported_runtime_capability(
         capability,

@@ -8,6 +8,12 @@ pub(crate) use crossing::*;
 mod backend;
 pub(crate) use backend::{ensure_evaluator_capabilities_supported, evaluator_runtime_capabilities};
 
+#[cfg(feature = "f64-compiled")]
+#[path = "evaluator/compiled.rs"]
+mod compiled;
+#[cfg(feature = "f64-compiled")]
+pub(crate) use compiled::*;
+
 #[cfg(feature = "f64-symjit")]
 #[path = "evaluator/symjit.rs"]
 mod symjit;
