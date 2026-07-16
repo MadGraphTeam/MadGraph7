@@ -5,6 +5,7 @@ import pytest
 
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol.models import compiler_contact_trees as contact_trees
+from pyamplicol.models import compiler_contacts as contacts
 from pyamplicol.models import compiler_symbolica as _sym
 from pyamplicol.models.compiler_contacts import _execute_dense_tensor
 from pyamplicol.models.compiler_kernels import (
@@ -128,6 +129,76 @@ def test_staged_contact_contraction_preserves_dense_axis_order(
         payload_by_leg=payload,
         result_leg=3,
         kind=17,
+        model_symbols=registry,
+    )
+
+    assert tuple(item.to_canonical_string() for item in staged) == tuple(
+        item.to_canonical_string() for item in direct
+    )
+
+
+def test_staged_four_point_partial_preserves_dense_axis_order() -> None:
+    _sym._ensure_symbolica()
+    registry = symbols.model("staged-contact-partial-test")
+    particles = tuple(_vector(f"v{index}", 9_200_000 + index) for index in range(4))
+    representations = tuple(
+        representation
+        for particle in particles
+        for representation in _spin_representations(particle.spin)
+    )
+    slots = tuple(
+        slot
+        for leg, particle in enumerate(particles, start=1)
+        for slot in _spin_slots(particle.spin, leg)
+    )
+    source_name = _sym.TensorName(registry.qualified_name("test_contact_partial"))
+    source_components = tuple(_sym.E(str(index + 1)) for index in range(4**4))
+
+    def source_tensor() -> tuple[object, object]:
+        library = _sym.TensorLibrary.hep_lib_atom()
+        library.register(
+            _sym.LibraryTensor.dense(
+                source_name(*representations),
+                source_components,
+            )
+        )
+        return source_name(*slots).to_expression(), library
+
+    input_legs = ((0, "left"), (1, "right"))
+    direct_expression, direct_library = source_tensor()
+    for leg, side in input_legs:
+        direct_expression *= contacts._input_tensor_expression(
+            direct_library,
+            kind=23,
+            side=side,
+            spin=particles[leg].spin,
+            leg=leg + 1,
+            components=contacts._component_symbols(
+                23,
+                side,
+                particles[leg].spin,
+                model_symbols=registry,
+            ),
+            model_symbols=registry,
+        )
+    direct = _execute_dense_tensor(
+        direct_expression,
+        direct_library,
+        axis_labels=tuple(
+            label
+            for leg in (2, 3)
+            for label in _spin_axis_labels(particles[leg].spin, leg + 1)
+        ),
+    )
+
+    staged_expression, staged_library = source_tensor()
+    staged = contacts._execute_contact_partial_staged(
+        staged_expression,
+        staged_library,
+        particles,
+        input_legs=input_legs,
+        open_legs=(2, 3),
+        kind=23,
         model_symbols=registry,
     )
 

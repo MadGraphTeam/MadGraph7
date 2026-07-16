@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
@@ -30,6 +31,9 @@ from .contracts import (
     CompiledParticleRecord,
     CompiledVertexTerm,
 )
+
+_DIRECT_FOUR_POINT_CONTACT_TENSOR_VOLUME = 4_096
+_HOST_PLATFORM = sys.platform
 
 
 def _fuse_contact_finals(
@@ -138,43 +142,48 @@ def _contact_partial_component_expressions(
     library = _sym.TensorLibrary.hep_lib_atom()
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
-    expression *= _input_tensor_expression(
-        library,
-        kind=kind,
-        side="left",
-        spin=particles[left_leg].spin,
-        leg=left_leg + 1,
-        components=_component_symbols(
-            kind,
-            "left",
-            particles[left_leg].spin,
+    tensor_volume = math.prod(_spin_dimension(particle.spin) for particle in particles)
+    input_legs = ((left_leg, "left"), (right_leg, "right"))
+    # Spenso aborts on this dense high-rank one-shot network on Linux. Exact
+    # sequential contractions keep every open component while bounding rank.
+    if (
+        tensor_volume > _DIRECT_FOUR_POINT_CONTACT_TENSOR_VOLUME
+        and _HOST_PLATFORM.startswith("linux")
+    ):
+        result = _execute_contact_partial_staged(
+            expression,
+            library,
+            particles,
+            input_legs=input_legs,
+            open_legs=open_legs,
+            kind=kind,
             model_symbols=model_symbols,
-        ),
-        model_symbols=model_symbols,
-    )
-    expression *= _input_tensor_expression(
-        library,
-        kind=kind,
-        side="right",
-        spin=particles[right_leg].spin,
-        leg=right_leg + 1,
-        components=_component_symbols(
-            kind,
-            "right",
-            particles[right_leg].spin,
-            model_symbols=model_symbols,
-        ),
-        model_symbols=model_symbols,
-    )
-    result = _execute_dense_tensor(
-        expression,
-        library,
-        axis_labels=tuple(
-            label
-            for leg in open_legs
-            for label in _spin_axis_labels(particles[leg].spin, leg + 1)
-        ),
-    )
+        )
+    else:
+        for leg, side in input_legs:
+            expression *= _input_tensor_expression(
+                library,
+                kind=kind,
+                side=side,
+                spin=particles[leg].spin,
+                leg=leg + 1,
+                components=_component_symbols(
+                    kind,
+                    side,
+                    particles[leg].spin,
+                    model_symbols=model_symbols,
+                ),
+                model_symbols=model_symbols,
+            )
+        result = _execute_dense_tensor(
+            expression,
+            library,
+            axis_labels=tuple(
+                label
+                for leg in open_legs
+                for label in _spin_axis_labels(particles[leg].spin, leg + 1)
+            ),
+        )
     expected = math.prod(_spin_dimension(particles[leg].spin) for leg in open_legs)
     if len(result) != expected:
         raise ValueError(
@@ -187,6 +196,88 @@ def _contact_partial_component_expressions(
         ).to_canonical_string()
         for index in range(len(result))
     )
+
+
+def _execute_contact_partial_staged(
+    expression: _sym.Expression,
+    library: _sym.TensorLibrary,
+    particles: Sequence[CompiledParticleRecord],
+    *,
+    input_legs: Sequence[tuple[int, str]],
+    open_legs: tuple[int, ...],
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[object, ...]:
+    """Contract dense four-point inputs one at a time on affected platforms."""
+
+    expected_inputs = set(range(len(particles))) - set(open_legs)
+    if {leg for leg, _side in input_legs} != expected_inputs:
+        raise ValueError("staged contact inputs do not complement the open legs")
+    remaining_legs = list(range(len(particles)))
+    for stage, (leg, side) in enumerate(input_legs):
+        expression *= _input_tensor_expression(
+            library,
+            kind=kind,
+            side=side,
+            spin=particles[leg].spin,
+            leg=leg + 1,
+            components=_component_symbols(
+                kind,
+                side,
+                particles[leg].spin,
+                model_symbols=model_symbols,
+            ),
+            model_symbols=model_symbols,
+        )
+        remaining_legs.remove(leg)
+        axis_labels = tuple(
+            label
+            for remaining_leg in remaining_legs
+            for label in _spin_axis_labels(
+                particles[remaining_leg].spin,
+                remaining_leg + 1,
+            )
+        )
+        dense = _execute_dense_tensor(expression, library, axis_labels=axis_labels)
+        expected = math.prod(
+            _spin_dimension(particles[remaining_leg].spin)
+            for remaining_leg in remaining_legs
+        )
+        if len(dense) != expected:
+            raise ValueError(
+                f"staged contact partial {stage} produced {len(dense)} components, "
+                f"expected {expected}"
+            )
+        if stage + 1 == len(input_legs):
+            if tuple(remaining_legs) != open_legs:
+                raise ValueError("staged contact open-leg order changed")
+            return dense
+
+        representations = tuple(
+            representation
+            for remaining_leg in remaining_legs
+            for representation in _spin_representations(particles[remaining_leg].spin)
+        )
+        slots = tuple(
+            slot
+            for remaining_leg in remaining_legs
+            for slot in _spin_slots(
+                particles[remaining_leg].spin,
+                remaining_leg + 1,
+            )
+        )
+        library = _sym.TensorLibrary.hep_lib_atom()
+        name = _sym.TensorName(
+            model_symbols.kernel_tensor_name(kind, f"contact_partial_stage_{stage}")
+        )
+        library.register(
+            _sym.LibraryTensor.dense(
+                name(*representations),
+                tuple(_as_expression(component) for component in dense),
+            )
+        )
+        expression = name(*slots).to_expression()
+    raise ValueError("staged contact partial has no input legs")
 
 
 def _contact_final_component_expressions(
