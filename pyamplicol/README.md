@@ -313,9 +313,10 @@ the complete built-in alias table; define multiparticles explicitly when a
 reproducible expansion matters. Typed source, crossing, and propagator records
 are authoritative across Python generation and Rusticol execution. The
 remaining `0.1.0` model-hardening gates cover contraction and tensor-order
-records, expression-derived Goldstone classification, and adversarial
-relabeled or reordered UFO fixtures, rather than additional built-in particle
-tables.
+records and adversarial relabeled or reordered UFO fixtures, rather than
+additional built-in particle tables. Default and model-supplied UFO
+propagators are classified from normalized expressions, independently of UFO
+object names.
 
 `color.accuracy = "lc"` stores every physical leading-color flow. `"nlc"` and
 `"full"` currently mean the supported contracted SU(3) color calculations,

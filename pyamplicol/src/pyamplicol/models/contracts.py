@@ -9,6 +9,10 @@ from typing import Any
 from .._internal.physics.symbols import symbols
 from .base import QuantumNumberFlow
 
+PROPAGATOR_SOURCE_FIELD = "pyamplicol_source"
+DEFAULT_FEYNMAN_PROPAGATOR_SOURCE = "default-feynman"
+MODEL_SUPPLIED_PROPAGATOR_SOURCE = "model-supplied"
+
 SUPPORTED_COLOR_REPRESENTATIONS = frozenset({-3, 1, 3, 8})
 
 

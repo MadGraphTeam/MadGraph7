@@ -10,6 +10,9 @@ from dataclasses import replace
 from .._internal.physics.symbols import ModelSymbolRegistry
 from . import compiler_symbolica as _sym
 from .contracts import (
+    DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
+    MODEL_SUPPLIED_PROPAGATOR_SOURCE,
+    PROPAGATOR_SOURCE_FIELD,
     CompiledCouplingOrder,
     CompiledCouplingRecord,
     CompiledParameterRecord,
@@ -120,14 +123,29 @@ def _propagator(
         (candidate for candidate in particles if candidate.name == particle_name),
         None,
     )
-    linked_name = None if particle is None else particle.propagator
     name = str(item["name"])
+    if particle is None:
+        raise ValueError(
+            f"propagator {name!r} refers to unknown particle {particle_name!r}"
+        )
+    if particle.propagator != name:
+        raise ValueError(
+            f"propagator {name!r} is not linked from particle {particle_name!r}"
+        )
+    source = str(item.get(PROPAGATOR_SOURCE_FIELD, ""))
+    if source not in {
+        DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
+        MODEL_SUPPLIED_PROPAGATOR_SOURCE,
+    }:
+        raise ValueError(
+            f"propagator {name!r} has no valid generation-time source metadata"
+        )
     return CompiledPropagatorRecord(
         name=name,
         particle=particle_name,
         numerator=str(item["numerator"]),
         denominator=str(item["denominator"]),
-        custom=linked_name == name and not name.endswith("_propFeynman"),
+        custom=source == MODEL_SUPPLIED_PROPAGATOR_SOURCE,
     )
 
 

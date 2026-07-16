@@ -16,12 +16,12 @@ from pyamplicol.models.compiler_kernels import (
 from pyamplicol.models.contracts import CompiledParticleRecord
 
 
-def _vector(name: str, pdg: int) -> CompiledParticleRecord:
+def _particle(name: str, pdg: int, *, spin: int) -> CompiledParticleRecord:
     return CompiledParticleRecord(
         name=name,
         antiname=name,
         pdg_code=pdg,
-        spin=3,
+        spin=spin,
         color=1,
         mass="ZERO",
         width="ZERO",
@@ -32,6 +32,10 @@ def _vector(name: str, pdg: int) -> CompiledParticleRecord:
         goldstoneboson=False,
         propagator=None,
     )
+
+
+def _vector(name: str, pdg: int) -> CompiledParticleRecord:
+    return _particle(name, pdg, spin=3)
 
 
 def test_rank_zero_plain_expression_bypasses_tensor_network(
@@ -203,5 +207,79 @@ def test_staged_four_point_partial_preserves_dense_axis_order() -> None:
     )
 
     assert tuple(item.to_canonical_string() for item in staged) == tuple(
+        item.to_canonical_string() for item in direct
+    )
+
+
+def test_sliced_spin2_contact_partial_preserves_dense_axis_order() -> None:
+    _sym._ensure_symbolica()
+    registry = symbols.model("sliced-spin2-contact-partial-test")
+    particles = (
+        _particle("s0", 9_300_000, spin=1),
+        _particle("s1", 9_300_001, spin=1),
+        _particle("h0", 9_300_002, spin=5),
+        _particle("h1", 9_300_003, spin=5),
+    )
+    representations = tuple(
+        representation
+        for particle in particles
+        for representation in _spin_representations(particle.spin)
+    )
+    slots = tuple(
+        slot
+        for leg, particle in enumerate(particles, start=1)
+        for slot in _spin_slots(particle.spin, leg)
+    )
+    source_name = _sym.TensorName(registry.qualified_name("spin2_contact_partial"))
+    source_components = tuple(_sym.E(str(index + 1)) for index in range(16**2))
+
+    def source_expression(library: object) -> object:
+        library.register(
+            _sym.LibraryTensor.dense(
+                source_name(*representations),
+                source_components,
+            )
+        )
+        return source_name(*slots).to_expression()
+
+    direct_library = _sym.TensorLibrary.hep_lib_atom()
+    direct_expression = source_expression(direct_library)
+    for leg, side in ((0, "left"), (1, "right")):
+        direct_expression *= contacts._input_tensor_expression(
+            direct_library,
+            kind=29,
+            side=side,
+            spin=particles[leg].spin,
+            leg=leg + 1,
+            components=contacts._component_symbols(
+                29,
+                side,
+                particles[leg].spin,
+                model_symbols=registry,
+            ),
+            model_symbols=registry,
+        )
+    direct = _execute_dense_tensor(
+        direct_expression,
+        direct_library,
+        axis_labels=tuple(
+            label
+            for leg in (2, 3)
+            for label in _spin_axis_labels(particles[leg].spin, leg + 1)
+        ),
+    )
+
+    sliced_library = _sym.TensorLibrary.hep_lib_atom()
+    sliced = contacts._execute_contact_partial_sliced(
+        source_expression(sliced_library),
+        sliced_library,
+        particles,
+        input_legs=((0, "left"), (1, "right")),
+        open_legs=(2, 3),
+        kind=29,
+        model_symbols=registry,
+    )
+
+    assert tuple(item.to_canonical_string() for item in sliced) == tuple(
         item.to_canonical_string() for item in direct
     )

@@ -33,6 +33,7 @@ from .contracts import (
 )
 
 _DIRECT_FOUR_POINT_CONTACT_TENSOR_VOLUME = 4_096
+_DIRECT_FOUR_POINT_CONTACT_OPEN_INDEX_RANK = 2
 _HOST_PLATFORM = sys.platform
 
 
@@ -143,13 +144,32 @@ def _contact_partial_component_expressions(
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
     tensor_volume = math.prod(_spin_dimension(particle.spin) for particle in particles)
+    open_index_rank = sum(
+        len(_spin_representations(particles[leg].spin)) for leg in open_legs
+    )
     input_legs = ((left_leg, "left"), (right_leg, "right"))
-    # Spenso aborts on this dense high-rank one-shot network on Linux. Exact
-    # sequential contractions keep every open component while bounding rank.
     if (
+        open_index_rank > _DIRECT_FOUR_POINT_CONTACT_OPEN_INDEX_RANK
+        and _HOST_PLATFORM.startswith("linux")
+    ):
+        # Spenso aborts while materializing some high-rank open tensors on
+        # Linux. Resolve one physical output index at a time so every network
+        # has at most one external particle's tensor rank.
+        result = _execute_contact_partial_sliced(
+            expression,
+            library,
+            particles,
+            input_legs=input_legs,
+            open_legs=open_legs,
+            kind=kind,
+            model_symbols=model_symbols,
+        )
+    elif (
         tensor_volume > _DIRECT_FOUR_POINT_CONTACT_TENSOR_VOLUME
         and _HOST_PLATFORM.startswith("linux")
     ):
+        # Exact sequential contractions also bound networks with large closed
+        # input spaces even when their open tensor rank is modest.
         result = _execute_contact_partial_staged(
             expression,
             library,
@@ -195,6 +215,91 @@ def _contact_partial_component_expressions(
             _as_expression(result[index])
         ).to_canonical_string()
         for index in range(len(result))
+    )
+
+
+def _execute_contact_partial_sliced(
+    expression: _sym.Expression,
+    library: _sym.TensorLibrary,
+    particles: Sequence[CompiledParticleRecord],
+    *,
+    input_legs: Sequence[tuple[int, str]],
+    open_legs: tuple[int, ...],
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[object, ...]:
+    """Materialize a high-rank contact tensor as ordered output slices."""
+
+    slice_position = next(
+        (
+            position
+            for position, leg in enumerate(open_legs)
+            if particles[leg].spin == 5
+        ),
+        None,
+    )
+    if slice_position is None:
+        raise ValueError("sliced contact partial has no spin-2 open leg")
+    if any(
+        _spin_dimension(particles[leg].spin) != 1 for leg in open_legs[:slice_position]
+    ):
+        raise ValueError("sliced contact partial would change output component order")
+
+    slice_leg = open_legs[slice_position]
+    remaining_open_legs = tuple(leg for leg in open_legs if leg != slice_leg)
+    result: list[object] = []
+    for selected_component in range(_spin_dimension(particles[slice_leg].spin)):
+        sliced_expression = expression
+        for leg, side in input_legs:
+            sliced_expression *= _input_tensor_expression(
+                library,
+                kind=kind,
+                side=f"{side}_slice_{selected_component}",
+                spin=particles[leg].spin,
+                leg=leg + 1,
+                components=_component_symbols(
+                    kind,
+                    side,
+                    particles[leg].spin,
+                    model_symbols=model_symbols,
+                ),
+                model_symbols=model_symbols,
+            )
+        basis = _spin2_dual_component_basis(selected_component)
+        sliced_expression *= _input_tensor_expression(
+            library,
+            kind=kind,
+            side=f"output_slice_{slice_leg}_{selected_component}",
+            spin=particles[slice_leg].spin,
+            leg=slice_leg + 1,
+            components=basis,
+            model_symbols=model_symbols,
+        )
+        result.extend(
+            _execute_dense_tensor(
+                sliced_expression,
+                library,
+                axis_labels=tuple(
+                    label
+                    for leg in remaining_open_legs
+                    for label in _spin_axis_labels(particles[leg].spin, leg + 1)
+                ),
+            )
+        )
+    return tuple(result)
+
+
+def _spin2_dual_component_basis(component: int) -> tuple[_sym.Expression, ...]:
+    """Return the dual Minkowski basis vector for one rank-two component."""
+
+    if not 0 <= component < 16:
+        raise ValueError(f"spin-2 component {component} is outside [0, 16)")
+    first, second = divmod(component, 4)
+    signature = (1, -1, -1, -1)
+    coefficient = signature[first] * signature[second]
+    return tuple(
+        _sym.E(str(coefficient)) if index == component else _sym.E("0")
+        for index in range(16)
     )
 
 

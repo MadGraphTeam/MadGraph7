@@ -11,22 +11,31 @@ import pyamplicol
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol.models import compiler_symbolica as _sym
 from pyamplicol.models.contracts import (
+    DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
+    MODEL_SUPPLIED_PROPAGATOR_SOURCE,
     CompiledCouplingRecord,
     CompiledModelIR,
     CompiledParticleRecord,
 )
 from pyamplicol.models.loading import (
     ModelCompileOptions,
+    _classify_external_propagators,
     _load_external_model,
     _loader_restriction_name,
     _model_compiler_source_paths,
+    _sanitized_model_environment,
     _source_digest,
 )
 
 
 class _SerializedModel:
+    propagators: tuple[object, ...] = ()
+
+    def wrap_indices_in_lorentz_structures(self) -> None:
+        pass
+
     def to_json(self, _look: object) -> str:
-        return '{"name":"synthetic"}'
+        return '{"name":"synthetic","propagators":[]}'
 
 
 def test_model_loading_sanitizes_historical_scalar_environment(
@@ -60,6 +69,63 @@ def test_model_loading_sanitizes_historical_scalar_environment(
     assert os.environ["UFO_SCALARS_MODEL_N_SCALARS"] == "91"
     assert os.environ["UFO_GRAVITY_MODEL_N_POINT_INTERACTIONS"] == "3,4"
     assert payload["parameter_card"] == {"lam": [1.0, 2.0]}
+
+
+def test_external_propagator_classification_uses_expressions_not_names() -> None:
+    from ufo_model_loader.commands import load_model
+
+    source = (
+        Path(pyamplicol.__file__).parent
+        / "assets"
+        / "models"
+        / "json"
+        / "scalars"
+        / "scalars.json"
+    )
+    with _sanitized_model_environment():
+        model, _parameter_card = load_model(
+            str(source),
+            None,
+            True,
+            wrap_indices_in_lorentz_structures=False,
+        )
+    propagator = model.propagators[0]
+    propagator.name = "renamed_without_a_default_suffix"
+
+    assert _classify_external_propagators(model)[propagator.particle.name] == (
+        DEFAULT_FEYNMAN_PROPAGATOR_SOURCE
+    )
+
+    propagator.name = "custom_propFeynman"
+    propagator.numerator += 1
+
+    assert _classify_external_propagators(model)[propagator.particle.name] == (
+        MODEL_SUPPLIED_PROPAGATOR_SOURCE
+    )
+
+
+def test_restriction_does_not_reclassify_loader_default_propagators() -> None:
+    from ufo_model_loader.commands import load_model
+
+    source = (
+        Path(pyamplicol.__file__).parent
+        / "assets"
+        / "models"
+        / "json"
+        / "sm"
+        / "sm.json"
+    )
+    with _sanitized_model_environment():
+        model, _parameter_card = load_model(
+            str(source),
+            None,
+            True,
+            wrap_indices_in_lorentz_structures=False,
+        )
+
+    assert set(_classify_external_propagators(model).values()) == {
+        DEFAULT_FEYNMAN_PROPAGATOR_SOURCE
+    }
 
 
 def test_runtime_domain_symbols_do_not_redefine_symbolica_attributes() -> None:

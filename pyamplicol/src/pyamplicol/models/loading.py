@@ -12,11 +12,18 @@ import threading
 import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 from .._internal.versions import COMPILED_MODEL_SCHEMA_VERSION, package_version
-from .contracts import CompiledModelIR
+from .contracts import (
+    DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
+    MODEL_SUPPLIED_PROPAGATOR_SOURCE,
+    PROPAGATOR_SOURCE_FIELD,
+    CompiledModelIR,
+)
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 MODEL_COMPILER_VERSION = 6
@@ -515,6 +522,7 @@ def preflight_model(
     model: Mapping[str, object],
 ) -> tuple[tuple[ModelCompatibilityIssue, ...], dict[str, object]]:
     particles = _list_of_mappings(model.get("particles"), "particles")
+    propagators = _list_of_mappings(model.get("propagators", []), "propagators")
     vertices = _list_of_mappings(model.get("vertex_rules"), "vertex_rules")
     functions = _list_of_mappings(model.get("functions", []), "functions")
     form_factors = _list_of_mappings(model.get("form_factors", []), "form_factors")
@@ -626,9 +634,8 @@ def preflight_model(
         "expression_functions": sorted(expression_functions),
         "form_factor_count": len(form_factors),
         "has_custom_propagators": any(
-            particle.get("propagator")
-            and not str(particle.get("propagator")).endswith("propFeynman")
-            for particle in particles
+            propagator.get(PROPAGATOR_SOURCE_FIELD) == MODEL_SUPPLIED_PROPAGATOR_SOURCE
+            for propagator in propagators
         ),
         "color_accuracy_modes": ["lc", "nlc", "full"],
     }
@@ -675,16 +682,72 @@ def _load_external_model(
             str(source),
             restriction,
             options.simplify,
-            wrap_indices_in_lorentz_structures=True,
+            wrap_indices_in_lorentz_structures=False,
         )
+        propagator_sources = _classify_external_propagators(model)
+        model.wrap_indices_in_lorentz_structures()
+        model_payload = json.loads(model.to_json(JSONLook.COMPACT))
+        raw_propagators = model_payload.get("propagators", [])
+        if not isinstance(raw_propagators, list):
+            raise ValueError("serialized model propagators must be a list")
+        for propagator in raw_propagators:
+            if not isinstance(propagator, dict):
+                raise ValueError("serialized model propagator must be an object")
+            particle = str(propagator["particle"])
+            propagator[PROPAGATOR_SOURCE_FIELD] = propagator_sources[particle]
         return {
             "loader_version": _distribution_version("ufo-model-loader", "missing"),
-            "model": json.loads(model.to_json(JSONLook.COMPACT)),
+            "model": model_payload,
             "parameter_card": {
                 name: [value.real, value.imag]
                 for name, value in sorted(parameter_card.items())
             },
         }
+
+
+def _classify_external_propagators(model: Any) -> dict[str, str]:
+    """Classify propagators by expression, independently of UFO object names."""
+
+    from ufo_model_loader.model import Propagator
+
+    result: dict[str, str] = {}
+    for propagator in model.propagators:
+        actual = (
+            propagator.numerator.to_canonical_string(),
+            propagator.denominator.to_canonical_string(),
+        )
+        defaults = {
+            (
+                default.numerator.to_canonical_string(),
+                default.denominator.to_canonical_string(),
+            )
+            for default in _default_feynman_propagator_candidates(
+                Propagator,
+                propagator.particle,
+            )
+        }
+        result[str(propagator.particle.name)] = (
+            DEFAULT_FEYNMAN_PROPAGATOR_SOURCE
+            if actual in defaults
+            else MODEL_SUPPLIED_PROPAGATOR_SOURCE
+        )
+    return result
+
+
+def _default_feynman_propagator_candidates(
+    propagator_type: Any,
+    particle: Any,
+) -> tuple[Any, ...]:
+    """Cover loader defaults created before a restriction changes a mass value."""
+
+    current = propagator_type.from_particle(particle, "Feynman")
+    if particle.spin not in {1, 2, 3, -1}:
+        return (current,)
+    alternate_particle = copy(particle)
+    alternate_particle.mass = copy(particle.mass)
+    alternate_particle.mass.value = 0j if particle.is_massive() else 1.0 + 0j
+    alternate = propagator_type.from_particle(alternate_particle, "Feynman")
+    return current, alternate
 
 
 def _loader_restriction_name(source: Path, restriction: str) -> str | None:

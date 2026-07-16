@@ -137,9 +137,10 @@ the built-in optimized DAG topology for the external-SM n<=4 validation
 ladder. Typed source, crossing, and propagator records now select
 wavefunctions, crossing phases, mass class, gauge policy, and propagator
 kernels without SM PDG tests. The remaining `0.1.0` hardening gate covers
-contraction and tensor-order records, expression-derived Goldstone
-classification, and adversarial relabeling and tensor-order fixtures; it does
-not route external models through the built-in implementation.
+contraction and tensor-order records plus adversarial relabeling and
+tensor-order fixtures; it does not route external models through the built-in
+implementation. Default and model-supplied UFO propagators are distinguished
+from normalized expressions, independently of their object names.
 
 ## Supported UFO Subset
 
