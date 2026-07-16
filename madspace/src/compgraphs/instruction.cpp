@@ -502,7 +502,7 @@ TypeVec BatchSplitByIndexInstruction::signature(const ValueVec& args) const {
     TypeVec output_types;
     auto last_batch_size = indices_type.batch_size;
     for (int i = 0; i < size; ++i) {
-        auto batch_size = BatchSize();
+        auto batch_size = i == size - 1 ? last_batch_size : BatchSize();
         output_types.push_back({DataType::dt_int, batch_size, {}});
         last_batch_size = last_batch_size - batch_size;
     }

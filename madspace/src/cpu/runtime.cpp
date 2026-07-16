@@ -434,7 +434,7 @@ void op_batch_split_by_index(
             output = Tensor(DataType::dt_int, {size}, device);
             views.push_back(output.view<me_int_t, 1>());
         }
-        sizes.clear();
+        std::fill(sizes.begin(), sizes.end(), 0);
         for (std::size_t i = 0; i < indices_view.size(); ++i) {
             me_int_t index = indices_view[i];
             std::size_t& size = sizes[index];

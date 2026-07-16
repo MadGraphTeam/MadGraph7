@@ -3279,9 +3279,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 flavor_offset = len(flavors)
                 flavors.extend(
                     {
-                        "subprocess": subproc_index,
-                        "ps_flavor": ps_flavor,
-                        "me_flavor": flavor["index"],
+                        "subprocess": subproc_index_in_group,
+                        "flavor": ps_flavor,
                     }
                     for ps_flavor, flavor in enumerate(
                         subproc_info["flavors"]

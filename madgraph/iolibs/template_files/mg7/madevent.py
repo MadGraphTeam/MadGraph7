@@ -124,7 +124,7 @@ class PhaseSpace:
 
 
 class MultiChannelData(NamedTuple):
-    amp2_remap: list[int]
+    amp2_remaps: list[list[int]]
     symfact: list[int | None]
     topologies: list[list[ms.Topology]]
     permutations: list[list[list[int]]]
@@ -169,6 +169,12 @@ class MadgraphProcess:
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
+        if self.run_card["phasespace"]["merge_subprocesses"]:
+            with open(os.path.join("SubProcesses", "merged_subprocesses.json")) as f:
+                self.merged_subprocess_data = json.load(f)
+        else:
+            self.merged_subprocess_data = None
+
 
     def init_backend(self) -> None:
         ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
@@ -384,8 +390,14 @@ class MadgraphProcess:
 
     def init_subprocesses(self) -> None:
         self.subprocesses = []
-        for subproc_id, meta in enumerate(self.subprocess_data):
-            self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+        if self.merged_subprocess_data is None:
+            for subproc_id, meta in enumerate(self.subprocess_data):
+                self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+        else:
+            for subproc_id, meta in enumerate(self.merged_subprocess_data):
+                self.subprocesses.append(
+                    MadgraphSubprocess(self, meta, subproc_id, self.subprocess_data)
+                )
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
@@ -457,7 +469,6 @@ class MadgraphProcess:
                 None
                 for subproc, ps_multi in zip(self.subprocesses, phasespaces_multi)
             ]
-            #evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
 
             channel_status = evgen_multi.channel_status()
             cross_sections = []
@@ -873,16 +884,55 @@ def clean_pids(pids: list[int]) -> list[int]:
     return pids_out
 
 
-def build_multi_channel_data(
-    meta: dict,
-    process: "MadgraphProcess",
+def build_topologies(
     incoming_masses: list[float],
     outgoing_masses: list[float],
-) -> MultiChannelData:
-    bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
-    diagram_count = meta["diagram_count"]
+    channel: dict,
+    process: MadgraphProcess
+) -> list[ms.Topology]:
+    propagators = []
+    for i, pid in enumerate(clean_pids(channel["propagators"])):
+        mass = process.get_mass(pid)
+        width = process.get_width(pid)
+        if i in channel["on_shell_propagators"]:
+            bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
+            e_min = mass - bw_cutoff * width
+            e_max = mass + bw_cutoff * width
+        else:
+            e_min = 0
+            e_max = 0
+        propagators.append(ms.Propagator(
+            mass=mass,
+            width=width,
+            integration_order=0,
+            e_min=e_min,
+            e_max=e_max,
+        ))
+    vertices = channel["vertices"]
+    diag = ms.Diagram(
+        incoming_masses, outgoing_masses, propagators, vertices
+    )
+    return ms.Topology.topologies(diag)
 
-    amp2_remap = [-1] * diagram_count
+
+def build_multi_channel_data(
+    meta: dict, process: MadgraphProcess, unmerged_meta: dict | None = None
+) -> MultiChannelData:
+    incoming_masses = [
+        process.get_mass(pid) for pid in clean_pids(meta["incoming"])
+    ]
+    outgoing_masses = [
+        process.get_mass(pid) for pid in clean_pids(meta["outgoing"])
+    ]
+
+    if unmerged_meta is None:
+        diagram_count = meta["diagram_count"]
+        amp2_remaps = [[-1] * diagram_count]
+    else:
+        amp2_remaps = [
+            [-1] * unmerged_meta[subproc]["diagram_count"]
+            for subproc in meta["subprocesses"]
+        ]
     symfact = []
     topologies = []
     permutations = []
@@ -893,40 +943,35 @@ def build_multi_channel_data(
     active_flavors = []
     channel_index = 0
 
-    for channel_id, channel in enumerate(meta["channels"]):
-        propagators = []
-        for i, pid in enumerate(clean_pids(channel["propagators"])):
-            mass = process.get_mass(pid)
-            width = process.get_width(pid)
-            if i in channel["on_shell_propagators"]:
-                e_min = mass - bw_cutoff * width
-                e_max = mass + bw_cutoff * width
-            else:
-                e_min = 0
-                e_max = 0
-            propagators.append(ms.Propagator(
-                mass=mass,
-                width=width,
-                integration_order=0,
-                e_min=e_min,
-                e_max=e_max,
-            ))
-        vertices = channel["vertices"]
+    for channel in meta["channels"]:
+        if unmerged_meta is None:
+            topo_channel = channel
+        else:
+            topo_subproc = channel["subprocess"]
+            topo_channel_index = channel["channel"]
+            topo_channel = unmerged_meta[topo_subproc]["channels"][topo_channel_index]
+        chan_topologies = build_topologies(
+            incoming_masses, outgoing_masses, topo_channel, process
+        )
+        topo_count = len(chan_topologies)
         diagrams = channel["diagrams"]
         chan_permutations = [d["permutation"] for d in diagrams]
-        diag = ms.Diagram(
-            incoming_masses, outgoing_masses, propagators, vertices
-        )
-        chan_topologies = ms.Topology.topologies(diag)
-        topo_count = len(chan_topologies)
+        if unmerged_meta is None:
+            amp2_remaps[0][diagrams[0]["diagram"]] = channel_index
+        else:
+            for amp2_remap, diag in zip(amp2_remaps, diagrams[0]["diagram"]):
+                amp2_remap[diag] = channel_index
 
-        amp2_remap[diagrams[0]["diagram"]] = channel_index
         channel_index_first = channel_index
         symfact_index_first = len(symfact)
         channel_index += 1
         symfact.extend([None] * topo_count)
         for d in diagrams[1:]:
-            amp2_remap[d["diagram"]] = channel_index
+            if unmerged_meta is None:
+                amp2_remaps[0][d["diagram"]] = channel_index
+            else:
+                for amp2_remap, diag in zip(amp2_remaps, d["diagram"]):
+                    amp2_remap[diag] = channel_index
             channel_index += 1
             symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
 
@@ -941,10 +986,12 @@ def build_multi_channel_data(
             for topo_index in range(topo_count)
         ])
         diagram_indices.append([d["diagram"] for d in diagrams])
-        diagram_color_indices.append([d["active_colors"] for d in diagrams])
+        if unmerged_meta is None:
+            diagram_color_indices.append([d["active_colors"] for d in diagrams])
         active_flavors.append([d["active_flavors"] for d in diagrams])
+
     return MultiChannelData(
-        amp2_remap,
+        amp2_remaps,
         symfact,
         topologies,
         permutations,
@@ -957,35 +1004,54 @@ def build_multi_channel_data(
 
 
 class MadgraphSubprocess:
-    def __init__(self, process: MadgraphProcess, meta: dict, subproc_id: int):
+    def __init__(
+        self,
+        process: MadgraphProcess,
+        meta: dict,
+        subproc_id: int,
+        unmerged_meta: dict | None = None
+    ):
         self.process = process
         self.meta = meta
+        self.unmerged_meta = unmerged_meta
         self.subproc_id = subproc_id
         self.multi_channel_data = None
 
-        api_path_format = self.meta["me_path"]
-        subproc_path = self.meta["path"]
-        devices = self.process.run_card["run"]["devices"]
-        api_paths = []
-        if not isinstance(devices, list):
-            devices = [devices]
-        for device in devices:
-            subproc_dir = os.path.dirname(subproc_path)
-            # 'cppauto' resolve quick fix
-            resolved = device
-            if device == "cppauto":
-                out = subprocess.run(
-                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
-                    cwd=subproc_path, capture_output=True, text=True,
-                ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
-                if match:
-                    resolved = match.group(1)
-            api_path = api_path_format.format(device=resolved)
-            if not os.path.isfile(api_path):
-                logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
-            api_paths.append(api_path)
+        if unmerged_meta is None:
+            api_path_formats = [self.meta["me_path"]]
+            subproc_paths = [self.meta["path"]]
+        else:
+            api_path_formats = []
+            subproc_paths = []
+            for subproc in self.meta["subprocesses"]:
+                submeta = self.unmerged_meta[subproc]
+                api_path_formats.append(submeta["me_path"])
+                subproc_paths.append(submeta["path"])
+
+        all_api_paths = []
+        for api_path_format, subproc_path in zip(api_path_formats, subproc_paths):
+            devices = self.process.run_card["run"]["devices"]
+            api_paths = []
+            if not isinstance(devices, list):
+                devices = [devices]
+            for device in devices:
+                subproc_dir = os.path.dirname(subproc_path)
+                # 'cppauto' resolve quick fix
+                resolved = device
+                if device == "cppauto":
+                    out = subprocess.run(
+                        ["make", "-n", "BACKEND=cppauto", "detect-backend"],
+                        cwd=subproc_path, capture_output=True, text=True,
+                    ).stdout
+                    match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
+                    if match:
+                        resolved = match.group(1)
+                api_path = api_path_format.format(device=resolved)
+                if not os.path.isfile(api_path):
+                    logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}'")
+                    misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
+                api_paths.append(api_path)
+            all_api_paths.append(api_paths)
 
         self.incoming_masses = [
             self.process.get_mass(pid) for pid in clean_pids(self.meta["incoming"])
@@ -1027,34 +1093,33 @@ class MadgraphSubprocess:
         )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
-            self.matrix_element = None
+            self.matrix_elements = [None] * len(all_api_paths)
         else:
-            for context, api_path in zip(self.process.contexts, api_paths):
-                self.matrix_element = context.load_matrix_element(
-                    api_path, self.process.param_card_path
-                )
+            self.matrix_elements = []
+            for api_paths in all_api_paths:
+                for context, api_path in zip(self.process.contexts, api_paths):
+                    mat = context.load_matrix_element(
+                        api_path, self.process.param_card_path
+                    )
+                self.matrix_elements.append(mat)
 
     def build_multi_channel_data(self) -> MultiChannelData:
         if self.multi_channel_data is not None:
             return self.multi_channel_data
-
         self.multi_channel_data = build_multi_channel_data(
-            self.meta,
-            self.process,
-            self.incoming_masses,
-            self.outgoing_masses,
+            self.meta, self.process, self.unmerged_meta
         )
         return self.multi_channel_data
 
     def build_multichannel_phasespace(self) -> PhaseSpace:
         (
-            amp2_remap,
+            amp2_remaps,
             symfact,
             topologies,
             permutations,
             channel_indices,
             channel_weight_indices,
-            diagram_indices,
+            _,
             _,
             all_active_flavors,
         ) = self.build_multi_channel_data()
@@ -1098,24 +1163,21 @@ class MadgraphSubprocess:
             prop_chan_weights = ms.PropagatorChannelWeights(
                 [topo[0] for topo in topologies], permutations, channel_indices
             )
-            chan_weight_remap = [] #list(range(remapped_chan_count)) #TODO: only construct if necessary
-            #indices_for_subchan = channel_indices
+            chan_weight_remap = []
         else:
             prop_chan_weights = None
-            chan_weight_remap = [[
-                len(symfact) if remap == -1 else remap for remap in amp2_remap
-            ]]
-            #indices_for_subchan = diagram_indices
+            chan_weight_remap = [
+                [len(symfact) if remap == -1 else remap for remap in amp2_remap]
+                for amp2_remap in amp2_remaps
+            ]
 
         if any(len(topos) > 1 for topos in topologies):
             subchan_weights = ms.SubchannelWeights(
-                topologies, permutations, channel_indices #indices_for_subchan
+                topologies, permutations, channel_indices
             )
         else:
             subchan_weights = None
 
-        print(diagram_indices, channel_indices)
-        print(chan_weight_remap, remapped_chan_count)
         return PhaseSpace(
             mode="multichannel",
             channels=channels,
@@ -1237,7 +1299,6 @@ class MadgraphSubprocess:
                 for i in range(chan_count)
             ]
             second_remapped_chan_count = len(symfact)
-        print(first_chan_weight_remap, first_remapped_chan_count, second_chan_weight_remap, second_remapped_chan_count)
 
         return PhaseSpace(
             mode="both",
@@ -1320,7 +1381,10 @@ class MadgraphSubprocess:
         return PhaseSpace(
             mode="both",
             channels=channels,
-            chan_weight_remap=phasespace.chan_weight_remap,
+            first_chan_weight_remap=phasespace.first_chan_weight_remap,
+            first_remapped_chan_count=phasespace.first_remapped_chan_count,
+            second_chan_weight_remap=phasespace.second_chan_weight_remap,
+            second_remapped_chan_count=phasespace.second_remapped_chan_count,
             symfact=phasespace.symfact,
             cwnet=self.build_cwnet(len(phasespace.symfact)),
             prop_chan_weights=phasespace.prop_chan_weights,
@@ -1412,45 +1476,63 @@ class MadgraphSubprocess:
         flavor_remap = []
         flavor_factors = []
         flavor_mirror = []
+        flavor_diff_xs_indices = []
+        flavor_subproc_indices = []
+        flavor_per_subproc_remap = []
+
         for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                diff_xs_index = flav["subprocess"]
+                subproc_index = self.meta["subprocesses"][diff_xs_index]
+                ps_flavor = flav["flavor"]
+                flavor_diff_xs_indices.append(diff_xs_index)
+                flavor_subproc_indices.append(subproc_index)
+                flavor_per_subproc_remap.append(ps_flavor)
+                flav = self.unmerged_meta[subproc_index]["flavors"][ps_flavor]
             flavors.append(flav["options"][0])
             flavor_remap.append(flav["index"])
             flavor_factors.append(len(flav["options"]))
             flavor_mirror.append(flav["mirror"])
-        if self.matrix_element:
-            matrix_element = ms.MatrixElement(
-                self.matrix_element,
-                ms.Integrand.matrix_element_inputs,
-                ms.Integrand.matrix_element_outputs,
-                True,
+
+        cross_sections = []
+        for matrix_element in self.matrix_elements:
+            if matrix_element:
+                mat = ms.MatrixElement(
+                    matrix_element,
+                    ms.Integrand.matrix_element_inputs,
+                    ms.Integrand.matrix_element_outputs,
+                    True,
+                )
+            else:
+                #TODO: not working in merged mode
+                mat = ms.MatrixElement(
+                    0xBADCAFE,
+                    self.particle_count,
+                    ms.Integrand.matrix_element_inputs,
+                    ms.Integrand.matrix_element_outputs,
+                    self.meta["diagram_count"],
+                    True,
+                )
+            pdf_grid = None if self.process.leptonic else self.process.pdf_grid
+            pdf_arg = None if self.process.leptonic else ms.CachedPdf()
+            cross_sections.append(
+                ms.DifferentialCrossSection(
+                    matrix_element=mat,
+                    cm_energy=self.process.e_cm,
+                    running_coupling=None,
+                    energy_scale=ms.CachedScale(),
+                    pid_options=[],
+                    pdf1=pdf_arg,
+                    pdf2=pdf_arg,
+                    input_momentum_fraction=True,
+                )
             )
-        else:
-            matrix_element = ms.MatrixElement(
-                0xBADCAFE,
-                self.particle_count,
-                ms.Integrand.matrix_element_inputs,
-                ms.Integrand.matrix_element_outputs,
-                self.meta["diagram_count"],
-                True,
-            )
-        pdf_grid = None if self.process.leptonic else self.process.pdf_grid
-        pdf_arg = None if self.process.leptonic else ms.CachedPdf()
-        cross_section = ms.DifferentialCrossSection(
-            matrix_element=matrix_element,
-            cm_energy=self.process.e_cm,
-            running_coupling=None,
-            energy_scale=ms.CachedScale(),
-            pid_options=flavors,
-            pdf1=pdf_arg,
-            pdf2=pdf_arg,
-            input_momentum_fraction=True,
-        )
         partial_weights = self.process.run_card["generation"]["systematics"]
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
                 channel.phasespace_mapping,
-                [cross_section],
+                cross_sections,
                 channel.adaptive_mapping,
                 channel.discrete_sym,
                 channel.discrete_flavor,
@@ -1473,6 +1555,9 @@ class MadgraphSubprocess:
                 flavor_remap,
                 flavor_factors,
                 flavor_mirror,
+                flavor_diff_xs_indices,
+                flavor_subproc_indices,
+                flavor_per_subproc_remap,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

@@ -112,6 +112,9 @@ Integrand::Integrand(
                 ret_types.push_back("helicity_index", batch_int);
                 ret_types.push_back("diagram_index", batch_int);
                 ret_types.push_back("flavor_index", batch_int);
+                if (flavor_diff_xs_indices.size() > 0) {
+                    ret_types.push_back("subprocess_index", batch_int);
+                }
                 ret_types.push_back("ren_scale", batch_float);
                 ret_types.push_back("alpha_qcd", batch_float);
                 if (partial_weights) {
@@ -135,9 +138,6 @@ Integrand::Integrand(
                 if (flav_count > 1 &&
                     !std::holds_alternative<std::monostate>(discrete_flavor)) {
                     ret_types.push_back("discrete_flavor_index", batch_int);
-                }
-                if (flavor_diff_xs_indices.size() > 0) {
-                    ret_types.push_back("subprocess_index", batch_int);
                 }
             }
             return ret_types;
@@ -684,12 +684,12 @@ NamedVector<Value> Integrand::build_common_part(
             }
         }
     } else {
-        Value dxs_index = fb.gather(flavor_id, _flavor_diff_xs_indices);
-        ps_flavor_id = fb.gather(flavor_id, _flavor_per_subproc_remap);
-        subproc_id = fb.gather(flavor_id, _flavor_subproc_indices);
+        Value dxs_index = fb.gather_int(flavor_id, _flavor_diff_xs_indices);
+        ps_flavor_id = fb.gather_int(flavor_id, _flavor_per_subproc_remap);
+        subproc_id = fb.gather_int(flavor_id, _flavor_subproc_indices);
         ValueVec split_indices =
             fb.batch_split_by_index(dxs_index, static_cast<me_int_t>(_diff_xs.size()));
-        std::vector<ValueVec> split_outputs;
+        std::vector<ValueVec> split_outputs(_diff_xs.at(0).return_types().size());
         ValueVec split_channel_weights;
         for (std::size_t i = 0;
              auto [diff_xs, indices] : zip(_diff_xs, split_indices)) {
@@ -703,19 +703,26 @@ NamedVector<Value> Integrand::build_common_part(
                 split_out.push_back(indices);
             }
             if (!_prop_chan_weights) {
-                Value split_cw = dxs_vec.at(1);
+                Value split_cw = outputs.at(1);
                 if (_first_chan_weight_remap.size() > 0) {
-                    chan_weights_acc = fb.collect_channel_weights(
-                        chan_weights_acc,
+                    split_cw = fb.collect_channel_weights(
+                        split_cw,
                         _first_chan_weight_remap.at(i),
                         _first_remapped_chan_count
                     );
                 }
+                split_channel_weights.push_back(split_cw);
+                split_channel_weights.push_back(indices);
             }
             ++i;
         }
-        for (auto& split_out : split_outputs) {
-            dxs_vec.push_back(fb.batch_merge_by_index(split_out));
+        for (std::size_t i = 0; auto& split_out : split_outputs) {
+            if (i == 1) {
+                dxs_vec.push_back(Value());
+            } else {
+                dxs_vec.push_back(fb.batch_merge_by_index(split_out));
+            }
+            ++i;
         }
         if (!_prop_chan_weights) {
             chan_weights_acc = fb.batch_merge_by_index(split_channel_weights);
@@ -855,6 +862,11 @@ NamedVector<Value> Integrand::build_common_part(
         outputs.push_back("helicity_index", scatter_or_drop(zeros_int, dxs_vec.at(3)));
         outputs.push_back("diagram_index", scatter_or_drop(zeros_int, dxs_vec.at(4)));
         outputs.push_back("flavor_index", scatter_or_drop(zeros_int, ps_flavor_id));
+        if (subproc_id) {
+            outputs.push_back(
+                "subprocess_index", scatter_or_drop(zeros_int, subproc_id)
+            );
+        }
 
         outputs.push_back(
             "ren_scale", scatter_or_drop(zeros_float, args.at("ren_scale"))
@@ -898,11 +910,6 @@ NamedVector<Value> Integrand::build_common_part(
             !std::holds_alternative<std::monostate>(_discrete_flavor)) {
             outputs.push_back(
                 "discrete_flavor_index", scatter_or_drop(zeros_int, flavor_id)
-            );
-        }
-        if (subproc_id) {
-            outputs.push_back(
-                "subprocess_index", scatter_or_drop(zeros_int, subproc_id)
             );
         }
     }
