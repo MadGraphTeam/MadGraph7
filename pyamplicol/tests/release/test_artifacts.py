@@ -608,6 +608,27 @@ def _sdist(
     return path
 
 
+def test_canonical_sdist_keeps_only_portable_source_selftest() -> None:
+    members = _canonical_sdist_members()
+    selftest_prefix = "src/pyamplicol/assets/selftest/"
+
+    assert (
+        "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json"
+        in members
+    )
+    assert not any(
+        name.startswith(selftest_prefix)
+        and not name.startswith(f"{selftest_prefix}portable-64le/")
+        for name in members
+    )
+    assert {
+        "tests/fixtures/reference/analytic-oracles-v2.json",
+        "tests/fixtures/reference/legacy-fortran-v2.json",
+        "tests/fixtures/reference/physics-v2.json",
+        "tests/fixtures/reference/reference-fixture-v2.manifest.json",
+    } <= members
+
+
 def test_release_and_candidate_wheels_are_distinct_and_audited(
     tmp_path: Path,
 ) -> None:
@@ -1276,7 +1297,7 @@ def test_sdist_candidate_identity_and_manifest_path_scan(tmp_path: Path) -> None
     fixture_leak = _sdist(
         tmp_path,
         extra_files={
-            "tests/fixtures/reference/physics-v1.json": (
+            "tests/fixtures/reference/physics-v2.json": (
                 b'{"capture_root":"/Users/build/private-checkout"}\n'
             )
         },

@@ -288,6 +288,11 @@ def _source_inventory_excluded(relative: Path) -> bool:
     )
     if any(relative.is_relative_to(tree) for tree in generated_trees):
         return True
+    selftest_root = Path("src/pyamplicol/assets/selftest")
+    if relative.is_relative_to(selftest_root):
+        selftest_parts = relative.relative_to(selftest_root).parts
+        if selftest_parts and selftest_parts[0] != "portable-64le":
+            return True
     return (
         relative.parent == Path("src/pyamplicol")
         and relative.name.startswith("_rusticol")

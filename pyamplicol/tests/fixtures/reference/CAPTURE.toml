@@ -1,78 +1,51 @@
 # SPDX-License-Identifier: 0BSD
-schema_version = 1
-captured_utc = "2026-07-15T14:43:42Z"
-oracle_kind = "clean pre-port pyAmpliCol and Rusticol implementation"
-independent_fortran_oracle = "verified by legacy-fortran-v1.json and tools/developer/legacy_amplicol.py"
+schema_version = 2
+fixture_bundle = "reference-fixture-v2.manifest.json"
+captured_utc = "2026-07-16T06:33:38Z"
+memory_watchdog_gb = 30
 
 [source]
-repository = "git@github.com:rikkert-frederix/AmpliCol.git"
+repository = "https://github.com/mg5amcnlo/pyamplicol.git"
+revision = "33b7a2420258d63e8503c5e03fdb3a0f13d339d1"
+tree_sha256 = "0f564033ece3168ff5ed0cb288bce07905de0a95fddc66d21ad6b7807379b962"
+working_tree_clean = true
+installed_candidate = "0.1.0.dev0+candidate.226e72f54b6c"
+
+[capture]
+tool = "tools/developer/capture_reference_fixture_v2.py"
+artifact_root = ".artifacts/reference-fixture-v2/33b7a2420258d63e8503c5e03fdb3a0f13d339d1"
+artifact_mode = "generate"
+legacy_jobs = 5
+command = [
+  "python",
+  "tools/developer/capture_reference_fixture_v2.py",
+  "--generate",
+  "--external-watchdog-gb",
+  "30",
+  "--legacy-jobs",
+  "5",
+]
+
+[evidence.legacy_fortran]
+file = "legacy-fortran-v2.json"
+repository = "https://github.com/rikkert-frederix/AmpliCol.git"
 revision = "643bc6f99d7b2249af0a85204768df243e612411"
-relevant_paths = ["pyAmpliCol/src", "rusticol"]
-relevant_paths_clean = true
-clean_proof = [
-  "git rev-parse HEAD",
-  "git diff --quiet HEAD -- pyAmpliCol/src rusticol",
-  "git diff --cached --quiet HEAD -- pyAmpliCol/src rusticol",
+records = 27
+validation_profile = "binary64"
+
+[evidence.analytic]
+file = "analytic-oracles-v2.json"
+implementation = "tools/developer/analytic_oracles.py"
+records = 8
+validation_profile = "high-precision"
+
+[coverage]
+models = ["built-in-sm", "scalars-json", "scalar-gravity-json"]
+builtin_sm_processes = ["d d~ > z", "d d~ > z g", "d d~ > z g g"]
+color_accuracies = ["lc", "nlc", "full"]
+external_processes = [
+  "scalar_0 scalar_0 > scalar_0 scalar_0",
+  "scalar_0 scalar_0 > graviton graviton",
 ]
-note = "Unrelated outer-checkout scratch files and a Fortran diagnostic edit were excluded."
-
-[environment]
-python = "3.12.6"
-rustc = "1.95.0 (59807616e 2026-04-14)"
-target = "aarch64-apple-darwin"
-platform = "macOS-15.0-arm64"
-symbolica_version = "symbolica-e4167e7"
-symbolica_revision = "e4167e767147ab8f3b4f039057c396c8fa961f6a"
-symjit_revision = "7fb09d1cb2a943c25a6fd71a208af44fcc6d813d"
-ufo_model_loader_version = "0.1.7"
-ufo_model_loader_revision = "9cb4deeae40ddd64184049af07ac1d03ce5f6162"
-
-[generation]
-memory_watchdog_gb = 30
-common_arguments = [
-  "--symbolica-evaluator-backend=jit",
-  "--symbolica-jit-opt-level=3",
-  "--symbolica-n-cores=1",
-  "--n-cores=1",
-  "--batch-size=128",
-  "--symbolica-output-chunk-size=128",
-  "--symbolica-stage-local-parameter-layout",
-  "--symbolica-iterations=10",
-  "--symbolica-max-horner-scheme-variables=1000",
-  "--symbolica-max-common-pair-cache-entries=5000000",
-  "--symbolica-max-common-pair-distance=1000",
-]
-command_template = """
-python3 scripts/run_with_memory_watch.py --limit-gb 30 -- \
-env PYTHONPATH=./src ./dependencies/.venv/bin/python -m pyamplicol \
-generate-process PROCESS /tmp/OUTPUT --color-accuracy COLOR COMMON_ARGUMENTS
-"""
-evaluation_template = """
-env PYTHONPATH=./src ./dependencies/.venv/bin/python \
-/tmp/OUTPUT/API/python/check_standalone.py --json
-"""
-
-[[generation.captures]]
-case = "builtin_sm_ddbar_z_nlc"
-process = "d d~ > z"
-color_accuracy = "nlc"
-output = "/tmp/pyamplicol-fixture-ddz-nlc-20260715"
-peak_rss_mb = 50.3
-
-[[generation.captures]]
-case = "builtin_sm_ddbar_z_full"
-process = "d d~ > z"
-color_accuracy = "full"
-output = "/tmp/pyamplicol-fixture-ddz-full-20260715"
-peak_rss_mb = 50.2
-
-[[generation.verifications]]
-case = "builtin_sm_ddbar_zg_lc_fixed_helicity_verification"
-process = "d d~ > z g"
-color_accuracy = "lc"
-output = ".artifacts/oracle-643bc6f9-ddzg-h-mpm1m1"
-arguments = ["--source-helicities", "1=-1,2=1,3=-1,4=-1"]
-expected_helicity_id = "h:-1,+1,-1,-1"
-expected_value = 0.00002609103478909918
-peak_rss_mb = 53.8
-note = "Fixed-helicity source-revision probe used only to correct an earlier hand-assembled LC label permutation."
+case_count = 11
+point_count = 17

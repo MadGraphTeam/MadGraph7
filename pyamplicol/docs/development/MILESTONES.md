@@ -8,7 +8,7 @@ evidence; they do not commit, push, or update shared release metadata.
 | Bootstrap and clean baselines | Main orchestrator | Complete | Plan preserved outside the nested repository; independent branch; 0BSD and fail-closed dependency/legal gates; canonical published Cargo lock separated from the ignored candidate lock; deterministic model assets and compact reference fixtures present; the complete source gate and isolated candidate deployment pass under the 30 GB watchdog | `d9f49fb` |
 | Mixed Maturin build and SDK | Main + Rust workers | In progress | Split core/Python/C API workspace, portable target contract, and SDK resources implemented; the fresh macOS arm64 candidate wheel passes SDK/archive audits, deterministic Python and C-API CycloneDX SBOM validation, a Symbolica-import-blocked direct-SymJIT physics self-test, and Python/C++17/Fortran deployment; the other release targets remain | Pending |
 | Typed Python API and configuration | Turing + Franklin + Epicurus + Main | In progress | Immutable schema-v1 config, requested/effective provenance, quiet lazy root import, truthful public typing gate, centralized programmatic license clamps, complete LC generation coverage, and named process-set runtime identity implemented; final API review remains | Pending |
-| Models, DAG, and schema v3 | Planck + Darwin + Maxwell + Main | In progress | Model assets, generic compilation, schema-v3 manifests, physics metadata, resolved reductions, full compiler-source cache fingerprinting, truthful validation samples/tolerances, and selector-free LC expressions implemented; seven installed-wheel built-in/external/scalar schema-v3 physics cases pass, and the first six built-in LC/NLC/full rows now have an independent pinned-Fortran replay; broader process coverage remains | Pending |
+| Models, DAG, and schema v3 | Planck + Darwin + Maxwell + Main | In progress | Model assets, generic compilation, schema-v3 manifests, physics metadata, resolved reductions, full compiler-source cache fingerprinting, truthful validation samples/tolerances, and selector-free LC expressions implemented; the revision-scoped v2 bundle now certifies 11 built-in/external/scalar cases over 17 exact points with independent Fortran or analytic evidence; broader process coverage remains | Pending |
 | Post-parity model independence | Main + future physics/model workers | Deferred until parity | After numerical, coverage, and performance parity is frozen, replace PDG/name/family branches in generic code with structural particle predicates; derive lowering from canonical UFO color/Lorentz tensors; validate relabeled-PDG and tensor-reordering invariance; retain any optimized built-in specialization only behind structural equivalence proofs | Pending |
 | Examples and documentation | Python workers + Main | In progress | Installed examples, root API bundle, native runners, and clean N/A performance report implemented and visually reviewed; all 20 installed-wheel example tests pass, while final prose review remains | Pending |
 | Deployment and release gates | Main + Ohm + Herschel + Leibniz + reviewers | In progress | Clean-overlay release/candidate Cargo execution, strict wheel/sdist inventory audits, immutable CI pins, guarded publishing, diagnostics, and self-test implemented; the exact macOS arm64 candidate passes isolated deployment and all 31 installed integration tests. Candidate sdist `ce662c926262...69f18d41` contains one portable saved-SymJIT-MIR source template; cross-target execution and release-mode artifact parity remain | Pending |
@@ -50,7 +50,8 @@ evidence; they do not commit, push, or update shared release metadata.
 | Independent Fortran oracle bootstrap | Main | Complete | The optional pinned AmpliCol checkout receives three checksummed, non-physics patches: one removes an unnecessary LHAPDF link, one extends recursion diagnostics, and one reports LC contraction-row diagnostics. The v1 replay remains byte-stable; the v2 path validates every physical helicity, resolves genuinely single-flow cases, and certifies multi-flow LC cases through per-helicity aggregates with stable repeated-particle identities and compiler-tolerant numeric replay | Pending |
 | Current-source validation audit | Confucius + Main | Complete | Source tests now build one fresh audited candidate wheel, stage only ignored native runtime/SDK resources, and use an external candidate-identity marker. This prevents stale site-packages code and candidate metadata from contaminating source tests or release sdists | Pending |
 | Expanded physics-ladder review | Pauli | Complete | The next fixture contract must record multiple generic and stress points, exact external-row identity, complete resolved axes and structural zeros, and full independent-oracle evidence. Multi-flow LC comparisons use per-helicity aggregates; legacy accuracy outputs are cumulative, and the pinned oracle cannot validate more than two quark lines | Pending |
-| Reference fixture v2 capture infrastructure | Main | Complete | Strict schemas and typed readers cover model-derived axes, exact decimal points, normalization, topology, canonical reduction partitions, whole-record evidence hashes, installed-candidate/source provenance, independent analytic and pinned-Fortran evidence, and manifest-last atomic publication; real revision-scoped capture remains the next step | This commit |
+| Reference fixture v2 capture infrastructure | Main | Complete | Strict schemas and typed readers cover model-derived axes, exact decimal points, normalization, topology, LC partitions and contracted many-to-one reductions, whole-record evidence hashes, installed-candidate/source provenance, independent analytic and pinned-Fortran evidence, and manifest-last atomic publication | `9292dfb`--`33b7a24` |
+| First real reference fixture v2 bundle | Main | Complete | Clean candidate `33b7a242...` produced 11 cases over 17 exact points. Twenty-seven pinned-Fortran records agree with p80 totals to at worst `1.59e-12`; eight analytic records agree to at worst `2.29e-16`. Five complete process artifacts are retained under the revision-scoped ignored artifact root, and release/source gates consume the atomic v2 bundle | This commit |
 
 ## Agent Handoff
 
@@ -71,27 +72,22 @@ commits that milestone.
 
 ## Current Critical Path
 
-1. Capture and freeze the first revision-scoped fixture-v2 bundle: at least
-   three generic points and one high-precision stress point, exact axes and
-   structural zeros, topology and coverage, hashed reduction partitions,
-   decimal expectations, and independent-oracle provenance for every
-   substantive case.
-2. Generalize the pinned Fortran oracle to declarative cases, explicit process
+1. Generalize the pinned Fortran oracle and v2 ladder to declarative cases, explicit process
    row identity, and multi-flow LC aggregation before adding charged-current,
    leptonic, two-quark-line, pure-gluon, top, and genuine LC/NLC/full hierarchy
    cases in increasing complexity.
-3. Exercise the lazy Symbolica precision fallback and non-JIT evaluator
+2. Exercise the lazy Symbolica precision fallback and non-JIT evaluator
    artifacts without changing the direct SymJIT f64 loader or introducing a
    second SymJIT decoder.
-4. Validate the same installed-wheel and static-SDK contract on macOS x86_64
+3. Validate the same installed-wheel and static-SDK contract on macOS x86_64
    and manylinux x86_64, including host execution of the retargeted portable
    saved-SymJIT-MIR self-test fixture.
-5. Resolve remaining alias/model metadata cases and
+4. Resolve remaining alias/model metadata cases and
    complete the full release workflow test contract.
-6. Freeze validated parity fixtures, then perform the dedicated model-independence
+5. Freeze validated parity fixtures, then perform the dedicated model-independence
    hardening pass: remove unexplained PDG/name assumptions from generic modules,
    derive lowering from canonical model structure, and rerun the complete model
    ladder including relabeled-PDG and reordered-tensor invariance checks.
-7. Complete release-mode sdist/wheel parity once the exact upstream dependency
+6. Complete release-mode sdist/wheel parity once the exact upstream dependency
    releases exist; candidate-mode source, wheel, SDK, legal, SBOM, and isolated
    deployment gates are validated in the bootstrap milestone.

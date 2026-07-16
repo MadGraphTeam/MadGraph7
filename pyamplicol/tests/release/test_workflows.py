@@ -135,6 +135,8 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "Independent Fortran physics oracle" in workflow
     assert "Rebuild and verify pinned Fortran evidence" in workflow
     assert "ulimit -v 31457280" in workflow
+    assert "tests/fixtures/reference/physics-v2.json" in workflow
+    assert "tests/fixtures/reference/legacy-fortran-v2.json" in workflow
     assert "retained-sdist:\n    needs: legal-release-gate" in workflow
     assert "source_commit: ${{ steps.tag.outputs.source_commit }}" in workflow
     assert "workflow_commit: ${{ steps.tag.outputs.workflow_commit }}" in workflow
@@ -193,7 +195,9 @@ def test_complete_source_gate_covers_every_required_suite_serially() -> None:
     assert justfile.count("PYAMPLICOL_BUILD_MODE=release just source-gate") == 2
     assert "independent-physics-oracle:" in justfile
     assert justfile.count("just independent-physics-oracle") == 2
-    assert "--prepare-checkout --jobs 2 --check-output" in justfile
+    assert "--prepare-checkout --fixture" in justfile
+    assert "tests/fixtures/reference/physics-v2.json" in justfile
+    assert "tests/fixtures/reference/legacy-fortran-v2.json" in justfile
 
 
 def test_publisher_is_manual_hash_checked_and_has_no_build_checkout() -> None:

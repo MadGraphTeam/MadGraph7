@@ -17,14 +17,22 @@ from tools.developer.analytic_oracles import (
     scalar_contact_2to2,
     scalar_gravity_2to2,
 )
+from tools.developer.reference_fixture import load_reference_fixture
 
-REFERENCE = (
-    Path(__file__).resolve().parents[1] / "fixtures" / "reference" / "physics-v1.json"
+REFERENCE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "reference"
+REFERENCE = REFERENCE_ROOT / "physics-v2.json"
+_VALIDATED_REFERENCE_FIXTURE = load_reference_fixture(
+    REFERENCE,
+    (
+        REFERENCE_ROOT / "legacy-fortran-v2.json",
+        REFERENCE_ROOT / "analytic-oracles-v2.json",
+    ),
 )
+REFERENCE_PAYLOAD = json.loads(REFERENCE.read_text(encoding="utf-8"))
 CASE_NAMES = {
-    "lc": "builtin_sm_ddbar_z_lc",
-    "nlc": "builtin_sm_ddbar_z_nlc",
-    "full": "builtin_sm_ddbar_z_full",
+    "lc": "case:sm_ddbar_z:lc",
+    "nlc": "case:sm_ddbar_z:nlc",
+    "full": "case:sm_ddbar_z:full",
 }
 MODEL_ASSETS = Path(__file__).resolve().parents[2] / "src/pyamplicol/assets/models"
 EXTERNAL_CASES = {
@@ -37,36 +45,60 @@ EXTERNAL_SM_SOURCES = {
     "json": MODEL_ASSETS / "json/sm/sm.json",
     "ufo": MODEL_ASSETS / "ufo/sm",
 }
+NAMED_CASE_IDS = {
+    "builtin_sm_ddbar_zg_lc": "case:sm_ddbar_zg:lc",
+    "scalars_2to2_lc": "case:scalars_2to2:lc",
+    "scalar_gravity_2to2_lc": "case:scalar_gravity_2to2:lc",
+}
+
+
+def _case_payload(
+    case_id: str,
+) -> tuple[dict[str, Any], list[Any], dict[str, dict[str, float]]]:
+    case = next(item for item in REFERENCE_PAYLOAD["cases"] if item["id"] == case_id)
+    process = next(
+        item
+        for item in REFERENCE_PAYLOAD["processes"]
+        if item["id"] == case["process_id"]
+    )
+    point_id = case["point_ids"][0]
+    point = next(item for item in REFERENCE_PAYLOAD["points"] if item["id"] == point_id)
+    observation = next(
+        item for item in case["observations"] if item["point_id"] == point_id
+    )
+    helicity_ids = [axis["id"] for axis in case["axes"]["helicities"]]
+    color_ids = [axis["id"] for axis in case["axes"]["colors"]]
+    resolved = {
+        helicity_id: {
+            color_id: float(value)
+            for color_id, value in zip(color_ids, row, strict=True)
+        }
+        for helicity_id, row in zip(helicity_ids, observation["values"], strict=True)
+    }
+    topology = case["topology"]
+    reference = {
+        "process": process["expression"],
+        "process_id": process["id"],
+        "color_accuracy": case["color_accuracy"],
+        "total": float(observation["total"]),
+        "resolved": resolved,
+        "topology": {
+            "current_count": topology["currents"],
+            "interaction_count": topology["interactions"],
+            "amplitude_root_count": topology["roots"],
+        },
+    }
+    return reference, [point["momenta"]], resolved
 
 
 def _reference_case(
     accuracy: str,
 ) -> tuple[dict[str, Any], list[Any], dict[str, Any]]:
-    fixture = json.loads(REFERENCE.read_text(encoding="utf-8"))
-    cases = fixture["cases"]
-    case = cases[CASE_NAMES[accuracy]]
-    momenta = (
-        cases[case["momenta_from"]]["momenta"]
-        if "momenta_from" in case
-        else case["momenta"]
-    )
-    resolved = (
-        cases[case["resolved_from"]]["resolved"]
-        if "resolved_from" in case
-        else case["resolved"]
-    )
-    return case, momenta, resolved
+    return _case_payload(CASE_NAMES[accuracy])
 
 
 def _named_reference_case(name: str) -> tuple[dict[str, Any], list[Any]]:
-    fixture = json.loads(REFERENCE.read_text(encoding="utf-8"))
-    cases = fixture["cases"]
-    case = cases[name]
-    momenta = (
-        cases[case["momenta_from"]]["momenta"]
-        if "momenta_from" in case
-        else case["momenta"]
-    )
+    case, momenta, _resolved = _case_payload(NAMED_CASE_IDS[name])
     return case, momenta
 
 
@@ -91,7 +123,7 @@ def test_current_source_generates_and_evaluates_schema_v3(
     outer = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
     assert outer["schema_version"] == 3
     assert outer["processes"][0]["color_accuracy"] == accuracy
-    process_root = artifact / "processes" / reference["process_id"]
+    process_root = artifact / "processes" / outer["processes"][0]["id"]
     execution = json.loads(
         (process_root / "execution.json").read_text(encoding="utf-8")
     )
@@ -287,10 +319,11 @@ def test_current_source_external_sm_matches_builtin_reference(
         model=ModelSource.from_path(EXTERNAL_SM_SOURCES[source_kind]),
     )
 
+    outer = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
     execution = json.loads(
-        (artifact / "processes" / reference["process_id"] / "execution.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            artifact / "processes" / outer["processes"][0]["id"] / "execution.json"
+        ).read_text(encoding="utf-8")
     )
     for name, expected in reference["topology"].items():
         if name == "interaction_evaluation_count":

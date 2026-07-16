@@ -111,8 +111,9 @@ jobs:
           ulimit -v 31457280
           python tools/developer/legacy_amplicol.py \
             --prepare-checkout \
+            --fixture tests/fixtures/reference/physics-v2.json \
             --jobs 2 \
-            --check-output tests/fixtures/reference/legacy-fortran-v1.json
+            --check-output tests/fixtures/reference/legacy-fortran-v2.json
 
   legal-release-gate:
     name: Native dependency legal gate

@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REFERENCE_ROOT = ROOT / "tests" / "fixtures" / "reference"
 FIXTURE = REFERENCE_ROOT / "physics-v1.json"
 CAPTURE = REFERENCE_ROOT / "CAPTURE.toml"
-LEGACY_FORTRAN = REFERENCE_ROOT / "legacy-fortran-v1.json"
-BASELINE = ROOT / "docs" / "development" / "SOURCE_BASELINE.toml"
+PHYSICS_V2 = REFERENCE_ROOT / "physics-v2.json"
+BUNDLE_V2 = REFERENCE_ROOT / "reference-fixture-v2.manifest.json"
 
 
 def _sha256(path: Path) -> str:
@@ -46,22 +46,31 @@ def test_reference_fixture_is_compact_and_self_consistent() -> None:
         ) <= 2.0e-15 * max(abs(case["total"]), 1.0)
 
 
-def test_reference_capture_matches_the_pinned_clean_baseline() -> None:
+def test_current_reference_capture_matches_v2_bundle() -> None:
     with CAPTURE.open("rb") as stream:
         capture = tomllib.load(stream)
-    with BASELINE.open("rb") as stream:
-        baseline = tomllib.load(stream)
+    physics = json.loads(PHYSICS_V2.read_text(encoding="utf-8"))
+    bundle = json.loads(BUNDLE_V2.read_text(encoding="utf-8"))
 
-    assert capture["schema_version"] == 1
-    assert capture["source"]["revision"] == baseline["source"]["commit"]
-    assert capture["source"]["relevant_paths_clean"] is True
-    assert capture["generation"]["memory_watchdog_gb"] == 30
-    assert {entry["case"] for entry in capture["generation"]["captures"]} == {
-        "builtin_sm_ddbar_z_nlc",
-        "builtin_sm_ddbar_z_full",
+    assert capture["schema_version"] == 2
+    assert capture["fixture_bundle"] == BUNDLE_V2.name
+    assert capture["memory_watchdog_gb"] == 30
+    assert capture["source"]["revision"] == physics["provenance"]["source_revision"]
+    assert capture["source"]["tree_sha256"] == physics["provenance"][
+        "source_tree_sha256"
+    ]
+    assert capture["source"]["working_tree_clean"] is True
+    assert capture["coverage"]["case_count"] == len(physics["cases"])
+    assert capture["coverage"]["point_count"] == len(physics["points"])
+    assert capture["evidence"]["legacy_fortran"]["records"] == 27
+    assert capture["evidence"]["analytic"]["records"] == 8
+    assert {record["path"] for record in bundle["files"]} == {
+        "analytic-oracles-v2.json",
+        "legacy-fortran-v2.json",
+        "physics-v2.json",
     }
-    assert baseline["reference_fixtures"]["clean_fixture_sha256"] == _sha256(FIXTURE)
-    assert baseline["reference_fixtures"]["capture_manifest_sha256"] == _sha256(CAPTURE)
-    assert baseline["reference_fixtures"]["legacy_fortran_fixture_sha256"] == _sha256(
-        LEGACY_FORTRAN
-    )
+    assert next(
+        record["sha256"]
+        for record in bundle["files"]
+        if record["path"] == PHYSICS_V2.name
+    ) == _sha256(PHYSICS_V2)

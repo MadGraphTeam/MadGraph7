@@ -1,35 +1,33 @@
 # Clean Reference Fixtures
 
-`physics-v1.json` contains compact numerical and topology observations from
-the clean source revision recorded in `docs/development/SOURCE_BASELINE.toml`.
-It deliberately does not contain serialized evaluators, generated binaries,
-or schema-v2 manifests.
+The release-facing reference bundle consists of:
 
-Resolved values are stored sparsely by stable physical helicity and color
-component ID. Missing entries are expected to be exact structural zeros.
-Tests must compare totals as well as every listed component and must verify
-that the generated metadata declares the recorded complete coverage.
+- `physics-v2.json`: exact model, process, phase-space, topology, resolved-axis,
+  reduction, and high-precision matrix-element records;
+- `legacy-fortran-v2.json`: independent built-in-SM evidence from the pinned
+  Fortran AmpliCol color probe;
+- `analytic-oracles-v2.json`: independent closed-form evidence for the scalar
+  and scalar-gravity cases;
+- `reference-fixture-v2.manifest.json`: the manifest-last atomic commit marker
+  and digest for the other three documents.
 
-These fixtures establish behavior for the standalone schema-v3 port. They are
-not an excuse to preserve schema-v2 compatibility.
+Every nondegenerate process has three deterministic generic points and one
+quantified high-precision stress point. Values are recorded against complete
+physical helicity axes and either physical LC flows or one contracted NLC/full
+color component. Structural zeros, normalization, topology, reduction maps,
+input hashes, independent-oracle output hashes, and exact dependency provenance
+are part of the validated contract.
 
-Public color-component identifiers are normalized to the schema-v3 spelling
-(`color:contracted` and `flow:singlet`). This normalization changes no captured
-matrix-element value, momentum, or topology count.
+The bundle was captured from the clean installed candidate identified in
+`CAPTURE.toml`. Generated process artifacts are intentionally not committed,
+but remain in the ignored revision-scoped `.artifacts/reference-fixture-v2/`
+directory for retiming and diagnosis.
 
-The `d d~ > z g` LC helicity labels were independently rechecked against the
-recorded clean source revision with a fixed-helicity generation. This corrected
-an earlier hand-assembled permutation of the LC labels; the component values,
-their sum, topology, and the already-correct NLC/full mappings did not change.
+Run the capture only behind the external 30 GB memory watchdog. The capture
+tool validates both independent evidence sets and all bundle digests before it
+publishes the manifest. CI independently rebuilds the pinned Fortran evidence
+and compares it semantically with the tracked v2 document.
 
-`CAPTURE.toml` records the exact source revision, clean-path proof, dependency
-revisions, toolchain, watchdog policy, command templates, and the two fixture
-captures repeated during the standalone bootstrap. Paths under `/tmp` are
-historical output labels only; no fixture depends on them.
-
-`legacy-fortran-v1.json` records an independent replay through the pinned
-Fortran AmpliCol color probe. It covers the built-in-SM `d d~ > z` and
-`d d~ > z g` fixtures in LC, NLC, and full color. The developer-only
-`tools/developer/legacy_amplicol.py` runner regenerates process files, maps
-physical external-leg and helicity orderings explicitly, and checks both
-summed and resolved values with the independent-oracle tolerance.
+`physics-v1.json` and `legacy-fortran-v1.json` remain solely as focused inputs
+for legacy fixture-reader regression tests. They are not release evidence and
+are not consumed by current generation/runtime integration tests.

@@ -35,7 +35,7 @@ python-integration:
     PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration -q
 
 python-physics:
-    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration/test_schema_v3_generation_runtime.py tests/unit/test_reference_fixtures.py tests/unit/test_color_contraction_safety.py -q
+    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration/test_schema_v3_generation_runtime.py tests/unit/test_reference_fixture_v2.py tests/unit/test_tracked_reference_fixture_v2.py tests/unit/test_color_contraction_safety.py -q
 
 # Build a fresh wheel through the real backend and stage only ignored native
 # runtime/SDK resources beside the current Python source for source-tree tests.
@@ -48,13 +48,13 @@ legacy-physics:
     {{python}} tools/developer/legacy_amplicol.py --jobs 5
 
 legacy-physics-verify:
-    {{python}} tools/developer/legacy_amplicol.py --jobs 5 --check-output tests/fixtures/reference/legacy-fortran-v1.json
+    {{python}} tools/developer/legacy_amplicol.py --fixture tests/fixtures/reference/physics-v2.json --jobs 5 --check-output tests/fixtures/reference/legacy-fortran-v2.json
 
 # Release-facing replay of the pinned independent physics evidence. The CI job
 # additionally applies a 30 GiB process limit; local milestone runs invoke this
 # recipe through the repository-external memory watchdog.
 independent-physics-oracle:
-    {{python}} tools/developer/legacy_amplicol.py --prepare-checkout --jobs 2 --check-output tests/fixtures/reference/legacy-fortran-v1.json
+    {{python}} tools/developer/legacy_amplicol.py --prepare-checkout --fixture tests/fixtures/reference/physics-v2.json --jobs 2 --check-output tests/fixtures/reference/legacy-fortran-v2.json
 
 installed-smoke:
     PYTHONPATH="$PWD/src" {{python}} -m pyamplicol.selftest

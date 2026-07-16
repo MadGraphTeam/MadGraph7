@@ -1,0 +1,5332 @@
+{
+  "captured_at": "2026-07-16T06:33:38Z",
+  "dependency_ids": [
+    "dependency:legacy-amplicol"
+  ],
+  "evidence_schema_version": 2,
+  "evidence_set_id": "evidence-set:legacy-fortran-amplicol",
+  "kind": "pyamplicol-reference-oracle-evidence",
+  "oracle": {
+    "content_sha256": "48b7cd8b931dbbd5a4d86d97734d06836e5c3412c932d3484e2799e6a2488469",
+    "id": "oracle:legacy-fortran-amplicol",
+    "implementation": "independent amplicol_color_probe executable",
+    "independence_statement": "The pinned Fortran implementation is built and executed outside the pyAmpliCol generation and Rusticol runtime code paths.",
+    "name": "Pinned legacy Fortran AmpliCol",
+    "revision": "643bc6f99d7b2249af0a85204768df243e612411",
+    "tolerance_ceiling": {
+      "absolute": "0.000000000001",
+      "relative": "0.0000000001"
+    },
+    "validation_profile": "binary64"
+  },
+  "records": [
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_z:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=c93e1917cbca9f1bc317b871eb8295e74ee753c7d1cd2e9ae16117c006f055f1",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z",
+        "case=case:sm_ddbar_z:full",
+        "point=point:sm_ddbar_z:canonical",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "7074d6fc87d2adf281d3c279e15f3a1e3d30dfbe2c6688ad224b3630217453dc",
+      "helicity_ids": [
+        "h:-1,-1,-1",
+        "h:-1,-1,+0",
+        "h:-1,-1,+1",
+        "h:-1,+1,-1",
+        "h:-1,+1,+0",
+        "h:-1,+1,+1",
+        "h:+1,-1,-1",
+        "h:+1,-1,+0",
+        "h:+1,-1,+1",
+        "h:+1,+1,-1",
+        "h:+1,+1,+0",
+        "h:+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_z:full:point:sm_ddbar_z:canonical",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "da8ce6c3708d2ed7d74a603d87abd4590d0311b64d4d7661b3317712732d44db",
+      "observed_helicity_totals": null,
+      "observed_total": "142.10653372872989",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "137.93356063778558"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "4.1729730909442964"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "6419398786073009a7e9adbedeaecb0b049e677f83ebb348c977ab4e51b3138b",
+      "physics_case_sha256": "0a7efe667daa0b0c47b1642f41231ff19d31896ff4b97586a46352138b6f718b",
+      "point_id": "point:sm_ddbar_z:canonical",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_z:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=c93e1917cbca9f1bc317b871eb8295e74ee753c7d1cd2e9ae16117c006f055f1",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z",
+        "case=case:sm_ddbar_z:lc",
+        "point=point:sm_ddbar_z:canonical",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "3a8b39548eca297871b94c374591aac4749bfd694c88614b91987bc2a8707c11",
+      "helicity_ids": [
+        "h:-1,-1,-1",
+        "h:-1,-1,+0",
+        "h:-1,-1,+1",
+        "h:-1,+1,-1",
+        "h:-1,+1,+0",
+        "h:-1,+1,+1",
+        "h:+1,-1,-1",
+        "h:+1,-1,+0",
+        "h:+1,-1,+1",
+        "h:+1,+1,-1",
+        "h:+1,+1,+0",
+        "h:+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_z:lc:point:sm_ddbar_z:canonical",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "da8ce6c3708d2ed7d74a603d87abd4590d0311b64d4d7661b3317712732d44db",
+      "observed_helicity_totals": null,
+      "observed_total": "142.10653372872989",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "137.93356063778558"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "4.1729730909442964"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "75e627c8b24559b5083458212d68ec9b51fd3eff76f6805099094c4bbd2b5002",
+      "physics_case_sha256": "775eaef37209c35dad845dcd660a471abd4fe07d1a7d1432755af823051ba13e",
+      "point_id": "point:sm_ddbar_z:canonical",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_z:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=c93e1917cbca9f1bc317b871eb8295e74ee753c7d1cd2e9ae16117c006f055f1",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z",
+        "case=case:sm_ddbar_z:nlc",
+        "point=point:sm_ddbar_z:canonical",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "39ce9a8f99ee0b7734f12fe49f82a43996aff059567f33d18e9bc5ee437d106d",
+      "helicity_ids": [
+        "h:-1,-1,-1",
+        "h:-1,-1,+0",
+        "h:-1,-1,+1",
+        "h:-1,+1,-1",
+        "h:-1,+1,+0",
+        "h:-1,+1,+1",
+        "h:+1,-1,-1",
+        "h:+1,-1,+0",
+        "h:+1,-1,+1",
+        "h:+1,+1,-1",
+        "h:+1,+1,+0",
+        "h:+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_z:nlc:point:sm_ddbar_z:canonical",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "da8ce6c3708d2ed7d74a603d87abd4590d0311b64d4d7661b3317712732d44db",
+      "observed_helicity_totals": null,
+      "observed_total": "142.10653372872989",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "137.93356063778558"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "4.1729730909442964"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "6ccc424b058695d27e5d8ec3431ddf42cb8a0ea39227f24e817f7a4954d2109e",
+      "physics_case_sha256": "89f7cb5457a7e082e2c93848860182d05560c47f931fffcf0848402a6f540733",
+      "point_id": "point:sm_ddbar_z:canonical",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=fff1ea2d528950eeeb8abe60b76466f8aaa602a8b73de751dd1b59551905dc12",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:full",
+        "point=point:sm_ddbar_zg:generic-1",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "ae067624407bf83b5538070dc7467919cad3321282b0d892f03a5b07cc5af7d0",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:full:point:sm_ddbar_zg:generic-1",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "ecd661750c43b7017c1f061d5099dc06f1c3e0187c2e1ed30f23f37f31ef479c",
+      "observed_helicity_totals": null,
+      "observed_total": "0.21607176163324765",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.0000016788392960863336"
+        ],
+        [
+          "0.024280541263147042"
+        ],
+        [
+          "0.001109208727941525"
+        ],
+        [
+          "0.0011092087279415107"
+        ],
+        [
+          "0.18321348639648802"
+        ],
+        [
+          "0.000012668004275598482"
+        ],
+        [
+          "0.00000038325147783910022"
+        ],
+        [
+          "0.0055428493623704304"
+        ],
+        [
+          "0.000033557447169042847"
+        ],
+        [
+          "0.000033557447169044581"
+        ],
+        [
+          "0.00073457137520539762"
+        ],
+        [
+          "0.000000050790766033986098"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "79b81b873d12fc3e62ea5e5f646e95f185b307889c311910a0dcdb2df5ee46ab",
+      "physics_case_sha256": "21760158fe48e47989cc1cc76a18b3a2a2a0795a365e3bc3f77aa222caa71b6f",
+      "point_id": "point:sm_ddbar_zg:generic-1",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=cf78f5a7fe21301d0fda83fc17b241f7d46f8aac621cc8675a0e86cb106f8585",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:full",
+        "point=point:sm_ddbar_zg:generic-2",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "304b63bc5c940cfa75c44daa5bbd0079eed88b4c798bae7169b110ded052c8ec",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:full:point:sm_ddbar_zg:generic-2",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "642d0d76adf727fd5d5c2f7e24ca53484b80dcf7f75e04d4dc94b1a764808a69",
+      "observed_helicity_totals": null,
+      "observed_total": "0.47302794814860799",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00000068821346804150522"
+        ],
+        [
+          "0.009953421716771535"
+        ],
+        [
+          "0.0011092087279414315"
+        ],
+        [
+          "0.0011092087279414931"
+        ],
+        [
+          "0.44693400350144835"
+        ],
+        [
+          "0.000030902538773887961"
+        ],
+        [
+          "0.00000093490998237865648"
+        ],
+        [
+          "0.013521318244927819"
+        ],
+        [
+          "0.000033557447169042406"
+        ],
+        [
+          "0.000033557447169040888"
+        ],
+        [
+          "0.00030112585214834203"
+        ],
+        [
+          "0.000000020820866725135217"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "e91fcf793a2b023b007adef65f53c20fd0f169331cde89d2114cda7e1b8d155a",
+      "physics_case_sha256": "21760158fe48e47989cc1cc76a18b3a2a2a0795a365e3bc3f77aa222caa71b6f",
+      "point_id": "point:sm_ddbar_zg:generic-2",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=672f81a3a4cc4a066e673c697bd6a0590376de09a71881c18e8f5a4686ece4dc",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:full",
+        "point=point:sm_ddbar_zg:generic-3",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "2631c6ab7cd9ad2f64eae1999e4f445ba658a45b851231847b784dfddb2e605c",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:full:point:sm_ddbar_zg:generic-3",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "756f28d660cf5c1e15ac26e6616137deb33ef801dd20d5ea3ce7ad53d49f115e",
+      "observed_helicity_totals": null,
+      "observed_total": "0.16872514943908373",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.0000087346391807811994"
+        ],
+        [
+          "0.12632642537142244"
+        ],
+        [
+          "0.0011092087279414892"
+        ],
+        [
+          "0.0011092087279414675"
+        ],
+        [
+          "0.035214505621729578"
+        ],
+        [
+          "0.000002434850821045794"
+        ],
+        [
+          "0.000000073662761330212085"
+        ],
+        [
+          "0.0010653620749795159"
+        ],
+        [
+          "0.000033557447169041647"
+        ],
+        [
+          "0.000033557447169042128"
+        ],
+        [
+          "0.0038218166145543484"
+        ],
+        [
+          "0.00000026425341368677949"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "9365b6bc10cc260e160e38af28553cb834776dc3dff1f4e5daaef879bd364cb2",
+      "physics_case_sha256": "21760158fe48e47989cc1cc76a18b3a2a2a0795a365e3bc3f77aa222caa71b6f",
+      "point_id": "point:sm_ddbar_zg:generic-3",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=4f85d9e53e6bd65402c4cf1e910b46dd8179e2f6ae4ef67ea9f6ff9ddd481fd1",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:full",
+        "point=point:sm_ddbar_zg:stress-near-collinear",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "a221b6062abfb5895390cf1646c70dd5378acc93df8023c3ac23ecd9976a3536",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:full:point:sm_ddbar_zg:stress-near-collinear",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "7786ade1b51cba7321f5fc5e6632f7a5ce491d1f51322d94469974bc8c443257",
+      "observed_helicity_totals": null,
+      "observed_total": "68719.687168469187",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "4.6116654595406494"
+        ],
+        [
+          "66697.112548676814"
+        ],
+        [
+          "0.0011092087279411678"
+        ],
+        [
+          "0.0011092087279037514"
+        ],
+        [
+          "0.000000066697379338132234"
+        ],
+        [
+          "0.0000000000046116839588053645"
+        ],
+        [
+          "0.0000000000001395195844655152"
+        ],
+        [
+          "0.0000000020178292210219726"
+        ],
+        [
+          "0.000033557447167901175"
+        ],
+        [
+          "0.000033557447169032594"
+        ],
+        [
+          "2017.8211497069631"
+        ],
+        [
+          "0.1395190247980054"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "c29924042b314aef7fd0317401e71da3de6f7ed572257098ac6447219d7e3858",
+      "physics_case_sha256": "21760158fe48e47989cc1cc76a18b3a2a2a0795a365e3bc3f77aa222caa71b6f",
+      "point_id": "point:sm_ddbar_zg:stress-near-collinear",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=fff1ea2d528950eeeb8abe60b76466f8aaa602a8b73de751dd1b59551905dc12",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:lc",
+        "point=point:sm_ddbar_zg:generic-1",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "9cabda24775b3db98a4ba94e8c3a2f3e5f9a42cb28a68b7359942444b4455924",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:lc:point:sm_ddbar_zg:generic-1",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "ecd661750c43b7017c1f061d5099dc06f1c3e0187c2e1ed30f23f37f31ef479c",
+      "observed_helicity_totals": null,
+      "observed_total": "0.2430807318374035",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.0000018886942080971254"
+        ],
+        [
+          "0.027315608921040423"
+        ],
+        [
+          "0.0012478598189342156"
+        ],
+        [
+          "0.0012478598189341996"
+        ],
+        [
+          "0.20611517219604902"
+        ],
+        [
+          "0.000014251504810048289"
+        ],
+        [
+          "0.00000043115791256898777"
+        ],
+        [
+          "0.0062357055326667347"
+        ],
+        [
+          "0.000037752128065173199"
+        ],
+        [
+          "0.000037752128065175157"
+        ],
+        [
+          "0.00082639279710607246"
+        ],
+        [
+          "0.000000057139611788234354"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "a89af4ec50bb6541ae2ca3e11db1e45471aba3d1618a5e8a0ccceef7deb0f07b",
+      "physics_case_sha256": "27c7404c091280929952c4e216862a917beb3e1d571f9d1a1e7171a8e263d638",
+      "point_id": "point:sm_ddbar_zg:generic-1",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=cf78f5a7fe21301d0fda83fc17b241f7d46f8aac621cc8675a0e86cb106f8585",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:lc",
+        "point=point:sm_ddbar_zg:generic-2",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "90505bb4f3337004f31f192668ed4194db0509d71461a2e82e881011db6d267d",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:lc:point:sm_ddbar_zg:generic-2",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "642d0d76adf727fd5d5c2f7e24ca53484b80dcf7f75e04d4dc94b1a764808a69",
+      "observed_helicity_totals": null,
+      "observed_total": "0.5321564416671839",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00000077424015154669338"
+        ],
+        [
+          "0.011197599431367979"
+        ],
+        [
+          "0.0012478598189341104"
+        ],
+        [
+          "0.0012478598189341796"
+        ],
+        [
+          "0.50280075393912937"
+        ],
+        [
+          "0.000034765356120623953"
+        ],
+        [
+          "0.0000010517737301759887"
+        ],
+        [
+          "0.015211483025543796"
+        ],
+        [
+          "0.000037752128065172711"
+        ],
+        [
+          "0.000037752128065170997"
+        ],
+        [
+          "0.00033876658366688479"
+        ],
+        [
+          "0.000000023423475065777118"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "db802961b329b489709c0982d616b25f019bfaea92ae8747b9d276c99aba10db",
+      "physics_case_sha256": "27c7404c091280929952c4e216862a917beb3e1d571f9d1a1e7171a8e263d638",
+      "point_id": "point:sm_ddbar_zg:generic-2",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=672f81a3a4cc4a066e673c697bd6a0590376de09a71881c18e8f5a4686ece4dc",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:lc",
+        "point=point:sm_ddbar_zg:generic-3",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "d6e8ca5c14ec9d2329f9d3ac6f87a52858d217720a3e2e004d7adaef34a7c9d6",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:lc:point:sm_ddbar_zg:generic-3",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "756f28d660cf5c1e15ac26e6616137deb33ef801dd20d5ea3ce7ad53d49f115e",
+      "observed_helicity_totals": null,
+      "observed_total": "0.18981579311896921",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.0000098264690783788487"
+        ],
+        [
+          "0.14211722854285025"
+        ],
+        [
+          "0.0012478598189341753"
+        ],
+        [
+          "0.001247859818934151"
+        ],
+        [
+          "0.039616318824445773"
+        ],
+        [
+          "0.0000027392071736765181"
+        ],
+        [
+          "0.000000082870606496488602"
+        ],
+        [
+          "0.0011985323343519552"
+        ],
+        [
+          "0.000037752128065171864"
+        ],
+        [
+          "0.000037752128065172393"
+        ],
+        [
+          "0.0042995436913736409"
+        ],
+        [
+          "0.00000029728509039762693"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "2afc76953fcd531bd4031ca41de03dfdb67dcac20d1dda5b2c3ba26df39b4a59",
+      "physics_case_sha256": "27c7404c091280929952c4e216862a917beb3e1d571f9d1a1e7171a8e263d638",
+      "point_id": "point:sm_ddbar_zg:generic-3",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=4f85d9e53e6bd65402c4cf1e910b46dd8179e2f6ae4ef67ea9f6ff9ddd481fd1",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:lc",
+        "point=point:sm_ddbar_zg:stress-near-collinear",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "d49489be02812df856f957f20146d54202036f88470e2ba49f615050ce264600",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:lc:point:sm_ddbar_zg:stress-near-collinear",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "7786ade1b51cba7321f5fc5e6632f7a5ce491d1f51322d94469974bc8c443257",
+      "observed_helicity_totals": null,
+      "observed_total": "77309.648064527821",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "5.1881236419832302"
+        ],
+        [
+          "75034.251617261412"
+        ],
+        [
+          "0.001247859818933814"
+        ],
+        [
+          "0.0012478598188917201"
+        ],
+        [
+          "0.000000075034551755398775"
+        ],
+        [
+          "0.0000000000051881444536560352"
+        ],
+        [
+          "0.00000000000015695953252370459"
+        ],
+        [
+          "0.0000000022700578736497191"
+        ],
+        [
+          "0.000037752128063888826"
+        ],
+        [
+          "0.000037752128065161673"
+        ],
+        [
+          "2270.0487934203334"
+        ],
+        [
+          "0.15695890289775608"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "82756eedfd79ae425e4736499dda8bd5e3d85d4de303f24964c1513ddd202df2",
+      "physics_case_sha256": "27c7404c091280929952c4e216862a917beb3e1d571f9d1a1e7171a8e263d638",
+      "point_id": "point:sm_ddbar_zg:stress-near-collinear",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=fff1ea2d528950eeeb8abe60b76466f8aaa602a8b73de751dd1b59551905dc12",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:nlc",
+        "point=point:sm_ddbar_zg:generic-1",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "611560471a4289ff85a7c0c63b9f1ce73bd69617da048f96d3f14a319e532376",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:nlc:point:sm_ddbar_zg:generic-1",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "ecd661750c43b7017c1f061d5099dc06f1c3e0187c2e1ed30f23f37f31ef479c",
+      "observed_helicity_totals": null,
+      "observed_total": "0.21607176163324765",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.0000016788392960863336"
+        ],
+        [
+          "0.024280541263147042"
+        ],
+        [
+          "0.001109208727941525"
+        ],
+        [
+          "0.0011092087279415107"
+        ],
+        [
+          "0.18321348639648802"
+        ],
+        [
+          "0.000012668004275598482"
+        ],
+        [
+          "0.00000038325147783910022"
+        ],
+        [
+          "0.0055428493623704304"
+        ],
+        [
+          "0.000033557447169042847"
+        ],
+        [
+          "0.000033557447169044581"
+        ],
+        [
+          "0.00073457137520539762"
+        ],
+        [
+          "0.000000050790766033986098"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "949ed9a355e28b346bb4641f645b356624fc968287cdaa055216c3de708f7f08",
+      "physics_case_sha256": "2b56575a30087cf798c11f9dc24e57d369b111a3b26348237d3f53e5658e3e20",
+      "point_id": "point:sm_ddbar_zg:generic-1",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=cf78f5a7fe21301d0fda83fc17b241f7d46f8aac621cc8675a0e86cb106f8585",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:nlc",
+        "point=point:sm_ddbar_zg:generic-2",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "c9b1d0a61a42dca4aaf00583b9d1cc63ab21617103c0ab52c3bd9934d07051ac",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:nlc:point:sm_ddbar_zg:generic-2",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "642d0d76adf727fd5d5c2f7e24ca53484b80dcf7f75e04d4dc94b1a764808a69",
+      "observed_helicity_totals": null,
+      "observed_total": "0.47302794814860799",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00000068821346804150522"
+        ],
+        [
+          "0.009953421716771535"
+        ],
+        [
+          "0.0011092087279414315"
+        ],
+        [
+          "0.0011092087279414931"
+        ],
+        [
+          "0.44693400350144835"
+        ],
+        [
+          "0.000030902538773887961"
+        ],
+        [
+          "0.00000093490998237865648"
+        ],
+        [
+          "0.013521318244927819"
+        ],
+        [
+          "0.000033557447169042406"
+        ],
+        [
+          "0.000033557447169040888"
+        ],
+        [
+          "0.00030112585214834203"
+        ],
+        [
+          "0.000000020820866725135217"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "92028e33620eb502353d14660e9dd1ba06f9d22c0e20f553bc697c6d66a00814",
+      "physics_case_sha256": "2b56575a30087cf798c11f9dc24e57d369b111a3b26348237d3f53e5658e3e20",
+      "point_id": "point:sm_ddbar_zg:generic-2",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=672f81a3a4cc4a066e673c697bd6a0590376de09a71881c18e8f5a4686ece4dc",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:nlc",
+        "point=point:sm_ddbar_zg:generic-3",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "bb4ea3350ab4cc222608e267a58c2a112c1dbc8de7092ffa10e1035df54b2a4c",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:nlc:point:sm_ddbar_zg:generic-3",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "756f28d660cf5c1e15ac26e6616137deb33ef801dd20d5ea3ce7ad53d49f115e",
+      "observed_helicity_totals": null,
+      "observed_total": "0.16872514943908373",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.0000087346391807811994"
+        ],
+        [
+          "0.12632642537142244"
+        ],
+        [
+          "0.0011092087279414892"
+        ],
+        [
+          "0.0011092087279414675"
+        ],
+        [
+          "0.035214505621729578"
+        ],
+        [
+          "0.000002434850821045794"
+        ],
+        [
+          "0.000000073662761330212085"
+        ],
+        [
+          "0.0010653620749795159"
+        ],
+        [
+          "0.000033557447169041647"
+        ],
+        [
+          "0.000033557447169042128"
+        ],
+        [
+          "0.0038218166145543484"
+        ],
+        [
+          "0.00000026425341368677949"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "28377f80d2374da3d6db39ad285b6d8b70107032a8a8ff60e87b62eaae71d855",
+      "physics_case_sha256": "2b56575a30087cf798c11f9dc24e57d369b111a3b26348237d3f53e5658e3e20",
+      "point_id": "point:sm_ddbar_zg:generic-3",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=4f85d9e53e6bd65402c4cf1e910b46dd8179e2f6ae4ef67ea9f6ff9ddd481fd1",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g",
+        "case=case:sm_ddbar_zg:nlc",
+        "point=point:sm_ddbar_zg:stress-near-collinear",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "74cbcb04b08a4355a7e2aa43c9fc6a6a443a4f5ce98fe08b001738ac7ae56930",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1",
+        "h:-1,-1,-1,+1",
+        "h:-1,-1,+0,-1",
+        "h:-1,-1,+0,+1",
+        "h:-1,-1,+1,-1",
+        "h:-1,-1,+1,+1",
+        "h:-1,+1,-1,-1",
+        "h:-1,+1,-1,+1",
+        "h:-1,+1,+0,-1",
+        "h:-1,+1,+0,+1",
+        "h:-1,+1,+1,-1",
+        "h:-1,+1,+1,+1",
+        "h:+1,-1,-1,-1",
+        "h:+1,-1,-1,+1",
+        "h:+1,-1,+0,-1",
+        "h:+1,-1,+0,+1",
+        "h:+1,-1,+1,-1",
+        "h:+1,-1,+1,+1",
+        "h:+1,+1,-1,-1",
+        "h:+1,+1,-1,+1",
+        "h:+1,+1,+0,-1",
+        "h:+1,+1,+0,+1",
+        "h:+1,+1,+1,-1",
+        "h:+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zg:nlc:point:sm_ddbar_zg:stress-near-collinear",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "7786ade1b51cba7321f5fc5e6632f7a5ce491d1f51322d94469974bc8c443257",
+      "observed_helicity_totals": null,
+      "observed_total": "68719.687168469187",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "4.6116654595406494"
+        ],
+        [
+          "66697.112548676814"
+        ],
+        [
+          "0.0011092087279411678"
+        ],
+        [
+          "0.0011092087279037514"
+        ],
+        [
+          "0.000000066697379338132234"
+        ],
+        [
+          "0.0000000000046116839588053645"
+        ],
+        [
+          "0.0000000000001395195844655152"
+        ],
+        [
+          "0.0000000020178292210219726"
+        ],
+        [
+          "0.000033557447167901175"
+        ],
+        [
+          "0.000033557447169032594"
+        ],
+        [
+          "2017.8211497069631"
+        ],
+        [
+          "0.1395190247980054"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "63787aeb10041aa895d2702704ca25a151222b931de99f9812adc54b2c65842a",
+      "physics_case_sha256": "2b56575a30087cf798c11f9dc24e57d369b111a3b26348237d3f53e5658e3e20",
+      "point_id": "point:sm_ddbar_zg:stress-near-collinear",
+      "process_identity": {
+        "color_order_count": 1,
+        "expression": "d d~ > z g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=87931a6f865835e68a3e58c272db0b79db9934f18a2a6b16b0067cbc9897cafd",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:full",
+        "point=point:sm_ddbar_zgg:generic-1",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "d1dd6b333dbea38c3b9ffe05bcc518e981256f11f2e31c678ad14435066337c9",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:full:point:sm_ddbar_zgg:generic-1",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "5220587ed8399d54d3d5c67ba4ecd9f76effcbfeb2289d22805691f122c49f56",
+      "observed_helicity_totals": null,
+      "observed_total": "0.014981403983888716",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.000000001290709116482262"
+        ],
+        [
+          "0.0002025161513731112"
+        ],
+        [
+          "0.00000000020844541839095915"
+        ],
+        [
+          "0.000013154844510478129"
+        ],
+        [
+          "0.0000082353564140620431"
+        ],
+        [
+          "0.00012633085090794249"
+        ],
+        [
+          "0.00000063575638130527721"
+        ],
+        [
+          "0.0000082353564140618567"
+        ],
+        [
+          "0.013136401998056725"
+        ],
+        [
+          "0.0001309476444219849"
+        ],
+        [
+          "0.00091372514598742115"
+        ],
+        [
+          "0.0000012888995991668629"
+        ],
+        [
+          "0.000000038993725090417147"
+        ],
+        [
+          "0.000027643384460562784"
+        ],
+        [
+          "0.0000039616246689262386"
+        ],
+        [
+          "0.00039742214872325114"
+        ],
+        [
+          "0.00000024914836209050517"
+        ],
+        [
+          "0.000000019233856208133593"
+        ],
+        [
+          "0.0000038219505025271249"
+        ],
+        [
+          "0.00000024914836209051073"
+        ],
+        [
+          "0.0000003979800992880594"
+        ],
+        [
+          "0.0000000000063062036378535325"
+        ],
+        [
+          "0.0000061268225532205186"
+        ],
+        [
+          "0.000000000039048469324016151"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "05e0ea7de8bdc682a55bea01a07b5b6fe907babf08e820f6c19df87eab8a1cf1",
+      "physics_case_sha256": "a82fec0032e4bbe8df0077953e166bf6a1b3137f91a43e5fd5604f091055822f",
+      "point_id": "point:sm_ddbar_zgg:generic-1",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=f454b121c00bf5b8a0fe19e9866bc3f3d9062a92cc7c25c6cdda21f3cf554bdf",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:full",
+        "point=point:sm_ddbar_zgg:generic-2",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "b38cf27ea40507c31b082b3ba2f33a81928ba045ab2deca80d366b0b2cff0327",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:full:point:sm_ddbar_zgg:generic-2",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "bcac1824bc417f87758f2874cf66bc923559e501d310d4eda0b09e2790dbf8d9",
+      "observed_helicity_totals": null,
+      "observed_total": "0.00090691933962912046",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00000000050218400585297921"
+        ],
+        [
+          "0.0000015227442800382373"
+        ],
+        [
+          "0.00000044188962667335897"
+        ],
+        [
+          "0.0000052404119947770485"
+        ],
+        [
+          "0.0000010925857546280795"
+        ],
+        [
+          "0.0000015000033799806493"
+        ],
+        [
+          "0.00000025897375164813209"
+        ],
+        [
+          "0.0000010925857546280842"
+        ],
+        [
+          "0.00059427601103546413"
+        ],
+        [
+          "0.00027418169524926975"
+        ],
+        [
+          "0.00000062320727626135429"
+        ],
+        [
+          "0.000000056948939911880552"
+        ],
+        [
+          "0.0000000017229048007695681"
+        ],
+        [
+          "0.000000018854201848298417"
+        ],
+        [
+          "0.0000082949561442065942"
+        ],
+        [
+          "0.000017978929791836053"
+        ],
+        [
+          "0.000000033054544032143902"
+        ],
+        [
+          "0.00000000783486260987959"
+        ],
+        [
+          "0.000000045380353498030614"
+        ],
+        [
+          "0.000000033054544032143326"
+        ],
+        [
+          "0.00000015854080862229111"
+        ],
+        [
+          "0.000000013368708186383204"
+        ],
+        [
+          "0.000000046068345336748986"
+        ],
+        [
+          "0.000000000015192824236809683"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "bc69fd4ca5b9e52a9f2de22f29d7924f99ef159b13c0c318abfc4cde6edf4816",
+      "physics_case_sha256": "a82fec0032e4bbe8df0077953e166bf6a1b3137f91a43e5fd5604f091055822f",
+      "point_id": "point:sm_ddbar_zgg:generic-2",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=4a7db4918ff8305c3024a6a4501d5e1ca63c21a86d2f48fa5e6b8e14d3689a51",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:full",
+        "point=point:sm_ddbar_zgg:generic-3",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "3f90f0785d23d62de8f133bb9cb441621a96b3ab6b5cff3c622b065937d577db",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:full:point:sm_ddbar_zgg:generic-3",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "37240f414da2242d63e055c00ee16715b0e26b2e67e067ed9dd6786e36b56d38",
+      "observed_helicity_totals": null,
+      "observed_total": "0.000018743756960353458",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00000000043035086848322426"
+        ],
+        [
+          "0.000000059115768283467044"
+        ],
+        [
+          "0.000004442487116792543"
+        ],
+        [
+          "0.0000024046787380369732"
+        ],
+        [
+          "0.00000007809846998041092"
+        ],
+        [
+          "0.00000012497720003225663"
+        ],
+        [
+          "0.0000000992276637669188"
+        ],
+        [
+          "0.000000078098469980412164"
+        ],
+        [
+          "0.0000035432547369883152"
+        ],
+        [
+          "0.0000073304858579872696"
+        ],
+        [
+          "0.000000031856106925766326"
+        ],
+        [
+          "0.00000000063411495648065531"
+        ],
+        [
+          "0.000000000019184197360843423"
+        ],
+        [
+          "0.00000000096375875725092277"
+        ],
+        [
+          "0.00000022177285997320054"
+        ],
+        [
+          "0.00000010719586011877874"
+        ],
+        [
+          "0.0000000023627521262066652"
+        ],
+        [
+          "0.0000000030019842079186923"
+        ],
+        [
+          "0.0000000037809978246388916"
+        ],
+        [
+          "0.0000000023627521262066152"
+        ],
+        [
+          "0.000000072749950191927942"
+        ],
+        [
+          "0.00000013440078766562039"
+        ],
+        [
+          "0.0000000017884589447031801"
+        ],
+        [
+          "0.000000000013019620355925571"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "5954bf0930ec5b6f8de0c7e28be4b7577de28dd75752af26848aa1140fd2268d",
+      "physics_case_sha256": "a82fec0032e4bbe8df0077953e166bf6a1b3137f91a43e5fd5604f091055822f",
+      "point_id": "point:sm_ddbar_zgg:generic-3",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:full",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=bd03022f9c090a36ac752ea9ead5dca5620fca57e8ebd585f9765705fbdde802",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=full",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:full",
+        "point=point:sm_ddbar_zgg:stress-soft-collinear",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "44db78c93aeb8d70b8cbf674bf0b2f1c1c034386137f38217d1db5a0a9c2849c",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:full:point:sm_ddbar_zgg:stress-soft-collinear",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "b155388f382d87b4c72d2635f5276be720bceb164df4ea55f6c16da6e5a1d5d1",
+      "observed_helicity_totals": null,
+      "observed_total": "13.812900229656536",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00022840002683410422"
+        ],
+        [
+          "0.00022746435938143854"
+        ],
+        [
+          "3.303014543328604"
+        ],
+        [
+          "3.2900868008671114"
+        ],
+        [
+          "0.054934851647024593"
+        ],
+        [
+          "0.05471476340158242"
+        ],
+        [
+          "0.055145804941495589"
+        ],
+        [
+          "0.054934851647027001"
+        ],
+        [
+          "3.3032372711505"
+        ],
+        [
+          "3.2902987260666565"
+        ],
+        [
+          "0.00023019245852704611"
+        ],
+        [
+          "0.00022931294127905352"
+        ],
+        [
+          "0.0000069375192588239914"
+        ],
+        [
+          "0.0000069641277346142556"
+        ],
+        [
+          "0.099543055232949276"
+        ],
+        [
+          "0.099934491517354562"
+        ],
+        [
+          "0.0016619715797814725"
+        ],
+        [
+          "0.0016683536554503169"
+        ],
+        [
+          "0.0016553131398656979"
+        ],
+        [
+          "0.0016619715797813841"
+        ],
+        [
+          "0.099536643753749363"
+        ],
+        [
+          "0.099927753221010426"
+        ],
+        [
+          "0.0000068815931848538924"
+        ],
+        [
+          "0.000006909900400907713"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "93a26c2791f88e57332f73847d0eb6687a721ada19a2bec9eee0cdcd51d3fa25",
+      "physics_case_sha256": "a82fec0032e4bbe8df0077953e166bf6a1b3137f91a43e5fd5604f091055822f",
+      "point_id": "point:sm_ddbar_zgg:stress-soft-collinear",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,5,1",
+        "flow:2,5,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=87931a6f865835e68a3e58c272db0b79db9934f18a2a6b16b0067cbc9897cafd",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:lc",
+        "point=point:sm_ddbar_zgg:generic-1",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "helicity-aggregate",
+      "evidence_record_sha256": "adda1179416a4087c2b6e7f30c1abcbc712882d329a0ceb7b20073a75bf79a0d",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:lc:point:sm_ddbar_zgg:generic-1",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "5220587ed8399d54d3d5c67ba4ecd9f76effcbfeb2289d22805691f122c49f56",
+      "observed_helicity_totals": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0.0000000016353995779250319",
+        "0.00025659981084343448",
+        "0.00000000026582715747665552",
+        "0.000016667912921184474",
+        "0.00001043465040390015",
+        "0.00016004075092069931",
+        "0.0000008078233276590714",
+        "0.000010434650403899909",
+        "0.01664454524163167",
+        "0.00016537941381028932",
+        "0.0011577517907596304",
+        "0.0000016331068197690167",
+        "0.000000049407198523858217",
+        "0.000035026044760197603",
+        "0.0000050033062326198339",
+        "0.00050355576324698128",
+        "0.00000031568470463276818",
+        "0.000000024439483712094669",
+        "0.0000048417929904699891",
+        "0.00000031568470463277532",
+        "0.00000050426271735967671",
+        "0.0000000000080422021287864251",
+        "0.0000077630425897793951",
+        "0.000000000049476562484628751",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "observed_total": "0.018981696539216539",
+      "observed_values": null,
+      "oracle_output_sha256": "70483c90854accd0ad81a2405e61f2065a7a5857408c8fbdc148873b25b32540",
+      "physics_case_sha256": "27522438aa2d695168569f57b994279ef4a288f898ee58be6ae84ec84c255a50",
+      "point_id": "point:sm_ddbar_zgg:generic-1",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,5,1",
+        "flow:2,5,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=f454b121c00bf5b8a0fe19e9866bc3f3d9062a92cc7c25c6cdda21f3cf554bdf",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:lc",
+        "point=point:sm_ddbar_zgg:generic-2",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "helicity-aggregate",
+      "evidence_record_sha256": "493d68abb8ce5fc79c0450328f3f39ee43366f146e9f9d09d1b5e953eea69274",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:lc:point:sm_ddbar_zgg:generic-2",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "bcac1824bc417f87758f2874cf66bc923559e501d310d4eda0b09e2790dbf8d9",
+      "observed_helicity_totals": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0.00000000061468078851170934",
+        "0.000001864872368327592",
+        "0.00000054133809066371427",
+        "0.0000064143432278462824",
+        "0.0000013373414233508393",
+        "0.0000019018595812895904",
+        "0.00000032101570317605064",
+        "0.0000013373414233508441",
+        "0.00072740279021115534",
+        "0.00033583127897811077",
+        "0.00000076626583146433151",
+        "0.000000069706360381754134",
+        "0.000000002108861431516189",
+        "0.000000023182223966563491",
+        "0.000010160071876584031",
+        "0.000022006480915837558",
+        "0.000000040459259858470246",
+        "0.0000000097118488417912401",
+        "0.000000057537910417009586",
+        "0.000000040459259858469598",
+        "0.00000019405633815379655",
+        "0.000000016377372374044374",
+        "0.000000056418917739043586",
+        "0.000000000018596245744106766",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "observed_total": "0.0011103956512612131",
+      "observed_values": null,
+      "oracle_output_sha256": "1253ff5611269130b46ed8c2720b7b08e8b8c9383e3a2b70f5083559084ae01d",
+      "physics_case_sha256": "27522438aa2d695168569f57b994279ef4a288f898ee58be6ae84ec84c255a50",
+      "point_id": "point:sm_ddbar_zgg:generic-2",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,5,1",
+        "flow:2,5,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=4a7db4918ff8305c3024a6a4501d5e1ca63c21a86d2f48fa5e6b8e14d3689a51",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:lc",
+        "point=point:sm_ddbar_zgg:generic-3",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "helicity-aggregate",
+      "evidence_record_sha256": "5858f923ffd20a30199201bdaf574229fe25ac79e29a39d0ba0b1aa73c519c8e",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:lc:point:sm_ddbar_zgg:generic-3",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "37240f414da2242d63e055c00ee16715b0e26b2e67e067ed9dd6786e36b56d38",
+      "observed_helicity_totals": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0.00000000058979332315075162",
+        "0.000000080211102071744937",
+        "0.000006090619281164884",
+        "0.0000032955980059142595",
+        "0.00000010703349177633024",
+        "0.00000017208810169536695",
+        "0.00000014052911299364525",
+        "0.00000010703349177633207",
+        "0.0000048560096868479913",
+        "0.000010049370824709994",
+        "0.00000004340896142041221",
+        "0.00000000086905080210590853",
+        "0.000000000026291829160960048",
+        "0.0000000013132730502687854",
+        "0.00000030402864856479032",
+        "0.00000014691129308112981",
+        "0.0000000032381378320635524",
+        "0.0000000042514976362911127",
+        "0.0000000052062675271048033",
+        "0.0000000032381378320634792",
+        "0.000000099703377000205783",
+        "0.00000018426255546487422",
+        "0.0000000024266666429307309",
+        "0.000000000017843312790204931",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "observed_total": "0.000025697984894269887",
+      "observed_values": null,
+      "oracle_output_sha256": "f5cf9dab910a0cdbe94910f1642e5de0d447e6ac57009b84156ac7956c29a317",
+      "physics_case_sha256": "27522438aa2d695168569f57b994279ef4a288f898ee58be6ae84ec84c255a50",
+      "point_id": "point:sm_ddbar_zgg:generic-3",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:lc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "flow:2,4,5,1",
+        "flow:2,5,4,1"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=bd03022f9c090a36ac752ea9ead5dca5620fca57e8ebd585f9765705fbdde802",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=lc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:lc",
+        "point=point:sm_ddbar_zgg:stress-soft-collinear",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "helicity-aggregate",
+      "evidence_record_sha256": "dd39e1424c16b27d60125201416ea65cb1d87381df026fa5bb858efa20f33540",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:lc:point:sm_ddbar_zgg:stress-soft-collinear",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "b155388f382d87b4c72d2635f5276be720bceb164df4ea55f6c16da6e5a1d5d1",
+      "observed_helicity_totals": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0.00028907022937087586",
+        "0.00028789186004136026",
+        "4.1803993825971659",
+        "4.1640369283649123",
+        "0.069527269266017711",
+        "0.069249423624041892",
+        "0.069794961942441086",
+        "0.06952726926602075",
+        "4.1806805755388909",
+        "4.1643058459544937",
+        "0.00029134189192302109",
+        "0.00029022564249256134",
+        "0.0000087803417154138123",
+        "0.0000088141121684823227",
+        "0.12598483035802752",
+        "0.12648022325306491",
+        "0.0021034432982981193",
+        "0.0021115419389058118",
+        "0.0020950374949384762",
+        "0.0021034432982980074",
+        "0.12597669465950842",
+        "0.12647171618216962",
+        "0.0000087097366260940532",
+        "0.0000087453864235800699",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "observed_total": "17.48204216623796",
+      "observed_values": null,
+      "oracle_output_sha256": "bc70fdad61e832bfadbadbd2dce006d399e622d6fa5684d99457ce42dffd49f0",
+      "physics_case_sha256": "27522438aa2d695168569f57b994279ef4a288f898ee58be6ae84ec84c255a50",
+      "point_id": "point:sm_ddbar_zgg:stress-soft-collinear",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=87931a6f865835e68a3e58c272db0b79db9934f18a2a6b16b0067cbc9897cafd",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:nlc",
+        "point=point:sm_ddbar_zgg:generic-1",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "f0f8bb0c4c4f0703d47c949e2e09e7878636fb5d8591045dd5324931df45110f",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:nlc:point:sm_ddbar_zgg:generic-1",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "5220587ed8399d54d3d5c67ba4ecd9f76effcbfeb2289d22805691f122c49f56",
+      "observed_helicity_totals": null,
+      "observed_total": "0.014981403983888716",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.000000001290709116482262"
+        ],
+        [
+          "0.0002025161513731112"
+        ],
+        [
+          "0.00000000020844541839095915"
+        ],
+        [
+          "0.000013154844510478129"
+        ],
+        [
+          "0.0000082353564140620431"
+        ],
+        [
+          "0.00012633085090794249"
+        ],
+        [
+          "0.00000063575638130527721"
+        ],
+        [
+          "0.0000082353564140618567"
+        ],
+        [
+          "0.013136401998056725"
+        ],
+        [
+          "0.0001309476444219849"
+        ],
+        [
+          "0.00091372514598742115"
+        ],
+        [
+          "0.0000012888995991668629"
+        ],
+        [
+          "0.000000038993725090417147"
+        ],
+        [
+          "0.000027643384460562784"
+        ],
+        [
+          "0.0000039616246689262386"
+        ],
+        [
+          "0.00039742214872325114"
+        ],
+        [
+          "0.00000024914836209050517"
+        ],
+        [
+          "0.000000019233856208133593"
+        ],
+        [
+          "0.0000038219505025271249"
+        ],
+        [
+          "0.00000024914836209051073"
+        ],
+        [
+          "0.0000003979800992880594"
+        ],
+        [
+          "0.0000000000063062036378535325"
+        ],
+        [
+          "0.0000061268225532205186"
+        ],
+        [
+          "0.000000000039048469324016151"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "57004e0be51f8e716d408da5f3627b81a75b7ac6d8904aa127551034a0c37cf4",
+      "physics_case_sha256": "2d9a8ab3a42693581e1f309237785e754a5ab3451b994b20d0e6806d09d1318f",
+      "point_id": "point:sm_ddbar_zgg:generic-1",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=f454b121c00bf5b8a0fe19e9866bc3f3d9062a92cc7c25c6cdda21f3cf554bdf",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:nlc",
+        "point=point:sm_ddbar_zgg:generic-2",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "cbc80313d2bf4402b67cbf0e8a7f400943e8de93812afdc2ded71df0e00b54b2",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:nlc:point:sm_ddbar_zgg:generic-2",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "bcac1824bc417f87758f2874cf66bc923559e501d310d4eda0b09e2790dbf8d9",
+      "observed_helicity_totals": null,
+      "observed_total": "0.00090691933962912046",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00000000050218400585297921"
+        ],
+        [
+          "0.0000015227442800382373"
+        ],
+        [
+          "0.00000044188962667335897"
+        ],
+        [
+          "0.0000052404119947770485"
+        ],
+        [
+          "0.0000010925857546280795"
+        ],
+        [
+          "0.0000015000033799806493"
+        ],
+        [
+          "0.00000025897375164813209"
+        ],
+        [
+          "0.0000010925857546280842"
+        ],
+        [
+          "0.00059427601103546413"
+        ],
+        [
+          "0.00027418169524926975"
+        ],
+        [
+          "0.00000062320727626135429"
+        ],
+        [
+          "0.000000056948939911880552"
+        ],
+        [
+          "0.0000000017229048007695681"
+        ],
+        [
+          "0.000000018854201848298417"
+        ],
+        [
+          "0.0000082949561442065942"
+        ],
+        [
+          "0.000017978929791836053"
+        ],
+        [
+          "0.000000033054544032143902"
+        ],
+        [
+          "0.00000000783486260987959"
+        ],
+        [
+          "0.000000045380353498030614"
+        ],
+        [
+          "0.000000033054544032143326"
+        ],
+        [
+          "0.00000015854080862229111"
+        ],
+        [
+          "0.000000013368708186383204"
+        ],
+        [
+          "0.000000046068345336748986"
+        ],
+        [
+          "0.000000000015192824236809683"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "a85af6625094773af4779f98cee182c4335187d91b427d425a839be496d0e422",
+      "physics_case_sha256": "2d9a8ab3a42693581e1f309237785e754a5ab3451b994b20d0e6806d09d1318f",
+      "point_id": "point:sm_ddbar_zgg:generic-2",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=4a7db4918ff8305c3024a6a4501d5e1ca63c21a86d2f48fa5e6b8e14d3689a51",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:nlc",
+        "point=point:sm_ddbar_zgg:generic-3",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "7ed1ffd4ef3ccfc7c3d0bc0944064b568a832156050bec7d83d6ae2d7a86091a",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:nlc:point:sm_ddbar_zgg:generic-3",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "37240f414da2242d63e055c00ee16715b0e26b2e67e067ed9dd6786e36b56d38",
+      "observed_helicity_totals": null,
+      "observed_total": "0.000018743756960353458",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00000000043035086848322426"
+        ],
+        [
+          "0.000000059115768283467044"
+        ],
+        [
+          "0.000004442487116792543"
+        ],
+        [
+          "0.0000024046787380369732"
+        ],
+        [
+          "0.00000007809846998041092"
+        ],
+        [
+          "0.00000012497720003225663"
+        ],
+        [
+          "0.0000000992276637669188"
+        ],
+        [
+          "0.000000078098469980412164"
+        ],
+        [
+          "0.0000035432547369883152"
+        ],
+        [
+          "0.0000073304858579872696"
+        ],
+        [
+          "0.000000031856106925766326"
+        ],
+        [
+          "0.00000000063411495648065531"
+        ],
+        [
+          "0.000000000019184197360843423"
+        ],
+        [
+          "0.00000000096375875725092277"
+        ],
+        [
+          "0.00000022177285997320054"
+        ],
+        [
+          "0.00000010719586011877874"
+        ],
+        [
+          "0.0000000023627521262066652"
+        ],
+        [
+          "0.0000000030019842079186923"
+        ],
+        [
+          "0.0000000037809978246388916"
+        ],
+        [
+          "0.0000000023627521262066152"
+        ],
+        [
+          "0.000000072749950191927942"
+        ],
+        [
+          "0.00000013440078766562039"
+        ],
+        [
+          "0.0000000017884589447031801"
+        ],
+        [
+          "0.000000000013019620355925571"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "3a6bb0df612098df087542b90ab263c9d9be9e54431e93b76ecda2ba6a14e109",
+      "physics_case_sha256": "2d9a8ab3a42693581e1f309237785e754a5ab3451b994b20d0e6806d09d1318f",
+      "point_id": "point:sm_ddbar_zgg:generic-3",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    },
+    {
+      "arithmetic": "binary64",
+      "arithmetic_precision_bits": 53,
+      "case_id": "case:sm_ddbar_zgg:nlc",
+      "certified_decimal_digits": 10,
+      "color_ids": [
+        "color:contracted"
+      ],
+      "command": [
+        "amplicol_color_probe",
+        "build_target=amplicol_color_probe",
+        "compiler_identity=gfortran",
+        "compiler_version=GNU Fortran (MacPorts gcc14 14.2.0_3+stdlib_flag) 14.2.0",
+        "compiler_flags=[\"-ffast-math\",\"-O3\"]",
+        "compiler_target=aarch64-apple-darwin24",
+        "oracle_executable_sha256=9643ba99b3c86b046dbdcf09905a850283aa8ba83a6c877c25ad23da6bc9694d",
+        "binary64_input_sha256=bd03022f9c090a36ac752ea9ead5dca5620fca57e8ebd585f9765705fbdde802",
+        "mode=1",
+        "group=1",
+        "integral=1",
+        "pdg_match_count=1",
+        "color_accuracy=nlc",
+        "process=d d~ > z g g",
+        "case=case:sm_ddbar_zgg:nlc",
+        "point=point:sm_ddbar_zgg:stress-soft-collinear",
+        "helicities=summed-then-each-physical"
+      ],
+      "coverage": "resolved",
+      "evidence_record_sha256": "102fba164b7416dabbd9483425784b12986790e1ae0bd30d9756655ae4506fdb",
+      "helicity_ids": [
+        "h:-1,-1,-1,-1,-1",
+        "h:-1,-1,-1,-1,+1",
+        "h:-1,-1,-1,+1,-1",
+        "h:-1,-1,-1,+1,+1",
+        "h:-1,-1,+0,-1,-1",
+        "h:-1,-1,+0,-1,+1",
+        "h:-1,-1,+0,+1,-1",
+        "h:-1,-1,+0,+1,+1",
+        "h:-1,-1,+1,-1,-1",
+        "h:-1,-1,+1,-1,+1",
+        "h:-1,-1,+1,+1,-1",
+        "h:-1,-1,+1,+1,+1",
+        "h:-1,+1,-1,-1,-1",
+        "h:-1,+1,-1,-1,+1",
+        "h:-1,+1,-1,+1,-1",
+        "h:-1,+1,-1,+1,+1",
+        "h:-1,+1,+0,-1,-1",
+        "h:-1,+1,+0,-1,+1",
+        "h:-1,+1,+0,+1,-1",
+        "h:-1,+1,+0,+1,+1",
+        "h:-1,+1,+1,-1,-1",
+        "h:-1,+1,+1,-1,+1",
+        "h:-1,+1,+1,+1,-1",
+        "h:-1,+1,+1,+1,+1",
+        "h:+1,-1,-1,-1,-1",
+        "h:+1,-1,-1,-1,+1",
+        "h:+1,-1,-1,+1,-1",
+        "h:+1,-1,-1,+1,+1",
+        "h:+1,-1,+0,-1,-1",
+        "h:+1,-1,+0,-1,+1",
+        "h:+1,-1,+0,+1,-1",
+        "h:+1,-1,+0,+1,+1",
+        "h:+1,-1,+1,-1,-1",
+        "h:+1,-1,+1,-1,+1",
+        "h:+1,-1,+1,+1,-1",
+        "h:+1,-1,+1,+1,+1",
+        "h:+1,+1,-1,-1,-1",
+        "h:+1,+1,-1,-1,+1",
+        "h:+1,+1,-1,+1,-1",
+        "h:+1,+1,-1,+1,+1",
+        "h:+1,+1,+0,-1,-1",
+        "h:+1,+1,+0,-1,+1",
+        "h:+1,+1,+0,+1,-1",
+        "h:+1,+1,+0,+1,+1",
+        "h:+1,+1,+1,-1,-1",
+        "h:+1,+1,+1,-1,+1",
+        "h:+1,+1,+1,+1,-1",
+        "h:+1,+1,+1,+1,+1"
+      ],
+      "id": "evidence:fortran:case:sm_ddbar_zgg:nlc:point:sm_ddbar_zgg:stress-soft-collinear",
+      "independent_of_pyamplicol": true,
+      "input_sha256": "b155388f382d87b4c72d2635f5276be720bceb164df4ea55f6c16da6e5a1d5d1",
+      "observed_helicity_totals": null,
+      "observed_total": "13.812900229656536",
+      "observed_values": [
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0.00022840002683410422"
+        ],
+        [
+          "0.00022746435938143854"
+        ],
+        [
+          "3.303014543328604"
+        ],
+        [
+          "3.2900868008671114"
+        ],
+        [
+          "0.054934851647024593"
+        ],
+        [
+          "0.05471476340158242"
+        ],
+        [
+          "0.055145804941495589"
+        ],
+        [
+          "0.054934851647027001"
+        ],
+        [
+          "3.3032372711505"
+        ],
+        [
+          "3.2902987260666565"
+        ],
+        [
+          "0.00023019245852704611"
+        ],
+        [
+          "0.00022931294127905352"
+        ],
+        [
+          "0.0000069375192588239914"
+        ],
+        [
+          "0.0000069641277346142556"
+        ],
+        [
+          "0.099543055232949276"
+        ],
+        [
+          "0.099934491517354562"
+        ],
+        [
+          "0.0016619715797814725"
+        ],
+        [
+          "0.0016683536554503169"
+        ],
+        [
+          "0.0016553131398656979"
+        ],
+        [
+          "0.0016619715797813841"
+        ],
+        [
+          "0.099536643753749363"
+        ],
+        [
+          "0.099927753221010426"
+        ],
+        [
+          "0.0000068815931848538924"
+        ],
+        [
+          "0.000006909900400907713"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ],
+        [
+          "0"
+        ]
+      ],
+      "oracle_output_sha256": "d2840c4cd915317987af56449a815de8043f26d73c70cc5d4ab3a84d1b6b6955",
+      "physics_case_sha256": "2d9a8ab3a42693581e1f309237785e754a5ab3451b994b20d0e6806d09d1318f",
+      "point_id": "point:sm_ddbar_zgg:stress-soft-collinear",
+      "process_identity": {
+        "color_order_count": 2,
+        "expression": "d d~ > z g g",
+        "ordered_color_legs": [
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:incoming-d",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_leg_ids": [
+          "leg:incoming-d",
+          "leg:incoming-dbar",
+          "leg:outgoing-g-1",
+          "leg:outgoing-g-2",
+          "leg:outgoing-z"
+        ],
+        "ordered_external_pdgs": [
+          1,
+          -1,
+          21,
+          21,
+          23
+        ],
+        "row_id": "group:1:integral:1",
+        "source_to_row_permutation": [
+          0,
+          1,
+          3,
+          4,
+          2
+        ]
+      },
+      "round_trip_decimal_digits": 17,
+      "tolerances": {
+        "absolute": "0.000000000001",
+        "relative": "0.0000000001"
+      }
+    }
+  ]
+}

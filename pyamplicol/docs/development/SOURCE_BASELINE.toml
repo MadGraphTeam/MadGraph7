@@ -24,8 +24,9 @@ provenance_status = "release-eligible"
 payload_file_count = 66
 
 [reference_fixtures]
-existing_matrix_fixture_eligible = false
-reason = "existing fixture records an older dirty source state"
-clean_fixture_sha256 = "43173e8e527676fe9b26467e9f0b6b0d26cd323ecebcac69f56ce64a8b1a85ac"
-capture_manifest_sha256 = "48ca1b956b2119de633395106f421e4e94830b7503611fe4a6fb103ac6487f55"
-legacy_fortran_fixture_sha256 = "d00db323484651e345bd405e6f86128f302b58673a0ab2d1758ba284cf46ee1c"
+legacy_v1_release_evidence = false
+legacy_v1_fixture_sha256 = "43173e8e527676fe9b26467e9f0b6b0d26cd323ecebcac69f56ce64a8b1a85ac"
+legacy_v1_fortran_sha256 = "d00db323484651e345bd405e6f86128f302b58673a0ab2d1758ba284cf46ee1c"
+current_bundle = "tests/fixtures/reference/reference-fixture-v2.manifest.json"
+current_bundle_sha256 = "5850c12919c9751d5ec566c4ccb13f136a0eb4ab104ae631792c055651fd6714"
+current_source_revision = "33b7a2420258d63e8503c5e03fdb3a0f13d339d1"
