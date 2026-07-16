@@ -4,10 +4,9 @@
 
 [![Tests](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg)](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml)
 
-pyAmpliCol compiles UFO physics models into optimized matrix-element evaluators
-and executes generated process artifacts through the Rusticol runtime. Python,
-Rust, C++17, and Fortran 2008 consumers share the same schema-v3 artifact and
-runtime parameter state.
+pyAmpliCol is a generator using current recursion to build fast color-ordered
+matrix-element evaluators. It supports built-in and external UFO models, with
+generated processes accessible from Python, Rust, C++17, and Fortran 2008.
 
 ## Quick Start
 
@@ -180,21 +179,36 @@ compiled before non-writing planning:
 from pyamplicol import Generator, ModelSource, ProcessRequest, ProcessSet
 from pyamplicol.config import resolve_config
 
+# Read the same TOML card used by the command-line example. Resolution applies
+# defaults and validates all settings before any expensive work begins.
 resolution = resolve_config("external_json_sm.toml")
 config = resolution.effective
+
+# Load and compile the external Standard Model selected in the card. The cache
+# avoids repeating this model-preparation step on later runs.
 model = ModelSource.from_path(config.model.source).compile(
     use_cache=config.model.cache
 )
-processes = ProcessSet(
-    tuple(
-        ProcessRequest.parse(entry.expression, name=entry.name)
-        for entry in config.process.entries
-    )
-)
 
+# Convert each human-readable process declaration from the card into a typed
+# request. Here `process_entry` is one item from the card's [process] entries.
+process_requests = []
+for process_entry in config.process.entries:
+    process_requests.append(
+        ProcessRequest.parse(
+            process_entry.expression,
+            name=process_entry.name,
+        )
+    )
+processes = ProcessSet(tuple(process_requests))
+
+# The generator uses the resolved settings above. Planning expands `p` and `j`
+# into concrete subprocesses but does not write or compile a process artifact.
 generator = Generator(resolution)
 plan = generator.plan(processes, model=model)
 print([request.name for request in plan.concrete_processes])
+
+# Generate the artifact at the output location specified in the TOML card.
 assert config.generation.output is not None
 result = generator.generate(
     processes,
