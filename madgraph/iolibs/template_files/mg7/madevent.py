@@ -10,7 +10,7 @@ import json
 import subprocess
 import re
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, NamedTuple
 import resource
 
@@ -114,7 +114,10 @@ class PhaseSpace:
     mode: Literal["multichannel", "flat", "both"]
     channels: list[Channel]
     symfact: list[int | None]
-    chan_weight_remap: list[int]
+    first_chan_weight_remap: list[list[int]] = field(default_factory=list)
+    first_remapped_chan_count: int = 0
+    second_chan_weight_remap: list[int] = field(default_factory=list)
+    second_remapped_chan_count: int = 0
     prop_chan_weights: ms.PropagatorChannelWeights | None = None
     subchan_weights: ms.SubchannelWeights | None = None
     cwnet: ms.ChannelWeightNetwork | None = None
@@ -448,12 +451,11 @@ class MadgraphProcess:
                 for subproc in self.subprocesses
             ]
             evgen_multi = self.survey_phasespaces(phasespaces_multi)
-
             phasespaces_flat = [
                 subproc.build_flat_phasespace()
-                if len(subproc.meta["channels"]) > kept_count + 1 else
+                if len(ps_multi.channels) > kept_count + 1 else
                 None
-                for subproc in self.subprocesses
+                for subproc, ps_multi in zip(self.subprocesses, phasespaces_multi)
             ]
             #evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
 
@@ -1091,31 +1093,34 @@ class MadgraphSubprocess:
                     active_flavors = active_flavors,
                 ))
 
-        chan_weight_remap = list(range(len(symfact))) #TODO: only construct if necessary
+        remapped_chan_count = sum(len(indices) for indices in channel_indices)
         if self.process.run_card["phasespace"]["sde_strategy"] == "denominators":
             prop_chan_weights = ms.PropagatorChannelWeights(
                 [topo[0] for topo in topologies], permutations, channel_indices
             )
-            indices_for_subchan = channel_indices
+            chan_weight_remap = [] #list(range(remapped_chan_count)) #TODO: only construct if necessary
+            #indices_for_subchan = channel_indices
         else:
             prop_chan_weights = None
-            indices_for_subchan = diagram_indices
+            chan_weight_remap = [[
+                len(symfact) if remap == -1 else remap for remap in amp2_remap
+            ]]
+            #indices_for_subchan = diagram_indices
 
         if any(len(topos) > 1 for topos in topologies):
             subchan_weights = ms.SubchannelWeights(
-                topologies, permutations, indices_for_subchan
+                topologies, permutations, channel_indices #indices_for_subchan
             )
         else:
             subchan_weights = None
-            if prop_chan_weights is None:
-                chan_weight_remap = [
-                    len(symfact) if remap == -1 else remap for remap in amp2_remap
-                ]
 
+        print(diagram_indices, channel_indices)
+        print(chan_weight_remap, remapped_chan_count)
         return PhaseSpace(
             mode="multichannel",
             channels=channels,
-            chan_weight_remap=chan_weight_remap,
+            first_chan_weight_remap=chan_weight_remap,
+            first_remapped_chan_count=remapped_chan_count,
             symfact=symfact,
             prop_chan_weights=prop_chan_weights,
             subchan_weights=subchan_weights,
@@ -1145,7 +1150,6 @@ class MadgraphSubprocess:
         return PhaseSpace(
             mode="flat",
             channels=[channel],
-            chan_weight_remap=[0] * self.meta["diagram_count"],
             symfact=[None],
         )
 
@@ -1213,15 +1217,35 @@ class MadgraphSubprocess:
         flat_index = len(symfact)
         symfact.append(None)
         channel_map[len(multi_phasespace.symfact)] = len(symfact)
-        chan_weight_remap = [
-            channel_map.get(remap, flat_index)
-            for remap in multi_phasespace.chan_weight_remap
-        ]
+        if multi_phasespace.subchan_weights is None and len(multi_phasespace.first_chan_weight_remap) > 0:
+            first_chan_weight_remap = [
+                [
+                    channel_map.get(remap, flat_index)
+                    for remap in cw_remap
+                ]
+                for cw_remap in multi_phasespace.first_chan_weight_remap
+            ]
+            first_remapped_chan_count = len(symfact)
+            second_chan_weight_remap = []
+            second_remapped_chan_count = 0
+        else:
+            first_chan_weight_remap = multi_phasespace.first_chan_weight_remap
+            first_remapped_chan_count = multi_phasespace.first_remapped_chan_count
+            chan_count = multi_phasespace.first_remapped_chan_count if multi_phasespace.subchan_weights is None else multi_phasespace.subchan_weights.channel_count()
+            second_chan_weight_remap = [
+                channel_map.get(i, flat_index)
+                for i in range(chan_count)
+            ]
+            second_remapped_chan_count = len(symfact)
+        print(first_chan_weight_remap, first_remapped_chan_count, second_chan_weight_remap, second_remapped_chan_count)
 
         return PhaseSpace(
             mode="both",
             channels=channels,
-            chan_weight_remap=chan_weight_remap,
+            first_chan_weight_remap=first_chan_weight_remap,
+            first_remapped_chan_count=first_remapped_chan_count,
+            second_chan_weight_remap=second_chan_weight_remap,
+            second_remapped_chan_count=second_remapped_chan_count,
             symfact=symfact,
             prop_chan_weights=multi_phasespace.prop_chan_weights,
             subchan_weights=multi_phasespace.subchan_weights,
@@ -1437,8 +1461,10 @@ class MadgraphSubprocess:
                 phasespace.prop_chan_weights,
                 phasespace.subchan_weights,
                 phasespace.cwnet,
-                phasespace.chan_weight_remap,
-                len(phasespace.symfact),
+                phasespace.first_chan_weight_remap,
+                phasespace.first_remapped_chan_count,
+                phasespace.second_chan_weight_remap,
+                phasespace.second_remapped_chan_count,
                 madnis_training,
                 drop_cuts_and_rescale,
                 partial_weights,
@@ -1448,7 +1474,7 @@ class MadgraphSubprocess:
                 flavor_factors,
                 flavor_mirror,
             ))
-        #print(integrands[0].function())
+        #print(integrands[1].function())
         #for i in integrands: print(i.function())
         return integrands
 

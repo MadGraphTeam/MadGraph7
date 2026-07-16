@@ -52,8 +52,10 @@ public:
         const std::optional<PropagatorChannelWeights>& prop_chan_weights = std::nullopt,
         const std::optional<SubchannelWeights>& subchan_weights = std::nullopt,
         const std::optional<ChannelWeightNetwork>& chan_weight_net = std::nullopt,
-        const std::vector<me_int_t>& chan_weight_remap = {},
-        std::size_t remapped_chan_count = 0,
+        const nested_vector2<me_int_t>& first_chan_weight_remap = {},
+        std::size_t first_remapped_chan_count = 0,
+        const std::vector<me_int_t>& second_chan_weight_remap = {},
+        std::size_t second_remapped_chan_count = 0,
         bool madnis_training = false,
         bool drop_cuts_and_rescale = false,
         bool partial_weights = false,
@@ -129,8 +131,10 @@ private:
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
     std::optional<SubchannelWeights> _subchan_weights;
     std::optional<ChannelWeightNetwork> _chan_weight_net;
-    std::vector<me_int_t> _chan_weight_remap;
-    me_int_t _remapped_chan_count;
+    nested_vector2<me_int_t> _first_chan_weight_remap;
+    me_int_t _first_remapped_chan_count;
+    std::vector<me_int_t> _second_chan_weight_remap;
+    me_int_t _second_remapped_chan_count;
     bool _madnis_training;
     bool _drop_cuts_and_rescale;
     bool _partial_weights;

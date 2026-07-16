@@ -6,6 +6,29 @@
 
 using namespace madspace;
 
+namespace {
+
+std::size_t final_channel_count(
+    const std::vector<DifferentialCrossSection>& diff_xs,
+    const nested_vector2<me_int_t>& first_chan_weight_remap,
+    std::size_t first_remapped_chan_count,
+    const std::vector<me_int_t>& second_chan_weight_remap,
+    std::size_t second_remapped_chan_count,
+    const std::optional<SubchannelWeights>& subchan_weights
+) {
+    if (second_chan_weight_remap.size() > 0) {
+        return second_remapped_chan_count;
+    } else if (subchan_weights) {
+        return subchan_weights->channel_count();
+    } else if (first_chan_weight_remap.size() > 0) {
+        return first_remapped_chan_count;
+    } else {
+        return diff_xs.at(0).matrix_element().diagram_count();
+    }
+}
+
+} // namespace
+
 static const BatchSize acc_batch_size("acc_batch_size");
 
 Integrand::Integrand(
@@ -21,8 +44,10 @@ Integrand::Integrand(
     const std::optional<PropagatorChannelWeights>& prop_chan_weights,
     const std::optional<SubchannelWeights>& subchan_weights,
     const std::optional<ChannelWeightNetwork>& chan_weight_net,
-    const std::vector<me_int_t>& chan_weight_remap,
-    std::size_t remapped_chan_count,
+    const nested_vector2<me_int_t>& first_chan_weight_remap,
+    std::size_t first_remapped_chan_count,
+    const std::vector<me_int_t>& second_chan_weight_remap,
+    std::size_t second_remapped_chan_count,
     bool madnis_training,
     bool drop_cuts_and_rescale,
     bool partial_weights,
@@ -55,12 +80,14 @@ Integrand::Integrand(
                 ret_types.push_back("channel_index", batch_int);
                 ret_types.push_back(
                     "channel_weights",
-                    batch_float_array(
-                        chan_weight_remap.size() > 0 ? remapped_chan_count
-                            : subchan_weights
-                            ? subchan_weights->channel_count()
-                            : diff_xs_first.matrix_element().diagram_count()
-                    )
+                    batch_float_array(final_channel_count(
+                        diff_xs,
+                        first_chan_weight_remap,
+                        first_remapped_chan_count,
+                        second_chan_weight_remap,
+                        second_remapped_chan_count,
+                        subchan_weights
+                    ))
                 );
                 ret_types.push_back(
                     "cwnet_input",
@@ -127,8 +154,10 @@ Integrand::Integrand(
     _prop_chan_weights(prop_chan_weights),
     _subchan_weights(subchan_weights),
     _chan_weight_net(chan_weight_net),
-    _chan_weight_remap(chan_weight_remap),
-    _remapped_chan_count(remapped_chan_count),
+    _first_chan_weight_remap(first_chan_weight_remap),
+    _first_remapped_chan_count(first_remapped_chan_count),
+    _second_chan_weight_remap(second_chan_weight_remap),
+    _second_remapped_chan_count(second_remapped_chan_count),
     _madnis_training(madnis_training),
     _drop_cuts_and_rescale(drop_cuts_and_rescale),
     _partial_weights(partial_weights),
@@ -599,13 +628,24 @@ NamedVector<Value> Integrand::build_common_part(
     };
 
     // Channel weight computation
-    std::size_t channel_count = _chan_weight_remap.size() > 0 ? _remapped_chan_count
-        : _subchan_weights
-        ? _subchan_weights->channel_count()
-        : _diff_xs.at(0).matrix_element().diagram_count();
+    std::size_t channel_count = final_channel_count(
+        _diff_xs,
+        _first_chan_weight_remap,
+        _first_remapped_chan_count,
+        _second_chan_weight_remap,
+        _second_remapped_chan_count,
+        _subchan_weights
+    );
     Value chan_weights_acc;
     if (channel_count > 1 && _prop_chan_weights) {
         chan_weights_acc = _prop_chan_weights->build_function(fb, {momenta_acc}).at(0);
+        if (_first_chan_weight_remap.size() > 0) {
+            chan_weights_acc = fb.collect_channel_weights(
+                chan_weights_acc,
+                _first_chan_weight_remap.at(0),
+                _first_remapped_chan_count
+            );
+        }
     }
 
     // Compute running coupling
@@ -633,6 +673,16 @@ NamedVector<Value> Integrand::build_common_part(
     if (_diff_xs.size() == 1) {
         dxs_vec = _diff_xs.at(0).build_function(fb, xs_args).values();
         ps_flavor_id = flavor_id;
+        if (!_prop_chan_weights) {
+            chan_weights_acc = dxs_vec.at(1);
+            if (_first_chan_weight_remap.size() > 0) {
+                chan_weights_acc = fb.collect_channel_weights(
+                    chan_weights_acc,
+                    _first_chan_weight_remap.at(0),
+                    _first_remapped_chan_count
+                );
+            }
+        }
     } else {
         Value dxs_index = fb.gather(flavor_id, _flavor_diff_xs_indices);
         ps_flavor_id = fb.gather(flavor_id, _flavor_per_subproc_remap);
@@ -640,7 +690,9 @@ NamedVector<Value> Integrand::build_common_part(
         ValueVec split_indices =
             fb.batch_split_by_index(dxs_index, static_cast<me_int_t>(_diff_xs.size()));
         std::vector<ValueVec> split_outputs;
-        for (auto [diff_xs, indices] : zip(_diff_xs, split_indices)) {
+        ValueVec split_channel_weights;
+        for (std::size_t i = 0;
+             auto [diff_xs, indices] : zip(_diff_xs, split_indices)) {
             ValueVec split_args;
             for (Value& arg : xs_args) {
                 split_args.push_back(fb.batch_gather(indices, arg));
@@ -650,9 +702,23 @@ NamedVector<Value> Integrand::build_common_part(
                 split_out.push_back(out);
                 split_out.push_back(indices);
             }
+            if (!_prop_chan_weights) {
+                Value split_cw = dxs_vec.at(1);
+                if (_first_chan_weight_remap.size() > 0) {
+                    chan_weights_acc = fb.collect_channel_weights(
+                        chan_weights_acc,
+                        _first_chan_weight_remap.at(i),
+                        _first_remapped_chan_count
+                    );
+                }
+            }
+            ++i;
         }
         for (auto& split_out : split_outputs) {
             dxs_vec.push_back(fb.batch_merge_by_index(split_out));
+        }
+        if (!_prop_chan_weights) {
+            chan_weights_acc = fb.batch_merge_by_index(split_channel_weights);
         }
     }
     auto diff_xs_acc = dxs_vec.at(0);
@@ -664,16 +730,13 @@ NamedVector<Value> Integrand::build_common_part(
     if (args.index_map().contains("extra_weight_after_cuts")) {
         extra_weights_after_cuts.push_back(args.at("extra_weight_after_cuts"));
     }
-    if (!_prop_chan_weights) {
-        chan_weights_acc = dxs_vec.at(1);
-    }
     if (channel_count > 1 && _subchan_weights) {
         chan_weights_acc =
             _subchan_weights->build_function(fb, {momenta_acc, chan_weights_acc}).at(0);
     }
-    if (_chan_weight_remap.size() > 0) {
+    if (_second_chan_weight_remap.size() > 0) {
         chan_weights_acc = fb.collect_channel_weights(
-            chan_weights_acc, _chan_weight_remap, _remapped_chan_count
+            chan_weights_acc, _second_chan_weight_remap, _second_remapped_chan_count
         );
     }
 
