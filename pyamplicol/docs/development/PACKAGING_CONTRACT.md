@@ -86,7 +86,7 @@ Publication remains blocked until:
   fix and pass serialization compatibility;
 - the Symbolica-selected SymJIT release passes the AArch64 regressions;
 - `ufo-model-loader` containing revision
-  `eaa6335c6366b5f421d4bc1dbca98d2f87923c62` is published;
+  `9cb4deeae40ddd64184049af07ac1d03ce5f6162` is published;
 - every bundled model has complete redistributable license provenance.
 
 Candidate mode may consume locally built exact dependency wheels and patched

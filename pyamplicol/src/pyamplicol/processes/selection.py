@@ -399,7 +399,8 @@ def _classify_physical_candidate(
         reason = "max-quark-lines"
     elif _single_impossible_colored_state(all_outgoing):
         reason = "single-coloured-state"
-    elif not enumerator._valid_process(
+    elif not _valid_generic_process(
+        enumerator,
         all_outgoing,
         allow_charged_current=allow_charged_current,
     ):
@@ -476,6 +477,24 @@ def _single_impossible_colored_state(process: Sequence[str]) -> bool:
     )
 
 
+def _valid_generic_process(
+    enumerator: ProcessEnumerator,
+    process: Sequence[str],
+    *,
+    allow_charged_current: bool,
+) -> bool:
+    if enumerator._valid_process(
+        process,
+        allow_charged_current=allow_charged_current,
+    ):
+        return True
+    if any(_selection_metadata(particle).is_colored for particle in process):
+        return False
+    if _charge3_sum(process) != 0:
+        return False
+    return enumerator.options.include_cc or _family_sum(process) == 0
+
+
 def _quark_pair_count(process: Sequence[str]) -> int:
     quarks, antiquarks = _quark_counts(process)
     return min(quarks, antiquarks)
@@ -523,7 +542,8 @@ def _lightweight_concrete_process_enumeration(
     enumerator = ProcessEnumerator(options)
     request = enumerator.parse(process)
     all_outgoing = (*request.initial_state, *request.rest)
-    if not enumerator._valid_process(
+    if not _valid_generic_process(
+        enumerator,
         all_outgoing,
         allow_charged_current=_request_allows_charged_current(request),
     ):

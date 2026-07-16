@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from importlib import metadata
+from pathlib import Path
 
 PYTHON_API_VERSION = 1
 TOML_SCHEMA_VERSION = 1
@@ -49,6 +52,32 @@ EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
     }
 )
 
+_PACKAGE_BUILD_INFO_PATH = Path(__file__).resolve().parents[1] / "_build_info.json"
+_SOURCE_BUILD_INFO_PATH = (
+    Path(__file__).resolve().parents[3]
+    / ".artifacts"
+    / "source-runtime"
+    / "_build_info.json"
+)
+
+
+def package_version(default: str = "0.1.0") -> str:
+    """Return the wheel/source-runtime version without importing heavy modules."""
+
+    for path in (_PACKAGE_BUILD_INFO_PATH, _SOURCE_BUILD_INFO_PATH):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            value = payload["version"]
+            if isinstance(value, str) and value:
+                return value
+        except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
+            pass
+    try:
+        return metadata.version("pyamplicol")
+    except metadata.PackageNotFoundError:
+        return default
+
+
 __all__ = [
     "COMPILED_MODEL_SCHEMA_VERSION",
     "C_ABI_VERSION",
@@ -63,4 +92,5 @@ __all__ = [
     "SYMJIT_APPLICATION_ABI",
     "SYMJIT_F64_RUNTIME_CAPABILITY",
     "TOML_SCHEMA_VERSION",
+    "package_version",
 ]

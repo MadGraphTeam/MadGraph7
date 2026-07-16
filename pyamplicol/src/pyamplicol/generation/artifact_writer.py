@@ -35,6 +35,7 @@ from .._internal.versions import (
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
     TOML_SCHEMA_VERSION,
+    package_version,
 )
 from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
@@ -1037,7 +1038,7 @@ def _validation_four_vector(
 
 
 def _producer_metadata(config: GenerationConfig | RunConfig) -> dict[str, object]:
-    version = _distribution_version("pyamplicol", "0.1.0")
+    version = package_version()
     target, c_abi = _target_metadata(config)
     return {
         "distribution": "pyamplicol",

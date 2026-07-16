@@ -141,9 +141,7 @@ def validate_checkout(repository: Path) -> None:
         raise LegacyOracleError(
             f"legacy AmpliCol checkout is absent: {repository}; run `just dev-install`"
         )
-    revision = _run(
-        ["git", "rev-parse", "HEAD"], cwd=repository
-    ).stdout.strip()
+    revision = _run(["git", "rev-parse", "HEAD"], cwd=repository).stdout.strip()
     if revision != expected_revision():
         raise LegacyOracleError(
             f"legacy AmpliCol is at {revision}, expected {expected_revision()}"
@@ -236,14 +234,26 @@ def process_pdgs(process: str) -> tuple[int, ...]:
         ) from error
 
 
-def select_process_entry(
-    entries: Sequence[ProcessEntry], process: str
-) -> ProcessEntry:
-    wanted = sorted(process_pdgs(process))
-    matches = [entry for entry in entries if sorted(entry.process_pdgs) == wanted]
+def select_process_entry(entries: Sequence[ProcessEntry], process: str) -> ProcessEntry:
+    matches = matching_process_entries(entries, process)
     if not matches:
         raise LegacyOracleError(f"no Fortran process row matches {process!r}")
     return matches[0]
+
+
+def matching_process_entries(
+    entries: Sequence[ProcessEntry], process: str
+) -> tuple[ProcessEntry, ...]:
+    """Prefer the exact requested external order before multiset fallbacks."""
+
+    wanted = process_pdgs(process)
+    wanted_multiset = sorted(wanted)
+    matches = tuple(
+        entry for entry in entries if sorted(entry.process_pdgs) == wanted_multiset
+    )
+    return tuple(entry for entry in matches if entry.process_pdgs == wanted) + tuple(
+        entry for entry in matches if entry.process_pdgs != wanted
+    )
 
 
 def _permutation(
@@ -318,7 +328,7 @@ def run_color_probe(
             encoding="utf-8",
         )
         command = [
-            "./amplicol_color_probe",
+            str((repository / "amplicol_color_probe").resolve()),
             "1",
             str(entry.group),
             str(entry.integral),
@@ -327,7 +337,7 @@ def run_color_probe(
             str(momentum_path),
             *(str(value) for value in ordered_helicities),
         ]
-        completed = _run(command, cwd=repository)
+        completed = _run(command, cwd=Path(raw))
     return _parse_probe_output(completed.stdout + "\n" + completed.stderr)
 
 
@@ -376,7 +386,9 @@ def verify_fixture(
     selected = {
         name: case
         for name, case in cases.items()
-        if name.startswith("builtin_sm_") and case["process"] in {
+        if name.startswith("builtin_sm_")
+        and case["process"]
+        in {
             "d d~ > z",
             "d d~ > z g",
         }
@@ -396,7 +408,10 @@ def verify_fixture(
             )
             process_file = work / "processes.txt"
             entries = parse_process_file(process_file)
-            entry = select_process_entry(entries, process)
+            matching_entries = matching_process_entries(entries, process)
+            if not matching_entries:
+                raise LegacyOracleError(f"no Fortran process row matches {process!r}")
+            entry = matching_entries[0]
             source_pdgs = process_pdgs(process)
 
             for name, case in selected.items():
@@ -452,6 +467,14 @@ def verify_fixture(
                     "color_accuracy": case["color_accuracy"],
                     "total": summed.value,
                     "max_resolved_relative_difference": maximum_relative_difference,
+                    "fortran_process_entry": {
+                        **asdict(entry),
+                        "exact_external_order": entry.process_pdgs == source_pdgs,
+                        "matching_row_count": len(matching_entries),
+                        "source_to_row_permutation": _permutation(
+                            source_pdgs, entry.process_pdgs
+                        ),
+                    },
                     "fortran_topology": {
                         key: value
                         for key, value in asdict(summed).items()

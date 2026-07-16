@@ -28,4 +28,4 @@ existing_matrix_fixture_eligible = false
 reason = "existing fixture records an older dirty source state"
 clean_fixture_sha256 = "43173e8e527676fe9b26467e9f0b6b0d26cd323ecebcac69f56ce64a8b1a85ac"
 capture_manifest_sha256 = "48ca1b956b2119de633395106f421e4e94830b7503611fe4a6fb103ac6487f55"
-legacy_fortran_fixture_sha256 = "db4277f0316574ad17ca2819b1510d1039ca8197f17705707780ef5151dcf903"
+legacy_fortran_fixture_sha256 = "15f78ee4a0d1f4d7af46fd14631d3c0ab1b31597347f2123030ee87bc896d489"

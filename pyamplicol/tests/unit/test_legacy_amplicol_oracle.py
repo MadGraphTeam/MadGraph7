@@ -59,6 +59,65 @@ def test_process_file_parser_preserves_fortran_external_order(tmp_path: Path) ->
     )
 
 
+def test_process_selection_prefers_exact_external_order() -> None:
+    module = _module()
+    entries = (
+        module.ProcessEntry(1, 1, (1, -1, 21, 23), (1, 2, 3, 4)),
+        module.ProcessEntry(2, 1, (1, -1, 23, 21), (1, 2, 4, 3)),
+    )
+
+    assert module.select_process_entry(entries, "d d~ > z g") == entries[1]
+    assert module.matching_process_entries(entries, "d d~ > z g") == (
+        entries[1],
+        entries[0],
+    )
+
+
+def test_color_probe_runs_outside_the_legacy_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    repository = tmp_path / "legacy"
+    repository.mkdir()
+    process_file = tmp_path / "processes.txt"
+    process_file.write_text("fixture\n", encoding="utf-8")
+    observed: dict[str, object] = {}
+
+    def fake_run(command, *, cwd, capture=True):
+        observed.update(command=tuple(command), cwd=cwd, capture=capture)
+        output = """AMPICOL_COLOR_PROBE_CURRENTS 1
+AMPICOL_COLOR_PROBE_VERTICES 1
+AMPICOL_COLOR_PROBE_AMPLITUDES 1
+AMPICOL_COLOR_PROBE_COLOR_ORDERS 1
+AMPICOL_COLOR_PROBE_COMPONENTS 1.0 1.0 1.0
+AMPICOL_COLOR_PROBE_VALUE lc 1 1 1.0
+"""
+        return module.subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    entry = module.ProcessEntry(1, 1, (1, -1, 23), (1, 2, 3))
+
+    result = module.run_color_probe(
+        repository,
+        process_file=process_file,
+        entry=entry,
+        source_pdgs=(1, -1, 23),
+        momenta=(
+            (50.0, 0.0, 0.0, 50.0),
+            (50.0, 0.0, 0.0, -50.0),
+            (100.0, 0.0, 0.0, 0.0),
+        ),
+        color_accuracy="lc",
+    )
+
+    assert result.value == 1.0
+    assert observed["cwd"] != repository
+    assert observed["command"][0] == str(
+        (repository / "amplicol_color_probe").resolve()
+    )
+
+
 def test_probe_output_parser_records_values_and_topology() -> None:
     module = _module()
     result = module._parse_probe_output(

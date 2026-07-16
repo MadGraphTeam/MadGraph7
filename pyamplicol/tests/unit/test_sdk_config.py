@@ -56,7 +56,7 @@ def test_sdk_info_returns_a_complete_native_link_line(
 ) -> None:
     root = _sdk(tmp_path)
     monkeypatch.setattr(config, "_resource_root", lambda: root)
-    monkeypatch.setattr(config.importlib.metadata, "version", lambda _name: "0.1.0")
+    monkeypatch.setattr(config, "_package_version", lambda: "0.1.0")
 
     info = config.load_sdk_info()
     assert info.library == root / "lib" / "librusticol_capi.a"
@@ -79,7 +79,7 @@ def test_sdk_metadata_rejects_path_traversal(
     metadata["archive"] = "../../outside.a"
     (root / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
     monkeypatch.setattr(config, "_resource_root", lambda: root)
-    monkeypatch.setattr(config.importlib.metadata, "version", lambda _name: "0.1.0")
+    monkeypatch.setattr(config, "_package_version", lambda: "0.1.0")
 
     with pytest.raises(config.SdkUnavailableError, match="escapes"):
         config.load_sdk_info()
@@ -92,14 +92,14 @@ def test_sdk_metadata_requires_exact_version_and_archive_digest(
     root = _sdk(tmp_path)
     monkeypatch.setattr(config, "_resource_root", lambda: root)
     monkeypatch.setattr(
-        config.importlib.metadata,
-        "version",
-        lambda _name: "0.1.0.dev0+candidate.deadbeef",
+        config,
+        "_package_version",
+        lambda: "0.1.0.dev0+candidate.deadbeef",
     )
     with pytest.raises(config.SdkUnavailableError, match="version"):
         config.load_sdk_info()
 
-    monkeypatch.setattr(config.importlib.metadata, "version", lambda _name: "0.1.0")
+    monkeypatch.setattr(config, "_package_version", lambda: "0.1.0")
     (root / "lib" / "librusticol_capi.a").write_bytes(b"tampered")
     with pytest.raises(config.SdkUnavailableError, match="digest"):
         config.load_sdk_info()

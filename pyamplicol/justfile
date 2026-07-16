@@ -1,6 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 python := env_var_or_default("PYTHON", "python3")
+dev_python := env_var_or_default("PYAMPLICOL_DEV_PYTHON", ".venv/bin/python")
 build_mode := env_var_or_default("PYAMPLICOL_BUILD_MODE", "release")
 
 default:
@@ -10,9 +11,9 @@ build:
     PYAMPLICOL_BUILD_MODE={{build_mode}} {{python}} -m build --wheel
 
 typing:
-    {{python}} -m ruff check tools/typing tests/typing
-    {{python}} tools/typing/check_public_typing.py
-    {{python}} -m pytest tests/typing/test_typing_gate.py -q
+    PYTHONPATH="$PWD/src" {{python}} -m ruff check tools/typing tests/typing
+    PYTHONPATH="$PWD/src" {{python}} tools/typing/check_public_typing.py
+    PYTHONPATH="$PWD/src" {{python}} -m pytest tests/typing/test_typing_gate.py -q
 
 dependency-gate:
     @if [ "{{build_mode}}" = candidate ]; then \
@@ -25,16 +26,21 @@ legal-gate:
     {{python}} tools/release/check_legal_inventory.py --mode {{build_mode}}
 
 python-unit:
-    {{python}} -m pytest tests/unit -q
+    PYTHONPATH="$PWD/src" {{python}} -m pytest tests/unit -q
 
 python-release:
-    {{python}} -m pytest tests/release -q
+    PYTHONPATH="$PWD/src" {{python}} -m pytest tests/release -q
 
 python-integration:
-    PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration -q
+    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration -q
 
 python-physics:
-    {{python}} -m pytest tests/integration/test_schema_v3_generation_runtime.py tests/unit/test_reference_fixtures.py tests/unit/test_color_contraction_safety.py -q
+    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration/test_schema_v3_generation_runtime.py tests/unit/test_reference_fixtures.py tests/unit/test_color_contraction_safety.py -q
+
+# Build a fresh wheel through the real backend and stage only ignored native
+# runtime/SDK resources beside the current Python source for source-tree tests.
+source-runtime:
+    PYAMPLICOL_BUILD_MODE={{build_mode}} {{python}} tools/developer/prepare_source_runtime.py
 
 # Developer-only independent Fortran oracle. `just dev-install` includes the
 # pinned checkout unless it was called with --without-legacy-amplicol.
@@ -42,10 +48,10 @@ legacy-physics:
     {{python}} tools/developer/legacy_amplicol.py --jobs 5
 
 installed-smoke:
-    {{python}} -m pyamplicol.selftest
-    {{python}} -m pyamplicol self-test --format json
-    {{python}} -m pyamplicol examples list --format json
-    PYAMPLICOL_EXAMPLE_CACHE="$PWD/.artifacts/source-gate-example" {{python}} -m pyamplicol examples run builtin_sm_lc --set generation.mode=replace --format json
+    PYTHONPATH="$PWD/src" {{python}} -m pyamplicol.selftest
+    PYTHONPATH="$PWD/src" {{python}} -m pyamplicol self-test --format json
+    PYTHONPATH="$PWD/src" {{python}} -m pyamplicol examples list --format json
+    PYTHONPATH="$PWD/src" PYAMPLICOL_EXAMPLE_CACHE="$PWD/.artifacts/source-gate-example" {{python}} -m pyamplicol examples run builtin_sm_lc --set generation.mode=replace --format json
 
 rust-check:
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- fmt --all --check
@@ -58,6 +64,7 @@ rust-test:
 source-gate:
     just legal-gate
     just dependency-gate
+    just source-runtime
     just typing
     just python-unit
     just python-release
@@ -74,7 +81,7 @@ check:
     just rust-check
 
 test:
-    {{python}} -m pytest
+    PYTHONPATH="$PWD/src" {{python}} -m pytest
     just rust-test
 
 sdist:
@@ -98,8 +105,8 @@ dev-install:
     {{python}} dependencies/install_dependencies.py
 
 dev-test:
-    PYAMPLICOL_BUILD_MODE=candidate just source-gate
-    PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate
+    PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just source-gate
+    PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate
 
 test-deployment-candidate:
     PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/release/test_deployment.py --candidate

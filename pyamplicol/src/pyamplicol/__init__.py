@@ -7,10 +7,7 @@ dependencies are loaded only when generation or runtime services are first used.
 
 from __future__ import annotations
 
-import json
-from importlib import resources
-from importlib.metadata import PackageNotFoundError, version
-
+from ._internal.versions import package_version
 from .api import (
     ArtifactError,
     BenchmarkResult,
@@ -48,18 +45,7 @@ from .api import (
 )
 from .config import BenchmarkConfig, EvaluationConfig, GenerationConfig, RunConfig
 
-try:
-    __version__ = version("pyamplicol")
-except PackageNotFoundError:
-    try:
-        _build_info = json.loads(
-            resources.files(__package__)
-            .joinpath("_build_info.json")
-            .read_text(encoding="utf-8")
-        )
-        __version__ = str(_build_info["version"])
-    except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
-        __version__ = "0.1.0"
+__version__ = package_version()
 
 __all__ = [
     "ArtifactError",

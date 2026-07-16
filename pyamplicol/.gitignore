@@ -40,6 +40,10 @@ src/pyamplicol/_sdk/include/
 src/pyamplicol/_sdk/fortran/
 src/pyamplicol/_sdk/link.json
 src/pyamplicol/_sdk/metadata.json
+src/pyamplicol/_sdk/sboms/
+src/pyamplicol/assets/selftest/*/
+!src/pyamplicol/assets/selftest/portable-64le/
+!src/pyamplicol/assets/selftest/portable-64le/**
 
 # Generated process and benchmark output
 outputs/

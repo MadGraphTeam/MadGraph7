@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.metadata
 import importlib.resources
 import json
 import os
@@ -14,6 +13,8 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+from pyamplicol._internal.versions import package_version as _package_version
 
 
 class SdkUnavailableError(RuntimeError):
@@ -103,7 +104,7 @@ def load_sdk_info() -> SdkInfo:
     if metadata.get("target") != link.get("target"):
         raise SdkUnavailableError("Rusticol SDK target metadata is inconsistent")
 
-    package_version = importlib.metadata.version("pyamplicol")
+    package_version = _package_version()
     metadata_version = str(metadata.get("version"))
     if package_version != metadata_version:
         raise SdkUnavailableError(
@@ -160,7 +161,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         info = load_sdk_info()
-    except (SdkUnavailableError, importlib.metadata.PackageNotFoundError) as error:
+    except SdkUnavailableError as error:
         _parser().error(str(error))
 
     if args.abi_version:

@@ -142,6 +142,7 @@ exclude = [
 
 [tool.pytest.ini_options]
 addopts = "-ra --import-mode=importlib"
+pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]

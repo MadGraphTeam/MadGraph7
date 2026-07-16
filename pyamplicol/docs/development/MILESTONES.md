@@ -48,6 +48,8 @@ evidence; they do not commit, push, or update shared release metadata.
 | Selector capability semantics | Hooke + Main | Complete | LC advertises helicity and physical color-flow selectors; NLC/full advertise helicity only while retaining the singleton contracted-color output axis. Python, Rust metadata validation, schemas, high-precision fallbacks, and integration expectations agree | Pending |
 | Trusted-loader requirements re-audit | Meitner + Main | Complete | Shipped direct f64 loading is the same `Config::default()` plus empty external-function map and `Application::load(...).seal()` sequence used by Symbolica. The installed-wheel deployment removes the license, blocks all Symbolica imports, and still passes the physics self-test | Pending |
 | Independent Fortran oracle bootstrap | Main | Complete | The optional pinned AmpliCol checkout receives two checksummed, non-physics patches: one removes an unnecessary LHAPDF link from the direct color probe and one extends recursion diagnostics. `just legacy-physics` independently reproduces six `d d~ > z(+g)` LC/NLC/full totals and every recorded nonzero helicity component with maximum relative difference below `9e-14` | Pending |
+| Current-source validation audit | Confucius + Main | Complete | Source tests now build one fresh audited candidate wheel, stage only ignored native runtime/SDK resources, and use an external candidate-identity marker. This prevents stale site-packages code and candidate metadata from contaminating source tests or release sdists | Pending |
+| Expanded physics-ladder review | Pauli | Complete | The next fixture contract must record multiple generic and stress points, exact external-row identity, complete resolved axes and structural zeros, and full independent-oracle evidence. Multi-flow LC comparisons use per-helicity aggregates; legacy accuracy outputs are cumulative, and the pinned oracle cannot validate more than two quark lines | Pending |
 
 ## Agent Handoff
 
@@ -68,20 +70,26 @@ commits that milestone.
 
 ## Current Critical Path
 
-1. Broaden current-source model/physics/example/performance gates beyond the
-   low-multiplicity installed LC/NLC/full cross-language slice.
-2. Exercise the lazy Symbolica precision fallback and non-JIT evaluator
+1. Introduce fixture schema v2 before broadening the physics ladder: record at
+   least three generic points and one high-precision stress point, exact axes
+   and structural zeros, topology and coverage, decimal expectations, and
+   independent-oracle provenance for every substantive case.
+2. Generalize the pinned Fortran oracle to declarative cases, explicit process
+   row identity, and multi-flow LC aggregation before adding charged-current,
+   leptonic, two-quark-line, pure-gluon, top, and genuine LC/NLC/full hierarchy
+   cases in increasing complexity.
+3. Exercise the lazy Symbolica precision fallback and non-JIT evaluator
    artifacts without changing the direct SymJIT f64 loader or introducing a
    second SymJIT decoder.
-3. Validate the same installed-wheel and static-SDK contract on macOS x86_64
+4. Validate the same installed-wheel and static-SDK contract on macOS x86_64
    and manylinux x86_64, including host execution of the retargeted portable
    saved-SymJIT-MIR self-test fixture.
-4. Resolve remaining alias/model metadata cases and
+5. Resolve remaining alias/model metadata cases and
    complete the full release workflow test contract.
-5. Freeze validated parity fixtures, then perform the dedicated model-independence
+6. Freeze validated parity fixtures, then perform the dedicated model-independence
    hardening pass: remove unexplained PDG/name assumptions from generic modules,
    derive lowering from canonical model structure, and rerun the complete model
    ladder including relabeled-PDG and reordered-tensor invariance checks.
-6. Complete release-mode sdist/wheel parity once the exact upstream dependency
+7. Complete release-mode sdist/wheel parity once the exact upstream dependency
    releases exist; candidate-mode source, wheel, SDK, legal, SBOM, and isolated
    deployment gates are validated in the bootstrap milestone.

@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from .._internal.versions import COMPILED_MODEL_SCHEMA_VERSION
+from .._internal.versions import COMPILED_MODEL_SCHEMA_VERSION, package_version
 from .contracts import CompiledModelIR
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
@@ -279,7 +279,7 @@ class CompiledModel:
 
 def compiler_fingerprint() -> dict[str, object]:
     return {
-        "pyamplicol": _distribution_version("pyamplicol", "0.1.0"),
+        "pyamplicol": package_version(),
         "ufo_model_loader": _distribution_version("ufo-model-loader", "missing"),
         "symbolica": _distribution_version("symbolica", "missing"),
         "compiled_model_schema_version": COMPILED_MODEL_SCHEMA_VERSION,

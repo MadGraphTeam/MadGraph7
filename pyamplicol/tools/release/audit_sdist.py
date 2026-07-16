@@ -53,6 +53,7 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "tests/release/test_artifacts.py",
         "tests/unit/test_cli_utilities.py",
         "tools/developer/legacy_amplicol.py",
+        "tools/developer/prepare_source_runtime.py",
         "tools/release/_artifacts.py",
         "tools/release/_common.py",
         "tools/release/audit_sdist.py",

@@ -95,6 +95,31 @@ high-precision point for each substantive row. Cross-language agreement
 checks one Rust core; release physics additionally requires pinned Fortran,
 analytic scalar, exact-color, and independent spin-2 oracles.
 
+Fixture schema v2 must retain decimal-string expectations per point rather
+than round-tripping high-precision values through binary64. It records complete
+helicity and color axes, every structural zero, topology and coverage,
+normalization inputs, model and dependency provenance, and the independent
+oracle used for each point. Fast gates may select one generic point, but the
+tracked evidence remains complete.
+
+The pinned Fortran adapter follows these additional rules:
+
+- run probes in isolated temporary working directories so the dependency
+  checkout remains read-only;
+- prefer an exact ordered external-PDG row, and persist the selected group,
+  integral, row PDGs, color order, source permutation, and match count;
+- compare a multi-flow LC case to the sum of built-in flows for each physical
+  helicity while retaining individual flows as diagnostics;
+- treat the probe's LC, NLC, and full outputs as cumulative contractions, not
+  additive components;
+- do not require the legacy oracle for three-quark-line cases, which exceed
+  the pinned implementation's supported process class.
+
+The next independent built-in-SM ladder proceeds through `d d~ > z`,
+`u d~ > w+`, `d d~ > e+ e-`, `d d~ > u u~`, `g g > g g`,
+`g g > t t~`, and `d d~ > g g g`. The last case is the smallest planned
+check with genuinely distinct LC, NLC, and full contractions.
+
 ## Known Pre-Port Limitations
 
 - Existing schema-v2 artifacts have unconfined paths, no payload hashes,
