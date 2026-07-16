@@ -184,6 +184,27 @@ def test_three_body_stress_point_is_deliberately_soft() -> None:
     )
 
 
+def test_three_body_generic_points_avoid_exact_collinear_singularities() -> None:
+    points = capture.build_reference_points("sm_ddbar_zgg", "d d~ > z g g")[:3]
+
+    def dot(left, right):
+        return left[0] * right[0] - sum(
+            (
+                left_component * right_component
+                for left_component, right_component in zip(
+                    left[1:], right[1:], strict=True
+                )
+            ),
+            Decimal(0),
+        )
+
+    for point in points:
+        incoming = point.momenta[:2]
+        gluons = point.momenta[-2:]
+        assert all(dot(initial, gluon) > 0 for initial in incoming for gluon in gluons)
+        assert dot(*gluons) > 0
+
+
 def test_stable_leg_ids_disambiguate_only_identical_role_particles() -> None:
     particles = (
         {"state": "incoming", "name": "d"},

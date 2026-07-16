@@ -197,6 +197,26 @@ def _boost_z_f64(
     )
 
 
+def _rotate_f64(
+    momentum: tuple[float, float, float, float],
+    *,
+    cosine: float,
+    sine: float,
+    phi: float,
+) -> tuple[float, float, float, float]:
+    energy, px, py, pz = momentum
+    x_tilted = cosine * px + sine * pz
+    z_tilted = -sine * px + cosine * pz
+    cosine_phi = math.cos(phi)
+    sine_phi = math.sin(phi)
+    return (
+        energy,
+        cosine_phi * x_tilted - sine_phi * py,
+        sine_phi * x_tilted + cosine_phi * py,
+        z_tilted,
+    )
+
+
 def _three_body_generic(
     process_id: str,
     seed: int,
@@ -219,19 +239,33 @@ def _three_body_generic(
     beta = -soft_energy / q_energy
     hard = _boost_z_f64((hard_energy, px, py, pz), beta)
     z_boson = _boost_z_f64((z_energy, -px, -py, -pz), beta)
+    rotation_cosine = generator.uniform(-0.75, 0.75)
+    rotation_sine = math.sqrt(1.0 - rotation_cosine * rotation_cosine)
+    rotation_phi = generator.uniform(0.0, 2.0 * math.pi)
+    final_state = tuple(
+        _rotate_f64(
+            momentum,
+            cosine=rotation_cosine,
+            sine=rotation_sine,
+            phi=rotation_phi,
+        )
+        for momentum in (
+            z_boson,
+            hard,
+            (soft_energy, 0.0, 0.0, soft_energy),
+        )
+    )
     raw = (
         (sqrt_s / 2.0, 0.0, 0.0, sqrt_s / 2.0),
         (sqrt_s / 2.0, 0.0, 0.0, -sqrt_s / 2.0),
-        z_boson,
-        hard,
-        (soft_energy, 0.0, 0.0, soft_energy),
+        *final_state,
     )
     point = CapturePoint(
         id=f"point:{process_id}:generic-{index}",
         process_id=process_id,
         point_class="generic",
         algorithm_name="seeded-sequential-three-body-binary64",
-        algorithm_version="1",
+        algorithm_version="2",
         rng="python-random-mt19937",
         seed=seed,
         sqrt_s=_f64_decimal(sqrt_s),
