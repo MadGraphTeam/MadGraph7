@@ -947,6 +947,29 @@ def test_reduction_groups_must_partition_every_nonzero_cell() -> None:
         _parse(fixture, evidence)
 
 
+def test_contracted_reduction_allows_many_groups_to_feed_one_cell() -> None:
+    fixture, evidence = _contracted_payloads("nlc")
+    case = fixture["cases"][0]
+    duplicate = copy.deepcopy(case["reduction"]["groups"][0])
+    duplicate["id"] = "reduction:additional-contracted-contribution"
+    case["reduction"]["groups"].append(duplicate)
+    case["topology"]["reduction_groups"] += 1
+
+    _parse(fixture, evidence)
+
+
+def test_lc_reduction_still_rejects_overlapping_physical_cells() -> None:
+    fixture, evidence = _valid_payloads()
+    case = fixture["cases"][0]
+    duplicate = copy.deepcopy(case["reduction"]["groups"][0])
+    duplicate["id"] = "reduction:overlap"
+    case["reduction"]["groups"].append(duplicate)
+    case["topology"]["reduction_groups"] += 1
+
+    with pytest.raises(REFERENCE.ReferenceFixtureError, match="overlap"):
+        _parse(fixture, evidence)
+
+
 def test_invalid_alias_permutation_is_rejected() -> None:
     fixture, evidence = _valid_payloads()
     fixture["processes"][1]["final_state_permutation"] = [0, 2, 1]

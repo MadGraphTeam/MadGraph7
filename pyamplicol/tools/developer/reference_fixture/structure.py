@@ -507,15 +507,19 @@ def _validate_reduction_groups(
         group_cells = set(
             product(group.physical_helicity_ids, group.physical_color_ids)
         )
-        if covered_cells & group_cells:
+        # LC groups expand disjoint representative cells. Contracted NLC/full
+        # outputs are many-to-one: several coherent groups can contribute to
+        # the same public (helicity, contracted-color) cell.
+        if case.color_accuracy == "lc" and covered_cells & group_cells:
             raise ReferenceFixtureError(
                 f"case {case.id} reduction groups overlap on physical cells"
             )
         covered_cells.update(group_cells)
 
     if covered_cells != expected_cells:
+        relation = "partition" if case.color_accuracy == "lc" else "cover"
         raise ReferenceFixtureError(
-            f"case {case.id} reduction groups do not partition every nonzero "
+            f"case {case.id} reduction groups do not {relation} every nonzero "
             "physical cell"
         )
 
