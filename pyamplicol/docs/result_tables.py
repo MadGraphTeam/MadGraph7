@@ -45,6 +45,11 @@ SPDX_LICENSE = "0BSD"
 NA_STATUS = "not_available"
 DEFAULT_ARTIFACT_ROOT = Path(".artifacts/performance-report")
 DEFAULT_DEV_PYTHON = Path(".venv/bin/python")
+REPORT_TEX_INPUTS = (
+    "section_zgg_example.tex",
+    "section_zgg_dag.tex",
+    "section_ufo_support.tex",
+)
 DEFAULT_LIMIT_GIB = 800.0
 DEFAULT_GENERATION_TIMEOUT_SECONDS = 3600.0
 DEFAULT_WORKERS = 50
@@ -3169,15 +3174,15 @@ def render_performance_ladder(
             r"\begin{longtable}{@{}r "
             + (
                 r"L{0.78in} L{0.40in} L{0.94in} "
-                r"R{0.58in} R{0.48in} R{0.58in} R{0.48in} R{0.58in} "
-                r"@{}p{0.20in}@{} "
-                r"R{0.58in} R{0.48in} R{0.58in} R{0.48in} R{0.58in}@{}}"
+                r"R{0.62in} R{0.52in} R{0.62in} R{0.52in} R{0.62in} "
+                r"@{\hspace{0.025in}}p{0.22in}@{\hspace{0.025in}} "
+                r"R{0.62in} R{0.52in} R{0.62in} R{0.52in} R{0.62in}@{\hspace{0.035in}}}"
                 if compare_to_built_in
                 else (
                     r"L{0.92in} L{0.48in} L{0.86in} "
-                    r"R{0.60in} R{0.60in} R{0.60in} "
-                    r"@{}p{0.20in}@{} "
-                    r"R{0.60in} R{0.60in} R{0.60in}@{}}"
+                    r"R{0.66in} R{0.66in} R{0.66in} "
+                    r"@{\hspace{0.025in}}p{0.22in}@{\hspace{0.025in}} "
+                    r"R{0.66in} R{0.66in} R{0.66in}@{\hspace{0.035in}}}"
                 )
             )
         ),
@@ -3342,7 +3347,7 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
         if isinstance(entry, Mapping)
     }
     multiplicity_count = len(spec.multiplicities)
-    column_spec = "@{}L{1.82in}" + "R{0.72in}" * multiplicity_count + "@{}"
+    column_spec = "@{}L{0.94in}" + "L{0.72in}" * multiplicity_count + "@{}"
     process_family = _tex_escape(spec.process_family)
     measurements = {
         n_final: entries[n_final]["measurement"] for n_final in spec.multiplicities
@@ -3403,7 +3408,7 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
             rf"{{\texttt{{{process_family}}}}}" + r" \\"
         ),
         r"\textbf{metric} & "
-        + " & ".join(rf"\textbf{{$n={n}$}}" for n in spec.multiplicities)
+        + " & ".join(rf"\textbf{{\texttt{{n={n}}}}}" for n in spec.multiplicities)
         + r" \\",
         r"\midrule",
     ]
@@ -7601,6 +7606,11 @@ def _compile_staged_pdf(paths: ReportPaths, staging: Path) -> bytes:
     if latexmk is None:
         raise FileNotFoundError("latexmk is required for --compile")
     shutil.copy2(paths.report_tex, staging / paths.report_tex.name)
+    for name in REPORT_TEX_INPUTS:
+        source = paths.docs_dir / name
+        if not source.is_file():
+            raise FileNotFoundError(f"report TeX input is missing: {name}")
+        shutil.copy2(source, staging / name)
     environment = os.environ.copy()
     environment.update({"LANG": "C", "LC_ALL": "C", "LC_CTYPE": "C"})
     completed = subprocess.run(

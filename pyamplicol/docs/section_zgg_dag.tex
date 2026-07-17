@@ -1,0 +1,53 @@
+% SPDX-License-Identifier: 0BSD
+\section{\texorpdfstring{\(d\bar d\to Zgg\) as a pyAmpliCol DAG}{d dbar -> Z g g as a pyAmpliCol DAG}}
+
+\PAC{} represents the example as a shared-current DAG, not as a list of
+diagrams. A source current is created for each external label. Composite
+currents are keyed by the full current identity: particle state, external-label
+mask, momentum mask, helicity ancestry, spin or chirality state, flavour and
+charge flow, colour-flow state, and any auxiliary-current kind introduced by a
+contact decomposition. If two diagrams need the same current, they point to
+the same node.
+
+For \(d\bar d\to Zgg\), typical reusable subcurrents include a gluon current
+on the two-gluon subset \(\{4,5\}\), electroweak quark-line currents in which
+the \(Z\) is emitted before or after QCD radiation, and mixed quark-gluon
+currents that carry the selected LC traversal. The generator sweeps subsets in
+topological order, groups compatible output components into Symbolica stage
+evaluators, and then emits one amplitude-root stage that contracts the final
+current pair into coherent helicity and colour amplitudes.
+
+\begin{center}
+\small
+\begin{tabular}{@{}L{1.3in}L{5.5in}@{}}
+\toprule
+\textbf{DAG layer} & \textbf{current implementation role} \\
+\midrule
+sources & external wavefunctions and momentum slots for labels \(1,\ldots,5\) \\
+recursive stages & stage-local evaluators for reusable off-shell currents with stable value slots \\
+auxiliary nodes & non-propagating currents used only when a contact tensor is decomposed \\
+amplitude roots & final contractions with model-owned closure tensors, colour weights, and helicity weights \\
+runtime schema & schema-v3 process metadata plus evaluator manifests consumed by Rusticol \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The report driver uses the private developer
+\texttt{GenerationSlice} helper for the two specialized benchmarks. For the
+selected-flow workload it passes the source-mapped reference colour order and
+the matching LC sector identifiers. For the all-flow workload it passes only
+the validated fixed source-helicity map and leaves the colour sectors complete.
+These controls are deliberately not part of the public generation contract:
+ordinary users generate complete physical coverage, while the report campaign
+uses slices solely to reproduce specialized legacy timings.
+
+At runtime, Rusticol loads the serialized artifact, packs model parameters and
+source wavefunctions, executes each stage evaluator in DAG order, scatters the
+stage outputs into current value slots, and evaluates the amplitude-root stage.
+The process-table wall time is the native repeated Rusticol wall statistic
+\texttt{runtime\_core\allowbreak\_repeated\allowbreak\_wall\allowbreak\_time},
+measured after caller-side momentum-buffer packing. The evaluator sum is
+\texttt{runtime\_profile\allowbreak\_core\allowbreak\_evaluator\allowbreak\_call\allowbreak\_time},
+the accumulated time inside the generic-stage and amplitude evaluator calls.
+The two numbers are reported together because their difference diagnoses
+runtime orchestration overhead inside the native core.

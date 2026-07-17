@@ -1,0 +1,51 @@
+% SPDX-License-Identifier: 0BSD
+\section{\texorpdfstring{Worked \(d\bar d\to Zgg\) Example}{Worked d dbar -> Z g g Example}}
+
+The process used here is
+\[
+  d(p_1)\,\bar d(p_2)\to Z(p_3)\,g(p_4)\,g(p_5).
+\]
+The report source labels are the process-order labels \(1,\ldots,5\). Labels
+\(1\) and \(2\) are the incoming quark and antiquark, label \(3\) is the
+colour-singlet \(Z\), and labels \(4,5\) are the two final-state gluons. The
+leading-colour selected-flow example keeps the historical colour traversal
+\[
+  (2,5,4,1),
+\]
+meaning that the open colour line starts at the antiquark, crosses the two
+gluons in the order \(g_5,g_4\), and closes on the quark. In the public
+\PAC{} selection object this is recorded as the source-label order
+\((2,5,4,1,3)\): the final \(3\) keeps the colour-singlet source label attached
+to the benchmark metadata, while colour-sector matching ignores it when
+building the coloured word.
+
+The same physical process is used in two LC workloads. The selected-flow,
+helicity-sum workload generates only the LC sector compatible with
+\((2,5,4,1)\) and sums over all source helicities. The all-flows,
+fixed-helicity workload keeps all LC colour flows, such as the sibling order
+\((2,4,5,1)\), and fixes one helicity assignment that is present in the
+generated DAG. Both workloads are compared to the same original Fortran
+\AC{} generation. The all-flow fixed-helicity reference does not require a
+second \AC{} generation step; only its runtime observable differs.
+
+\begin{center}
+\small
+\begin{tabular}{@{}L{1.15in}L{5.65in}@{}}
+\toprule
+\textbf{object} & \textbf{report convention} \\
+\midrule
+source labels & \(1=d_{\rm in},\ 2=\bar d_{\rm in},\ 3=Z,\ 4=g,\ 5=g\) \\
+selected coloured word & \((2,5,4,1)\), with the \(Z\) omitted from colour matching \\
+public selected order & \((2,5,4,1,3)\), stored in the report provenance \\
+selected LC sectors & the physical LC sector and any required internal sibling sectors for the same public flow \\
+runtime observable & summed matrix element from \texttt{Runtime.evaluate()} at fixed phase-space points \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The old \AC{} reference and the \PAC{} measurements use aligned numerical
+input parameters and the same deterministic point set. Any disagreement in the
+selected value, the all-flow fixed-helicity value, or the resolved-sum identity
+is therefore a validation failure, not a timing fluctuation. Timing entries are
+accepted only after this numerical comparison has passed.
+

@@ -1,0 +1,60 @@
+% SPDX-License-Identifier: 0BSD
+\section{Arbitrary UFO Support Strategy}
+
+The external-model path is intended to be generic, but it is not an
+``accept any UFO'' interpreter. It compiles a trusted UFO directory, or a
+portable serialized JSON model, into a normalized model contract that the DAG
+generator and Rusticol can consume without Standard-Model name or PDG
+fallbacks. Unsupported features fail during model preflight or compilation
+with a structured diagnostic.
+
+The central design rule is proof-gated specialization. Whenever \PAC{} uses a
+short cut that would otherwise look model-specific, the compiler first derives
+an exact certificate from normalized tensors, source roles, propagators,
+couplings, quantum numbers, and tensor-ordering metadata. These proof records
+are serialized with the compiled model and are checked again when artifacts are
+loaded. Examples include Yang--Mills current reuse, parity and reflection
+relations, LC trace sharing, four-gluon contact decomposition, the
+\(3\otimes\bar 3\otimes 8\) Fierz singlet-subtraction auxiliary, tensor-axis
+ordering, and Goldstone partner contracts for massive vectors.
+
+\subsection{Currently supported model features}
+
+The current release path supports scalar particles, Dirac-like fermions,
+vectors, and the proven massless spin-two source and propagator path used by
+the packaged scalar-gravity model. For colour it supports SU(3) singlets,
+fundamentals, antifundamentals, and adjoints, with LC flows and the current
+contracted NLC/full SU(3) calculations. The implemented UFO Lorentz basis
+covers identity, gamma and gamma-five structures, chiral projectors, sigma
+tensors, metrics, momenta, and the tensor patterns certified by the packaged
+models. Trilinear kernels, colour-singlet contact trees, and proof-gated
+coloured contacts are supported.
+
+The built-in SM and the packaged UFO-SM are both used in the process matrices.
+They are expected to agree after parameter alignment because they lower to the
+same physics contract through different model-source paths. The scalar-contact
+and scalar-gravity ladders exercise the generic contact and spin-two paths
+without relying on SM-specific kernels.
+
+\subsection{Known unsupported features}
+
+Unsupported inputs include Majorana or fermion-number-violating fermions, spin
+\(3/2\), sextet colour representations, epsilon colour tensors, multiple or
+non-SU(3) colour groups, opaque form factors or unknown UFO functions,
+unsupported custom propagator tensors, and general coloured higher-point
+contacts without a certified decomposition. General arbitrary-representation
+full colour is not promised by the current \texttt{full} mode. Massive spin-two
+support remains experimental; the tested report capability is the packaged
+massless scalar-gravity model.
+
+\subsection{Extending the subset}
+
+Adding a new UFO feature should normally add a compiler proof and a runtime
+contract, not a process-family exception. The extension path is: normalize the
+new tensor or propagator structure, define the source and closure contract,
+prove any intended reuse or decomposition identity, serialize enough metadata
+to reject stale artifacts, and add cross-model numerical gates against a direct
+or high-precision oracle. Once that contract exists, the same DAG construction,
+stage evaluator lowering, artifact format, and Rusticol execution path can
+serve all models that satisfy it.
+
