@@ -433,7 +433,11 @@ impl ArtifactManifest {
 }
 
 fn normalize_process_expression(expression: &str) -> String {
-    expression.split_whitespace().collect::<Vec<_>>().join(" ")
+    expression
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn validate_artifact_identity(manifest: &Value, bytes: &[u8]) -> RusticolResult<()> {

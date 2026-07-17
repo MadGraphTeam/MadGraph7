@@ -67,9 +67,9 @@ process/alias ID. These selectors are equivalent:
 --process p_p_to_z_j_j_4
 ```
 
-Whitespace is normalized for expression selectors, while particle names and
-ordering remain significant. Ambiguous expressions are rejected with the
-matching stable IDs. Run the primary subprocess with:
+Case and whitespace are normalized for expression selectors, while particle
+labels and ordering remain significant. Ambiguous expressions are rejected
+with the matching stable IDs. Run the primary subprocess with:
 
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \

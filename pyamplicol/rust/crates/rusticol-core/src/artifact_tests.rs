@@ -827,8 +827,8 @@ fn valid_manifest_verifies_all_payloads() {
     assert_eq!(verified.select_process(None).unwrap().requested_id, "p0");
     assert_eq!(
         verified
-            .select_process(Some("  a   b  >  c "))
-            .expect("select process by normalized expression")
+            .select_process(Some("  A   b  >  C "))
+            .expect("select process by case- and whitespace-normalized expression")
             .requested_id,
         "p0"
     );

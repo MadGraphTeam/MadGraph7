@@ -56,8 +56,8 @@ pyamplicol evaluate artifacts/pp_zjj \
 ```
 
 The equivalent machine-stable selector is `--process p_p_to_z_j_j_4`.
-Whitespace is normalized for expression selectors; concrete particle names and
-ordering remain significant.
+Case and whitespace are normalized for expression selectors; concrete particle
+labels and ordering remain significant.
 
 `data/model_parameters.json` updates the real model inputs `aS` and `MZ`.
 Unknown, immutable, or invalid entries reject the complete update.

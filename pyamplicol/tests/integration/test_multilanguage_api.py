@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from pyamplicol import Generator, ProcessSet
+from pyamplicol import CompiledModel, Generator, ModelSource, ProcessSet
 from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
@@ -25,7 +25,7 @@ from pyamplicol.config import (
     RunConfig,
 )
 
-_PARAMETER_ID = "normalization.alpha_s_me_check"
+_PARAMETER_ID = "aS"
 _MIXED_PROCESSES = (
     "d d~ > z g",
     "d d~ > z g g",
@@ -205,10 +205,15 @@ def _build_bundle(
     expressions: tuple[str, ...],
     names: tuple[str, ...],
     accuracy: str,
+    model: CompiledModel,
     tools: _NativeTools,
 ) -> _BuiltBundle:
     processes = ProcessSet.from_expressions(expressions, names=names)
-    Generator(_generation_config(accuracy)).generate(processes, artifact)
+    Generator(_generation_config(accuracy)).generate(
+        processes,
+        artifact,
+        model=model,
+    )
     process_ids = _manifest_process_ids(artifact)
     assert process_ids == names
     _assert_complete_runtime_coverage(artifact, process_ids, accuracy)
@@ -361,9 +366,23 @@ def test_safe_rust_demo_compiles_and_runs_with_installed_or_source_sdk(
 
 
 @pytest.fixture(scope="module")
+def external_sm_model(tmp_path_factory: pytest.TempPathFactory) -> CompiledModel:
+    resource = importlib.resources.files("pyamplicol").joinpath(
+        "assets/models/json/sm/sm.json"
+    )
+    cache = tmp_path_factory.mktemp("multilanguage-model-cache")
+    with importlib.resources.as_file(resource) as source:
+        return ModelSource.from_path(source, restriction="default").compile(
+            cache_dir=cache,
+            use_cache=True,
+        )
+
+
+@pytest.fixture(scope="module")
 def generated_bundles(
     tmp_path_factory: pytest.TempPathFactory,
     native_tools: _NativeTools,
+    external_sm_model: CompiledModel,
 ) -> dict[str, _BuiltBundle]:
     root = tmp_path_factory.mktemp("multilanguage-api")
     return {
@@ -372,6 +391,7 @@ def generated_bundles(
             _MIXED_PROCESSES,
             _MIXED_NAMES,
             "lc",
+            external_sm_model,
             native_tools,
         ),
         "single": _build_bundle(
@@ -379,6 +399,7 @@ def generated_bundles(
             (_MIXED_PROCESSES[0],),
             (_MIXED_NAMES[0],),
             "lc",
+            external_sm_model,
             native_tools,
         ),
         "nlc": _build_bundle(
@@ -386,6 +407,7 @@ def generated_bundles(
             (_MIXED_PROCESSES[0],),
             (_MIXED_NAMES[0],),
             "nlc",
+            external_sm_model,
             native_tools,
         ),
         "full": _build_bundle(
@@ -393,6 +415,7 @@ def generated_bundles(
             (_MIXED_PROCESSES[0],),
             (_MIXED_NAMES[0],),
             "full",
+            external_sm_model,
             native_tools,
         ),
     }
@@ -535,7 +558,7 @@ def test_all_languages_select_processes_by_concrete_expression(
     payloads = _all_languages(bundle, process=selector)
 
     _assert_language_payloads(payloads)
-    assert payloads["python"]["process"] == expression
+    assert payloads["python"]["process"].casefold() == expression.casefold()
     assert payloads["python"]["process_key"] == stable_id
 
 
