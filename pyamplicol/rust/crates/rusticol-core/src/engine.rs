@@ -27,6 +27,25 @@ const LC_SECTOR_SELECTOR_PARAMETER: &str = "runtime.lc_sector_id";
 type LcTopologyReplayMappings = Vec<Vec<(usize, usize)>>;
 type LcTopologyReplayData = (LcTopologyReplayMappings, Vec<f64>);
 
+#[derive(Clone, Debug)]
+struct LcResolvedReplayRoute {
+    source_index: usize,
+    target_index: usize,
+    weight: f64,
+}
+
+#[derive(Clone, Debug)]
+struct LcResolvedReplayEntry {
+    routes: Vec<LcResolvedReplayRoute>,
+}
+
+#[derive(Clone, Debug)]
+struct LcResolvedReplayPlan {
+    entries: Vec<LcResolvedReplayEntry>,
+    helicity_count: usize,
+    color_count: usize,
+}
+
 pub const SYMJIT_APPLICATION_RUNTIME_CAPABILITY: &str = "symjit.application.complex-f64.v1";
 pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
     "symbolica.legacy-jit-container.complex-f64.v1";
@@ -1168,6 +1187,7 @@ struct ExecutionRuntime {
     amplitude_output_count: usize,
     lc_topology_replay_enabled: bool,
     lc_topology_replay_mappings: LcTopologyReplayMappings,
+    lc_topology_replay_public_mappings: LcTopologyReplayMappings,
     lc_topology_replay_weights: Vec<f64>,
     runtime_unavailable_message: Option<String>,
     sources: Vec<GenericSourceRecordManifest>,

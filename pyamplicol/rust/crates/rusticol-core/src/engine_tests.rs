@@ -150,6 +150,164 @@ fn test_external_particle(
     }
 }
 
+fn replay_test_physics() -> PhysicsRuntime {
+    PhysicsRuntime::new(ProcessPhysicsV1 {
+        schema_version: crate::RUNTIME_PHYSICS_SCHEMA_VERSION,
+        kind: "pyamplicol-resolved-physics".to_string(),
+        process_id: "d_dbar_to_g_g".to_string(),
+        process: "d d~ > g g".to_string(),
+        color_accuracy: crate::ColorAccuracy::Lc,
+        coverage: crate::Coverage {
+            helicities: "complete".to_string(),
+            color: "complete".to_string(),
+            color_kind: "physical-lc-flows".to_string(),
+            structural_zero_helicity_count: 0,
+        },
+        external_particles: vec![
+            test_external_particle(0, "d", 1, crate::ParticleRole::Initial),
+            test_external_particle(1, "d~", -1, crate::ParticleRole::Initial),
+            test_external_particle(2, "g", 21, crate::ParticleRole::Final),
+            test_external_particle(3, "g", 21, crate::ParticleRole::Final),
+        ],
+        helicities: vec![
+            crate::Helicity {
+                id: "h:+1,-1,+1,-1".to_string(),
+                index: 0,
+                values: vec![1, -1, 1, -1],
+                computed: true,
+                structural_zero: false,
+                representative_id: "h:+1,-1,+1,-1".to_string(),
+                coefficient: 1.0,
+            },
+            crate::Helicity {
+                id: "h:+1,-1,-1,+1".to_string(),
+                index: 1,
+                values: vec![1, -1, -1, 1],
+                computed: false,
+                structural_zero: false,
+                representative_id: "h:+1,-1,+1,-1".to_string(),
+                coefficient: 1.0,
+            },
+        ],
+        color_components: vec![
+            crate::ColorComponent::LcFlow(crate::LcColorFlow {
+                id: "flow:1,2,3,4".to_string(),
+                index: 0,
+                word: vec![1, 2, 3, 4],
+                computed: true,
+                representative_id: "flow:1,2,3,4".to_string(),
+                coefficient: 1.0,
+            }),
+            crate::ColorComponent::LcFlow(crate::LcColorFlow {
+                id: "flow:1,4,3,2".to_string(),
+                index: 1,
+                word: vec![1, 4, 3, 2],
+                computed: false,
+                representative_id: "flow:1,2,3,4".to_string(),
+                coefficient: 1.0,
+            }),
+            crate::ColorComponent::LcFlow(crate::LcColorFlow {
+                id: "flow:1,2,4,3".to_string(),
+                index: 2,
+                word: vec![1, 2, 4, 3],
+                computed: false,
+                representative_id: "flow:1,2,3,4".to_string(),
+                coefficient: 1.0,
+            }),
+        ],
+        reduction: crate::Reduction {
+            kind: crate::ReductionKind::LcDiagonal,
+            groups: vec![crate::ReductionGroup {
+                id: "reduction:7".to_string(),
+                representative_helicity_id: "h:+1,-1,+1,-1".to_string(),
+                representative_color_id: "flow:1,2,3,4".to_string(),
+                physical_helicity_ids: vec!["h:+1,-1,+1,-1".to_string()],
+                physical_color_ids: vec!["flow:1,2,3,4".to_string()],
+            }],
+        },
+        model_parameters: Vec::new(),
+        selectors: crate::SelectorCapabilities {
+            helicity: true,
+            color_flow: true,
+            contracted_color: false,
+        },
+        extensions: BTreeMap::new(),
+    })
+    .unwrap()
+}
+
+#[test]
+fn lc_replay_routes_materialized_cells_to_public_axes_and_selectors() {
+    let physics = replay_test_physics();
+    let mappings = vec![Vec::new(), vec![(2, 3), (3, 2)]];
+    let plan = physics
+        .lc_resolved_replay_plan(&mappings, &[2.0, 1.0])
+        .unwrap();
+    assert_eq!(plan.helicity_count, 2);
+    assert_eq!(plan.color_count, 3);
+
+    let materialized = ResolvedValues {
+        values: vec![
+            3.0, 0.0, 0.0, 0.0, 0.0, 0.0, // identity, point 0
+            5.0, 0.0, 0.0, 0.0, 0.0, 0.0, // identity, point 1
+            7.0, 0.0, 0.0, 0.0, 0.0, 0.0, // swap, point 0
+            11.0, 0.0, 0.0, 0.0, 0.0, 0.0, // swap, point 1
+        ],
+        point_count: 4,
+        helicity_indices: vec![0, 1],
+        color_indices: vec![0, 1, 2],
+    };
+    let mut full = vec![0.0; 12];
+    super::evaluation::accumulate_lc_replay_resolved_f64(
+        &mut full,
+        2,
+        &materialized,
+        &plan.entries,
+        6,
+    )
+    .unwrap();
+
+    assert_eq!(
+        full,
+        vec![3.0, 3.0, 0.0, 0.0, 0.0, 7.0, 5.0, 5.0, 0.0, 0.0, 0.0, 11.0]
+    );
+    assert_eq!(full[..6].iter().sum::<f64>(), 2.0 * 3.0 + 7.0);
+    assert_eq!(full[6..].iter().sum::<f64>(), 2.0 * 5.0 + 11.0);
+
+    let selected = super::evaluation::select_resolved_values(
+        full,
+        2,
+        &physics,
+        Some(&BTreeSet::from(["h:+1,-1,-1,+1".to_string()])),
+        Some(&BTreeSet::from(["flow:1,2,4,3".to_string()])),
+    )
+    .unwrap();
+    assert_eq!(selected.helicity_indices, vec![1]);
+    assert_eq!(selected.color_indices, vec![2]);
+    assert_eq!(selected.values, vec![7.0, 11.0]);
+}
+
+#[test]
+fn lc_replay_requires_every_public_flow_reduction_member() {
+    let mut manifest = replay_test_physics().manifest;
+    manifest.color_components.remove(1);
+    manifest.color_components[1] = match manifest.color_components[1].clone() {
+        crate::ColorComponent::LcFlow(mut flow) => {
+            flow.index = 1;
+            crate::ColorComponent::LcFlow(flow)
+        }
+        value => value,
+    };
+    manifest.coverage.color = "selected".to_string();
+    let physics = PhysicsRuntime::new(manifest).unwrap();
+
+    let error = physics
+        .lc_resolved_replay_plan(&vec![Vec::new()], &[2.0])
+        .unwrap_err();
+
+    assert!(error.to_string().contains("missing replayed LC flow word"));
+}
+
 fn alias_test_physics(color_accuracy: &str) -> ProcessPhysicsV1 {
     let contracted = color_accuracy != "lc";
     let representative_helicity_id = "h:+1,-1,+0,+1,-1".to_string();
@@ -606,6 +764,7 @@ fn empty_generic_runtime() -> ExecutionRuntime {
         amplitude_output_count: 0,
         lc_topology_replay_enabled: false,
         lc_topology_replay_mappings: Vec::new(),
+        lc_topology_replay_public_mappings: Vec::new(),
         lc_topology_replay_weights: Vec::new(),
         runtime_unavailable_message: None,
         sources: Vec::new(),

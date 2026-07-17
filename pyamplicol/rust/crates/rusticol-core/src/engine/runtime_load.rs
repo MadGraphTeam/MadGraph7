@@ -162,6 +162,7 @@ impl ExecutionRuntime {
         let topology_replay = manifest.compiled.lc_topology_replay.as_ref();
         let (topology_replay_mappings, topology_replay_weights) =
             build_lc_topology_replay_mappings(topology_replay)?;
+        let topology_replay_public_mappings = topology_replay_mappings.clone();
         let external_is_initial = manifest
             .runtime_schema
             .external_particles
@@ -276,6 +277,7 @@ impl ExecutionRuntime {
             amplitude_output_count: manifest.runtime_schema.amplitude_stage.output_count,
             lc_topology_replay_enabled: !topology_replay_mappings.is_empty(),
             lc_topology_replay_mappings: topology_replay_mappings,
+            lc_topology_replay_public_mappings: topology_replay_public_mappings,
             lc_topology_replay_weights: topology_replay_weights,
             runtime_unavailable_message: manifest.compiled.runtime_unavailable_message,
             sources: manifest.runtime_schema.source_fill.sources,

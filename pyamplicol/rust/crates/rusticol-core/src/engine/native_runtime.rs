@@ -68,6 +68,7 @@ impl NativeRuntime {
             .unwrap_or_else(|| representative_process.clone());
         let process_key = selection.requested_id.clone();
         let input_crossing_map = if let Some(alias) = &selection.alias {
+            runtime.remap_lc_topology_replay_public_labels(&alias.external_permutation)?;
             physics_v1 = apply_final_state_alias_metadata(physics_v1, alias)?;
             runtime.external_pdg_order = alias.external_pdgs.clone();
             Some(

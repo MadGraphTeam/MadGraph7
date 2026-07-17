@@ -38,6 +38,26 @@ class _RuntimeState(TypedDict):
     normalization_factor: object
 
 
+@dataclass(frozen=True, slots=True)
+class _LcReplayRoute:
+    source_index: int
+    target_index: int
+    weight: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class _LcReplayEntry:
+    input_mapping: tuple[tuple[int, int], ...]
+    routes: tuple[_LcReplayRoute, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _LcReplayPlan:
+    entries: tuple[_LcReplayEntry, ...]
+    helicity_count: int
+    color_count: int
+
+
 def _json_integer(value: object) -> int:
     return int(cast(int | float | str, value))
 
@@ -225,13 +245,12 @@ class SymbolicaExactExecutor:
             ) from exc
         if not isinstance(self._execution, dict) or not isinstance(self._physics, dict):
             raise ArtifactError("exact-runtime metadata is not an object")
-        replay = self._execution.get("compiled", {}).get("lc_topology_replay")
-        if isinstance(replay, Mapping) and bool(replay.get("enabled")):
-            raise CompatibilityError(
-                "higher-precision evaluation of LC topology-replay artifacts is not "
-                "available yet; generate a materialized-flow artifact"
-            )
         self._permutation = permutation
+        self._lc_replay = _lc_replay_plan(
+            self._execution,
+            self._physics,
+            permutation,
+        )
         self._stage_evaluators: tuple[_ExactEvaluator, ...] | None = None
         self._amplitude_evaluator: _ExactEvaluator | None = None
 
@@ -265,18 +284,37 @@ class SymbolicaExactExecutor:
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
+            evaluation_points = (
+                points
+                if self._lc_replay is None
+                else tuple(
+                    _apply_lc_replay_input_mapping(point, entry.input_mapping)
+                    for entry in self._lc_replay.entries
+                    for point in points
+                )
+            )
             amplitudes = tuple(
                 self._evaluate_point(point, parameters, working_precision)
-                for point in points
+                for point in evaluation_points
             )
             values, helicity_ids, color_ids = _reduce_resolved(
                 amplitudes,
                 self._execution,
                 self._physics,
                 normalization,
-                helicities,
-                color_flows,
+                helicities if self._lc_replay is None else None,
+                color_flows if self._lc_replay is None else None,
             )
+            if self._lc_replay is not None:
+                values, helicity_ids, color_ids = _apply_lc_replay_resolved(
+                    values,
+                    self._lc_replay,
+                    len(points),
+                    helicity_ids,
+                    color_ids,
+                    helicities,
+                    color_flows,
+                )
         with localcontext() as context:
             context.prec = precision
             context.rounding = ROUND_HALF_EVEN
@@ -374,6 +412,363 @@ def _selected_process(
                     )
                 )
     raise ArtifactError(f"selected process {selected_id!r} is absent from artifact")
+
+
+def _lc_replay_plan(
+    execution: Mapping[str, object],
+    physics: Mapping[str, object],
+    public_permutation: tuple[int, ...] | None,
+) -> _LcReplayPlan | None:
+    compiled = execution.get("compiled")
+    if not isinstance(compiled, Mapping):
+        return None
+    raw_replay = compiled.get("lc_topology_replay")
+    if raw_replay is None:
+        return None
+    if not isinstance(raw_replay, Mapping):
+        raise ArtifactError("LC topology replay metadata is not an object")
+    if not bool(raw_replay.get("enabled")):
+        return None
+    if raw_replay.get("mode") != "external-label-permutation":
+        raise CompatibilityError(
+            f"unsupported LC topology replay mode {raw_replay.get('mode')!r}"
+        )
+    particles = physics.get("external_particles")
+    if isinstance(particles, str | bytes) or not isinstance(particles, Sequence):
+        raise ArtifactError("physics metadata has no external particles")
+    external_count = len(particles)
+    if public_permutation is not None and (
+        len(public_permutation) != external_count
+        or set(public_permutation) != set(range(external_count))
+    ):
+        raise ArtifactError(
+            "process alias has an invalid public-label permutation for LC "
+            "topology replay"
+        )
+
+    raw_groups = raw_replay.get("groups")
+    if isinstance(raw_groups, str | bytes) or not isinstance(raw_groups, Sequence):
+        raise ArtifactError("LC topology replay group list is invalid")
+    parsed: list[
+        tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...], Decimal]
+    ] = []
+    for raw_group in raw_groups:
+        if not isinstance(raw_group, Mapping):
+            raise ArtifactError("LC topology replay group is not an object")
+        raw_permutations = raw_group.get("sector_permutations")
+        if isinstance(raw_permutations, str | bytes) or not isinstance(
+            raw_permutations, Sequence
+        ):
+            raise ArtifactError("LC topology replay sector permutations are invalid")
+        for raw_permutation in raw_permutations:
+            if not isinstance(raw_permutation, Mapping):
+                raise ArtifactError(
+                    "LC topology replay sector permutation is not an object"
+                )
+            raw_labels = raw_permutation.get("label_permutation", ())
+            if isinstance(raw_labels, str | bytes) or not isinstance(
+                raw_labels, Sequence
+            ):
+                raise ArtifactError("LC topology replay label permutation is invalid")
+            mapping: list[tuple[int, int]] = []
+            for raw_label in raw_labels:
+                if not isinstance(raw_label, Mapping):
+                    raise ArtifactError(
+                        "LC topology replay label permutation entry is not an object"
+                    )
+                representative = _json_integer(raw_label["representative_label"]) - 1
+                sector = _json_integer(raw_label["sector_label"]) - 1
+                mapping.append((representative, sector))
+            input_mapping = tuple(mapping)
+            _validate_lc_public_mapping(input_mapping, external_count)
+            public_mapping = (
+                input_mapping
+                if public_permutation is None
+                else tuple(
+                    (public_permutation[representative], public_permutation[sector])
+                    for representative, sector in input_mapping
+                )
+            )
+            replay_weight = _decimal(
+                raw_permutation.get("weight", 1), "LC topology replay weight"
+            )
+            if replay_weight <= 0:
+                raise ArtifactError(
+                    "LC topology replay weights must be positive finite numbers"
+                )
+            parsed.append((input_mapping, public_mapping, replay_weight))
+    declared_count = _json_integer(raw_replay.get("replayed_sector_count", 0))
+    if declared_count != len(parsed) or not parsed:
+        raise ArtifactError(
+            "LC topology replay sector count does not match its permutations"
+        )
+
+    helicities = cast(Sequence[Mapping[str, object]], physics["helicities"])
+    colors = cast(Sequence[Mapping[str, object]], physics["color_components"])
+    if str(physics.get("color_accuracy")) != "lc":
+        raise ArtifactError("LC topology replay requires LC resolved physics metadata")
+    helicity_ids = tuple(str(item["id"]) for item in helicities)
+    color_ids = tuple(str(item["id"]) for item in colors)
+    helicity_index = {
+        identifier: index for index, identifier in enumerate(helicity_ids)
+    }
+    color_index = {identifier: index for index, identifier in enumerate(color_ids)}
+    helicity_by_values: dict[tuple[int, ...], int] = {}
+    for index, record in enumerate(helicities):
+        values = tuple(
+            _json_integer(value) for value in cast(Sequence[object], record["values"])
+        )
+        if values in helicity_by_values:
+            raise ArtifactError("resolved physics contains duplicate helicity vectors")
+        helicity_by_values[values] = index
+    color_by_word: dict[tuple[int, ...], int] = {}
+    for index, record in enumerate(colors):
+        if record.get("kind") != "lc-flow":
+            raise ArtifactError(
+                "LC topology replay encountered a contracted color component"
+            )
+        word = tuple(
+            _json_integer(value) for value in cast(Sequence[object], record["word"])
+        )
+        if word in color_by_word:
+            raise ArtifactError("resolved physics contains duplicate LC flow words")
+        color_by_word[word] = index
+
+    reduction = physics.get("reduction")
+    if not isinstance(reduction, Mapping):
+        raise ArtifactError("resolved physics has no reduction metadata")
+    raw_reductions = reduction.get("groups")
+    if isinstance(raw_reductions, str | bytes) or not isinstance(
+        raw_reductions, Sequence
+    ):
+        raise ArtifactError("resolved physics reduction groups are invalid")
+    relevant_helicities: set[int] = set()
+    relevant_colors: set[int] = set()
+    for raw_reduction in raw_reductions:
+        if not isinstance(raw_reduction, Mapping):
+            raise ArtifactError("resolved physics reduction group is invalid")
+        for raw_id in cast(Sequence[object], raw_reduction["physical_helicity_ids"]):
+            identifier = str(raw_id)
+            if identifier not in helicity_index:
+                raise ArtifactError(
+                    f"reduction references unknown helicity {identifier!r}"
+                )
+            relevant_helicities.add(helicity_index[identifier])
+        for raw_id in cast(Sequence[object], raw_reduction["physical_color_ids"]):
+            identifier = str(raw_id)
+            if identifier not in color_index:
+                raise ArtifactError(
+                    f"reduction references unknown color component {identifier!r}"
+                )
+            relevant_colors.add(color_index[identifier])
+    if not relevant_helicities or not relevant_colors:
+        raise ArtifactError("LC topology replay has no materialized resolved members")
+
+    entries: list[_LcReplayEntry] = []
+    color_count = len(colors)
+    for input_mapping, public_mapping, replay_weight in parsed:
+        helicity_targets: dict[int, int] = {}
+        for source_index in sorted(relevant_helicities):
+            source = helicities[source_index]
+            source_values = tuple(
+                _json_integer(value)
+                for value in cast(Sequence[object], source["values"])
+            )
+            target_values = _permute_lc_helicity(source_values, public_mapping)
+            target_index = helicity_by_values.get(target_values)
+            if target_index is None:
+                raise CompatibilityError(
+                    "resolved physics is missing replayed helicity vector "
+                    f"{target_values!r}; regenerate the artifact with complete "
+                    "topology-replay reductions"
+                )
+            source_coefficient = _decimal(source["coefficient"], "helicity coefficient")
+            target_coefficient = _decimal(
+                helicities[target_index]["coefficient"], "helicity coefficient"
+            )
+            if source_coefficient != target_coefficient:
+                raise ArtifactError(
+                    "LC topology replay maps helicities with different reduction "
+                    "coefficients"
+                )
+            helicity_targets[source_index] = target_index
+
+        color_targets: dict[int, tuple[tuple[int, Decimal], ...]] = {}
+        for source_index in sorted(relevant_colors):
+            source_word = tuple(
+                _json_integer(value)
+                for value in cast(Sequence[object], colors[source_index]["word"])
+            )
+            target_word = _permute_lc_color_word(source_word, public_mapping)
+            target_words = _lc_replay_public_words(target_word, replay_weight)
+            coefficients: dict[int, Decimal] = {}
+            for word in target_words:
+                target_index = color_by_word.get(word)
+                if target_index is None:
+                    raise CompatibilityError(
+                        "resolved physics is missing replayed LC flow word "
+                        f"{word!r}; regenerate the artifact with "
+                        "replay-to-public-flow reductions"
+                    )
+                coefficient = _decimal(
+                    colors[target_index].get("coefficient", 1),
+                    "color coefficient",
+                )
+                if coefficient <= 0:
+                    raise ArtifactError(
+                        "replayed LC flow has no positive reduction coefficient"
+                    )
+                coefficients.setdefault(target_index, coefficient)
+            total = sum(coefficients.values(), _ZERO)
+            if total <= 0:
+                raise ArtifactError(
+                    "LC topology replay has no positive public-flow reduction weight"
+                )
+            color_targets[source_index] = tuple(
+                (target_index, replay_weight * coefficient / total)
+                for target_index, coefficient in sorted(coefficients.items())
+            )
+
+        routes = tuple(
+            _LcReplayRoute(
+                source_index=source_helicity * color_count + source_color,
+                target_index=target_helicity * color_count + target_color,
+                weight=weight,
+            )
+            for source_helicity, target_helicity in sorted(helicity_targets.items())
+            for source_color in sorted(relevant_colors)
+            for target_color, weight in color_targets[source_color]
+        )
+        entries.append(_LcReplayEntry(input_mapping=input_mapping, routes=routes))
+    return _LcReplayPlan(
+        entries=tuple(entries),
+        helicity_count=len(helicities),
+        color_count=color_count,
+    )
+
+
+def _validate_lc_public_mapping(
+    mapping: Sequence[tuple[int, int]], external_count: int
+) -> None:
+    representatives: set[int] = set()
+    sectors: set[int] = set()
+    for representative, sector in mapping:
+        if not 0 <= representative < external_count or not 0 <= sector < external_count:
+            raise ArtifactError(
+                "LC topology replay label permutation references an out-of-range leg"
+            )
+        if representative in representatives or sector in sectors:
+            raise ArtifactError(
+                "LC topology replay label permutation is not one-to-one"
+            )
+        representatives.add(representative)
+        sectors.add(sector)
+    if representatives != sectors:
+        raise ArtifactError(
+            "LC topology replay label permutation is not a permutation of its support"
+        )
+
+
+def _permute_lc_helicity(
+    values: tuple[int, ...], mapping: Sequence[tuple[int, int]]
+) -> tuple[int, ...]:
+    target = list(values)
+    for representative, sector in mapping:
+        target[sector] = values[representative]
+    return tuple(target)
+
+
+def _permute_lc_color_word(
+    word: tuple[int, ...], mapping: Sequence[tuple[int, int]]
+) -> tuple[int, ...]:
+    labels = {representative + 1: sector + 1 for representative, sector in mapping}
+    return tuple(labels.get(label, label) for label in word)
+
+
+def _lc_replay_public_words(
+    word: tuple[int, ...], replay_weight: Decimal
+) -> tuple[tuple[int, ...], ...]:
+    tolerance = Decimal("1e-12")
+    if abs(replay_weight - _ONE) <= tolerance:
+        return (word,)
+    if abs(replay_weight - _TWO) > tolerance:
+        raise CompatibilityError(
+            "resolved LC topology replay cannot expand sector weight "
+            f"{replay_weight}; schema-v3 replay metadata defines public-flow "
+            "expansion only for unit sectors and folded trace-reflection weight two"
+        )
+    if len(word) < 2:
+        return (word,)
+    reflected = (word[0], *reversed(word[1:]))
+    return (word,) if reflected == word else (word, reflected)
+
+
+def _apply_lc_replay_input_mapping(
+    point: tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...],
+    mapping: Sequence[tuple[int, int]],
+) -> tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...]:
+    mapped = list(point)
+    for representative, sector in mapping:
+        mapped[representative] = point[sector]
+    return tuple(mapped)
+
+
+def _apply_lc_replay_resolved(
+    materialized: tuple[tuple[tuple[Decimal, ...], ...], ...],
+    plan: _LcReplayPlan,
+    point_count: int,
+    helicity_ids: tuple[str, ...],
+    color_ids: tuple[str, ...],
+    selected_helicities: Sequence[str] | None,
+    selected_colors: Sequence[str] | None,
+) -> tuple[
+    tuple[tuple[tuple[Decimal, ...], ...], ...],
+    tuple[str, ...],
+    tuple[str, ...],
+]:
+    if len(helicity_ids) != plan.helicity_count or len(color_ids) != plan.color_count:
+        raise ArtifactError(
+            "materialized LC topology replay axes do not match public physics"
+        )
+    expected_points = point_count * len(plan.entries)
+    if len(materialized) != expected_points:
+        raise ArtifactError(
+            "materialized LC topology replay result has an inconsistent point count"
+        )
+    full = [
+        [[_ZERO for _ in range(plan.color_count)] for _ in range(plan.helicity_count)]
+        for _ in range(point_count)
+    ]
+    for entry_index, entry in enumerate(plan.entries):
+        for point_index in range(point_count):
+            source = materialized[entry_index * point_count + point_index]
+            if len(source) != plan.helicity_count or any(
+                len(colors) != plan.color_count for colors in source
+            ):
+                raise ArtifactError(
+                    "materialized LC topology replay result has an inconsistent shape"
+                )
+            for route in entry.routes:
+                source_helicity, source_color = divmod(
+                    route.source_index, plan.color_count
+                )
+                target_helicity, target_color = divmod(
+                    route.target_index, plan.color_count
+                )
+                full[point_index][target_helicity][target_color] += (
+                    route.weight * source[source_helicity][source_color]
+                )
+    selected_h = _selected_indices(helicity_ids, selected_helicities, "helicity")
+    selected_c = _selected_indices(color_ids, selected_colors, "color component")
+    values = tuple(
+        tuple(tuple(full[p][h][c] for c in selected_c) for h in selected_h)
+        for p in range(point_count)
+    )
+    return (
+        values,
+        tuple(helicity_ids[index] for index in selected_h),
+        tuple(color_ids[index] for index in selected_c),
+    )
 
 
 def _evaluator_manifest(stage: object) -> Mapping[str, object]:
