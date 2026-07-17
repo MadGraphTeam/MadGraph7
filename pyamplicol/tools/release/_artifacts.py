@@ -288,9 +288,12 @@ def _parse_wheel_filename(path: Path) -> tuple[str, str, str, str]:
     return filename_version, python_tag, abi_tag, platform_tag
 
 
-def _canonical_target(platform_tag: str) -> tuple[str, str]:
+def _canonical_target(platform_tag: str, *, mode: str) -> tuple[str, str]:
     components = set(platform_tag.split("."))
     if components and components <= _LINUX_PLATFORM_TAGS:
+        target = "manylinux_2_28_x86_64"
+        return target, RELEASE_TARGETS[target]
+    if mode == "candidate" and platform_tag == "linux_x86_64":
         target = "manylinux_2_28_x86_64"
         return target, RELEASE_TARGETS[target]
     if len(components) == 1:
@@ -1296,7 +1299,7 @@ def audit_wheel(
             f"wheel must use {EXPECTED_PYTHON_TAG}-{EXPECTED_ABI_TAG}, found "
             f"{python_tag}-{abi_tag}"
         )
-    target, rust_target = _canonical_target(platform_tag)
+    target, rust_target = _canonical_target(platform_tag, mode=mode)
     entries = _wheel_entries(path)
     _validate_wheel_resource_layout(entries)
     metadata_name = _single_name(entries, ".dist-info/METADATA")
@@ -1350,7 +1353,7 @@ def audit_wheel(
         fields = tag.rsplit("-", 2)
         if len(fields) != 3 or fields[0] != python_tag or fields[1] != abi_tag:
             raise ArtifactError(f"WHEEL metadata has an unexpected tag: {tag}")
-        tag_target, _ = _canonical_target(fields[2])
+        tag_target, _ = _canonical_target(fields[2], mode=mode)
         if tag_target != target:
             raise ArtifactError(f"WHEEL tag disagrees with filename: {tag}")
 

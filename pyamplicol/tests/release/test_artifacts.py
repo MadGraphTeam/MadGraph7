@@ -552,6 +552,22 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
         audit_wheel(candidate, mode="release", native_scan=False)
 
 
+def test_host_native_linux_tag_is_candidate_only(tmp_path: Path) -> None:
+    candidate = _wheel(
+        tmp_path,
+        version="0.1.0.dev0+candidate.0123456789ab",
+        candidate=True,
+        platform_tag="linux_x86_64",
+    )
+
+    report = audit_wheel(candidate, mode="candidate", native_scan=False)
+    assert report.target == "manylinux_2_28_x86_64"
+    assert report.rust_target == "x86_64-unknown-linux-gnu"
+
+    with pytest.raises(ArtifactError, match="wheel platform tag"):
+        audit_wheel(candidate, mode="release", native_scan=False)
+
+
 def test_candidate_allows_only_rustup_standard_library_source_paths(
     tmp_path: Path,
 ) -> None:
