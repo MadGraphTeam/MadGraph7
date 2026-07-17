@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from threading import Barrier, Event, Lock
+from threading import Barrier, Event, Lock, get_ident
 from types import SimpleNamespace
 
 import pytest
@@ -294,12 +294,24 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
             runtime_schema=schema,
         ),
     )
+    generation_thread = get_ident()
+    materialization_threads: list[int] = []
+
+    def materialize_on_generation_thread(
+        process: object,
+        _model: object,
+        _root: Path,
+        _phase: object,
+    ) -> SimpleNamespace:
+        materialization_threads.append(get_ident())
+        return SimpleNamespace(
+            process_id=process.compiled.expanded.request.name  # type: ignore[union-attr]
+        )
+
     monkeypatch.setattr(
         backend,
         "_materialize_evaluator",
-        lambda process, _model, _root, _phase: SimpleNamespace(
-            process_id=process.compiled.expanded.request.name
-        ),
+        materialize_on_generation_thread,
     )
 
     worker_counts: list[int] = []
@@ -344,6 +356,7 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
     assert expansion_calls == 1
     assert len(result.processes.requests) == 5
     assert worker_counts == [5]
+    assert materialization_threads == [generation_thread] * 5
     settings = backend._symbolica_settings()
     assert settings.n_cores == 2
     assert worker_counts[0] * settings.n_cores <= cpu_budget

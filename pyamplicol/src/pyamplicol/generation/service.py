@@ -387,6 +387,10 @@ class GenerationBackend:
                         "Compiling and materializing stage evaluators",
                         total=jit_total,
                     ) as phase:
+                        # Symbolica expressions are created while resolving the model on
+                        # this caller thread. Keep materialization on that same thread. The
+                        # process-wide lock already made this phase serial; moving between
+                        # worker threads can violate backend thread affinity.
                         artifact_processes = _map_process_phase(
                             evaluators,
                             lambda evaluator: self._materialize_evaluator(
@@ -395,8 +399,8 @@ class GenerationBackend:
                                 temporary_root,
                                 phase,
                             ),
-                            executor=executor,
-                            max_in_flight=worker_count,
+                            executor=None,
+                            max_in_flight=1,
                             phase_name="evaluator materialization",
                             item_name=lambda evaluator: (
                                 evaluator.compiled.expanded.request.name
