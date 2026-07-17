@@ -213,6 +213,8 @@ class PhysicsReduction:
 
 @dataclass(frozen=True, slots=True)
 class GenerationPlan:
+    """Dry-run result with concrete requests, coverage, and effective settings."""
+
     concrete_processes: tuple[ProcessRequest, ...]
     estimated_coverage: Mapping[str, object]
     requested_settings: RunConfig | GenerationConfig
@@ -247,6 +249,8 @@ class GenerationPlan:
 
 @dataclass(frozen=True, slots=True)
 class GenerationResult:
+    """Location and process inventory of a successfully written artifact."""
+
     output: Path
     processes: ProcessSet
     mode: Literal["error", "append", "replace"]
@@ -272,6 +276,13 @@ class GenerationResult:
 
 @dataclass(frozen=True, slots=True)
 class ProcessPhysics:
+    """Physical axes, reduction metadata, and selectors for one process.
+
+    LC processes expose physical color flows; NLC/full processes expose one
+    contracted color component. ``selector_capabilities`` states which axes may
+    be restricted without changing the generated artifact.
+    """
+
     process_id: str
     process: str
     color_accuracy: Literal["lc", "nlc", "full"]
@@ -386,6 +397,12 @@ class ProcessPhysics:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedEvaluation:
+    """Physical values shaped ``(point, helicity, color)``.
+
+    :meth:`total` explicitly sums the helicity and color axes for each point and
+    reproduces the compatibility summed evaluation.
+    """
+
     values: tuple[tuple[tuple[complex | Decimal, ...], ...], ...]
     helicity_ids: tuple[str, ...]
     color_ids: tuple[str, ...]
@@ -437,6 +454,8 @@ class ResolvedEvaluation:
         return (len(self.values), len(self.helicity_ids), len(self.color_ids))
 
     def total(self) -> tuple[complex | Decimal, ...]:
+        """Sum all non-point axes while preserving decimal precision."""
+
         totals: list[complex | Decimal] = []
         for point in self.values:
             entries = tuple(entry for helicity in point for entry in helicity)
@@ -453,6 +472,8 @@ class ResolvedEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkStatistics:
+    """Distribution summary for repeated benchmark measurements."""
+
     standard_deviation: float
     standard_error: float
     relative_standard_error: float
@@ -470,6 +491,8 @@ class BenchmarkStatistics:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkResult:
+    """Per-point wall/evaluator timing and sample statistics for one process."""
+
     requested_config: BenchmarkConfig
     effective_config: BenchmarkConfig
     sample_count: int

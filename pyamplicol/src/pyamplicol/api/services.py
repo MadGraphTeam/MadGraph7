@@ -193,6 +193,12 @@ def _selector_ids(
 
 
 class Generator:
+    """Plan and generate process artifacts with typed configuration.
+
+    A :class:`~pyamplicol.config.ConfigResolution` preserves both requested and
+    effective settings, including license/resource clamps, in the output.
+    """
+
     def __init__(
         self,
         config: GenerationConfig | RunConfig | ConfigResolution | None = None,
@@ -227,6 +233,8 @@ class Generator:
         *,
         model: ModelSource | CompiledModel | None = None,
     ) -> GenerationPlan:
+        """Resolve concrete processes and coverage without writing an artifact."""
+
         process_set = _process_set(processes)
         self._resolve_generation_resources()
         result = self._implementation().plan(process_set, model=model)
@@ -244,6 +252,8 @@ class Generator:
         model: ModelSource | CompiledModel | None = None,
         mode: Literal["error", "append", "replace"] = "error",
     ) -> GenerationResult:
+        """Generate an artifact in ``error``, ``append``, or ``replace`` mode."""
+
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
         process_set = _process_set(processes)
@@ -260,6 +270,8 @@ class Generator:
 
 
 class Runtime:
+    """Typed Python facade for one process in a generated Rusticol artifact."""
+
     def __init__(self, backend: RuntimeBackend) -> None:
         if not isinstance(backend, RuntimeBackend):
             raise TypeError("Runtime backend does not implement RuntimeBackend")
@@ -274,7 +286,12 @@ class Runtime:
         model_parameters: ModelParameters | None = None,
         mute_warnings: bool = False,
     ) -> Runtime:
-        """Load one process by stable ID, alias ID, or concrete expression."""
+        """Load one process by stable ID, alias ID, or exact expression.
+
+        ``model_parameters`` is applied atomically before the runtime is
+        returned. Omit ``process`` only for a single-process artifact or to use
+        the artifact's declared default.
+        """
 
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
         parameters = dict(model_parameters) if model_parameters is not None else None
@@ -301,6 +318,13 @@ class Runtime:
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int = 16,
     ) -> tuple[complex | Decimal, ...]:
+        """Return one fully summed matrix element for every input point.
+
+        Selectors accept stable string IDs or the typed objects exposed by
+        :attr:`physics`. Precision 16 uses the native f64 path; larger values
+        use the retained high-precision evaluator state when available.
+        """
+
         precision = _validate_precision(precision)
         values = self._backend.evaluate(
             momenta,
@@ -343,6 +367,13 @@ class Runtime:
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int = 16,
     ) -> ResolvedEvaluation:
+        """Return physical values resolved by helicity and color component.
+
+        LC output has shape ``(point, helicity, color_flow)``. NLC/full output
+        has shape ``(point, helicity, 1)`` because color is already contracted.
+        Summing the non-point axes reproduces :meth:`evaluate`.
+        """
+
         precision = _validate_precision(precision)
         result = self._backend.evaluate_resolved(
             momenta,
@@ -380,6 +411,8 @@ class Runtime:
         )
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:
+        """Validate and atomically apply a batch of runtime model parameters."""
+
         self._backend.set_model_parameters(dict(mapping))
 
     def set_model_parameter(self, name: str, value: complex | float | int) -> None:
@@ -393,6 +426,8 @@ class Runtime:
 
 
 class BenchmarkRunner:
+    """Benchmark summed process evaluation with a typed benchmark configuration."""
+
     def __init__(
         self,
         config: BenchmarkConfig | RunConfig | None = None,
@@ -418,6 +453,8 @@ class BenchmarkRunner:
         *,
         points: Momenta | None = None,
     ) -> BenchmarkResult:
+        """Benchmark an artifact path or an already loaded :class:`Runtime`."""
+
         backend_target: RuntimeBackend | os.PathLike[str] | str
         if isinstance(target, Runtime):
             backend_target = target._backend
@@ -440,6 +477,8 @@ def generate(
     config: GenerationConfig | RunConfig | ConfigResolution | None = None,
     progress: ProgressSink | None = None,
 ) -> GenerationResult:
+    """Generate a process artifact using a one-shot convenience function."""
+
     return Generator(config=config, progress=progress).generate(
         processes, output, model=model, mode=mode
     )
@@ -455,6 +494,8 @@ def benchmark(
     config: BenchmarkConfig | RunConfig | None = None,
     progress: ProgressSink | None = None,
 ) -> BenchmarkResult:
+    """Benchmark a generated artifact using a one-shot convenience function."""
+
     return BenchmarkRunner(config=config, progress=progress).run(target, points=points)
 
 

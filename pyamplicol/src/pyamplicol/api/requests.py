@@ -19,6 +19,13 @@ _PROCESS_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 
 @dataclass(frozen=True, slots=True)
 class ModelSource:
+    """A built-in, UFO, JSON, or precompiled model input.
+
+    Use :meth:`from_config` for a resolved run card or :meth:`from_path` for an
+    external model. Calling :meth:`compile` produces the canonical serialized
+    model consumed by process generation.
+    """
+
     kind: ModelSourceKind
     path: Path | None = None
     restriction: Path | str | None = None
@@ -240,6 +247,8 @@ def _default_process_name(expression: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class ProcessRequest:
+    """One concrete or multiparticle process expression and its artifact name."""
+
     expression: str
     name: str
 
@@ -254,6 +263,8 @@ class ProcessRequest:
 
     @classmethod
     def parse(cls, expression: str, *, name: str | None = None) -> ProcessRequest:
+        """Normalize an expression and derive a stable readable name if omitted."""
+
         if not isinstance(expression, str):
             raise TypeError("process expression must be a string")
         if "\n" in expression or "\r" in expression:
@@ -278,6 +289,13 @@ class ProcessRequest:
 
 @dataclass(frozen=True, slots=True)
 class ProcessAlias:
+    """A public process alias backed by a generated concrete process.
+
+    ``particle_permutation`` maps the alias's external-particle order onto the
+    stored concrete process. Runtime selectors and metadata are remapped to the
+    alias automatically.
+    """
+
     name: str
     process_name: str
     particle_permutation: tuple[int, ...] = ()
@@ -300,6 +318,8 @@ class ProcessAlias:
 
 @dataclass(frozen=True, slots=True)
 class ProcessSet:
+    """A named collection of generation requests and optional crossing aliases."""
+
     requests: tuple[ProcessRequest, ...]
     aliases: tuple[ProcessAlias, ...] = ()
 
@@ -341,6 +361,8 @@ class ProcessSet:
         names: Sequence[str] = (),
         aliases: Iterable[ProcessAlias] = (),
     ) -> ProcessSet:
+        """Build a process set from expressions using optional aligned names."""
+
         expression_tuple = tuple(expressions)
         name_tuple = tuple(names)
         if name_tuple and len(name_tuple) != len(expression_tuple):

@@ -11,6 +11,8 @@ ResolvedScalar: TypeAlias = float
 RuntimeProfile: TypeAlias = Mapping[str, object]
 
 class TargetInfo:
+    """Native target triple and CPU features supported by this runtime."""
+
     @property
     def triple(self) -> str: ...
     @property
@@ -24,6 +26,8 @@ class SelectorError(EvaluationError): ...
 class ModelParameterError(EvaluationError): ...
 
 class ExternalParticle:
+    """One external particle in the public process momentum order."""
+
     @property
     def index(self) -> int: ...
     @property
@@ -38,6 +42,8 @@ class ExternalParticle:
     def momentum_slot(self) -> int: ...
 
 class HelicityConfiguration:
+    """A physical helicity vector and its computed representative metadata."""
+
     @property
     def id(self) -> str: ...
     @property
@@ -54,6 +60,8 @@ class HelicityConfiguration:
     def coefficient(self) -> float: ...
 
 class ColorFlow:
+    """A stable physical LC flow selector and ordered colored word."""
+
     @property
     def id(self) -> str: ...
     @property
@@ -68,6 +76,8 @@ class ColorFlow:
     def coefficient(self) -> float: ...
 
 class ContractedColorComponent:
+    """The singleton contracted-color axis used by NLC and full color."""
+
     @property
     def id(self) -> str: ...
     @property
@@ -76,6 +86,8 @@ class ContractedColorComponent:
     def description(self) -> str: ...
 
 class ModelParameter:
+    """A runtime model parameter and its default complex value."""
+
     @property
     def name(self) -> str: ...
     @property
@@ -106,6 +118,8 @@ class PhysicsReduction:
     def groups(self) -> list[ReductionGroup]: ...
 
 class ProcessPhysics:
+    """Physical axes, selector capabilities, and reductions for one process."""
+
     @property
     def process_id(self) -> str: ...
     @property
@@ -136,6 +150,12 @@ class ProcessPhysics:
     def selector_capabilities(self) -> list[str]: ...
 
 class ResolvedEvaluation:
+    """Values shaped ``(point, helicity, color)``.
+
+    ``total()`` sums the non-point axes. LC uses physical color flows; NLC and
+    full color use one contracted color component.
+    """
+
     @property
     def values(self) -> list[list[list[ResolvedScalar]]]: ...
     @property
@@ -153,6 +173,8 @@ class ResolvedEvaluation:
     def total(self) -> list[ResolvedScalar]: ...
 
 class Runtime:
+    """Native f64 runtime for one process in a generated artifact."""
+
     def __init__(
         self,
         artifact: str | PathLike[str],
@@ -168,7 +190,9 @@ class Runtime:
         process: str | None = None,
         model_parameters: Mapping[str, ModelParameterValue] | None = None,
         mute_warnings: bool = False,
-    ) -> Runtime: ...
+    ) -> Runtime:
+        """Load by stable process ID, alias ID, or exact process expression."""
+        ...
     @property
     def process(self) -> str: ...
     @property
@@ -186,7 +210,9 @@ class Runtime:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         precision: Literal[16] = 16,
-    ) -> list[float]: ...
+    ) -> list[float]:
+        """Return one fully summed matrix element for every input point."""
+        ...
     def profile(
         self,
         momenta: Momenta,
@@ -212,7 +238,9 @@ class Runtime:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         precision: Literal[16] = 16,
-    ) -> ResolvedEvaluation: ...
+    ) -> ResolvedEvaluation:
+        """Return individual physical helicity and color components."""
+        ...
     def evaluate_with_prec(
         self, momenta: Momenta, decimal_digit_precision: Literal[16]
     ) -> list[float]: ...
@@ -225,7 +253,9 @@ class Runtime:
     ) -> ResolvedEvaluation: ...
     def set_model_parameters(
         self, mapping: Mapping[str, ModelParameterValue]
-    ) -> None: ...
+    ) -> None:
+        """Validate and atomically apply a parameter-update batch."""
+        ...
     def set_model_parameter(self, name: str, value: ModelParameterValue) -> None: ...
     def mute_warnings(self) -> None: ...
     def unmute_warnings(self) -> None: ...
