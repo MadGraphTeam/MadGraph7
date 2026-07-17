@@ -182,6 +182,23 @@ def _compile_direct_contraction(
             metric_signature="mostly-minus",
         )
     if (
+        left.statistics == right.statistics == "boson"
+        and left.wavefunction_family == right.wavefunction_family == "spin2"
+        and left_dimension == 16
+    ):
+        metric = (1.0, -1.0, -1.0, -1.0)
+        return ContractionIR(
+            name="lorentz-rank-2",
+            left_basis="lorentz-rank-2",
+            right_basis="lorentz-rank-2",
+            coefficients=tuple(
+                (metric[mu] * metric[nu], 0.0)
+                for mu in range(4)
+                for nu in range(4)
+            ),
+            metric_signature="mostly-minus-tensor-product",
+        )
+    if (
         left.statistics == right.statistics == "auxiliary"
         and left.wavefunction_family == right.wavefunction_family == "auxiliary"
         and left.auxiliary_kind == right.auxiliary_kind == "antisymmetric-tensor"
