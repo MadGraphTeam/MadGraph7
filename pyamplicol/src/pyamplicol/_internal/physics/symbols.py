@@ -225,26 +225,12 @@ class SymbolRegistry:
     def ufo_momentum_tensor_name(self, leg: int) -> str:
         return self.qualified_name(f"ufo_momentum_{int(leg)}")
 
-    @cached_property
-    def antisymmetric_lorentz_pair_name(self) -> str:
-        return self.qualified_name("antisymmetric_lorentz_pair")
-
-    @cached_property
-    def weyl_spinor_name(self) -> str:
-        return self.qualified_name("weyl_spinor")
-
-    def vertex_kind_tensor_name(self, kind: int) -> str:
-        return self.qualified_name(f"vertex_kind_{int(kind)}")
-
     def contact_leg_tensor_name(self, kind: int, leg: int) -> str:
         return self.qualified_name(f"contact_{int(kind)}_leg_{int(leg)}")
 
     @cached_property
     def color_projection_probe_name(self) -> str:
         return self.qualified_name("color_projection_probe")
-
-    def label(self, labels: tuple[int, ...]) -> Any:
-        return self.symbol("label::" + "_".join(str(label) for label in labels))
 
     def inline_function_wildcard(
         self,
@@ -254,79 +240,6 @@ class SymbolRegistry:
         return self.symbol(
             f"inline_function_{int(definition_index)}_argument_{int(argument_index)}_"
         )
-
-    @cached_property
-    def two_gluon_to_tensor_name(self) -> str:
-        return self.qualified_name("two_gluon_to_tensor")
-
-    @cached_property
-    def two_gluon_to_tensor(self) -> Any:
-        return self.symbol("two_gluon_to_tensor")
-
-    @cached_property
-    def tensor_gluon_to_gluon_name(self) -> str:
-        return self.qualified_name("tensor_gluon_to_gluon")
-
-    @cached_property
-    def tensor_gluon_to_gluon(self) -> Any:
-        return self.symbol("tensor_gluon_to_gluon")
-
-    @cached_property
-    def gluon_tensor_to_gluon_name(self) -> str:
-        return self.qualified_name("gluon_tensor_to_gluon")
-
-    @cached_property
-    def gluon_tensor_to_gluon(self) -> Any:
-        return self.symbol("gluon_tensor_to_gluon")
-
-    @cached_property
-    def quark_vector_weyl_plus_name(self) -> str:
-        return self.qualified_name("quark_vector_weyl_plus")
-
-    @cached_property
-    def quark_vector_weyl_plus(self) -> Any:
-        return self.symbol("quark_vector_weyl_plus")
-
-    @cached_property
-    def quark_vector_weyl_minus_name(self) -> str:
-        return self.qualified_name("quark_vector_weyl_minus")
-
-    @cached_property
-    def quark_vector_weyl_minus(self) -> Any:
-        return self.symbol("quark_vector_weyl_minus")
-
-    @cached_property
-    def current(self) -> Any:
-        return self.symbol("current")
-
-    @cached_property
-    def vertex(self) -> Any:
-        return self.symbol("vertex")
-
-    @cached_property
-    def assignment(self) -> Any:
-        return self.symbol("assign")
-
-    @cached_property
-    def amplitude(self) -> Any:
-        return self.symbol("amplitude")
-
-    @cached_property
-    def matrix_element_plan(self) -> Any:
-        return self.symbol("matrix_element_plan")
-
-    @cached_property
-    def momentum(self) -> Any:
-        return self.symbol("momentum")
-
-    @cached_property
-    def current_momentum(self) -> Any:
-        return self.symbol("current_momentum")
-
-    @cached_property
-    def polarization(self) -> Any:
-        return self.symbol("polarization")
-
 
 symbols = SymbolRegistry()
 

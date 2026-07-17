@@ -5,7 +5,6 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
-from ..._internal.physics.symbols import symbols
 from .._physics_ir import PropagatorIR
 from ..base import (
     VertexLoweringRule,
@@ -37,6 +36,7 @@ from .expressions import (
     _tensor_gluon_to_gluon_data,
     _two_gluon_to_tensor_data,
 )
+from .symbols import symbols
 
 
 class BuiltinSMLoweringMixin:

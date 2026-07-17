@@ -7,7 +7,6 @@ import time
 from collections import Counter
 from typing import Any
 
-from ..._internal.physics.symbols import symbols
 from ...generation.lowering_types import (
     RecursionLoweringPlan,
     SymbolicLoweringReport,
@@ -30,6 +29,7 @@ from .lowering_tensor import (
     _source_currents,
 )
 from .model import BuiltinSMModel
+from .symbols import symbols
 
 _MAX_RECURSION_EXPRESSION_PREVIEW = 4096
 

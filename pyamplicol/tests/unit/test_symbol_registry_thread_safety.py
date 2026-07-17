@@ -9,6 +9,26 @@ from time import sleep
 import pytest
 
 import pyamplicol._internal.physics.symbols as symbols_module
+from pyamplicol.models.builtin.symbols import BuiltinSymbolRegistry
+
+
+def test_builtin_lowering_vocabulary_is_not_on_shared_registry() -> None:
+    shared = symbols_module.SymbolRegistry()
+    builtin = BuiltinSymbolRegistry()
+
+    for name in (
+        "two_gluon_to_tensor_name",
+        "tensor_gluon_to_gluon_name",
+        "gluon_tensor_to_gluon_name",
+        "quark_vector_weyl_plus_name",
+        "quark_vector_weyl_minus_name",
+        "matrix_element_plan",
+    ):
+        assert not hasattr(shared, name)
+    assert builtin.two_gluon_to_tensor_name == "pyamplicol::two_gluon_to_tensor"
+    assert builtin.quark_vector_weyl_plus_name == (
+        "pyamplicol::quark_vector_weyl_plus"
+    )
 
 
 def test_symbol_construction_is_serialized_and_cached(

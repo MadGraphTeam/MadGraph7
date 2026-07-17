@@ -8,10 +8,10 @@ import time
 from typing import Any
 
 from ..._internal.physics.parameters import ParamBuilder, SymbolicaEvaluatorBundle
-from ..._internal.physics.symbols import symbols
 from ...generation.lowering_shared import _current_key_tuple, _number
 from ...generation.lowering_types import ColorAlgebraProbe, TensorNetworkProbe
 from .model import BuiltinSMModel
+from .symbols import symbols
 
 _MAX_RECURSION_EXPRESSION_PREVIEW = 4096
 
