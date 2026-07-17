@@ -85,6 +85,10 @@ def test_facade_reexports_extracted_oracle_helpers() -> None:
         module.validate_selected_flow_quark_line_scope
         is processes.validate_selected_flow_quark_line_scope
     )
+    assert (
+        module.validate_direct_color_probe_quark_line_scope
+        is processes.validate_direct_color_probe_quark_line_scope
+    )
     assert module._permutation is processes._permutation
     assert module._parse_probe_output is probe._parse_probe_output
     assert (
@@ -665,12 +669,29 @@ def test_selected_flow_scope_does_not_inherit_the_all_flow_line_cap() -> None:
         )
 
 
+def test_direct_color_probe_supports_three_but_not_four_quark_lines() -> None:
+    module = _module()
+
+    assert (
+        module.validate_direct_color_probe_quark_line_scope(
+            (1, -1, 2, -2, 3, -3),
+            context="three-line direct probe",
+        )
+        == 3
+    )
+    with pytest.raises(module.LegacyOracleError, match="4 quark lines exceed"):
+        module.validate_direct_color_probe_quark_line_scope(
+            (1, -1, 2, -2, 3, -3, 4, -4),
+            context="four-line direct probe",
+        )
+
+
 def test_public_legacy_checkout_uses_noninteractive_https() -> None:
     module = _module()
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
     assert module.checkout_branch() == "amplicol_with_patches"
-    assert module.expected_revision() == "754064d751224ec96c182d5f5d21fd6a11ad28f6"
+    assert module.expected_revision() == "096f21fd6962a15ff7cfc73ed59168a5b0581912"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(

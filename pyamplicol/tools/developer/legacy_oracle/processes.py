@@ -7,7 +7,12 @@ from collections import defaultdict, deque
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from .model import MAX_SUPPORTED_QUARK_LINES, LegacyOracleError, ProcessEntry
+from .model import (
+    MAX_DIRECT_COLOR_PROBE_QUARK_LINES,
+    MAX_SUPPORTED_QUARK_LINES,
+    LegacyOracleError,
+    ProcessEntry,
+)
 
 _PDG_BY_NAME = {
     "g": 21,
@@ -173,6 +178,23 @@ def validate_selected_flow_quark_line_scope(
             f"from {quark_legs} external quark legs"
         )
     return quark_legs // 2
+
+
+def validate_direct_color_probe_quark_line_scope(
+    pdgs: Sequence[int],
+    *,
+    context: str,
+) -> int:
+    """Validate the direct imode-2 probe's generic open-line color basis."""
+
+    quark_lines = validate_selected_flow_quark_line_scope(pdgs, context=context)
+    if quark_lines > MAX_DIRECT_COLOR_PROBE_QUARK_LINES:
+        raise LegacyOracleError(
+            f"{context}: {quark_lines} quark lines exceed the direct legacy "
+            "Fortran color-probe scope of "
+            f"{MAX_DIRECT_COLOR_PROBE_QUARK_LINES}"
+        )
+    return quark_lines
 
 
 def _validate_supported_quark_line_scope(

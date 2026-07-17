@@ -151,6 +151,9 @@ _validate_supported_quark_line_scope = _processes._validate_supported_quark_line
 validate_selected_flow_quark_line_scope = (
     _processes.validate_selected_flow_quark_line_scope
 )
+validate_direct_color_probe_quark_line_scope = (
+    _processes.validate_direct_color_probe_quark_line_scope
+)
 expected_process_entry = _processes.expected_process_entry
 expected_process_match_count = _processes.expected_process_match_count
 expected_color_order_count = _processes.expected_color_order_count
@@ -187,6 +190,13 @@ def run_color_probe(
     color_accuracy: str,
     helicities: Sequence[int] | None = None,
 ) -> ProbeResult:
+    validate_direct_color_probe_quark_line_scope(
+        entry.process_pdgs,
+        context=(
+            "direct all-flow color probe "
+            f"group {entry.group}, integral {entry.integral}"
+        ),
+    )
     permutation = _permutation(source_pdgs, entry.process_pdgs)
     ordered_momenta = _ordered_binary64_momenta(
         source_pdgs,
