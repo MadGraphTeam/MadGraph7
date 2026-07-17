@@ -35,7 +35,11 @@ def test_packaged_external_sm_uses_unique_absorbing_goldstone_contract(
     model = CompiledUFOModel(compiled_external_sm)
 
     assert model.inactive_goldstone_names == frozenset({"G0", "G+", "G-"})
-    assert len(model.vertices) == 469
+    assert len(model.vertices) == 499
+    assert sum(
+        not model._kernel(vertex.kind).vertex.endswith("::u1-subtraction")
+        for vertex in model.vertices
+    ) == 469
     for particle_id in (23, 24, -24):
         propagator = model._propagator_ir(particle_id)
         assert propagator.kind == "vector"

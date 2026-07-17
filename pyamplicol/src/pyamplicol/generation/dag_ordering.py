@@ -257,6 +257,8 @@ def _canonical_lc_ordered_labels(
 
 def _sector_intermediate_order_words(
     sector: LCColorSector,
+    *,
+    include_compatible_traversals: bool = True,
 ) -> tuple[tuple[int, ...], ...]:
     """Return LC words used for intermediate current construction.
 
@@ -265,17 +267,33 @@ def _sector_intermediate_order_words(
     to the physical sector's sink and deduplicate it.  This retains the
     genuinely distinct permutations needed by three or more open lines without
     creating duplicate physical sectors.
+
+    Non-LC recursion keeps the physical words because its canonical closure
+    sink is selected independently of the LC fixed-sink traversal convention.
     """
 
     physical_words = sector.color_words
-    if sector.kind != "open-lines" or not physical_words or not physical_words[0]:
+    if (
+        not include_compatible_traversals
+        or sector.kind != "open-lines"
+        or not physical_words
+        or not physical_words[0]
+    ):
         return physical_words or sector.admissible_traversal_words
 
     sink_label = int(physical_words[0][-1])
     words: list[tuple[int, ...]] = []
     seen: set[tuple[int, ...]] = set()
     for raw_word in sector.admissible_traversal_words:
-        word = _lc_word_with_sink_last(raw_word, sink_label)
+        normalized = tuple(int(label) for label in raw_word)
+        if sink_label in normalized:
+            sink_index = normalized.index(sink_label)
+            word = (
+                *normalized[sink_index + 1 :],
+                *normalized[: sink_index + 1],
+            )
+        else:
+            word = normalized
         if word in seen:
             continue
         seen.add(word)

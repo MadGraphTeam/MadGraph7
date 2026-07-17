@@ -117,7 +117,10 @@ class ExternalModelEvaluationMixin:
         chirality: int = 0,
     ) -> PropagatorLoweringRule:
         auxiliary_kind = self.auxiliary_kind(particle_id)
-        if auxiliary_kind is not None:
+        if (
+            auxiliary_kind is not None
+            and auxiliary_kind != "u1-subtraction-color-flow-vector"
+        ):
             return PropagatorLoweringRule(
                 particle_id=particle_id,
                 chirality=0,

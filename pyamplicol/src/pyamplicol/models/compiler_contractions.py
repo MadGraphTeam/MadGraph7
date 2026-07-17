@@ -183,6 +183,25 @@ def _compile_direct_contraction(
             metric_signature="mostly-minus",
         )
     if (
+        left.auxiliary_kind
+        == right.auxiliary_kind
+        == "u1-subtraction-color-flow-vector"
+        and left_dimension == 4
+    ):
+        basis = "auxiliary:u1-subtraction-color-flow-vector"
+        return ContractionIR(
+            name="lorentz",
+            left_basis=basis,
+            right_basis=basis,
+            coefficients=(
+                (1.0, 0.0),
+                (-1.0, 0.0),
+                (-1.0, 0.0),
+                (-1.0, 0.0),
+            ),
+            metric_signature="mostly-minus",
+        )
+    if (
         left.statistics == right.statistics == "boson"
         and left.wavefunction_family == right.wavefunction_family == "spin2"
         and left_dimension == 16

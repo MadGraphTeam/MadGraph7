@@ -34,11 +34,11 @@ _LEGAL_FILES = (
 )
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
-_MODEL_COMPILER_VERSION = 9
+_MODEL_COMPILER_VERSION = 10
 _MODEL_COMPILER_SOURCE_FILES = {
     "pyamplicol/models/__init__.py": b'"""Synthetic model package."""\n',
     "pyamplicol/models/compiler.py": b"def compile_model():\n    return 'compiled'\n",
-    "pyamplicol/models/loading.py": b"MODEL_COMPILER_VERSION = 9\n",
+    "pyamplicol/models/loading.py": b"MODEL_COMPILER_VERSION = 10\n",
     "pyamplicol/_internal/physics/__init__.py": b'"""Synthetic physics."""\n',
     "pyamplicol/_internal/physics/rules.py": b"PROPAGATOR = 'feynman'\n",
     "pyamplicol/processes/core_syntax.py": b"CORE_SYNTAX_VERSION = 1\n",

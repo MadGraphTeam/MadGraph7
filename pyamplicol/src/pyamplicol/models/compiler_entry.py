@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
+from .compiler_color_flow import synthesize_fundamental_fierz_auxiliaries
 from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
     _deduplicate_contact_partials,
@@ -236,6 +237,25 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         particles,
         terms,
     )
+    particles, oriented_kernels = synthesize_fundamental_fierz_auxiliaries(
+        particles,
+        oriented_kernels,
+        propagators,
+        model_symbols=model_symbols,
+    )
+    (
+        annotated_terms,
+        oriented_kernels,
+        tensor_orderings,
+        current_orderings,
+    ) = compile_tensor_ordering_metadata(
+        terms,
+        particles,
+        oriented_kernels,
+        parameter_records,
+        propagators,
+    )
+    terms = list(annotated_terms)
     oriented_kernels = _annotate_oriented_kernel_evaluation_equivalence(
         oriented_kernels,
         particles,

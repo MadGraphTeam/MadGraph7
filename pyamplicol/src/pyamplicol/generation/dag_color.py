@@ -167,7 +167,10 @@ class ColorEngine:
                         word,
                         self._shared_lc_fixed_sink_label,
                     )
-                    for word in _sector_intermediate_order_words(sector)
+                    for word in _sector_intermediate_order_words(
+                        sector,
+                        include_compatible_traversals=self._shared_lc_orderings,
+                    )
                 ),
             )
             for sector in color_plan.sectors
@@ -439,6 +442,7 @@ class ColorEngine:
             structure == "fundamental-generator"
             and reps[:2] == (3, 3)
             and reps[2] == 8
+            and not self._fundamental_line_auxiliary_ids
         )
 
         if (
@@ -446,6 +450,7 @@ class ColorEngine:
             and structure == "color-identity"
             and sorted(reps[:2]) == [3, 3]
             and reps[2] == 1
+            and vertex.particles[2] not in self._fundamental_line_auxiliary_ids
         ):
             colored_labels = tuple(
                 sorted(
@@ -460,6 +465,9 @@ class ColorEngine:
         if self._shared_lc_orderings:
             compatible_sector_ids = self._shared_lc_compatible_sector_ids(
                 ordered_external_labels
+            )
+            track_sector_support = (
+                inherited_support is not None or creates_fierz_projection
             )
             if inherited_support is not None:
                 compatible_sector_ids.intersection_update(inherited_support)
@@ -490,7 +498,7 @@ class ColorEngine:
             projections: list[tuple[tuple[str, ...], tuple[float, float]]] = []
             all_sector_ids = set(self._sector_by_id)
             for candidate_basis, weight, support in candidates:
-                if support != all_sector_ids:
+                if track_sector_support and support != all_sector_ids:
                     candidate_basis.add(_lc_sector_support_key(support))
                 if not self._shared_lc_basis_has_compatible_sector(
                     candidate_basis,
@@ -694,12 +702,35 @@ class ColorEngine:
         return False
 
     def vertex_allowed(self, vertex: Vertex) -> bool:
-        if not any(
+        contains_fundamental_auxiliary = any(
             particle_id in self._fundamental_line_auxiliary_ids
             for particle_id in vertex.particles
+        )
+        if contains_fundamental_auxiliary:
+            return self._fundamental_fermion_pair_count >= 2
+        if (
+            self._fundamental_line_auxiliary_ids
+            and self._fundamental_fermion_pair_count >= 2
+            and self.model.vertex_color_structure(vertex)
+            == "fundamental-generator"
         ):
-            return True
-        return self._fundamental_fermion_pair_count >= 2
+            representations = tuple(
+                self.model.color_rep(particle_id)
+                for particle_id in vertex.particles
+            )
+            if (
+                representations.count(8) == 1
+                and sorted(
+                    abs(value) for value in representations if value != 8
+                )
+                == [3, 3]
+            ):
+                return representations in {
+                    (3, 8, 3),
+                    (8, -3, -3),
+                    (-3, 3, 8),
+                }
+        return True
 
     def ordered_combination_allowed(
         self,
@@ -730,7 +761,10 @@ class ColorEngine:
                 right_index.ordered_external_labels,
                 word,
             )
-            for word in _sector_intermediate_order_words(sector)
+            for word in _sector_intermediate_order_words(
+                sector,
+                include_compatible_traversals=False,
+            )
         )
 
     def ordered_combination_labels(
@@ -783,7 +817,10 @@ class ColorEngine:
         if sector is None:
             self._ordered_combination_labels_cache[cache_key] = proposed
             return proposed
-        for word in _sector_intermediate_order_words(sector):
+        for word in _sector_intermediate_order_words(
+            sector,
+            include_compatible_traversals=False,
+        ):
             segment = _ordered_combination_segment(
                 left_index.ordered_external_labels,
                 right_index.ordered_external_labels,

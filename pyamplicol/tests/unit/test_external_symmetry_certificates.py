@@ -339,17 +339,62 @@ def test_external_sm_four_gluon_contacts_keep_proven_lowering(external_sm) -> No
     )
 
 
+def test_external_sm_derives_fundamental_fierz_auxiliary(external_sm) -> None:
+    compiled, model = external_sm
+    auxiliaries = tuple(
+        particle
+        for particle in compiled.ir.particles
+        if particle.auxiliary_kind == "u1-subtraction-color-flow-vector"
+    )
+
+    assert len(auxiliaries) == 1
+    auxiliary = auxiliaries[0]
+    assert auxiliary.name == "__pyamplicol_u1_subtraction_g"
+    assert (auxiliary.spin, auxiliary.color, auxiliary.component_dimension) == (
+        3,
+        1,
+        4,
+    )
+    synthetic = tuple(
+        kernel
+        for kernel in compiled.ir.oriented_kernels
+        if kernel.vertex.endswith("::u1-subtraction")
+    )
+    assert len(synthetic) == 30
+    assert all(
+        kernel.color_projection_structure == "color-identity"
+        and auxiliary.name in kernel.particles
+        for kernel in synthetic
+    )
+    assert {
+        kernel.color_projection_coefficient
+        for kernel in synthetic
+        if kernel.particles[2] == auxiliary.name
+    } == {(1.0 / 3.0, 0.0)}
+    assert {
+        kernel.color_projection_coefficient
+        for kernel in synthetic
+        if kernel.particles[2] != auxiliary.name
+    } == {(1.0, 0.0)}
+
+    propagator = model._propagator_ir(auxiliary.pdg_code)
+    assert propagator.kind == "vector"
+    assert propagator.mass_class == "massless"
+    assert propagator.gauge == "feynman"
+    assert propagator.applies_propagator is True
+
+
 @pytest.mark.parametrize(
     ("process", "topology", "forbidden_order"),
     (
-        ("g g > t t~", (36, 36, 32), (2, 1)),
-        ("d d~ > z g g", (117, 210, 48), (5, 4)),
+        ("g g > t t~", (36, 44, 36, 32), (2, 1)),
+        ("d d~ > z g g", (117, 242, 210, 48), (5, 4)),
     ),
 )
 def test_external_sm_recovers_builtin_lc_current_reuse(
     external_sm,
     process: str,
-    topology: tuple[int, int, int],
+    topology: tuple[int, int, int, int],
     forbidden_order: tuple[int, int],
 ) -> None:
     compiled, external_model = external_sm
@@ -366,6 +411,7 @@ def test_external_sm_recovers_builtin_lc_current_reuse(
         assert (
             len(dag.currents),
             len(dag.interactions),
+            dag.interaction_evaluation_count,
             len(dag.amplitude_roots),
         ) == topology
         assert all(
@@ -415,17 +461,7 @@ def test_external_sm_matches_builtin_production_dag_topology(
             len(dag.color_plan.sectors),
         )
 
-    if process == "d d~ > u u~ s s~":
-        # A physical qqg kernel needs separate sector-support partitions where
-        # the built-in model uses a synthetic U(1)-subtraction particle.
-        assert topology(external_dag) == (
-            len(builtin_dag.currents) + 12,
-            len(builtin_dag.interactions) + 12,
-            len(builtin_dag.amplitude_roots),
-            len(builtin_dag.color_plan.sectors),
-        )
-    else:
-        assert topology(external_dag) == topology(builtin_dag)
+    assert topology(external_dag) == topology(builtin_dag)
     # The external compiler may prove additional exact kernel equivalences,
     # but it may never lose a reuse relation available to the built-in model.
     assert (

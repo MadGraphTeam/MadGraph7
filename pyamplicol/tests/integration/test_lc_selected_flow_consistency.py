@@ -31,7 +31,7 @@ def test_selected_lc_artifact_matches_complete_artifact_physical_flow(
     tmp_path: Path,
     process: str,
     flow_word: tuple[int, ...],
-    final_masses: tuple[float, float],
+    final_masses: tuple[float, ...],
 ) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
