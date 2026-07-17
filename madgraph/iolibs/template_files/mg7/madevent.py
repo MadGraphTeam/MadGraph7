@@ -1204,9 +1204,18 @@ class MadgraphSubprocess:
             name = "F",
             active_flavors = [],
         )
+        if self.unmerged_meta is None:
+            remap = [list(range(self.meta["diagram_count"]))]
+        else:
+            remap = [
+                list(range(self.unmerged_meta[subproc]["diagram_count"]))
+                for subproc in self.meta["subprocesses"]
+            ]
         return PhaseSpace(
             mode="flat",
             channels=[channel],
+            first_chan_weight_remap=remap,
+            first_remapped_chan_count=1,
             symfact=[None],
         )
 
@@ -1424,6 +1433,8 @@ class MadgraphSubprocess:
         return discrete_sym, discrete_flavor
 
     def build_cwnet(self, channel_count: int) -> ms.ChannelWeightNetwork:
+        #if channel_count == 1:
+        #    return None
         madnis_args = self.process.run_card["madnis"]
         cwnet = ms.ChannelWeightNetwork(
             channel_count=channel_count,

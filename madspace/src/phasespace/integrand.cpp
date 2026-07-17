@@ -673,7 +673,7 @@ NamedVector<Value> Integrand::build_common_part(
     if (_diff_xs.size() == 1) {
         dxs_vec = _diff_xs.at(0).build_function(fb, xs_args).values();
         ps_flavor_id = flavor_id;
-        if (!_prop_chan_weights) {
+        if (channel_count > 1 && !_prop_chan_weights) {
             chan_weights_acc = dxs_vec.at(1);
             if (_first_chan_weight_remap.size() > 0) {
                 chan_weights_acc = fb.collect_channel_weights(
@@ -702,7 +702,7 @@ NamedVector<Value> Integrand::build_common_part(
                 split_out.push_back(out);
                 split_out.push_back(indices);
             }
-            if (!_prop_chan_weights) {
+            if (channel_count > 1 && !_prop_chan_weights) {
                 Value split_cw = outputs.at(1);
                 if (_first_chan_weight_remap.size() > 0) {
                     split_cw = fb.collect_channel_weights(
@@ -724,7 +724,7 @@ NamedVector<Value> Integrand::build_common_part(
             }
             ++i;
         }
-        if (!_prop_chan_weights) {
+        if (channel_count > 1 && !_prop_chan_weights) {
             chan_weights_acc = fb.batch_merge_by_index(split_channel_weights);
         }
     }
@@ -749,7 +749,7 @@ NamedVector<Value> Integrand::build_common_part(
 
     // Apply channel weight network
     auto prior_chan_weights_acc = chan_weights_acc;
-    if (_chan_weight_net) {
+    if (channel_count > 1 && _chan_weight_net) {
         auto& preproc = _chan_weight_net.value().preprocessing();
         auto cw_preproc_acc =
             preproc.build_function(fb, {momenta_acc, x1_acc, x2_acc}).at(0);
