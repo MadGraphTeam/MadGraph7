@@ -146,6 +146,26 @@ class _TimedRuntimeWithProfile(_TimedRuntime):
         }
 
 
+class _TimedRuntimeWithNativeWall(_TimedRuntimeWithProfile):
+    native_wall_calls = 0
+
+    def _benchmark_f64_wall_time(
+        self,
+        momenta: object,
+        repetitions: int,
+        *,
+        helicities: object,
+        color_flows: object,
+        precision: int,
+    ) -> float:
+        assert len(momenta) == 2  # type: ignore[arg-type]
+        assert helicities is None
+        assert color_flows is None
+        assert precision == 16
+        self.native_wall_calls += 1
+        return repetitions * 0.5e-3
+
+
 def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
     runtime = _Runtime()
     config = BenchmarkConfig(
@@ -232,6 +252,30 @@ def test_native_profile_calls_are_bounded_independently_of_wall_repetitions(
     assert result.environment["native_profile_calls_per_block"] == 1
 
 
+def test_benchmark_uses_repeated_native_rusticol_wall_timer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithNativeWall(clock)
+    config = BenchmarkConfig(
+        target_runtime=0.1,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=4,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.wall_time_per_point == pytest.approx(0.25e-3)
+    assert result.environment["wall_time_source"] == ("runtime_core_repeated_wall_time")
+    assert result.environment["elapsed_seconds"] == pytest.approx(0.1)
+    assert runtime.native_wall_calls >= result.sample_count
+
+
 def test_benchmark_reduces_planned_blocks_for_slow_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -272,9 +316,9 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
     assert result.sample_count == 3
     assert runtime.calls == 4
     assert runtime.profile_calls == 4
-    assert result.wall_time_per_point >= 0.0
+    assert result.wall_time_per_point == pytest.approx(3.0e-6)
     assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
-    assert result.environment["wall_time_source"] == "runtime_evaluate_wall_time"
+    assert result.environment["wall_time_source"] == "runtime_profile_core_wall_time"
     assert (
         result.environment["evaluator_time_source"]
         == "runtime_profile_core_evaluator_call_time"

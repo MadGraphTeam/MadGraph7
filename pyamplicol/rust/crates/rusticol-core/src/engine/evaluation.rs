@@ -303,10 +303,6 @@ impl ExecutionRuntime {
         }
         let model_parameter_setup_s = model_parameter_start_time.elapsed().as_secs_f64();
 
-        let mut stage_input_pack_s = 0.0;
-        let mut stage_evaluator_call_s = 0.0;
-        let mut stage_evaluator_s = 0.0;
-        let mut output_assign_s = 0.0;
         let mut stage_input_pack_by_stage_s = Vec::new();
         let mut stage_evaluator_call_by_stage_s = Vec::new();
         let mut stage_output_assign_by_stage_s = Vec::new();
@@ -316,10 +312,6 @@ impl ExecutionRuntime {
                 self.parameter_count,
                 state.as_mut_slice(),
             )?;
-            stage_input_pack_s += pack_s;
-            stage_evaluator_call_s += eval_s;
-            stage_evaluator_s += pack_s + eval_s;
-            output_assign_s += assign_s;
             stage_input_pack_by_stage_s.push(pack_s);
             stage_evaluator_call_by_stage_s.push(eval_s);
             stage_output_assign_by_stage_s.push(assign_s);
@@ -345,6 +337,10 @@ impl ExecutionRuntime {
             *value *= self.normalization_factor;
         }
         let reduction_s = reduction_start.elapsed().as_secs_f64();
+        let stage_input_pack_s = stage_input_pack_by_stage_s.iter().sum::<f64>();
+        let stage_evaluator_call_s = stage_evaluator_call_by_stage_s.iter().sum::<f64>();
+        let stage_evaluator_s = stage_input_pack_s + stage_evaluator_call_s;
+        let output_assign_s = stage_output_assign_by_stage_s.iter().sum::<f64>();
         Ok((
             self.values_scratch_f64.clone(),
             RuntimeProfile {

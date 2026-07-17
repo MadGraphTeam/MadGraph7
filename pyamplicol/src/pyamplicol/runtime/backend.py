@@ -221,6 +221,30 @@ class RusticolRuntimeBackend:
         )
         return tuple(_scalar_from_native(value) for value in values)
 
+    def _benchmark_f64_wall_time(
+        self,
+        momenta: Momenta,
+        repetitions: int,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int = 16,
+    ) -> float:
+        timer = getattr(self._runtime, "_benchmark_f64_wall_time", None)
+        if not callable(timer):
+            raise EvaluationError("native Rusticol wall timer is unavailable")
+        return float(
+            _invoke(
+                self._native_module,
+                timer,
+                momenta,
+                repetitions,
+                helicities=helicities,
+                color_flows=color_flows,
+                precision=precision,
+            )
+        )
+
     def evaluate_resolved(
         self,
         momenta: Momenta,

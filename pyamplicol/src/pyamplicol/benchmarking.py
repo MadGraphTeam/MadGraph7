@@ -105,6 +105,9 @@ class BenchmarkBackend:
         helicities = self._config.helicity_ids or None
         color_flows = self._config.color_flow_ids or None
         profiler = _native_profiler(runtime) if self._config.precision == 16 else None
+        native_wall_timer = (
+            _native_wall_timer(runtime) if self._config.precision == 16 else None
+        )
         evaluation_options = {
             "helicities": helicities,
             "color_flows": color_flows,
@@ -113,6 +116,17 @@ class BenchmarkBackend:
 
         def evaluate_once() -> object:
             return runtime.evaluate(batch, **evaluation_options)
+
+        def measure_repetitions(repetitions: int) -> float:
+            if native_wall_timer is not None:
+                return native_wall_timer(
+                    batch,
+                    repetitions,
+                    helicities=helicities,
+                    color_flows=color_flows,
+                    precision=self._config.precision,
+                )
+            return _timed_repetitions(evaluate_once, repetitions)
 
         task_id = "runtime-benchmark"
         calibration_task_id = "runtime-profile-calibration"
@@ -153,7 +167,10 @@ class BenchmarkBackend:
             calibration = _calibrate_repetitions(
                 evaluate_once,
                 self._config,
-                initial_seconds=last_warmup_seconds,
+                initial_seconds=(
+                    None if native_wall_timer is not None else last_warmup_seconds
+                ),
+                timer=measure_repetitions,
             )
             if self._progress is not None:
                 self._progress.emit(
@@ -183,7 +200,7 @@ class BenchmarkBackend:
             evaluator_elapsed = 0.0
             repetitions = calibration.repetitions_per_sample
             for sample_index in range(calibration.sample_count):
-                duration = _timed_repetitions(evaluate_once, repetitions)
+                duration = measure_repetitions(repetitions)
                 elapsed += duration
                 samples.append(duration / (repetitions * len(batch)))
                 if (
@@ -229,14 +246,29 @@ class BenchmarkBackend:
         if self._progress is not None:
             self._progress.emit(ProgressEnd(task_id))
 
-        mean, deviation, error, relative_error = _sample_statistics(samples)
+        wall_samples = samples
+        wall_time_source = (
+            "runtime_core_repeated_wall_time"
+            if native_wall_timer is not None
+            else "runtime_evaluate_wall_time"
+        )
+        if native_wall_timer is None and native_profile_samples is not None:
+            native_wall_samples = [
+                sample.wall_time
+                for sample in native_profile_samples
+                if sample.wall_time is not None
+            ]
+            if len(native_wall_samples) == len(native_profile_samples):
+                wall_samples = native_wall_samples
+                wall_time_source = "runtime_profile_core_wall_time"
+        mean, deviation, error, relative_error = _sample_statistics(wall_samples)
         uncertainty = BenchmarkStatistics(deviation, error, relative_error)
         if evaluator_samples is None:
             evaluator_time_per_point = mean
             evaluator_uncertainty = uncertainty
             timing_breakdown = None
             evaluator_environment: dict[str, object] = {
-                "wall_time_source": "runtime_evaluate_wall_time",
+                "wall_time_source": wall_time_source,
                 "evaluator_time_source": "runtime_evaluate_wall_time",
                 "native_profile_unavailable_reason": (
                     "non_f64_precision" if self._config.precision != 16 else None
@@ -257,7 +289,7 @@ class BenchmarkBackend:
             assert native_profile_samples is not None
             timing_breakdown = _timing_breakdown(native_profile_samples)
             evaluator_environment = {
-                "wall_time_source": "runtime_evaluate_wall_time",
+                "wall_time_source": wall_time_source,
                 "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
                 "evaluator_sample_count": len(evaluator_samples),
                 "evaluator_elapsed_seconds": evaluator_elapsed,
@@ -367,12 +399,14 @@ def _calibrate_repetitions(
     config: BenchmarkConfig,
     *,
     initial_seconds: float | None,
+    timer: Callable[[int], float] | None = None,
 ) -> _Calibration:
+    measure = timer or (lambda repetitions: _timed_repetitions(callback, repetitions))
     block_count = 0
     evaluation_count = 0
     calibration_elapsed = 0.0
     if initial_seconds is None:
-        initial_seconds = _timed_repetitions(callback, 1)
+        initial_seconds = measure(1)
         block_count = 1
         evaluation_count = 1
         calibration_elapsed = initial_seconds
@@ -390,7 +424,7 @@ def _calibrate_repetitions(
         )
         if candidate == repetitions:
             break
-        observed_seconds = _timed_repetitions(callback, candidate)
+        observed_seconds = measure(candidate)
         block_count += 1
         evaluation_count += candidate
         calibration_elapsed += observed_seconds
@@ -426,6 +460,11 @@ def _native_profiler(
         if callable(profiler):
             return profiler
     return None
+
+
+def _native_wall_timer(runtime: RuntimeBackend) -> Callable[..., float] | None:
+    timer = getattr(runtime, "_benchmark_f64_wall_time", None)
+    return timer if callable(timer) else None
 
 
 def _profile_float(profile: Mapping[str, object], key: str) -> float:
@@ -520,9 +559,7 @@ def _native_profile_sample(
         profile, "amplitude_evaluator_call_time_s"
     )
     if amplitude_evaluator_call is None:
-        amplitude_evaluator_call = _profile_float(
-            profile, "amplitude_evaluator_time_s"
-        )
+        amplitude_evaluator_call = _profile_float(profile, "amplitude_evaluator_time_s")
 
     def normalized(key: str) -> float | None:
         value = _profile_float_or_none(profile, key)
@@ -616,8 +653,7 @@ def _timing_breakdown(
             samples, "stage_output_assign_times", stage_index
         )
         if any(
-            value is not None
-            for value in (input_pack, evaluator_call, output_assign)
+            value is not None for value in (input_pack, evaluator_call, output_assign)
         ):
             stages.append(
                 BenchmarkStageTiming(
@@ -652,9 +688,7 @@ def _timing_breakdown(
         amplitude_evaluator_call_time=_component_timing(
             [sample.amplitude_evaluator_call_time for sample in samples]
         ),
-        reduction_time=_component_timing(
-            [sample.reduction_time for sample in samples]
-        ),
+        reduction_time=_component_timing([sample.reduction_time for sample in samples]),
         stages=tuple(stages),
     )
 

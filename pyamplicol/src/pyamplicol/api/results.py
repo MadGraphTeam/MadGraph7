@@ -602,7 +602,11 @@ class BenchmarkResult:
 
     ``sample_count`` is the number of timed blocks. Each block averages
     ``repetitions_per_sample`` runtime calls of ``effective_config.batch_size``
-    points.
+    points. For native f64 evaluation, ``wall_time_per_point`` is measured by
+    Rusticol around repeated core evaluations of an already packed momentum
+    buffer; caller-language conversion and adapter overhead are excluded.
+    ``evaluator_time_per_point`` is the sum of generic-stage and amplitude
+    evaluator calls measured by the bounded native profiler.
     """
 
     requested_config: BenchmarkConfig

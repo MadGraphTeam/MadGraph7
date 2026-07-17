@@ -308,6 +308,32 @@ impl NativeRuntime {
             .map(|(values, _profile)| values)
     }
 
+    pub fn benchmark_f64_wall_time(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        repetitions: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+    ) -> Result<f64, RusticolError> {
+        if repetitions == 0 {
+            return Err(RusticolError::invalid_argument(
+                "benchmark repetitions must be positive",
+            ));
+        }
+        let started = Instant::now();
+        for _ in 0..repetitions {
+            let values = if helicity_ids.is_some() || color_ids.is_some() {
+                self.evaluate_resolved_f64(momenta, point_count, helicity_ids, color_ids)?
+                    .totals()
+            } else {
+                self.evaluate_f64(momenta, point_count)?
+            };
+            std::hint::black_box(values);
+        }
+        Ok(started.elapsed().as_secs_f64())
+    }
+
     pub fn evaluate_f64_profile(
         &mut self,
         momenta: &[f64],

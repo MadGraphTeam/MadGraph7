@@ -213,6 +213,15 @@ class Runtime:
     ) -> list[float]:
         """Return one fully summed matrix element for every input point."""
         ...
+    def _benchmark_f64_wall_time(
+        self,
+        momenta: Momenta,
+        repetitions: int,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: Literal[16] = 16,
+    ) -> float: ...
     def profile(
         self,
         momenta: Momenta,

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
+#[cfg(feature = "numpy")]
+use numpy::{PyReadonlyArray3, PyUntypedArrayMethods};
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -494,6 +496,28 @@ impl Runtime {
         Ok(result)
     }
 
+    #[pyo3(signature=(momenta, repetitions, *, helicities=None, color_flows=None, precision=16))]
+    fn _benchmark_f64_wall_time(
+        &mut self,
+        momenta: &Bound<'_, PyAny>,
+        repetitions: usize,
+        helicities: Option<Vec<String>>,
+        color_flows: Option<Vec<String>>,
+        precision: u32,
+    ) -> PyResult<f64> {
+        require_raw_f64_precision(precision).map_err(python_error)?;
+        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        self.runtime
+            .benchmark_f64_wall_time(
+                &values,
+                point_count,
+                repetitions,
+                helicities.as_deref(),
+                color_flows.as_deref(),
+            )
+            .map_err(python_error)
+    }
+
     #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16, include_values=false))]
     fn profile(
         &mut self,
@@ -719,6 +743,25 @@ fn parse_f64_momenta(
     momenta: &Bound<'_, PyAny>,
     expected_legs: usize,
 ) -> PyResult<(Vec<f64>, usize)> {
+    #[cfg(feature = "numpy")]
+    if let Ok(array) = momenta.extract::<PyReadonlyArray3<'_, f64>>() {
+        let shape = array.shape();
+        if shape[1] != expected_legs || shape[2] != 4 {
+            return Err(PyValueError::new_err(format!(
+                "momenta array has shape ({}, {}, {}), expected (points, {expected_legs}, 4)",
+                shape[0], shape[1], shape[2]
+            )));
+        }
+        if shape[0] == 0 {
+            return Err(PyValueError::new_err(
+                "momenta must contain at least one point",
+            ));
+        }
+        if let Ok(values) = array.as_slice() {
+            return Ok((values.to_vec(), shape[0]));
+        }
+    }
+
     let mut values = Vec::new();
     let mut point_count = 0;
     for (point_index, point) in momenta.try_iter()?.enumerate() {
