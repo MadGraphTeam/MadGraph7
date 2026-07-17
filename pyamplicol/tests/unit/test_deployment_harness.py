@@ -153,6 +153,7 @@ def test_release_native_sdk_smoke_requires_all_compilers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("PYAMPLICOL_REQUIRE_NATIVE_TESTS", raising=False)
     monkeypatch.delenv("CXX", raising=False)
     monkeypatch.delenv("FC", raising=False)
     monkeypatch.setattr(deployment.shutil, "which", lambda _name: None)

@@ -59,7 +59,7 @@ component = "generation"
 path = "pyAmpliCol/src/pyamplicol/lowering.py"
 blob = "5fb8991b380c48f96c24383b1a18c5540971ac9a"
 strategy = "selective-rewrite"
-destination = ["src/pyamplicol/generation/lowering.py", "src/pyamplicol/generation/lowering_reports.py", "src/pyamplicol/generation/lowering_shared.py", "src/pyamplicol/generation/lowering_tensor.py", "src/pyamplicol/generation/lowering_types.py"]
+destination = ["src/pyamplicol/models/builtin/lowering.py", "src/pyamplicol/models/builtin/lowering_reports.py", "src/pyamplicol/models/builtin/lowering_shared.py", "src/pyamplicol/models/builtin/lowering_tensor.py", "src/pyamplicol/models/builtin/lowering_types.py"]
 status = "ported"
 
 [[reference_inputs]]
