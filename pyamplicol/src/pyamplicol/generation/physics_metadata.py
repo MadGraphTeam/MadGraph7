@@ -11,6 +11,17 @@ from ..models.base import Model
 from .dag_types import GenericDAG
 
 _HELICITY_WEIGHT_TOLERANCE = 1.0e-12
+_NORMALIZATION_EXTENSION_KEYS = (
+    "color_accuracy",
+    "color_factor",
+    "average_factor",
+    "identical_factor",
+    "global_coupling_factor",
+    "qcd_coupling_power",
+    "electroweak_coupling_power",
+    "couplings_in_stage_evaluators",
+    "coupling_policy",
+)
 
 
 def build_resolved_physics_payload(
@@ -80,7 +91,11 @@ def build_resolved_physics_payload(
             "process_key": dag.process.key,
             "coherent_groups": [dict(group) for group in coherent_groups],
             "color_contraction": amplitude_stage.get("color_contraction"),
-            "normalization": dict(normalization),
+            "normalization": {
+                key: normalization[key]
+                for key in _NORMALIZATION_EXTENSION_KEYS
+                if key in normalization
+            },
             "selected_source_helicities": {
                 str(label): helicity
                 for label, helicity in dag.selected_source_helicities

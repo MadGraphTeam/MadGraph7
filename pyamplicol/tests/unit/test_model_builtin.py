@@ -26,6 +26,10 @@ def test_model_builtin_sm_preserves_production_tables_and_couplings() -> None:
     assert math.isclose(left, prefactor * (-0.5 + model.sin_weak**2 / 3.0))
     assert math.isclose(right, prefactor * (model.sin_weak**2 / 3.0))
     assert model.leading_color_factor([1, -1, 23, 21, 21]) == 27
+    assert model.runtime_normalization_parameter_defaults() == {
+        "normalization.alpha_s_me_check": model.alpha_s_me_check,
+        "normalization.alpha_ew": model.alpha_ew,
+    }
 
 
 def test_model_builtin_lowering_metadata_uses_owned_symbol_names() -> None:

@@ -455,10 +455,7 @@ def _execution_plan(schema: Mapping[str, object]) -> dict[str, object]:
             ),
             "average_factor": float(normalization.get("average_factor", 1.0)),
             "identical_factor": float(
-                normalization.get(
-                    "identical_factor",
-                    normalization.get("final_state_identical_factor", 1.0),
-                )
+                normalization.get("identical_factor", 1.0)
             ),
             "qcd_coupling_power": int(normalization.get("qcd_coupling_power", 0)),
             "electroweak_coupling_power": int(

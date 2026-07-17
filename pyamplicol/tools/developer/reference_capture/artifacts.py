@@ -646,7 +646,7 @@ def _normalization_payload(
             "normalization.global_coupling_factor",
         ),
         "quark_line_partner_factor": _json_number(
-            normalization.get("quark_line_partner_factor"),
+            normalization.get("quark_line_partner_factor", 1),
             "normalization.quark_line_partner_factor",
         ),
         "couplings_in_stage_evaluators": coupling_flag,

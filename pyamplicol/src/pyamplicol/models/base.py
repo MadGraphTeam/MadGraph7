@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, cast
@@ -679,6 +679,11 @@ class Model:
 
         del dag
         raise NotImplementedError("model does not define runtime normalization")
+
+    def runtime_normalization_parameter_defaults(self) -> Mapping[str, float]:
+        """Return mutable runtime parameters used by normalization only."""
+
+        return {}
 
     def allowed_quantum_flows(
         self,

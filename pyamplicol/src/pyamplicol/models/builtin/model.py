@@ -451,8 +451,6 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
             "color_factor": int(self.leading_color_factor((*initial, *final))),
             "average_factor": average_factor,
             "identical_factor": identical_factor,
-            "final_state_identical_factor": identical_factor,
-            "quark_line_partner_factor": 1,
             "global_coupling_factor": (
                 (4.0 * math.pi * self.alpha_s_me_check) ** qcd_power
                 * (2.0 * 4.0 * math.pi * self.alpha_ew) ** electroweak_power
@@ -461,6 +459,14 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
             "electroweak_coupling_power": electroweak_power,
             "couplings_in_stage_evaluators": True,
             "coupling_policy": "stage evaluators include local vertex couplings",
+        }
+
+    def runtime_normalization_parameter_defaults(self) -> dict[str, float]:
+        """Expose the built-in SM coupling normalization as runtime inputs."""
+
+        return {
+            "normalization.alpha_s_me_check": float(self.alpha_s_me_check),
+            "normalization.alpha_ew": float(self.alpha_ew),
         }
 
     def skip_duplicate_vertex_orientation(self, vertex: Vertex) -> bool:

@@ -41,17 +41,15 @@ class ExternalModelKernelMixin:
         identical_factor = math.prod(
             math.factorial(count) for count in Counter(final_pdgs).values()
         )
-        color_factor = self.leading_color_factor((*initial_pdgs, *final_pdgs))
+        color_factor = self._external_color_normalization_factor(
+            (*initial_pdgs, *final_pdgs)
+        )
         return {
             "color_accuracy": dag.process.color_accuracy,
             "color_factor": float(color_factor),
             "average_factor": float(average_factor),
             "identical_factor": float(identical_factor),
-            "final_state_identical_factor": float(identical_factor),
-            "quark_line_partner_factor": 1,
             "global_coupling_factor": 1.0,
-            "qcd_coupling_power": 0,
-            "electroweak_coupling_power": 0,
             "couplings_in_stage_evaluators": True,
             "coupling_policy": (
                 "UFO coupling expressions are fully included in generated stage "
@@ -59,7 +57,7 @@ class ExternalModelKernelMixin:
             ),
         }
 
-    def leading_color_factor(self, process: Sequence[int]) -> int:
+    def _external_color_normalization_factor(self, process: Sequence[int]) -> int:
         exponent_twice = 0
         for pdg in process:
             representation = abs(self.color_rep(int(pdg)))

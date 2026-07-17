@@ -454,12 +454,10 @@ def _model_parameter_records(
                 **metadata,
             )
 
-    alpha_s = getattr(model, "alpha_s_me_check", None)
-    if alpha_s is not None:
-        add("normalization.alpha_s_me_check", "normalization", float(alpha_s))
-    alpha_ew = getattr(model, "alpha_ew", None)
-    if alpha_ew is not None:
-        add("normalization.alpha_ew", "normalization", float(alpha_ew))
+    for raw_name, value in sorted(
+        model.runtime_normalization_parameter_defaults().items()
+    ):
+        add(str(raw_name), "normalization", float(value))
     defaults_provider = getattr(model, "runtime_parameter_defaults", None)
     if callable(defaults_provider):
         type_provider = getattr(model, "runtime_parameter_type", None)

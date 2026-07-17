@@ -57,6 +57,15 @@ def test_execution_plan_is_strict_schema_v3_runtime_dto() -> None:
     assert plan["process_key"] == "ddbar_z"
     assert "physics" not in plan
     assert "momentum_conventions" not in plan
+    assert {
+        record["name"] for record in plan["model_parameters"]
+    } >= {
+        "normalization.alpha_s_me_check",
+        "normalization.alpha_ew",
+    }
+    physics_normalization = schema["physics"]["extensions"]["normalization"]
+    assert "final_state_identical_factor" not in physics_normalization
+    assert "quark_line_partner_factor" not in physics_normalization
 
     for slot in plan["value_storage"]["value_slots"]:
         propagator = slot["propagator"]
