@@ -483,6 +483,20 @@ def _examples_copy_command(python: Path, destination: Path) -> list[Path | str]:
     ]
 
 
+def _copied_example_command(python: Path, card: Path) -> list[Path | str]:
+    return [
+        python,
+        "-I",
+        "-m",
+        "pyamplicol",
+        card,
+        "--set",
+        "generation.mode=replace",
+        "--format",
+        "json",
+    ]
+
+
 def _native_command(variable: str, defaults: Sequence[str]) -> tuple[str, ...] | None:
     configured = os.environ.get(variable)
     candidates = (configured,) if configured else tuple(defaults)
@@ -1030,6 +1044,19 @@ def test_deployment(
         )
         if not any(path.is_file() for path in copied_examples.rglob("*")):
             raise ReleaseError("installed example-copy command produced no files")
+        example_artifact = copied_examples / "artifacts/external_ufo_sm"
+        run(
+            _copied_example_command(
+                python,
+                copied_examples / "external_ufo_sm.toml",
+            ),
+            cwd=copied_examples,
+            env=smoke_environment,
+        )
+        if not (example_artifact / "artifact.json").is_file():
+            raise ReleaseError(
+                "installed external-UFO example did not generate its artifact"
+            )
         native_sdk_validated = _native_sdk_smoke(
             python,
             sandbox=sandbox,

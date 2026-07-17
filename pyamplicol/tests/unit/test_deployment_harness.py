@@ -82,6 +82,28 @@ def test_deployment_copies_the_complete_installed_examples_tree(tmp_path: Path) 
     ]
 
 
+def test_deployment_runs_a_copied_external_ufo_example(tmp_path: Path) -> None:
+    python = tmp_path / "venv/bin/python"
+    card = tmp_path / "examples/external_ufo_sm.toml"
+
+    command = [
+        os.fspath(item)
+        for item in deployment._copied_example_command(python, card)
+    ]
+
+    assert command == [
+        os.fspath(python),
+        "-I",
+        "-m",
+        "pyamplicol",
+        os.fspath(card),
+        "--set",
+        "generation.mode=replace",
+        "--format",
+        "json",
+    ]
+
+
 def test_candidate_deployment_builds_fresh_instead_of_reusing_stale_wheel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
