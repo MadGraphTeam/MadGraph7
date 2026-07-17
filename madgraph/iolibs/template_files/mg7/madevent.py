@@ -744,37 +744,30 @@ class MadgraphProcess:
         return result
 
     def build_lhe_completer(self):
-        subproc_args = []
-        for subproc, meta in zip(self.subprocesses, self.subprocess_data):
-            (
-                _,
-                _,
-                topologies,
-                permutations,
-                _,
-                _,
-                diagram_indices,
-                diagram_color_indices,
-                _,
-            ) = subproc.build_multi_channel_data()
-            subproc_args.append(
-                ms.SubprocArgs(
-                    topologies = [topo[0] for topo in topologies],
-                    permutations = permutations,
-                    diagram_indices = diagram_indices,
-                    diagram_color_indices = diagram_color_indices,
-                    color_flows = meta["color_flows"],
-                    pdg_color_types = {
-                        int(key): value
-                        for key, value in meta["pdg_color_types"].items()
-                    },
-                    helicities = meta["helicities"],
-                    pdg_ids = [flavor["options"] for flavor in meta["flavors"]],
-                    matrix_flavor_indices = [
-                        flavor["index"] for flavor in meta["flavors"]
-                    ],
-                )
+        all_mcdata = (
+            [subproc.build_multi_channel_data() for subproc in self.subprocesses]
+            if self.merged_subprocess_data is None else
+            [build_multi_channel_data(meta, self) for meta in self.subprocess_data]
+        )
+        subproc_args = [
+            ms.SubprocArgs(
+                topologies = [topo[0] for topo in mcdata.topologies],
+                permutations = mcdata.permutations,
+                diagram_indices = mcdata.diagram_indices,
+                diagram_color_indices = mcdata.diagram_color_indices,
+                color_flows = meta["color_flows"],
+                pdg_color_types = {
+                    int(key): value
+                    for key, value in meta["pdg_color_types"].items()
+                },
+                helicities = meta["helicities"],
+                pdg_ids = [flavor["options"] for flavor in meta["flavors"]],
+                matrix_flavor_indices = [
+                    flavor["index"] for flavor in meta["flavors"]
+                ],
             )
+            for mcdata, meta in zip(all_mcdata, self.subprocess_data)
+        ]
         return ms.LHECompleter(
             subproc_args=subproc_args,
             bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
