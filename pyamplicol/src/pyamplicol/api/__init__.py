@@ -5,8 +5,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pyamplicol.models.loading import CompiledModel
-
     from .errors import (
         ArtifactError,
         CompatibilityError,
@@ -16,6 +14,14 @@ if TYPE_CHECKING:
         GenerationError,
         ModelError,
         PyAmpliColError,
+    )
+    from .models import (
+        CompiledModel,
+        CompiledModelCapabilities,
+        CompiledModelInfo,
+        CompiledModelSource,
+        ModelCompilationIssue,
+        ModelCompilationPhase,
     )
     from .protocols import (
         BenchmarkBackend,
@@ -71,6 +77,9 @@ __all__ = [
     "ColorFlow",
     "CompatibilityError",
     "CompiledModel",
+    "CompiledModelCapabilities",
+    "CompiledModelInfo",
+    "CompiledModelSource",
     "ConfigurationError",
     "ContractedColorComponent",
     "DependencyError",
@@ -83,6 +92,8 @@ __all__ = [
     "GeneratorBackend",
     "GeneratorFactory",
     "HelicityConfiguration",
+    "ModelCompilationIssue",
+    "ModelCompilationPhase",
     "ModelError",
     "ModelParameter",
     "ModelParameters",
@@ -133,6 +144,14 @@ _REQUEST_EXPORTS = (
     "ProcessRequest",
     "ProcessSet",
 )
+_MODEL_EXPORTS = (
+    "CompiledModel",
+    "CompiledModelCapabilities",
+    "CompiledModelInfo",
+    "CompiledModelSource",
+    "ModelCompilationIssue",
+    "ModelCompilationPhase",
+)
 _RESULT_EXPORTS = (
     "BenchmarkResult",
     "BenchmarkStatistics",
@@ -161,10 +180,10 @@ _SERVICE_EXPORTS = (
 _PUBLIC_EXPORTS = {
     **{name: (".errors", name) for name in _ERROR_EXPORTS},
     **{name: (".protocols", name) for name in _PROTOCOL_EXPORTS},
+    **{name: (".models", name) for name in _MODEL_EXPORTS},
     **{name: (".requests", name) for name in _REQUEST_EXPORTS},
     **{name: (".results", name) for name in _RESULT_EXPORTS},
     **{name: (".services", name) for name in _SERVICE_EXPORTS},
-    "CompiledModel": ("pyamplicol.models.loading", "CompiledModel"),
 }
 
 

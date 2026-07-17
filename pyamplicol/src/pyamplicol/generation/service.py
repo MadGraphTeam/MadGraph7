@@ -13,8 +13,8 @@ from threading import Lock
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 from pyamplicol.api.errors import GenerationError, ModelError, PyAmpliColError
+from pyamplicol.api.models import CompiledModel, _compiled_model_payload
 from pyamplicol.api.requests import (
-    CompiledModel,
     ModelSource,
     ProcessAlias,
     ProcessRequest,
@@ -30,6 +30,7 @@ from pyamplicol.reporting import (
 
 from ..color.plan import build_color_plan
 from ..models.base import Model
+from ..models.loading import CompiledModel as _CompiledModelPayload
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .artifact_writer import (
     CompiledProcessArtifact,
@@ -74,7 +75,7 @@ def _builtin_sm_model() -> Model:
 class _ResolvedModel:
     source: ModelSource
     model: Model | None
-    compiled: CompiledModel | None = None
+    compiled: _CompiledModelPayload | None = None
     use_compiled_process_catalog: bool = True
 
 
@@ -481,7 +482,7 @@ class GenerationBackend:
             files=write_result.files,
         )
 
-    def _artifact_model(self, resolved: _ResolvedModel) -> CompiledModel:
+    def _artifact_model(self, resolved: _ResolvedModel) -> _CompiledModelPayload:
         if resolved.compiled is not None:
             return resolved.compiled
         from ..models.loading import compile_model_source
@@ -937,8 +938,7 @@ class GenerationBackend:
             ),
             selected_color_sector_ids=(
                 frozenset(
-                    int(sector_id)
-                    for sector_id in process.selected_color_sector_ids
+                    int(sector_id) for sector_id in process.selected_color_sector_ids
                 )
                 if process.selected_color_sector_ids
                 else None
@@ -964,11 +964,12 @@ class GenerationBackend:
         source: ModelSource | CompiledModel,
     ) -> _ResolvedModel:
         if isinstance(source, CompiledModel):
-            is_builtin = self._is_builtin_compiled_model(source)
+            compiled = self._private_compiled_model(source)
+            is_builtin = self._is_builtin_compiled_model(compiled)
             return _ResolvedModel(
-                self._source_for_compiled_model(source),
+                self._source_for_compiled_model(compiled),
                 _builtin_sm_model() if is_builtin else None,
-                source,
+                compiled,
                 use_compiled_process_catalog=not is_builtin,
             )
         if source.kind == "built-in-sm":
@@ -1020,11 +1021,18 @@ class GenerationBackend:
         )
 
     @staticmethod
-    def _source_for_compiled_model(compiled: CompiledModel) -> ModelSource:
+    def _private_compiled_model(compiled: CompiledModel) -> _CompiledModelPayload:
+        payload = _compiled_model_payload(compiled)
+        if not isinstance(payload, _CompiledModelPayload):
+            raise ModelError("compiled model handle has an invalid private payload")
+        return payload
+
+    @staticmethod
+    def _source_for_compiled_model(compiled: _CompiledModelPayload) -> ModelSource:
         return ModelSource(kind="compiled", path=compiled._serialized_path)
 
     @staticmethod
-    def _is_builtin_compiled_model(compiled: CompiledModel) -> bool:
+    def _is_builtin_compiled_model(compiled: _CompiledModelPayload) -> bool:
         return compiled.source.get("kind") == "built-in-sm"
 
     def _resolve_model(
@@ -1032,20 +1040,21 @@ class GenerationBackend:
         source: ModelSource | CompiledModel,
     ) -> _ResolvedModel:
         if isinstance(source, CompiledModel):
-            if self._is_builtin_compiled_model(source):
+            compiled = self._private_compiled_model(source)
+            if self._is_builtin_compiled_model(compiled):
                 return _ResolvedModel(
-                    self._source_for_compiled_model(source),
+                    self._source_for_compiled_model(compiled),
                     _builtin_sm_model(),
-                    source,
+                    compiled,
                     use_compiled_process_catalog=False,
                 )
 
             from ..models.external import CompiledUFOModel
 
             return _ResolvedModel(
-                self._source_for_compiled_model(source),
-                CompiledUFOModel(source),
-                source,
+                self._source_for_compiled_model(compiled),
+                CompiledUFOModel(compiled),
+                compiled,
             )
         if source.kind == "built-in-sm":
             return _ResolvedModel(source, _builtin_sm_model())

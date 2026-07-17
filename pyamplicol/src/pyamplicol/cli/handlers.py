@@ -11,7 +11,8 @@ from pyamplicol.config import ConfigResolution, RunConfig
 from pyamplicol.reporting import ProgressSink
 
 if TYPE_CHECKING:
-    from pyamplicol.api import CompiledModel, ModelSource, ProcessSet
+    from pyamplicol.api import ModelSource, ProcessSet
+    from pyamplicol.models.loading import CompiledModel as _CompiledModelPayload
 
 
 class CliServices(Protocol):
@@ -101,7 +102,7 @@ def _compile_configured_model(
     config: RunConfig,
     *,
     require_supported: bool,
-) -> CompiledModel:
+) -> _CompiledModelPayload:
     from pyamplicol.models.loading import compile_model_source
 
     return compile_model_source(
@@ -114,7 +115,7 @@ def _compile_configured_model(
     )
 
 
-def _model_inspection_payload(compiled: CompiledModel) -> dict[str, object]:
+def _model_inspection_payload(compiled: _CompiledModelPayload) -> dict[str, object]:
     return {
         "name": compiled.name,
         "supported": compiled.supported,

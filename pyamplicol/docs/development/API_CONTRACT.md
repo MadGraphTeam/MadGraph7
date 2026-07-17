@@ -8,8 +8,10 @@ review.
 
 `pyamplicol` exports:
 
-- Model and process types: `ModelSource`, `CompiledModel`, `ProcessRequest`,
-  and `ProcessSet`.
+- Model and process types: `ModelSource`, `CompiledModel`, `CompiledModelInfo`,
+  `CompiledModelSource`, `CompiledModelCapabilities`,
+  `ModelCompilationIssue`, `ModelCompilationPhase`, `ProcessRequest`, and
+  `ProcessSet`.
 - Configuration: `RunConfig`, `GenerationConfig`, `EvaluationConfig`, and
   `BenchmarkConfig`.
 - Services: `Generator`, `Runtime`, and `BenchmarkRunner`.
@@ -36,10 +38,12 @@ source kind without importing Symbolica.
 
 `ModelSource.compile(*, cache_dir=None, use_cache=True,
 require_supported=True) -> CompiledModel` is the explicit public model
-compilation operation. `CompiledModel` is the canonical compiled payload used
-by model loading and generation; there is no separate path-only public model
-handle. It exposes the compiled IR and metadata, can be serialized with
-`write(path)`, and is also returned when a compiled-model source is loaded.
+compilation operation. `CompiledModel` is an opaque immutable handle accepted
+by generation; compiler-owned expression and tensor IR remain private.
+`CompiledModel.info` exposes stable typed source, capability, parameter,
+diagnostic, and phase-timing records. Convenience properties mirror those
+records, while `write(path)` serializes the complete private payload and
+`write_parameter_card(path)` writes mutable external-parameter defaults.
 
 `ProcessRequest.parse(expression, *, name=None)` validates one process string.
 `ProcessSet` contains a non-empty tuple of uniquely named requests and

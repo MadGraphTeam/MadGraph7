@@ -6,7 +6,6 @@ from typing import Any
 
 _LAZY_EXPORTS = {
     "BuiltinSMModel": (".builtin", "BuiltinSMModel"),
-    "CompiledModel": (".loading", "CompiledModel"),
     "CompiledUFOModel": (".external", "CompiledUFOModel"),
     "ModelCompileOptions": (".loading", "ModelCompileOptions"),
     "compile_builtin_model_ir": (".compiler", "compile_builtin_model_ir"),
@@ -28,7 +27,6 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "BuiltinSMModel",
-    "CompiledModel",
     "CompiledUFOModel",
     "ModelCompileOptions",
     "compile_builtin_model_ir",

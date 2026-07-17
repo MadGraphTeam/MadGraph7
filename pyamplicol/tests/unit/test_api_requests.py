@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import pyamplicol.api.models as api_models
 import pyamplicol.models.loading as model_loading
 from pyamplicol._internal.versions import COMPILED_MODEL_SCHEMA_VERSION
 from pyamplicol.api import (
@@ -84,18 +85,25 @@ def test_model_source_compile_forwards_named_restriction(
     ufo.mkdir()
     source = ModelSource.from_path(ufo, restriction="no_widths")
     captured: dict[str, object] = {}
+    payload = object()
     expected = object()
 
     def compile_source(value: object, **kwargs: object) -> object:
         captured["source"] = value
         captured.update(kwargs)
+        return payload
+
+    def wrap_compiled_model(value: object) -> object:
+        captured["payload"] = value
         return expected
 
     monkeypatch.setattr(model_loading, "compile_model_source", compile_source)
+    monkeypatch.setattr(api_models, "_compiled_model_from_payload", wrap_compiled_model)
 
     result = source.compile(use_cache=False)
 
     assert result is expected
+    assert captured["payload"] is payload
     assert captured["source"] == ufo
     assert captured["restriction"] == "no_widths"
     assert captured["simplify"] is True

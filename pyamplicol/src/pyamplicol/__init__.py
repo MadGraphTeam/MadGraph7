@@ -22,6 +22,9 @@ if TYPE_CHECKING:
         ColorFlow,
         CompatibilityError,
         CompiledModel,
+        CompiledModelCapabilities,
+        CompiledModelInfo,
+        CompiledModelSource,
         ConfigurationError,
         ContractedColorComponent,
         DependencyError,
@@ -32,6 +35,8 @@ if TYPE_CHECKING:
         GenerationResult,
         Generator,
         HelicityConfiguration,
+        ModelCompilationIssue,
+        ModelCompilationPhase,
         ModelError,
         ModelParameter,
         ModelSource,
@@ -62,6 +67,9 @@ __all__ = [
     "ColorFlow",
     "CompatibilityError",
     "CompiledModel",
+    "CompiledModelCapabilities",
+    "CompiledModelInfo",
+    "CompiledModelSource",
     "ConfigurationError",
     "ContractedColorComponent",
     "DependencyError",
@@ -74,6 +82,8 @@ __all__ = [
     "GenerationResult",
     "Generator",
     "HelicityConfiguration",
+    "ModelCompilationIssue",
+    "ModelCompilationPhase",
     "ModelError",
     "ModelParameter",
     "ModelSource",
@@ -109,6 +119,14 @@ _REQUEST_EXPORTS = (
     "ProcessRequest",
     "ProcessSet",
 )
+_MODEL_EXPORTS = (
+    "CompiledModel",
+    "CompiledModelCapabilities",
+    "CompiledModelInfo",
+    "CompiledModelSource",
+    "ModelCompilationIssue",
+    "ModelCompilationPhase",
+)
 _RESULT_EXPORTS = (
     "BenchmarkResult",
     "BenchmarkStatistics",
@@ -141,11 +159,11 @@ _CONFIG_EXPORTS = (
 )
 _PUBLIC_EXPORTS = {
     **{name: (".api.errors", name) for name in _ERROR_EXPORTS},
+    **{name: (".api.models", name) for name in _MODEL_EXPORTS},
     **{name: (".api.requests", name) for name in _REQUEST_EXPORTS},
     **{name: (".api.results", name) for name in _RESULT_EXPORTS},
     **{name: (".api.services", name) for name in _SERVICE_EXPORTS},
     **{name: (".config", name) for name in _CONFIG_EXPORTS},
-    "CompiledModel": (".models.loading", "CompiledModel"),
 }
 
 

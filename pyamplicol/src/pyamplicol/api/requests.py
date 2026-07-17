@@ -7,12 +7,9 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias
+from typing import Literal, TypeAlias
 
 import pyamplicol as _pyamplicol
-
-if TYPE_CHECKING:
-    from pyamplicol.models.loading import CompiledModel
 
 from .errors import ModelError
 
@@ -198,7 +195,7 @@ class ModelSource:
         from pyamplicol.models.loading import compile_model_source
 
         try:
-            return compile_model_source(
+            payload = compile_model_source(
                 source,
                 restriction=(
                     "default"
@@ -210,6 +207,9 @@ class ModelSource:
                 use_cache=use_cache,
                 require_supported=require_supported,
             )
+            from .models import _compiled_model_from_payload
+
+            return _compiled_model_from_payload(payload)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
 
@@ -381,25 +381,9 @@ class ProcessSet:
 
 
 __all__ = [
-    "CompiledModel",
     "ModelSource",
     "ModelSourceKind",
     "ProcessAlias",
     "ProcessRequest",
     "ProcessSet",
 ]
-
-
-def __getattr__(name: str) -> Any:
-    """Preserve the historical compiled-model export without eager loading."""
-
-    if name != "CompiledModel":
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from pyamplicol.models.loading import CompiledModel
-
-    globals()[name] = CompiledModel
-    return CompiledModel
-
-
-def __dir__() -> list[str]:
-    return sorted(set(globals()).union(__all__))

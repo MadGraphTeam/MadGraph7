@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, TypeAlias, cast
+from pathlib import Path
+from typing import Literal, Protocol, TypeAlias, cast
 
 from .results import ModelParameter
 
@@ -16,6 +18,18 @@ CompiledModelSourceKind: TypeAlias = Literal[
 ]
 ModelCompilationSeverity: TypeAlias = Literal["warning", "error"]
 SupportedColorAccuracy: TypeAlias = Literal["lc", "nlc", "full"]
+
+
+class _CompiledModelPayloadView(Protocol):
+    name: str
+    schema_version: int
+    model_compiler_version: int
+    source: Mapping[str, object]
+    capabilities: Mapping[str, object]
+    parameter_defaults: Mapping[str, object]
+    issues: Iterable[object]
+    phase_timings: Mapping[str, object]
+    conversion_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +217,132 @@ class CompiledModelInfo:
         """Short alias for :attr:`compilation_phases`."""
 
         return self.compilation_phases
+
+
+class CompiledModel:
+    """Opaque compiled-model handle accepted by :class:`~pyamplicol.Generator`.
+
+    Construct handles with :meth:`pyamplicol.ModelSource.compile`. The compiler's
+    mutable payload and expression IR intentionally remain private; stable model
+    metadata is available through :attr:`info` and the typed convenience
+    properties below.
+    """
+
+    __slots__ = ("_info", "_payload")
+
+    _info: CompiledModelInfo
+    _payload: object
+
+    def __init__(self) -> None:
+        raise TypeError("construct compiled models with ModelSource.compile()")
+
+    def __setattr__(self, _name: str, _value: object) -> None:
+        raise AttributeError("CompiledModel handles are immutable")
+
+    def __delattr__(self, _name: str) -> None:
+        raise AttributeError("CompiledModel handles are immutable")
+
+    @property
+    def info(self) -> CompiledModelInfo:
+        """Stable, deeply immutable model metadata."""
+
+        return self._info
+
+    @property
+    def name(self) -> str:
+        return self._info.name
+
+    @property
+    def schema_version(self) -> int:
+        return self._info.schema_version
+
+    @property
+    def model_compiler_version(self) -> int:
+        return self._info.model_compiler_version
+
+    @property
+    def source(self) -> CompiledModelSource:
+        return self._info.source
+
+    @property
+    def capabilities(self) -> CompiledModelCapabilities:
+        return self._info.capabilities
+
+    @property
+    def parameters(self) -> tuple[ModelParameter, ...]:
+        return self._info.parameters
+
+    @property
+    def issues(self) -> tuple[ModelCompilationIssue, ...]:
+        return self._info.issues
+
+    @property
+    def compilation_phases(self) -> tuple[ModelCompilationPhase, ...]:
+        return self._info.compilation_phases
+
+    @property
+    def conversion_seconds(self) -> float:
+        return self._info.conversion_seconds
+
+    @property
+    def supported(self) -> bool:
+        return self._info.supported
+
+    def write(self, path: os.PathLike[str] | str) -> Path:
+        """Serialize the compiled model and return its absolute output path."""
+
+        writer = getattr(self._payload, "write", None)
+        if not callable(writer):
+            raise RuntimeError("compiled model payload cannot be serialized")
+        target = Path(os.fspath(path)).expanduser().resolve(strict=False)
+        return Path(os.fspath(writer(target))).resolve(strict=False)
+
+    def write_parameter_card(self, path: os.PathLike[str] | str) -> Path:
+        """Write mutable external-parameter defaults as a JSON model card."""
+
+        writer = getattr(self._payload, "write_parameter_card", None)
+        if not callable(writer):
+            raise RuntimeError("compiled model payload cannot write parameter cards")
+        target = Path(os.fspath(path)).expanduser().resolve(strict=False)
+        return Path(os.fspath(writer(target))).resolve(strict=False)
+
+    def __repr__(self) -> str:
+        return (
+            f"CompiledModel(name={self.name!r}, supported={self.supported!r}, "
+            f"schema_version={self.schema_version})"
+        )
+
+
+def _compiled_model_from_payload(payload: object) -> CompiledModel:
+    """Create an opaque public handle from the private compiler payload."""
+
+    view = cast(_CompiledModelPayloadView, payload)
+    try:
+        info = _compiled_model_info(
+            name=str(view.name),
+            schema_version=int(view.schema_version),
+            model_compiler_version=int(view.model_compiler_version),
+            source=view.source,
+            capabilities=view.capabilities,
+            parameter_defaults=view.parameter_defaults,
+            issues=view.issues,
+            phase_timings=view.phase_timings,
+            conversion_seconds=float(view.conversion_seconds),
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise TypeError("invalid private compiled-model payload") from exc
+    model = object.__new__(CompiledModel)
+    object.__setattr__(model, "_payload", payload)
+    object.__setattr__(model, "_info", info)
+    return model
+
+
+def _compiled_model_payload(model: CompiledModel) -> object:
+    """Return the private payload at an internal generation boundary."""
+
+    if not isinstance(model, CompiledModel):
+        raise TypeError("expected a CompiledModel handle")
+    return model._payload
 
 
 def _compiled_model_info(
@@ -520,6 +660,7 @@ def _validate_tuple_members(
 
 
 __all__ = [
+    "CompiledModel",
     "CompiledModelCapabilities",
     "CompiledModelInfo",
     "CompiledModelSource",

@@ -91,16 +91,31 @@ def test_external_multiparticle_filter_keeps_only_color_ready_children() -> None
     assert rejected[0].startswith("d d > z d d~:")
 
 
-def test_model_compilation_returns_the_canonical_public_model() -> None:
+def test_model_compilation_returns_the_canonical_public_model(tmp_path: Path) -> None:
+    from pyamplicol.api.models import _compiled_model_payload
     from pyamplicol.models.loading import CompiledModel as LoadingCompiledModel
 
     compiled = ModelSource.built_in_sm().compile(use_cache=False)
 
-    assert CompiledModel is LoadingCompiledModel
     assert isinstance(compiled, CompiledModel)
+    assert isinstance(_compiled_model_payload(compiled), LoadingCompiledModel)
     assert compiled.name == "built-in-sm"
     assert compiled.schema_version == model_loading.COMPILED_MODEL_SCHEMA_VERSION
     assert compiled.model_compiler_version == model_loading.MODEL_COMPILER_VERSION
+    assert compiled.source.kind == "built-in-sm"
+    assert not hasattr(compiled, "ir")
+    assert not hasattr(compiled, "producer")
+    with pytest.raises(TypeError, match=r"ModelSource\.compile"):
+        CompiledModel()
+    with pytest.raises(AttributeError, match="immutable"):
+        compiled._info = compiled.info  # type: ignore[misc]
+
+    serialized = compiled.write(tmp_path / "builtin")
+    parameter_card = compiled.write_parameter_card(tmp_path / "parameters.json")
+    assert serialized == (tmp_path / "builtin.pyAmplicol-model.json").resolve()
+    assert parameter_card == (tmp_path / "parameters.json").resolve()
+    assert serialized.is_file()
+    assert parameter_card.is_file()
 
 
 def test_injected_license_plan_avoids_symbolica_and_model_compilers() -> None:

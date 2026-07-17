@@ -15,9 +15,7 @@ def _run_isolated(source: str) -> None:
     environment = os.environ.copy()
     existing_pythonpath = environment.get("PYTHONPATH")
     environment["PYTHONPATH"] = os.pathsep.join(
-        entry
-        for entry in (str(SOURCE_ROOT), existing_pythonpath)
-        if entry
+        entry for entry in (str(SOURCE_ROOT), existing_pythonpath) if entry
     )
     completed = subprocess.run(
         (sys.executable, "-c", textwrap.dedent(source)),
@@ -103,13 +101,12 @@ def test_compiled_model_export_resolves_to_the_canonical_type() -> None:
         from pyamplicol import ModelSource
         from pyamplicol import CompiledModel as RootCompiledModel
         from pyamplicol.api import CompiledModel as ApiCompiledModel
-        from pyamplicol.api.requests import CompiledModel as RequestCompiledModel
-        from pyamplicol.models.loading import CompiledModel as CanonicalCompiledModel
+        from pyamplicol.api.models import CompiledModel as ModelCompiledModel
 
-        assert RootCompiledModel is CanonicalCompiledModel
-        assert ApiCompiledModel is CanonicalCompiledModel
-        assert RequestCompiledModel is CanonicalCompiledModel
-        assert get_type_hints(ModelSource.compile)["return"] is CanonicalCompiledModel
+        assert RootCompiledModel is ModelCompiledModel
+        assert ApiCompiledModel is ModelCompiledModel
+        assert get_type_hints(ModelSource.compile)["return"] is ModelCompiledModel
+        assert "pyamplicol.models.loading" not in __import__("sys").modules
         """
     )
 
