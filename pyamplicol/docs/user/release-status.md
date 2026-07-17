@@ -10,7 +10,8 @@ published on PyPI.
 - Schema-v1 TOML, direct CLI, ordered overrides, typed Python configuration,
   and recorded license/resource adjustments.
 - External UFO/JSON model loading and canonical compiled-model schema v9,
-  including packaged `sm`, `scalars`, and `scalar_gravity` assets.
+  including packaged `sm`, `scalars`, and `scalar_gravity` assets, plus an
+  immutable public compiled-model handle that keeps compiler IR private.
 - Multiprocess planning and transactional schema-v3 generation with append,
   replace, payload integrity, and deterministic validation-point support.
 - The primary external JSON `p p > Z j j` workflow and stable concrete process

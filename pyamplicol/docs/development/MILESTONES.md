@@ -7,7 +7,7 @@ evidence; they do not commit, push, or update shared release metadata.
 |---|---|---|---|---|
 | Bootstrap and clean baselines | Main orchestrator | Complete | Plan preserved outside the nested repository; independent branch; 0BSD and fail-closed dependency/legal gates; canonical published Cargo lock separated from the ignored candidate lock; deterministic model assets and compact reference fixtures present; the complete source gate and isolated candidate deployment pass under the 30 GB watchdog | `d9f49fb` |
 | Mixed Maturin build and SDK | Main + Rust workers | In progress | Split core/Python/C API workspace, portable target contract, and SDK resources implemented; the fresh macOS arm64 candidate wheel passes SDK/archive checks, a Symbolica-import-blocked direct-SymJIT physics self-test, and Python/C++17/Fortran deployment; the other release targets remain | Pending |
-| Typed Python API and configuration | Turing + Franklin + Epicurus + Main | In progress | Immutable schema-v1 config, requested/effective provenance, quiet lazy root import, truthful public typing gate, centralized programmatic license clamps, complete LC generation coverage, and named process-set runtime identity implemented; final API review remains | Pending |
+| Typed Python API and configuration | Turing + Franklin + Epicurus + Main | Complete | Immutable schema-v1 config, requested/effective provenance, quiet lazy root import, truthful public typing gate, centralized programmatic license clamps, complete LC generation coverage, named process-set runtime identity, and an immutable public `CompiledModel` handle that keeps compiler IR private are implemented and focused API/typing/generation checks pass | `bca548e` |
 | Models, DAG, and schema v3 | Planck + Darwin + Maxwell + Main | In progress | Model assets, generic compilation, schema-v3 manifests, physics metadata, resolved reductions, full compiler-source cache fingerprinting, truthful validation samples/tolerances, and selector-free LC expressions implemented; the revision-scoped v2 bundle now certifies 29 built-in/external/scalar cases over 38 exact points with independent Fortran or analytic evidence; broader process coverage remains | Pending |
 | Model independence hardening | Main + physics/model reviewers | In progress | Hand-written SM model, lowering, tensors, process catalog, selection, and validation are quarantined under `models.builtin`; shared process/color/DAG code consumes structural statistics, representation, anti-relation, source-orientation, spin/statistics, and exact quantum-flow metadata. Canonical typed `SourceIR`/`CrossingIR`, `PropagatorIR`, and model-owned `ContractionIR` records drive DAG construction, sources, propagation, root closure, stage evaluation, and Rust validation. Schema-v9 compilation emits explicit direct/closure contractions and content-addressed tensor-order contracts for full and chiral currents, source legs, contact auxiliaries, and oriented-kernel inputs/outputs. Strict loading rederives the complete contract and rejects missing, stale, corrupt, malformed, particle-incompatible, dimensionally inconsistent, incomplete-grid, and dangling ordering metadata while leaving evaluator arithmetic unchanged. Runtime mass updates cannot invalidate the generated state space. Default versus model-supplied UFO propagators are classified from normalized expressions rather than object names. Runtime normalization and its mutable parameters are model-owned. Global Yang--Mills reductions require closure over every reachable compiled interaction. Contact-proof policy v2 serializes exact source coefficients separately from canonicalized antisymmetric tensor parity, preventing stale or double-counted four-gluon signs. Generic color plans serialize only physical sectors and admissible traversal words. The complete 19-process external-SM topology/reuse ladder and tensor-order identities are invariant under unrelated signed-PDG labels and reordered UFO particle, vertex, coupling, color/Lorentz basis, and coupling-matrix inventories. Exact tensor-product signatures quotient contracted color, Lorentz, and spin indices by alpha-renaming; an adversarial four-gluon UFO relabeling and factor reordering preserves all Yang--Mills certificates, the 56-current/120-interaction/48-root DAG, every direct-SymJIT resolved value, and the precision-80 fallback. A real scalar-gravity vertex compiled after transposing its spin-2 axes and renaming Lorentz dummies retains identical canonical kernels/orderings and nonzero numerical component values | Pending |
 | Examples and documentation | Python workers + Main | In progress | Installed examples, root API bundle, native runners, and clean N/A performance report implemented and visually reviewed; all 20 installed-wheel example tests pass, while final prose review remains | Pending |
@@ -78,18 +78,13 @@ commits that milestone.
 
 ## Current Critical Path
 
-1. Extend the externally loaded UFO/JSON SM validation ladder beyond the
-   completed low-multiplicity reference bundle while preserving resolved
-   values, topology, and generation/runtime behavior.
-2. Exercise the lazy Symbolica precision fallback and non-JIT evaluator
-   artifacts without changing the direct SymJIT f64 loader or introducing a
-   second SymJIT decoder.
-3. Validate the same installed-wheel and static-SDK contract on macOS x86_64
+1. Validate the same installed-wheel and static-SDK contract on macOS x86_64
    and manylinux x86_64, including host execution of the retargeted portable
    saved-SymJIT-MIR self-test fixture.
-4. Resolve remaining alias/model metadata cases and
-   complete the full release workflow test contract.
-5. Complete the active model-independence hardening pass after freezing the
+2. Extend the externally loaded UFO/JSON SM validation ladder beyond the
+   completed low-multiplicity reference bundle while preserving resolved
+   values, exact built-in/external topology, and generation/runtime behavior.
+3. Complete the active model-independence hardening pass after freezing the
    expanded topology/performance baseline. Content-addressed tensor-order
    metadata, relabeled-PDG/source-inventory invariance, alpha-equivalent
    contracted-index invariance, numerical spin-2 component-axis/dummy-index
@@ -97,6 +92,9 @@ commits that milestone.
    serialized fail-closed colored-contact proofs, and reachable-interaction
    closure are complete; the broader external-model process and performance
    ladder remains.
-6. Complete release-mode sdist/wheel parity once the exact upstream dependency
+4. Complete release-mode sdist/wheel parity once the exact upstream dependency
    releases exist; candidate-mode source, wheel, SDK, and isolated
    deployment gates are validated in the bootstrap milestone.
+5. Perform the final public prose/example review and close the remaining
+   milestone ledger entries after the cross-platform candidate results are
+   available.

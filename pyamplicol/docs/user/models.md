@@ -55,6 +55,13 @@ ufo_source = ModelSource.from_path(
 compiled = json_source.compile()
 ```
 
+`compiled` is an immutable, opaque `CompiledModel` handle. Generation accepts
+it directly, while stable source, capability, parameter, diagnostic, and phase
+metadata are available through `compiled.info`; compiler-owned tensor and
+expression IR remains private. Use `compiled.write(path)` to retain a compiled
+model or `compiled.write_parameter_card(path)` to create an editable JSON card
+containing its external parameter defaults.
+
 With `ModelSource.from_path`, a relative restriction filename is resolved from
 the model directory and validated. In a TOML card, use the restriction name
 (`default`, `no_widths`, `none`) because the loader derives the conventional
