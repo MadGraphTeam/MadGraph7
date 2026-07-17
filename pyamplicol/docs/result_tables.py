@@ -7463,6 +7463,8 @@ def _execute_campaign_cell(
     cell_root = artifact_root / "cells" / cell.cell_id
     result_json = cell_root / "result.json"
     worker_log = cell_root / "logs" / "worker.log"
+    with contextlib.suppress(FileNotFoundError):
+        result_json.unlink()
     command = _worker_command(
         python=python,
         cell=cell,
