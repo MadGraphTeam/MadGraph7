@@ -684,6 +684,16 @@ def test_direct_color_probe_supports_three_but_not_four_quark_lines() -> None:
             (1, -1, 2, -2, 3, -3, 4, -4),
             context="four-line direct probe",
         )
+    with pytest.raises(module.LegacyOracleError, match=r"15120.*color flows exceed"):
+        module.validate_direct_color_probe_quark_line_scope(
+            (1, -1, 2, -2, 3, -3, 21, 21, 21, 21, 21),
+            context="oversized three-line direct probe",
+        )
+    with pytest.raises(module.LegacyOracleError, match="color singlets"):
+        module.validate_direct_color_probe_quark_line_scope(
+            (1, -1, 2, -2, 3, -3, 22),
+            context="three-line photon probe",
+        )
 
 
 def test_public_legacy_checkout_uses_noninteractive_https() -> None:
@@ -691,7 +701,7 @@ def test_public_legacy_checkout_uses_noninteractive_https() -> None:
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
     assert module.checkout_branch() == "amplicol_with_patches"
-    assert module.expected_revision() == "096f21fc69991476c913927bcd733c23f66b1567"
+    assert module.expected_revision() == "c09ee22249b7b5c019d23ca07da27f4df16b3fed"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(

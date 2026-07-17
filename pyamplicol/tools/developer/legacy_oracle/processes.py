@@ -5,9 +5,11 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from collections.abc import Mapping, Sequence
+from math import factorial
 from pathlib import Path
 
 from .model import (
+    MAX_DIRECT_COLOR_PROBE_COLOR_ORDERS,
     MAX_DIRECT_COLOR_PROBE_QUARK_LINES,
     MAX_SUPPORTED_QUARK_LINES,
     LegacyOracleError,
@@ -194,6 +196,23 @@ def validate_direct_color_probe_quark_line_scope(
             "Fortran color-probe scope of "
             f"{MAX_DIRECT_COLOR_PROBE_QUARK_LINES}"
         )
+    if quark_lines == MAX_DIRECT_COLOR_PROBE_QUARK_LINES:
+        singlets = sum(
+            not (1 <= abs(int(pdg)) <= 6 or abs(int(pdg)) == 21) for pdg in pdgs
+        )
+        if singlets:
+            raise LegacyOracleError(
+                f"{context}: the direct legacy Fortran color probe does not "
+                "support color singlets together with three quark lines"
+            )
+        gluons = sum(abs(int(pdg)) == 21 for pdg in pdgs)
+        color_orders = 3 * factorial(gluons) * (gluons + 1) * (gluons + 2)
+        if color_orders > MAX_DIRECT_COLOR_PROBE_COLOR_ORDERS:
+            raise LegacyOracleError(
+                f"{context}: {color_orders} three-line color flows exceed the "
+                "direct legacy Fortran color-probe limit of "
+                f"{MAX_DIRECT_COLOR_PROBE_COLOR_ORDERS}"
+            )
     return quark_lines
 
 
