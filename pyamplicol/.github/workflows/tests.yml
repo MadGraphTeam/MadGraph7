@@ -119,6 +119,7 @@ jobs:
             tests/unit/test_generation_stage_contract.py \
             tests/unit/test_model_loading.py \
             tests/unit/test_sdk_config.py \
+            tests/unit/test_selftest_fixture.py \
             -q
       - name: Run focused generation and runtime integration (30 GiB RSS limit)
         run: >-

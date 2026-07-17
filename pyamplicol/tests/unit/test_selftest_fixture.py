@@ -95,6 +95,7 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
         "endianness": "little",
         "kind": "symjit-application-mir-v3",
         "load_behavior": "recompile-mir-for-loading-host",
+        "source_optimization_level": 1,
         "word_size_bits": 64,
     }
     assert manifest["producer"]["target"] == {
@@ -109,6 +110,73 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
     content = dict(manifest)
     claimed = content.pop("artifact_id")
     assert claimed == hashlib.sha256(module._canonical_json(content)).hexdigest()
+
+
+@pytest.mark.parametrize("optimization_level", (2, 3))
+def test_portable_fixture_rejects_architecture_allocated_mir(
+    tmp_path: Path,
+    optimization_level: int,
+) -> None:
+    module = _module()
+    execution_path = tmp_path / "processes" / "example" / "execution.json"
+    execution_path.parent.mkdir(parents=True)
+    execution_path.write_text(
+        json.dumps(
+            {
+                "compiled": {
+                    "evaluator": {
+                        "kind": "symjit-application-evaluator",
+                        "compiler_type": "native",
+                        "translation_mode": "indirect",
+                        "optimization_level": optimization_level,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "payloads": [
+            {
+                "role": "evaluator-manifest",
+                "path": "processes/example/execution.json",
+            }
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="O2/O3 MIR"):
+        module._validate_portable_evaluator_configuration(tmp_path, manifest)
+
+
+def test_portable_fixture_accepts_unallocated_o1_mir(tmp_path: Path) -> None:
+    module = _module()
+    execution_path = tmp_path / "processes" / "example" / "execution.json"
+    execution_path.parent.mkdir(parents=True)
+    execution_path.write_text(
+        json.dumps(
+            {
+                "compiled": {
+                    "evaluator": {
+                        "kind": "symjit-application-evaluator",
+                        "compiler_type": "native",
+                        "translation_mode": "indirect",
+                        "optimization_level": 1,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "payloads": [
+            {
+                "role": "evaluator-manifest",
+                "path": "processes/example/execution.json",
+            }
+        ]
+    }
+
+    assert module._validate_portable_evaluator_configuration(tmp_path, manifest) == 1
 
 
 def test_compiled_model_version_normalization_refreshes_payload(

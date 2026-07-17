@@ -19,6 +19,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "selftest"
 PORTABLE_TEMPLATE = "portable-64le"
+PORTABLE_OPTIMIZATION_LEVEL = 1
 COMPATIBLE_TARGETS = (
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -125,6 +126,47 @@ def _walk_evaluator_manifests(value: object) -> Sequence[dict[str, Any]]:
         for child in value:
             found.extend(_walk_evaluator_manifests(child))
     return found
+
+
+def _validate_portable_evaluator_configuration(
+    artifact: Path,
+    manifest: Mapping[str, object],
+) -> int:
+    """Require architecture-neutral MIR before retargeting an evaluator state."""
+
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        raise RuntimeError("artifact payload inventory is invalid")
+    evaluator_count = 0
+    for payload in payloads:
+        if (
+            not isinstance(payload, dict)
+            or payload.get("role") != "evaluator-manifest"
+            or not str(payload.get("path", "")).endswith("/execution.json")
+        ):
+            continue
+        relative = payload.get("path")
+        if not isinstance(relative, str):
+            raise RuntimeError("self-test evaluator manifest has no path")
+        execution = json.loads((artifact / relative).read_text(encoding="utf-8"))
+        for evaluator in _walk_evaluator_manifests(execution):
+            evaluator_count += 1
+            if (
+                evaluator.get("compiler_type") != "native"
+                or evaluator.get("translation_mode") != "indirect"
+            ):
+                raise RuntimeError(
+                    "portable self-test requires native indirect SymJIT evaluators"
+                )
+            if evaluator.get("optimization_level") != PORTABLE_OPTIMIZATION_LEVEL:
+                raise RuntimeError(
+                    "portable self-test source must use SymJIT optimization level "
+                    f"{PORTABLE_OPTIMIZATION_LEVEL}; O2/O3 MIR may contain "
+                    "source-architecture register allocation"
+                )
+    if evaluator_count == 0:
+        raise RuntimeError("self-test artifact has no SymJIT evaluator manifests")
+    return PORTABLE_OPTIMIZATION_LEVEL
 
 
 def _strip_symbolica_fallbacks(artifact: Path, manifest: dict[str, Any]) -> None:
@@ -329,6 +371,10 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
             raise RuntimeError(
                 "self-test artifact target differs from the active runtime"
             )
+        portable_optimization_level = _validate_portable_evaluator_configuration(
+            artifact,
+            manifest,
+        )
         _strip_symbolica_fallbacks(artifact, manifest)
         _sanitize_configuration_paths(artifact, manifest)
         _retarget_portable_manifest(manifest, source_target=target)
@@ -353,6 +399,7 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
                 "endianness": "little",
                 "word_size_bits": 64,
                 "load_behavior": "recompile-mir-for-loading-host",
+                "source_optimization_level": portable_optimization_level,
             },
             "process_id": runtime.physics.process_id,
             "process": runtime.physics.process,

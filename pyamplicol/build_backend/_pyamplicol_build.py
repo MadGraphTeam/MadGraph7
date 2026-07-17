@@ -421,6 +421,14 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
         not isinstance(expected, dict)
         or expected.get("target") != _PORTABLE_SELFTEST_TEMPLATE
         or expected.get("compatible_targets") != sorted(_PORTABLE_SELFTEST_TARGETS)
+        or expected.get("serialization")
+        != {
+            "endianness": "little",
+            "kind": "symjit-application-mir-v3",
+            "load_behavior": "recompile-mir-for-loading-host",
+            "source_optimization_level": 1,
+            "word_size_bits": 64,
+        }
     ):
         raise RuntimeError("portable self-test expectation is invalid")
     expected["target"] = target
