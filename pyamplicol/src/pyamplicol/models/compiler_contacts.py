@@ -423,10 +423,18 @@ def _build_contact_decomposition_proof(
     splits: list[CompiledContactDecompositionSplit] = []
     unsupported: list[CompiledContactUnsupportedReason] = []
     for result_leg in result_legs:
-        color_split = _four_point_contact_color_split(term, result_leg)
+        color_split = _four_point_contact_color_split(
+            term,
+            result_leg,
+            model_symbols=model_symbols,
+        )
         if color_split is None:
             unsupported.append(
-                _unsupported_contact_color_split_reason(term, result_leg)
+                _unsupported_contact_color_split_reason(
+                    term,
+                    result_leg,
+                    model_symbols=model_symbols,
+                )
             )
             continue
         splits.append(
@@ -656,6 +664,8 @@ def _contact_unsupported_reason(
 def _unsupported_contact_color_split_reason(
     term: CompiledVertexTerm,
     result_leg: int,
+    *,
+    model_symbols: ModelSymbolRegistry,
 ) -> CompiledContactUnsupportedReason:
     common = {
         "normalized_color_expression": term.color_expression,
@@ -676,7 +686,13 @@ def _unsupported_contact_color_split_reason(
             "contact structure-constant indices are not normalized adjoint indices",
             **common,
         )
-    if _source_structure_constant_product_coefficient(term.color_source) is None:
+    if (
+        _source_structure_constant_product_coefficient(
+            term.color_source,
+            model_symbols=model_symbols,
+        )
+        is None
+    ):
         return _contact_unsupported_reason(
             "non-scalar-color-prefactor",
             "contact structure constants retain a non-scalar color factor",
@@ -738,6 +754,8 @@ def _validated_contact_decomposition_proof(
 def _four_point_contact_color_split(
     term: CompiledVertexTerm,
     result_leg: int,
+    *,
+    model_symbols: ModelSymbolRegistry | None = None,
 ) -> tuple[
     tuple[int, int],
     int,
@@ -750,9 +768,11 @@ def _four_point_contact_color_split(
     int,
     str,
 ] | None:
+    active_symbols = model_symbols or symbols.model("contact_color_parser")
     factors = _normalized_structure_constant_factors(term.color_expression)
     color_coefficient = _source_structure_constant_product_coefficient(
-        term.color_source
+        term.color_source,
+        model_symbols=active_symbols,
     )
     if len(factors) == 2 and color_coefficient is not None:
         shared_dummies = set(value for value in factors[0] if value < 0) & set(
@@ -807,6 +827,8 @@ def _four_point_contact_color_split(
 
 def _source_structure_constant_product_coefficient(
     expression: str,
+    *,
+    model_symbols: ModelSymbolRegistry,
 ) -> str | None:
     """Return the explicit scalar multiplying two source UFO f tensors.
 
@@ -817,12 +839,12 @@ def _source_structure_constant_product_coefficient(
     """
 
     _sym._ensure_symbolica()
-    parsed = _sym.E(expression)
+    parsed = model_symbols.expression(expression)
     wildcards = tuple(
         _sym.E(f"ufo_contact_color_argument_{index}_") for index in range(3)
     )
     coefficient = parsed.replace(
-        _sym.S("UFO::f")(*wildcards),
+        model_symbols.symbol("f")(*wildcards),
         _sym.E("1"),
         bottom_up=True,
         repeat=True,
