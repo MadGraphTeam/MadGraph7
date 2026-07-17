@@ -565,16 +565,18 @@ void op_batch_split_by_index(
     Tensor sizes(DataType::dt_int, {count}, device, AllocHint::temporary);
     {
         std::size_t temp_storage_bytes = 0;
-        cub::DeviceHistogram::HistogramEven(
-            nullptr,
-            temp_storage_bytes,
-            static_cast<me_int_t*>(indices.data()),
-            static_cast<me_int_t*>(sizes.data()),
-            static_cast<int>(count) + 1,
-            0,
-            static_cast<int>(count),
-            batch_size,
-            device.stream()
+        check_error(
+            cub::DeviceHistogram::HistogramEven(
+                nullptr,
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(sizes.data()),
+                static_cast<int>(count) + 1,
+                0,
+                static_cast<int>(count),
+                batch_size,
+                device.stream()
+            )
         );
         Tensor temp(
             DataType::dt_float,
@@ -582,16 +584,18 @@ void op_batch_split_by_index(
             device,
             AllocHint::temporary
         );
-        cub::DeviceHistogram::HistogramEven(
-            temp.data(),
-            temp_storage_bytes,
-            static_cast<me_int_t*>(indices.data()),
-            static_cast<me_int_t*>(sizes.data()),
-            static_cast<int>(count) + 1,
-            0,
-            static_cast<int>(count),
-            batch_size,
-            device.stream()
+        check_error(
+            cub::DeviceHistogram::HistogramEven(
+                temp.data(),
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(sizes.data()),
+                static_cast<int>(count) + 1,
+                0,
+                static_cast<int>(count),
+                batch_size,
+                device.stream()
+            )
         );
         temp.reset(device);
     }
@@ -610,17 +614,19 @@ void op_batch_split_by_index(
     );
     {
         std::size_t temp_storage_bytes = 0;
-        cub::DeviceRadixSort::SortPairs(
-            nullptr,
-            temp_storage_bytes,
-            static_cast<me_int_t*>(indices.data()),
-            static_cast<me_int_t*>(keys_out.data()),
-            static_cast<me_int_t*>(values_in.data()),
-            static_cast<me_int_t*>(values_out.data()),
-            batch_size,
-            0,
-            static_cast<int>(sizeof(me_int_t) * 8),
-            device.stream()
+        check_error(
+            cub::DeviceRadixSort::SortPairs(
+                nullptr,
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(keys_out.data()),
+                static_cast<me_int_t*>(values_in.data()),
+                static_cast<me_int_t*>(values_out.data()),
+                batch_size,
+                0,
+                static_cast<int>(sizeof(me_int_t) * 8),
+                device.stream()
+            )
         );
         Tensor temp(
             DataType::dt_float,
@@ -628,17 +634,19 @@ void op_batch_split_by_index(
             device,
             AllocHint::temporary
         );
-        cub::DeviceRadixSort::SortPairs(
-            temp.data(),
-            temp_storage_bytes,
-            static_cast<me_int_t*>(indices.data()),
-            static_cast<me_int_t*>(keys_out.data()),
-            static_cast<me_int_t*>(values_in.data()),
-            static_cast<me_int_t*>(values_out.data()),
-            batch_size,
-            0,
-            static_cast<int>(sizeof(me_int_t) * 8),
-            device.stream()
+        check_error(
+            cub::DeviceRadixSort::SortPairs(
+                temp.data(),
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(keys_out.data()),
+                static_cast<me_int_t*>(values_in.data()),
+                static_cast<me_int_t*>(values_out.data()),
+                batch_size,
+                0,
+                static_cast<int>(sizeof(me_int_t) * 8),
+                device.stream()
+            )
         );
         temp.reset(device);
     }
@@ -647,7 +655,7 @@ void op_batch_split_by_index(
     indices.reset(device);
 
     Tensor sizes_cpu = sizes.cpu(device);
-    check_error(gpuStreamSynchronize(device.stream());
+    check_error(gpuStreamSynchronize(device.stream()));
     auto sizes_view = sizes_cpu.view<me_int_t, 1>();
     std::size_t offset = 0;
     for (std::size_t k = 0; k < count; ++k) {
@@ -708,24 +716,28 @@ void batch_reduce_mean_impl(
 
     Tensor out(DataType::dt_float, {1}, device, hint);
     std::size_t temp_storage_bytes = 0;
-    cub::DeviceReduce::Sum(
-        nullptr,
-        temp_storage_bytes,
-        static_cast<double*>(input.data()),
-        static_cast<double*>(out.data()),
-        batch_size,
-        device.stream()
+    check_error(
+        cub::DeviceReduce::Sum(
+            nullptr,
+            temp_storage_bytes,
+            static_cast<double*>(input.data()),
+            static_cast<double*>(out.data()),
+            batch_size,
+            device.stream()
+        )
     );
     Tensor temp(
         DataType::dt_float, {(temp_storage_bytes + 7) / 8}, device, AllocHint::temporary
     );
-    cub::DeviceReduce::Sum(
-        temp.data(),
-        temp_storage_bytes,
-        static_cast<double*>(input.data()),
-        static_cast<double*>(out.data()),
-        batch_size,
-        device.stream()
+    check_error(
+        cub::DeviceReduce::Sum(
+            temp.data(),
+            temp_storage_bytes,
+            static_cast<double*>(input.data()),
+            static_cast<double*>(out.data()),
+            batch_size,
+            device.stream()
+        )
     );
     temp.reset(device);
     input.reset(device);
@@ -769,13 +781,15 @@ void batch_reduce_mean_backward_impl(
             local_grads[instruction.output_indices[0]].contiguous(device);
         std::size_t batch_size = output_grad.size(0);
         std::size_t temp_storage_bytes = 0;
-        cub::DeviceReduce::Sum(
-            nullptr,
-            temp_storage_bytes,
-            static_cast<double*>(output_grad.data()),
-            static_cast<double*>(grad.data()),
-            batch_size,
-            device.stream()
+        check_error(
+            cub::DeviceReduce::Sum(
+                nullptr,
+                temp_storage_bytes,
+                static_cast<double*>(output_grad.data()),
+                static_cast<double*>(grad.data()),
+                batch_size,
+                device.stream()
+            )
         );
         Tensor temp(
             DataType::dt_float,
@@ -783,13 +797,15 @@ void batch_reduce_mean_backward_impl(
             device,
             AllocHint::temporary
         );
-        cub::DeviceReduce::Sum(
-            temp.data(),
-            temp_storage_bytes,
-            static_cast<double*>(output_grad.data()),
-            static_cast<double*>(grad.data()),
-            batch_size,
-            device.stream()
+        check_error(
+            cub::DeviceReduce::Sum(
+                temp.data(),
+                temp_storage_bytes,
+                static_cast<double*>(output_grad.data()),
+                static_cast<double*>(grad.data()),
+                batch_size,
+                device.stream()
+            )
         );
         launch_kernel(
             kernel_div_batch_size,
@@ -912,24 +928,28 @@ void op_quantile(
     Tensor tmp(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
     tmp.copy_from(input, device);
     std::size_t temp_storage_bytes;
-    cub::DeviceMergeSort::SortKeys(
-        nullptr,
-        temp_storage_bytes,
-        static_cast<double*>(tmp.data()),
-        batch_size,
-        gpu_less_double{},
-        device.stream()
+    check_error(
+        cub::DeviceMergeSort::SortKeys(
+            nullptr,
+            temp_storage_bytes,
+            static_cast<double*>(tmp.data()),
+            batch_size,
+            gpu_less_double{},
+            device.stream()
+        )
     );
     Tensor tmp_sort(
         DataType::dt_float, {(temp_storage_bytes + 7) / 8}, device, AllocHint::temporary
     );
-    cub::DeviceMergeSort::SortKeys(
-        tmp_sort.data(),
-        temp_storage_bytes,
-        static_cast<double*>(tmp.data()),
-        batch_size,
-        gpu_less_double{},
-        device.stream()
+    check_error(
+        cub::DeviceMergeSort::SortKeys(
+            tmp_sort.data(),
+            temp_storage_bytes,
+            static_cast<double*>(tmp.data()),
+            batch_size,
+            gpu_less_double{},
+            device.stream()
+        )
     );
     tmp_sort.reset(device);
 
