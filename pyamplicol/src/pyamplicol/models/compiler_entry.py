@@ -29,6 +29,8 @@ from .compiler_gauge import compile_goldstone_partner_records
 from .compiler_kernels import (
     _canonicalize_oriented_kernel_component,
     _fuse_oriented_kernels,
+    _is_compile_time_zero_parameter,
+    _is_single_structure_constant,
     _lc_color_normalization_power,
     _oriented_component_expressions,
     _remap_kernel_symbols,
@@ -496,6 +498,7 @@ def _compile_oriented_kernels(
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
+    parameter_by_name = {parameter.name: parameter for parameter in parameters}
     external_parameters = {
         parameter.name for parameter in parameters if parameter.nature == "external"
     }
@@ -532,6 +535,16 @@ def _compile_oriented_kernels(
                     result_leg=result_leg,
                     kind=len(kernels),
                     model_symbols=model_symbols,
+                    use_transverse_massless_yang_mills=(
+                        _is_single_structure_constant(term.color_expression)
+                        and all(
+                            _is_compile_time_zero_parameter(
+                                particle_by_name[name].mass,
+                                parameter_by_name,
+                            )
+                            for name in term.particles
+                        )
+                    ),
                 )
                 coupling_symbols = set(
                     _sym.E(term.coupling_expression).get_all_symbols(False)

@@ -175,3 +175,79 @@ def test_external_sm_complete_three_line_flows_match_builtin(
                 rel=1.0e-11,
                 abs=1.0e-20,
             )
+
+
+def test_external_sm_fixed_width_multigluon_current_matches_builtin(
+    tmp_path: Path,
+) -> None:
+    """Keep the proven AmpliCol transverse Yang--Mills convention."""
+
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    model_root = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "pyamplicol"
+        / "assets"
+        / "models"
+        / "json"
+        / "sm"
+    )
+    external_model = ModelSource.from_path(
+        model_root / "sm.json",
+        restriction=model_root / "restrict_default.json",
+    )
+    config = RunConfig(
+        action="generate",
+        process=ProcessConfig(
+            selected_source_helicities={
+                "1": -1,
+                "2": 1,
+                "3": -1,
+                "4": 1,
+                "5": -1,
+                "6": 1,
+            }
+        ),
+        generation=GenerationConfig(
+            emit_api_bundle=False,
+            validation=GenerationValidationConfig(
+                enabled=False,
+                post_build_validation=False,
+            ),
+        ),
+        evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=1)),
+    )
+    process = "d d~ > t t~ g g"
+    builtin_path = tmp_path / "builtin-fixed-width"
+    external_path = tmp_path / "external-fixed-width"
+    Generator(config).generate(process, builtin_path)
+    Generator(config).generate(process, external_path, model=external_model)
+
+    final_state = massive_rambo_final_state(
+        4,
+        sqrt_s=1000.0,
+        masses=(173.0, 173.0, 0.0, 0.0),
+        seed=731,
+    )
+    momenta = (
+        (
+            (500.0, 0.0, 0.0, 500.0),
+            (500.0, 0.0, 0.0, -500.0),
+            *final_state,
+        ),
+    )
+    builtin = Runtime.load(builtin_path).evaluate(momenta)[0]
+    external = Runtime.load(external_path).evaluate(momenta)[0]
+
+    assert external.real == pytest.approx(
+        builtin.real,
+        rel=1.0e-11,
+        abs=1.0e-20,
+    )
+    assert external.imag == pytest.approx(
+        builtin.imag,
+        rel=1.0e-11,
+        abs=1.0e-20,
+    )

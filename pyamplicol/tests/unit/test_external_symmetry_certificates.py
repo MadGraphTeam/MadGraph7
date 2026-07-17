@@ -50,6 +50,7 @@ _EXTERNAL_SM_TOPOLOGY_LADDER = (
     "d d~ > z g g",
     "g g > t t~ g",
     "g g > g g g",
+    "d d~ > t t~ g g",
     "d d~ > z z z",
     "d d~ > e+ e- z h",
     "d d~ > t t~ z h",
