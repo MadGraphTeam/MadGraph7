@@ -811,24 +811,34 @@ def _build_tool_path(inherited: str) -> str:
     """Return a minimal build PATH that cannot select Homebrew/MacPorts tools."""
 
     interpreter = Path(sys.executable)
-    directories: list[Path] = [interpreter.parent, interpreter.resolve().parent]
+    # Keep the isolated build environment so Maturin's console script remains
+    # available, but never expose the base interpreter's package-manager bin.
+    # A venv Python may resolve into /opt/local or /opt/homebrew, where unrelated
+    # compiler wrappers would otherwise leak non-relocatable RPATHs into wheels.
+    directories: list[Path] = [interpreter.parent]
     for executable in ("cargo", "rustc"):
         located = shutil.which(executable, path=inherited)
         if located is None:
             raise RuntimeError(f"required build tool is unavailable: {executable}")
         path = Path(located)
-        directories.extend((path.parent, path.resolve().parent))
-    for executable in ("git", "cc", "clang", "ar", "ranlib", "nm", "llvm-nm"):
-        located = shutil.which(executable, path=inherited)
+        directories.append(path.parent)
+
+    system_directories = (
+        [Path(path) for path in ("/usr/bin", "/bin", "/usr/sbin", "/sbin")]
+        if os.name == "posix"
+        else []
+    )
+    directories.extend(system_directories)
+    tool_search_path = os.pathsep.join(
+        [*(str(path) for path in system_directories), inherited]
+    )
+    for executable in ("git", "cc", "clang", "ar", "ranlib", "nm"):
+        located = shutil.which(executable, path=tool_search_path)
         if located is None:
             continue
         path = Path(located)
-        directories.extend((path.parent, path.resolve().parent))
-    if os.name == "posix":
-        directories.extend(
-            Path(path) for path in ("/usr/bin", "/bin", "/usr/sbin", "/sbin")
-        )
-    else:  # Windows is not a 0.1.0 release target, but keep source hooks usable.
+        directories.append(path.parent)
+    if os.name != "posix":  # Keep unsupported Windows source hooks usable.
         directories.extend(Path(path) for path in inherited.split(os.pathsep) if path)
 
     unique: list[str] = []

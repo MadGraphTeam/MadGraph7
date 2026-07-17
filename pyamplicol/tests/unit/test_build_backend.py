@@ -652,6 +652,38 @@ def test_build_tool_path_does_not_require_git_for_unpacked_sdist(
     assert str(tool_bin) in result
 
 
+def test_build_tool_path_does_not_expose_base_python_package_manager_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment_bin = tmp_path / "build-env" / "bin"
+    environment_bin.mkdir(parents=True)
+    interpreter = environment_bin / "python"
+    interpreter.touch()
+    rust_bin = tmp_path / "rustup" / "bin"
+    rust_bin.mkdir(parents=True)
+
+    def locate(executable: str, *, path: str) -> str | None:
+        if executable in {"cargo", "rustc"}:
+            return str(rust_bin / executable)
+        assert path.startswith("/usr/bin" + os.pathsep)
+        return f"/usr/bin/{executable}"
+
+    monkeypatch.setattr(backend.sys, "executable", str(interpreter))
+    monkeypatch.setattr(backend.shutil, "which", locate)
+
+    result = backend._build_tool_path(
+        "/opt/local/bin:/opt/homebrew/bin:/usr/local/bin"
+    ).split(os.pathsep)
+
+    assert str(environment_bin) in result
+    assert str(rust_bin) in result
+    assert "/usr/bin" in result
+    assert "/opt/local/bin" not in result
+    assert "/opt/homebrew/bin" not in result
+    assert "/usr/local/bin" not in result
+
+
 def test_pep517_backend_rejects_recursive_delegation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
