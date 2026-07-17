@@ -9,6 +9,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Lock
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 from pyamplicol.api.errors import GenerationError, ModelError, PyAmpliColError
@@ -58,6 +59,9 @@ if TYPE_CHECKING:
 _ProcessInput = TypeVar("_ProcessInput")
 _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
+# Symbolica releases the GIL while retaining process-wide mutable symbol state.
+# Keep each complete lowering/compilation transaction atomic across generators.
+_SYMBOLICA_MATERIALIZATION_LOCK = Lock()
 
 
 def _builtin_sm_model() -> Model:
@@ -630,6 +634,21 @@ class GenerationBackend:
         )
 
     def _materialize_evaluator(
+        self,
+        process: _EvaluatorProcess,
+        model: Model,
+        temporary_root: Path,
+        phase: PhaseHandle,
+    ) -> CompiledProcessArtifact:
+        with _SYMBOLICA_MATERIALIZATION_LOCK:
+            return self._materialize_evaluator_unlocked(
+                process,
+                model,
+                temporary_root,
+                phase,
+            )
+
+    def _materialize_evaluator_unlocked(
         self,
         process: _EvaluatorProcess,
         model: Model,

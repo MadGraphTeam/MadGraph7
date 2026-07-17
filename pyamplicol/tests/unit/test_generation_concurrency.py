@@ -137,6 +137,51 @@ def test_symbolica_resources_do_not_nest_generation_worker_fanout() -> None:
     assert settings.compiled_chunk_compile_workers == 1
 
 
+def test_symbolica_materialization_is_process_wide_serialized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = service_module.GenerationBackend(GenerationConfig(workers=2), None)
+    state_lock = Lock()
+    active = 0
+    peak_active = 0
+
+    def materialize(
+        process: object,
+        _model: object,
+        _temporary_root: Path,
+        _phase: object,
+    ) -> object:
+        nonlocal active, peak_active
+        with state_lock:
+            active += 1
+            peak_active = max(peak_active, active)
+        try:
+            time.sleep(0.02)
+            return process
+        finally:
+            with state_lock:
+                active -= 1
+
+    monkeypatch.setattr(backend, "_materialize_evaluator_unlocked", materialize)
+    processes = (object(), object(), object())
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = tuple(
+            executor.map(
+                lambda process: backend._materialize_evaluator(
+                    process,  # type: ignore[arg-type]
+                    object(),  # type: ignore[arg-type]
+                    tmp_path,
+                    SimpleNamespace(),  # type: ignore[arg-type]
+                ),
+                processes,
+            )
+        )
+
+    assert results == processes
+    assert peak_active == 1
+
+
 def test_restricted_policy_is_applied_before_model_generation_work(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
