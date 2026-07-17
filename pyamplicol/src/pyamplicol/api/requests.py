@@ -21,7 +21,7 @@ _PROCESS_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 class ModelSource:
     kind: ModelSourceKind
     path: Path | None = None
-    restriction: Path | None = None
+    restriction: Path | str | None = None
     simplify: bool = True
 
     def __post_init__(self) -> None:
@@ -38,13 +38,26 @@ class ModelSource:
                 raise ModelError("model path must be path-like or null") from exc
             object.__setattr__(self, "path", resolved_path)
         if self.restriction is not None:
-            try:
-                resolved_restriction = (
-                    Path(os.fspath(self.restriction)).expanduser().resolve(strict=False)
-                )
-            except TypeError as exc:
-                raise ModelError("model restriction must be path-like or null") from exc
-            object.__setattr__(self, "restriction", resolved_restriction)
+            if isinstance(self.restriction, str):
+                if not self.restriction or any(
+                    character.isspace() for character in self.restriction
+                ):
+                    raise ModelError(
+                        "model restriction names must be non-empty and contain no "
+                        "whitespace"
+                    )
+            else:
+                try:
+                    resolved_restriction = (
+                        Path(os.fspath(self.restriction))
+                        .expanduser()
+                        .resolve(strict=False)
+                    )
+                except TypeError as exc:
+                    raise ModelError(
+                        "model restriction must be a name, path-like, or null"
+                    ) from exc
+                object.__setattr__(self, "restriction", resolved_restriction)
         if self.kind == "built-in-sm":
             if self.path is not None:
                 raise ModelError("the built-in Standard Model has no source path")
@@ -54,12 +67,41 @@ class ModelSource:
             raise ModelError("external model paths must be absolute")
         elif self.path is not None and not self.path.is_absolute():
             raise ModelError("compiled model paths must be absolute")
-        if self.restriction is not None and not self.restriction.is_absolute():
+        if isinstance(self.restriction, Path) and not self.restriction.is_absolute():
             raise ModelError("model restriction paths must be absolute")
 
     @classmethod
     def built_in_sm(cls) -> ModelSource:
         return cls(kind="built-in-sm")
+
+    @classmethod
+    def from_config(cls, config: object) -> ModelSource:
+        """Create a source from the typed ``[model]`` run-card section.
+
+        Restriction selectors such as ``default``, ``none``, or a loader-defined
+        name remain names. Explicit restriction files are resolved relative to
+        the selected UFO/JSON model by :meth:`from_path`.
+        """
+
+        from pyamplicol.config import ModelConfig
+
+        if not isinstance(config, ModelConfig):
+            raise TypeError("model source config must be a ModelConfig")
+        if config.source == "built-in-sm":
+            if config.restriction not in (None, "default"):
+                raise ModelError(
+                    "model restrictions can only be applied to external models"
+                )
+            if not config.simplify:
+                raise ModelError(
+                    "simplification cannot be disabled for the built-in Standard Model"
+                )
+            return cls.built_in_sm()
+        return cls.from_path(
+            config.source,
+            restriction=config.restriction,
+            simplify=config.simplify,
+        )
 
     @classmethod
     def from_path(
@@ -89,21 +131,32 @@ class ModelSource:
         else:
             raise ModelError(f"model source is not a file or directory: {source}")
 
-        restriction_path: Path | None = None
+        restriction_value: Path | str | None = None
         if restriction is not None:
-            restriction_path = Path(os.fspath(restriction)).expanduser()
+            raw_restriction = os.fspath(restriction)
+            if not isinstance(raw_restriction, str):
+                raise ModelError(
+                    "model restriction must resolve to a text path or name"
+                )
+            restriction_path = Path(raw_restriction).expanduser()
             if not restriction_path.is_absolute():
                 base = source if source.is_dir() else source.parent
                 restriction_path = base / restriction_path
             restriction_path = restriction_path.resolve(strict=False)
-            if kind in ("ufo", "json") and not restriction_path.is_file():
+            if restriction_path.is_file():
+                restriction_value = restriction_path
+            elif not isinstance(restriction, str) or _restriction_looks_like_path(
+                raw_restriction
+            ):
                 raise ModelError(
                     f"model restriction file does not exist: {restriction_path}"
                 )
+            else:
+                restriction_value = raw_restriction
         return cls(
             kind=kind,
             path=source,
-            restriction=restriction_path,
+            restriction=restriction_value,
             simplify=simplify,
         )
 
@@ -138,7 +191,9 @@ class ModelSource:
             return compile_model_source(
                 source,
                 restriction=(
-                    "default" if self.restriction is None else str(self.restriction)
+                    "default"
+                    if self.restriction is None
+                    else os.fspath(self.restriction)
                 ),
                 simplify=self.simplify,
                 cache_dir=resolved_cache,
@@ -147,6 +202,16 @@ class ModelSource:
             )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
+
+
+def _restriction_looks_like_path(value: str) -> bool:
+    path = Path(value)
+    return (
+        path.is_absolute()
+        or path.parent != Path(".")
+        or path.name.startswith("restrict_")
+        or path.suffix.lower() in {".dat", ".json"}
+    )
 
 
 def _validate_delimiters(expression: str) -> None:

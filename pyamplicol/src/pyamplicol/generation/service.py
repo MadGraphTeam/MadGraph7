@@ -388,9 +388,9 @@ class GenerationBackend:
                         total=jit_total,
                     ) as phase:
                         # Symbolica expressions are created while resolving the model on
-                        # this caller thread. Keep materialization on that same thread. The
-                        # process-wide lock already made this phase serial; moving between
-                        # worker threads can violate backend thread affinity.
+                        # this caller thread. Keep materialization on that same thread.
+                        # The process-wide lock already made this phase serial; moving
+                        # between worker threads can violate backend thread affinity.
                         artifact_processes = _map_process_phase(
                             evaluators,
                             lambda evaluator: self._materialize_evaluator(
@@ -955,13 +955,9 @@ class GenerationBackend:
 
     def _configured_model_source(self) -> ModelSource:
         run = self._run_config
-        if run is None or run.model.source == "built-in-sm":
+        if run is None:
             return ModelSource.built_in_sm()
-        return ModelSource.from_path(
-            run.model.source,
-            restriction=run.model.restriction,
-            simplify=run.model.simplify,
-        )
+        return ModelSource.from_config(run.model)
 
     def _resolve_model_for_plan(
         self,

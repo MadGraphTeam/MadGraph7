@@ -494,6 +494,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark.add_argument("target", type=Path, nargs="?", default=None)
     benchmark.add_argument(
+        "--process",
+        dest="evaluation.process",
+        default=argparse.SUPPRESS,
+        help="select a stable process/alias ID or exact process expression",
+    )
+    benchmark.add_argument(
         "--target-runtime",
         dest="benchmark.target_runtime",
         type=float,

@@ -211,7 +211,16 @@ def test_removed_generation_flags_are_rejected(arguments: tuple[str, ...]) -> No
 
 def test_runtime_color_flow_flags_remain_available() -> None:
     evaluation = parse_cli(("evaluate", "--color-flow", "flow:2,4,1"))
-    benchmark = parse_cli(("benchmark", "--color-flow", "flow:2,4,1"))
+    benchmark = parse_cli(
+        (
+            "benchmark",
+            "--process",
+            "d d~ > z g",
+            "--color-flow",
+            "flow:2,4,1",
+        )
+    )
 
     assert evaluation.resolve().effective.evaluation.color_flow_ids == ("flow:2,4,1",)
+    assert benchmark.resolve().effective.evaluation.process == "d d~ > z g"
     assert benchmark.resolve().effective.benchmark.color_flow_ids == ("flow:2,4,1",)

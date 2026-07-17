@@ -67,13 +67,7 @@ def dispatch(
 def _model_source(config: RunConfig) -> ModelSource:
     from pyamplicol.api import ModelSource
 
-    if config.model.source == "built-in-sm":
-        return ModelSource.built_in_sm()
-    return ModelSource.from_path(
-        config.model.source,
-        restriction=config.model.restriction,
-        simplify=config.model.simplify,
-    )
+    return ModelSource.from_config(config.model)
 
 
 def _process_set(config: RunConfig) -> ProcessSet:

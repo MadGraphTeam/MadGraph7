@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import pyamplicol.models.loading as model_loading
 from pyamplicol._internal.versions import COMPILED_MODEL_SCHEMA_VERSION
 from pyamplicol.api import (
     ColorFlow,
@@ -23,6 +24,7 @@ from pyamplicol.api import (
     ReductionGroup,
     ResolvedEvaluation,
 )
+from pyamplicol.config import ModelConfig
 
 
 def test_model_source_kind_resolution_does_not_import_symbolica(tmp_path: Path) -> None:
@@ -52,6 +54,61 @@ def test_model_source_validates_restriction_files(tmp_path: Path) -> None:
     assert source.restriction == restriction
     with pytest.raises(ModelError, match="does not exist"):
         ModelSource.from_path(ufo, restriction="restrict_missing.dat")
+
+
+def test_model_source_preserves_named_restrictions_from_typed_config(
+    tmp_path: Path,
+) -> None:
+    ufo = tmp_path / "ufo"
+    ufo.mkdir()
+
+    source = ModelSource.from_config(
+        ModelConfig(
+            source=str(ufo),
+            restriction="no_widths",
+            simplify=False,
+        )
+    )
+
+    assert source.kind == "ufo"
+    assert source.path == ufo
+    assert source.restriction == "no_widths"
+    assert source.simplify is False
+
+
+def test_model_source_compile_forwards_named_restriction(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ufo = tmp_path / "ufo"
+    ufo.mkdir()
+    source = ModelSource.from_path(ufo, restriction="no_widths")
+    captured: dict[str, object] = {}
+    expected = object()
+
+    def compile_source(value: object, **kwargs: object) -> object:
+        captured["source"] = value
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(model_loading, "compile_model_source", compile_source)
+
+    result = source.compile(use_cache=False)
+
+    assert result is expected
+    assert captured["source"] == ufo
+    assert captured["restriction"] == "no_widths"
+    assert captured["simplify"] is True
+    assert captured["use_cache"] is False
+
+
+def test_model_source_rejects_external_options_for_builtin_model() -> None:
+    with pytest.raises(ModelError, match="external models"):
+        ModelSource.from_config(
+            ModelConfig(source="built-in-sm", restriction="no_widths")
+        )
+    with pytest.raises(ModelError, match="cannot be disabled"):
+        ModelSource.from_config(ModelConfig(source="built-in-sm", simplify=False))
 
 
 def test_public_compiled_model_uses_the_canonical_schema() -> None:

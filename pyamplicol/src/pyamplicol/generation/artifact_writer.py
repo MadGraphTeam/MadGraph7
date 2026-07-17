@@ -1140,7 +1140,11 @@ def _model_metadata(
     if len(digest) != 64:
         raise ValueError("compiled model source has no canonical SHA-256 digest")
     restriction = (
-        source.restriction.name
+        (
+            source.restriction.name
+            if isinstance(source.restriction, Path)
+            else source.restriction
+        )
         if source.restriction is not None
         else "default"
         if source.kind in {"ufo", "json"}
