@@ -73,8 +73,9 @@ fails closed while the release dependency contract below remains unverified.
   distinguished by normalized expressions rather than object names. The
   compiled-model schema now persists authoritative tensor-ordering and
   colored-contact proof records. Relabeled-PDG and reordered-UFO-inventory
-  gates preserve topology and tensor-order identities; independent
-  component-axis and dummy-index numerical invariance remains. Current
+  gates preserve topology and tensor-order identities. A scalar-gravity
+  source with transposed spin-2 axes and renamed Lorentz dummy indices compiles
+  to identical canonical kernels and numerical component values. Current
   two-structure-constant contact lowering preserves explicit source scalar
   prefactors separately from canonicalized permutation parity, rejects
   residual color tensors, and validates model-owned direct and closure
