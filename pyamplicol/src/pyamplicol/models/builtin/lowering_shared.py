@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Small expression helpers shared by lowering phases."""
+"""Small expression helpers shared by built-in-SM lowering phases."""
 
 from __future__ import annotations
 

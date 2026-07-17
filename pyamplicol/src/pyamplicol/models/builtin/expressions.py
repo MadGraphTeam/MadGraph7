@@ -7,11 +7,26 @@ from typing import Any
 from ..base import Model, Vertex
 from ..expressions import (
     _expr_minkowski_dot,
-    _expr_vector_slash_terms,
-    _flat_index,
-    _index_chirality,
     _index_particle_id,
 )
+
+
+def _flat_index(indices: tuple[int, ...], dims: tuple[int, ...]) -> int:
+    index = 0
+    for value, dim in zip(indices, dims, strict=True):
+        index = index * dim + value
+    return index
+
+
+def _index_chirality(index: Any) -> int:
+    return int(getattr(index, "chirality", 0))
+
+
+def _expr_vector_slash_terms(
+    vector: tuple[Any, ...],
+) -> tuple[Any, Any, Any, Any]:
+    v0, v1, v2, v3 = vector
+    return v0 + v3, v0 - v3, v1 + 1j * v2, v1 - 1j * v2
 
 
 def _builtin_vertex_result_chiralities(

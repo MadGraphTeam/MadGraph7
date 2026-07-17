@@ -7,13 +7,6 @@ import time
 from collections import Counter
 from typing import Any
 
-from ...generation.lowering_types import (
-    RecursionLoweringPlan,
-    SymbolicLoweringReport,
-    TensorNetworkBlueprint,
-    VertexLoweringReport,
-    VertexLoweringStep,
-)
 from .lowering_tensor import (
     _build_auxiliary_tensor_probe,
     _build_color_probe,
@@ -27,6 +20,13 @@ from .lowering_tensor import (
     _register_parametric_source_currents,
     _source_current_count,
     _source_currents,
+)
+from .lowering_types import (
+    RecursionLoweringPlan,
+    SymbolicLoweringReport,
+    TensorNetworkBlueprint,
+    VertexLoweringReport,
+    VertexLoweringStep,
 )
 from .model import BuiltinSMModel
 from .symbols import symbols

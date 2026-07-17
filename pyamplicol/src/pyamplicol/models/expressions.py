@@ -2,16 +2,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .base import CouplingOrders, Model, Vertex
-
-
-def _flat_index(indices: tuple[int, ...], dims: tuple[int, ...]) -> int:
-    index = 0
-    for value, dim in zip(indices, dims, strict=True):
-        index = index * dim + value
-    return index
+if TYPE_CHECKING:
+    from .base import CouplingOrders, Model, Vertex
 
 
 def _number(value: complex | float) -> Any:
@@ -54,10 +48,6 @@ def _index_particle_id(index: Any) -> int:
     return int(index.pdg)
 
 
-def _index_chirality(index: Any) -> int:
-    return int(getattr(index, "chirality", 0))
-
-
 def _index_flavour_flow(index: Any) -> tuple[int, ...]:
     flow = getattr(index, "flavour_flow", None)
     if flow is None:
@@ -83,11 +73,6 @@ def _append_flavour_transition(
     if flow and flow[-1] == result_particle:
         return flow
     return (*flow, result_particle)
-
-
-def _expr_vector_slash_terms(vector: tuple[Any, ...]) -> tuple[Any, Any, Any, Any]:
-    v0, v1, v2, v3 = vector
-    return v0 + v3, v0 - v3, v1 + 1j * v2, v1 - 1j * v2
 
 
 def _expr_fermion_propagator_weyl(

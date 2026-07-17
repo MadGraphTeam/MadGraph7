@@ -41,58 +41,27 @@ def _assert_isolated_import_does_not_load_builtin(statement: str) -> None:
 @pytest.mark.parametrize(
     "statement",
     (
-        "import pyamplicol.generation.lowering",
-        "import pyamplicol.generation.lowering_reports",
-        "import pyamplicol.generation.lowering_tensor",
-        (
-            "from pyamplicol.generation.lowering import "
-            "ColorAlgebraProbe, RecursionLoweringPlan"
-        ),
+        "import pyamplicol.generation",
+        "import pyamplicol.models.base",
+        "import pyamplicol.models.expressions",
     ),
 )
 def test_generic_lowering_imports_do_not_load_builtin_physics(statement: str) -> None:
     _assert_isolated_import_does_not_load_builtin(statement)
 
 
-def test_generation_lowering_exports_resolve_to_builtin_implementations() -> None:
-    from pyamplicol.generation import lowering as lowering_facade
-    from pyamplicol.models.builtin import lowering_reports, lowering_tensor
+def test_builtin_lowering_diagnostics_are_not_generic_model_contracts() -> None:
+    from pyamplicol.models import base, expressions
+    from pyamplicol.models.builtin import lowering_types
 
-    assert (
-        lowering_facade.build_symbolic_lowering_report
-        is lowering_reports.build_symbolic_lowering_report
-    )
-    assert (
-        lowering_facade.build_tensor_network_scalar_bundle
-        is lowering_tensor.build_tensor_network_scalar_bundle
-    )
-    assert (
-        lowering_facade.build_interleaved_tensor_network_scalar_bundle
-        is lowering_tensor.build_interleaved_tensor_network_scalar_bundle
-    )
-    assert (
-        lowering_facade._GraphTensorExpressionBuilder
-        is lowering_tensor._GraphTensorExpressionBuilder
-    )
-
-
-def test_legacy_lowering_modules_delegate_public_and_private_names() -> None:
-    from pyamplicol.generation import lowering_reports as reports_facade
-    from pyamplicol.generation import lowering_tensor as tensor_facade
-    from pyamplicol.models.builtin import lowering_reports, lowering_tensor
-
-    assert (
-        reports_facade.build_symbolic_lowering_report
-        is lowering_reports.build_symbolic_lowering_report
-    )
-    assert (
-        tensor_facade.build_tensor_network_scalar_bundle
-        is lowering_tensor.build_tensor_network_scalar_bundle
-    )
-    assert (
-        tensor_facade._build_auxiliary_tensor_probe
-        is lowering_tensor._build_auxiliary_tensor_probe
-    )
+    assert hasattr(lowering_types, "SymbolicLoweringReport")
+    assert not hasattr(base.Model, "build_tensor_library")
+    assert not hasattr(base.Model, "vertex_lowering_coverage")
+    assert not hasattr(base, "VertexLoweringCoverageEntry")
+    assert not hasattr(base, "VertexLoweringCoverageReport")
+    assert not hasattr(expressions, "_flat_index")
+    assert not hasattr(expressions, "_index_chirality")
+    assert not hasattr(expressions, "_expr_vector_slash_terms")
 
 
 def test_builtin_auxiliary_tensor_probe_executes() -> None:

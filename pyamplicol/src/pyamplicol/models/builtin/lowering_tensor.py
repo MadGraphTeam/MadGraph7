@@ -8,8 +8,8 @@ import time
 from typing import Any
 
 from ..._internal.physics.parameters import ParamBuilder, SymbolicaEvaluatorBundle
-from ...generation.lowering_shared import _current_key_tuple, _number
-from ...generation.lowering_types import ColorAlgebraProbe, TensorNetworkProbe
+from .lowering_shared import _current_key_tuple, _number
+from .lowering_types import ColorAlgebraProbe, TensorNetworkProbe
 from .model import BuiltinSMModel
 from .symbols import symbols
 

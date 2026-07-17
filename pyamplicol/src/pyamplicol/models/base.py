@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -166,71 +165,6 @@ class PropagatorLoweringRule:
         }
 
 
-@dataclass(frozen=True)
-class VertexLoweringCoverageEntry:
-    kind: int
-    vertex_count: int
-    backend: str
-    full_tensor_network_ready: bool
-    tensor_names: tuple[str, ...]
-    expression_head: str
-    description: str
-    kernel: str
-    input_roles: tuple[str, str]
-    output_role: str
-    coupling_mode: str
-
-    def to_json_dict(self) -> dict[str, object]:
-        return {
-            "kind": self.kind,
-            "vertex_count": self.vertex_count,
-            "backend": self.backend,
-            "full_tensor_network_ready": self.full_tensor_network_ready,
-            "tensor_names": list(self.tensor_names),
-            "expression_head": self.expression_head,
-            "description": self.description,
-            "kernel": self.kernel,
-            "input_roles": list(self.input_roles),
-            "output_role": self.output_role,
-            "coupling_mode": self.coupling_mode,
-        }
-
-
-@dataclass(frozen=True)
-class VertexLoweringCoverageReport:
-    model: str
-    entries: tuple[VertexLoweringCoverageEntry, ...]
-
-    @property
-    def ready_kinds(self) -> tuple[int, ...]:
-        return tuple(
-            entry.kind for entry in self.entries if entry.full_tensor_network_ready
-        )
-
-    @property
-    def pending_kinds(self) -> tuple[int, ...]:
-        return tuple(
-            entry.kind
-            for entry in self.entries
-            if entry.backend != "unimplemented" and not entry.full_tensor_network_ready
-        )
-
-    @property
-    def unimplemented_kinds(self) -> tuple[int, ...]:
-        return tuple(
-            entry.kind for entry in self.entries if entry.backend == "unimplemented"
-        )
-
-    def to_json_dict(self) -> dict[str, object]:
-        return {
-            "model": self.model,
-            "ready_kinds": list(self.ready_kinds),
-            "pending_kinds": list(self.pending_kinds),
-            "unimplemented_kinds": list(self.unimplemented_kinds),
-            "entries": [entry.to_json_dict() for entry in self.entries],
-        }
-
-
 @dataclass
 class Model:
     name: str
@@ -352,9 +286,6 @@ class Model:
 
     def is_singlet(self, pdg: int) -> bool:
         return self.color_rep(pdg) == 1
-
-    def build_tensor_library(self) -> Any:
-        raise NotImplementedError
 
     def vertex_lowering_rule(self, kind: int) -> VertexLoweringRule:
         raise NotImplementedError
@@ -976,31 +907,6 @@ class Model:
             return self.dimension(particle_id) > 0
         except (KeyError, TypeError, ValueError):
             return False
-
-    def vertex_lowering_coverage(self) -> VertexLoweringCoverageReport:
-        counts = Counter(vertex.kind for vertex in self.vertices)
-        entries: list[VertexLoweringCoverageEntry] = []
-        for kind, count in sorted(counts.items()):
-            rule = self.vertex_lowering_rule(kind)
-            entries.append(
-                VertexLoweringCoverageEntry(
-                    kind=kind,
-                    vertex_count=count,
-                    backend=rule.backend,
-                    full_tensor_network_ready=rule.full_tensor_network_ready,
-                    tensor_names=rule.tensor_names,
-                    expression_head=rule.expression_head,
-                    description=rule.description,
-                    kernel=rule.kernel,
-                    input_roles=rule.input_roles,
-                    output_role=rule.output_role,
-                    coupling_mode=rule.coupling_mode,
-                )
-            )
-        return VertexLoweringCoverageReport(
-            model=self.name,
-            entries=tuple(entries),
-        )
 
     def _species_particle(self, pdg: int) -> Particle | None:
         return self._species_by_pdg.get(pdg)

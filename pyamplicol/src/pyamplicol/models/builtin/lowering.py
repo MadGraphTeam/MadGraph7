@@ -16,7 +16,6 @@ from ..expressions import (
     _expr_fermion_propagator_dirac,
     _expr_fermion_propagator_weyl,
     _expr_minkowski_dot,
-    _flat_index,
     _minkowski_square_expression,
     _number,
 )
@@ -31,6 +30,7 @@ from .expressions import (
     _expr_three_vector_current_coupled,
     _expr_two_vector_to_tensor,
     _expr_vector_tensor_to_vector,
+    _flat_index,
     _gluon_tensor_to_gluon_data,
     _quark_vector_weyl_data,
     _tensor_gluon_to_gluon_data,

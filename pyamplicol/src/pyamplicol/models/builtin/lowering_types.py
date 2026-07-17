@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Frozen records describing symbolic lowering results."""
+"""Built-in-SM diagnostics for symbolic lowering results."""
 
 from __future__ import annotations
 
