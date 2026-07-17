@@ -960,7 +960,8 @@ def build_multi_channel_data(
             amp2_remaps[0][diagrams[0]["diagram"]] = channel_index
         else:
             for amp2_remap, diag in zip(amp2_remaps, diagrams[0]["diagram"]):
-                amp2_remap[diag] = channel_index
+                if diag != -1:
+                    amp2_remap[diag] = channel_index
 
         channel_index_first = channel_index
         symfact_index_first = len(symfact)
@@ -971,7 +972,8 @@ def build_multi_channel_data(
                 amp2_remaps[0][d["diagram"]] = channel_index
             else:
                 for amp2_remap, diag in zip(amp2_remaps, d["diagram"]):
-                    amp2_remap[diag] = channel_index
+                    if diag != -1:
+                        amp2_remap[diag] = channel_index
             channel_index += 1
             symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
 
