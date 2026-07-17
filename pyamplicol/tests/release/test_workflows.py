@@ -135,6 +135,17 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
         maxsplit=1,
     )[1]
     assert "    if: github.event_name != 'push'\n" in candidate_job
+    assert "    needs: [python-compatibility, source-contracts]\n" in candidate_job
+    source_contract_job = workflow.split(
+        "  source-contracts:\n",
+        maxsplit=1,
+    )[1].split("\n  candidate-runtime:\n", maxsplit=1)[0]
+    assert 'python-version: "3.11"' in source_contract_job
+    assert 'python -m pip install "pytest>=8.3,<9"' in source_contract_job
+    assert "tests/unit/test_api_requests.py" in source_contract_job
+    assert "tests/unit/test_repository_policy.py" in source_contract_job
+    assert "tests/release" in source_contract_job
+    assert "dependencies/install_dependencies.py" not in source_contract_job
     focused_unit_step = workflow.split(
         "      - name: Run focused Python unit checks (30 GiB RSS limit)\n",
         maxsplit=1,

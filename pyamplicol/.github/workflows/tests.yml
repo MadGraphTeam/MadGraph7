@@ -47,10 +47,43 @@ jobs:
         if: matrix.python-version == '3.11'
         run: python -m pytest tests/unit/test_ci_memory_watchdog.py -q
 
+  source-contracts:
+    name: Python 3.11 source and release contracts
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install source-contract test dependency
+        run: python -m pip install "pytest>=8.3,<9"
+      - name: Check public source, repository, and release contracts
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: >-
+          python -m pytest
+          tests/unit/test_api_requests.py
+          tests/unit/test_build_backend.py
+          tests/unit/test_cli_parser.py
+          tests/unit/test_deployment_harness.py
+          tests/unit/test_evaluator_defaults.py
+          tests/unit/test_public_import_laziness.py
+          tests/unit/test_repository_policy.py
+          tests/unit/test_sdk_config.py
+          tests/release
+          -q
+
   candidate-runtime:
     name: Candidate generation, runtime, and native SDK
     if: github.event_name != 'push'
-    needs: python-compatibility
+    needs: [python-compatibility, source-contracts]
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
