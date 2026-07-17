@@ -131,16 +131,10 @@ Its typed source is `ModelSource.built_in_sm()`. Built-in aliases and optimized
 kernels are isolated compatibility behavior, not the reference taxonomy for
 external models. Generic compilation uses model-declared spin, statistics,
 color representation, mass/width, propagators, interactions, and exact quantum
-numbers rather than absolute SM PDG ranges. Algebraic certificates derived from
-normalized color/Lorentz tensors, propagators, and coupling relations recover
-the built-in optimized DAG topology for the external-SM n<=4 validation
-ladder. Typed source, crossing, and propagator records now select
-wavefunctions, crossing phases, mass class, gauge policy, and propagator
-kernels without SM PDG tests. The remaining `0.1.0` hardening gate covers
-contraction and tensor-order records plus adversarial relabeling and
-tensor-order fixtures; it does not route external models through the built-in
-implementation. Default and model-supplied UFO propagators are distinguished
-from normalized expressions, independently of their object names.
+numbers rather than absolute SM PDG ranges. Default and model-supplied UFO
+propagators are distinguished from normalized expressions, independently of
+their object names. Implementation parity and model-hardening gates for the
+`0.1.0` release are tracked in [Release Status](release-status.md).
 
 ## Supported UFO Subset
 

@@ -8,6 +8,7 @@ Each binary wheel owns a target-specific static Rusticol SDK:
 pyamplicol/_sdk/
   include/rusticol.h
   include/rusticol.hpp
+  rust/rusticol.rs
   fortran/rusticol.f90
   lib/librusticol_capi.a
   config.py
@@ -25,11 +26,19 @@ rusticol-config --target
 rusticol-config --include-dir
 rusticol-config --library
 rusticol-config --fortran-source
+rusticol-config --rust-source
 rusticol-config --cflags
 rusticol-config --libs
 rusticol-config --rustflags
+rusticol-config --cargo-rustflags
 rusticol-config --json
 ```
+
+`--cflags`, `--libs`, and `--rustflags` return shell-escaped argument streams.
+`--rust-source` returns the safe Rust wrapper path. `--cargo-rustflags` returns
+the same Rust linker arguments in Cargo's unit-separator encoding for
+`CARGO_ENCODED_RUSTFLAGS`; it is not a shell argument stream. `--json` exposes
+the paths and typed C/C++ and Rust linker arrays together.
 
 The command is expected to fail in an unstaged source tree. Install a binary
 wheel or a wheel built with `just wheel` before compiling native consumers.
@@ -80,36 +89,103 @@ Each Makefile writes binaries, objects, and Fortran modules to a sibling
 `.pyamplicol-api-build/` directory, leaving the integrity-checked process
 artifact unchanged.
 
-## Rust f64
+## Rust 2021 f64
 
-The generated Rust 2021 source directly wraps C ABI v1 for its artifact. It is
-compiled with `rustc` and links the wheel-owned static library through
-`rusticol-config --rustflags`; Cargo and a separately published Rusticol crate
-are not required:
+The wheel's `rust/rusticol.rs` is a dependency-free safe Rust 2021 wrapper over
+C ABI v1. It provides an owning `Runtime`, typed physics metadata, atomic model
+parameter updates, warning access, `Selectors`, compatibility-total
+`evaluate_f64`, and resolved `evaluate_resolved_f64`. The handle is freed on
+drop and remains bound to its creating thread.
+
+The generated `API/rust/check_standalone.rs` includes that wrapper through
+`RUSTICOL_RUST_SOURCE`; it does not duplicate FFI declarations or depend on a
+published Rusticol crate. Its primary Makefile target invokes `rustc` directly:
 
 ```console
-make -C artifacts/pp_zjj/API/rust
+make -C artifacts/pp_zjj/API/rust check_standalone
 make -C artifacts/pp_zjj/API/rust run \
-  ARGS='--process "d d~ > z g g" --precision 16'
+  ARGS='--process "d d~ > z g g" --precision 16 --json'
 ```
 
-The generated wrapper owns the opaque runtime handle, frees it on drop, exposes
-metadata and parameter updates, and checks both total and resolved f64
-evaluation. `--precision 16` is the only native precision. Use the generated
-Python driver for precision-controlled Symbolica evaluation.
+The equivalent direct compilation is reproducible from the artifact root:
+
+```console
+cd artifacts/pp_zjj
+build=../.pyamplicol-api-build/pp_zjj/rust/check_standalone
+mkdir -p "$(dirname "$build")"
+RUSTICOL_RUST_SOURCE="$(rusticol-config --rust-source)"
+eval "set -- $(rusticol-config --rustflags)"
+RUSTICOL_RUST_SOURCE="$RUSTICOL_RUST_SOURCE" \
+  rustc --edition=2021 API/rust/check_standalone.rs -o "$build" "$@"
+"$build" --process p_p_to_z_j_j_4 --precision 16 --json
+```
+
+`rust-script` is an optional separately installed convenience, not a pyAmpliCol
+or runtime requirement. The generated source contains its minimal Cargo header,
+so it can be run without changing the artifact:
+
+```console
+cd artifacts/pp_zjj
+RUSTICOL_RUST_SOURCE="$(rusticol-config --rust-source)" \
+  CARGO_ENCODED_RUSTFLAGS="$(rusticol-config --cargo-rustflags)" \
+  rust-script API/rust/check_standalone.rs -- \
+  --process p_p_to_z_j_j_4 --precision 16 --json
+```
+
+The Makefile exposes this as `make -C artifacts/pp_zjj/API/rust run-script`.
+`--precision 16` is the only native precision; use the generated Python driver
+for precision-controlled Symbolica evaluation.
 
 ## C++17
 
 The header-only wrapper provides metadata, model parameters, warnings, and
-total/resolved f64 evaluation:
+total/resolved f64 evaluation. Momentum storage is row-major
+`[point][external particle][E, px, py, pz]`; the external-particle axis follows
+the selected process metadata. This complete example evaluates one
+`d d~ > Z g g` point:
 
 ```cpp
 #include <rusticol.hpp>
 
-rusticol::Runtime runtime("artifacts/pp_zjj", "d d~ > z g g");
-runtime.set_model_parameter("aS", 0.117);
-auto total = runtime.evaluate(flat_momenta, point_count);
-auto resolved = runtime.evaluate_resolved(flat_momenta, point_count);
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <exception>
+#include <iostream>
+#include <vector>
+
+int main() {
+    try {
+        rusticol::Runtime runtime("artifacts/pp_zjj", "d d~ > z g g");
+        runtime.set_model_parameter("aS", 0.117);
+
+        const std::vector<double> momenta{
+            500.0, 0.0, 0.0, 500.0,
+            500.0, 0.0, 0.0, -500.0,
+            462.6501613061637, 14.340107538562991,
+            155.76435943335707, -425.7484539710246,
+            369.7738416261408, -17.479290785282917,
+            2.0064955613504103, 369.3550355960509,
+            167.57599706769557, 3.1391832467199254,
+            -157.77085499470743, 56.3934183749737,
+        };
+        constexpr std::size_t point_count = 1;
+
+        const auto totals = runtime.evaluate(momenta, point_count);
+        const auto resolved = runtime.evaluate_resolved(momenta, point_count);
+        const auto resolved_totals = resolved.total();
+        const double scale = std::max(1.0, std::abs(totals.at(0)));
+        if (std::abs(totals.at(0) - resolved_totals.at(0)) > 1.0e-12 * scale) {
+            std::cerr << "resolved components do not reproduce the total\n";
+            return 1;
+        }
+        std::cout << totals.at(0) << '\n';
+    } catch (const std::exception &error) {
+        std::cerr << "Rusticol error: " << error.what() << '\n';
+        return 1;
+    }
+    return 0;
+}
 ```
 
 Compile using installed-wheel discovery:
@@ -157,11 +233,17 @@ when the caller selected the process by expression.
 ## Runtime Capability
 
 The static SDK supports direct SymJIT f64 artifacts identified by
-`symjit.application.complex-f64.v1`. Once generated, these payloads require
-neither the Symbolica Python module nor a Symbolica runtime-license check. This
-Symbolica-independent path uses the separate MIT-licensed SymJIT runtime. ASM
-and C++ evaluator artifacts retain a Symbolica runtime capability and are
-rejected by the lightweight native SDK before partial loading.
+`symjit.application.complex-f64.v1` and compiled ASM/C++ f64 artifacts
+identified by their compiled runtime capabilities. None of these f64 paths
+imports the Symbolica Python module or performs a Symbolica runtime-license
+check. Direct applications use the separate MIT-licensed SymJIT runtime;
+compiled artifacts dynamically load their evaluator library.
+
+ASM/C++ libraries are target-specific. Rusticol requires an exact artifact and
+runtime target-triple match and verifies every recorded CPU feature before
+loading executable state. Higher-precision retained evaluator state is not a
+native SDK capability and remains available only through the Symbolica-backed
+Python path.
 
 Process artifacts are trusted executable inputs. Their hashes verify payload
 consistency but do not establish origin.

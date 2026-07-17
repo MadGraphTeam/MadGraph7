@@ -19,14 +19,38 @@ published on PyPI.
   control, atomic UFO parameter updates, warnings, and typed physics metadata.
 - One generated root API bundle with Python, dependency-free Rust 2021, C++17,
   and Fortran 2008 drivers.
-- Rusticol core, Python extension, C ABI v1, C++ wrapper, Fortran module source,
-  and target-specific static SDK discovery through `rusticol-config`.
-- A Symbolica-independent direct SymJIT application capability that executes at
-  f64 without importing Symbolica or consulting its runtime license state.
+- Rusticol core, Python extension, C ABI v1, safe Rust source wrapper, C++
+  wrapper, Fortran module source, and target-specific static SDK discovery
+  through `rusticol-config`.
+- Symbolica-independent f64 execution for direct SymJIT applications and
+  target-compatible ASM/C++ compiled evaluators.
 - `examples list|copy|run`, `config template|resolve`, `doctor`, and installed
   `self-test` utilities.
-- Standard source distribution, wheel, `twine check`, platform audit,
-  clean-install, and Trusted Publishing workflows.
+- Workflow definitions for candidate artifacts, retained source distributions,
+  audited wheels, clean installed-wheel tests, and OIDC Trusted Publishing.
+
+## Current CI And Artifact Workflows
+
+The automatic **Tests** workflow runs for pull requests and pushes to `main` and
+also allows manual dispatch. It is intentionally focused rather than a complete
+release gate: a lightweight configuration API matrix covers CPython 3.11
+through 3.14, followed by one Ubuntu CPython 3.11 candidate job covering
+selected unit/integration tests, generation, the Python/Rust/C++/Fortran APIs,
+Rust checks, the native SDK, self-test, and checkout-independent examples.
+
+The full **Candidate artifacts** workflow is `workflow_dispatch` only. It runs
+release-tool preflight, the complete candidate source gate and an isolated
+candidate deployment on Ubuntu, then builds and audits non-publishable candidate
+artifacts for macOS arm64, macOS x86_64, and manylinux x86_64. These jobs use the
+pinned contributor candidate inputs; their outputs are explicitly marked as
+candidates, retained for inspection, and cannot be promoted to release files.
+
+The **Validated release artifacts** workflow is also manually dispatched. Its
+defined release path verifies published dependency inputs, runs the full source
+gate and independent Fortran oracle, retains one source distribution, builds
+the three target wheels from that source distribution, tests installed wheels
+on CPython 3.11 and 3.14, and collects the unchanged package files. It currently
+fails closed while the release dependency contract below remains unverified.
 
 ## Remaining Integration Gates
 
@@ -36,26 +60,24 @@ published on PyPI.
 - The independent legacy-Fortran physics ladder and documented generation,
   runtime, artifact-size, and memory regression gates must complete in the
   release workflow.
-- Built-in SM compatibility code is isolated under `models.builtin`, and shared
-  generation uses structural particle and color roles. Exact normalized
-  color/Lorentz certificates now recover built-in graph topology across the
-  documented n<=4 external-SM family ladder. Typed source and crossing records
-  now drive Python and Rust runtimes without SM-PDG fallbacks. Runtime model
-  cards may vary nonzero masses but must regenerate an artifact when changing
-  a particle between massive and massless state spaces. Artifacts made before
-  this typed source contract request regeneration explicitly. Typed propagator
-  records now also drive mass class, gauge, numerator/denominator, auxiliary,
-  and Goldstone policy through generation and Rusticol validation; artifacts
-  without that contract request regeneration. Default and model-supplied UFO
-  propagators are now distinguished by normalized expressions rather than
-  object names. The remaining
-  model-independence gate is to persist authoritative tensor-ordering and
-  colored-contact proof records, and extend the already-green relabeled-PDG and
+- Built-in SM compatibility code is isolated under `models.builtin`, while
+  shared generation uses structural particle and color roles. Exact normalized
+  color/Lorentz certificates recover built-in graph topology across the
+  documented external-SM `n<=4` family ladder. Typed source, crossing, and
+  propagator records drive wavefunctions, crossing phases, mass class, gauge,
+  numerator/denominator, auxiliary, and Goldstone policy without SM-PDG
+  fallbacks. Runtime cards may vary nonzero masses but must regenerate an
+  artifact when a particle changes between massive and massless state spaces.
+  Artifacts predating the typed source or propagator contracts request
+  regeneration explicitly. Default and model-supplied UFO propagators are
+  distinguished by normalized expressions rather than object names. The
+  remaining model-independence gate is to persist authoritative tensor-ordering
+  and colored-contact proof records and extend the relabeled-PDG and
   reordered-UFO-inventory topology gates to component-axis and dummy-index
-  numerical invariance. Current two-structure-constant contact lowering already
-  preserves exact scalar prefactors and permutation parity and rejects residual
-  color tensors. Direct and closure contractions are model-owned and validated
-  in compiled-model schema v8.
+  numerical invariance. Current two-structure-constant contact lowering
+  preserves exact scalar prefactors and permutation parity, rejects residual
+  color tensors, and validates model-owned direct and closure contractions in
+  compiled-model schema v8.
 - External `generate --dry-run` currently requires a previously compiled model
   or populated model cache; it does not compile a trusted source as a planning
   side effect.
@@ -72,11 +94,17 @@ published on PyPI.
   audits.
 - Candidate artifacts are marked non-publishable and are rejected by the
   publication workflow.
+- TestPyPI and PyPI Trusted Publisher registrations and the protected GitHub
+  environments that authorize their OIDC identities are not configured yet.
 
 Strict release builds fail closed on these conditions. The authoritative
 machine-readable state is `dependencies/release-lock.toml`; contributor-only
 state is not a release fallback.
 
-Publishing is manual. A protected GitHub environment receives already
-validated wheels and one source distribution through PyPI Trusted Publishing;
-the publishing job does not rebuild or modify package files.
+The defined publishing workflow is manual and accepts only a successful
+default-branch **Validated release artifacts** run. It downloads the already
+validated three wheels and one source distribution and does not rebuild or
+modify them. Before it is operational, maintainers must create protected
+`testpypi` and `pypi` GitHub environments with the intended approval policy and
+register matching Trusted Publishers with TestPyPI and PyPI so those OIDC
+claims are accepted.

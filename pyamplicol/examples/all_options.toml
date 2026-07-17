@@ -3,7 +3,7 @@
 # This card is for resolution/documentation, not as a recommended physics run.
 
 # action: Required command action. Choices are generate, evaluate, benchmark,
-# inspect, model inspect, model compile, and model processes.
+# inspect, model-inspect, model-compile, and model-processes.
 action = "generate"
 
 # schema_version: Configuration schema. The only current value is 1.
@@ -33,6 +33,8 @@ flavor_scheme = 2
 max_quark_lines = 2
 # process.coupling_order_policy: "minimal" or "explicit". Default minimal.
 coupling_order_policy = "explicit"
+# The following four topology-extraction controls are unstable, developer-only
+# implementation details. Do not rely on them in production run cards.
 # process.max_color_sectors: Optional cap on generated color sectors. Default null.
 max_color_sectors = 32
 # process.reference_color_order: Optional external-leg ordering used to identify

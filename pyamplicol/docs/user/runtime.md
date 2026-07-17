@@ -128,10 +128,13 @@ helicity selectors and reject color-flow selectors.
 
 ## Precision And Capabilities
 
-Precision 16 executes the direct SymJIT f64 application through Rusticol. It
-does not import Symbolica or consult Symbolica's runtime license state. This
-Symbolica-independent path is shared by Python, Rust, C++, and Fortran and uses
-the separate MIT-licensed SymJIT runtime.
+Precision 16 uses Rusticol's Symbolica-independent f64 runtime. For the default
+JIT backend, Rusticol loads the embedded direct SymJIT application through the
+separate MIT-licensed SymJIT runtime. ASM and C++ backends instead load their
+compiled evaluator library when the artifact target triple matches the runtime
+and every recorded CPU feature is available. Neither f64 path imports
+Symbolica, reads its license state, or applies its generation-time resource
+clamp. Python, Rust, C++, and Fortran share these f64 capabilities.
 
 Other positive Python precision requests lazily load retained Symbolica
 evaluator states and replay the recorded stage-local plan. Decimal input keeps
@@ -140,10 +143,11 @@ zeros; requesting more arithmetic digits does not reconstruct input information
 or certify that many physically accurate digits. Results are rounded to the
 requested decimal precision after guard-digit evaluation.
 
-ASM and C++ evaluator artifacts advertise a Symbolica-backed runtime
-capability. The lightweight native SDK rejects unsupported capabilities before
-partial loading. Rust, C++, and Fortran expose f64 only and reject precision
-requests other than 16.
+Direct SymJIT applications are lowered to native code when loaded. ASM/C++
+artifacts contain target-specific native libraries and fail compatibility
+validation before executable state is loaded when the target or required CPU
+features do not match. Rust, C++, and Fortran expose f64 only and reject
+precision requests other than 16.
 
 ## Benchmarking
 
@@ -162,10 +166,13 @@ The direct equivalent is:
 
 ```console
 pyamplicol benchmark artifacts/pp_zjj \
-  --set evaluation.process=p_p_to_z_j_j_4 \
+  --process p_p_to_z_j_j_4 \
   --momenta data/pp_zjj_momenta.json \
   --target-runtime 1.0
 ```
+
+`--process` also accepts the exact concrete expression, for example
+`--process 'd d~ > z g g'`.
 
 ## Artifact Trust
 
@@ -184,4 +191,4 @@ decoder.
 Parameter and warning state belongs to one runtime handle. Do not call the same
 mutable handle concurrently. Independent handles may run in separate threads.
 Symbolica's restricted-generation clamp does not limit independent handles
-executing direct JIT f64 artifacts.
+executing direct SymJIT or target-compatible ASM/C++ f64 artifacts.

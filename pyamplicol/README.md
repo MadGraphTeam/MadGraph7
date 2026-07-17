@@ -184,10 +184,11 @@ from pyamplicol.config import resolve_config
 resolution = resolve_config("generate_pp_zjj_from_ufo_sm.toml")
 config = resolution.effective
 
-# Load and compile the external Standard Model selected in the card. The cache
-# avoids repeating this model-preparation step on later runs.
-model = ModelSource.from_path(config.model.source).compile(
-    use_cache=config.model.cache
+# Preserve the card's named or file-based restriction while compiling the
+# selected model. The configured cache avoids repeating this preparation.
+model = ModelSource.from_config(config.model).compile(
+    cache_dir=config.model.cache_dir,
+    use_cache=config.model.cache,
 )
 
 # Convert each human-readable process declaration from the card into a typed
@@ -214,6 +215,7 @@ result = generator.generate(
     processes,
     config.generation.output,
     model=model,
+    mode=config.generation.mode,
 )
 print(result.output)
 ```
@@ -245,11 +247,12 @@ At NLC/full, color is contracted and the final dimension has length one.
 Selectors use stable IDs from `runtime.physics`; color-flow selection is valid
 only for leading-color artifacts.
 
-The default JIT backend stores a direct SymJIT application. Rusticol evaluates
-that payload at f64 precision without importing Symbolica or consulting its
-runtime license state. This Symbolica-independent runtime uses SymJIT, a
-separate MIT-licensed dependency. Python precision requests other than 16 use
-retained Symbolica evaluator state. Native APIs are f64-only.
+At f64 precision, Rusticol executes either the default direct SymJIT
+application or a target-compatible ASM/C++ compiled evaluator without importing
+Symbolica or consulting its runtime license state. SymJIT is a separate
+MIT-licensed dependency. Compiled payloads must match the runtime target triple,
+and every recorded CPU feature must be available. Python precision requests
+other than 16 use retained Symbolica evaluator state. Native APIs are f64-only.
 
 Process artifacts are executable inputs. Manifest hashes detect accidental
 modification but do not establish who produced an artifact. Generate artifacts
@@ -285,16 +288,18 @@ make -C artifacts/pp_zjj/API/fortran run \
   ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
 ```
 
-The generated Rust program is a dependency-free Rust 2021 source file that
-links the installed Rusticol C ABI with `rusticol-config --rustflags`. It does
-not require a separately published Rust crate. Rust, C++, and Fortran reject
-`--precision` values other than 16; use the generated Python driver for
-precision-controlled Symbolica evaluation.
+The generated Rust 2021 program includes the wheel-shipped safe wrapper located
+by `rusticol-config --rust-source` and links the installed Rusticol C ABI with
+`rusticol-config --rustflags`. Its Makefile uses `rustc`; `rust-script` is an
+optional convenience target, not a runtime requirement. No separately
+published Rust crate is needed. Rust, C++, and Fortran reject `--precision`
+values other than 16; use the generated Python driver for precision-controlled
+Symbolica evaluation.
 
 Native build products are placed in a sibling `.pyamplicol-api-build/`
 directory, outside the integrity-checked artifact. The installed wheel exposes
-headers, the Fortran module source, the static library, and target-specific
-link arguments through `rusticol-config`.
+the safe Rust source wrapper, C/C++ headers, Fortran module source, static
+library, and target-specific link arguments through `rusticol-config`.
 
 ## Models And Color
 
@@ -308,15 +313,10 @@ separately arranged workspace.
 The built-in SM remains available as a compatibility model with its legacy
 aliases, isolated under `pyamplicol.models.builtin`. Generic external-model
 behavior is driven by compiled particle, color, Lorentz, propagator, coupling,
-anti-relation, and source-orientation metadata. External models do not inherit
+anti-relation, source, and crossing metadata. External models do not inherit
 the complete built-in alias table; define multiparticles explicitly when a
-reproducible expansion matters. Typed source, crossing, and propagator records
-are authoritative across Python generation and Rusticol execution. The
-remaining `0.1.0` model-hardening gates cover contraction and tensor-order
-records and adversarial relabeled or reordered UFO fixtures, rather than
-additional built-in particle tables. Default and model-supplied UFO
-propagators are classified from normalized expressions, independently of UFO
-object names.
+reproducible expansion matters. Release-internal model-hardening gates are
+tracked in [Release Status](docs/user/release-status.md).
 
 `color.accuracy = "lc"` stores every physical leading-color flow. `"nlc"` and
 `"full"` currently mean the supported contracted SU(3) color calculations,
@@ -343,8 +343,9 @@ export SYMBOLICA_LICENSE='issued-key'
 
 `--no-symbolica-suggestion`, `[symbolica] suggest_license = false`, and JSON
 output suppress the acquisition reminder and startup banner. These generation
-limits do not apply to independent Rusticol handles executing direct JIT f64
-artifacts. See the [Symbolica Licensing](docs/user/symbolica.md) guide and the
+limits do not apply to independent Rusticol handles executing direct SymJIT or
+target-compatible ASM/C++ f64 artifacts. See the
+[Symbolica Licensing](docs/user/symbolica.md) guide and the
 [current upstream terms](https://symbolica.io/docs/get_started.html).
 
 ## Documentation And License

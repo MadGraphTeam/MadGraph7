@@ -38,6 +38,12 @@ def _json_complex(value: complex) -> dict[str, float]:
     return {"real": value.real, "imag": value.imag}
 
 
+def _flatten(values: Any) -> list[complex]:
+    if isinstance(values, (list, tuple)):
+        return [item for value in values for item in _flatten(value)]
+    return [complex(values)]
+
+
 def _parameter_overrides(values: list[str]) -> dict[str, complex]:
     result: dict[str, complex] = {}
     for value in values:
@@ -66,13 +72,13 @@ def main() -> int:
         "helicities": args.helicity,
         "color_flows": args.color_flow,
     }
-    totals = runtime.evaluate(momenta, **selectors)
+    compatibility_totals = runtime.evaluate(momenta, **selectors)
     resolved = runtime.evaluate_resolved(momenta, **selectors)
     resolved_totals = resolved.total()
-    if len(totals) != len(resolved_totals) or any(
+    if len(compatibility_totals) != len(resolved_totals) or any(
         not math.isclose(total.real, check.real, rel_tol=1e-12, abs_tol=1e-15)
         or not math.isclose(total.imag, check.imag, rel_tol=1e-12, abs_tol=1e-15)
-        for total, check in zip(totals, resolved_totals, strict=True)
+        for total, check in zip(compatibility_totals, resolved_totals, strict=True)
     ):
         raise RuntimeError("resolved components do not reproduce summed values")
 
@@ -82,7 +88,12 @@ def main() -> int:
                 "color_accuracy": resolved.color_accuracy,
                 "helicity_ids": resolved.helicity_ids,
                 "color_flow_ids": resolved.color_flow_ids,
-                "totals": [_json_complex(value) for value in totals],
+                "shape": list(resolved.shape),
+                "values": [_json_complex(value) for value in _flatten(resolved.values)],
+                "resolved_sum": [_json_complex(value) for value in resolved_totals],
+                "compatibility_total": [
+                    _json_complex(value) for value in compatibility_totals
+                ],
             },
             indent=2,
         )

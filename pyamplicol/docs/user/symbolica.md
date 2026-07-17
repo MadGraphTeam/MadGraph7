@@ -31,7 +31,7 @@ suggest_license = false
 
 JSON CLI output also suppresses the banner so stdout remains machine-readable.
 
-## Symbolica-Independent SymJIT f64 Runtime
+## Symbolica-Independent f64 Runtime
 
 The default JIT backend embeds a direct SymJIT application in the schema-v3
 artifact. Rusticol loads and evaluates that payload at f64 precision without
@@ -40,15 +40,22 @@ generation-time resource clamp. SymJIT is a separate MIT-licensed runtime
 dependency. This runtime capability does not change the terms governing
 Symbolica use during model compilation or process generation.
 
+Artifacts generated with the ASM or C++ evaluator backend use the same
+Symbolica-independent f64 Rusticol interface. They load a precompiled evaluator
+library instead of a SymJIT application and are executable only when the
+artifact target triple matches the runtime and every recorded CPU feature is
+available. Rusticol rejects incompatible target metadata before loading the
+library. Generating any of these evaluator payloads still uses Symbolica.
+
 This is the deployment path for the Python, Rust, C++, and Fortran APIs. Rust,
 C++, and Fortran are f64-only. Independent runtime handles can execute
 concurrently even when the artifact was generated in restricted mode; one
 mutable handle itself must not be called concurrently.
 
-The distinction is capability-based. Python precision requests other than 16
-load retained Symbolica evaluator state. Artifacts generated with the ASM or
-C++ evaluator backends also retain an explicit Symbolica runtime requirement
-and are rejected by the lightweight native SDK.
+The distinction is precision- and payload-based. Python precision requests
+other than 16 load retained Symbolica evaluator state and therefore require the
+Symbolica Python package and applicable runtime license. The Rust, C++, and
+Fortran APIs expose only the Symbolica-independent f64 path.
 
 ## Request A License
 

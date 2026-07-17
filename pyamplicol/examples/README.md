@@ -71,6 +71,10 @@ python python/runtime_evaluation.py \
   --set-parameter aS=0.1165
 ```
 
+The JSON output includes the resolved tensor `shape`, flattened row-major
+`values`, its explicit `resolved_sum`, and the optimized
+`compatibility_total`, in addition to the selected physics-axis IDs.
+
 Benchmark the selected process:
 
 ```console
@@ -103,11 +107,15 @@ make -C artifacts/pp_zjj/API/fortran run \
   ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
 ```
 
-The generated Rust source is compiled directly with `rustc` and
-`rusticol-config --rustflags`; no Rust crate dependency is needed. Rust, C++,
-and Fortran support f64 (`--precision 16`) only. The Python driver also exposes
-precision-controlled Symbolica evaluation when the artifact capability allows
-it.
+The generated Rust source includes the wheel-owned safe wrapper located by
+`rusticol-config --rust-source` and is compiled directly with `rustc` plus
+`rusticol-config --rustflags`; no Rust crate dependency is needed. The Makefile
+also has an optional `run-script` target for separately installed
+`rust-script`, using `rusticol-config --cargo-rustflags`. Rust, C++, and Fortran
+support f64 (`--precision 16`) only. At f64, direct SymJIT and target-compatible
+ASM/C++ artifacts run without a Symbolica runtime. The Python driver also
+exposes precision-controlled Symbolica evaluation when retained evaluator state
+is available.
 
 ## Hand-Written Native Examples
 
