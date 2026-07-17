@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-# Fully summed evaluation of one external-SM pp -> Zjj subprocess.
+# Fully summed evaluation of one UFO-SM pp -> Zjj subprocess.
 
 schema_version = 1
 action = "evaluate"

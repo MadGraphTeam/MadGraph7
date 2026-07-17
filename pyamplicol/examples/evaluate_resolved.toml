@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-# Helicity/color-resolved evaluation of one external-SM pp -> Zjj subprocess.
+# Helicity/color-resolved evaluation of one UFO-SM pp -> Zjj subprocess.
 # Empty selector arrays mean all physical IDs stored in the artifact.
 
 schema_version = 1

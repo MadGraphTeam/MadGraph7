@@ -73,7 +73,7 @@ fails closed while the release dependency contract below remains unverified.
 - Built-in SM compatibility code is isolated under `models.builtin`, while
   shared generation uses structural particle and color roles. Exact normalized
   color/Lorentz certificates recover built-in graph topology across the
-  documented external-SM `n<=4` family ladder. Typed source, crossing, and
+  documented UFO-SM `n<=4` family ladder. Typed source, crossing, and
   propagator records drive wavefunctions, crossing phases, mass class, gauge,
   numerator/denominator, auxiliary, and Goldstone policy without SM-PDG
   fallbacks. Runtime cards may vary nonzero masses but must regenerate an

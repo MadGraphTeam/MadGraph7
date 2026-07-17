@@ -32,7 +32,7 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
 | `benchmark.toml` | Short benchmark of the same selected subprocess |
-| `process_set_mixed_multiplicity.toml` | Named external-SM 2-to-2 and 2-to-3 requests |
+| `process_set_mixed_multiplicity.toml` | Named UFO-SM 2-to-2 and 2-to-3 requests |
 | `external_ufo_sm.toml` | Trusted UFO execution path |
 | `external_json_scalars.toml` | Scalar contact model and repeated particles |
 | `external_json_scalar_gravity.toml` | Proven massless spin-2 model path |

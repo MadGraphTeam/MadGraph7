@@ -96,7 +96,7 @@ p = ["d", "d~", "g"]
 j = ["d", "d~", "g"]
 ```
 
-The external SM uses its declared particle names when parsing generation
+The UFO SM uses its declared particle names when parsing generation
 requests. The current generation filter retains 19 concrete processes. A
 runtime may select one through the concrete expression recorded by artifact
 inspection or a stable name such as `p_p_to_z_j_j_4`; neither is an output
