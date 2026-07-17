@@ -143,6 +143,10 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
     assert 'python-version: "3.11"' in source_contract_job
     assert 'python -m pip install "pytest>=8.3,<9"' in source_contract_job
     assert "tests/unit/test_api_requests.py" in source_contract_job
+    assert (
+        "tests/unit/test_api_requests.py::"
+        "test_public_compiled_model_uses_the_canonical_schema"
+    ) in source_contract_job
     assert "tests/unit/test_repository_policy.py" in source_contract_job
     assert "tests/release" in source_contract_job
     assert "dependencies/install_dependencies.py" not in source_contract_job

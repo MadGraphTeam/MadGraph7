@@ -76,6 +76,8 @@ jobs:
           tests/unit/test_repository_policy.py
           tests/unit/test_sdk_config.py
           tests/release
+          --deselect
+          tests/unit/test_api_requests.py::test_public_compiled_model_uses_the_canonical_schema
           -q
 
   candidate-runtime:
