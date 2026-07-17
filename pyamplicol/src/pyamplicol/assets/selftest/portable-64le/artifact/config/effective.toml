@@ -79,4 +79,4 @@ progress = "log"
 log_level = "info"
 
 [symbolica]
-suggest_license = true
+suggest_license = false
