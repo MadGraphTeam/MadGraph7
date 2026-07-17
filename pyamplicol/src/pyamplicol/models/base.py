@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from ._physics_ir import (
     ContractionIR,
@@ -752,7 +752,7 @@ class Model:
         left_chirality: int = 0,
         right_chirality: int = 0,
     ) -> ContractionIR | None:
-        """Return the exact contraction for two concrete current states."""
+        """Return an explicitly installed contraction for two current states."""
 
         key = (
             int(left_particle_id),
@@ -760,136 +760,31 @@ class Model:
             int(right_particle_id),
             int(right_chirality),
         )
-        cache = self.__dict__.setdefault("_direct_contraction_ir_by_state", {})
-        if key in cache:
-            return cache[key]
-        result = self._build_direct_contraction_ir(
-            key[0],
-            key[2],
-            left_chirality=key[1],
-            right_chirality=key[3],
-        )
-        cache[key] = result
-        return result
-
-    def _build_direct_contraction_ir(
-        self,
-        left_particle_id: int,
-        right_particle_id: int,
-        *,
-        left_chirality: int,
-        right_chirality: int,
-    ) -> ContractionIR | None:
-        try:
-            if self.anti_particle(left_particle_id) != right_particle_id:
-                return None
-            left_dimension = self.current_dimension(
-                left_particle_id,
-                left_chirality,
-            )
-            right_dimension = self.current_dimension(
-                right_particle_id,
-                right_chirality,
-            )
-        except (KeyError, NotImplementedError, TypeError, ValueError):
-            return None
-        if left_dimension != right_dimension:
-            return None
-
-        name: str
-        coefficients: tuple[tuple[float, float], ...]
-        chirality_relation: Literal["any", "equal", "opposite"] = "any"
-        metric_signature: str | None = None
-        if left_dimension == 1:
-            name = "scalar"
-            coefficients = ((1.0, 0.0),)
-        elif left_dimension == 2:
-            if left_chirality != -right_chirality:
-                return None
-            name = "weyl"
-            coefficients = ((1.0, 0.0), (1.0, 0.0))
-            chirality_relation = "opposite"
-        elif left_dimension == 4:
-            try:
-                left_is_fermion = bool(self.is_fermion(left_particle_id))
-                right_is_fermion = bool(self.is_fermion(right_particle_id))
-            except (KeyError, NotImplementedError, TypeError, ValueError):
-                return None
-            if left_is_fermion != right_is_fermion:
-                return None
-            if left_is_fermion:
-                name = "dirac"
-                coefficients = ((1.0, 0.0),) * 4
-            else:
-                name = "lorentz"
-                coefficients = (
-                    (1.0, 0.0),
-                    (-1.0, 0.0),
-                    (-1.0, 0.0),
-                    (-1.0, 0.0),
-                )
-                metric_signature = "mostly-minus"
-        elif left_dimension == 6:
-            name = "antisymmetric-tensor"
-            coefficients = ((1.0, 0.0),) * 6
-        else:
-            return None
-
-        return ContractionIR(
-            name=name,
-            left_basis=self._current_basis(left_particle_id, left_chirality),
-            right_basis=self._current_basis(right_particle_id, right_chirality),
-            coefficients=coefficients,
-            chirality_relation=chirality_relation,
-            metric_signature=metric_signature,
-        )
+        return self._direct_contraction_ir_by_state.get(key)
 
     def closure_contraction_ir(
         self,
         particle_id: int,
         chirality: int = 0,
     ) -> ContractionIR | None:
-        """Return the scalar projection used to close one vertex result."""
+        """Return an explicitly installed one-current closure projection."""
 
         key = (int(particle_id), int(chirality))
-        cache = self.__dict__.setdefault("_closure_contraction_ir_by_state", {})
-        if key in cache:
-            return cache[key]
-        try:
-            dimension = self.current_dimension(key[0], key[1])
-        except (KeyError, NotImplementedError, TypeError, ValueError):
-            result = None
-        else:
-            result = (
-                ContractionIR(
-                    name="scalar",
-                    left_basis="scalar",
-                    right_basis="scalar",
-                    coefficients=((1.0, 0.0),),
-                    chirality_relation="any",
-                    metric_signature=None,
-                )
-                if dimension == 1
-                else None
-            )
-        cache[key] = result
-        return result
+        return self._closure_contraction_ir_by_state.get(key)
 
     def direct_contraction_possible(
         self,
         left_particle_id: int,
         right_particle_id: int,
     ) -> bool:
-        """Coarsely over-approximate direct closure for reachability pruning."""
+        """Over-approximate closure using only declared contraction records."""
 
-        try:
-            if self.anti_particle(left_particle_id) != right_particle_id:
-                return False
-            left_dimension = self.dimension(left_particle_id)
-            right_dimension = self.dimension(right_particle_id)
-        except (KeyError, NotImplementedError, TypeError, ValueError):
-            return False
-        return left_dimension == right_dimension and left_dimension in {1, 2, 4, 6}
+        left = int(left_particle_id)
+        right = int(right_particle_id)
+        return any(
+            value is not None and key[0] == left and key[2] == right
+            for key, value in self._direct_contraction_ir_by_state.items()
+        )
 
     def quantum_number_flow(self, particle_id: int) -> QuantumNumberFlow:
         del particle_id

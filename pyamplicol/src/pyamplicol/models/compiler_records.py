@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from typing import cast
 
 from .._internal.physics.symbols import ModelSymbolRegistry
 from . import compiler_symbolica as _sym
@@ -20,6 +21,8 @@ from .contracts import (
     CompiledPropagatorRecord,
     validate_quantum_number_flow,
 )
+
+_COMPILER_OWNED_PARTICLE_FIELDS = frozenset({"auxiliary_kind", "component_dimension"})
 
 
 def cast_int_tuple3(value: object) -> tuple[int, int, int]:
@@ -62,8 +65,20 @@ def _parameter(
     )
 
 
-def _particle(item: Mapping[str, object]) -> CompiledParticleRecord:
+def _particle(
+    item: Mapping[str, object],
+    *,
+    trusted_compiler_metadata: bool = False,
+) -> CompiledParticleRecord:
     name = str(item["name"])
+    if not trusted_compiler_metadata:
+        supplied_metadata = sorted(_COMPILER_OWNED_PARTICLE_FIELDS.intersection(item))
+        if supplied_metadata:
+            fields = ", ".join(supplied_metadata)
+            raise ValueError(
+                f"particle {name!r} supplies compiler-owned metadata in "
+                f"untrusted input: {fields}"
+            )
     charge = float(item.get("charge", 0.0))
     quantum_numbers = item.get("quantum_numbers")
     if quantum_numbers is None:
@@ -85,6 +100,16 @@ def _particle(item: Mapping[str, object]) -> CompiledParticleRecord:
         propagating=bool(item.get("propagating", True)),
         goldstoneboson=bool(item.get("goldstoneboson", False)),
         propagator=_optional_string(item.get("propagator")),
+        component_dimension=(
+            cast(int | None, item.get("component_dimension"))
+            if trusted_compiler_metadata
+            else None
+        ),
+        auxiliary_kind=(
+            _optional_string(item.get("auxiliary_kind"))
+            if trusted_compiler_metadata
+            else None
+        ),
     )
 
 

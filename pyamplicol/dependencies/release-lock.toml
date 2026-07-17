@@ -11,7 +11,7 @@ license = "0BSD"
 [abis]
 python_api = 1
 toml = 1
-compiled_model = 7
+compiled_model = 8
 process_artifact = 3
 runtime_physics = 1
 c_abi = 1

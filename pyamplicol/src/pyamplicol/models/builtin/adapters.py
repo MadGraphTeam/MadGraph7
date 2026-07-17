@@ -10,9 +10,7 @@ from .model import BuiltinSMModel
 from .process_catalog import PDGS
 
 
-def build_model_payload() -> tuple[
-    dict[str, object], dict[str, tuple[float, float]]
-]:
+def build_model_payload() -> tuple[dict[str, object], dict[str, tuple[float, float]]]:
     """Return the canonical compiler payload for the built-in SM."""
 
     model = BuiltinSMModel()
@@ -62,7 +60,9 @@ def build_model_payload() -> tuple[
                     "y_charge": 0,
                     "propagating": particle.spin >= 0,
                     "goldstoneboson": False,
-                    "propagator": f"builtin_prop_{pdg}",
+                    "propagator": None,
+                    "component_dimension": particle.dimension,
+                    "auxiliary_kind": model.auxiliary_kind(pdg),
                 }
             )
     return (
@@ -106,6 +106,35 @@ def build_model_payload() -> tuple[
             ],
             "functions": [],
             "form_factors": [],
+            "direct_contractions": [
+                {
+                    "left_particle": _particle_name(left_particle),
+                    "left_chirality": left_chirality,
+                    "right_particle": _particle_name(right_particle),
+                    "right_chirality": right_chirality,
+                    "contraction_ir": contraction_ir.to_json_dict(),
+                }
+                for (
+                    left_particle,
+                    left_chirality,
+                    right_particle,
+                    right_chirality,
+                ), contraction_ir in sorted(
+                    model._direct_contraction_ir_by_state.items()
+                )
+                if contraction_ir is not None
+            ],
+            "closure_contractions": [
+                {
+                    "particle": _particle_name(particle),
+                    "chirality": chirality,
+                    "contraction_ir": contraction_ir.to_json_dict(),
+                }
+                for (particle, chirality), contraction_ir in sorted(
+                    model._closure_contraction_ir_by_state.items()
+                )
+                if contraction_ir is not None
+            ],
             "builtin_model": True,
         },
         parameters,

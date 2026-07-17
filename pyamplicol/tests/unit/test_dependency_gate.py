@@ -28,10 +28,10 @@ def test_release_gate_reports_only_the_true_upstream_blocker_offline() -> None:
     assert codes == ["symbolica-unverified"]
 
 
-def test_release_contract_is_lean_exact_and_schema_7() -> None:
+def test_release_contract_is_lean_exact_and_schema_8() -> None:
     module = _module()
     lock = module._load_lock()
-    assert lock["abis"]["compiled_model"] == 7
+    assert lock["abis"]["compiled_model"] == 8
     assert "python_runtime_lock" not in lock
     assert "legal_status" not in lock
     assert module._locked_python_dependencies(lock) == (
@@ -80,8 +80,7 @@ def test_release_cargo_lock_rejects_candidate_path_resolution(
     contaminated.write_text(text.replace(marker, marker.rsplit("source", 1)[0], 1))
     monkeypatch.setattr(module, "CARGO_LOCK_PATH", contaminated)
     codes = {
-        issue.code
-        for issue in module._release_cargo_lock_issues(module._load_lock())
+        issue.code for issue in module._release_cargo_lock_issues(module._load_lock())
     }
     assert codes == {"release-cargo-nonregistry", "release-cargo-pin"}
 
@@ -118,8 +117,7 @@ def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
                 "schema_version": 1,
                 "publishable": False,
                 "sources": {
-                    name: {"revision": revision}
-                    for name, revision in revisions.items()
+                    name: {"revision": revision} for name, revision in revisions.items()
                 },
             }
         ),
@@ -130,8 +128,7 @@ def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
         encoding="utf-8",
     )
     cargo_config.write_text(
-        "[patch.crates-io]\n"
-        f'symbolica = {{ path = "{checkouts / "symbolica"}" }}\n',
+        f'[patch.crates-io]\nsymbolica = {{ path = "{checkouts / "symbolica"}" }}\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(module, "STATE_PATH", state_path)

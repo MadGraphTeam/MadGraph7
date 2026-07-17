@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -10,10 +11,13 @@ import pytest
 import pyamplicol
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol.models import compiler_symbolica as _sym
+from pyamplicol.models._physics_ir import ContractionIR
 from pyamplicol.models.contracts import (
     DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
     MODEL_SUPPLIED_PROPAGATOR_SOURCE,
+    CompiledClosureContractionRecord,
     CompiledCouplingRecord,
+    CompiledDirectContractionRecord,
     CompiledModelIR,
     CompiledParticleRecord,
 )
@@ -193,6 +197,8 @@ def test_compiled_model_rejects_process_global_ufo_scalar_symbols() -> None:
             propagators=(),
             vertex_terms=(),
             oriented_kernels=(),
+            direct_contractions=(),
+            closure_contractions=(),
         )
 
 
@@ -223,6 +229,8 @@ def test_compiled_model_rejects_non_involutive_particle_identity() -> None:
             propagators=(),
             vertex_terms=(),
             oriented_kernels=(),
+            direct_contractions=(),
+            closure_contractions=(),
         )
 
 
@@ -251,6 +259,8 @@ def test_compiled_particle_role_metadata_round_trips() -> None:
         propagators=(),
         vertex_terms=(),
         oriented_kernels=(),
+        direct_contractions=(),
+        closure_contractions=(),
     )
 
     restored = CompiledModelIR.from_dict(model.to_dict()).particles[0]
@@ -260,6 +270,159 @@ def test_compiled_particle_role_metadata_round_trips() -> None:
     assert restored.color_role == "adjoint"
     assert restored.self_conjugate is True
     assert restored.source_orientation == "self-conjugate"
+
+
+def _compiled_scalar_contraction_model() -> CompiledModelIR:
+    particle = CompiledParticleRecord(
+        name="phi",
+        antiname="phi_bar",
+        pdg_code=700_020,
+        spin=1,
+        color=1,
+        mass="ZERO",
+        width="ZERO",
+        charge=1.0,
+        quantum_numbers=(("electric_charge", "1"),),
+        ghost_number=0,
+        propagating=True,
+        goldstoneboson=False,
+        propagator=None,
+    )
+    antiparticle = CompiledParticleRecord(
+        name="phi_bar",
+        antiname="phi",
+        pdg_code=-700_020,
+        spin=1,
+        color=1,
+        mass="ZERO",
+        width="ZERO",
+        charge=-1.0,
+        quantum_numbers=(("electric_charge", "-1"),),
+        ghost_number=0,
+        propagating=True,
+        goldstoneboson=False,
+        propagator=None,
+    )
+    scalar = ContractionIR(
+        name="scalar",
+        left_basis="scalar",
+        right_basis="scalar",
+        coefficients=((1.0, 0.0),),
+    )
+    return CompiledModelIR(
+        name="contraction-round-trip",
+        orders=(),
+        parameters=(),
+        particles=(particle, antiparticle),
+        couplings=(),
+        propagators=(),
+        vertex_terms=(),
+        oriented_kernels=(),
+        direct_contractions=(
+            CompiledDirectContractionRecord(
+                left_particle="phi",
+                left_chirality=0,
+                right_particle="phi_bar",
+                right_chirality=0,
+                contraction_ir=scalar,
+            ),
+        ),
+        closure_contractions=(
+            CompiledClosureContractionRecord(
+                particle="phi",
+                chirality=0,
+                contraction_ir=scalar,
+            ),
+        ),
+    )
+
+
+def test_compiled_contraction_records_round_trip_strictly() -> None:
+    model = _compiled_scalar_contraction_model()
+
+    restored = CompiledModelIR.from_dict(model.to_dict())
+
+    assert restored.direct_contractions == model.direct_contractions
+    assert restored.closure_contractions == model.closure_contractions
+
+    missing = model.to_dict()
+    del missing["direct_contractions"]
+    with pytest.raises(
+        ValueError,
+        match="missing required field 'direct_contractions'",
+    ):
+        CompiledModelIR.from_dict(missing)
+
+    unknown = model.to_dict()
+    direct = unknown["direct_contractions"]
+    assert isinstance(direct, list)
+    assert isinstance(direct[0], dict)
+    direct[0]["inferred_from_dimension"] = True
+    with pytest.raises(ValueError, match="unknown fields"):
+        CompiledModelIR.from_dict(unknown)
+
+
+def test_compiled_contraction_records_reject_duplicate_and_missing_selectors() -> None:
+    model = _compiled_scalar_contraction_model()
+    duplicate = model.to_dict()
+    direct = duplicate["direct_contractions"]
+    assert isinstance(direct, list)
+    direct.append(deepcopy(direct[0]))
+    with pytest.raises(ValueError, match="duplicate direct contraction selector"):
+        CompiledModelIR.from_dict(duplicate)
+
+    missing_particle = model.to_dict()
+    direct = missing_particle["direct_contractions"]
+    assert isinstance(direct, list)
+    assert isinstance(direct[0], dict)
+    direct[0]["right_particle"] = "absent"
+    with pytest.raises(ValueError, match="absent particle 'absent'"):
+        CompiledModelIR.from_dict(missing_particle)
+
+
+def test_compiled_contraction_records_reject_invalid_physics_contracts() -> None:
+    model = _compiled_scalar_contraction_model()
+
+    not_antiparticles = model.to_dict()
+    direct = not_antiparticles["direct_contractions"]
+    assert isinstance(direct, list)
+    assert isinstance(direct[0], dict)
+    direct[0]["right_particle"] = "phi"
+    with pytest.raises(ValueError, match="are not an antiparticle pair"):
+        CompiledModelIR.from_dict(not_antiparticles)
+
+    wrong_dimension = model.to_dict()
+    direct = wrong_dimension["direct_contractions"]
+    assert isinstance(direct, list)
+    assert isinstance(direct[0], dict)
+    contraction = direct[0]["contraction_ir"]
+    assert isinstance(contraction, dict)
+    contraction["coefficients"] = [[1.0, 0.0], [1.0, 0.0]]
+    with pytest.raises(
+        ValueError,
+        match="2 coefficients for current dimensions 1 and 1",
+    ):
+        CompiledModelIR.from_dict(wrong_dimension)
+
+    wrong_chirality = model.to_dict()
+    direct = wrong_chirality["direct_contractions"]
+    assert isinstance(direct, list)
+    assert isinstance(direct[0], dict)
+    contraction = direct[0]["contraction_ir"]
+    assert isinstance(contraction, dict)
+    contraction["chirality_relation"] = "opposite"
+    with pytest.raises(ValueError, match="violates opposite chirality relation"):
+        CompiledModelIR.from_dict(wrong_chirality)
+
+    non_scalar_closure = model.to_dict()
+    closure = non_scalar_closure["closure_contractions"]
+    assert isinstance(closure, list)
+    assert isinstance(closure[0], dict)
+    contraction = closure[0]["contraction_ir"]
+    assert isinstance(contraction, dict)
+    contraction["name"] = "not-a-scalar-projection"
+    with pytest.raises(ValueError, match="one-component scalar projection"):
+        CompiledModelIR.from_dict(non_scalar_closure)
 
 
 def test_model_cache_inputs_are_content_based(tmp_path: Path) -> None:

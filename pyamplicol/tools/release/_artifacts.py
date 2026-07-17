@@ -175,6 +175,8 @@ _REQUIRED_SELFTEST_API_PAYLOADS = {
     "API/rust/Makefile",
     "API/rust/check_standalone.rs",
 }
+_COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
+_BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
 _ALLOWED_REPAIR_ROOTS = {"pyamplicol.libs"}
 _FORBIDDEN_SDIST_MEMBERS = {
     ".cargo/config.toml",
@@ -579,6 +581,62 @@ def _json_object(entries: dict[str, bytes], name: str) -> dict[str, Any]:
     return payload
 
 
+def _wheel_model_compiler_digest(entries: dict[str, bytes]) -> str:
+    package_root = PurePosixPath("pyamplicol")
+    model_root = package_root / "models"
+    physics_root = package_root / "_internal" / "physics"
+    core_syntax = package_root / "processes" / "core_syntax.py"
+    required = {model_root / "loading.py", core_syntax}
+    missing = sorted(
+        path.as_posix() for path in required if path.as_posix() not in entries
+    )
+    if missing:
+        raise ArtifactError(
+            "wheel is missing model compiler fingerprint sources: " + ", ".join(missing)
+        )
+
+    source_names = []
+    for name in entries:
+        path = PurePosixPath(name)
+        if path == core_syntax or (
+            path.suffix == ".py" and path.parent in {model_root, physics_root}
+        ):
+            source_names.append(name)
+
+    digest = hashlib.sha256()
+    for name in sorted(source_names):
+        relative = PurePosixPath(name).relative_to(package_root).as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(entries[name])
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _wheel_builtin_model_source_digest(entries: dict[str, bytes]) -> str:
+    builtin_root = PurePosixPath("pyamplicol/models/builtin")
+    adapters = builtin_root / "adapters.py"
+    if adapters.as_posix() not in entries:
+        raise ArtifactError(
+            f"wheel is missing built-in model fingerprint source: {adapters.as_posix()}"
+        )
+    source_names = sorted(
+        name
+        for name in entries
+        if (path := PurePosixPath(name)).parent == builtin_root and path.suffix == ".py"
+    )
+    inner = hashlib.sha256()
+    for name in source_names:
+        path = PurePosixPath(name)
+        inner.update(path.name.encode("utf-8") + b"\0")
+        inner.update(entries[name])
+        inner.update(b"\0")
+
+    outer = hashlib.sha256()
+    outer.update(_BUILTIN_MODEL_SOURCE_KIND.encode("utf-8") + b"\0")
+    outer.update(inner.hexdigest().encode("ascii"))
+    return outer.hexdigest()
+
+
 def _sanitized_native_bytes(data: bytes, *, allow_local_rustup: bool) -> bytes:
     scanned = re.sub(
         rb"/rustc/[0-9a-f]+/library/std/src/\.\./\.\./backtrace/",
@@ -771,10 +829,54 @@ def _validate_selftest_fixture(
             "wheel self-test producer/model metadata does not match release "
             f"compiled-model schema {expected_compiled_model_schema}"
         )
+    if compiled_model.get("kind") != _COMPILED_MODEL_KIND:
+        raise ArtifactError("wheel self-test compiled model kind is invalid")
     if compiled_model.get("schema_version") != expected_compiled_model_schema:
         raise ArtifactError(
             "wheel self-test compiled model does not match release schema "
             f"{expected_compiled_model_schema}"
+        )
+    compiled_producer = compiled_model.get("producer")
+    compiled_source = compiled_model.get("source")
+    if not isinstance(compiled_producer, dict) or not isinstance(compiled_source, dict):
+        raise ArtifactError(
+            "wheel self-test compiled model provenance metadata is invalid"
+        )
+    model_compiler_version = compiled_model.get("model_compiler_version")
+    producer_model_compiler_version = compiled_producer.get("model_compiler_version")
+    if (
+        not isinstance(model_compiler_version, int)
+        or isinstance(model_compiler_version, bool)
+        or not isinstance(producer_model_compiler_version, int)
+        or isinstance(producer_model_compiler_version, bool)
+        or producer_model_compiler_version != model_compiler_version
+    ):
+        raise ArtifactError(
+            "wheel self-test model compiler version does not match producer"
+        )
+    if (
+        compiled_producer.get("compiled_model_schema_version")
+        != expected_compiled_model_schema
+    ):
+        raise ArtifactError(
+            "wheel self-test compiled model producer does not match release "
+            f"schema {expected_compiled_model_schema}"
+        )
+    if compiled_producer.get("pyamplicol") != version:
+        raise ArtifactError(
+            "wheel self-test compiled model producer does not match wheel version"
+        )
+    if compiled_producer.get("model_compiler_sha256") != _wheel_model_compiler_digest(
+        entries
+    ):
+        raise ArtifactError(
+            "wheel self-test model compiler digest does not match wheel sources"
+        )
+    if compiled_source.get("kind") != _BUILTIN_MODEL_SOURCE_KIND:
+        raise ArtifactError("wheel self-test compiled model source is not built-in-sm")
+    if compiled_source.get("digest") != _wheel_builtin_model_source_digest(entries):
+        raise ArtifactError(
+            "wheel self-test built-in source digest does not match wheel sources"
         )
     tagged_payloads = [
         payload

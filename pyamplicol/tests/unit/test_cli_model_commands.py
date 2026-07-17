@@ -66,6 +66,8 @@ class _CompiledModel:
         propagators=(),
         vertex_terms=(),
         oriented_kernels=(),
+        direct_contractions=(),
+        closure_contractions=(),
     )
 
     def __init__(self) -> None:

@@ -13,7 +13,7 @@ import sys
 import tarfile
 import tomllib
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -32,6 +32,45 @@ _LEGAL_FILES = (
     "licenses/Symbolica.txt",
     "licenses/SymJIT.txt",
 )
+_COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
+_BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
+_MODEL_COMPILER_VERSION = 7
+_MODEL_COMPILER_SOURCE_FILES = {
+    "pyamplicol/models/__init__.py": b'"""Synthetic model package."""\n',
+    "pyamplicol/models/compiler.py": b"def compile_model():\n    return 'compiled'\n",
+    "pyamplicol/models/loading.py": b"MODEL_COMPILER_VERSION = 7\n",
+    "pyamplicol/_internal/physics/__init__.py": b'"""Synthetic physics."""\n',
+    "pyamplicol/_internal/physics/rules.py": b"PROPAGATOR = 'feynman'\n",
+    "pyamplicol/processes/core_syntax.py": b"CORE_SYNTAX_VERSION = 1\n",
+}
+_BUILTIN_MODEL_SOURCE_FILES = {
+    "pyamplicol/models/builtin/__init__.py": b'"""Synthetic built-in model."""\n',
+    "pyamplicol/models/builtin/adapters.py": b"def source_digest():\n    pass\n",
+    "pyamplicol/models/builtin/model.py": b"MODEL_NAME = 'sm'\n",
+}
+
+
+def _model_compiler_digest() -> str:
+    digest = hashlib.sha256()
+    for name, data in sorted(_MODEL_COMPILER_SOURCE_FILES.items()):
+        relative = PurePosixPath(name).relative_to("pyamplicol").as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _builtin_model_source_digest() -> str:
+    inner = hashlib.sha256()
+    for name, data in sorted(_BUILTIN_MODEL_SOURCE_FILES.items()):
+        inner.update(PurePosixPath(name).name.encode("utf-8") + b"\0")
+        inner.update(data)
+        inner.update(b"\0")
+    outer = hashlib.sha256()
+    outer.update(b"built-in-sm\0")
+    outer.update(inner.hexdigest().encode("ascii"))
+    return outer.hexdigest()
+
 
 import _artifacts as artifacts  # noqa: E402
 from _artifacts import (  # noqa: E402
@@ -59,13 +98,59 @@ def _selftest_files(
     *,
     producer_compiled_model_schema: int | None = None,
     model_compiled_model_schema: int | None = None,
+    compiled_model_kind: str = _COMPILED_MODEL_KIND,
+    model_compiler_version: int = _MODEL_COMPILER_VERSION,
+    compiled_model_producer_schema: int | None = None,
+    compiled_model_producer_version: str | None = None,
+    compiled_model_producer_compiler_version: int | None = None,
+    compiled_model_compiler_sha256: str | None = None,
+    compiled_model_source_kind: str = _BUILTIN_MODEL_SOURCE_KIND,
+    compiled_model_source_digest: str | None = None,
     omitted_api_payload: str | None = None,
 ) -> dict[str, bytes]:
     payload_path = "processes/smoke/evaluator.symjit"
     payload = b"synthetic trusted SymJIT application"
     compiled_model_path = "model/compiled-model.json"
     compiled_model = (
-        json.dumps({"schema_version": compiled_model_schema}, sort_keys=True) + "\n"
+        json.dumps(
+            {
+                "kind": compiled_model_kind,
+                "schema_version": compiled_model_schema,
+                "model_compiler_version": model_compiler_version,
+                "source": {
+                    "kind": compiled_model_source_kind,
+                    "digest": (
+                        _builtin_model_source_digest()
+                        if compiled_model_source_digest is None
+                        else compiled_model_source_digest
+                    ),
+                },
+                "producer": {
+                    "pyamplicol": (
+                        version
+                        if compiled_model_producer_version is None
+                        else compiled_model_producer_version
+                    ),
+                    "compiled_model_schema_version": (
+                        _LOCK["abis"]["compiled_model"]
+                        if compiled_model_producer_schema is None
+                        else compiled_model_producer_schema
+                    ),
+                    "model_compiler_version": (
+                        model_compiler_version
+                        if compiled_model_producer_compiler_version is None
+                        else compiled_model_producer_compiler_version
+                    ),
+                    "model_compiler_sha256": (
+                        _model_compiler_digest()
+                        if compiled_model_compiler_sha256 is None
+                        else compiled_model_compiler_sha256
+                    ),
+                },
+            },
+            sort_keys=True,
+        )
+        + "\n"
     ).encode()
     api_payloads = {
         "API/validation_points.dat": (
@@ -214,6 +299,14 @@ def _wheel(
     compiled_model_schema: int = _LOCK["abis"]["compiled_model"],
     producer_compiled_model_schema: int | None = None,
     model_compiled_model_schema: int | None = None,
+    compiled_model_kind: str = _COMPILED_MODEL_KIND,
+    model_compiler_version: int = _MODEL_COMPILER_VERSION,
+    compiled_model_producer_schema: int | None = None,
+    compiled_model_producer_version: str | None = None,
+    compiled_model_producer_compiler_version: int | None = None,
+    compiled_model_compiler_sha256: str | None = None,
+    compiled_model_source_kind: str = _BUILTIN_MODEL_SOURCE_KIND,
+    compiled_model_source_digest: str | None = None,
     omitted_selftest_api_payload: str | None = None,
 ) -> Path:
     if requirement is not None and requirements is not None:
@@ -282,6 +375,8 @@ def _wheel(
             ),
         }
     )
+    files.update(_MODEL_COMPILER_SOURCE_FILES)
+    files.update(_BUILTIN_MODEL_SOURCE_FILES)
     files.update(
         _selftest_files(
             rust_target,
@@ -289,6 +384,16 @@ def _wheel(
             compiled_model_schema,
             producer_compiled_model_schema=producer_compiled_model_schema,
             model_compiled_model_schema=model_compiled_model_schema,
+            compiled_model_kind=compiled_model_kind,
+            model_compiler_version=model_compiler_version,
+            compiled_model_producer_schema=compiled_model_producer_schema,
+            compiled_model_producer_version=compiled_model_producer_version,
+            compiled_model_producer_compiler_version=(
+                compiled_model_producer_compiler_version
+            ),
+            compiled_model_compiler_sha256=compiled_model_compiler_sha256,
+            compiled_model_source_kind=compiled_model_source_kind,
+            compiled_model_source_digest=compiled_model_source_digest,
             omitted_api_payload=omitted_selftest_api_payload,
         )
     )
@@ -594,6 +699,114 @@ def test_wheel_selftest_compiled_model_matches_release_schema(tmp_path: Path) ->
 
     with pytest.raises(ArtifactError, match=f"release schema {expected}"):
         audit_wheel(wheel, mode="release", native_scan=False)
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        pytest.param(
+            {"compiled_model_kind": "other-compiled-model"},
+            "compiled model kind is invalid",
+            id="kind",
+        ),
+        pytest.param(
+            {
+                "model_compiler_version": _MODEL_COMPILER_VERSION + 1,
+                "compiled_model_producer_compiler_version": (_MODEL_COMPILER_VERSION),
+            },
+            "compiler version does not match producer",
+            id="compiler-version",
+        ),
+        pytest.param(
+            {"compiled_model_producer_schema": (_LOCK["abis"]["compiled_model"] - 1)},
+            "producer does not match release schema",
+            id="producer-schema",
+        ),
+        pytest.param(
+            {"compiled_model_producer_version": "9.9.9"},
+            "producer does not match wheel version",
+            id="producer-version",
+        ),
+        pytest.param(
+            {"compiled_model_compiler_sha256": "0" * 64},
+            "compiler digest does not match wheel sources",
+            id="compiler-digest",
+        ),
+        pytest.param(
+            {"compiled_model_source_kind": "ufo"},
+            "source is not built-in-sm",
+            id="source-kind",
+        ),
+        pytest.param(
+            {"compiled_model_source_digest": "0" * 64},
+            "built-in source digest does not match wheel sources",
+            id="source-digest",
+        ),
+    ],
+)
+def test_wheel_selftest_compiled_model_matches_packaged_producer(
+    tmp_path: Path,
+    override: dict[str, object],
+    message: str,
+) -> None:
+    wheel = _wheel(tmp_path, **override)
+
+    with pytest.raises(ArtifactError, match=message):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+@pytest.mark.parametrize(
+    ("source_name", "replacement", "message"),
+    [
+        pytest.param(
+            "pyamplicol/models/compiler.py",
+            b"def compile_model():\n    return 'changed'\n",
+            "compiler digest does not match wheel sources",
+            id="models",
+        ),
+        pytest.param(
+            "pyamplicol/_internal/physics/rules.py",
+            b"PROPAGATOR = 'changed'\n",
+            "compiler digest does not match wheel sources",
+            id="physics",
+        ),
+        pytest.param(
+            "pyamplicol/processes/core_syntax.py",
+            b"CORE_SYNTAX_VERSION = 2\n",
+            "compiler digest does not match wheel sources",
+            id="core-syntax",
+        ),
+        pytest.param(
+            "pyamplicol/models/builtin/model.py",
+            b"MODEL_NAME = 'changed'\n",
+            "built-in source digest does not match wheel sources",
+            id="built-in",
+        ),
+    ],
+)
+def test_wheel_selftest_digests_track_exact_packaged_source_bytes(
+    tmp_path: Path,
+    source_name: str,
+    replacement: bytes,
+    message: str,
+) -> None:
+    wheel = _wheel(tmp_path, extra_files={source_name: replacement})
+
+    with pytest.raises(ArtifactError, match=message):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+def test_wheel_selftest_digests_ignore_nested_model_sources(tmp_path: Path) -> None:
+    wheel = _wheel(
+        tmp_path,
+        extra_files={
+            "pyamplicol/models/nested/ignored.py": b"MODEL_COMPILER_VERSION = 99\n",
+            "pyamplicol/_internal/physics/nested/ignored.py": b"PHYSICS = 99\n",
+            "pyamplicol/models/builtin/nested/ignored.py": b"MODEL = 99\n",
+        },
+    )
+
+    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
 
 
 @pytest.mark.parametrize(

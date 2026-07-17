@@ -55,6 +55,8 @@ def _compiled_model(
         propagators=(),
         vertex_terms=(),
         oriented_kernels=(),
+        direct_contractions=(),
+        closure_contractions=(),
     )
 
 

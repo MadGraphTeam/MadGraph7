@@ -274,7 +274,9 @@ def _coerce(
     elif kind == "list_int":
         if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
             raise ConfigurationError(f"{item.path} must be a list of integers")
-        if any(isinstance(entry, bool) or not isinstance(entry, int) for entry in value):
+        if any(
+            isinstance(entry, bool) or not isinstance(entry, int) for entry in value
+        ):
             raise ConfigurationError(f"{item.path} must be a list of integers")
         result = tuple(cast(Sequence[int], value))
     elif kind == "process_entries":

@@ -4,9 +4,10 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from .._internal.physics.symbols import symbols
+from ._physics_ir import ContractionIR
 from .base import QuantumNumberFlow
 
 PROPAGATOR_SOURCE_FIELD = "pyamplicol_source"
@@ -142,6 +143,17 @@ class CompiledParticleRecord:
     source_orientation: str = ""
 
     def __post_init__(self) -> None:
+        if self.component_dimension is not None:
+            if isinstance(self.component_dimension, bool) or not isinstance(
+                self.component_dimension, int
+            ):
+                raise TypeError(
+                    f"particle {self.name!r} component dimension must be an integer"
+                )
+            if self.component_dimension <= 0:
+                raise ValueError(
+                    f"particle {self.name!r} component dimension must be positive"
+                )
         if not math.isfinite(float(self.charge)):
             raise ValueError(f"particle {self.name!r} charge must be finite")
         quantum_numbers = validate_quantum_number_flow(
@@ -389,6 +401,111 @@ class _ContactTreeNode:
 
 
 @dataclass(frozen=True)
+class CompiledDirectContractionRecord:
+    left_particle: str
+    left_chirality: int
+    right_particle: str
+    right_chirality: int
+    contraction_ir: ContractionIR
+
+    def __post_init__(self) -> None:
+        _validate_particle_selector_name(self.left_particle, "left particle")
+        _validate_particle_selector_name(self.right_particle, "right particle")
+        _validate_chirality(self.left_chirality, "left chirality")
+        _validate_chirality(self.right_chirality, "right chirality")
+        if not isinstance(self.contraction_ir, ContractionIR):
+            raise TypeError("direct contraction must contain a ContractionIR")
+
+    @property
+    def selector(self) -> tuple[str, int, str, int]:
+        return (
+            self.left_particle,
+            self.left_chirality,
+            self.right_particle,
+            self.right_chirality,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "left_particle": self.left_particle,
+            "left_chirality": self.left_chirality,
+            "right_particle": self.right_particle,
+            "right_chirality": self.right_chirality,
+            "contraction_ir": self.contraction_ir.to_json_dict(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, object],
+    ) -> CompiledDirectContractionRecord:
+        fields = _strict_record_fields(
+            payload,
+            required={
+                "left_particle",
+                "left_chirality",
+                "right_particle",
+                "right_chirality",
+                "contraction_ir",
+            },
+            context="compiled direct contraction",
+        )
+        return cls(
+            left_particle=_strict_string(fields["left_particle"], "left particle"),
+            left_chirality=_strict_integer(fields["left_chirality"], "left chirality"),
+            right_particle=_strict_string(fields["right_particle"], "right particle"),
+            right_chirality=_strict_integer(
+                fields["right_chirality"], "right chirality"
+            ),
+            contraction_ir=ContractionIR.from_json_dict(
+                _strict_mapping(fields["contraction_ir"], "contraction IR")
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class CompiledClosureContractionRecord:
+    particle: str
+    chirality: int
+    contraction_ir: ContractionIR
+
+    def __post_init__(self) -> None:
+        _validate_particle_selector_name(self.particle, "particle")
+        _validate_chirality(self.chirality, "chirality")
+        if not isinstance(self.contraction_ir, ContractionIR):
+            raise TypeError("closure contraction must contain a ContractionIR")
+
+    @property
+    def selector(self) -> tuple[str, int]:
+        return self.particle, self.chirality
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "particle": self.particle,
+            "chirality": self.chirality,
+            "contraction_ir": self.contraction_ir.to_json_dict(),
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, object],
+    ) -> CompiledClosureContractionRecord:
+        fields = _strict_record_fields(
+            payload,
+            required={"particle", "chirality", "contraction_ir"},
+            context="compiled closure contraction",
+        )
+        return cls(
+            particle=_strict_string(fields["particle"], "particle"),
+            chirality=_strict_integer(fields["chirality"], "chirality"),
+            contraction_ir=ContractionIR.from_json_dict(
+                _strict_mapping(fields["contraction_ir"], "contraction IR")
+            ),
+        )
+
+
+@dataclass(frozen=True)
 class CompiledModelIR:
     name: str
     orders: tuple[CompiledCouplingOrder, ...]
@@ -398,9 +515,12 @@ class CompiledModelIR:
     propagators: tuple[CompiledPropagatorRecord, ...]
     vertex_terms: tuple[CompiledVertexTerm, ...]
     oriented_kernels: tuple[CompiledOrientedKernel, ...]
+    direct_contractions: tuple[CompiledDirectContractionRecord, ...]
+    closure_contractions: tuple[CompiledClosureContractionRecord, ...]
 
     def __post_init__(self) -> None:
         self._validate_particle_identities()
+        self._validate_contractions()
         for context, expression in self._executable_expressions():
             if "UFO::" in expression:
                 raise ValueError(
@@ -479,6 +599,104 @@ class CompiledModelIR:
                         f"must have exactly negated quantum number {name!r}"
                     )
 
+    def _validate_contractions(self) -> None:
+        particles = {particle.name: particle for particle in self.particles}
+        parameters = {parameter.name: parameter for parameter in self.parameters}
+        propagators = {propagator.name: propagator for propagator in self.propagators}
+        direct_selectors: set[tuple[str, int, str, int]] = set()
+        for record in self.direct_contractions:
+            if not isinstance(record, CompiledDirectContractionRecord):
+                raise TypeError(
+                    "compiled model direct contractions must contain typed records"
+                )
+            if record.selector in direct_selectors:
+                raise ValueError(
+                    f"compiled model contains duplicate direct contraction selector "
+                    f"{record.selector!r}"
+                )
+            direct_selectors.add(record.selector)
+            try:
+                left = particles[record.left_particle]
+                right = particles[record.right_particle]
+            except KeyError as exc:
+                raise ValueError(
+                    f"direct contraction refers to absent particle {exc.args[0]!r}"
+                ) from exc
+            if left.antiname != right.name or right.antiname != left.name:
+                raise ValueError(
+                    f"direct contraction particles {left.name!r}/{right.name!r} "
+                    "are not an antiparticle pair"
+                )
+            left_dimension = compiled_current_dimension(
+                left,
+                record.left_chirality,
+                parameters=parameters,
+                propagators=propagators,
+            )
+            right_dimension = compiled_current_dimension(
+                right,
+                record.right_chirality,
+                parameters=parameters,
+                propagators=propagators,
+            )
+            coefficient_count = len(record.contraction_ir.coefficients)
+            if left_dimension != right_dimension or coefficient_count != left_dimension:
+                raise ValueError(
+                    f"direct contraction selector {record.selector!r} has "
+                    f"{coefficient_count} coefficients for current dimensions "
+                    f"{left_dimension} and {right_dimension}"
+                )
+            _validate_concrete_chirality_relation(
+                record.contraction_ir,
+                record.left_chirality,
+                record.right_chirality,
+                context=f"direct contraction selector {record.selector!r}",
+            )
+
+        closure_selectors: set[tuple[str, int]] = set()
+        for record in self.closure_contractions:
+            if not isinstance(record, CompiledClosureContractionRecord):
+                raise TypeError(
+                    "compiled model closure contractions must contain typed records"
+                )
+            if record.selector in closure_selectors:
+                raise ValueError(
+                    f"compiled model contains duplicate closure contraction selector "
+                    f"{record.selector!r}"
+                )
+            closure_selectors.add(record.selector)
+            try:
+                particle = particles[record.particle]
+            except KeyError as exc:
+                raise ValueError(
+                    f"closure contraction refers to absent particle {exc.args[0]!r}"
+                ) from exc
+            dimension = compiled_current_dimension(
+                particle,
+                record.chirality,
+                parameters=parameters,
+                propagators=propagators,
+            )
+            contraction = record.contraction_ir
+            if (
+                dimension != 1
+                or len(contraction.coefficients) != 1
+                or contraction.name != "scalar"
+                or contraction.left_basis != "scalar"
+                or contraction.right_basis != "scalar"
+                or contraction.metric_signature is not None
+            ):
+                raise ValueError(
+                    f"closure contraction selector {record.selector!r} must be a "
+                    "one-component scalar projection"
+                )
+            _validate_concrete_chirality_relation(
+                contraction,
+                record.chirality,
+                record.chirality,
+                context=f"closure contraction selector {record.selector!r}",
+            )
+
     def _executable_expressions(self) -> tuple[tuple[str, str], ...]:
         """Return scalar/evaluator expressions, excluding raw tensor source."""
 
@@ -535,6 +753,12 @@ class CompiledModelIR:
             "propagators": [item.to_dict() for item in self.propagators],
             "vertex_terms": [item.to_dict() for item in self.vertex_terms],
             "oriented_kernels": [item.to_dict() for item in self.oriented_kernels],
+            "direct_contractions": [
+                item.to_dict() for item in self.direct_contractions
+            ],
+            "closure_contractions": [
+                item.to_dict() for item in self.closure_contractions
+            ],
             "max_vertex_valence": self.max_vertex_valence,
         }
 
@@ -589,10 +813,8 @@ class CompiledModelIR:
                     propagating=bool(item["propagating"]),
                     goldstoneboson=bool(item["goldstoneboson"]),
                     propagator=_optional_string(item.get("propagator")),
-                    component_dimension=(
-                        None
-                        if item.get("component_dimension") is None
-                        else _integer(item["component_dimension"])
+                    component_dimension=cast(
+                        int | None, item.get("component_dimension")
                     ),
                     auxiliary_kind=_optional_string(item.get("auxiliary_kind")),
                     statistics=str(item.get("statistics", "")),
@@ -703,7 +925,178 @@ class CompiledModelIR:
                 )
                 for item in _mappings(payload.get("oriented_kernels"))
             ),
+            direct_contractions=tuple(
+                CompiledDirectContractionRecord.from_dict(item)
+                for item in _required_mappings(payload, "direct_contractions")
+            ),
+            closure_contractions=tuple(
+                CompiledClosureContractionRecord.from_dict(item)
+                for item in _required_mappings(payload, "closure_contractions")
+            ),
         )
+
+
+def compiled_particle_is_chiral_eligible(
+    particle: CompiledParticleRecord,
+    *,
+    parameters: Mapping[str, CompiledParameterRecord],
+    propagators: Mapping[str, CompiledPropagatorRecord],
+) -> bool:
+    """Return whether compilation proved a two-component Weyl current valid."""
+
+    if (
+        particle.statistics != "fermion"
+        or particle.wavefunction_family != "fermion"
+        or particle.self_conjugate
+        or not particle.propagating
+    ):
+        return False
+    if particle.component_dimension not in {None, 4}:
+        return False
+    if particle.propagator is not None:
+        propagator = propagators.get(particle.propagator)
+        if propagator is None or propagator.custom:
+            return False
+    if particle.mass.upper() == "ZERO":
+        return True
+    parameter = parameters.get(particle.mass)
+    if parameter is None or parameter.nature.lower() == "external":
+        return False
+    from . import compiler_symbolica as _sym
+
+    _sym._ensure_symbolica()
+    return (
+        _sym.E(parameter.resolved_expression).expand().to_canonical_string()
+        == _sym.E("0").to_canonical_string()
+    )
+
+
+def compiled_current_dimension(
+    particle: CompiledParticleRecord,
+    chirality: int,
+    *,
+    parameters: Mapping[str, CompiledParameterRecord],
+    propagators: Mapping[str, CompiledPropagatorRecord],
+) -> int:
+    """Resolve one concrete compiled current state without model heuristics."""
+
+    value = _validate_chirality(chirality, "chirality")
+    if value != 0:
+        if value not in {-1, 1}:
+            raise ValueError(f"unsupported concrete chirality {value}")
+        if not compiled_particle_is_chiral_eligible(
+            particle,
+            parameters=parameters,
+            propagators=propagators,
+        ):
+            raise ValueError(
+                f"particle {particle.name!r} does not support projected Weyl currents"
+            )
+        return 2
+    if particle.component_dimension is not None:
+        dimension = int(particle.component_dimension)
+    else:
+        try:
+            dimension = {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}[particle.spin]
+        except KeyError as exc:
+            raise ValueError(
+                f"particle {particle.name!r} has unsupported UFO spin code "
+                f"{particle.spin}"
+            ) from exc
+    if dimension <= 0:
+        raise ValueError(
+            f"particle {particle.name!r} has invalid component dimension {dimension}"
+        )
+    return dimension
+
+
+def _validate_concrete_chirality_relation(
+    contraction: ContractionIR,
+    left_chirality: int,
+    right_chirality: int,
+    *,
+    context: str,
+) -> None:
+    relation = contraction.chirality_relation
+    if relation == "equal" and left_chirality != right_chirality:
+        raise ValueError(f"{context} violates equal chirality relation")
+    if relation == "opposite" and (
+        left_chirality == 0
+        or right_chirality == 0
+        or left_chirality != -right_chirality
+    ):
+        raise ValueError(f"{context} violates opposite chirality relation")
+
+
+def _validate_particle_selector_name(value: object, context: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"compiled contraction {context} must be a string")
+    if not value:
+        raise ValueError(f"compiled contraction {context} must not be empty")
+    return value
+
+
+def _validate_chirality(value: object, context: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"compiled contraction {context} must be an integer")
+    return value
+
+
+def _strict_record_fields(
+    payload: Mapping[str, object],
+    *,
+    required: set[str],
+    context: str,
+) -> Mapping[str, object]:
+    if not isinstance(payload, Mapping):
+        raise TypeError(f"{context} must be a mapping")
+    fields = set(payload)
+    missing = required - fields
+    if missing:
+        names = ", ".join(sorted(missing))
+        raise ValueError(f"{context} is missing required fields: {names}")
+    unknown = fields - required
+    if unknown:
+        names = ", ".join(sorted(str(name) for name in unknown))
+        raise ValueError(f"{context} has unknown fields: {names}")
+    return payload
+
+
+def _strict_mapping(value: object, context: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{context} must be a mapping")
+    return value
+
+
+def _strict_string(value: object, context: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{context} must be a string")
+    return value
+
+
+def _strict_integer(value: object, context: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{context} must be an integer")
+    return value
+
+
+def _required_mappings(
+    payload: Mapping[str, object],
+    field: str,
+) -> tuple[Mapping[str, object], ...]:
+    if field not in payload:
+        raise ValueError(f"compiled model is missing required field {field!r}")
+    value = payload[field]
+    if isinstance(value, (str, bytes)) or not isinstance(value, list | tuple):
+        raise TypeError(f"compiled model field {field!r} must be an array")
+    result: list[Mapping[str, object]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            raise TypeError(
+                f"compiled model field {field!r} item {index} must be a mapping"
+            )
+        result.append(item)
+    return tuple(result)
 
 
 def cast_tuple3(value: object) -> tuple[str, str, str]:
@@ -774,14 +1167,18 @@ def _mappings(value: object) -> list[dict[str, object]]:
 
 __all__ = [
     "SUPPORTED_COLOR_REPRESENTATIONS",
+    "CompiledClosureContractionRecord",
     "CompiledCouplingOrder",
     "CompiledCouplingRecord",
+    "CompiledDirectContractionRecord",
     "CompiledModelIR",
     "CompiledOrientedKernel",
     "CompiledParameterRecord",
     "CompiledParticleRecord",
     "CompiledPropagatorRecord",
     "CompiledVertexTerm",
+    "compiled_current_dimension",
+    "compiled_particle_is_chiral_eligible",
     "validate_color_representation",
     "validate_quantum_number_flow",
 ]

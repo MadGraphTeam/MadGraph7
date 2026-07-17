@@ -42,6 +42,66 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _compiled_model_payload(
+    manifest: Mapping[str, object],
+) -> tuple[dict[str, Any], Path]:
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        raise RuntimeError("artifact payload inventory is invalid")
+    matches = [
+        payload
+        for payload in payloads
+        if isinstance(payload, dict) and payload.get("role") == "compiled-model"
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("self-test artifact must contain one compiled model")
+    payload = matches[0]
+    relative = payload.get("path")
+    if not isinstance(relative, str):
+        raise RuntimeError("self-test compiled-model payload has no path")
+    path = Path(relative)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        raise RuntimeError("self-test compiled-model payload path is unsafe")
+    return payload, path
+
+
+def _validate_source_compiled_model(
+    source: Path,
+    manifest: Mapping[str, object],
+) -> None:
+    """Require the source artifact to match the active model compiler exactly."""
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    _payload, relative = _compiled_model_payload(manifest)
+    load_compiled_model(source / relative)
+
+
+def _normalize_compiled_model_version(
+    artifact: Path,
+    manifest: Mapping[str, object],
+    *,
+    version: str,
+) -> None:
+    """Retarget the embedded compiler fingerprint to the release package version."""
+
+    payload, relative = _compiled_model_payload(manifest)
+    path = artifact / relative
+    try:
+        compiled_model = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("self-test compiled model is invalid") from error
+    if not isinstance(compiled_model, dict):
+        raise RuntimeError("self-test compiled model must be an object")
+    producer = compiled_model.get("producer")
+    if not isinstance(producer, dict):
+        raise RuntimeError("self-test compiled-model producer is invalid")
+    producer["pyamplicol"] = version
+    path.write_bytes(_canonical_json(compiled_model))
+    payload["sha256"] = _sha256(path)
+    payload["size_bytes"] = path.stat().st_size
+
+
 def _workspace_version() -> str:
     with (ROOT / "Cargo.toml").open("rb") as stream:
         cargo = tomllib.load(stream)
@@ -214,6 +274,19 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
     if not source.is_dir() or not (source / "artifact.json").is_file():
         raise RuntimeError("self-test source must be a schema-v3 artifact directory")
 
+    try:
+        source_manifest = json.loads(
+            (source / "artifact.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("self-test source manifest is invalid") from error
+    if (
+        not isinstance(source_manifest, dict)
+        or source_manifest.get("schema_version") != 3
+    ):
+        raise RuntimeError("self-test source is not a schema-v3 artifact")
+    _validate_source_compiled_model(source, source_manifest)
+
     from pyamplicol import Runtime
 
     native = importlib.import_module("pyamplicol._rusticol")
@@ -260,6 +333,11 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
         _sanitize_configuration_paths(artifact, manifest)
         _retarget_portable_manifest(manifest, source_target=target)
         version = _workspace_version()
+        _normalize_compiled_model_version(
+            artifact,
+            manifest,
+            version=version,
+        )
         producer["version"] = version
         runtime_metadata["engine_version"] = version
         manifest["artifact_id"] = _artifact_id(manifest)

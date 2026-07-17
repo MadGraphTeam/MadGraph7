@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 api = 1
 toml = 1
-compiled_model = 7
-model_compiler = 6
+compiled_model = 8
+model_compiler = 7
 process_artifact = 3
 runtime_expression = 2
 runtime_physics_metadata = 1

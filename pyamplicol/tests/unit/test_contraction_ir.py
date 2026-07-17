@@ -21,6 +21,8 @@ from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models._physics_ir import ContractionIR
 from pyamplicol.models.base import Model, Particle
 from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.compiler_contractions import compile_contraction_records
+from pyamplicol.models.contracts import CompiledParticleRecord
 
 
 def test_contraction_ir_json_round_trip_and_strict_decoder() -> None:
@@ -149,6 +151,44 @@ def test_builtin_model_owns_exact_contraction_coefficients_and_bases() -> None:
     )
 
 
+def test_external_massless_fermions_record_weyl_and_dirac_contractions() -> None:
+    particle = CompiledParticleRecord(
+        name="psi",
+        antiname="psi_bar",
+        pdg_code=900_001,
+        spin=2,
+        color=1,
+        mass="ZERO",
+        width="ZERO",
+        charge=0.0,
+        quantum_numbers=(("electric_charge", "0"),),
+        ghost_number=0,
+        propagating=True,
+        goldstoneboson=False,
+        propagator=None,
+        component_dimension=4,
+    )
+    antiparticle = replace(
+        particle,
+        name="psi_bar",
+        antiname="psi",
+        pdg_code=-900_001,
+        source_orientation="antiparticle",
+    )
+
+    direct, closure = compile_contraction_records(
+        (particle, antiparticle),
+        (),
+        (),
+    )
+
+    by_selector = {record.selector: record.contraction_ir for record in direct}
+    assert by_selector[("psi", -1, "psi_bar", 1)].name == "weyl"
+    assert by_selector[("psi", 0, "psi_bar", 0)].name == "dirac"
+    assert by_selector[("psi", 1, "psi_bar", -1)].name == "weyl"
+    assert closure == ()
+
+
 def test_reachability_remains_coarse_and_dimension_16_is_not_contractible() -> None:
     model = BuiltinSMModel()
 
@@ -179,6 +219,26 @@ def test_reachability_remains_coarse_and_dimension_16_is_not_contractible() -> N
     assert spin_two_model.direct_contraction_possible(spin_two, spin_two) is False
     assert spin_two_model.direct_contraction_ir(spin_two, spin_two) is None
     assert spin_two_model.closure_contraction_ir(spin_two) is None
+
+
+def test_generic_model_never_infers_contractions_from_component_dimension() -> None:
+    scalar = 990_001
+    model = Model(
+        name="scalar-probe",
+        particles={
+            scalar: Particle(
+                scalar,
+                scalar,
+                spin=1,
+                dimension=1,
+                color_rep=1,
+            )
+        },
+    )
+
+    assert model.direct_contraction_ir(scalar, scalar) is None
+    assert model.closure_contraction_ir(scalar) is None
+    assert model.direct_contraction_possible(scalar, scalar) is False
 
 
 def test_component_contraction_is_coefficient_driven_and_never_truncates() -> None:

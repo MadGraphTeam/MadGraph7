@@ -34,9 +34,7 @@ def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
         "symbolica-community": contributor["symbolica"]["community_revision"],
         "symjit": contributor["symjit"]["candidate_revision"],
     }
-    sources = {
-        name: {"revision": revision} for name, revision in revisions.items()
-    }
+    sources = {name: {"revision": revision} for name, revision in revisions.items()}
     installer_state.write_text(
         json.dumps(
             {
@@ -106,6 +104,28 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         )
         assert selftest_manifest["producer"]["version"] == build_info["version"]
         assert selftest_manifest["runtime"]["engine_version"] == build_info["version"]
+        compiled_payloads = [
+            payload
+            for payload in selftest_manifest["payloads"]
+            if payload["role"] == "compiled-model"
+        ]
+        assert len(compiled_payloads) == 1
+        compiled_payload = compiled_payloads[0]
+        compiled_path = (
+            overlay
+            / "src"
+            / "pyamplicol"
+            / "assets"
+            / "selftest"
+            / target
+            / "artifact"
+            / compiled_payload["path"]
+        )
+        compiled_data = compiled_path.read_bytes()
+        compiled_model = json.loads(compiled_data)
+        assert compiled_model["producer"]["pyamplicol"] == build_info["version"]
+        assert compiled_payload["sha256"] == hashlib.sha256(compiled_data).hexdigest()
+        assert compiled_payload["size_bytes"] == len(compiled_data)
         assert selftest_manifest["producer"]["target"] == {
             "cpu_features": [],
             "triple": target,
@@ -431,13 +451,9 @@ def test_candidate_digest_covers_only_contributor_dependency_inputs(
     inputs[2].write_text(json.dumps(state), encoding="utf-8")
     with pytest.raises(RuntimeError, match="contributor-lock revision"):
         backend._candidate_digest(*inputs)
-    state["sources"]["symbolica"]["revision"] = (
-        tomllib.loads(
-            (ROOT / "dependencies" / "contributor-lock.toml").read_text(
-                encoding="utf-8"
-            )
-        )["symbolica"]["candidate_revision"]
-    )
+    state["sources"]["symbolica"]["revision"] = tomllib.loads(
+        (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
+    )["symbolica"]["candidate_revision"]
     inputs[2].write_text(json.dumps(state), encoding="utf-8")
 
     inputs[0].write_bytes(inputs[0].read_bytes() + b"\n# identity change\n")

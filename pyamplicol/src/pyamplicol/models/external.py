@@ -47,6 +47,22 @@ class CompiledUFOModel(
         self._particle_records_by_pdg = {
             particle.pdg_code: particle for particle in compiled.ir.particles
         }
+        self._direct_contraction_ir_by_state = {
+            (
+                self._particle_records_by_name[record.left_particle].pdg_code,
+                record.left_chirality,
+                self._particle_records_by_name[record.right_particle].pdg_code,
+                record.right_chirality,
+            ): record.contraction_ir
+            for record in compiled.ir.direct_contractions
+        }
+        self._closure_contraction_ir_by_state = {
+            (
+                self._particle_records_by_name[record.particle].pdg_code,
+                record.chirality,
+            ): record.contraction_ir
+            for record in compiled.ir.closure_contractions
+        }
         for particle in compiled.ir.particles:
             validate_color_representation(
                 particle.color,

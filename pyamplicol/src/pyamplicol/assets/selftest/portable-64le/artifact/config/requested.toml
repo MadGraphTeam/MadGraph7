@@ -10,10 +10,14 @@ cache = true
 entries = [{ expression = "d d~ > z" }]
 flavor_scheme = 5
 coupling_order_policy = "minimal"
+reference_color_order = []
+selected_color_sector_ids = []
 
 [process.multiparticles]
 
 [process.max_coupling_orders]
+
+[process.selected_source_helicities]
 
 [color]
 accuracy = "lc"

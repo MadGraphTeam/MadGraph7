@@ -463,7 +463,43 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
             raise RuntimeError(
                 "portable self-test has no target-tagged evaluator state"
             )
-    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        compiled_payloads = [
+            payload
+            for payload in payloads
+            if isinstance(payload, dict) and payload.get("role") == "compiled-model"
+        ]
+        if len(compiled_payloads) != 1:
+            raise RuntimeError("portable self-test must contain one compiled model")
+        compiled_payload = compiled_payloads[0]
+        compiled_relative = compiled_payload.get("path")
+        if not isinstance(compiled_relative, str):
+            raise RuntimeError("portable self-test compiled model has no path")
+        compiled_path = Path(compiled_relative)
+        if compiled_path.is_absolute() or any(
+            part in {"", ".", ".."} for part in compiled_path.parts
+        ):
+            raise RuntimeError("portable self-test compiled-model path is unsafe")
+        compiled_path = selected / "artifact" / compiled_path
+        compiled_model = json.loads(compiled_path.read_text(encoding="utf-8"))
+        if not isinstance(compiled_model, dict):
+            raise RuntimeError("portable self-test compiled model is invalid")
+        compiled_producer = compiled_model.get("producer")
+        if not isinstance(compiled_producer, dict):
+            raise RuntimeError("portable self-test compiled model is invalid")
+        compiled_producer["pyamplicol"] = package_version
+        compiled_data = (
+            json.dumps(
+                compiled_model,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        compiled_path.write_bytes(compiled_data)
+        compiled_payload["sha256"] = hashlib.sha256(compiled_data).hexdigest()
+        compiled_payload["size_bytes"] = len(compiled_data)
+    except (KeyError, OSError, TypeError, json.JSONDecodeError) as error:
         raise RuntimeError(f"invalid self-test artifact manifest: {path}") from error
     content = dict(manifest)
     content.pop("artifact_id", None)
@@ -512,9 +548,7 @@ def _candidate_state(
     expected_revisions = {
         "gammaloop": str(contributor["gammaloop_candidate"]["revision"]),
         "symbolica": str(contributor["symbolica"]["candidate_revision"]),
-        "symbolica-community": str(
-            contributor["symbolica"]["community_revision"]
-        ),
+        "symbolica-community": str(contributor["symbolica"]["community_revision"]),
         "symjit": str(contributor["symjit"]["candidate_revision"]),
     }
     sources = payload.get("sources")

@@ -7,12 +7,20 @@ from collections.abc import Mapping
 
 from .. import compiler_symbolica as _sym
 from ..compiler_records import _mappings, _order, _parameter, _particle, _sequence
-from ..contracts import CompiledModelIR, CompiledVertexTerm
+from ..contracts import (
+    CompiledClosureContractionRecord,
+    CompiledDirectContractionRecord,
+    CompiledModelIR,
+    CompiledVertexTerm,
+)
 
 
 def compile_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
     _sym._ensure_symbolica()
-    particles = tuple(_particle(item) for item in _mappings(model.get("particles")))
+    particles = tuple(
+        _particle(item, trusted_compiler_metadata=True)
+        for item in _mappings(model.get("particles"))
+    )
     terms = tuple(
         CompiledVertexTerm(
             id=index,
@@ -43,6 +51,14 @@ def compile_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         propagators=(),
         vertex_terms=terms,
         oriented_kernels=(),
+        direct_contractions=tuple(
+            CompiledDirectContractionRecord.from_dict(item)
+            for item in _mappings(model.get("direct_contractions"))
+        ),
+        closure_contractions=tuple(
+            CompiledClosureContractionRecord.from_dict(item)
+            for item in _mappings(model.get("closure_contractions"))
+        ),
     )
 
 

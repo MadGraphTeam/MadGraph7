@@ -22,6 +22,7 @@ from .compiler_contacts import (
     _four_point_contact_color_split,
     _fuse_contact_finals,
 )
+from .compiler_contractions import compile_contraction_records
 from .compiler_kernels import (
     _canonicalize_oriented_kernel_component,
     _fuse_oriented_kernels,
@@ -208,6 +209,11 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         terms,
         model_symbols,
     )
+    direct_contractions, closure_contractions = compile_contraction_records(
+        particles,
+        parameter_records,
+        propagators,
+    )
     return CompiledModelIR(
         name=model_name,
         orders=tuple(_order(item) for item in _mappings(model.get("orders"))),
@@ -217,6 +223,8 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         propagators=propagators,
         vertex_terms=tuple(terms),
         oriented_kernels=oriented_kernels,
+        direct_contractions=direct_contractions,
+        closure_contractions=closure_contractions,
     )
 
 

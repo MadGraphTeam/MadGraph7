@@ -53,6 +53,8 @@ def _model(*particles: CompiledParticleRecord) -> CompiledModelIR:
         propagators=(),
         vertex_terms=(),
         oriented_kernels=(),
+        direct_contractions=(),
+        closure_contractions=(),
     )
 
 

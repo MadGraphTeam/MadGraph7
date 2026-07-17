@@ -111,6 +111,69 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
     assert claimed == hashlib.sha256(module._canonical_json(content)).hexdigest()
 
 
+def test_compiled_model_version_normalization_refreshes_payload(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    artifact = tmp_path / "artifact"
+    compiled_path = artifact / "model" / "compiled-model.json"
+    compiled_path.parent.mkdir(parents=True)
+    compiled_path.write_text(
+        json.dumps({"producer": {"pyamplicol": "old"}}),
+        encoding="utf-8",
+    )
+    manifest = {
+        "payloads": [
+            {
+                "path": "model/compiled-model.json",
+                "role": "compiled-model",
+                "sha256": "stale",
+                "size_bytes": 0,
+            }
+        ]
+    }
+
+    module._normalize_compiled_model_version(
+        artifact,
+        manifest,
+        version="0.1.0.dev0+candidate.test",
+    )
+
+    data = compiled_path.read_bytes()
+    compiled = json.loads(data)
+    payload = manifest["payloads"][0]
+    assert compiled["producer"]["pyamplicol"] == "0.1.0.dev0+candidate.test"
+    assert payload["sha256"] == hashlib.sha256(data).hexdigest()
+    assert payload["size_bytes"] == len(data)
+
+
+def test_source_selftest_compiled_model_matches_active_compiler_sources() -> None:
+    module = _module()
+    manifest = json.loads(
+        (FIXTURE / "artifact/artifact.json").read_text(encoding="utf-8")
+    )
+    _payload, relative = module._compiled_model_payload(manifest)
+    compiled = json.loads((FIXTURE / "artifact" / relative).read_text(encoding="utf-8"))
+
+    from pyamplicol.models import loading
+
+    expected_producer = loading.compiler_fingerprint()
+    actual_producer = dict(compiled["producer"])
+    # The portable source template is retargeted to the concrete candidate or
+    # release version by the wheel overlay.
+    expected_producer.pop("pyamplicol")
+    actual_producer.pop("pyamplicol")
+
+    assert compiled["kind"] == loading.COMPILED_MODEL_KIND
+    assert compiled["schema_version"] == loading.COMPILED_MODEL_SCHEMA_VERSION
+    assert compiled["model_compiler_version"] == loading.MODEL_COMPILER_VERSION
+    assert actual_producer == expected_producer
+    assert compiled["source"]["digest"] == loading._source_digest(
+        "built-in-sm",
+        "built-in-sm",
+    )
+
+
 def test_staged_selftest_fixture_loads_with_the_current_native_runtime() -> None:
     native = pytest.importorskip("pyamplicol._rusticol")
     from pyamplicol import Runtime

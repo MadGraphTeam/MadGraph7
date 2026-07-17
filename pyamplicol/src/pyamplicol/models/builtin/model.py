@@ -6,9 +6,9 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, cast
+from typing import Any, Literal, cast
 
-from .._physics_ir import ParticleIdentityIR, ParticleOrientation
+from .._physics_ir import ContractionIR, ParticleIdentityIR, ParticleOrientation
 from ..base import (
     CouplingOrders,
     Model,
@@ -265,6 +265,106 @@ class BuiltinModel(Model):
             return "antisymmetric-tensor"
         return None
 
+    def _install_builtin_contractions(self) -> None:
+        """Install the built-in model's explicit current bilinear forms."""
+
+        direct: dict[tuple[int, int, int, int], ContractionIR | None] = {}
+        closure: dict[tuple[int, int], ContractionIR | None] = {}
+        particle_ids = tuple(sorted(self._species_by_pdg))
+        for left_particle_id in particle_ids:
+            right_particle_id = self.anti_particle(left_particle_id)
+            for left_chirality in self._builtin_contraction_chiralities(
+                left_particle_id
+            ):
+                for right_chirality in self._builtin_contraction_chiralities(
+                    right_particle_id
+                ):
+                    contraction_ir = self._builtin_direct_contraction_ir(
+                        left_particle_id,
+                        right_particle_id,
+                        left_chirality=left_chirality,
+                        right_chirality=right_chirality,
+                    )
+                    if contraction_ir is not None:
+                        direct[
+                            (
+                                left_particle_id,
+                                left_chirality,
+                                right_particle_id,
+                                right_chirality,
+                            )
+                        ] = contraction_ir
+            for chirality in self._builtin_contraction_chiralities(left_particle_id):
+                if self.current_dimension(left_particle_id, chirality) == 1:
+                    closure[(left_particle_id, chirality)] = ContractionIR(
+                        name="scalar",
+                        left_basis="scalar",
+                        right_basis="scalar",
+                        coefficients=((1.0, 0.0),),
+                        chirality_relation="any",
+                        metric_signature=None,
+                    )
+        self._direct_contraction_ir_by_state = direct
+        self._closure_contraction_ir_by_state = closure
+
+    def _builtin_contraction_chiralities(self, particle_id: int) -> tuple[int, ...]:
+        if self.is_chiral_eligible(particle_id):
+            return (-1, 0, 1)
+        return (0,)
+
+    def _builtin_direct_contraction_ir(
+        self,
+        left_particle_id: int,
+        right_particle_id: int,
+        *,
+        left_chirality: int,
+        right_chirality: int,
+    ) -> ContractionIR | None:
+        left_dimension = self.current_dimension(left_particle_id, left_chirality)
+        right_dimension = self.current_dimension(right_particle_id, right_chirality)
+        if left_dimension != right_dimension:
+            return None
+
+        chirality_relation: Literal["any", "opposite"] = "any"
+        metric_signature: str | None = None
+        if left_dimension == 1:
+            name = "scalar"
+            coefficients = ((1.0, 0.0),)
+        elif left_dimension == 2:
+            if left_chirality != -right_chirality:
+                return None
+            name = "weyl"
+            coefficients = ((1.0, 0.0), (1.0, 0.0))
+            chirality_relation = "opposite"
+        elif left_dimension == 4:
+            if self.is_fermion(left_particle_id) != self.is_fermion(right_particle_id):
+                return None
+            if self.is_fermion(left_particle_id):
+                name = "dirac"
+                coefficients = ((1.0, 0.0),) * 4
+            else:
+                name = "lorentz"
+                coefficients = (
+                    (1.0, 0.0),
+                    (-1.0, 0.0),
+                    (-1.0, 0.0),
+                    (-1.0, 0.0),
+                )
+                metric_signature = "mostly-minus"
+        elif left_dimension == 6:
+            name = "antisymmetric-tensor"
+            coefficients = ((1.0, 0.0),) * 6
+        else:
+            return None
+        return ContractionIR(
+            name=name,
+            left_basis=self._current_basis(left_particle_id, left_chirality),
+            right_basis=self._current_basis(right_particle_id, right_chirality),
+            coefficients=coefficients,
+            chirality_relation=chirality_relation,
+            metric_signature=metric_signature,
+        )
+
 
 @dataclass
 class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinModel):
@@ -282,6 +382,7 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
             particle.pdg: particle for particle in self._build_particles()
         }
         self.vertices = tuple(self._build_vertices())
+        self._install_builtin_contractions()
 
     @cached_property
     def cos_weak(self) -> float:

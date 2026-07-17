@@ -127,7 +127,8 @@
       "qcd_coupling_power": 0,
       "quark_line_partner_factor": 1
     },
-    "process_key": "d_dbar_to_z"
+    "process_key": "d_dbar_to_z",
+    "selected_source_helicities": {}
   },
   "external_particles": [
     {

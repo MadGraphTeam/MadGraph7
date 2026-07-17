@@ -77,6 +77,7 @@ def test_process_ir_preserves_physical_and_all_outgoing_order() -> None:
     assert ir.color_endpoints.antifundamental_count == 1
     assert ir.color_endpoints.pair_count == 1
 
+
 def test_process_external_model_uses_the_same_crossing_contract() -> None:
     particles = (
         _record("state_f", "state_af", 810_001, 2, 3),
@@ -93,6 +94,8 @@ def test_process_external_model_uses_the_same_crossing_contract() -> None:
         propagators=(),
         vertex_terms=(),
         oriented_kernels=(),
+        direct_contractions=(),
+        closure_contractions=(),
     )
 
     ir = build_model_process_ir(
