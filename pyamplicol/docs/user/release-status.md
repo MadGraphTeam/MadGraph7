@@ -49,9 +49,13 @@ published on PyPI.
   without that contract request regeneration. Default and model-supplied UFO
   propagators are now distinguished by normalized expressions rather than
   object names. The remaining
-  model-independence gate is to consume authoritative contraction and tensor
-  ordering records, prove colored-contact reductions, and complete the
-  relabeled-PDG and reordered-tensor adversarial fixtures.
+  model-independence gate is to persist authoritative tensor-ordering and
+  colored-contact proof records, and extend the already-green relabeled-PDG and
+  reordered-UFO-inventory topology gates to component-axis and dummy-index
+  numerical invariance. Current two-structure-constant contact lowering already
+  preserves exact scalar prefactors and permutation parity and rejects residual
+  color tensors. Direct and closure contractions are model-owned and validated
+  in compiled-model schema v8.
 - External `generate --dry-run` currently requires a previously compiled model
   or populated model cache; it does not compile a trusted source as a planning
   side effect.

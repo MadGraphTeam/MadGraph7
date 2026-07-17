@@ -366,9 +366,13 @@ def _four_point_contact_color_split(
     tuple[int, ...],
     tuple[int, ...],
     int,
+    str,
 ] | None:
     factors = _normalized_structure_constant_factors(term.color_expression)
-    if len(factors) == 2:
+    color_coefficient = _normalized_structure_constant_product_coefficient(
+        term.color_expression
+    )
+    if len(factors) == 2 and color_coefficient is not None:
         shared_dummies = set(value for value in factors[0] if value < 0) & set(
             value for value in factors[1] if value < 0
         )
@@ -399,6 +403,7 @@ def _four_point_contact_color_split(
                         outer_factor,
                         final_factor,
                         dummy,
+                        color_coefficient,
                     )
 
     if term.color_source in {"1", "UFO::{}::1"} or term.color_expression == "1":
@@ -413,8 +418,30 @@ def _four_point_contact_color_split(
             (),
             (),
             -1,
+            "1",
         )
     return None
+
+
+def _normalized_structure_constant_product_coefficient(
+    expression: str,
+) -> str | None:
+    """Return the exact scalar multiplying two normalized f tensors."""
+
+    _sym._ensure_symbolica()
+    parsed = _sym.E(expression)
+    wildcards = tuple(
+        _sym.E(f"ufo_contact_color_argument_{index}_") for index in range(3)
+    )
+    coefficient = parsed.replace(
+        _sym.S("spenso::f")(*wildcards),
+        _sym.E("1"),
+        bottom_up=True,
+        repeat=True,
+    )
+    if coefficient.get_all_symbols():
+        return None
+    return coefficient.to_canonical_string()
 
 
 def _normalized_structure_constant_factors(

@@ -11,13 +11,24 @@ from typing import Any
 _UFO_CANONICAL_NAMESPACE = "UFO::{}::"
 # Symbolica's process-wide symbol table cannot handle concurrent S(...) calls.
 _SYMBOL_CONSTRUCTION_LOCK = Lock()
+_SYMBOL_CACHE: dict[tuple[str, bool], Any] = {}
+
+
+def _construct_symbol(qualified_name: str, *, is_real: bool) -> Any:
+    from symbolica import S
+
+    return S(qualified_name, is_real=True) if is_real else S(qualified_name)
 
 
 def _symbol(qualified_name: str, *, is_real: bool = False) -> Any:
     with _SYMBOL_CONSTRUCTION_LOCK:
-        from symbolica import S
-
-        return S(qualified_name, is_real=True) if is_real else S(qualified_name)
+        key = (qualified_name, is_real)
+        cached = _SYMBOL_CACHE.get(key)
+        if cached is not None:
+            return cached
+        value = _construct_symbol(qualified_name, is_real=is_real)
+        _SYMBOL_CACHE[key] = value
+        return value
 
 
 def _safe_namespace_part(value: object) -> str:

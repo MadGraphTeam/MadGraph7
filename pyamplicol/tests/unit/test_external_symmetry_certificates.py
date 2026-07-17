@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -59,6 +61,101 @@ def external_sm():
         use_cache=False,
     )
     return compiled, CompiledUFOModel(compiled)
+
+
+@pytest.fixture(scope="module")
+def relabelled_external_sm(tmp_path_factory: pytest.TempPathFactory):
+    raw = json.loads((MODEL_ROOT / "sm.json").read_text(encoding="utf-8"))
+    relabelled = deepcopy(raw)
+    absolute_ids = sorted(
+        {abs(int(particle["pdg_code"])) for particle in relabelled["particles"]}
+    )
+    replacements = {
+        particle_id: 700_000 + index
+        for index, particle_id in enumerate(absolute_ids, start=1)
+    }
+    for particle in relabelled["particles"]:
+        pdg = int(particle["pdg_code"])
+        particle["pdg_code"] = (
+            replacements[abs(pdg)] if pdg >= 0 else -replacements[abs(pdg)]
+        )
+
+    model_root = tmp_path_factory.mktemp("relabelled-external-sm")
+    model_path = model_root / "sm.json"
+    restriction_path = model_root / "restrict_default.json"
+    model_path.write_text(
+        json.dumps(relabelled, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    restriction_path.write_bytes((MODEL_ROOT / "restrict_default.json").read_bytes())
+    compiled = compile_model_source(
+        model_path,
+        restriction=str(restriction_path.resolve()),
+        use_cache=False,
+    )
+    return compiled, CompiledUFOModel(compiled)
+
+
+@pytest.fixture(scope="module")
+def reordered_external_sm(tmp_path_factory: pytest.TempPathFactory):
+    raw = json.loads((MODEL_ROOT / "sm.json").read_text(encoding="utf-8"))
+    reordered = deepcopy(raw)
+    for field in (
+        "orders",
+        "particles",
+        "couplings",
+        "lorentz_structures",
+        "propagators",
+        "functions",
+        "form_factors",
+        "vertex_rules",
+    ):
+        reordered[field] = list(reversed(reordered[field]))
+    for vertex in reordered["vertex_rules"]:
+        colors = vertex["color_structures"]
+        lorentz = vertex["lorentz_structures"]
+        coupling_matrix = vertex["couplings"]
+        color_order = tuple(reversed(range(len(colors))))
+        lorentz_order = tuple(reversed(range(len(lorentz))))
+        vertex["color_structures"] = [colors[index] for index in color_order]
+        vertex["lorentz_structures"] = [lorentz[index] for index in lorentz_order]
+        vertex["couplings"] = [
+            [coupling_matrix[row][column] for column in lorentz_order]
+            for row in color_order
+        ]
+
+    model_root = tmp_path_factory.mktemp("reordered-external-sm")
+    model_path = model_root / "sm.json"
+    restriction_path = model_root / "restrict_default.json"
+    model_path.write_text(
+        json.dumps(reordered, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    restriction_path.write_bytes((MODEL_ROOT / "restrict_default.json").read_bytes())
+    compiled = compile_model_source(
+        model_path,
+        restriction=str(restriction_path.resolve()),
+        use_cache=False,
+    )
+    return compiled, CompiledUFOModel(compiled)
+
+
+def _production_dag_signature(compiled, model, process: str) -> tuple[object, ...]:
+    process_ir = build_model_process_ir(process, compiled.ir)
+    limits = infer_minimal_coupling_order_limits(process_ir, model=model)
+    dag = compile_generic_dag(
+        process_ir,
+        model=model,
+        max_coupling_orders=limits,
+    )
+    return (
+        limits,
+        len(dag.currents),
+        len(dag.interactions),
+        len(dag.amplitude_roots),
+        len(dag.color_plan.sectors),
+        dag.interaction_evaluation_count,
+    )
 
 
 def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) -> None:
@@ -198,6 +295,38 @@ def test_external_sm_matches_builtin_production_dag_topology(
     )
 
 
+@pytest.mark.parametrize("process", _EXTERNAL_SM_TOPOLOGY_LADDER)
+def test_external_sm_topology_is_pdg_relabel_invariant(
+    external_sm,
+    relabelled_external_sm,
+    process: str,
+) -> None:
+    compiled, model = external_sm
+    relabelled, relabelled_model = relabelled_external_sm
+
+    assert _production_dag_signature(
+        relabelled,
+        relabelled_model,
+        process,
+    ) == _production_dag_signature(compiled, model, process)
+
+
+@pytest.mark.parametrize("process", _EXTERNAL_SM_TOPOLOGY_LADDER)
+def test_external_sm_topology_is_ufo_inventory_order_invariant(
+    external_sm,
+    reordered_external_sm,
+    process: str,
+) -> None:
+    compiled, model = external_sm
+    reordered, reordered_model = reordered_external_sm
+
+    assert _production_dag_signature(
+        reordered,
+        reordered_model,
+        process,
+    ) == _production_dag_signature(compiled, model, process)
+
+
 @pytest.mark.parametrize("accuracy", ("nlc", "full"))
 def test_lc_current_reflection_reuse_does_not_prune_contracted_color_modes(
     external_sm,
@@ -289,9 +418,7 @@ def test_chiral_gauge_current_does_not_receive_parity_certificate(external_sm) -
 def test_deformed_quartic_coupling_disables_yang_mills_theorems(external_sm) -> None:
     compiled, _model = external_sm
     quartic_terms = {
-        term.coupling
-        for term in compiled.ir.vertex_terms
-        if term.id in {36, 37, 38}
+        term.coupling for term in compiled.ir.vertex_terms if term.id in {36, 37, 38}
     }
     assert len(quartic_terms) == 1
     quartic_name = next(iter(quartic_terms))

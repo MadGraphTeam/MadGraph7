@@ -536,6 +536,7 @@ def _compile_four_point_contact_kernels(
                 outer_color_factor,
                 final_color_factor,
                 color_dummy,
+                color_coefficient,
             ) = contact_split
             assignment_multiplicity = sum(
                 source_particles[leg].name == source_particles[remaining_leg].name
@@ -676,7 +677,8 @@ def _compile_four_point_contact_kernels(
                     term.id,
                 )
                 final_prefactor = (
-                    canonical_outer_sign
+                    _sym.E(color_coefficient)
+                    * canonical_outer_sign
                     * final_sign
                     * derived_coupling
                     / assignment_multiplicity
