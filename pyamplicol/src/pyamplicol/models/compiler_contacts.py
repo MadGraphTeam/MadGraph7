@@ -675,10 +675,7 @@ def _unsupported_contact_color_split_reason(
             "contact structure-constant indices are not normalized adjoint indices",
             **common,
         )
-    if (
-        _normalized_structure_constant_product_coefficient(term.color_expression)
-        is None
-    ):
+    if _source_structure_constant_product_coefficient(term.color_source) is None:
         return _contact_unsupported_reason(
             "non-scalar-color-prefactor",
             "contact structure constants retain a non-scalar color factor",
@@ -753,8 +750,8 @@ def _four_point_contact_color_split(
     str,
 ] | None:
     factors = _normalized_structure_constant_factors(term.color_expression)
-    color_coefficient = _normalized_structure_constant_product_coefficient(
-        term.color_expression
+    color_coefficient = _source_structure_constant_product_coefficient(
+        term.color_source
     )
     if len(factors) == 2 and color_coefficient is not None:
         shared_dummies = set(value for value in factors[0] if value < 0) & set(
@@ -807,10 +804,16 @@ def _four_point_contact_color_split(
     return None
 
 
-def _normalized_structure_constant_product_coefficient(
+def _source_structure_constant_product_coefficient(
     expression: str,
 ) -> str | None:
-    """Return the exact scalar multiplying two normalized f tensors."""
+    """Return the explicit scalar multiplying two source UFO f tensors.
+
+    The normalized Spenso expression may acquire a sign while canonicalizing
+    antisymmetric structure-constant arguments. The decomposition records
+    those permutations separately, so using the normalized scalar here would
+    apply that sign twice.
+    """
 
     _sym._ensure_symbolica()
     parsed = _sym.E(expression)
@@ -818,7 +821,7 @@ def _normalized_structure_constant_product_coefficient(
         _sym.E(f"ufo_contact_color_argument_{index}_") for index in range(3)
     )
     coefficient = parsed.replace(
-        _sym.S("spenso::f")(*wildcards),
+        _sym.S("UFO::f")(*wildcards),
         _sym.E("1"),
         bottom_up=True,
         repeat=True,

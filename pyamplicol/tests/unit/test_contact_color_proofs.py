@@ -230,6 +230,20 @@ def test_structure_constant_contact_preserves_exact_color_coefficient() -> None:
             assert difference == _sym.E("0")
 
 
+def test_structure_constant_contact_does_not_duplicate_normalization_sign() -> None:
+    source = "UFO::{}::f(-1,1,3)*UFO::{}::f(2,4,-1)"
+    normalized = (
+        "-spenso::f(ufo_c_1,ufo_c_3,ufo_c_dummy_1_adjoint)"
+        "*spenso::f(ufo_c_2,ufo_c_4,ufo_c_dummy_1_adjoint)"
+    )
+    term = _term(color_source=source, color_expression=normalized)
+
+    split = _four_point_contact_color_split(term, 0)
+
+    assert split is not None
+    assert split[-1] == "1"
+
+
 def test_structure_constant_contact_rejects_residual_color_tensor() -> None:
     term = _term(
         color_source=(
