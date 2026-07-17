@@ -3806,6 +3806,58 @@ def _pyamplicol_artifacts_current(
     )
 
 
+def _previous_cache_entry_for_cell(cell: CampaignCell) -> Mapping[str, object] | None:
+    try:
+        payload = load_caches(ReportPaths.default()).get(cell.cache_name)
+    except Exception:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        if cell.kind == "matrix":
+            if (
+                entry.get("process_key") == cell.process_key
+                and entry.get("n_final") == cell.n_final
+            ):
+                return entry
+        elif cell.kind == "performance_ladder":
+            if (
+                entry.get("n_final") == cell.n_final
+                and entry.get("variant") == cell.variant
+            ):
+                return entry
+        elif entry.get("n_final") == cell.n_final:
+            return entry
+    return None
+
+
+def _reusable_pyamplicol_generation_seconds(
+    cell: CampaignCell,
+    artifact_dir: Path,
+    previous_measurement: Mapping[str, object] | None,
+) -> float | None:
+    if previous_measurement is None:
+        return None
+    previous_generation_seconds = _optional_positive_float(
+        previous_measurement.get("generation_seconds")
+    )
+    if previous_generation_seconds is None:
+        return None
+    if not (artifact_dir / "artifact.json").is_file():
+        return None
+    if not _artifact_compiled_model_current(
+        artifact_dir,
+        require_current_compiled_model_contract=_cell_uses_external_model(cell),
+    ):
+        return None
+    return previous_generation_seconds
+
+
 def _measurement_artifact_paths(
     value: object,
     *,
@@ -4391,6 +4443,7 @@ def _measure_pyamplicol(
     points_override: object | None = None,
     artifact_subdir: str = "pyamplicol",
     log_name: str = "pyamplicol.log",
+    previous_measurement: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], object | None]:
     from pyamplicol.api import BenchmarkRunner, CompatibilityError, Generator, Runtime
     from pyamplicol.config import Action
@@ -4403,6 +4456,12 @@ def _measure_pyamplicol(
     snapshot_path = cell_root / "inputs" / "pyamplicol-inputs.json"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    reusable_generation_seconds = _reusable_pyamplicol_generation_seconds(
+        cell,
+        artifact_dir,
+        previous_measurement,
+    )
+    artifact_reusable = reusable_generation_seconds is not None
     config_values = _run_config_values(
         model=spec.model,
         color_accuracy=color_accuracy,
@@ -4429,6 +4488,7 @@ def _measure_pyamplicol(
         "generation_slice": _generation_slice_snapshot(generation_slice),
         "target_runtime": target_runtime,
         "cell_cores": cell_cores,
+        "artifact_reused_for_timing": artifact_reusable,
         "captured_at": _utc_now(),
     }
     snapshot_path.write_text(_json_text(snapshot), encoding="utf-8")
@@ -4447,26 +4507,29 @@ def _measure_pyamplicol(
             log.flush()
             with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
                 started = time.perf_counter()
-                with _generation_timeout(generation_timeout_seconds):
-                    if generation_slice is None:
-                        Generator(resolution).generate(
-                            cell.process,
-                            artifact_dir,
-                            model=_model_source_for_api(spec.model),
-                            mode="replace",
-                        )
-                    else:
-                        from tools.developer.generation_slice import generate_slice
+                if artifact_reusable:
+                    generation_seconds = float(reusable_generation_seconds)
+                else:
+                    with _generation_timeout(generation_timeout_seconds):
+                        if generation_slice is None:
+                            Generator(resolution).generate(
+                                cell.process,
+                                artifact_dir,
+                                model=_model_source_for_api(spec.model),
+                                mode="replace",
+                            )
+                        else:
+                            from tools.developer.generation_slice import generate_slice
 
-                        generate_slice(
-                            cell.process,
-                            artifact_dir,
-                            selection=generation_slice,  # type: ignore[arg-type]
-                            model=_model_source_for_api(spec.model),
-                            mode="replace",
-                            config=resolution,
-                        )
-                generation_seconds = time.perf_counter() - started
+                            generate_slice(
+                                cell.process,
+                                artifact_dir,
+                                selection=generation_slice,  # type: ignore[arg-type]
+                                model=_model_source_for_api(spec.model),
+                                mode="replace",
+                                config=resolution,
+                            )
+                    generation_seconds = time.perf_counter() - started
                 runtime_process = _single_artifact_process_id(
                     artifact_dir,
                     fallback=cell.process,
@@ -4499,6 +4562,10 @@ def _measure_pyamplicol(
             "model_source": snapshot["model_source"],
             "input_snapshot_path": os.fspath(snapshot_path),
             "runtime_process": runtime_process,
+            "artifact_reused_for_timing": artifact_reusable,
+            "generation_seconds_source": (
+                "previous_measurement" if artifact_reusable else "fresh_generation"
+            ),
             "high_precision_matrix_element": high_precision_value,
             "high_precision_relative_difference": high_precision_relative_difference,
             "generation_slice": snapshot["generation_slice"],
@@ -4592,10 +4659,26 @@ def _measure_pyamplicol_lc_two_workloads(
     cell_cores: int,
     points: object | None,
     fixed_helicity: Mapping[str, object] | None = None,
+    previous_measurement: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], object | None]:
     from tools.developer.generation_slice import GenerationSlice
 
     old_legacy = _measurement_old_matrix_fields(legacy or {})
+    previous_metadata = (
+        previous_measurement.get("metadata")
+        if isinstance(previous_measurement, Mapping)
+        else None
+    )
+    previous_selected = (
+        previous_metadata.get("selected_flow_measurement")
+        if isinstance(previous_metadata, Mapping)
+        else None
+    )
+    previous_all_flow = (
+        previous_metadata.get("all_flow_measurement")
+        if isinstance(previous_metadata, Mapping)
+        else None
+    )
     reference_order = _selected_flow_reference_color_order(old_legacy, cell)
     selected_slice: object | None = None
     if isinstance(reference_order, list) and reference_order:
@@ -4627,6 +4710,9 @@ def _measure_pyamplicol_lc_two_workloads(
         points_override=points,
         artifact_subdir="pyamplicol/selected-flow",
         log_name="pyamplicol-selected-flow.log",
+        previous_measurement=(
+            previous_selected if isinstance(previous_selected, Mapping) else None
+        ),
     )
 
     if fixed_helicity is None:
@@ -4662,6 +4748,9 @@ def _measure_pyamplicol_lc_two_workloads(
             points_override=points,
             artifact_subdir="pyamplicol/all-flows",
             log_name="pyamplicol-all-flows.log",
+            previous_measurement=(
+                previous_all_flow if isinstance(previous_all_flow, Mapping) else None
+            ),
         )
     else:
         all_flow_artifact_dir = (
@@ -4758,6 +4847,7 @@ def _measure_pyamplicol_matrix_jit_o3(
     cell_cores: int,
     points: object | None,
     fixed_helicity: Mapping[str, object] | None = None,
+    previous_measurement: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], object | None]:
     variant = {
         "evaluator.backend": "jit",
@@ -4774,6 +4864,7 @@ def _measure_pyamplicol_matrix_jit_o3(
             target_runtime=target_runtime,
             cell_cores=cell_cores,
             points_override=points,
+            previous_measurement=previous_measurement,
         )
     return _measure_pyamplicol_lc_two_workloads(
         cell=cell,
@@ -4786,6 +4877,7 @@ def _measure_pyamplicol_matrix_jit_o3(
         cell_cores=cell_cores,
         points=points,
         fixed_helicity=fixed_helicity,
+        previous_measurement=previous_measurement,
     )
 
 
@@ -6840,6 +6932,12 @@ def _measure_cell_payload(
 ) -> dict[str, object]:
     spec = _spec_by_dataset()[cell.dataset_id]
     if isinstance(spec, MatrixSpec):
+        previous_entry = _previous_cache_entry_for_cell(cell)
+        previous_pyamplicol = (
+            previous_entry.get("pyamplicol_jit_o3")
+            if isinstance(previous_entry, Mapping)
+            else None
+        )
         base_entry = {
             "process_key": cell.process_key,
             "n_final": cell.n_final,
@@ -6887,6 +6985,11 @@ def _measure_cell_payload(
             cell_cores=cell_cores,
             points=points,
             fixed_helicity=fixed_helicity,
+            previous_measurement=(
+                previous_pyamplicol
+                if isinstance(previous_pyamplicol, Mapping)
+                else None
+            ),
         )
         validation = _pointwise_validation(
             legacy,
@@ -6909,6 +7012,12 @@ def _measure_cell_payload(
         }
     assert isinstance(spec, LadderSpec)
     if spec.kind == CacheKind.PERFORMANCE_LADDER:
+        previous_entry = _previous_cache_entry_for_cell(cell)
+        previous_measurement = (
+            previous_entry.get("measurement")
+            if isinstance(previous_entry, Mapping)
+            else None
+        )
         shared_particles = _shared_validation_particles(cell.process)
         points = _pyamplicol_points_from_particles(shared_particles)
         variant = next(item for item in spec.variants if item.key == cell.variant)
@@ -6938,6 +7047,11 @@ def _measure_cell_payload(
                 target_runtime=target_runtime,
                 cell_cores=cell_cores,
                 points=points,
+                previous_measurement=(
+                    previous_measurement
+                    if isinstance(previous_measurement, Mapping)
+                    else None
+                ),
             )
         return {
             "cell": cell.as_json(),
@@ -6950,6 +7064,12 @@ def _measure_cell_payload(
                 "measurement": measurement,
             },
         }
+    previous_model_entry = _previous_cache_entry_for_cell(cell)
+    previous_model_measurement = (
+        previous_model_entry.get("measurement")
+        if isinstance(previous_model_entry, Mapping)
+        else None
+    )
     measurement, _points = _measure_pyamplicol(
         cell=cell,
         spec=spec,
@@ -6960,6 +7080,11 @@ def _measure_cell_payload(
         target_runtime=target_runtime,
         cell_cores=cell_cores,
         high_precision=True,
+        previous_measurement=(
+            previous_model_measurement
+            if isinstance(previous_model_measurement, Mapping)
+            else None
+        ),
     )
     metadata = measurement.get("metadata", {})
     high_precision_value = None

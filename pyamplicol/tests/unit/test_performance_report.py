@@ -922,6 +922,86 @@ def test_missing_only_retries_old_python_wall_timing_source(
     assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
 
 
+def test_retiming_reuses_only_current_pyamplicol_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 10))
+    previous = {"generation_seconds": 12.5}
+    artifact_dir = tmp_path / "artifact"
+    builtin_cell = report.CampaignCell(
+        kind="matrix",
+        cache_name="matrix_builtin_sm_nlc",
+        dataset_id="matrix_builtin_sm_nlc",
+        n_final=1,
+        process="d d~ > z",
+        process_key="dd_z_jets",
+    )
+
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            previous,
+        )
+        is None
+    )
+
+    (artifact_dir / "model").mkdir(parents=True)
+    (artifact_dir / "artifact.json").write_text("{}", encoding="utf-8")
+    (artifact_dir / "model" / "compiled-model.json").write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 9}),
+        encoding="utf-8",
+    )
+
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            previous,
+        )
+        == 12.5
+    )
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            {"generation_seconds": 0.0},
+        )
+        is None
+    )
+
+    external_cell = report.CampaignCell(
+        kind="matrix",
+        cache_name="matrix_external_sm_nlc",
+        dataset_id="matrix_external_sm_nlc",
+        n_final=1,
+        process="d d~ > z",
+        process_key="dd_z_jets",
+    )
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            external_cell,
+            artifact_dir,
+            previous,
+        )
+        is None
+    )
+
+    (artifact_dir / "model" / "compiled-model.json").write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 10}),
+        encoding="utf-8",
+    )
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            external_cell,
+            artifact_dir,
+            previous,
+        )
+        == 12.5
+    )
+
+
 def test_legacy_revision_check_accepts_non_numerical_followup_pin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
