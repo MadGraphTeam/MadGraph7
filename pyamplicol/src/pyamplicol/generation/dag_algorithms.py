@@ -254,6 +254,9 @@ def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
         interactions=pruned_interactions,
         amplitude_roots=pruned_roots,
         truncated=dag.truncated,
+        helicity_coverage=dag.helicity_coverage,
+        color_coverage=dag.color_coverage,
+        selected_source_helicities=dag.selected_source_helicities,
     )
 
 
@@ -339,6 +342,9 @@ def prune_global_helicity_flip_equivalent_roots(
             interactions=dag.interactions,
             amplitude_roots=tuple(retained),
             truncated=dag.truncated,
+            helicity_coverage=dag.helicity_coverage,
+            color_coverage=dag.color_coverage,
+            selected_source_helicities=dag.selected_source_helicities,
         )
     )
 
@@ -511,6 +517,9 @@ def filter_dag_to_color_sectors(
             interactions=(),
             amplitude_roots=(),
             truncated=dag.truncated,
+            helicity_coverage=dag.helicity_coverage,
+            color_coverage="selected",
+            selected_source_helicities=dag.selected_source_helicities,
         )
 
     selected_roots = tuple(
@@ -527,6 +536,9 @@ def filter_dag_to_color_sectors(
             interactions=(),
             amplitude_roots=(),
             truncated=dag.truncated,
+            helicity_coverage=dag.helicity_coverage,
+            color_coverage="selected",
+            selected_source_helicities=dag.selected_source_helicities,
         )
 
     interactions_by_result: dict[int, list[InteractionNode]] = {}
@@ -632,6 +644,9 @@ def filter_dag_to_color_sectors(
         interactions=tuple(interactions),
         amplitude_roots=tuple(amplitude_roots),
         truncated=dag.truncated,
+        helicity_coverage=dag.helicity_coverage,
+        color_coverage="selected",
+        selected_source_helicities=dag.selected_source_helicities,
     )
 
 
@@ -665,5 +680,10 @@ def filter_dag_to_source_helicities(
             interactions=dag.interactions,
             amplitude_roots=selected_roots,
             truncated=dag.truncated,
+            helicity_coverage="selected",
+            color_coverage=dag.color_coverage,
+            selected_source_helicities=tuple(
+                sorted({**dict(dag.selected_source_helicities), **requested}.items())
+            ),
         )
     )

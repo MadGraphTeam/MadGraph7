@@ -84,6 +84,10 @@ EXPECTED_FORTRAN_COLOR_ORDER_COUNTS: Mapping[str, int] = {
     "g g > t t~": 2,
 }
 
+GENERATED_PROCESS_ROW_SELECTION_POLICY = (
+    "exact-external-pdg-order-then-process-file-order-v1"
+)
+
 
 def parse_process_file(path: Path) -> tuple[ProcessEntry, ...]:
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -155,18 +159,30 @@ def process_pdgs(process: str) -> tuple[int, ...]:
         ) from error
 
 
-def _validate_supported_quark_line_scope(
+def validate_selected_flow_quark_line_scope(
     pdgs: Sequence[int],
     *,
     context: str,
 ) -> int:
+    """Validate complete quark lines without imposing the all-flow limit."""
+
     quark_legs = sum(1 for pdg in pdgs if 1 <= abs(int(pdg)) <= 6)
     if quark_legs % 2:
         raise LegacyOracleError(
             f"{context}: legacy Fortran oracle cannot identify complete quark lines "
             f"from {quark_legs} external quark legs"
         )
-    quark_lines = quark_legs // 2
+    return quark_legs // 2
+
+
+def _validate_supported_quark_line_scope(
+    pdgs: Sequence[int],
+    *,
+    context: str,
+) -> int:
+    """Apply the strict two-line scope used by frozen/all-flow evidence."""
+
+    quark_lines = validate_selected_flow_quark_line_scope(pdgs, context=context)
     if quark_lines > MAX_SUPPORTED_QUARK_LINES:
         raise LegacyOracleError(
             f"{context}: {quark_lines} quark lines exceed the legacy Fortran "
@@ -251,6 +267,33 @@ def _select_declared_process_entry(
     return declared_matches[0], matches
 
 
+def select_generated_process_entry(
+    entries: Sequence[ProcessEntry],
+    *,
+    generated_process: str,
+    wanted_pdgs: Sequence[int],
+) -> tuple[ProcessEntry, tuple[ProcessEntry, ...]]:
+    """Select a deterministic row from a freshly generated process file.
+
+    Performance campaigns generate the process file for the concrete process
+    immediately before selection, so they must not depend on the small frozen
+    row inventory used to certify independent reference fixtures.  Exact
+    external PDG order is preferred; ties retain process-file order.  The
+    complete matching set is returned so callers can record the selection
+    context in their provenance.
+    """
+
+    normalized_pdgs = tuple(int(pdg) for pdg in wanted_pdgs)
+    validate_selected_flow_quark_line_scope(
+        normalized_pdgs,
+        context=f"process {generated_process!r}",
+    )
+    matches = matching_process_entries_for_pdgs(entries, normalized_pdgs)
+    if not matches:
+        raise LegacyOracleError(f"no Fortran process row matches {generated_process!r}")
+    return matches[0], matches
+
+
 def matching_process_entries(
     entries: Sequence[ProcessEntry], process: str
 ) -> tuple[ProcessEntry, ...]:
@@ -295,6 +338,28 @@ def _permutation(
             f"cannot map external ordering {tuple(source_pdgs)} to {tuple(target_pdgs)}"
         )
     return tuple(result)
+
+
+def source_mapped_color_order(
+    entry: ProcessEntry,
+    *,
+    source_pdgs: Sequence[int],
+) -> tuple[int, ...]:
+    """Map a raw one-based Fortran color order onto source-leg labels."""
+
+    external_count = len(entry.process_pdgs)
+    expected_positions = tuple(range(1, external_count + 1))
+    actual_positions = tuple(sorted(int(position) for position in entry.color_order))
+    if actual_positions != expected_positions:
+        raise LegacyOracleError(
+            "Fortran color order must be a permutation of external positions "
+            f"1..{external_count}, got {entry.color_order}"
+        )
+    row_to_source = _permutation(source_pdgs, entry.process_pdgs)
+    return tuple(
+        row_to_source[int(row_position) - 1] + 1
+        for row_position in entry.color_order
+    )
 
 
 def _concrete_process_id(

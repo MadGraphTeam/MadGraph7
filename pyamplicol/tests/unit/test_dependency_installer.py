@@ -40,7 +40,7 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
     assert all(len(item.revision) == 40 for item in with_legacy)
     legacy = next(item for item in with_legacy if item.key == "legacy-amplicol")
     assert legacy.branch == "amplicol_with_patches"
-    assert legacy.revision == "f3fdca35631c9405d28337a79cdab84994d8e414"
+    assert legacy.revision == "362c7d1babff6ab71a911ceab5032b7c55175ec1"
 
 
 def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> None:
@@ -49,9 +49,7 @@ def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> N
     loader = payload["ufo_model_loader"]
     assert loader["required_version"] == "0.1.7"
     assert loader["latest_verified_published_version"] == "0.1.7"
-    assert loader["published_revision"] == (
-        "f3fda32c5e6a673075c345d74a11f12b83c00015"
-    )
+    assert loader["published_revision"] == ("f3fda32c5e6a673075c345d74a11f12b83c00015")
     assert loader["wheel_sha256"] == (
         "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
     )
@@ -87,7 +85,7 @@ def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
     source = module.Source(
         "legacy-amplicol",
         "https://github.com/rikkert-frederix/AmpliCol.git",
-        "f3fdca35631c9405d28337a79cdab84994d8e414",
+        "362c7d1babff6ab71a911ceab5032b7c55175ec1",
         "amplicol_with_patches",
     )
     calls: list[tuple[list[str], Path | None]] = []
@@ -121,7 +119,7 @@ def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
                 "git",
                 "checkout",
                 "--detach",
-                "f3fdca35631c9405d28337a79cdab84994d8e414",
+                "362c7d1babff6ab71a911ceab5032b7c55175ec1",
             ],
             source.path,
         ),
@@ -172,6 +170,8 @@ def test_installer_tree_fingerprint_matches_content_and_ignores_build_cache(
     target.mkdir()
     (target / "output").write_text("build\n", encoding="utf-8")
     assert module._source_tree_sha256(source) == second
+
+
 def test_canonical_release_lock_has_no_candidate_path_packages() -> None:
     module = _module()
     module._validate_release_cargo_lock(ROOT / "Cargo.lock")

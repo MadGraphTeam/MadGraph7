@@ -108,6 +108,11 @@ class BenchmarkBackend:
                 }
             else:
                 for _ in range(self._config.warmup_runs):
+                    runtime.evaluate(
+                        batch,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                    )
                     profiler(
                         batch,
                         helicities=helicities,
@@ -116,11 +121,21 @@ class BenchmarkBackend:
                         include_values=False,
                     )
                 evaluator_samples = []
+                evaluator_elapsed = 0.0
                 while (
                     len(samples) < self._config.minimum_samples
                     or elapsed < self._config.target_runtime
                 ):
                     started = time.perf_counter()
+                    runtime.evaluate(
+                        batch,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                    )
+                    duration = time.perf_counter() - started
+                    elapsed += duration
+                    samples.append(duration / len(batch))
+                    profile_started = time.perf_counter()
                     profile = profiler(
                         batch,
                         helicities=helicities,
@@ -128,11 +143,8 @@ class BenchmarkBackend:
                         precision=16,
                         include_values=False,
                     )
-                    elapsed += time.perf_counter() - started
+                    evaluator_elapsed += time.perf_counter() - profile_started
                     points_in_profile = _profile_point_count(profile, len(batch))
-                    samples.append(
-                        _profile_float(profile, "wall_time_s") / points_in_profile
-                    )
                     evaluator_samples.append(
                         _profile_core_evaluator_seconds(profile) / points_in_profile
                     )
@@ -152,10 +164,12 @@ class BenchmarkBackend:
                     evaluator_relative,
                 ) = _sample_statistics(evaluator_samples)
                 evaluator_environment = {
-                    "wall_time_source": "runtime_profile_wall_time",
-                    "evaluator_time_source": "runtime_profile_core_evaluator_time",
+                    "wall_time_source": "runtime_evaluate_wall_time",
+                    "evaluator_time_source": (
+                        "runtime_profile_core_evaluator_call_time"
+                    ),
                     "evaluator_sample_count": len(evaluator_samples),
-                    "evaluator_elapsed_seconds": elapsed,
+                    "evaluator_elapsed_seconds": evaluator_elapsed,
                     "evaluator_standard_deviation_seconds_per_point": (
                         evaluator_deviation
                     ),
@@ -174,9 +188,7 @@ class BenchmarkBackend:
             self._progress.emit(ProgressEnd(task_id))
 
         mean, deviation, error, relative_error = _sample_statistics(samples)
-        evaluator_time_per_point = (
-            mean if evaluator_samples is None else evaluator_mean
-        )
+        evaluator_time_per_point = mean if evaluator_samples is None else evaluator_mean
         return BenchmarkResult(
             requested_config=self._config,
             effective_config=self._config,
@@ -219,6 +231,8 @@ def _benchmark_batch(points: Momenta, batch_size: int) -> Momenta:
 def _native_profiler(
     runtime: RuntimeBackend,
 ) -> Callable[..., Mapping[str, object]] | None:
+    if getattr(runtime, "supports_profiling", None) is False:
+        return None
     for name in ("profile", "evaluate_profile"):
         profiler = getattr(runtime, name, None)
         if callable(profiler):
@@ -244,9 +258,8 @@ def _profile_point_count(profile: Mapping[str, object], fallback: int) -> int:
 
 
 def _profile_core_evaluator_seconds(profile: Mapping[str, object]) -> float:
-    return _profile_float(profile, "stage_evaluator_time_s") + _profile_float(
-        profile,
-        "amplitude_evaluator_time_s",
+    return _profile_float(profile, "stage_evaluator_call_time_s") + _profile_float(
+        profile, "amplitude_evaluator_call_time_s"
     )
 
 

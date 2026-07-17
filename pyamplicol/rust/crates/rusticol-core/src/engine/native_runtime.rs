@@ -314,6 +314,7 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        let total_start = Instant::now();
         let batch = self.prepare_f64_batch(momenta, point_count)?;
         let (values, profile) = if helicity_ids.is_some() || color_ids.is_some() {
             self.validate_selector_capabilities(helicity_ids, color_ids)?;
@@ -344,10 +345,9 @@ impl NativeRuntime {
         } else {
             self.runtime.run_f64(&batch)?
         };
-        Ok(NativeProfiledEvaluation {
-            values,
-            profile: profile.into(),
-        })
+        let mut profile: NativeRuntimeProfile = profile.into();
+        profile.total_s = total_start.elapsed().as_secs_f64();
+        Ok(NativeProfiledEvaluation { values, profile })
     }
 
     pub fn evaluate_resolved_f64(

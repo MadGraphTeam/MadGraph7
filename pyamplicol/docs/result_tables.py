@@ -602,6 +602,11 @@ def _empty_validation() -> dict[str, object]:
         "pyamplicol_matrix_element": None,
         "absolute_difference": None,
         "relative_difference": None,
+        "all_flow_status": NA_STATUS,
+        "all_flow_reference_matrix_element": None,
+        "all_flow_pyamplicol_matrix_element": None,
+        "all_flow_absolute_difference": None,
+        "all_flow_relative_difference": None,
         "relative_tolerance": VALIDATION_RELATIVE_TOLERANCE,
         "absolute_tolerance": VALIDATION_ABSOLUTE_TOLERANCE,
         "point_source": None,
@@ -1088,10 +1093,7 @@ def _validate_optional_nonnegative_number(
 ) -> None:
     if value is None:
         return
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-    ):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         qualifier = "non-negative" if allow_zero else "positive"
         raise ValueError(f"{context} must be {qualifier} or null")
     number = float(value)
@@ -1111,6 +1113,11 @@ def _validate_pointwise_validation(value: object, context: str) -> None:
             "pyamplicol_matrix_element",
             "absolute_difference",
             "relative_difference",
+            "all_flow_status",
+            "all_flow_reference_matrix_element",
+            "all_flow_pyamplicol_matrix_element",
+            "all_flow_absolute_difference",
+            "all_flow_relative_difference",
             "relative_tolerance",
             "absolute_tolerance",
             "point_source",
@@ -1120,11 +1127,17 @@ def _validate_pointwise_validation(value: object, context: str) -> None:
     )
     if payload["status"] not in {member.value for member in ResultStatus}:
         raise ValueError(f"{context}.status is invalid")
+    if payload["all_flow_status"] not in {member.value for member in ResultStatus}:
+        raise ValueError(f"{context}.all_flow_status is invalid")
     for field_name in (
         "reference_matrix_element",
         "pyamplicol_matrix_element",
         "absolute_difference",
         "relative_difference",
+        "all_flow_reference_matrix_element",
+        "all_flow_pyamplicol_matrix_element",
+        "all_flow_absolute_difference",
+        "all_flow_relative_difference",
         "relative_tolerance",
         "absolute_tolerance",
     ):
@@ -1850,8 +1863,12 @@ def _z_old_format_with_ratio(value: float | None, reference: float | None) -> st
     if reference is None or reference <= 0.0:
         return text
     ratio = value / reference
-    color = "speedgreen" if ratio < 1.0 else "speedorange" if ratio < 2.0 else "speedred"
-    return text + rf" \textcolor{{{color}}}{{\texttt{{(x{_z_old_format_ratio(ratio)})}}}}"
+    color = (
+        "speedgreen" if ratio < 1.0 else "speedorange" if ratio < 2.0 else "speedred"
+    )
+    return (
+        text + rf" \textcolor{{{color}}}{{\texttt{{(x{_z_old_format_ratio(ratio)})}}}}"
+    )
 
 
 def _z_old_status_cell(status: str) -> str:
@@ -1883,7 +1900,9 @@ def _z_old_ratio_against_built_in(
     if value is None or reference is None or reference <= 0.0:
         return _z_old_missing(color="black!45")
     ratio = value / reference
-    color = "speedgreen" if ratio < 1.0 else "speedorange" if ratio < 2.0 else "speedred"
+    color = (
+        "speedgreen" if ratio < 1.0 else "speedorange" if ratio < 2.0 else "speedred"
+    )
     return rf"\textcolor{{{color}}}{{\texttt{{x{_z_old_format_ratio(ratio)}}}}}"
 
 
@@ -1909,7 +1928,9 @@ def _z_old_render_timing_triplet(
     if status in {"timeout", "ram_limit", "validation_failed", "unsupported", "error"}:
         return [
             _z_old_status_cell(status),
-            _z_old_missing(color="black!45") if mode_key == "amplicol" else _z_old_missing(),
+            _z_old_missing(color="black!45")
+            if mode_key == "amplicol"
+            else _z_old_missing(),
             _z_old_missing(),
         ]
     generation = _z_old_optional_float(row.get(generation_key))
@@ -1945,10 +1966,18 @@ def _z_old_render_mode_cells(
             if mode_key == "amplicol"
             else [_z_old_missing(), _z_old_missing(), _z_old_missing()]
         )
-    elif status in {"timeout", "ram_limit", "validation_failed", "unsupported", "error"}:
+    elif status in {
+        "timeout",
+        "ram_limit",
+        "validation_failed",
+        "unsupported",
+        "error",
+    }:
         selected = [
             _z_old_status_cell(status),
-            _z_old_missing(color="black!45") if mode_key == "amplicol" else _z_old_missing(),
+            _z_old_missing(color="black!45")
+            if mode_key == "amplicol"
+            else _z_old_missing(),
             _z_old_missing(),
         ]
     else:
@@ -2024,15 +2053,28 @@ def _z_old_rows_by_variant(
     rows: dict[str, dict[str, object]] = {}
     for variant in Z_VARIANTS:
         entry = entries.get((n_final, variant.key), {})
-        measurement = (
-            entry.get("measurement", {}) if isinstance(entry, Mapping) else {}
-        )
+        measurement = entry.get("measurement", {}) if isinstance(entry, Mapping) else {}
         if not isinstance(measurement, Mapping):
             measurement = {}
-        rows[variant.key] = _z_old_row_from_measurement(
+        row = _z_old_row_from_measurement(
             measurement,
             variant_key=variant.key,
         )
+        metadata = measurement.get("metadata")
+        validation = (
+            metadata.get("pointwise_validation")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        if isinstance(validation, Mapping):
+            if validation.get("status") == ResultStatus.VALIDATION_FAILED.value:
+                row["status"] = ResultStatus.VALIDATION_FAILED.value
+            if (
+                validation.get("all_flow_status")
+                == ResultStatus.VALIDATION_FAILED.value
+            ):
+                row["all_flow_status"] = ResultStatus.VALIDATION_FAILED.value
+        rows[variant.key] = row
     return rows
 
 
@@ -2043,7 +2085,7 @@ def _z_old_reproduction_n(
     for n_final in (7, 9, 8, 6, 5, 4, 3, 2, 1):
         if n_final not in multiplicities:
             continue
-        row = _z_old_rows_by_variant(entries, n_final=n_final).get("jit_o1", {})
+        row = _z_old_rows_by_variant(entries, n_final=n_final).get("jit_o3", {})
         if row.get("status") == "ok":
             return n_final
     return None
@@ -2052,8 +2094,7 @@ def _z_old_reproduction_n(
 def _chunks(values: Sequence[int], size: int) -> tuple[tuple[int, ...], ...]:
     step = max(1, int(size))
     return tuple(
-        tuple(values[index : index + step])
-        for index in range(0, len(values), step)
+        tuple(values[index : index + step]) for index in range(0, len(values), step)
     )
 
 
@@ -2200,6 +2241,28 @@ def _matrix_old_value(
     return None
 
 
+def _matrix_scaled_old_value(
+    measurement: Mapping[str, object],
+    key: str,
+    *,
+    value_scale: float = 1.0,
+    fallback_key: str | None = None,
+    fallback_scale: float = 1.0,
+) -> float | None:
+    fields = _measurement_old_matrix_fields(measurement)
+    if key in fields:
+        value = fields[key]
+        scale = value_scale
+    elif fallback_key is not None:
+        value = measurement.get(fallback_key)
+        scale = fallback_scale
+    else:
+        return None
+    if value is None:
+        return None
+    return float(value) * scale
+
+
 def _matrix_reference_pair(
     measurement: Mapping[str, object],
     selected_key: str,
@@ -2207,10 +2270,16 @@ def _matrix_reference_pair(
     formatter,
     *,
     selected_fallback_key: str | None = None,
+    selected_fallback_scale: float = 1.0,
 ) -> str:
     if not _measurement_ok(measurement):
         return _matrix_failure_label(measurement)
-    selected = _matrix_old_value(measurement, selected_key, selected_fallback_key)
+    selected = _matrix_scaled_old_value(
+        measurement,
+        selected_key,
+        fallback_key=selected_fallback_key,
+        fallback_scale=selected_fallback_scale,
+    )
     all_flow = _matrix_old_value(measurement, all_flow_key)
     if selected is None and all_flow is None:
         return _matrix_na("ReportRed")
@@ -2298,15 +2367,23 @@ def _matrix_lc_runtime_ratio(
 ) -> str:
     if not _measurement_ok(pyamplicol):
         return _matrix_failure_label(pyamplicol)
-    reference = _matrix_old_value(legacy, legacy_key)
-    if reference is not None:
-        reference = float(reference) * legacy_scale
-    py_wall = _matrix_old_value(pyamplicol, py_wall_key, py_wall_fallback_key)
-    py_eval = _matrix_old_value(pyamplicol, py_eval_key, py_eval_fallback_key)
-    if py_wall is not None:
-        py_wall = float(py_wall) * py_scale
-    if py_eval is not None:
-        py_eval = float(py_eval) * py_scale
+    reference = _matrix_scaled_old_value(
+        legacy,
+        legacy_key,
+        value_scale=legacy_scale,
+    )
+    py_wall = _matrix_scaled_old_value(
+        pyamplicol,
+        py_wall_key,
+        value_scale=py_scale,
+        fallback_key=py_wall_fallback_key,
+    )
+    py_eval = _matrix_scaled_old_value(
+        pyamplicol,
+        py_eval_key,
+        value_scale=py_scale,
+        fallback_key=py_eval_fallback_key,
+    )
     return _matrix_py_over_ref_pair(
         _safe_divide(py_wall, reference),
         _safe_divide(py_eval, reference),
@@ -2363,6 +2440,7 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
             "all_flow_runtime_us_per_point",
             _matrix_plain_number,
             selected_fallback_key="wall_seconds_per_point",
+            selected_fallback_scale=1.0e6,
         )
         runtime_selected = _matrix_lc_runtime_ratio(
             legacy,
@@ -2491,9 +2569,11 @@ def _summary_numeric_stats_line(values: Sequence[float]) -> str:
     stats = _summary_stats(values)
     if stats is None:
         return _matrix_na()
-    return r"\matrixsummaryfour{" + "}{".join(
-        rf"\texttt{{{_matrix_compact_number(value)}}}" for value in stats
-    ) + "}"
+    return (
+        r"\matrixsummaryfour{"
+        + "}{".join(rf"\texttt{{{_matrix_compact_number(value)}}}" for value in stats)
+        + "}"
+    )
 
 
 def _summed_ratio(
@@ -2672,9 +2752,7 @@ def _matrix_lc_column_summary(
                     py_all_generation / ref_all_generation
                 )
                 summary["jit_generation_all_flow_paired"].append(py_all_generation)
-                summary["jit_generation_all_flow_ref_paired"].append(
-                    ref_all_generation
-                )
+                summary["jit_generation_all_flow_ref_paired"].append(ref_all_generation)
         ref_runtime = _optional_positive_float(
             _matrix_old_value(legacy, "runtime_us_per_point")
         )
@@ -2689,9 +2767,7 @@ def _matrix_lc_column_summary(
                 )
                 py_runtime = None if seconds is None else 1.0e6 * seconds
             if _measurement_ok(pyamplicol) and py_runtime is not None:
-                summary["jit_runtime_one_flow_ratio"].append(
-                    py_runtime / ref_runtime
-                )
+                summary["jit_runtime_one_flow_ratio"].append(py_runtime / ref_runtime)
                 summary["jit_runtime_one_flow_paired"].append(py_runtime)
                 summary["jit_runtime_one_flow_ref_paired"].append(ref_runtime)
         ref_all_runtime = _optional_positive_float(
@@ -2822,16 +2898,20 @@ def _matrix_lc_summary_rows(
     chunk: Sequence[int],
 ) -> list[str]:
     generation_one_flow_cells = [
-        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{\textbf{gen O3 one-flow, hel. sum}}"
+        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{"
+        r"\textbf{gen O3 one-flow, hel. sum}}"
     ]
     generation_all_flow_cells = [
-        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{\textbf{gen O3 all-flows, one-hel}}"
+        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{"
+        r"\textbf{gen O3 all-flows, one-hel}}"
     ]
     runtime_one_flow_cells = [
-        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{\textbf{run O3 one-flow, hel. sum}}"
+        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{"
+        r"\textbf{run O3 one-flow, hel. sum}}"
     ]
     runtime_all_flow_cells = [
-        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{\textbf{run O3 all-flows, one-hel}}"
+        r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{"
+        r"\textbf{run O3 all-flows, one-hel}}"
     ]
     for n_final in chunk:
         summary = _matrix_column_summary(
@@ -2916,9 +2996,7 @@ def render_matrix_table(spec: MatrixSpec, payload: Mapping[str, object]) -> str:
     ]
     lines.extend(_matrix_table_macros())
     for chunk_index, chunk in enumerate(chunks):
-        multiplicity_columns = (
-            r"@{\hspace{0.055in}}".join("L{2.51in}" for _ in chunk)
-        )
+        multiplicity_columns = r"@{\hspace{0.055in}}".join("L{2.51in}" for _ in chunk)
         column_spec = (
             r"@{}r@{\hspace{0.055in}}L{1.42in}@{\hspace{0.075in}}"
             + multiplicity_columns
@@ -2928,9 +3006,7 @@ def render_matrix_table(spec: MatrixSpec, payload: Mapping[str, object]) -> str:
             lines.append(r"\clearpage")
         title = spec.title if chunk_index == 0 else f"{spec.title} (continued)"
         heading = (
-            rf"\subsection*{{{title}}}"
-            if chunk_index
-            else rf"\subsection{{{title}}}"
+            rf"\subsection*{{{title}}}" if chunk_index else rf"\subsection{{{title}}}"
         )
         lines.extend(
             [
@@ -2997,23 +3073,18 @@ def render_performance_ladder(
     }
     compare_to_built_in = spec.model.profile != BUILTIN_SM.profile
     built_in_entries: dict[tuple[int, str], Mapping[str, object]] = {}
-    if compare_to_built_in:
-        if built_in_payload is not None:
-            validate_cache(built_in_payload)
-            raw_built_in_entries = built_in_payload["entries"]
-            assert isinstance(raw_built_in_entries, list)
-            built_in_entries = {
-                (int(entry["n_final"]), str(entry["variant"])): entry
-                for entry in raw_built_in_entries
-                if isinstance(entry, Mapping)
-            }
+    if compare_to_built_in and built_in_payload is not None:
+        validate_cache(built_in_payload)
+        raw_built_in_entries = built_in_payload["entries"]
+        assert isinstance(raw_built_in_entries, list)
+        built_in_entries = {
+            (int(entry["n_final"]), str(entry["variant"])): entry
+            for entry in raw_built_in_entries
+            if isinstance(entry, Mapping)
+        }
     display_n_values = tuple(spec.multiplicities)
     section_prefix = "UFO-SM " if compare_to_built_in else ""
-    output_root = (
-        ".artifacts/performance-report"
-        if not compare_to_built_in
-        else ".artifacts/performance-report"
-    )
+    output_root = ".artifacts/performance-report"
     model_option = (
         "--model src/pyamplicol/assets/models/json/sm/sm.json "
         if compare_to_built_in
@@ -3024,8 +3095,9 @@ def render_performance_ladder(
         "% Generated by docs/result_tables.py; edit the JSON cache, then render.",
         r"\begin{landscape}",
         (
-            rf"\subsection{{\texorpdfstring{{{section_prefix}Dedicated \(d\bar d\to Z+\) Gluon "
-            rf"Performance}}{{{section_prefix}Dedicated d dbar to Z plus Gluon Performance}}}}"
+            rf"\subsection{{\texorpdfstring{{{section_prefix}Dedicated "
+            r"\(d\bar d\to Z+\) Gluon Performance}"
+            rf"{{{section_prefix}Dedicated d dbar to Z plus Gluon Performance}}}}"
         ),
         r"\begingroup",
         r"\tiny",
@@ -3048,10 +3120,16 @@ def render_performance_ladder(
         r"\toprule",
         (
             r"\textbf{n} & \textbf{process} & \textbf{route} & \textbf{setup} "
-            + rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{\textbf{{selected flow, helicity sum}}}} "
+            + (
+                rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{"
+                r"\textbf{selected flow, helicity sum}} "
+            )
             + r"& "
-            + rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{\textbf{{all flows, fixed helicity}}}} "
-            r"\\"
+            + (
+                rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{"
+                r"\textbf{all flows, fixed helicity}} "
+            )
+            + r"\\"
         ),
         (
             r"& & & & \textbf{gen [s]} "
@@ -3069,10 +3147,16 @@ def render_performance_ladder(
         r"\toprule",
         (
             r"\textbf{n} & \textbf{process} & \textbf{route} & \textbf{setup} "
-            + rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{\textbf{{selected flow, helicity sum}}}} "
+            + (
+                rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{"
+                r"\textbf{selected flow, helicity sum}} "
+            )
             + r"& "
-            + rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{\textbf{{all flows, fixed helicity}}}} "
-            r"\\"
+            + (
+                rf"& \multicolumn{{{5 if compare_to_built_in else 3}}}{{c}}{{"
+                r"\textbf{all flows, fixed helicity}} "
+            )
+            + r"\\"
         ),
         (
             r"& & & & \textbf{gen [s]} "
@@ -3108,7 +3192,7 @@ def render_performance_ladder(
             mode_key = _z_old_mode_key(variant.key)
             row = rows.get(variant.key, {})
             row_color = "refblue" if variant.key == "reference" else None
-            if variant.key == "jit_o1":
+            if variant.key == "jit_o3":
                 row_color = "bestgreen"
             if row_color is not None:
                 lines.append(rf"\rowcolor{{{row_color}}}")
@@ -3166,7 +3250,9 @@ def render_performance_ladder(
             lines.append(
                 " & ".join(
                     [
-                        rf"\textbf{{{n_final}}}" if variant.key == "reference" else str(n_final),
+                        rf"\textbf{{{n_final}}}"
+                        if variant.key == "reference"
+                        else str(n_final),
                         rf"\texttt{{{_tex_escape(_z_old_process_for_n(n_final))}}}",
                         _z_variant_route(variant),
                         _z_variant_setup(variant),
@@ -3182,34 +3268,30 @@ def render_performance_ladder(
     if reproduction_n is not None:
         process = _z_old_explicit_process_for_n(reproduction_n)
         reference_order = _z_reference_color_order_cli(reproduction_n)
-        output_dir = (
-            f"{output_root}/manual/{spec.dataset_id}/n{reproduction_n}/jit_o1"
-        )
+        output_dir = f"{output_root}/manual/{spec.dataset_id}/n{reproduction_n}/jit_o3"
         lines.extend(
             [
                 r"\par\smallskip",
                 (
                     rf"\noindent\footnotesize Reproduce the \(n={reproduction_n}\) "
-                    r"JIT O1 selected-flow entry with the following generation and "
+                    r"JIT O3 selected-flow entry with the following generation and "
                     r"timing commands."
                 ),
                 r"\begin{lstlisting}[language=bash,basicstyle=\ttfamily\tiny,breaklines=true,breakatwhitespace=true]",
                 (
-                    ".venv/bin/python -m pyamplicol generate-process "
+                    ".venv/bin/python -m pyamplicol generate "
                     + model_option
                     + f"'{process}' {output_dir} "
-                    "--replace --color-accuracy lc --batch-size 64 "
-                    "--symbolica-output-chunk-size 128 "
-                    "--reference-color-order "
+                    "--mode replace --color-accuracy lc --batch-size 64 "
+                    "--output-chunk-size 128 --backend jit "
+                    "--jit-optimization-level 3 "
+                    "--set 'process.reference_color_order=["
                     + reference_order
-                    + " --lc-sector-ids 0 "
-                    "--symbolica-evaluator-backend jit "
-                    "--symbolica-jit-optimization-level 1"
+                    + "]' --set 'process.selected_color_sector_ids=[0]'"
                 ),
                 (
-                    ".venv/bin/python -m pyamplicol time-process "
-                    "--target-runtime 10 --batch-size 64 --json "
-                    + output_dir
+                    ".venv/bin/python -m pyamplicol benchmark "
+                    "--target-runtime 10 --batch-size 64 --format json " + output_dir
                 ),
                 r"\end{lstlisting}",
             ]
@@ -3218,7 +3300,8 @@ def render_performance_ladder(
         [
             r"\par\smallskip",
             (
-                rf"\noindent\footnotesize \PAC\ model source: \texttt{{{_tex_escape(spec.model.label)}}}. "
+                r"\noindent\footnotesize \PAC\ model source: "
+                rf"\texttt{{{_tex_escape(spec.model.label)}}}. "
                 r"Here \(n\) is final-state multiplicity. Each block reports "
                 r"generation seconds and wall/evaluator microseconds per point: "
                 r"one selected flow with the helicity sum on the left, all flows "
@@ -3232,7 +3315,8 @@ def render_performance_ladder(
                     r" In this UFO-SM table, each \texttt{vs blt-in} entry is the "
                     r"adjacent generation- or wall-time ratio to the matching "
                     r"built-in-SM row at the same multiplicity, backend, and "
-                    r"flow/helicity workload; values below one mean that UFO-SM is faster."
+                    r"flow/helicity workload; values below one mean that UFO-SM "
+                    r"is faster."
                     if compare_to_built_in
                     else ""
                 )
@@ -3257,8 +3341,7 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
     column_spec = "@{}L{1.65in}" + "c" * multiplicity_count + "@{}"
     process_family = _tex_escape(spec.process_family)
     measurements = {
-        n_final: entries[n_final]["measurement"]
-        for n_final in spec.multiplicities
+        n_final: entries[n_final]["measurement"] for n_final in spec.multiplicities
     }
     if not all(
         isinstance(measurement, Mapping) for measurement in measurements.values()
@@ -3285,8 +3368,7 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
         r"\toprule",
         (
             rf"\multicolumn{{{multiplicity_count + 1}}}{{c}}"
-            rf"{{\texttt{{{process_family}}}}}"
-            + r" \\"
+            rf"{{\texttt{{{process_family}}}}}" + r" \\"
         ),
         r"\textbf{metric} & "
         + " & ".join(rf"\textbf{{$X={n}$}}" for n in spec.multiplicities)
@@ -3497,10 +3579,19 @@ def _campaign_cell_needs_measurement(
             status = str(entry.get("status", NA_STATUS))
             if status == NA_STATUS:
                 return True
-            if status == ResultStatus.UNSUPPORTED.value:
+            if status in {
+                ResultStatus.UNSUPPORTED.value,
+                ResultStatus.VALIDATION_FAILED.value,
+            }:
+                return True
+            legacy = entry.get("legacy_amplicol")
+            if (
+                isinstance(legacy, Mapping)
+                and str(legacy.get("status", NA_STATUS)) == ResultStatus.OK.value
+                and not _legacy_measurement_revision_current(legacy)
+            ):
                 return True
             if cell.dataset_id.endswith("_lc"):
-                legacy = entry.get("legacy_amplicol")
                 pyamplicol = entry.get("pyamplicol_jit_o3")
                 return not (
                     isinstance(legacy, Mapping)
@@ -3510,9 +3601,10 @@ def _campaign_cell_needs_measurement(
                     and _pyamplicol_timing_profile_current(pyamplicol)
                 )
             pyamplicol = entry.get("pyamplicol_jit_o3")
-            if isinstance(pyamplicol, Mapping) and str(
-                pyamplicol.get("status", NA_STATUS)
-            ) == ResultStatus.OK.value:
+            if (
+                isinstance(pyamplicol, Mapping)
+                and str(pyamplicol.get("status", NA_STATUS)) == ResultStatus.OK.value
+            ):
                 return not _pyamplicol_timing_profile_current(pyamplicol)
             return False
         if cell.kind == "performance_ladder":
@@ -3527,8 +3619,15 @@ def _campaign_cell_needs_measurement(
             status = str(measurement.get("status", NA_STATUS))
             if status == NA_STATUS:
                 return True
+            if (
+                str(entry.get("status", NA_STATUS))
+                == ResultStatus.VALIDATION_FAILED.value
+            ):
+                return True
             if not bool(_measurement_old_matrix_fields(measurement)):
                 return True
+            if cell.variant == "reference" and status == ResultStatus.OK.value:
+                return not _legacy_measurement_revision_current(measurement)
             if cell.variant != "reference" and status == ResultStatus.OK.value:
                 return not _pyamplicol_timing_profile_current(measurement)
             return False
@@ -3545,11 +3644,22 @@ def _pyamplicol_timing_profile_current(measurement: Mapping[str, object]) -> boo
     if not isinstance(environment, Mapping):
         return False
     return (
-        environment.get("wall_time_source") == "runtime_profile_wall_time"
+        environment.get("wall_time_source") == "runtime_evaluate_wall_time"
         and environment.get("evaluator_time_source")
-        == "runtime_profile_core_evaluator_time"
+        == "runtime_profile_core_evaluator_call_time"
     )
-    return True
+
+
+def _legacy_measurement_revision_current(
+    measurement: Mapping[str, object],
+) -> bool:
+    environment = measurement.get("environment")
+    if not isinstance(environment, Mapping):
+        return False
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    return environment.get("revision") == legacy_amplicol.expected_revision()
 
 
 def _json_text(value: Mapping[str, object]) -> str:
@@ -3739,7 +3849,7 @@ def _model_resolved_process_ir(
     from pyamplicol.processes.model import build_model_process_ir
 
     model_source = _model_source_for_api(spec.model)
-    compile_model = getattr(model_source, "compile")
+    compile_model = model_source.compile
     compiled = compile_model(
         cache_dir=artifact_root / "model-cache",
         use_cache=True,
@@ -3791,7 +3901,9 @@ def _lc_sector_preserves_reference_singlet_blocks(
     if not line_singlets:
         sector_singlets = set(getattr(sector, "singlet_labels", ()) or ())
         return all(block.issubset(sector_singlets) for block in blocks)
-    return all(any(block.issubset(singlets) for singlets in line_singlets) for block in blocks)
+    return all(
+        any(block.issubset(singlets) for singlets in line_singlets) for block in blocks
+    )
 
 
 def _lc_colored_word_sibling_sector_ids(
@@ -3802,18 +3914,21 @@ def _lc_colored_word_sibling_sector_ids(
 ) -> set[int]:
     word = tuple(getattr(sector, "word_labels", ()) or ())
     if not word:
-        return {int(getattr(sector, "id"))}
+        return {int(sector.id)}
     siblings: set[int] = set()
     for candidate in getattr(color_plan, "sectors", ()) or ():
         if tuple(getattr(candidate, "word_labels", ()) or ()) != word:
             continue
-        if reference_order is not None and not _lc_sector_preserves_reference_singlet_blocks(
-            candidate,
-            reference_order,
+        if (
+            reference_order is not None
+            and not _lc_sector_preserves_reference_singlet_blocks(
+                candidate,
+                reference_order,
+            )
         ):
             continue
-        siblings.add(int(getattr(candidate, "id")))
-    return siblings or {int(getattr(sector, "id"))}
+        siblings.add(int(candidate.id))
+    return siblings or {int(sector.id)}
 
 
 def _selected_lc_sector_ids_for_reference_order(
@@ -3968,9 +4083,7 @@ def _measure_pyamplicol(
                     else _runtime_validation_momenta(runtime)
                 )
                 values = runtime.evaluate(points) if points is not None else ()
-                matrix_element = (
-                    _real_nonnegative_scalar(values[0]) if values else None
-                )
+                matrix_element = _real_nonnegative_scalar(values[0]) if values else None
                 high_precision_value: float | None = None
                 high_precision_relative_difference: float | None = None
                 if high_precision and points is not None:
@@ -4151,12 +4264,19 @@ def _measure_pyamplicol_lc_two_workloads(
             ResultStatus.UNSUPPORTED,
             "LC all-flow fixed-helicity timing is unsupported for more than "
             "two quark lines",
-            artifact_path=artifact_root / "cells" / cell.cell_id / "pyamplicol/all-flows",
+            artifact_path=artifact_root
+            / "cells"
+            / cell.cell_id
+            / "pyamplicol/all-flows",
             metadata={"cell": cell.as_json()},
         )
 
     combined = dict(selected)
-    metadata = dict(combined.get("metadata") if isinstance(combined.get("metadata"), Mapping) else {})
+    metadata = dict(
+        combined.get("metadata")
+        if isinstance(combined.get("metadata"), Mapping)
+        else {}
+    )
     jit_level = variant_overrides.get("evaluator.jit.optimization_level")
     backend = variant_overrides.get("evaluator.backend", "jit")
     old_fields = {
@@ -4183,6 +4303,7 @@ def _measure_pyamplicol_lc_two_workloads(
             if all_flow.get("evaluator_seconds_per_point") is None
             else 1.0e6 * float(all_flow["evaluator_seconds_per_point"])
         ),
+        "all_flow_matrix_element": all_flow.get("matrix_element"),
         "all_flow_wall_us_per_point": (
             None
             if all_flow.get("wall_seconds_per_point") is None
@@ -4271,7 +4392,7 @@ def _shared_validation_particles(process: str) -> tuple[object, ...]:
 def _pyamplicol_points_from_particles(particles: Sequence[object]) -> object:
     return (
         tuple(
-            tuple(float(component) for component in getattr(particle, "momentum"))
+            tuple(float(component) for component in particle.momentum)
             for particle in particles
         ),
     )
@@ -4281,13 +4402,13 @@ def _legacy_momenta_from_particles(
     particles: Sequence[object],
 ) -> tuple[tuple[float, float, float, float], ...]:
     return tuple(
-        tuple(float(component) for component in getattr(particle, "momentum"))
+        tuple(float(component) for component in particle.momentum)
         for particle in particles
     )
 
 
 def _legacy_pdgs_from_particles(particles: Sequence[object]) -> tuple[int, ...]:
-    return tuple(int(getattr(particle, "pdg")) for particle in particles)
+    return tuple(int(particle.pdg) for particle in particles)
 
 
 def _fixed_source_helicity_choice(process: str) -> dict[str, object]:
@@ -4465,7 +4586,7 @@ def _write_legacy_momenta_files(
     for entry in entries:
         ordered = legacy_amplicol._ordered_binary64_momenta(
             source_pdgs,
-            getattr(entry, "process_pdgs"),
+            entry.process_pdgs,
             momenta,
         )
         path = directory / f"momenta_{entry.group}_{entry.integral}.txt"
@@ -4515,10 +4636,10 @@ def _legacy_run_color_probe_timed(
 
     ordered = legacy_amplicol._ordered_binary64_momenta(
         source_pdgs,
-        getattr(entry, "process_pdgs"),
+        entry.process_pdgs,
         momenta,
     )
-    permutation = legacy_amplicol._permutation(source_pdgs, getattr(entry, "process_pdgs"))
+    permutation = legacy_amplicol._permutation(source_pdgs, entry.process_pdgs)
     ordered_helicities = tuple(int(helicities[index]) for index in permutation)
     with tempfile.TemporaryDirectory(prefix="pac-", dir="/tmp") as raw:
         work = Path(raw)
@@ -4569,9 +4690,7 @@ def _measure_legacy_amplicol(
     command = ["legacy-amplicol-generated-library", cell.process, color_accuracy]
     try:
         with log_path.open("a", encoding="utf-8") as log:
-            log.write(
-                f"# legacy AmpliCol cell {cell.cell_id} started {_utc_now()}\n"
-            )
+            log.write(f"# legacy AmpliCol cell {cell.cell_id} started {_utc_now()}\n")
             log.flush()
             with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
                 _ensure_repo_root_on_path()
@@ -4583,12 +4702,14 @@ def _measure_legacy_amplicol(
                         f"legacy AmpliCol checkout is missing: {repository}"
                     )
                 legacy_amplicol.validate_checkout(repository)
-                build_lock = Path(tempfile.gettempdir()) / "pyamplicol-legacy-build.lock"
+                build_lock = (
+                    Path(tempfile.gettempdir()) / "pyamplicol-legacy-build.lock"
+                )
                 with build_lock.open("a+b") as stream:
                     fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
                     try:
                         source_pdgs = legacy_amplicol.process_pdgs(cell.process)
-                        legacy_amplicol._validate_supported_quark_line_scope(
+                        legacy_amplicol.validate_selected_flow_quark_line_scope(
                             source_pdgs,
                             context=cell.process,
                         )
@@ -4604,7 +4725,7 @@ def _measure_legacy_amplicol(
                             family,
                             cell.process,
                         )
-                        process_record, _process_output = _legacy_command_record(
+                        process_record, process_output = _legacy_command_record(
                             process_command,
                             cwd=legacy_root,
                         )
@@ -4612,16 +4733,21 @@ def _measure_legacy_amplicol(
                         if not process_file.is_file():
                             raise legacy_amplicol.LegacyOracleError(
                                 "legacy process_list.py did not produce processes.txt "
-                                f"for {cell.process!r}"
+                                f"for {cell.process!r}; command={process_command!r}; "
+                                f"output={process_output[-2000:]!r}"
                             )
                         entries = legacy_amplicol.parse_process_file(process_file)
                         (
                             entry,
                             matches,
-                        ) = legacy_amplicol._select_declared_process_entry(
+                        ) = legacy_amplicol.select_generated_process_entry(
                             entries,
                             generated_process=cell.process,
                             wanted_pdgs=source_pdgs,
+                        )
+                        mapped_color_order = legacy_amplicol.source_mapped_color_order(
+                            entry,
+                            source_pdgs=source_pdgs,
                         )
                         _write_legacy_momenta_files(
                             repository,
@@ -4630,7 +4756,9 @@ def _measure_legacy_amplicol(
                             momenta=momenta,
                         )
                         generation_records: list[dict[str, object]] = [process_record]
-                        library_mode = "create-raw" if color_accuracy != "lc" else "create"
+                        library_mode = (
+                            "create-raw" if color_accuracy != "lc" else "create"
+                        )
                         make_jobs = max(1, int(jobs))
                         with _legacy_repository_process_file(
                             repository,
@@ -4702,7 +4830,9 @@ def _measure_legacy_amplicol(
                                     "an amplitude-evaluation timing row"
                                 )
                             runtime_seconds /= DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS
-                            runtime_sample_count = DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS
+                            runtime_sample_count = (
+                                DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS
+                            )
                             runtime_probe = "direct_generated_library_benchmark"
                             timing_commands = [build_benchmark, benchmark_record]
                         else:
@@ -4721,7 +4851,9 @@ def _measure_legacy_amplicol(
                                     str(entry.group),
                                     str(entry.integral),
                                     color_accuracy,
-                                    repository / "Utilities" / "ME_checks"
+                                    repository
+                                    / "Utilities"
+                                    / "ME_checks"
                                     / f"momenta_{entry.group}_{entry.integral}.txt",
                                 ],
                                 cwd=repository,
@@ -4772,13 +4904,15 @@ def _measure_legacy_amplicol(
                         )
                         if color_accuracy == "lc" and fixed_helicity is not None:
                             if _lc_all_flow_supported(cell.process):
-                                build_color_probe, _build_output = _legacy_command_record(
-                                    [
-                                        "make",
-                                        f"-j{make_jobs}",
-                                        "amplicol_color_probe",
-                                    ],
-                                    cwd=repository,
+                                build_color_probe, _build_output = (
+                                    _legacy_command_record(
+                                        [
+                                            "make",
+                                            f"-j{make_jobs}",
+                                            "amplicol_color_probe",
+                                        ],
+                                        cwd=repository,
+                                    )
                                 )
                                 (
                                     all_flow_record,
@@ -4882,6 +5016,9 @@ def _measure_legacy_amplicol(
                 "process_file": os.fspath(process_file),
                 "matching_row_count": len(matches),
                 "row_id": f"group:{entry.group}:integral:{entry.integral}",
+                "row_selection_policy": (
+                    legacy_amplicol.GENERATED_PROCESS_ROW_SELECTION_POLICY
+                ),
                 "legacy_process_list_flags": (
                     [] if family is None else family.legacy_process_list_flags()
                 ),
@@ -4906,8 +5043,11 @@ def _measure_legacy_amplicol(
                     "reference_probe": runtime_probe,
                     "process_file": os.fspath(process_file),
                     "process_list_backend": "legacy",
-                    "reference_color_order": list(entry.color_order),
+                    "reference_color_order": list(mapped_color_order),
                     "reference_color_order_process_file": list(entry.color_order),
+                    "row_selection_policy": (
+                        legacy_amplicol.GENERATED_PROCESS_ROW_SELECTION_POLICY
+                    ),
                     "timing_rows": timing_rows,
                     "commands": [
                         *generation_records,
@@ -4953,6 +5093,8 @@ def _measure_legacy_amplicol(
 def _pointwise_validation(
     legacy: Mapping[str, object],
     pyamplicol: Mapping[str, object],
+    *,
+    require_all_flow: bool = False,
 ) -> dict[str, object]:
     payload = _empty_validation()
     if not _measurement_ok(legacy) or not _measurement_ok(pyamplicol):
@@ -4967,16 +5109,7 @@ def _pointwise_validation(
             }
         )
         return payload
-    absolute = abs(float(reference) - float(observed))
-    relative = absolute / max(abs(float(reference)), 1.0e-300)
-    status = (
-        ResultStatus.OK.value
-        if (
-            absolute <= VALIDATION_ABSOLUTE_TOLERANCE
-            or relative <= VALIDATION_RELATIVE_TOLERANCE
-        )
-        else ResultStatus.VALIDATION_FAILED.value
-    )
+    absolute, relative, status = _matrix_element_difference(reference, observed)
     payload.update(
         {
             "status": status,
@@ -4990,7 +5123,76 @@ def _pointwise_validation(
             ),
         }
     )
+    if not require_all_flow:
+        return payload
+
+    legacy_fields = _measurement_old_matrix_fields(legacy)
+    pyamplicol_fields = _measurement_old_matrix_fields(pyamplicol)
+    legacy_status = str(legacy_fields.get("all_flow_status", NA_STATUS))
+    pyamplicol_status = str(pyamplicol_fields.get("all_flow_status", NA_STATUS))
+    if (
+        legacy_status != ResultStatus.OK.value
+        or pyamplicol_status != ResultStatus.OK.value
+    ):
+        payload.update(
+            {
+                "status": ResultStatus.ERROR.value,
+                "all_flow_status": ResultStatus.ERROR.value,
+                "message": (
+                    "all-flow validation measurement is unavailable: "
+                    f"AmpliCol={legacy_status}, pyAmpliCol={pyamplicol_status}"
+                ),
+            }
+        )
+        return payload
+    all_flow_reference = legacy_fields.get("all_flow_reference_value")
+    all_flow_observed = pyamplicol_fields.get("all_flow_matrix_element")
+    if all_flow_reference is None or all_flow_observed is None:
+        payload.update(
+            {
+                "status": ResultStatus.ERROR.value,
+                "all_flow_status": ResultStatus.ERROR.value,
+                "message": "missing matrix element for all-flow validation",
+            }
+        )
+        return payload
+    all_flow_absolute, all_flow_relative, all_flow_status = _matrix_element_difference(
+        all_flow_reference, all_flow_observed
+    )
+    payload.update(
+        {
+            "all_flow_status": all_flow_status,
+            "all_flow_reference_matrix_element": float(all_flow_reference),
+            "all_flow_pyamplicol_matrix_element": float(all_flow_observed),
+            "all_flow_absolute_difference": all_flow_absolute,
+            "all_flow_relative_difference": all_flow_relative,
+        }
+    )
+    if all_flow_status != ResultStatus.OK.value:
+        payload.update(
+            {
+                "status": all_flow_status,
+                "message": "all-flow pointwise mismatch",
+            }
+        )
     return payload
+
+
+def _matrix_element_difference(
+    reference: object,
+    observed: object,
+) -> tuple[float, float, str]:
+    absolute = abs(float(reference) - float(observed))
+    relative = absolute / max(abs(float(reference)), 1.0e-300)
+    status = (
+        ResultStatus.OK.value
+        if (
+            absolute <= VALIDATION_ABSOLUTE_TOLERANCE
+            or relative <= VALIDATION_RELATIVE_TOLERANCE
+        )
+        else ResultStatus.VALIDATION_FAILED.value
+    )
+    return absolute, relative, status
 
 
 def _parameter_alignment_for(
@@ -5098,7 +5300,13 @@ def _measure_cell_payload(
             cell_cores=cell_cores,
             points=points,
         )
-        validation = _pointwise_validation(legacy, pyamplicol)
+        validation = _pointwise_validation(
+            legacy,
+            pyamplicol,
+            require_all_flow=(
+                spec.color_accuracy == "lc" and _lc_all_flow_supported(cell.process)
+            ),
+        )
         alignment = _parameter_alignment_for(spec, artifact_root, cell)
         return {
             "cell": cell.as_json(),
@@ -5113,13 +5321,15 @@ def _measure_cell_payload(
         }
     assert isinstance(spec, LadderSpec)
     if spec.kind == CacheKind.PERFORMANCE_LADDER:
+        shared_particles = _shared_validation_particles(cell.process)
+        points = _pyamplicol_points_from_particles(shared_particles)
         variant = next(item for item in spec.variants if item.key == cell.variant)
         if variant.key == "reference":
             measurement = _measure_legacy_amplicol(
                 cell=cell,
                 color_accuracy="lc",
                 artifact_root=artifact_root,
-                points=None,
+                points=points,
                 limit_gib=limit_gib,
                 jobs=cell_cores,
             )
@@ -5133,7 +5343,7 @@ def _measure_cell_payload(
                 generation_timeout_seconds=generation_timeout_seconds,
                 target_runtime=target_runtime,
                 cell_cores=cell_cores,
-                points=None,
+                points=points,
             )
         return {
             "cell": cell.as_json(),
@@ -5283,10 +5493,65 @@ def _merge_cell_entry(
                 break
     else:
         raise ValueError(f"could not find cache entry for {cell.cell_id}")
+    if cell.kind == "performance_ladder":
+        _refresh_performance_ladder_validation(payload, n_final=cell.n_final)
     payload["updated_at"] = _utc_now()
     normalized = normalize_cache_payload(payload)
     validate_cache(normalized)
     caches[cell.cache_name] = normalized
+
+
+def _refresh_performance_ladder_validation(
+    payload: dict[str, object],
+    *,
+    n_final: int,
+) -> None:
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return
+    reference: Mapping[str, object] | None = None
+    for candidate in entries:
+        if (
+            isinstance(candidate, Mapping)
+            and candidate.get("n_final") == n_final
+            and candidate.get("variant") == "reference"
+            and isinstance(candidate.get("measurement"), Mapping)
+        ):
+            reference = candidate["measurement"]  # type: ignore[assignment]
+            break
+    if reference is None or not _measurement_ok(reference):
+        return
+    for index, candidate in enumerate(entries):
+        if (
+            not isinstance(candidate, Mapping)
+            or candidate.get("n_final") != n_final
+            or candidate.get("variant") == "reference"
+        ):
+            continue
+        measurement_value = candidate.get("measurement")
+        if not isinstance(measurement_value, Mapping):
+            continue
+        measurement = dict(measurement_value)
+        validation = _pointwise_validation(
+            reference,
+            measurement,
+            require_all_flow=True,
+        )
+        metadata_value = measurement.get("metadata")
+        metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+        metadata["pointwise_validation"] = validation
+        measurement["metadata"] = metadata
+        updated = dict(candidate)
+        updated["measurement"] = measurement
+        if (
+            validation.get("status") == ResultStatus.VALIDATION_FAILED.value
+            or validation.get("all_flow_status")
+            == ResultStatus.VALIDATION_FAILED.value
+        ):
+            updated["status"] = ResultStatus.VALIDATION_FAILED.value
+        else:
+            updated["status"] = measurement.get("status", NA_STATUS)
+        entries[index] = updated
 
 
 def _worker_command(
@@ -5331,7 +5596,7 @@ def _run_worker_command(
     *,
     cwd: Path,
     log_path: Path,
-    timeout_seconds: float,
+    timeout_seconds: float | None,
 ) -> int:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as log:
@@ -5359,6 +5624,33 @@ def _run_worker_command(
             return 124
 
 
+def _campaign_worker_timeout_seconds(
+    cell: CampaignCell,
+    generation_timeout_seconds: float,
+) -> float | None:
+    if generation_timeout_seconds <= 0:
+        return None
+    if cell.kind == "matrix":
+        spec = _spec_by_dataset()[cell.dataset_id]
+        assert isinstance(spec, MatrixSpec)
+        generation_workloads = 3 if spec.color_accuracy == "lc" else 2
+    elif cell.kind == "performance_ladder":
+        generation_workloads = 1 if cell.variant == "reference" else 2
+    else:
+        generation_workloads = 1
+    return generation_workloads * generation_timeout_seconds + 900.0
+
+
+def _worker_log_reports_memory_limit(log_path: Path) -> bool:
+    try:
+        return "memory-watchdog: RSS limit exceeded:" in log_path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return False
+
+
 def _execute_campaign_cell(
     cell: CampaignCell,
     *,
@@ -5382,26 +5674,38 @@ def _execute_campaign_cell(
         target_runtime=target_runtime,
         cell_cores=cell_cores,
     )
+    worker_timeout_seconds = _campaign_worker_timeout_seconds(
+        cell,
+        generation_timeout_seconds,
+    )
     code = _run_worker_command(
         command,
         cwd=_repo_root(),
         log_path=worker_log,
-        timeout_seconds=generation_timeout_seconds + 900.0,
+        timeout_seconds=worker_timeout_seconds,
     )
     if code == 0 and result_json.is_file():
         payload = json.loads(result_json.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise TypeError(f"{result_json} must contain an object")
         return payload
-    if code == 137:
+    if code == 137 and _worker_log_reports_memory_limit(worker_log):
         status = ResultStatus.MEMORY_LIMIT
         message = f"memory watchdog exceeded {limit_gib:g} GiB"
     elif code == 124:
         status = ResultStatus.TIMEOUT
-        message = f"worker exceeded {generation_timeout_seconds:g} second budget"
+        message = (
+            "worker exceeded its aggregate supervision budget"
+            if worker_timeout_seconds is None
+            else f"worker exceeded {worker_timeout_seconds:g} second aggregate budget"
+        )
     else:
         status = ResultStatus.ERROR
-        message = f"worker exited with code {code}"
+        message = (
+            "worker exited with code 137 without a memory-watchdog limit marker"
+            if code == 137
+            else f"worker exited with code {code}"
+        )
     return {
         "cell": cell.as_json(),
         "cache_name": cell.cache_name,
@@ -5411,7 +5715,11 @@ def _execute_campaign_cell(
             message=message,
             artifact_root=artifact_root,
             limit_gib=limit_gib,
-            timeout_seconds=generation_timeout_seconds,
+            timeout_seconds=(
+                generation_timeout_seconds
+                if worker_timeout_seconds is None
+                else worker_timeout_seconds
+            ),
         ),
     }
 
@@ -5557,17 +5865,20 @@ class ReportService:
         self.paths = paths or ReportPaths.default()
 
     def validate(self) -> dict[str, dict[str, object]]:
-        caches = load_caches(self.paths)
-        expected_schema = schema_document()
-        actual_schema = json.loads(self.paths.schema_path.read_text(encoding="utf-8"))
-        if actual_schema != expected_schema:
-            raise ValueError("checked-in report-cache.schema.json is stale")
-        expected_tables = render_tables(caches)
-        for name, expected in expected_tables.items():
-            actual = (self.paths.docs_dir / name).read_text(encoding="utf-8")
-            if actual != expected:
-                raise ValueError(f"checked-in generated table is stale: {name}")
-        return caches
+        with _report_lock(self.paths):
+            caches = load_caches(self.paths)
+            expected_schema = schema_document()
+            actual_schema = json.loads(
+                self.paths.schema_path.read_text(encoding="utf-8")
+            )
+            if actual_schema != expected_schema:
+                raise ValueError("checked-in report-cache.schema.json is stale")
+            expected_tables = render_tables(caches)
+            for name, expected in expected_tables.items():
+                actual = (self.paths.docs_dir / name).read_text(encoding="utf-8")
+                if actual != expected:
+                    raise ValueError(f"checked-in generated table is stale: {name}")
+            return caches
 
     def reset(self, *, compile_pdf: bool = False) -> tuple[Path, ...]:
         return self._refresh(build_reset_caches(), compile_pdf=compile_pdf)
@@ -5661,7 +5972,6 @@ class ReportService:
                     ): cell
                     for cell in cells
                 }
-                caches = load_caches(self.paths)
                 for future in concurrent.futures.as_completed(futures):
                     cell = futures[future]
                     try:
@@ -5686,9 +5996,9 @@ class ReportService:
                     raw_entry = payload.get("entry")
                     if not isinstance(raw_entry, Mapping):
                         raise TypeError("worker payload is missing entry data")
-                    _merge_cell_entry(caches, cell=completed_cell, entry=raw_entry)
-                    self._refresh(
-                        caches,
+                    self._merge_and_refresh(
+                        completed_cell,
+                        raw_entry,
                         compile_pdf=(refresh_pdf == "always"),
                     )
                     events.write(
@@ -5705,7 +6015,30 @@ class ReportService:
                     )
                     events.flush()
 
+    def _merge_and_refresh(
+        self,
+        cell: CampaignCell,
+        entry: Mapping[str, object],
+        *,
+        compile_pdf: bool,
+    ) -> tuple[Path, ...]:
+        """Merge against the latest on-disk caches while holding the writer lock."""
+
+        with _report_lock(self.paths):
+            caches = load_caches(self.paths)
+            _merge_cell_entry(caches, cell=cell, entry=entry)
+            return self._refresh_locked(caches, compile_pdf=compile_pdf)
+
     def _refresh(
+        self,
+        caches: Mapping[str, Mapping[str, object]],
+        *,
+        compile_pdf: bool,
+    ) -> tuple[Path, ...]:
+        with _report_lock(self.paths):
+            return self._refresh_locked(caches, compile_pdf=compile_pdf)
+
+    def _refresh_locked(
         self,
         caches: Mapping[str, Mapping[str, object]],
         *,
@@ -5724,20 +6057,19 @@ class ReportService:
             }
         )
         files.update({Path(name): table for name, table in tables.items()})
-        with _report_lock(self.paths):
-            if compile_pdf:
-                compile_stage = self.paths.docs_dir / (
-                    f".performance-report-compile-{uuid.uuid4().hex}"
-                )
-                compile_stage.mkdir()
-                try:
-                    for relative, content in files.items():
-                        _write_staged(compile_stage / relative, content)
-                    pdf = _compile_staged_pdf(self.paths, compile_stage)
-                    files[Path(self.paths.report_pdf.name)] = pdf
-                finally:
-                    shutil.rmtree(compile_stage, ignore_errors=True)
-            return _publish_files(self.paths, files)
+        if compile_pdf:
+            compile_stage = self.paths.docs_dir / (
+                f".performance-report-compile-{uuid.uuid4().hex}"
+            )
+            compile_stage.mkdir()
+            try:
+                for relative, content in files.items():
+                    _write_staged(compile_stage / relative, content)
+                pdf = _compile_staged_pdf(self.paths, compile_stage)
+                files[Path(self.paths.report_pdf.name)] = pdf
+            finally:
+                shutil.rmtree(compile_stage, ignore_errors=True)
+        return _publish_files(self.paths, files)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -5858,9 +6190,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         caches = load_caches(service.paths) if args.missing_only else None
         cells = _select_cells(
             datasets=None if args.dataset is None else set(args.dataset),
-            process_keys=(
-                None if args.process_key is None else set(args.process_key)
-            ),
+            process_keys=(None if args.process_key is None else set(args.process_key)),
             variants=None if args.variant is None else set(args.variant),
             n_values=None if args.n_final is None else set(args.n_final),
             limit=args.limit_cells,

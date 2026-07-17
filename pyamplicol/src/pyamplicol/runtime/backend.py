@@ -186,6 +186,12 @@ class RusticolRuntimeBackend:
     def physics(self) -> ProcessPhysics:
         return _physics_from_native(self._runtime.physics)
 
+    @property
+    def supports_profiling(self) -> bool:
+        """Whether this installed native runtime exposes the optional profiler."""
+
+        return callable(getattr(self._runtime, "profile", None))
+
     def evaluate(
         self,
         momenta: Momenta,

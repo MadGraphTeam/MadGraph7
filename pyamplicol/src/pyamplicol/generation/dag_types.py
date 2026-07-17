@@ -324,6 +324,15 @@ class GenericDAG:
     interactions: tuple[InteractionNode, ...]
     amplitude_roots: tuple[AmplitudeRoot, ...]
     truncated: bool = False
+    helicity_coverage: str = "complete"
+    color_coverage: str = "complete"
+    selected_source_helicities: tuple[tuple[int, int], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.helicity_coverage not in {"complete", "selected"}:
+            raise ValueError("DAG helicity coverage must be complete or selected")
+        if self.color_coverage not in {"complete", "selected"}:
+            raise ValueError("DAG color coverage must be complete or selected")
 
     @property
     def has_amplitudes(self) -> bool:
@@ -388,6 +397,12 @@ class GenericDAG:
             "color_plan": self.color_plan.to_json_dict(),
             "current_count": len(self.currents),
             "source_count": len(self.sources),
+            "helicity_coverage": self.helicity_coverage,
+            "color_coverage": self.color_coverage,
+            "selected_source_helicities": {
+                str(label): helicity
+                for label, helicity in self.selected_source_helicities
+            },
             "interaction_count": len(self.interactions),
             "interaction_evaluation_count": self.interaction_evaluation_count,
             "interaction_fanout_histogram": [

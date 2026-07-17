@@ -75,6 +75,15 @@ def test_facade_reexports_extracted_oracle_helpers() -> None:
     assert module.ProbeResult is model.ProbeResult
     assert module.parse_process_file is processes.parse_process_file
     assert module.select_process_entry is processes.select_process_entry
+    assert (
+        module.select_generated_process_entry
+        is processes.select_generated_process_entry
+    )
+    assert module.source_mapped_color_order is processes.source_mapped_color_order
+    assert (
+        module.validate_selected_flow_quark_line_scope
+        is processes.validate_selected_flow_quark_line_scope
+    )
     assert module._permutation is processes._permutation
     assert module._parse_probe_output is probe._parse_probe_output
     assert module._binary64_input_sha256 is probe._binary64_input_sha256
@@ -507,6 +516,95 @@ def test_process_selection_rejects_ambiguous_pdg_rows() -> None:
         module.select_process_entry(candidates, "d d~ > z g")
 
 
+@pytest.mark.parametrize(
+    ("process", "row_pdgs", "raw_color_order"),
+    (
+        ("u d~ > w+ g", (2, -1, 21, 24), (2, 3, 1, 4)),
+        ("u d~ > e+ ve", (2, -1, -11, 12), (2, 1, 3, 4)),
+        (
+            "d d~ > z g g g",
+            (1, -1, 21, 21, 21, 23),
+            (2, 3, 4, 5, 1, 6),
+        ),
+        ("d d~ > z z", (1, -1, 23, 23), (2, 1, 3, 4)),
+        ("d d~ > z z z", (1, -1, 23, 23, 23), (2, 1, 3, 4, 5)),
+        ("d d~ > e+ e-", (1, -1, -11, 11), (2, 1, 3, 4)),
+        ("d d~ > t t~", (1, -1, 6, -6), (3, 1, 2, 4)),
+        (
+            "d d~ > t t~ z h",
+            (1, -1, 6, -6, 23, 25),
+            (3, 1, 2, 4, 5, 6),
+        ),
+        ("g g > g g g", (21, 21, 21, 21, 21), (1, 2, 3, 4, 5)),
+        ("g g > t t~ g", (21, 21, 21, 6, -6), (4, 1, 2, 3, 5)),
+    ),
+)
+def test_generated_process_selection_covers_matrix_reference_families(
+    process: str,
+    row_pdgs: tuple[int, ...],
+    raw_color_order: tuple[int, ...],
+) -> None:
+    module = _module()
+    row = module.ProcessEntry(7, 3, row_pdgs, raw_color_order)
+    wanted = module.process_pdgs(process)
+
+    selected, matches = module.select_generated_process_entry(
+        (row,),
+        generated_process=process,
+        wanted_pdgs=wanted,
+    )
+
+    assert selected == row
+    assert matches == (row,)
+    mapped = module.source_mapped_color_order(row, source_pdgs=wanted)
+    assert sorted(mapped) == list(range(1, len(wanted) + 1))
+
+
+def test_generated_process_selection_prefers_exact_external_order() -> None:
+    module = _module()
+    reordered = module.ProcessEntry(1, 1, (1, -1, -6, 6), (4, 1, 2, 3))
+    exact = module.ProcessEntry(2, 1, (1, -1, 6, -6), (3, 1, 2, 4))
+
+    selected, matches = module.select_generated_process_entry(
+        (reordered, exact),
+        generated_process="d d~ > t t~",
+        wanted_pdgs=(1, -1, 6, -6),
+    )
+
+    assert selected == exact
+    assert matches == (exact, reordered)
+    assert (
+        module.GENERATED_PROCESS_ROW_SELECTION_POLICY
+        == "exact-external-pdg-order-then-process-file-order-v1"
+    )
+
+
+def test_source_mapped_color_order_preserves_raw_fortran_order_separately() -> None:
+    module = _module()
+    row = module.ProcessEntry(
+        1,
+        1,
+        (2, -1, 21, 24),
+        (2, 3, 1, 4),
+    )
+
+    mapped = module.source_mapped_color_order(
+        row,
+        source_pdgs=(2, -1, 24, 21),
+    )
+
+    assert row.color_order == (2, 3, 1, 4)
+    assert mapped == (2, 4, 1, 3)
+
+
+def test_source_mapped_color_order_rejects_invalid_fortran_positions() -> None:
+    module = _module()
+    row = module.ProcessEntry(1, 1, (1, -1, 23), (2, 1, 1))
+
+    with pytest.raises(module.LegacyOracleError, match="must be a permutation"):
+        module.source_mapped_color_order(row, source_pdgs=(1, -1, 23))
+
+
 def test_process_contract_pins_row_and_color_order_multiplicities() -> None:
     module = _module()
 
@@ -535,12 +633,39 @@ def test_oracle_rejects_processes_beyond_two_quark_lines() -> None:
         )
 
 
+def test_selected_flow_scope_does_not_inherit_the_all_flow_line_cap() -> None:
+    module = _module()
+    pdgs = (1, -1, 2, -2, 3, -3)
+    row = module.ProcessEntry(1, 1, pdgs, (1, 2, 3, 4, 5, 6))
+
+    assert (
+        module.validate_selected_flow_quark_line_scope(
+            pdgs,
+            context="three-line selected-flow campaign",
+        )
+        == 3
+    )
+    selected, matches = module.select_generated_process_entry(
+        (row,),
+        generated_process="d d~ > u u~ s s~",
+        wanted_pdgs=pdgs,
+    )
+    assert selected == row
+    assert matches == (row,)
+
+    with pytest.raises(module.LegacyOracleError, match="3 quark lines exceed"):
+        module._validate_supported_quark_line_scope(
+            pdgs,
+            context="three-line all-flow fixture",
+        )
+
+
 def test_public_legacy_checkout_uses_noninteractive_https() -> None:
     module = _module()
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
     assert module.checkout_branch() == "amplicol_with_patches"
-    assert module.expected_revision() == "f3fdca35631c9405d28337a79cdab84994d8e414"
+    assert module.expected_revision() == "362c7d1babff6ab71a911ceab5032b7c55175ec1"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(
@@ -1207,7 +1332,7 @@ def test_tracked_fortran_report_is_pinned_and_matches_physics_fixture() -> None:
 
     assert report["schema_version"] == 1
     assert report["oracle"] == "legacy-fortran-amplicol-color-probe"
-    assert report["revision"] == lock["legacy_amplicol"]["revision"]
+    assert report["revision"] == lock["legacy_amplicol"]["reference_fixture_revision"]
     assert report["fixture_sha256"] == hashlib.sha256(PHYSICS.read_bytes()).hexdigest()
     assert report["patches"] == []
     assert report["tolerances"] == {"relative": 1.0e-8, "absolute": 1.0e-15}

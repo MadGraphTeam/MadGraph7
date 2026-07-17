@@ -33,6 +33,17 @@ flavor_scheme = 2
 max_quark_lines = 2
 # process.coupling_order_policy: "minimal" or "explicit". Default minimal.
 coupling_order_policy = "explicit"
+# process.max_color_sectors: Optional cap on generated color sectors. Default null.
+max_color_sectors = 32
+# process.reference_color_order: Optional external-leg ordering used to identify
+# a reference LC sector. Default is an empty list.
+reference_color_order = [1, 2, 3, 4, 5]
+# process.selected_color_sector_ids: Optional generated-sector subset. Default
+# is an empty list, which keeps every generated sector.
+selected_color_sector_ids = [0]
+# process.selected_source_helicities: Optional fixed source helicities keyed by
+# one-based external-leg label. Default is an empty table.
+selected_source_helicities = { "1" = -1, "2" = 1 }
 
 # process.multiparticles: User-defined particle-name expansions.
 [process.multiparticles]

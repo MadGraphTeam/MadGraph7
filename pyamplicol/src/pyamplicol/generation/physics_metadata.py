@@ -43,9 +43,11 @@ def build_resolved_physics_payload(
         group_colors=group_colors,
         helicity_ids=helicity_ids,
     )
-    lc_color_complete = not dag.color_plan.truncated and len(
-        color_components
-    ) == _expected_lc_physical_color_count(dag)
+    lc_color_complete = (
+        dag.color_coverage == "complete"
+        and not dag.color_plan.truncated
+        and len(color_components) == _expected_lc_physical_color_count(dag)
+    )
     is_lc = dag.process.color_accuracy == "lc"
     return {
         "schema_version": 1,
@@ -54,7 +56,7 @@ def build_resolved_physics_payload(
         "process": dag.process.process,
         "color_accuracy": dag.process.color_accuracy,
         "coverage": {
-            "helicities": "complete",
+            "helicities": dag.helicity_coverage,
             "color": ("complete" if is_lc and lc_color_complete else "selected")
             if is_lc
             else "contracted",
@@ -79,6 +81,10 @@ def build_resolved_physics_payload(
             "coherent_groups": [dict(group) for group in coherent_groups],
             "color_contraction": amplitude_stage.get("color_contraction"),
             "normalization": dict(normalization),
+            "selected_source_helicities": {
+                str(label): helicity
+                for label, helicity in dag.selected_source_helicities
+            },
         },
     }
 
@@ -147,6 +153,7 @@ def _possible_helicity_vectors(
     dag: GenericDAG,
     model: Model,
 ) -> tuple[tuple[int, ...], ...]:
+    selected = dict(dag.selected_source_helicities)
     per_leg: list[tuple[int, ...]] = []
     for leg in dag.process.legs:
         if leg.outgoing_pdg is None:
@@ -162,6 +169,14 @@ def _possible_helicity_vectors(
                 else declared_state
             )
             values.add(int(state.helicity))
+        if leg.label in selected:
+            requested = selected[leg.label]
+            values.intersection_update((requested,))
+            if not values:
+                raise ValueError(
+                    f"selected helicity {requested} is unavailable for external "
+                    f"leg {leg.label}"
+                )
         per_leg.append(tuple(sorted(values)))
     return tuple(tuple(values) for values in product(*per_leg))
 

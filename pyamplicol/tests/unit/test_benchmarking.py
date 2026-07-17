@@ -79,9 +79,16 @@ class _RuntimeWithProfile(_Runtime):
         return {
             "points": len(momenta),  # type: ignore[arg-type]
             "wall_time_s": 12.0e-6,
-            "stage_evaluator_time_s": 2.0e-6,
-            "amplitude_evaluator_time_s": 6.0e-6,
+            "stage_evaluator_call_time_s": 2.0e-6,
+            "amplitude_evaluator_call_time_s": 6.0e-6,
         }
+
+
+class _RuntimeWithUnavailableProfile(_Runtime):
+    supports_profiling = False
+
+    def profile(self, _momenta: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("unavailable native profiler must not be called")
 
 
 def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
@@ -118,16 +125,35 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
     assert result.sample_count == 3
-    assert runtime.calls == 0
+    assert runtime.calls == 4
     assert runtime.profile_calls == 4
-    assert result.wall_time_per_point == pytest.approx(3.0e-6)
+    assert result.wall_time_per_point >= 0.0
     assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
-    assert result.environment["wall_time_source"] == "runtime_profile_wall_time"
+    assert result.environment["wall_time_source"] == "runtime_evaluate_wall_time"
     assert (
         result.environment["evaluator_time_source"]
-        == "runtime_profile_core_evaluator_time"
+        == "runtime_profile_core_evaluator_call_time"
     )
     assert result.environment["evaluator_sample_count"] == 3
+
+
+def test_benchmark_falls_back_when_native_profile_is_unavailable() -> None:
+    runtime = _RuntimeWithUnavailableProfile()
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=2,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert runtime.calls == 3
+    assert result.environment["wall_time_source"] == "runtime_evaluate_wall_time"
+    assert result.evaluator_time_per_point == result.wall_time_per_point
 
 
 def test_benchmark_uses_runtime_validation_point_when_points_are_omitted() -> None:

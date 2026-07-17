@@ -48,6 +48,42 @@ from .dag_types import (
 )
 
 
+def _restrict_color_plan(
+    color_plan: GenericColorPlan,
+    selected_color_sector_ids: frozenset[int] | None,
+) -> tuple[GenericColorPlan, tuple[int, ...]]:
+    """Apply an explicit LC-sector selection without hiding missing ids."""
+
+    if selected_color_sector_ids is None or color_plan.color_accuracy != "lc":
+        return color_plan, ()
+    selected_sectors = tuple(
+        sector
+        for sector in color_plan.sectors
+        if sector.id in selected_color_sector_ids
+    )
+    selected_ids = {sector.id for sector in selected_sectors}
+    missing_sector_ids = tuple(sorted(selected_color_sector_ids - selected_ids))
+    diagnostics = color_plan.diagnostics
+    if missing_sector_ids:
+        diagnostics = (
+            *diagnostics,
+            "selected LC colour sector ids were not materialized: "
+            + ", ".join(str(sector_id) for sector_id in missing_sector_ids),
+        )
+    return (
+        GenericColorPlan(
+            process=color_plan.process,
+            color_accuracy=color_plan.color_accuracy,
+            sectors=selected_sectors,
+            diagnostics=diagnostics,
+            truncated=color_plan.truncated or bool(missing_sector_ids),
+            idenso_required=color_plan.idenso_required,
+            trace_reflections_folded=color_plan.trace_reflections_folded,
+        ),
+        missing_sector_ids,
+    )
+
+
 class GenericDAGCompiler:
     """Compile a concrete process into a model-driven current DAG.
 
@@ -132,6 +168,13 @@ class GenericDAGCompiler:
             reference_color_order=self.reference_color_order,
             fold_trace_reflections=lc_trace_reflection_proven,
         )
+        helicity_coverage = (
+            "selected" if self.selected_source_helicities else "complete"
+        )
+        selected_source_helicities = tuple(
+            sorted((self.selected_source_helicities or {}).items())
+        )
+        color_coverage = "selected" if color_plan.truncated else "complete"
         if (
             self.max_quark_pairs is not None
             and process_ir.color_endpoints.pair_count > self.max_quark_pairs
@@ -144,39 +187,17 @@ class GenericDAGCompiler:
                 interactions=(),
                 amplitude_roots=(),
                 truncated=False,
+                helicity_coverage=helicity_coverage,
+                color_coverage=color_coverage,
+                selected_source_helicities=selected_source_helicities,
             )
-        if (
-            self.selected_color_sector_ids is not None
-            and color_plan.color_accuracy == "lc"
-        ):
-            selected_sectors = tuple(
-                sector
-                for sector in color_plan.sectors
-                if sector.id in self.selected_color_sector_ids
-            )
-            missing_sector_ids = tuple(
-                sorted(
-                    int(sector_id)
-                    for sector_id in self.selected_color_sector_ids
-                    if all(sector.id != sector_id for sector in selected_sectors)
-                )
-            )
-            diagnostics = color_plan.diagnostics
-            if missing_sector_ids:
-                diagnostics = (
-                    *diagnostics,
-                    "selected LC colour sector ids were not materialized: "
-                    + ", ".join(str(sector_id) for sector_id in missing_sector_ids),
-                )
-            color_plan = GenericColorPlan(
-                process=color_plan.process,
-                color_accuracy=color_plan.color_accuracy,
-                sectors=selected_sectors,
-                diagnostics=diagnostics,
-                truncated=bool(missing_sector_ids),
-                idenso_required=color_plan.idenso_required,
-                trace_reflections_folded=color_plan.trace_reflections_folded,
-            )
+        complete_sector_ids = {sector.id for sector in color_plan.sectors}
+        color_plan, _missing_sector_ids = _restrict_color_plan(
+            color_plan,
+            self.selected_color_sector_ids,
+        )
+        if {sector.id for sector in color_plan.sectors} != complete_sector_ids:
+            color_coverage = "selected"
         color_engine = ColorEngine(
             color_plan,
             self.model,
@@ -267,6 +288,9 @@ class GenericDAGCompiler:
                 interactions=(),
                 amplitude_roots=(),
                 truncated=False,
+                helicity_coverage=helicity_coverage,
+                color_coverage=color_coverage,
+                selected_source_helicities=selected_source_helicities,
             )
 
         def state_allowed(
@@ -697,6 +721,11 @@ class GenericDAGCompiler:
                                                     )
                                                 ),
                                                 truncated=truncated,
+                                                helicity_coverage=helicity_coverage,
+                                                color_coverage=color_coverage,
+                                                selected_source_helicities=(
+                                                    selected_source_helicities
+                                                ),
                                             )
 
         return GenericDAG(
@@ -714,6 +743,9 @@ class GenericDAGCompiler:
                 )
             ),
             truncated=truncated,
+            helicity_coverage=helicity_coverage,
+            color_coverage=color_coverage,
+            selected_source_helicities=selected_source_helicities,
         )
 
     def _build_sources(

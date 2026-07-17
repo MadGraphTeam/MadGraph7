@@ -34,7 +34,8 @@ license = "MIT"
 [legacy_amplicol]
 source_url = "git@github.com:rikkert-frederix/AmpliCol.git"
 branch = "amplicol_with_patches"
-revision = "5005be6451dd045267044ce08a4ed7d430576048"
+revision = "362c7d1babff6ab71a911ceab5032b7c55175ec1"
+reference_fixture_revision = "f3fdca35631c9405d28337a79cdab84994d8e414"
 release_status = "developer-only"
 license = "NOASSERTION"
 redistributed = false

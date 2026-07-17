@@ -126,6 +126,9 @@ def _compiler_provenance(repository: Path) -> CompilerProvenance:
 
 
 _PDG_BY_NAME = _processes._PDG_BY_NAME
+GENERATED_PROCESS_ROW_SELECTION_POLICY = (
+    _processes.GENERATED_PROCESS_ROW_SELECTION_POLICY
+)
 EXPECTED_FORTRAN_PROCESS_ROWS = _processes.EXPECTED_FORTRAN_PROCESS_ROWS
 EXPECTED_FORTRAN_PDG_MATCH_COUNTS = _processes.EXPECTED_FORTRAN_PDG_MATCH_COUNTS
 EXPECTED_FORTRAN_COLOR_ORDER_COUNTS = _processes.EXPECTED_FORTRAN_COLOR_ORDER_COUNTS
@@ -133,14 +136,19 @@ parse_process_file = _processes.parse_process_file
 process_pdgs = _processes.process_pdgs
 _normalized_process_expression = _processes._normalized_process_expression
 _validate_supported_quark_line_scope = _processes._validate_supported_quark_line_scope
+validate_selected_flow_quark_line_scope = (
+    _processes.validate_selected_flow_quark_line_scope
+)
 expected_process_entry = _processes.expected_process_entry
 expected_process_match_count = _processes.expected_process_match_count
 expected_color_order_count = _processes.expected_color_order_count
 select_process_entry = _processes.select_process_entry
 _select_declared_process_entry = _processes._select_declared_process_entry
+select_generated_process_entry = _processes.select_generated_process_entry
 matching_process_entries = _processes.matching_process_entries
 matching_process_entries_for_pdgs = _processes.matching_process_entries_for_pdgs
 _permutation = _processes._permutation
+source_mapped_color_order = _processes.source_mapped_color_order
 _concrete_process_id = _processes._concrete_process_id
 _ordered_leg_ids = _processes._ordered_leg_ids
 
