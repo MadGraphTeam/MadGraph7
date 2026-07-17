@@ -27,6 +27,7 @@ from .contracts import (
     CompiledParticleRecord,
     CompiledVertexTerm,
     _ContactTreeNode,
+    compiled_particle_component_dimension,
 )
 
 _DIRECT_DENSE_CONTACT_INPUT_WORK = 1_024
@@ -389,9 +390,7 @@ def _contact_tree_node_payload(
             model_symbols.kernel_momentum(kind, side, index) for index in range(4)
         )
         return (*components, *momenta)
-    dimension = node.particle.component_dimension
-    if dimension is None:
-        raise ValueError("contact tree auxiliary has no component dimension")
+    dimension = compiled_particle_component_dimension(node.particle)
     return tuple(
         model_symbols.kernel_component(kind, side, index) for index in range(dimension)
     )
@@ -818,7 +817,7 @@ def _deduplicate_contact_partials(
         )
         signature = (
             kernel.particles[:2],
-            auxiliary.component_dimension,
+            compiled_particle_component_dimension(auxiliary),
             auxiliary.color,
             kernel.coupling_orders,
             kernel.color_source,

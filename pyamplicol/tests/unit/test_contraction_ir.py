@@ -22,7 +22,9 @@ from pyamplicol.models._physics_ir import ContractionIR
 from pyamplicol.models.base import Model, Particle
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.compiler_contractions import compile_contraction_records
-from pyamplicol.models.contracts import CompiledParticleRecord
+from pyamplicol.models.contracts import CompiledModelIR, CompiledParticleRecord
+from pyamplicol.models.external import CompiledUFOModel
+from pyamplicol.models.loading import CompiledModel
 
 
 def test_contraction_ir_json_round_trip_and_strict_decoder() -> None:
@@ -239,6 +241,58 @@ def test_generic_model_never_infers_contractions_from_component_dimension() -> N
     assert model.direct_contraction_ir(scalar, scalar) is None
     assert model.closure_contraction_ir(scalar) is None
     assert model.direct_contraction_possible(scalar, scalar) is False
+
+
+def test_external_model_with_empty_records_has_no_dimension_fallback() -> None:
+    particle = CompiledParticleRecord(
+        name="external_scalar",
+        antiname="external_scalar",
+        pdg_code=990_002,
+        spin=1,
+        color=1,
+        mass="ZERO",
+        width="ZERO",
+        charge=0.0,
+        quantum_numbers=(("electric_charge", "0"),),
+        ghost_number=0,
+        propagating=True,
+        goldstoneboson=False,
+        propagator=None,
+        component_dimension=1,
+    )
+    ir = CompiledModelIR(
+        name="external-empty-contractions",
+        orders=(),
+        parameters=(),
+        particles=(particle,),
+        couplings=(),
+        propagators=(),
+        vertex_terms=(),
+        oriented_kernels=(),
+        direct_contractions=(),
+        closure_contractions=(),
+    )
+    model = CompiledUFOModel(
+        CompiledModel(
+            source={"kind": "json"},
+            producer={},
+            model={"name": ir.name},
+            ir=ir,
+            parameter_defaults={},
+            capabilities={},
+            issues=(),
+            phase_timings={},
+            conversion_seconds=0.0,
+        )
+    )
+
+    assert model.dimension(particle.pdg_code) == 1
+    assert model.direct_contraction_ir(particle.pdg_code, particle.pdg_code) is None
+    assert model.closure_contraction_ir(particle.pdg_code) is None
+    assert model.direct_contraction_possible(
+        particle.pdg_code,
+        particle.pdg_code,
+    ) is False
 
 
 def test_component_contraction_is_coefficient_driven_and_never_truncates() -> None:

@@ -39,6 +39,7 @@ from .contracts import (
     CompiledOrientedKernel,
     CompiledParticleRecord,
     CompiledVertexTerm,
+    compiled_particle_component_dimension,
 )
 
 
@@ -216,7 +217,7 @@ def _contact_final_component_expressions(
     physical_side = "right" if auxiliary_on_left else "left"
     auxiliary_symbols = tuple(
         model_symbols.kernel_component(kind, auxiliary_side, component)
-        for component in range(auxiliary.component_dimension or 0)
+        for component in range(compiled_particle_component_dimension(auxiliary))
     )
     expanded_auxiliary = tuple(
         _sym.E("0") if entry is None else entry[1] * auxiliary_symbols[entry[0]]

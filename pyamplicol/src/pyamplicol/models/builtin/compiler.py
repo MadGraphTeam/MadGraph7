@@ -6,7 +6,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .. import compiler_symbolica as _sym
-from ..compiler_records import _mappings, _order, _parameter, _particle, _sequence
+from ..compiler_records import (
+    _mappings,
+    _order,
+    _parameter,
+    _particle_record,
+    _sequence,
+)
 from ..contracts import (
     CompiledClosureContractionRecord,
     CompiledDirectContractionRecord,
@@ -18,8 +24,7 @@ from ..contracts import (
 def compile_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
     _sym._ensure_symbolica()
     particles = tuple(
-        _particle(item, trusted_compiler_metadata=True)
-        for item in _mappings(model.get("particles"))
+        _particle_record(item) for item in _mappings(model.get("particles"))
     )
     terms = tuple(
         CompiledVertexTerm(

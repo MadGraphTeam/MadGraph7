@@ -30,6 +30,8 @@ MODEL_SUPPLIED_PROPAGATOR_SOURCE = "model-supplied"
 
 SUPPORTED_COLOR_REPRESENTATIONS = frozenset({-3, 1, 3, 8})
 
+_CANONICAL_COMPONENT_DIMENSIONS = {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}
+
 
 def validate_color_representation(value: int, *, context: str = "particle") -> int:
     representation = int(value)
@@ -217,6 +219,19 @@ class CompiledParticleRecord:
             "self_conjugate": self.self_conjugate,
             "source_orientation": self.source_orientation,
         }
+
+
+def compiled_particle_component_dimension(
+    particle: CompiledParticleRecord,
+) -> int:
+    if particle.component_dimension is not None:
+        return particle.component_dimension
+    try:
+        return _CANONICAL_COMPONENT_DIMENSIONS[particle.spin]
+    except KeyError as exc:
+        raise ValueError(
+            f"particle {particle.name!r} has unsupported UFO spin code {particle.spin}"
+        ) from exc
 
 
 def _particle_role_metadata(particle: CompiledParticleRecord) -> dict[str, object]:
@@ -1311,7 +1326,11 @@ def compiled_particle_is_chiral_eligible(
         or not particle.propagating
     ):
         return False
-    if particle.component_dimension not in {None, 4}:
+    try:
+        component_dimension = compiled_particle_component_dimension(particle)
+    except ValueError:
+        return False
+    if component_dimension != 4:
         return False
     if particle.propagator is not None:
         propagator = propagators.get(particle.propagator)
@@ -1353,21 +1372,7 @@ def compiled_current_dimension(
                 f"particle {particle.name!r} does not support projected Weyl currents"
             )
         return 2
-    if particle.component_dimension is not None:
-        dimension = int(particle.component_dimension)
-    else:
-        try:
-            dimension = {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}[particle.spin]
-        except KeyError as exc:
-            raise ValueError(
-                f"particle {particle.name!r} has unsupported UFO spin code "
-                f"{particle.spin}"
-            ) from exc
-    if dimension <= 0:
-        raise ValueError(
-            f"particle {particle.name!r} has invalid component dimension {dimension}"
-        )
-    return dimension
+    return compiled_particle_component_dimension(particle)
 
 
 def _validate_concrete_chirality_relation(
@@ -1571,6 +1576,7 @@ __all__ = [
     "TensorIndexBindingIR",
     "TensorOrderingIR",
     "compiled_current_dimension",
+    "compiled_particle_component_dimension",
     "compiled_particle_is_chiral_eligible",
     "validate_color_representation",
     "validate_quantum_number_flow",

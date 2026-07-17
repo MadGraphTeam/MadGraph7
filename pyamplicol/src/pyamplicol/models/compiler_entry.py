@@ -32,7 +32,6 @@ from .compiler_kernels import (
     _remap_kernel_symbols,
     _replace_expression_symbols,
     _spin_axis_labels,
-    _spin_dimension,
 )
 from .compiler_records import (
     _coupling,
@@ -52,6 +51,7 @@ from .contracts import (
     CompiledParameterRecord,
     CompiledParticleRecord,
     CompiledVertexTerm,
+    compiled_particle_component_dimension,
 )
 from .tensors import (
     classify_trilinear_color_expression,
@@ -313,11 +313,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             derived_couplings,
         )
         dimensions = tuple(
-            (
-                particle.component_dimension
-                if particle.component_dimension is not None
-                else _spin_dimension(particle.spin)
-            )
+            compiled_particle_component_dimension(particle)
             for particle in (
                 particle_by_name[kernel.particles[0]],
                 particle_by_name[kernel.particles[1]],

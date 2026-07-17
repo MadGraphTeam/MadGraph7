@@ -13,6 +13,7 @@ from .contracts import (
     CompiledParticleRecord,
     CompiledPropagatorRecord,
     compiled_current_dimension,
+    compiled_particle_component_dimension,
     compiled_particle_is_chiral_eligible,
 )
 
@@ -198,29 +199,20 @@ def _compile_direct_contraction(
             ),
             metric_signature="mostly-minus-tensor-product",
         )
-    if (
-        left.statistics == right.statistics == "auxiliary"
-        and left.wavefunction_family == right.wavefunction_family == "auxiliary"
-        and left.auxiliary_kind == right.auxiliary_kind == "antisymmetric-tensor"
-        and left_dimension == 6
-    ):
-        basis = "auxiliary:antisymmetric-tensor"
-        return ContractionIR(
-            name="antisymmetric-tensor",
-            left_basis=basis,
-            right_basis=basis,
-            coefficients=((1.0, 0.0),) * 6,
-        )
     return None
 
 
 def _compile_scalar_closure(
     particle: CompiledParticleRecord,
 ) -> ContractionIR | None:
+    try:
+        dimension = compiled_particle_component_dimension(particle)
+    except ValueError:
+        return None
     if (
         particle.statistics != "boson"
         or particle.wavefunction_family != "scalar"
-        or particle.component_dimension not in {None, 1}
+        or dimension != 1
     ):
         return None
     return ContractionIR(

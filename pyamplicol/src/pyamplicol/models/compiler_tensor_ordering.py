@@ -20,6 +20,7 @@ from .contracts import (
     CompiledParticleRecord,
     CompiledPropagatorRecord,
     CompiledVertexTerm,
+    compiled_particle_component_dimension,
     compiled_particle_is_chiral_eligible,
 )
 
@@ -348,9 +349,8 @@ def _contact_auxiliary_orderings(
 
 def _full_particle_ordering(particle: CompiledParticleRecord) -> TensorOrderingIR:
     expected_dimension = {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}.get(particle.spin)
-    if particle.component_dimension is not None and (
-        expected_dimension is None or particle.component_dimension != expected_dimension
-    ):
+    component_dimension = compiled_particle_component_dimension(particle)
+    if expected_dimension is None or component_dimension != expected_dimension:
         basis = "opaque-auxiliary"
         if particle.auxiliary_kind:
             basis += f":{particle.auxiliary_kind.split(':', 1)[0]}"
@@ -360,7 +360,7 @@ def _full_particle_ordering(particle: CompiledParticleRecord) -> TensorOrderingI
                 TensorAxisIR(
                     name="axis-0",
                     space="opaque-component",
-                    extent=particle.component_dimension,
+                    extent=component_dimension,
                 ),
             ),
         )

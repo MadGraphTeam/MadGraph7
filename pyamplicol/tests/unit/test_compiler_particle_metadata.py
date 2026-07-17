@@ -5,12 +5,19 @@ import pytest
 
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol.models.builtin.adapters import build_model_payload
+from pyamplicol.models.builtin.compiler import compile_model_ir as compile_builtin_ir
+from pyamplicol.models.compiler_contractions import compile_contraction_records
 from pyamplicol.models.compiler_entry import (
     _compile_four_point_contact_kernels,
     compile_ufo_model_ir,
 )
 from pyamplicol.models.compiler_records import _particle
-from pyamplicol.models.contracts import CompiledParticleRecord, CompiledVertexTerm
+from pyamplicol.models.contracts import (
+    CompiledModelIR,
+    CompiledParticleRecord,
+    CompiledVertexTerm,
+    compiled_particle_component_dimension,
+)
 
 
 def _particle_payload(name: str = "phi") -> dict[str, object]:
@@ -111,19 +118,53 @@ def test_compiled_particle_rejects_non_positive_component_dimension(
 
 def test_trusted_builtin_particle_metadata_is_preserved() -> None:
     model_payload, _parameter_defaults = build_model_payload()
-    particles = model_payload["particles"]
-    assert isinstance(particles, list)
-    auxiliary_payload = next(
-        item
-        for item in particles
-        if isinstance(item, dict) and item.get("pdg_code") == -21
-    )
-
-    particle = _particle(auxiliary_payload, trusted_compiler_metadata=True)
+    compiled = compile_builtin_ir(model_payload)
+    particle = next(item for item in compiled.particles if item.pdg_code == -21)
 
     assert particle.component_dimension == 6
     assert particle.auxiliary_kind == "antisymmetric-tensor"
+    assert compiled_particle_component_dimension(particle) == 6
     assert particle.statistics == "auxiliary"
+    direct = tuple(
+        record
+        for record in compiled.direct_contractions
+        if record.left_particle == particle.name
+        or record.right_particle == particle.name
+    )
+    assert tuple(record.contraction_ir.name for record in direct) == (
+        "antisymmetric-tensor",
+    )
+
+    round_trip = CompiledModelIR.from_dict(compiled.to_dict())
+    restored = next(item for item in round_trip.particles if item.pdg_code == -21)
+    assert restored.component_dimension == 6
+    assert restored.auxiliary_kind == "antisymmetric-tensor"
+    assert round_trip.direct_contractions == compiled.direct_contractions
+
+
+def test_generic_contractions_ignore_builtin_auxiliary_tags() -> None:
+    particle = CompiledParticleRecord(
+        name="model_auxiliary",
+        antiname="model_auxiliary",
+        pdg_code=9_700_001,
+        spin=-1,
+        color=1,
+        mass="ZERO",
+        width="ZERO",
+        charge=0.0,
+        quantum_numbers=(("electric_charge", "0"),),
+        ghost_number=0,
+        propagating=False,
+        goldstoneboson=False,
+        propagator=None,
+        component_dimension=6,
+        auxiliary_kind="antisymmetric-tensor",
+    )
+
+    direct, closure = compile_contraction_records((particle,), (), ())
+
+    assert direct == ()
+    assert closure == ()
 
 
 def test_compiler_generated_contact_auxiliary_keeps_owned_metadata() -> None:
@@ -158,6 +199,9 @@ def test_compiler_generated_contact_auxiliary_keeps_owned_metadata() -> None:
     assert auxiliaries
     assert kernels
     assert all(particle.component_dimension == 1 for particle in auxiliaries)
+    assert all(
+        compiled_particle_component_dimension(particle) == 1 for particle in auxiliaries
+    )
     assert all(
         particle.auxiliary_kind is not None
         and particle.auxiliary_kind.startswith("ufo-contact:")

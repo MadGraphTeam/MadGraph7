@@ -331,8 +331,6 @@ def test_sm_like_pdgs_and_fractional_charges_use_only_external_metadata() -> Non
         spin=-1,
         color=1,
         charge=0.2,
-        component_dimension=4,
-        auxiliary_kind="ufo-contact:unrelated-vector",
     )
     model = _model(
         fundamental,
