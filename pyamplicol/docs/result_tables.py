@@ -3876,6 +3876,14 @@ def _current_compiled_model_contract() -> tuple[int, int]:
     return int(COMPILED_MODEL_SCHEMA_VERSION), int(MODEL_COMPILER_VERSION)
 
 
+@cache
+def _current_pyamplicol_version() -> str:
+    _ensure_repo_root_on_path()
+    import pyamplicol
+
+    return str(pyamplicol.__version__)
+
+
 def _compiled_model_cache_dir(artifact_root: Path) -> Path:
     schema_version, compiler_version = _current_compiled_model_contract()
     return (
@@ -3904,9 +3912,14 @@ def _pyamplicol_artifacts_current(
     if not paths:
         return False
     return all(
-        _artifact_compiled_model_current(
-            path,
-            require_current_compiled_model_contract=require_current_compiled_model_contract,
+        (
+            _artifact_producer_version_current(path)
+            and _artifact_compiled_model_current(
+                path,
+                require_current_compiled_model_contract=(
+                    require_current_compiled_model_contract
+                ),
+            )
         )
         for path in paths
     )
@@ -3957,6 +3970,8 @@ def _reusable_pyamplicol_generation_seconds(
     if not _pyamplicol_generation_profile_current(previous_measurement):
         return None
     if not (artifact_dir / "artifact.json").is_file():
+        return None
+    if not _artifact_producer_version_current(artifact_dir):
         return None
     if not _artifact_compiled_model_current(
         artifact_dir,
@@ -4013,6 +4028,20 @@ def _artifact_compiled_model_current(
         schema_version == 9
         and payload_schema in BUILTIN_SM_COMPATIBLE_COMPILED_MODEL_SCHEMAS
     )
+
+
+def _artifact_producer_version_current(artifact_path: Path) -> bool:
+    manifest_path = artifact_path / "artifact.json"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, TypeError, ValueError):
+        return False
+    if not isinstance(payload, Mapping):
+        return False
+    producer = payload.get("producer")
+    if not isinstance(producer, Mapping):
+        return False
+    return producer.get("version") == _current_pyamplicol_version()
 
 
 def _legacy_measurement_revision_current(

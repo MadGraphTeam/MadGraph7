@@ -810,6 +810,10 @@ def test_missing_only_accepts_builtin_schema8_artifacts_after_schema9_bump(
     artifact_dir = tmp_path / "artifact"
     model_dir = artifact_dir / "model"
     model_dir.mkdir(parents=True)
+    (artifact_dir / "artifact.json").write_text(
+        json.dumps({"producer": {"version": "current"}}),
+        encoding="utf-8",
+    )
     compiled_model = model_dir / "compiled-model.json"
     compiled_model.write_text(
         json.dumps({"schema_version": 7, "model_compiler_version": 6}),
@@ -854,6 +858,7 @@ def test_missing_only_accepts_builtin_schema8_artifacts_after_schema9_bump(
     )
     monkeypatch.setattr(report, "_legacy_measurement_revision_current", lambda _: True)
     monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 9))
+    monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
 
     assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
 
@@ -892,6 +897,10 @@ def test_missing_only_retries_external_schema8_artifacts_after_schema9_bump(
     artifact_dir = tmp_path / "artifact"
     model_dir = artifact_dir / "model"
     model_dir.mkdir(parents=True)
+    (artifact_dir / "artifact.json").write_text(
+        json.dumps({"producer": {"version": "current"}}),
+        encoding="utf-8",
+    )
     compiled_model = model_dir / "compiled-model.json"
     compiled_model.write_text(
         json.dumps({"schema_version": 8, "model_compiler_version": 8}),
@@ -936,6 +945,7 @@ def test_missing_only_retries_external_schema8_artifacts_after_schema9_bump(
     )
     monkeypatch.setattr(report, "_legacy_measurement_revision_current", lambda _: True)
     monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 9))
+    monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
 
     assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
 
@@ -1019,6 +1029,7 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 10))
+    monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
     previous = {
         "generation_seconds": 12.5,
         "metadata": {
@@ -1046,9 +1057,26 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
     )
 
     (artifact_dir / "model").mkdir(parents=True)
-    (artifact_dir / "artifact.json").write_text("{}", encoding="utf-8")
+    (artifact_dir / "artifact.json").write_text(
+        json.dumps({"producer": {"version": "old"}}),
+        encoding="utf-8",
+    )
     (artifact_dir / "model" / "compiled-model.json").write_text(
         json.dumps({"schema_version": 9, "model_compiler_version": 9}),
+        encoding="utf-8",
+    )
+
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            previous,
+        )
+        is None
+    )
+
+    (artifact_dir / "artifact.json").write_text(
+        json.dumps({"producer": {"version": "current"}}),
         encoding="utf-8",
     )
 
