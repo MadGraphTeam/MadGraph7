@@ -501,6 +501,9 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
         destination = staging / destination_name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+    rust_destination = staging / "rust" / "rusticol.rs"
+    rust_destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(rust_source, rust_destination)
 
     archive_name = (
         "rusticol_capi.lib" if archive.suffix == ".lib" else "librusticol_capi.a"

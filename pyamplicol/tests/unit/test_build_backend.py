@@ -585,6 +585,48 @@ def test_backend_does_not_advertise_pep660_hooks() -> None:
     assert not [name for name in editable_hooks if hasattr(backend, name)]
 
 
+def test_sdk_build_stages_the_safe_rust_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"static archive")
+    link = {
+        "schema_version": 1,
+        "target": "aarch64-apple-darwin",
+        "system_libraries": ["System"],
+        "frameworks": [],
+    }
+
+    monkeypatch.setattr(sdk, "_host_target", lambda _root: link["target"])
+    monkeypatch.setattr(sdk, "_requested_target", lambda host: host)
+    monkeypatch.setattr(sdk, "_cargo_fetch", lambda *_args: None)
+    monkeypatch.setattr(
+        sdk.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=(), returncode=0, stdout="", stderr=""
+        ),
+    )
+    monkeypatch.setattr(sdk, "_cargo_messages", lambda _stdout: ())
+    monkeypatch.setattr(sdk, "_static_library", lambda _messages: archive)
+    monkeypatch.setattr(sdk, "_native_tokens", lambda _stderr: ())
+    monkeypatch.setattr(sdk, "_typed_link_arguments", lambda _tokens, _target: link)
+    monkeypatch.setattr(sdk, "_scan_archive", lambda _archive: None)
+    monkeypatch.setattr(sdk, "_scan_archive_symbols", lambda _archive: None)
+    monkeypatch.setattr(
+        sdk, "_validate_archive_linkage", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(sdk, "_package_version", lambda _root: "0.1.0")
+
+    staging = sdk.build_sdk(ROOT, tmp_path / "target")
+
+    rust_source = staging / "rust" / "rusticol.rs"
+    assert rust_source.read_bytes() == (ROOT / sdk.RUST_SDK_SOURCE).read_bytes()
+    metadata = json.loads((staging / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["rust_source"] == "rust/rusticol.rs"
+
+
 def test_dependency_gate_subprocess_ignores_inherited_build_injection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
