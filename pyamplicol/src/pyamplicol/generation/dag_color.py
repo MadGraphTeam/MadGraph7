@@ -609,7 +609,7 @@ class ColorEngine:
         if sector is None:
             return True
         if sector.kind == "singlet" and all(
-            not word for word in sector.compatibility_words
+            not word for word in sector.admissible_traversal_words
         ):
             return True
         return any(
@@ -740,7 +740,7 @@ class ColorEngine:
         if sector is None:
             return True
         if sector.kind == "singlet" and all(
-            not word for word in sector.compatibility_words
+            not word for word in sector.admissible_traversal_words
         ):
             return True
         return any(
@@ -749,7 +749,7 @@ class ColorEngine:
                 _labels_projected_to_word(right_index.ordered_external_labels, word),
                 word,
             )
-            for word in sector.compatibility_words
+            for word in sector.admissible_traversal_words
         )
 
     def shared_single_trace_closure_flows(
@@ -770,7 +770,7 @@ class ColorEngine:
                     right_index.ordered_external_labels,
                     word,
                 )
-                for word in sector.compatibility_words
+                for word in sector.admissible_traversal_words
             ):
                 seen.add(sector.id)
                 flows.append(

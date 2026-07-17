@@ -1162,7 +1162,7 @@ class GenerationBackend:
                 "colour sector ids: "
                 + ", ".join(str(sector_id) for sector_id in missing_sector_ids)
             )
-        if not color_plan.sectors or color_plan.idenso_required:
+        if not color_plan.sectors:
             detail = "; ".join(color_plan.diagnostics) or "no color sectors"
             raise GenerationError(
                 f"process {process.process!r} has no usable color plan: {detail}"
@@ -1220,7 +1220,7 @@ class GenerationBackend:
                 "colour sector ids: "
                 + ", ".join(str(sector_id) for sector_id in missing_sector_ids)
             )
-        if not color_plan.sectors or color_plan.idenso_required:
+        if not color_plan.sectors:
             detail = "; ".join(color_plan.diagnostics) or "no color sectors"
             raise GenerationError(
                 f"process {process.process!r} has no usable color plan: {detail}"

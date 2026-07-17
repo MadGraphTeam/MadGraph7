@@ -93,7 +93,7 @@ class LCColorSector:
         return ()
 
     @cached_property
-    def compatibility_words(self) -> tuple[tuple[int, ...], ...]:
+    def admissible_traversal_words(self) -> tuple[tuple[int, ...], ...]:
         """Colour words accepted while constructing currents for this sector.
 
         The sector itself has one physical colour word.  During current
@@ -121,16 +121,6 @@ class LCColorSector:
             words.append(word)
         return tuple(words)
 
-    @cached_property
-    def legacy_order_words(self) -> tuple[tuple[int, ...], ...]:
-        """Full phase-space orders, including colour-singlet attachments."""
-
-        from .plan_build import _open_line_legacy_order_words
-
-        if self.kind == "open-lines":
-            return _open_line_legacy_order_words(self)
-        return self.color_words
-
     def to_json_dict(self) -> dict[str, object]:
         return {
             "id": self.id,
@@ -146,8 +136,9 @@ class LCColorSector:
             ],
             "line_label_groups": [list(group) for group in self.line_label_groups],
             "color_words": [list(word) for word in self.color_words],
-            "compatibility_words": [list(word) for word in self.compatibility_words],
-            "legacy_order_words": [list(word) for word in self.legacy_order_words],
+            "admissible_traversal_words": [
+                list(word) for word in self.admissible_traversal_words
+            ],
         }
 
 
@@ -210,7 +201,6 @@ class GenericColorPlan:
     sectors: tuple[LCColorSector, ...]
     diagnostics: tuple[str, ...] = ()
     truncated: bool = False
-    idenso_required: bool = False
     trace_reflections_folded: bool = False
 
     @property
@@ -223,7 +213,7 @@ class GenericColorPlan:
 
     @property
     def ready_for_requested_colour(self) -> bool:
-        return bool(self.sectors) and not self.truncated and not self.idenso_required
+        return bool(self.sectors) and not self.truncated
 
     @property
     def coloured_labels(self) -> tuple[int, ...]:
@@ -256,7 +246,6 @@ class GenericColorPlan:
             "color_accuracy": self.color_accuracy,
             "sector_count": self.sector_count,
             "truncated": self.truncated,
-            "idenso_required": self.idenso_required,
             "trace_reflections_folded": self.trace_reflections_folded,
             "ready_for_leading_colour": self.ready_for_leading_colour,
             "ready_for_requested_colour": self.ready_for_requested_colour,

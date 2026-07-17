@@ -34,6 +34,20 @@ def test_color_plan_json_exposes_structural_open_line_roles() -> None:
     sector = payload["sectors"][0]
     line = sector["open_color_lines"][0]
 
+    assert set(sector) == {
+        "id",
+        "kind",
+        "open_color_lines",
+        "trace_labels",
+        "singlet_labels",
+        "word_labels",
+        "coloured_label_groups",
+        "line_label_groups",
+        "color_words",
+        "admissible_traversal_words",
+    }
+    assert "idenso_required" not in payload
+
     assert "quark_lines" not in sector
     assert line == {
         "fundamental_label": 2,

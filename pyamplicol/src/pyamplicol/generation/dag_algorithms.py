@@ -91,7 +91,6 @@ def infer_minimal_coupling_order_limits(
             ),
             diagnostics=color_plan.diagnostics,
             truncated=color_plan.truncated,
-            idenso_required=color_plan.idenso_required,
             trace_reflections_folded=color_plan.trace_reflections_folded,
         )
     color_engine = ColorEngine(color_plan, active_model)

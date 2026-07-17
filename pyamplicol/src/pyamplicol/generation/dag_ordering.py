@@ -255,35 +255,19 @@ def _canonical_lc_ordered_labels(
     return tuple(sorted(label_set))
 
 
-def _sector_current_order_words(sector: LCColorSector) -> tuple[tuple[int, ...], ...]:
-    """Return physical order words carried in diagnostics.
-
-    Current construction uses ``sector.compatibility_words`` plus
-    ``_line_local_singlet_extras_allowed``.  Keeping this helper as a diagnostic
-    accessor makes it explicit that the full legacy words are not the pruning
-    substrate: singlet insertions are line-local attachments to coloured
-    segments, not fixed positions at the tail of a full word.
-    """
-
-    words = tuple(getattr(sector, "legacy_order_words", ()) or ())
-    if words:
-        return words
-    return sector.compatibility_words or sector.color_words
-
-
 def _sector_intermediate_order_words(
     sector: LCColorSector,
 ) -> tuple[tuple[int, ...], ...]:
     """Return LC words used for intermediate current construction.
 
-    Multi-open-line sectors expose extra compatibility words so final closure
+    Multi-open-line sectors expose extra admissible traversal words so final closure
     can choose the opposite endpoint without duplicating physical sectors.
     Intermediate currents, however, must follow the sector's physical colour
-    word; using all compatibility words here double-counts the same ordered
+    word; using all traversal words here double-counts the same ordered
     current topology for multi-open-line processes with singlet insertions.
     """
 
-    return sector.color_words or sector.compatibility_words
+    return sector.color_words or sector.admissible_traversal_words
 
 
 def _lc_word_with_sink_last(
@@ -487,7 +471,7 @@ def _lc_color_order_reachable_masks(
             for singlet_submask in _submasks_for_labels(sector.singlet_labels):
                 if singlet_submask:
                     allowed.add(singlet_submask)
-        for raw_word in sector.compatibility_words:
+        for raw_word in sector.admissible_traversal_words:
             word = tuple(label for label in raw_word if label in colored_labels)
             for start in range(len(word)):
                 segment_mask = 0

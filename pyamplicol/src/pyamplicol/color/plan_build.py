@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from itertools import permutations, product
+from itertools import permutations
 
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .plan_types import (
@@ -362,54 +362,6 @@ def _ordered_open_line_blocks(
     if remaining:
         return None
     return tuple(blocks)
-
-
-def _open_line_legacy_order_words(
-    sector: LCColorSector,
-) -> tuple[tuple[int, ...], ...]:
-    """Full open-line block orders accepted in legacy process rows."""
-
-    if sector.word_labels:
-        line_by_coloured = {
-            line.coloured_labels: line for line in sector.open_color_lines
-        }
-        ordered_blocks = _ordered_open_line_blocks(
-            sector.word_labels,
-            sector.open_color_lines,
-        )
-        if ordered_blocks is None:
-            return (sector.word_labels,)
-        ordered_lines = tuple(line_by_coloured[block] for block in ordered_blocks)
-    else:
-        ordered_lines = sector.open_color_lines
-
-    line_orientations = tuple(_legacy_line_orientations(line) for line in ordered_lines)
-    words: list[tuple[int, ...]] = []
-    seen: set[tuple[int, ...]] = set()
-    for line_permutation in permutations(range(len(ordered_lines))):
-        orientation_choices = (line_orientations[index] for index in line_permutation)
-        for blocks in product(*orientation_choices):
-            word = tuple(label for block in blocks for label in block)
-            if word in seen:
-                continue
-            seen.add(word)
-            words.append(word)
-    return tuple(words)
-
-
-def _legacy_line_orientations(
-    line: LCOpenColorLine,
-) -> tuple[tuple[int, ...], ...]:
-    canonical = line.line_labels
-    antifundamental_first = (
-        line.antifundamental_label,
-        *line.adjoint_labels,
-        line.fundamental_label,
-        *line.singlet_labels,
-    )
-    if antifundamental_first == canonical:
-        return (canonical,)
-    return (canonical, antifundamental_first)
 
 
 def _iter_ordered_adjoint_allocations(

@@ -77,7 +77,6 @@ def _restrict_color_plan(
             sectors=selected_sectors,
             diagnostics=diagnostics,
             truncated=color_plan.truncated or bool(missing_sector_ids),
-            idenso_required=color_plan.idenso_required,
             trace_reflections_folded=color_plan.trace_reflections_folded,
         ),
         missing_sector_ids,
@@ -853,7 +852,8 @@ class GenericDAGCompiler:
                         )
                         if (
                             sector is not None
-                            and self.reference_color_order in sector.compatibility_words
+                            and self.reference_color_order
+                            in sector.admissible_traversal_words
                             and not _closure_combination_matches_word(
                                 _labels_projected_to_word(
                                     left.index.ordered_external_labels,
