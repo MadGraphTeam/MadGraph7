@@ -124,6 +124,26 @@ def _named_reference_case(name: str) -> tuple[dict[str, Any], list[Any]]:
     return case, momenta
 
 
+def _write_color_dummy_relabelled_sm(root: Path) -> Path:
+    source = EXTERNAL_SM_SOURCES["json"]
+    raw = json.loads(source.read_text(encoding="utf-8"))
+    vertex = next(item for item in raw["vertex_rules"] if item["name"] == "V_37")
+    vertex["color_structures"] = [
+        "*".join(reversed(expression.replace("-1", "-97").split("*")))
+        for expression in vertex["color_structures"]
+    ]
+    model_root = root / "model"
+    model_root.mkdir()
+    model_path = model_root / "sm.json"
+    model_path.write_text(
+        json.dumps(raw, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    restriction = source.with_name("restrict_default.json")
+    (model_root / restriction.name).write_bytes(restriction.read_bytes())
+    return model_path
+
+
 @pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
 def test_current_source_generates_and_evaluates_schema_v3(
     tmp_path: Path,
@@ -434,6 +454,74 @@ def test_current_source_external_sm_matches_builtin_reference(
                         0.0,
                         abs=max(1.0e-15, abs(expected) * 1.0e-12),
                     )
+
+
+def test_external_sm_color_dummy_relabeling_preserves_resolved_runtime(
+    tmp_path: Path,
+) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    reference, momenta, expected_resolved = _case_payload("case:sm_gg_gg:lc")
+    artifact = tmp_path / "color-dummy-relabelled-sm"
+    config = RunConfig(
+        action="generate",
+        model=ModelConfig(cache=False),
+        color=ColorConfig(accuracy="lc"),
+    )
+    Generator(config).generate(
+        reference["process"],
+        artifact,
+        model=ModelSource.from_path(_write_color_dummy_relabelled_sm(tmp_path)),
+    )
+
+    outer = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process_id = outer["processes"][0]["id"]
+    execution = json.loads(
+        (artifact / "processes" / process_id / "execution.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert execution["dag_summary"]["current_count"] == reference["topology"][
+        "current_count"
+    ]
+    assert execution["dag_summary"]["interaction_count"] == reference["topology"][
+        "interaction_count"
+    ]
+    assert execution["dag_summary"]["amplitude_root_count"] == reference["topology"][
+        "amplitude_root_count"
+    ]
+
+    runtime_momenta = tuple(
+        tuple(tuple(float(component) for component in vector) for vector in point)
+        for point in momenta
+    )
+    runtime = Runtime.load(artifact)
+    resolved = runtime.evaluate_resolved(runtime_momenta)
+    precise = runtime.evaluate_resolved(runtime_momenta, precision=80)
+    expected_helicity_ids = tuple(expected_resolved)
+    expected_color_ids = tuple(next(iter(expected_resolved.values())))
+    assert resolved.helicity_ids == expected_helicity_ids
+    assert resolved.color_ids == expected_color_ids
+    assert precise.helicity_ids == expected_helicity_ids
+    assert precise.color_ids == expected_color_ids
+    for helicity_index, helicity_id in enumerate(expected_helicity_ids):
+        for color_index, color_id in enumerate(expected_color_ids):
+            expected = expected_resolved[helicity_id][color_id]
+            actual = resolved.values[0][helicity_index][color_index]
+            high_precision = precise.values[0][helicity_index][color_index]
+            assert actual.real == pytest.approx(expected, rel=1.0e-10, abs=1.0e-12)
+            assert actual.imag == pytest.approx(0.0, abs=1.0e-12)
+            assert float(high_precision) == pytest.approx(
+                expected,
+                rel=1.0e-10,
+                abs=1.0e-12,
+            )
+    assert resolved.total()[0].real == pytest.approx(
+        reference["total"],
+        rel=1.0e-10,
+        abs=1.0e-12,
+    )
 
 
 def test_external_sm_mass_overrides_refresh_sources_and_derived_masses(

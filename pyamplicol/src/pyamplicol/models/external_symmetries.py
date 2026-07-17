@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from itertools import permutations, product
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
@@ -69,6 +70,10 @@ _YM_FOUR_VECTOR_BASIS = (
 )
 
 _CONTACT_ORIGIN = re.compile(r"^ufo-contact:(?P<term>[0-9]+):")
+_CONTRACTED_INDEX = re.compile(
+    r"^ufo_(?P<family>[cls])_dummy_(?P<label>[0-9]+)"
+    r"(?:_(?P<representation>[A-Za-z0-9_]+))?$"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,7 +385,41 @@ def _has_yang_mills_coupling_relation(
 
 
 def _tensor_product_signature(color: str, lorentz: str) -> str:
-    return str((_sym.E(color) * _sym.E(lorentz)).expand().to_canonical_string())
+    expression = (_sym.E(color) * _sym.E(lorentz)).expand()
+    groups: dict[tuple[str, str], list[_sym.Expression]] = defaultdict(list)
+    for symbol in expression.get_all_symbols():
+        match = _CONTRACTED_INDEX.fullmatch(str(symbol))
+        if match is None:
+            continue
+        key = (match.group("family"), match.group("representation") or "index")
+        groups[key].append(symbol)
+    if not groups:
+        return str(expression.to_canonical_string())
+
+    model_symbols = symbols.model("tensor_signature")
+    options: list[tuple[dict[_sym.Expression, _sym.Expression], ...]] = []
+    for (family, representation), source_symbols in sorted(groups.items()):
+        canonical_symbols = tuple(
+            model_symbols.symbol(
+                f"contracted_{family}_{representation}_{index}"
+            )
+            for index in range(len(source_symbols))
+        )
+        options.append(
+            tuple(
+                dict(zip(ordering, canonical_symbols, strict=True))
+                for ordering in permutations(source_symbols)
+            )
+        )
+
+    signatures: list[str] = []
+    for substitutions in product(*options):
+        candidate = expression
+        for mapping in substitutions:
+            for source, target in mapping.items():
+                candidate = candidate.replace(source, target)
+        signatures.append(str(candidate.to_canonical_string()))
+    return min(signatures)
 
 
 def _expressions_are_constant_multiples(target: str, reference: str) -> bool:

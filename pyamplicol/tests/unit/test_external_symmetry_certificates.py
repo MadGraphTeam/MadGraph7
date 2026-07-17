@@ -20,6 +20,7 @@ from pyamplicol.models.compiler_tensor_ordering import (
 )
 from pyamplicol.models.contracts import CompiledModelIR
 from pyamplicol.models.external_symmetries import (
+    _tensor_product_signature,
     derive_external_symmetry_certificates,
 )
 from pyamplicol.processes.model import build_model_process_ir
@@ -166,6 +167,34 @@ def reordered_external_sm(tmp_path_factory: pytest.TempPathFactory):
     return compiled, CompiledUFOModel(compiled)
 
 
+@pytest.fixture(scope="module")
+def color_dummy_relabelled_external_sm(tmp_path_factory: pytest.TempPathFactory):
+    raw = json.loads((MODEL_ROOT / "sm.json").read_text(encoding="utf-8"))
+    relabelled = deepcopy(raw)
+    vertex = next(
+        item for item in relabelled["vertex_rules"] if item["name"] == "V_37"
+    )
+    vertex["color_structures"] = [
+        "*".join(reversed(source.replace("-1", "-97").split("*")))
+        for source in vertex["color_structures"]
+    ]
+
+    model_root = tmp_path_factory.mktemp("color-dummy-relabelled-external-sm")
+    model_path = model_root / "sm.json"
+    restriction_path = model_root / "restrict_default.json"
+    model_path.write_text(
+        json.dumps(relabelled, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    restriction_path.write_bytes((MODEL_ROOT / "restrict_default.json").read_bytes())
+    compiled = compile_model_source(
+        model_path,
+        restriction=str(restriction_path.resolve()),
+        use_cache=False,
+    )
+    return compiled, CompiledUFOModel(compiled)
+
+
 def _production_dag_signature(compiled, model, process: str) -> tuple[object, ...]:
     process_ir = build_model_process_ir(process, compiled.ir)
     limits = infer_minimal_coupling_order_limits(process_ir, model=model)
@@ -213,6 +242,57 @@ def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) ->
         yang_mills_vertices,
     )
     assert model.lc_trace_reflection_equivalence_is_proven(pure_adjoint)
+
+
+def test_tensor_product_signature_alpha_normalizes_contracted_indices() -> None:
+    left = (
+        "spenso::f(ufo_c_dummy_1_adjoint,ufo_c_1,ufo_c_2)"
+        "*spenso::f(ufo_c_3,ufo_c_4,ufo_c_dummy_1_adjoint)"
+    )
+    right = (
+        "spenso::f(ufo_c_3,ufo_c_4,ufo_c_dummy_97_adjoint)"
+        "*spenso::f(ufo_c_dummy_97_adjoint,ufo_c_1,ufo_c_2)"
+    )
+    assert _tensor_product_signature(left, "1") == _tensor_product_signature(
+        right,
+        "1",
+    )
+
+
+def test_tensor_product_signature_distinguishes_contraction_graphs() -> None:
+    chain = (
+        "spenso::f(ufo_c_1,ufo_c_dummy_2_adjoint,ufo_c_dummy_7_adjoint)"
+        "*spenso::f(ufo_c_dummy_2_adjoint,ufo_c_2,ufo_c_3)"
+        "*spenso::f(ufo_c_dummy_7_adjoint,ufo_c_4,ufo_c_5)"
+    )
+    relabelled_chain = (
+        "spenso::f(ufo_c_dummy_41_adjoint,ufo_c_4,ufo_c_5)"
+        "*spenso::f(ufo_c_1,ufo_c_dummy_99_adjoint,ufo_c_dummy_41_adjoint)"
+        "*spenso::f(ufo_c_dummy_99_adjoint,ufo_c_2,ufo_c_3)"
+    )
+    different = (
+        "spenso::f(ufo_c_1,ufo_c_dummy_2_adjoint,ufo_c_dummy_7_adjoint)"
+        "*spenso::f(ufo_c_dummy_2_adjoint,ufo_c_dummy_7_adjoint,ufo_c_3)"
+        "*spenso::f(ufo_c_2,ufo_c_4,ufo_c_5)"
+    )
+    signature = _tensor_product_signature(chain, "1")
+    assert signature == _tensor_product_signature(relabelled_chain, "1")
+    assert signature != _tensor_product_signature(different, "1")
+
+
+def test_external_sm_color_dummy_relabeling_preserves_yang_mills_reuse(
+    external_sm,
+    color_dummy_relabelled_external_sm,
+) -> None:
+    compiled, model = external_sm
+    relabelled, relabelled_model = color_dummy_relabelled_external_sm
+
+    assert relabelled_model._symmetry_certificates == model._symmetry_certificates
+    assert _production_dag_signature(
+        relabelled,
+        relabelled_model,
+        "g g > g g",
+    ) == _production_dag_signature(compiled, model, "g g > g g")
 
 
 def test_external_sm_four_gluon_contacts_keep_proven_lowering(external_sm) -> None:
