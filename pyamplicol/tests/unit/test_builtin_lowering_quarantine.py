@@ -93,3 +93,19 @@ def test_legacy_lowering_modules_delegate_public_and_private_names() -> None:
         tensor_facade._build_auxiliary_tensor_probe
         is lowering_tensor._build_auxiliary_tensor_probe
     )
+
+
+def test_builtin_auxiliary_tensor_probe_executes() -> None:
+    from pyamplicol.models import BuiltinSMModel
+    from pyamplicol.models.builtin.lowering_tensor import (
+        _build_auxiliary_tensor_probe,
+    )
+
+    probe = _build_auxiliary_tensor_probe(BuiltinSMModel())
+
+    assert probe.engine == "spenso"
+    assert probe.output_rank == 2
+    assert probe.output_size == 16
+    assert probe.nonzero_entries == 4
+    assert probe.max_abs_entry == pytest.approx(1.5)
+    assert probe.weighted_checksum == pytest.approx((0.0, 48.0))

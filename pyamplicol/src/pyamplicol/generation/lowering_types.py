@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+@dataclass(frozen=True)
 class TensorNetworkProbe:
     engine: str
     tensor_names: tuple[str, ...]
