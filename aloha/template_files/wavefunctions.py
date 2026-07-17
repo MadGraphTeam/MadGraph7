@@ -68,7 +68,18 @@ class FLV_Coupling_py:
             if len(non_zero) == 2:
                 k1, k2 = non_zero
             elif len(non_zero) == 1:
-                k1 = k2 = non_zero[0]
+                # Single merged leg: the unmerged partner gets flavor index 1,
+                # and which fermion (F1 or F2) carries the merged leg is decided
+                # by the position of the non-zero entry in the key (merged leg is
+                # F1 iff it is the first entry).  This must match the Fortran and
+                # C++ backends (base_objects.FLV_Coupling.get_partner_indices);
+                # otherwise single-merged-leg vertices such as `w+ ta+ vt~`
+                # (unmerged tau + merged neutrino) evaluate to zero here.
+                k = non_zero[0]
+                if key[0] == k:
+                    k1, k2 = k, 1
+                else:
+                    k1, k2 = 1, k
             else:
                 continue
             self.partner[k1] = k2
