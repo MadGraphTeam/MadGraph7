@@ -14,3 +14,19 @@ This development-only series targets GammaLoop revision
 
 The patch is a candidate for upstreaming. It is not included in a release
 wheel or sdist.
+
+## Handoff and regression evidence
+
+The original failure was a process abort in Symbolica restricted mode: the
+caller selected Spenso's sequential path, but sparse tensor accumulation still
+entered hidden Rayon workers and performed `Atom` operations there. The patch
+checks Symbolica's effective license state at each affected reduction,
+preserving the existing Rayon implementation for licensed users and using the
+same operation sequentially otherwise. It does not change the mathematical
+contraction or licensed scheduling.
+
+`tests/integration/test_spenso_restricted_mode.py` runs the restricted-mode
+regression through pyAmpliCol. The exact GammaLoop base revision and patch
+digest are recorded in `dependencies/contributor-lock.toml`. GammaLoop/Spenso
+is contributor-only reference tooling, is not a pyAmpliCol runtime dependency,
+and neither this patch nor GammaLoop is included in release wheels or sdists.

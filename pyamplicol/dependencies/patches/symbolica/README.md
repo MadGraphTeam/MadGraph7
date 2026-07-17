@@ -32,3 +32,33 @@ extended evaluator serialization is needed.
 
 These patches are candidates for upstreaming. They are not included in a
 release wheel or sdist.
+
+## Handoff and regression evidence
+
+- Patch 0001 affects ordinary complex C++ export on every target and scalar
+  complex inline assembly on AArch64. The original exporter dropped the
+  imaginary part while converting constants, emitted malformed wrapped
+  complex constants, described vector-register clobbers as scalar registers,
+  and let several real-only operations read or retain an undefined imaginary
+  lane. Those defects caused compilation failures or incorrect complex f64
+  values in ASM/C++ process artifacts. The guarded macOS arm64 candidate job
+  generates JIT, ASM, and C++ artifacts for `d d~ > z`, requires their totals
+  to agree at `rtol=1e-12`, and then exercises the installed native runtime.
+- Patch 0002 is a scheduling fix rather than a numerical change. Without it,
+  `evaluator_multiple()` retains the GIL for the complete CPU-bound evaluator
+  build, serializing otherwise independent Python generation workers. The
+  candidate source gate covers multi-evaluator process generation; the patch
+  does not alter evaluator expressions or serialized payloads.
+- Patch 0003 carries its own Rust regression over optimization levels 0, 1, 2,
+  and 3. pyAmpliCol additionally records the requested level in each evaluator
+  manifest, defaults production generation to O3, and checks that exported
+  evaluator metadata preserves that setting.
+- Patch 0004 carries a Rust regression for self-contained application export.
+  pyAmpliCol's installed-deployment gate blocks every `symbolica` import,
+  removes `SYMBOLICA_LICENSE`, loads the portable direct-SymJIT self-test
+  artifact through Rusticol, and requires the f64 physics check to pass.
+
+The authoritative patch digests and exact Symbolica/Symbolica-community/SymJIT
+revisions are recorded in `dependencies/contributor-lock.toml`. Release mode
+must use an upstream published implementation and never consumes this patch
+directory.
