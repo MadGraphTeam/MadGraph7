@@ -103,7 +103,8 @@ The command families are:
 ```text
 generate
 evaluate
-benchmark
+profile
+benchmark (compatibility alias for profile)
 inspect
 model inspect|compile|processes
 request-symbolica-trial-license
@@ -118,6 +119,11 @@ Use `generate --dry-run` for the non-writing operation exposed by
 `Generator.plan()`. An external UFO/JSON source must first be compiled or
 present in the configured model cache; dry-run intentionally does not compile
 trusted external input as a side effect.
+
+The direct `profile` command resolves internally to the schema-v1 `benchmark`
+action. Existing cards therefore keep `action = "benchmark"`; both direct
+spellings accept the same runtime, process, batch-size, sampling, selector, and
+output options.
 
 ## Color And Evaluation
 

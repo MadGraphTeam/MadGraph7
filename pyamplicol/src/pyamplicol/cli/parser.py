@@ -34,6 +34,7 @@ _UTILITY_COMMANDS = frozenset({"config", "examples", "doctor", "self-test"})
 _DIRECT_COMMANDS = frozenset(
     {
         *(action.value for action in ACTIONS if not action.value.startswith("model-")),
+        "profile",
         "model",
         *_LICENSE_ACTIONS,
     }
@@ -447,10 +448,82 @@ def _add_evaluation_options(
     )
 
 
+def _add_profile_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("target", type=Path, nargs="?", default=None, metavar="OUTPUT")
+    parser.add_argument(
+        "--process",
+        dest="evaluation.process",
+        default=argparse.SUPPRESS,
+        metavar="PROCESS",
+        help="select a stable process/alias ID or exact process expression",
+    )
+    parser.add_argument(
+        "--target-runtime",
+        dest="benchmark.target_runtime",
+        type=float,
+        default=argparse.SUPPRESS,
+        metavar="SECONDS",
+    )
+    parser.add_argument(
+        "--batch-size",
+        dest="benchmark.batch_size",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="POINTS",
+        help="number of phase-space points evaluated by each runtime call",
+    )
+    parser.add_argument(
+        "--precision",
+        dest="benchmark.precision",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="DIGITS",
+        help="decimal digits used by the Python runtime evaluator",
+    )
+    parser.add_argument(
+        "--warmup-runs",
+        dest="benchmark.warmup_runs",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="COUNT",
+    )
+    parser.add_argument(
+        "--minimum-samples",
+        dest="benchmark.minimum_samples",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="COUNT",
+        help="minimum number of independent timed blocks",
+    )
+    parser.add_argument(
+        "--helicity",
+        dest="benchmark.helicity_ids",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ID",
+    )
+    parser.add_argument(
+        "--color-flow",
+        dest="benchmark.color_flow_ids",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ID",
+    )
+    parser.add_argument(
+        "--momenta",
+        dest="evaluation.momenta",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="PATH",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pyamplicol",
-        description="Generate, inspect, and evaluate pyAmpliCol process artifacts.",
+        description=(
+            "Generate, inspect, evaluate, and profile pyAmpliCol process artifacts."
+        ),
     )
     subparsers = parser.add_subparsers(dest="_action", required=True)
     common = _common_parent()
@@ -487,67 +560,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_evaluation_options(evaluate)
 
+    profile = subparsers.add_parser(
+        "profile",
+        parents=[common],
+        help="Profile a generated artifact.",
+    )
+    _add_profile_options(profile)
+
     benchmark = subparsers.add_parser(
         "benchmark",
         parents=[common],
-        help="Benchmark a generated artifact.",
+        help="Compatibility alias for the profile command.",
     )
-    benchmark.add_argument("target", type=Path, nargs="?", default=None)
-    benchmark.add_argument(
-        "--process",
-        dest="evaluation.process",
-        default=argparse.SUPPRESS,
-        help="select a stable process/alias ID or exact process expression",
-    )
-    benchmark.add_argument(
-        "--target-runtime",
-        dest="benchmark.target_runtime",
-        type=float,
-        default=argparse.SUPPRESS,
-    )
-    benchmark.add_argument(
-        "--batch-size",
-        dest="benchmark.batch_size",
-        type=int,
-        default=argparse.SUPPRESS,
-    )
-    benchmark.add_argument(
-        "--precision",
-        dest="benchmark.precision",
-        type=int,
-        default=argparse.SUPPRESS,
-        help="decimal digits used by the Python runtime evaluator",
-    )
-    benchmark.add_argument(
-        "--warmup-runs",
-        dest="benchmark.warmup_runs",
-        type=int,
-        default=argparse.SUPPRESS,
-    )
-    benchmark.add_argument(
-        "--minimum-samples",
-        dest="benchmark.minimum_samples",
-        type=int,
-        default=argparse.SUPPRESS,
-    )
-    benchmark.add_argument(
-        "--helicity",
-        dest="benchmark.helicity_ids",
-        action="append",
-        default=argparse.SUPPRESS,
-    )
-    benchmark.add_argument(
-        "--color-flow",
-        dest="benchmark.color_flow_ids",
-        action="append",
-        default=argparse.SUPPRESS,
-    )
-    benchmark.add_argument(
-        "--momenta",
-        dest="evaluation.momenta",
-        type=Path,
-        default=argparse.SUPPRESS,
-    )
+    _add_profile_options(benchmark)
 
     inspect = subparsers.add_parser(
         "inspect",
@@ -649,6 +674,8 @@ def _namespace_to_invocation(
         if model_action not in _MODEL_ACTIONS:
             raise ValueError("model requires an inspect, compile, or processes command")
         action_value = _MODEL_ACTIONS[model_action].value
+    if action_value == "profile":
+        action_value = Action.BENCHMARK.value
     if action_value in _LICENSE_ACTIONS:
         return LicenseRequestInvocation(
             kind=_LICENSE_ACTIONS[action_value],

@@ -8,7 +8,14 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from pyamplicol.api.results import (
+        BenchmarkComponentTiming,
+        BenchmarkResult,
+        BenchmarkStatistics,
+    )
 
 
 def _plain(value: object) -> object:
@@ -87,6 +94,203 @@ def _component_count(process: Mapping[str, object], prefix: str) -> str:
     if physical == computed:
         return str(physical)
     return f"{physical} ({computed} eval.)"
+
+
+def _duration_unit(seconds: float) -> tuple[float, str]:
+    magnitude = abs(seconds)
+    if magnitude < 1.0e-6:
+        return 1.0e9, "ns"
+    if magnitude < 1.0e-3:
+        return 1.0e6, "us"
+    if magnitude < 1.0:
+        return 1.0e3, "ms"
+    return 1.0, "s"
+
+
+def _timing_text(
+    seconds: float,
+    uncertainty: BenchmarkStatistics,
+) -> str:
+    scale, unit = _duration_unit(seconds)
+    return (
+        f"{seconds * scale:.6g} +/- "
+        f"{uncertainty.standard_error * scale:.3g} {unit}/point (standard error)"
+    )
+
+
+def _seconds_text(seconds: float) -> str:
+    scale, unit = _duration_unit(seconds)
+    return f"{seconds * scale:.6g} {unit}"
+
+
+def _component_timing_text(timing: BenchmarkComponentTiming | None) -> str:
+    if timing is None:
+        return "N/A"
+    scale, unit = _duration_unit(timing.mean_seconds_per_point)
+    return (
+        f"{timing.mean_seconds_per_point * scale:.6g} +/- "
+        f"{timing.uncertainty.standard_error * scale:.3g} {unit}/point"
+    )
+
+
+def _benchmark_summary(
+    result: BenchmarkResult,
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    environment = result.environment
+    process = result.process_id or "N/A"
+    if result.process_expression is not None:
+        process = f"{process} ({result.process_expression})"
+    elapsed_value = environment.get("elapsed_seconds")
+    elapsed = (
+        float(elapsed_value)
+        if isinstance(elapsed_value, (float, int))
+        and not isinstance(elapsed_value, bool)
+        else None
+    )
+    evaluator_source = str(environment.get("evaluator_time_source", "unavailable"))
+    evaluator_text = "N/A"
+    if result.evaluator_time_per_point is not None:
+        if result.evaluator_uncertainty is None:
+            evaluator_text = f"{_seconds_text(result.evaluator_time_per_point)}/point"
+        else:
+            evaluator_text = _timing_text(
+                result.evaluator_time_per_point,
+                result.evaluator_uncertainty,
+            )
+
+    relative_error = result.uncertainty.relative_standard_error
+    if relative_error <= 0.01:
+        uncertainty_color = "GREEN"
+    elif relative_error <= 0.05:
+        uncertainty_color = "YELLOW"
+    else:
+        uncertainty_color = "RED"
+    rows: list[tuple[str, str, str | None]] = [
+        ("process", process, None),
+        ("artifact", _value_text(environment.get("target")), None),
+        (
+            "wall time",
+            _timing_text(result.wall_time_per_point, result.uncertainty),
+            "GREEN",
+        ),
+        ("evaluator time", evaluator_text, "CYAN"),
+        (
+            "wall variability",
+            (
+                f"SD {_seconds_text(result.uncertainty.standard_deviation)}/point; "
+                f"relative SE {relative_error:.3%}"
+            ),
+            uncertainty_color,
+        ),
+        (
+            "sampling",
+            (
+                f"{result.sample_count} blocks x "
+                f"{result.repetitions_per_sample} repetitions x "
+                f"{result.effective_config.batch_size} points"
+            ),
+            None,
+        ),
+        ("timed evaluations", str(result.evaluation_count), None),
+        ("timed points", str(result.evaluated_point_count), None),
+        (
+            "target / measured",
+            (
+                f"{result.effective_config.target_runtime:.6g} s / {elapsed:.6g} s"
+                if elapsed is not None
+                else f"{result.effective_config.target_runtime:.6g} s / N/A"
+            ),
+            None,
+        ),
+        ("precision", str(result.effective_config.precision), None),
+        (
+            "timing sources",
+            (
+                f"wall={environment.get('wall_time_source', 'unavailable')}; "
+                f"evaluator={evaluator_source}"
+            ),
+            None,
+        ),
+        ("platform", _value_text(environment.get("platform")), None),
+    ]
+
+    table = prettytable.PrettyTable(("metric", "value"))
+    table.title = _paint("Runtime Profile", "CYAN", enabled=color)
+    table.align["metric"] = "l"
+    table.align["value"] = "l"
+    table.max_width["metric"] = 24
+    table.max_width["value"] = 96
+    table.hrules = prettytable.HRuleStyle.HEADER
+    for metric, value, color_name in rows:
+        table.add_row(
+            (
+                metric,
+                _paint(value, color_name, enabled=color)
+                if color_name is not None
+                else value,
+            )
+        )
+    sections = [cast(str, table.get_string())]
+    breakdown = result.timing_breakdown
+    if breakdown is None:
+        return sections[0]
+
+    component_table = prettytable.PrettyTable(("component", "mean +/- SE", "rel. SE"))
+    component_table.title = _paint("Rusticol Timing Breakdown", "CYAN", enabled=color)
+    component_table.align["component"] = "l"
+    component_table.align["mean +/- SE"] = "r"
+    component_table.align["rel. SE"] = "r"
+    component_table.hrules = prettytable.HRuleStyle.HEADER
+    component_rows = (
+        ("Profile wall", breakdown.wall_time),
+        ("Source fill", breakdown.source_fill_time),
+        ("Momentum setup", breakdown.momentum_setup_time),
+        ("Stage input pack", breakdown.stage_input_pack_time),
+        ("Stage evaluator calls", breakdown.stage_evaluator_call_time),
+        ("Output assign", breakdown.output_assign_time),
+        ("Amplitude input pack", breakdown.amplitude_input_pack_time),
+        ("Amplitude evaluator call", breakdown.amplitude_evaluator_call_time),
+        ("Reduction", breakdown.reduction_time),
+    )
+    for label, timing in component_rows:
+        relative = (
+            "N/A"
+            if timing is None
+            else f"{timing.uncertainty.relative_standard_error:.3%}"
+        )
+        value = _component_timing_text(timing)
+        if label in {"Stage evaluator calls", "Amplitude evaluator call"}:
+            value = _paint(value, "CYAN", enabled=color)
+        component_table.add_row((label, value, relative))
+    sections.append(cast(str, component_table.get_string()))
+
+    if breakdown.stages:
+        stage_table = prettytable.PrettyTable(
+            ("stage", "input pack", "evaluator call", "output assign")
+        )
+        stage_table.title = _paint("Rusticol Stage Detail", "CYAN", enabled=color)
+        stage_table.align["stage"] = "r"
+        for column in ("input pack", "evaluator call", "output assign"):
+            stage_table.align[column] = "r"
+        stage_table.hrules = prettytable.HRuleStyle.HEADER
+        for stage in breakdown.stages:
+            stage_table.add_row(
+                (
+                    stage.stage_index,
+                    _component_timing_text(stage.input_pack_time),
+                    _paint(
+                        _component_timing_text(stage.evaluator_call_time),
+                        "CYAN",
+                        enabled=color,
+                    ),
+                    _component_timing_text(stage.output_assign_time),
+                )
+            )
+        sections.append(cast(str, stage_table.get_string()))
+    return "\n\n".join(sections)
 
 
 def _artifact_inspection_summary(
@@ -256,6 +460,10 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         prettytable: Any = importlib.import_module("prettytable")
     except ImportError:
         return None
+    from pyamplicol.api.results import BenchmarkResult
+
+    if isinstance(value, BenchmarkResult):
+        return _benchmark_summary(value, prettytable=prettytable, color=color)
     if plain.get("kind") == "pyamplicol-artifact-inspection":
         return _artifact_inspection_summary(
             plain,

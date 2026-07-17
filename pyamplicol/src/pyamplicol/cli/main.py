@@ -119,10 +119,15 @@ def run_cli(
         config = resolution.effective
         configure_cli_logging(config.output.log_level, stream=diagnostic_stream)
         logging_configured = True
+        progress_color = config.output.color == "always" or (
+            config.output.color == "auto"
+            and bool(getattr(diagnostic_stream, "isatty", lambda: False)())
+        )
         sink = progress_sink(
             config.output.progress,
             stream=diagnostic_stream,
             logger=get_logger("progress"),
+            color=progress_color,
         )
         selected_services = (
             DefaultCliServices(resolution=resolution) if services is None else services

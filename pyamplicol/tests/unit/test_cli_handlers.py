@@ -6,15 +6,22 @@ import json
 import sys
 from pathlib import Path
 
+from pyamplicol.api import BenchmarkResult, BenchmarkStatistics
 from pyamplicol.cli import run_cli
 from pyamplicol.cli.handlers import _process_set
 from pyamplicol.config import (
+    BenchmarkConfig,
     ConfigurationError,
     ProcessConfig,
     ProcessEntry,
     RunConfig,
 )
-from pyamplicol.reporting import ProgressSink
+from pyamplicol.reporting import (
+    ProgressEnd,
+    ProgressSink,
+    ProgressStart,
+    ProgressUpdate,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,6 +50,39 @@ class _Services:
     model_inspect = evaluate
     model_compile = evaluate
     model_processes = evaluate
+
+
+class _ProfileServices(_Services):
+    def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
+        self.config = config
+        progress.emit(ProgressStart("runtime-benchmark", "Profiling runtime", 2))
+        progress.emit(ProgressUpdate("runtime-benchmark", 1, 2, "sampled"))
+        progress.emit(ProgressUpdate("runtime-benchmark", 2, 2, "sampled"))
+        progress.emit(ProgressEnd("runtime-benchmark"))
+        benchmark = BenchmarkConfig(
+            target_runtime=config.benchmark.target_runtime,
+            batch_size=config.benchmark.batch_size,
+            minimum_samples=config.benchmark.minimum_samples,
+        )
+        uncertainty = BenchmarkStatistics(1.0e-7, 5.0e-8, 0.05)
+        return BenchmarkResult(
+            requested_config=benchmark,
+            effective_config=benchmark,
+            sample_count=2,
+            wall_time_per_point=1.0e-6,
+            evaluator_time_per_point=8.0e-7,
+            uncertainty=uncertainty,
+            environment={
+                "elapsed_seconds": benchmark.target_runtime,
+                "platform": "test",
+                "wall_time_source": "runtime_evaluate_wall_time",
+                "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            },
+            repetitions_per_sample=3,
+            evaluator_uncertainty=uncertainty,
+            process_id="d_dbar_to_z_g",
+            process_expression="d d~ > z g",
+        )
 
 
 def test_typed_config_entries_preserve_complete_process_set_behavior() -> None:
@@ -116,6 +156,47 @@ def test_cli_failures_write_only_diagnostics_to_stderr(tmp_path: Path) -> None:
     assert status == 2
     assert stdout.getvalue() == ""
     assert "generation rejected" in stderr.getvalue()
+
+
+def test_profile_json_is_stdout_clean_and_uses_benchmark_service(
+    tmp_path: Path,
+) -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    services = _ProfileServices()
+
+    status = run_cli(
+        (
+            "profile",
+            str(tmp_path / "artifact"),
+            "--process",
+            "d d~ > z g",
+            "--target-runtime",
+            "0.1",
+            "--batch-size",
+            "4",
+            "--minimum-samples",
+            "2",
+            "--format",
+            "json",
+            "--progress",
+            "log",
+        ),
+        services=services,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload["process_id"] == "d_dbar_to_z_g"
+    assert payload["repetitions_per_sample"] == 3
+    assert "Runtime Profile" not in stdout.getvalue()
+    assert "\x1b[" not in stdout.getvalue()
+    assert "Profiling runtime" in stderr.getvalue()
+    assert services.config is not None
+    assert services.config.action == "benchmark"
+    assert services.config.evaluation.process == "d d~ > z g"
 
 
 def test_inspect_cli_lists_artifact_processes_as_json() -> None:

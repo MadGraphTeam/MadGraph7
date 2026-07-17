@@ -490,8 +490,120 @@ class BenchmarkStatistics:
 
 
 @dataclass(frozen=True, slots=True)
+class BenchmarkComponentTiming:
+    """Mean per-point time and uncertainty for one runtime-profile component."""
+
+    mean_seconds_per_point: float
+    uncertainty: BenchmarkStatistics
+    sample_count: int
+
+    def __post_init__(self) -> None:
+        if (
+            not math.isfinite(self.mean_seconds_per_point)
+            or self.mean_seconds_per_point < 0
+        ):
+            raise ValueError(
+                "benchmark component timing must be finite and non-negative"
+            )
+        if not isinstance(self.uncertainty, BenchmarkStatistics):
+            raise TypeError(
+                "benchmark component uncertainty must be BenchmarkStatistics"
+            )
+        if (
+            isinstance(self.sample_count, bool)
+            or not isinstance(self.sample_count, int)
+            or self.sample_count < 1
+        ):
+            raise ValueError("benchmark component sample_count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkStageTiming:
+    """Per-point timings for one native evaluator stage."""
+
+    stage_index: int
+    input_pack_time: BenchmarkComponentTiming | None = None
+    evaluator_call_time: BenchmarkComponentTiming | None = None
+    output_assign_time: BenchmarkComponentTiming | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.stage_index, bool)
+            or not isinstance(self.stage_index, int)
+            or self.stage_index < 1
+        ):
+            raise ValueError("benchmark stage_index must be positive")
+        timings = (
+            self.input_pack_time,
+            self.evaluator_call_time,
+            self.output_assign_time,
+        )
+        if not any(timing is not None for timing in timings):
+            raise ValueError("benchmark stage timing must contain at least one value")
+        if any(
+            timing is not None and not isinstance(timing, BenchmarkComponentTiming)
+            for timing in timings
+        ):
+            raise TypeError("benchmark stage timings must be BenchmarkComponentTiming")
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkTimingBreakdown:
+    """Typed aggregate of bounded native Rusticol profile samples."""
+
+    sample_count: int
+    wall_time: BenchmarkComponentTiming | None = None
+    source_fill_time: BenchmarkComponentTiming | None = None
+    momentum_setup_time: BenchmarkComponentTiming | None = None
+    stage_input_pack_time: BenchmarkComponentTiming | None = None
+    stage_evaluator_call_time: BenchmarkComponentTiming | None = None
+    output_assign_time: BenchmarkComponentTiming | None = None
+    amplitude_input_pack_time: BenchmarkComponentTiming | None = None
+    amplitude_evaluator_call_time: BenchmarkComponentTiming | None = None
+    reduction_time: BenchmarkComponentTiming | None = None
+    stages: tuple[BenchmarkStageTiming, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.sample_count, bool)
+            or not isinstance(self.sample_count, int)
+            or self.sample_count < 1
+        ):
+            raise ValueError("benchmark timing breakdown sample_count must be positive")
+        for name in (
+            "wall_time",
+            "source_fill_time",
+            "momentum_setup_time",
+            "stage_input_pack_time",
+            "stage_evaluator_call_time",
+            "output_assign_time",
+            "amplitude_input_pack_time",
+            "amplitude_evaluator_call_time",
+            "reduction_time",
+        ):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, BenchmarkComponentTiming):
+                raise TypeError(
+                    f"benchmark timing breakdown {name} must be "
+                    "BenchmarkComponentTiming or null"
+                )
+        stages = tuple(self.stages)
+        if not all(isinstance(stage, BenchmarkStageTiming) for stage in stages):
+            raise TypeError("benchmark timing breakdown stages are invalid")
+        indices = tuple(stage.stage_index for stage in stages)
+        if len(indices) != len(set(indices)):
+            raise ValueError("benchmark timing breakdown stage indices must be unique")
+        object.__setattr__(self, "stages", stages)
+
+
+@dataclass(frozen=True, slots=True)
 class BenchmarkResult:
-    """Per-point wall/evaluator timing and sample statistics for one process."""
+    """Per-point timings and uncertainty across independent measured blocks.
+
+    ``sample_count`` is the number of timed blocks. Each block averages
+    ``repetitions_per_sample`` runtime calls of ``effective_config.batch_size``
+    points.
+    """
 
     requested_config: BenchmarkConfig
     effective_config: BenchmarkConfig
@@ -500,6 +612,11 @@ class BenchmarkResult:
     evaluator_time_per_point: float | None
     uncertainty: BenchmarkStatistics
     environment: Mapping[str, object]
+    repetitions_per_sample: int = 1
+    evaluator_uncertainty: BenchmarkStatistics | None = None
+    process_id: str | None = None
+    process_expression: str | None = None
+    timing_breakdown: BenchmarkTimingBreakdown | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -515,12 +632,49 @@ class BenchmarkResult:
             or self.evaluator_time_per_point < 0
         ):
             raise ValueError("benchmark evaluator_time_per_point must be non-negative")
+        if (
+            isinstance(self.repetitions_per_sample, bool)
+            or not isinstance(self.repetitions_per_sample, int)
+            or self.repetitions_per_sample < 1
+        ):
+            raise ValueError("benchmark repetitions_per_sample must be positive")
+        if self.evaluator_uncertainty is not None and not isinstance(
+            self.evaluator_uncertainty, BenchmarkStatistics
+        ):
+            raise TypeError(
+                "benchmark evaluator_uncertainty must be BenchmarkStatistics or null"
+            )
+        for name in ("process_id", "process_expression"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value):
+                raise ValueError(f"benchmark {name} must be a non-empty string or null")
+        if self.timing_breakdown is not None and not isinstance(
+            self.timing_breakdown, BenchmarkTimingBreakdown
+        ):
+            raise TypeError(
+                "benchmark timing_breakdown must be BenchmarkTimingBreakdown or null"
+            )
         object.__setattr__(self, "environment", _freeze_mapping(self.environment))
+
+    @property
+    def evaluation_count(self) -> int:
+        """Return the number of timed runtime evaluations."""
+
+        return self.sample_count * self.repetitions_per_sample
+
+    @property
+    def evaluated_point_count(self) -> int:
+        """Return the number of phase-space point evaluations timed."""
+
+        return self.evaluation_count * self.effective_config.batch_size
 
 
 __all__ = [
+    "BenchmarkComponentTiming",
     "BenchmarkResult",
+    "BenchmarkStageTiming",
     "BenchmarkStatistics",
+    "BenchmarkTimingBreakdown",
     "ColorComponent",
     "ColorFlow",
     "ContractedColorComponent",

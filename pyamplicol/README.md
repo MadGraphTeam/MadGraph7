@@ -62,6 +62,34 @@ ordering remain significant.
 `data/model_parameters.json` updates the real model inputs `aS` and `MZ`.
 Unknown, immutable, or invalid entries reject the complete update.
 
+## Runtime Profiling
+
+Profile an already generated artifact with its deterministic validation point,
+or provide phase-space points explicitly with `--momenta`:
+
+```console
+pyamplicol profile artifacts/pp_zjj \
+  --process p_p_to_z_j_j_4 \
+  --target-runtime 1.0 \
+  --batch-size 128
+```
+
+`--process` accepts either a stable process/alias ID or the exact concrete
+expression, such as `d d~ > z g g`. The profiler warms the selected runtime,
+calibrates independent timed blocks and repetitions per block toward the target
+duration, and reports the mean time per point with standard deviation, standard
+error, and relative standard error. In a terminal it uses a colored progress
+bar and colorized PrettyTables. Native Rusticol profiling is bounded to one
+call per statistical block, independent of wall-time repetitions, and reports
+source/momentum setup, stage and amplitude packing/evaluator calls, output
+assignment, reduction, and per-stage detail. `--format json` keeps stdout
+limited to the typed `BenchmarkResult` payload; progress and diagnostics remain
+on stderr.
+
+`pyamplicol benchmark` remains a compatibility alias with the same options and
+output. TOML run cards continue to use `action = "benchmark"`, and the Python
+interface remains `BenchmarkRunner`/`BenchmarkResult`.
+
 ## Installation
 
 | Goal | Command | Dependency source |

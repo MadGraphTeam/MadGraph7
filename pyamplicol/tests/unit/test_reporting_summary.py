@@ -6,6 +6,13 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from pyamplicol.api import (
+    BenchmarkComponentTiming,
+    BenchmarkResult,
+    BenchmarkStageTiming,
+    BenchmarkStatistics,
+    BenchmarkTimingBreakdown,
+)
 from pyamplicol.artifacts import (
     ArtifactAliasInspection,
     ArtifactDependencyInspection,
@@ -13,6 +20,7 @@ from pyamplicol.artifacts import (
     ArtifactProcessInspection,
 )
 from pyamplicol.cli.main import write_result
+from pyamplicol.config import BenchmarkConfig
 from pyamplicol.reporting import render_summary
 
 
@@ -40,6 +48,68 @@ def test_json_result_never_contains_table_or_color_sequences() -> None:
         "status": "complete",
     }
     assert "\x1b[" not in stream.getvalue()
+
+
+def _benchmark_result() -> BenchmarkResult:
+    config = BenchmarkConfig(target_runtime=1.0, batch_size=32, minimum_samples=8)
+    wall_uncertainty = BenchmarkStatistics(0.2e-6, 0.05e-6, 0.02)
+    evaluator_uncertainty = BenchmarkStatistics(0.1e-6, 0.025e-6, 0.0125)
+    component = BenchmarkComponentTiming(0.5e-6, evaluator_uncertainty, 8)
+    breakdown = BenchmarkTimingBreakdown(
+        sample_count=8,
+        wall_time=component,
+        source_fill_time=component,
+        momentum_setup_time=component,
+        stage_input_pack_time=component,
+        stage_evaluator_call_time=component,
+        output_assign_time=component,
+        amplitude_input_pack_time=component,
+        amplitude_evaluator_call_time=component,
+        reduction_time=component,
+        stages=(BenchmarkStageTiming(1, component, component, component),),
+    )
+    return BenchmarkResult(
+        requested_config=config,
+        effective_config=config,
+        sample_count=8,
+        wall_time_per_point=2.5e-6,
+        evaluator_time_per_point=2.0e-6,
+        uncertainty=wall_uncertainty,
+        environment={
+            "target": "/tmp/artifact",
+            "elapsed_seconds": 1.01,
+            "platform": "test-platform",
+            "wall_time_source": "runtime_evaluate_wall_time",
+            "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+        },
+        repetitions_per_sample=50,
+        evaluator_uncertainty=evaluator_uncertainty,
+        process_id="ddbar_zg",
+        process_expression="d d~ > z g",
+        timing_breakdown=breakdown,
+    )
+
+
+def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
+    rendered = render_summary(_benchmark_result(), color=False)
+
+    assert rendered is not None
+    assert "Runtime Profile" in rendered
+    assert "ddbar_zg (d d~ > z g)" in rendered
+    assert "2.5 +/- 0.05 us/point (standard error)" in rendered
+    assert "8 blocks x 50 repetitions x 32 points" in rendered
+    assert "timed points" in rendered
+    assert "Rusticol Timing Breakdown" in rendered
+    assert "Source fill" in rendered
+    assert "Rusticol Stage Detail" in rendered
+    assert "evaluator call" in rendered
+
+
+def test_benchmark_profile_table_color_is_optional() -> None:
+    rendered = render_summary(_benchmark_result(), color=True)
+
+    assert rendered is not None
+    assert "\x1b[" in rendered
 
 
 def _artifact_inspection() -> ArtifactInspection:

@@ -427,7 +427,7 @@ class Runtime:
 
 
 class BenchmarkRunner:
-    """Benchmark summed process evaluation with a typed benchmark configuration."""
+    """Profile summed process evaluation with a typed benchmark configuration."""
 
     def __init__(
         self,
@@ -454,7 +454,7 @@ class BenchmarkRunner:
         *,
         points: Momenta | None = None,
     ) -> BenchmarkResult:
-        """Benchmark an artifact path or an already loaded :class:`Runtime`."""
+        """Profile an artifact path or an already loaded :class:`Runtime`."""
 
         backend_target: RuntimeBackend | os.PathLike[str] | str
         if isinstance(target, Runtime):
@@ -495,7 +495,7 @@ def benchmark(
     config: BenchmarkConfig | RunConfig | None = None,
     progress: ProgressSink | None = None,
 ) -> BenchmarkResult:
-    """Benchmark a generated artifact using a one-shot convenience function."""
+    """Profile a generated artifact using a one-shot convenience function."""
 
     return BenchmarkRunner(config=config, progress=progress).run(target, points=points)
 

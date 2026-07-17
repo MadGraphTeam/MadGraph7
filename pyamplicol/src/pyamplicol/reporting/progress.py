@@ -12,6 +12,16 @@ from typing import Any, Literal, Protocol, TextIO, TypeAlias, cast, runtime_chec
 from .logging import get_logger
 
 
+def _terminal_paint(text: str, color_name: str, *, enabled: bool) -> str:
+    if not enabled:
+        return text
+    try:
+        colorama: Any = importlib.import_module("colorama")
+    except ImportError:
+        return text
+    return f"{getattr(colorama.Fore, color_name)}{text}{colorama.Style.RESET_ALL}"
+
+
 def _task_id(value: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError("progress task_id must be a non-empty string")
@@ -134,6 +144,7 @@ class TtyProgressSink:
     """Render thread-safe progressbar2 bars for typed generation phases."""
 
     stream: TextIO
+    color: bool | None = None
     _bars: dict[str, _ProgressBar] = field(default_factory=dict, init=False, repr=False)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
@@ -161,15 +172,23 @@ class TtyProgressSink:
             self._bars.pop(event.task_id, None)
 
     def _start(self, event: ProgressStart) -> _ProgressBar:
+        color = (
+            bool(getattr(self.stream, "isatty", lambda: False)())
+            if self.color is None
+            else self.color
+        )
+        description = _terminal_paint(event.description, "CYAN", enabled=color)
         try:
             progressbar: Any = importlib.import_module("progressbar")
         except ImportError:
-            self.stream.write(f"{_format_event(event)}\n")
+            self.stream.write(
+                f"{_terminal_paint(_format_event(event), 'CYAN', enabled=color)}\n"
+            )
             self.stream.flush()
             return _LineProgress(self.stream, event.task_id)
         if event.total is None:
             widgets: list[Any] = [
-                f"{event.description}: ",
+                f"{description}: ",
                 progressbar.AnimatedMarker(),
                 " ",
                 progressbar.Counter(),
@@ -179,10 +198,12 @@ class TtyProgressSink:
             maximum = progressbar.UnknownLength
         else:
             widgets = [
-                f"{event.description}: ",
+                f"{description}: ",
                 progressbar.Percentage(),
                 " ",
-                progressbar.Bar(),
+                progressbar.Bar(
+                    marker=_terminal_paint("#", "GREEN", enabled=color),
+                ),
                 " ",
                 progressbar.Counter(),
                 f"/{event.total} ",
@@ -193,6 +214,7 @@ class TtyProgressSink:
             max_value=maximum,
             widgets=widgets,
             fd=self.stream,
+            enable_colors=color,
             redirect_stdout=False,
             redirect_stderr=False,
         )
@@ -247,6 +269,7 @@ def progress_sink(
     *,
     stream: TextIO,
     logger: logging.Logger | None = None,
+    color: bool | None = None,
 ) -> ProgressSink:
     """Create a sink for the configured CLI progress mode."""
 
@@ -258,7 +281,7 @@ def progress_sink(
     if selected == "log":
         return LoggingProgressSink(logger or get_logger("progress"))
     if selected == "tty":
-        return TtyProgressSink(stream)
+        return TtyProgressSink(stream, color=color)
     raise ValueError(f"unknown progress mode {mode!r}")
 
 

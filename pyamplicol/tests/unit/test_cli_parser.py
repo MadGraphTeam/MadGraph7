@@ -61,6 +61,8 @@ def test_all_contract_actions_have_subcommands() -> None:
     for action, argv in arguments.items():
         assert parse_cli(argv).action == action
 
+    assert parse_cli(("profile",)).action == "benchmark"
+
 
 @pytest.mark.parametrize(
     "command",
@@ -227,3 +229,52 @@ def test_runtime_color_flow_flags_remain_available() -> None:
     assert benchmark.resolve().effective.evaluation.process == "d d~ > z g"
     assert benchmark.resolve().effective.benchmark.precision == 80
     assert benchmark.resolve().effective.benchmark.color_flow_ids == ("flow:2,4,1",)
+
+
+def test_profile_is_primary_cli_spelling_for_typed_benchmark_config(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    profile = (
+        parse_cli(
+            (
+                "profile",
+                str(artifact),
+                "--process",
+                "d d~ > z g",
+                "--target-runtime",
+                "0.25",
+                "--batch-size",
+                "64",
+                "--minimum-samples",
+                "8",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    benchmark = (
+        parse_cli(
+            (
+                "benchmark",
+                str(artifact),
+                "--process",
+                "d d~ > z g",
+                "--target-runtime",
+                "0.25",
+                "--batch-size",
+                "64",
+                "--minimum-samples",
+                "8",
+            )
+        )
+        .resolve()
+        .effective
+    )
+
+    assert profile == benchmark
+    assert profile.action == "benchmark"
+    assert profile.evaluation.artifact == artifact.resolve()
+    assert profile.evaluation.process == "d d~ > z g"
+    assert profile.benchmark.batch_size == 64
+    assert profile.benchmark.minimum_samples == 8

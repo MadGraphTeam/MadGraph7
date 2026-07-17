@@ -149,9 +149,49 @@ validation before executable state is loaded when the target or required CPU
 features do not match. Rust, C++, and Fortran expose f64 only and reject
 precision requests other than 16.
 
-## Benchmarking
+## Runtime Profiling
 
-Benchmark a selected runtime through the same optimized total path:
+The intended CLI command profiles a selected process through the same optimized
+total path used by `Runtime.evaluate()`:
+
+```console
+pyamplicol profile artifacts/pp_zjj \
+  --process p_p_to_z_j_j_4 \
+  --momenta data/pp_zjj_momenta.json \
+  --target-runtime 1.0 \
+  --batch-size 128 \
+  --precision 16
+```
+
+`--process` accepts a stable process or alias ID, or the exact concrete
+expression such as `--process 'd d~ > z g g'`. If `--momenta` is omitted, the
+artifact's deterministic validation point is repeated to the requested runtime
+batch size.
+
+The profiler performs configured warmups and uses their timing, or a dedicated
+probe when warmups are disabled, to calibrate both the number of independent
+timed blocks and the repetitions in each block. Fast runtimes use more
+repetitions per block; slow runtimes reduce the block count without going below
+`--minimum-samples`. The target duration applies to wall-time measurements.
+Native component profiling is measured separately when the runtime supports it,
+with exactly one native profile per statistical block. It never inherits the
+potentially large wall-time repetition count.
+
+The human result is a colorized PrettyTable showing the selected process, wall
+and evaluator means with standard errors, wall standard deviation and relative
+standard error, calibrated sampling geometry, target versus measured time, and
+timing provenance. TTY progress uses a colored thread-safe progress bar.
+Non-TTY progress uses typed, rate-limited log messages on stderr. With
+`--format json`, stdout contains only the machine-readable result.
+
+When native profiling is available, additional Rusticol tables report profile
+wall time, source fill, momentum setup, stage input packing/evaluator calls and
+output assignment, amplitude input packing/evaluator calls, reduction, and
+per-stage packing/evaluator/output timings. `BenchmarkResult.timing_breakdown`
+preserves the same data as typed component and stage timing objects, including
+sample counts and uncertainty.
+
+The same operation is available through the typed Python API:
 
 ```python
 from pyamplicol import BenchmarkConfig, BenchmarkRunner, Runtime
@@ -161,17 +201,11 @@ runner = BenchmarkRunner(
     BenchmarkConfig(target_runtime=1.0, batch_size=128, precision=16)
 )
 result = runner.run(runtime, points=momenta)
-print(result.wall_time_per_point, result.uncertainty)
-```
-
-The direct equivalent is:
-
-```console
-pyamplicol benchmark artifacts/pp_zjj \
-  --process p_p_to_z_j_j_4 \
-  --momenta data/pp_zjj_momenta.json \
-  --target-runtime 1.0 \
-  --precision 16
+print(
+    result.wall_time_per_point,
+    result.uncertainty.standard_error,
+    result.repetitions_per_sample,
+)
 ```
 
 Python benchmarks may request higher precision. Double-precision input points
@@ -180,8 +214,9 @@ zeros before evaluation at the requested precision. The native evaluator
 profiler is f64-only, so non-f64 benchmarks report wall time for both timing
 fields.
 
-`--process` also accepts the exact concrete expression, for example
-`--process 'd d~ > z g g'`.
+`pyamplicol benchmark` is retained as a compatibility alias for `profile` with
+the same flags and output. Existing run cards remain valid and continue to use
+`action = "benchmark"`; no `action = "profile"` card value is introduced.
 
 ## Artifact Trust
 

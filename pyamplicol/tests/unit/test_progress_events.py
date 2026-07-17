@@ -65,3 +65,14 @@ def test_tty_progress_accepts_concurrent_phase_shape() -> None:
     sink.emit(ProgressUpdate("dag", 2, 2))
     sink.emit(ProgressEnd("dag"))
     assert "Building DAG" in stream.getvalue()
+
+
+def test_tty_progress_is_colored_when_requested() -> None:
+    stream = io.StringIO()
+    sink = TtyProgressSink(stream, color=True)
+    sink.emit(ProgressStart("profile", "Profiling runtime", 1))
+    sink.emit(ProgressUpdate("profile", 1, 1, "measured"))
+    sink.emit(ProgressEnd("profile"))
+
+    assert "Profiling runtime" in stream.getvalue()
+    assert "\x1b[" in stream.getvalue()

@@ -15,9 +15,12 @@ from ._internal.versions import package_version
 if TYPE_CHECKING:
     from .api import (
         ArtifactError,
+        BenchmarkComponentTiming,
         BenchmarkResult,
         BenchmarkRunner,
+        BenchmarkStageTiming,
         BenchmarkStatistics,
+        BenchmarkTimingBreakdown,
         ColorComponent,
         ColorFlow,
         CompatibilityError,
@@ -59,10 +62,13 @@ __version__ = package_version()
 
 __all__ = [
     "ArtifactError",
+    "BenchmarkComponentTiming",
     "BenchmarkConfig",
     "BenchmarkResult",
     "BenchmarkRunner",
+    "BenchmarkStageTiming",
     "BenchmarkStatistics",
+    "BenchmarkTimingBreakdown",
     "ColorComponent",
     "ColorFlow",
     "CompatibilityError",
@@ -128,8 +134,11 @@ _MODEL_EXPORTS = (
     "ModelCompilationPhase",
 )
 _RESULT_EXPORTS = (
+    "BenchmarkComponentTiming",
     "BenchmarkResult",
+    "BenchmarkStageTiming",
     "BenchmarkStatistics",
+    "BenchmarkTimingBreakdown",
     "ColorComponent",
     "ColorFlow",
     "ContractedColorComponent",

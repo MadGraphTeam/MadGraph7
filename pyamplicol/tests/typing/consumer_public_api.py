@@ -9,10 +9,13 @@ from pathlib import Path
 from typing import Literal, assert_type
 
 from pyamplicol import (
+    BenchmarkComponentTiming,
     BenchmarkConfig,
     BenchmarkResult,
     BenchmarkRunner,
+    BenchmarkStageTiming,
     BenchmarkStatistics,
+    BenchmarkTimingBreakdown,
     ColorFlow,
     CompiledModel,
     ContractedColorComponent,
@@ -169,6 +172,19 @@ def exercise_results(
     assert_type(physics.helicity_ids, tuple[str, ...])
     assert_type(resolved.shape, tuple[int, int, int])
     assert_type(result.uncertainty, BenchmarkStatistics)
+    assert_type(result.evaluator_uncertainty, BenchmarkStatistics | None)
+    assert_type(result.repetitions_per_sample, int)
+    assert_type(result.evaluation_count, int)
+    assert_type(result.evaluated_point_count, int)
+    assert_type(result.process_id, str | None)
+    assert_type(result.process_expression, str | None)
+    assert_type(result.timing_breakdown, BenchmarkTimingBreakdown | None)
+    if result.timing_breakdown is not None:
+        assert_type(
+            result.timing_breakdown.stage_evaluator_call_time,
+            BenchmarkComponentTiming | None,
+        )
+        assert_type(result.timing_breakdown.stages, tuple[BenchmarkStageTiming, ...])
     assert_type(result.environment, Mapping[str, object])
 
 

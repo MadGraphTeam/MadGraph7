@@ -41,8 +41,11 @@ if TYPE_CHECKING:
         ProcessSet,
     )
     from .results import (
+        BenchmarkComponentTiming,
         BenchmarkResult,
+        BenchmarkStageTiming,
         BenchmarkStatistics,
+        BenchmarkTimingBreakdown,
         ColorComponent,
         ColorFlow,
         ContractedColorComponent,
@@ -69,10 +72,13 @@ if TYPE_CHECKING:
 __all__ = [
     "ArtifactError",
     "BenchmarkBackend",
+    "BenchmarkComponentTiming",
     "BenchmarkFactory",
     "BenchmarkResult",
     "BenchmarkRunner",
+    "BenchmarkStageTiming",
     "BenchmarkStatistics",
+    "BenchmarkTimingBreakdown",
     "ColorComponent",
     "ColorFlow",
     "CompatibilityError",
@@ -153,8 +159,11 @@ _MODEL_EXPORTS = (
     "ModelCompilationPhase",
 )
 _RESULT_EXPORTS = (
+    "BenchmarkComponentTiming",
     "BenchmarkResult",
+    "BenchmarkStageTiming",
     "BenchmarkStatistics",
+    "BenchmarkTimingBreakdown",
     "ColorComponent",
     "ColorFlow",
     "ContractedColorComponent",
