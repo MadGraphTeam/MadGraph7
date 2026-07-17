@@ -260,14 +260,27 @@ def _sector_intermediate_order_words(
 ) -> tuple[tuple[int, ...], ...]:
     """Return LC words used for intermediate current construction.
 
-    Multi-open-line sectors expose extra admissible traversal words so final closure
-    can choose the opposite endpoint without duplicating physical sectors.
-    Intermediate currents, however, must follow the sector's physical colour
-    word; using all traversal words here double-counts the same ordered
-    current topology for multi-open-line processes with singlet insertions.
+    A physical multi-line sector admits several block traversals.  Cyclically
+    equivalent traversals describe the same closure, so normalize every word
+    to the physical sector's sink and deduplicate it.  This retains the
+    genuinely distinct permutations needed by three or more open lines without
+    creating duplicate physical sectors.
     """
 
-    return sector.color_words or sector.admissible_traversal_words
+    physical_words = sector.color_words
+    if sector.kind != "open-lines" or not physical_words or not physical_words[0]:
+        return physical_words or sector.admissible_traversal_words
+
+    sink_label = int(physical_words[0][-1])
+    words: list[tuple[int, ...]] = []
+    seen: set[tuple[int, ...]] = set()
+    for raw_word in sector.admissible_traversal_words:
+        word = _lc_word_with_sink_last(raw_word, sink_label)
+        if word in seen:
+            continue
+        seen.add(word)
+        words.append(word)
+    return tuple(words)
 
 
 def _lc_word_with_sink_last(

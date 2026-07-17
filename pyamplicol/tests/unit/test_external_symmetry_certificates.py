@@ -415,7 +415,17 @@ def test_external_sm_matches_builtin_production_dag_topology(
             len(dag.color_plan.sectors),
         )
 
-    assert topology(external_dag) == topology(builtin_dag)
+    if process == "d d~ > u u~ s s~":
+        # A physical qqg kernel needs separate sector-support partitions where
+        # the built-in model uses a synthetic U(1)-subtraction particle.
+        assert topology(external_dag) == (
+            len(builtin_dag.currents) + 12,
+            len(builtin_dag.interactions) + 12,
+            len(builtin_dag.amplitude_roots),
+            len(builtin_dag.color_plan.sectors),
+        )
+    else:
+        assert topology(external_dag) == topology(builtin_dag)
     # The external compiler may prove additional exact kernel equivalences,
     # but it may never lose a reuse relation available to the built-in model.
     assert (

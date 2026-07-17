@@ -10,6 +10,7 @@ from pyamplicol.color import (
     build_color_plan,
     color_contraction_factors,
 )
+from pyamplicol.generation.dag_ordering import _sector_intermediate_order_words
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
@@ -57,6 +58,17 @@ def test_color_plan_json_exposes_structural_open_line_roles() -> None:
         "line_labels": [2, 4, 1],
     }
     assert not {"quark_label", "antiquark_label", "gluon_labels"} & line.keys()
+
+
+def test_three_open_lines_keep_distinct_fixed_sink_traversals() -> None:
+    plan = build_color_plan(build_process_ir("d d~ > u u~ s s~"))
+    sector = plan.sectors[0]
+
+    assert sector.color_words == ((2, 1, 3, 4, 5, 6),)
+    assert _sector_intermediate_order_words(sector) == (
+        (2, 1, 3, 4, 5, 6),
+        (3, 4, 2, 1, 5, 6),
+    )
 
 
 def test_color_contraction_rejects_inconsistent_helicity_weights() -> None:

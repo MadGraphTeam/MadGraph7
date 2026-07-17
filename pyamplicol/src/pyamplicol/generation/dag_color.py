@@ -33,6 +33,40 @@ from .dag_types import (
     _lc_color_identity_closures_compatible,
 )
 
+_LC_SECTOR_SUPPORT_PREFIX = "lc-sector-support:"
+
+
+def _lc_sector_support_key(sector_ids: Iterable[int]) -> str:
+    normalized = sorted(set(int(value) for value in sector_ids))
+    return _LC_SECTOR_SUPPORT_PREFIX + ",".join(str(value) for value in normalized)
+
+
+def _lc_sector_support(basis_keys: Iterable[str]) -> frozenset[int] | None:
+    supports: list[frozenset[int]] = []
+    for key in basis_keys:
+        if not key.startswith(_LC_SECTOR_SUPPORT_PREFIX):
+            continue
+        payload = key.removeprefix(_LC_SECTOR_SUPPORT_PREFIX)
+        try:
+            support = frozenset(int(value) for value in payload.split(",") if value)
+        except ValueError:
+            return frozenset()
+        if not support:
+            return frozenset()
+        supports.append(support)
+    if not supports:
+        return None
+    result = set(supports[0])
+    for support in supports[1:]:
+        result.intersection_update(support)
+    return frozenset(result)
+
+
+def _without_lc_sector_support(basis_keys: Iterable[str]) -> set[str]:
+    return {
+        key for key in basis_keys if not key.startswith(_LC_SECTOR_SUPPORT_PREFIX)
+    }
+
 
 class ColorEngine:
     """Local colour-flow engine used by the process-generic recursion."""
@@ -147,7 +181,7 @@ class ColorEngine:
             sector_ids_by_segment: dict[tuple[int, ...], set[int]] = {}
             segments: set[tuple[int, ...]] = set()
             for sector in color_plan.sectors:
-                for word in sector.color_words:
+                for word in _sector_intermediate_order_words(sector):
                     normalized_word = _lc_word_with_sink_last(
                         word,
                         self._shared_lc_fixed_sink_label,
@@ -332,16 +366,15 @@ class ColorEngine:
             groups = self._lc_combined_line_groups(left, right, vertex)
             if groups is None:
                 return ()
-            projected = self._lc_projected_basis_and_weight(
+            projections = self._lc_projected_basis_and_weights(
                 left,
                 right,
                 vertex,
                 ordered_external_labels,
             )
-            if projected is None:
+            if not projections:
                 return ()
-            basis_key, weight = projected
-            return (
+            return tuple(
                 ColorFlow(
                     state=ColorState(
                         accuracy=left.accuracy,
@@ -350,23 +383,23 @@ class ColorEngine:
                         basis_key=basis_key,
                     ),
                     weight=weight,
-                ),
+                )
+                for basis_key, weight in projections
             )
         if left.sector_id != right.sector_id:
             return ()
         groups = self._lc_combined_line_groups(left, right, vertex)
         if groups is None:
             return ()
-        projected = self._lc_projected_basis_and_weight(
+        projections = self._lc_projected_basis_and_weights(
             left,
             right,
             vertex,
             ordered_external_labels,
         )
-        if projected is None:
+        if not projections:
             return ()
-        basis_key, weight = projected
-        return (
+        return tuple(
             ColorFlow(
                 state=ColorState(
                     accuracy=left.accuracy,
@@ -375,22 +408,23 @@ class ColorEngine:
                     basis_key=basis_key,
                 ),
                 weight=weight,
-            ),
+            )
+            for basis_key, weight in projections
         )
 
-    def _lc_projected_basis_and_weight(
+    def _lc_projected_basis_and_weights(
         self,
         left: ColorState,
         right: ColorState,
         vertex: Vertex,
         ordered_external_labels: tuple[int, ...],
-    ) -> tuple[tuple[str, ...], tuple[float, float]] | None:
-        basis = set(left.basis_key) | set(right.basis_key)
+    ) -> tuple[tuple[tuple[str, ...], tuple[float, float]], ...]:
+        basis_with_support = set(left.basis_key) | set(right.basis_key)
+        inherited_support = _lc_sector_support(basis_with_support)
+        basis = _without_lc_sector_support(basis_with_support)
         structure = self.model.vertex_color_structure(vertex)
         reps = tuple(abs(self.model.color_rep(pdg)) for pdg in vertex.particles)
         has_fierz_singlet = _LC_FIERZ_SINGLET_BASIS in basis
-        weight = (1.0, 0.0)
-
         if has_fierz_singlet:
             consumes_singlet_exchange = (
                 structure == "fundamental-generator"
@@ -398,17 +432,14 @@ class ColorEngine:
                 and sorted(reps[:2]) == [3, 8]
             )
             if not consumes_singlet_exchange:
-                return None
+                return ()
             basis.remove(_LC_FIERZ_SINGLET_BASIS)
 
-        if (
+        creates_fierz_projection = (
             structure == "fundamental-generator"
             and reps[:2] == (3, 3)
             and reps[2] == 8
-            and self._lc_labels_close_one_open_line(ordered_external_labels)
-        ):
-            basis.add(_LC_FIERZ_SINGLET_BASIS)
-            weight = (1.0 / 3.0, 0.0)
+        )
 
         if (
             self._shared_lc_orderings
@@ -426,16 +457,93 @@ class ColorEngine:
             if colored_labels:
                 basis.add(_lc_color_identity_closure_key(colored_labels))
 
-        if (
-            self._shared_lc_orderings
-            and not self._shared_lc_basis_has_compatible_sector(
-                basis,
-                ordered_external_labels=ordered_external_labels,
+        if self._shared_lc_orderings:
+            compatible_sector_ids = self._shared_lc_compatible_sector_ids(
+                ordered_external_labels
             )
-        ):
-            return None
+            if inherited_support is not None:
+                compatible_sector_ids.intersection_update(inherited_support)
+            if not compatible_sector_ids:
+                return ()
 
-        return tuple(sorted(basis)), weight
+            candidates: list[tuple[set[str], tuple[float, float], set[int]]] = []
+            if creates_fierz_projection:
+                fierz_sector_ids = self._lc_fierz_sector_ids(
+                    ordered_external_labels
+                ) & compatible_sector_ids
+                ordinary_sector_ids = compatible_sector_ids - fierz_sector_ids
+                if ordinary_sector_ids:
+                    candidates.append((set(basis), (1.0, 0.0), ordinary_sector_ids))
+                if fierz_sector_ids:
+                    fierz_basis = set(basis)
+                    fierz_basis.add(_LC_FIERZ_SINGLET_BASIS)
+                    candidates.append(
+                        (
+                            fierz_basis,
+                            (1.0 / 3.0, 0.0),
+                            fierz_sector_ids,
+                        )
+                    )
+            else:
+                candidates.append((set(basis), (1.0, 0.0), compatible_sector_ids))
+
+            projections: list[tuple[tuple[str, ...], tuple[float, float]]] = []
+            all_sector_ids = set(self._sector_by_id)
+            for candidate_basis, weight, support in candidates:
+                if support != all_sector_ids:
+                    candidate_basis.add(_lc_sector_support_key(support))
+                if not self._shared_lc_basis_has_compatible_sector(
+                    candidate_basis,
+                    ordered_external_labels=ordered_external_labels,
+                ):
+                    continue
+                projections.append((tuple(sorted(candidate_basis)), weight))
+            return tuple(projections)
+
+        if creates_fierz_projection and self._lc_labels_close_one_open_line(
+            ordered_external_labels
+        ):
+            basis.add(_LC_FIERZ_SINGLET_BASIS)
+            return ((tuple(sorted(basis)), (1.0 / 3.0, 0.0)),)
+        return ((tuple(sorted(basis)), (1.0, 0.0)),)
+
+    def _shared_lc_compatible_sector_ids(
+        self,
+        ordered_external_labels: tuple[int, ...],
+    ) -> set[int]:
+        colored = tuple(
+            label
+            for label in ordered_external_labels
+            if label in self._shared_lc_coloured_labels
+        )
+        if not colored:
+            return set(self._sector_by_id)
+        return set(self._shared_lc_sector_ids_by_segment.get(colored, ()))
+
+    def _lc_fierz_sector_ids(
+        self,
+        ordered_external_labels: tuple[int, ...],
+    ) -> set[int]:
+        colored = tuple(
+            label
+            for label in ordered_external_labels
+            if label in self._shared_lc_coloured_labels
+        )
+        labels = set(colored)
+        sector_ids: set[int] = set()
+        if not labels:
+            return sector_ids
+        for sector, words in self._shared_lc_words_by_sector:
+            if not any(_word_contains_ordered_segment(word, colored) for word in words):
+                continue
+            complete_groups = tuple(
+                set(group)
+                for group in sector.line_label_groups
+                if set(group).issubset(labels)
+            )
+            if complete_groups and set().union(*complete_groups) == labels:
+                sector_ids.add(int(sector.id))
+        return sector_ids
 
     def _shared_lc_basis_has_compatible_sector(
         self,
@@ -443,9 +551,9 @@ class ColorEngine:
         *,
         ordered_external_labels: Iterable[int] = (),
     ) -> bool:
-        closures = _lc_color_identity_closures(basis_keys)
-        if not closures:
-            return True
+        basis_tuple = tuple(basis_keys)
+        closures = _lc_color_identity_closures(basis_tuple)
+        support = _lc_sector_support(basis_tuple)
         colored_segment = tuple(
             label
             for label in ordered_external_labels
@@ -458,6 +566,7 @@ class ColorEngine:
         )
         return any(
             sector is not None
+            and (support is None or sector_id in support)
             and _lc_color_identity_closures_compatible(closures, sector)
             for sector_id in sector_ids
             for sector in (self._sector_by_id.get(sector_id),)
@@ -474,13 +583,7 @@ class ColorEngine:
         )
         if not colored:
             return False
-        labels = set(colored)
-        for sector, words in self._shared_lc_words_by_sector:
-            if not any(_word_contains_ordered_segment(word, colored) for word in words):
-                continue
-            if any(labels.issubset(set(group)) for group in sector.line_label_groups):
-                return True
-        return False
+        return bool(self._lc_fierz_sector_ids(colored))
 
     def _lc_combined_line_groups(
         self,
@@ -909,13 +1012,17 @@ class ColorEngine:
         sector_ids = self._shared_lc_sector_ids_by_word.get(word, ())
         if not sector_ids:
             return None
-        closures = _lc_color_identity_closures(
-            (*left_index.color_state.basis_key, *right_index.color_state.basis_key)
+        basis_keys = (
+            *left_index.color_state.basis_key,
+            *right_index.color_state.basis_key,
         )
+        closures = _lc_color_identity_closures(basis_keys)
+        support = _lc_sector_support(basis_keys)
         compatible_sector_ids = tuple(
             sector_id
             for sector_id in sector_ids
             if (sector := self._sector_by_id.get(sector_id)) is not None
+            and (support is None or sector_id in support)
             and _lc_color_identity_closures_compatible(closures, sector)
         )
         if not compatible_sector_ids:
