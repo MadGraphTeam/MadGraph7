@@ -263,7 +263,7 @@ All report measurements use the repository's developer installation through
 for the current campaign is Python \texttt{3.11.15} with NumPy \texttt{2.4.2},
 Rust \texttt{1.89.0}, Cargo \texttt{1.89.0}, GCC/G++/GNU Fortran
 \texttt{15.2.0}, and pdfTeX \texttt{3.141592653-2.6-1.40.27} from TeX Live
-2025.  The campaign commands use an 800~GiB RSS watchdog, a 3600~s generation
+2025.  The campaign commands enforce an 800~GiB RSS limit, a 3600~s generation
 timeout per cell generation workload, and a 20~s target runtime for benchmark
 sampling.  Unless a cell's manifest states otherwise, each cell uses one
 generation/evaluator core (\texttt{--cell-cores 1}); the current table-filling
