@@ -49,6 +49,7 @@ jobs:
 
   candidate-runtime:
     name: Candidate generation, runtime, and native SDK
+    if: github.event_name != 'push'
     needs: python-compatibility
     runs-on: ubuntu-24.04
     env:

@@ -126,6 +126,11 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
     assert "push:" in trigger
     assert "branches: [main]" in trigger
     assert "workflow_dispatch:" in trigger
+    candidate_job = workflow.split(
+        "  candidate-runtime:\n",
+        maxsplit=1,
+    )[1]
+    assert "    if: github.event_name != 'push'\n" in candidate_job
     focused_unit_step = workflow.split(
         "      - name: Run focused Python unit checks (30 GiB RSS limit)\n",
         maxsplit=1,
