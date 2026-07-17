@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
 
+import pyamplicol as _pyamplicol
 from pyamplicol.config import (
     Action,
     BenchmarkConfig,
@@ -28,7 +29,7 @@ from .protocols import (
     RuntimeBackend,
     RuntimeLoader,
 )
-from .requests import CompiledModel, ModelSource, ProcessRequest, ProcessSet
+from .requests import ModelSource, ProcessRequest, ProcessSet
 from .results import (
     BenchmarkResult,
     ColorFlow,
@@ -231,7 +232,7 @@ class Generator:
         self,
         processes: ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str],
         *,
-        model: ModelSource | CompiledModel | None = None,
+        model: ModelSource | _pyamplicol.CompiledModel | None = None,
     ) -> GenerationPlan:
         """Resolve concrete processes and coverage without writing an artifact."""
 
@@ -249,7 +250,7 @@ class Generator:
         processes: ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str],
         output: os.PathLike[str] | str,
         *,
-        model: ModelSource | CompiledModel | None = None,
+        model: ModelSource | _pyamplicol.CompiledModel | None = None,
         mode: Literal["error", "append", "replace"] = "error",
     ) -> GenerationResult:
         """Generate an artifact in ``error``, ``append``, or ``replace`` mode."""
@@ -472,7 +473,7 @@ def generate(
     processes: ProcessSet | ProcessRequest | str | Iterable[ProcessRequest | str],
     output: os.PathLike[str] | str,
     *,
-    model: ModelSource | CompiledModel | None = None,
+    model: ModelSource | _pyamplicol.CompiledModel | None = None,
     mode: Literal["error", "append", "replace"] = "error",
     config: GenerationConfig | RunConfig | ConfigResolution | None = None,
     progress: ProgressSink | None = None,

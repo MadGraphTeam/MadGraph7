@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
+import pyamplicol as _pyamplicol
 from pyamplicol.config import (
     BenchmarkConfig,
     ConfigResolution,
@@ -14,7 +15,7 @@ from pyamplicol.config import (
 )
 from pyamplicol.reporting import ProgressSink
 
-from .requests import CompiledModel, ModelSource, ProcessSet
+from .requests import ModelSource, ProcessSet
 from .results import (
     BenchmarkResult,
     GenerationPlan,
@@ -35,7 +36,7 @@ class GeneratorBackend(Protocol):
         self,
         processes: ProcessSet,
         *,
-        model: ModelSource | CompiledModel | None = None,
+        model: ModelSource | _pyamplicol.CompiledModel | None = None,
     ) -> GenerationPlan: ...
 
     def generate(
@@ -43,7 +44,7 @@ class GeneratorBackend(Protocol):
         processes: ProcessSet,
         output: os.PathLike[str] | str,
         *,
-        model: ModelSource | CompiledModel | None = None,
+        model: ModelSource | _pyamplicol.CompiledModel | None = None,
         mode: str = "error",
     ) -> GenerationResult: ...
 

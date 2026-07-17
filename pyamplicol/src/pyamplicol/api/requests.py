@@ -7,9 +7,12 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
-from pyamplicol.models.loading import CompiledModel
+import pyamplicol as _pyamplicol
+
+if TYPE_CHECKING:
+    from pyamplicol.models.loading import CompiledModel
 
 from .errors import ModelError
 
@@ -173,7 +176,7 @@ class ModelSource:
         cache_dir: os.PathLike[str] | str | None = None,
         use_cache: bool = True,
         require_supported: bool = True,
-    ) -> CompiledModel:
+    ) -> _pyamplicol.CompiledModel:
         """Compile or load this source and return the canonical compiled model."""
 
         if self.kind == "built-in-sm":
@@ -385,3 +388,18 @@ __all__ = [
     "ProcessRequest",
     "ProcessSet",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Preserve the historical compiled-model export without eager loading."""
+
+    if name != "CompiledModel":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from pyamplicol.models.loading import CompiledModel
+
+    globals()[name] = CompiledModel
+    return CompiledModel
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()).union(__all__))
