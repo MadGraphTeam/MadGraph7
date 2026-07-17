@@ -15,6 +15,9 @@ from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.models import BuiltinSMModel, CompiledUFOModel, compile_model_source
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.compiler_contacts import _four_point_contact_color_split
+from pyamplicol.models.compiler_entry import (
+    _term_supports_transverse_massless_yang_mills,
+)
 from pyamplicol.models.compiler_tensor_ordering import (
     compile_tensor_ordering_metadata,
 )
@@ -719,6 +722,42 @@ def test_custom_adjoint_propagator_disables_global_symmetries(external_sm) -> No
     assert certificates.yang_mills_kernel_digests == ()
     assert certificates.yang_mills_adjoint_digests == ()
     assert certificates.adjoint_current_reflection_digests == ()
+
+
+def test_transverse_yang_mills_lowering_requires_standard_adjoint_propagator(
+    external_sm,
+) -> None:
+    compiled, _model = external_sm
+    term = next(
+        term
+        for term in compiled.ir.vertex_terms
+        if term.valence == 3 and set(term.particles) == {"g"}
+    )
+    particles = {particle.name: particle for particle in compiled.ir.particles}
+    parameters = {parameter.name: parameter for parameter in compiled.ir.parameters}
+    propagators = {
+        propagator.name: propagator for propagator in compiled.ir.propagators
+    }
+
+    assert _term_supports_transverse_massless_yang_mills(
+        term,
+        particles,
+        parameters,
+        propagators,
+    )
+
+    custom = {
+        name: replace(propagator, custom=True)
+        if propagator.particle == "g"
+        else propagator
+        for name, propagator in propagators.items()
+    }
+    assert not _term_supports_transverse_massless_yang_mills(
+        term,
+        particles,
+        parameters,
+        custom,
+    )
 
 
 def test_chiral_gauge_current_does_not_receive_parity_certificate(external_sm) -> None:

@@ -54,6 +54,7 @@ from .contracts import (
     CompiledOrientedKernel,
     CompiledParameterRecord,
     CompiledParticleRecord,
+    CompiledPropagatorRecord,
     CompiledVertexTerm,
     compiled_particle_component_dimension,
 )
@@ -192,6 +193,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         terms,
         particles,
         parameter_records,
+        propagators,
         model_symbols,
     )
     contact_particles, contact_kernels = _compile_four_point_contact_kernels(
@@ -495,10 +497,12 @@ def _compile_oriented_kernels(
     terms: Sequence[CompiledVertexTerm],
     particles: Sequence[CompiledParticleRecord],
     parameters: Sequence[CompiledParameterRecord],
+    propagators: Sequence[CompiledPropagatorRecord],
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
     parameter_by_name = {parameter.name: parameter for parameter in parameters}
+    propagator_by_name = {propagator.name: propagator for propagator in propagators}
     external_parameters = {
         parameter.name for parameter in parameters if parameter.nature == "external"
     }
@@ -536,13 +540,11 @@ def _compile_oriented_kernels(
                     kind=len(kernels),
                     model_symbols=model_symbols,
                     use_transverse_massless_yang_mills=(
-                        _is_single_structure_constant(term.color_expression)
-                        and all(
-                            _is_compile_time_zero_parameter(
-                                particle_by_name[name].mass,
-                                parameter_by_name,
-                            )
-                            for name in term.particles
+                        _term_supports_transverse_massless_yang_mills(
+                            term,
+                            particle_by_name,
+                            parameter_by_name,
+                            propagator_by_name,
                         )
                     ),
                 )
@@ -586,6 +588,38 @@ def _compile_oriented_kernels(
         kernels,
         model_name=model_symbols.model_name,
     )
+
+
+def _term_supports_transverse_massless_yang_mills(
+    term: CompiledVertexTerm,
+    particles: Mapping[str, CompiledParticleRecord],
+    parameters: Mapping[str, CompiledParameterRecord],
+    propagators: Mapping[str, CompiledPropagatorRecord],
+) -> bool:
+    """Prove the field/propagator contract needed by transverse YM lowering."""
+
+    if not _is_single_structure_constant(term.color_expression):
+        return False
+    for name in term.particles:
+        particle = particles[name]
+        propagator = (
+            None
+            if particle.propagator is None
+            else propagators.get(particle.propagator)
+        )
+        if not (
+            particle.spin == 3
+            and particle.color == 8
+            and particle.self_conjugate is True
+            and _is_compile_time_zero_parameter(particle.mass, parameters)
+            and particle.propagating
+            and particle.ghost_number == 0
+            and propagator is not None
+            and propagator.particle == particle.name
+            and not propagator.custom
+        ):
+            return False
+    return True
 
 
 def _compile_four_point_contact_kernels(
