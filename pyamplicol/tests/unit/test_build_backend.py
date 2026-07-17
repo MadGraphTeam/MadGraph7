@@ -614,6 +614,28 @@ def test_build_tool_path_retains_isolated_interpreter_bin(
     assert str(environment_bin) in result
 
 
+def test_build_tool_path_does_not_require_git_for_unpacked_sdist(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tool_bin = tmp_path / "tools"
+    tool_bin.mkdir()
+
+    def locate(executable: str, *, path: str) -> str | None:
+        del path
+        if executable == "git":
+            return None
+        if executable in {"cargo", "rustc"}:
+            return str(tool_bin / executable)
+        return None
+
+    monkeypatch.setattr(backend.shutil, "which", locate)
+
+    result = backend._build_tool_path("").split(os.pathsep)
+
+    assert str(tool_bin) in result
+
+
 def test_pep517_backend_rejects_recursive_delegation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

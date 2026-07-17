@@ -778,13 +778,13 @@ def _build_tool_path(inherited: str) -> str:
 
     interpreter = Path(sys.executable)
     directories: list[Path] = [interpreter.parent, interpreter.resolve().parent]
-    for executable in ("cargo", "git", "rustc"):
+    for executable in ("cargo", "rustc"):
         located = shutil.which(executable, path=inherited)
         if located is None:
             raise RuntimeError(f"required build tool is unavailable: {executable}")
         path = Path(located)
         directories.extend((path.parent, path.resolve().parent))
-    for executable in ("cc", "clang", "ar", "ranlib", "nm", "llvm-nm"):
+    for executable in ("git", "cc", "clang", "ar", "ranlib", "nm", "llvm-nm"):
         located = shutil.which(executable, path=inherited)
         if located is None:
             continue
