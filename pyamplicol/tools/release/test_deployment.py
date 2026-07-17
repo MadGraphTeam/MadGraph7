@@ -229,6 +229,52 @@ print(json.dumps({"ok": True, "physics": physics[0].detail}, sort_keys=True))
 """
 )
 
+_SYMBOLICA_ABSENT_F64_SMOKE = (
+    _PATH_ISOLATION_SMOKE
+    + r"""
+import importlib.resources
+import importlib.util
+import json
+import sys
+
+for unavailable in ("symbolica", "ufo_model_loader"):
+    assert importlib.util.find_spec(unavailable) is None, unavailable
+
+import pyamplicol._rusticol as native
+from pyamplicol import Runtime
+
+target = str(native.target_info().triple)
+fixture = importlib.resources.files("pyamplicol").joinpath(
+    "assets", "selftest", target
+)
+expected = json.loads(fixture.joinpath("expected.json").read_text(encoding="utf-8"))
+artifact = fixture.joinpath(str(expected["artifact_path"]))
+runtime = Runtime.load(
+    str(artifact),
+    process=str(expected["process_id"]),
+    mute_warnings=True,
+)
+total = tuple(complex(value) for value in runtime.evaluate(expected["momenta"]))
+resolved = runtime.evaluate_resolved(expected["momenta"])
+reduced = tuple(complex(value) for value in resolved.total())
+expected_total = tuple(complex(*value) for value in expected["total"])
+assert resolved.shape == tuple(expected["resolved_shape"])
+assert len(total) == len(reduced) == len(expected_total)
+for actual, explicit, reference in zip(total, reduced, expected_total, strict=True):
+    scale = max(abs(reference), 1.0)
+    assert abs(actual - reference) <= 1.0e-12 * scale
+    assert abs(explicit - reference) <= 1.0e-12 * scale
+assert not any(
+    name == "symbolica"
+    or name.startswith("symbolica.")
+    or name == "ufo_model_loader"
+    or name.startswith("ufo_model_loader.")
+    for name in sys.modules
+)
+print(json.dumps({"ok": True, "process": runtime.physics.process_id, "target": target}))
+"""
+)
+
 _INSTALLED_BACKEND_AND_PRECISION_SMOKE = (
     _PATH_ISOLATION_SMOKE
     + r"""
@@ -873,6 +919,60 @@ def _native_sdk_smoke(
     return True
 
 
+def _symbolica_absent_f64_smoke(
+    wheel: Path,
+    *,
+    target_python: Path,
+    sandbox: Path,
+    numpy_version: str,
+) -> None:
+    root = sandbox / "symbolica-absent-f64"
+    root.mkdir(parents=True, exist_ok=False)
+    virtual_env = root / "venv"
+    run(
+        [target_python, "-I", "-m", "venv", virtual_env],
+        env=clean_environment(),
+    )
+    python = _venv_python(virtual_env)
+    environment = clean_environment(virtual_env=virtual_env)
+    run(
+        [
+            python,
+            "-I",
+            "-m",
+            "pip",
+            "install",
+            "--only-binary=:all:",
+            f"numpy=={numpy_version}",
+        ],
+        env=environment,
+    )
+    run(
+        [
+            python,
+            "-I",
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--force-reinstall",
+            wheel.resolve(),
+        ],
+        env=environment,
+    )
+    smoke_environment = runtime_environment(virtual_env)
+    smoke_environment.update(
+        {
+            "PYAMPLICOL_FORBIDDEN_ROOT": str(ROOT),
+            "PYAMPLICOL_DEPLOYMENT_SANDBOX": str(sandbox),
+        }
+    )
+    run(
+        [python, "-I", "-c", _SYMBOLICA_ABSENT_F64_SMOKE],
+        env=smoke_environment,
+    )
+
+
 def _build_fresh_candidate_wheel(artifact_directory: Path) -> Path:
     artifact_directory.mkdir(parents=True, exist_ok=True)
     if list(artifact_directory.iterdir()):
@@ -1025,6 +1125,15 @@ def test_deployment(
         run(
             [python, "-I", "-c", _SYMBOLICA_FREE_F64_SMOKE],
             env=smoke_environment,
+        )
+        numpy_version = installation.versions.get("numpy")
+        if numpy_version is None:
+            raise ReleaseError("deployment dependency closure has no NumPy version")
+        _symbolica_absent_f64_smoke(
+            wheel,
+            target_python=target_python,
+            sandbox=sandbox,
+            numpy_version=numpy_version,
         )
         backend_environment = dict(smoke_environment)
         backend_environment["SYMBOLICA_HIDE_BANNER"] = "1"

@@ -30,6 +30,50 @@ def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
     assert "for name in sys.modules" in smoke
 
 
+def test_f64_minimal_deployment_requires_symbolica_to_be_absent() -> None:
+    smoke = deployment._SYMBOLICA_ABSENT_F64_SMOKE
+    assert 'find_spec(unavailable) is None' in smoke
+    assert '("symbolica", "ufo_model_loader")' in smoke
+    assert "runtime.evaluate(expected[\"momenta\"])" in smoke
+    assert "runtime.evaluate_resolved(expected[\"momenta\"])" in smoke
+    assert "resolved.total()" in smoke
+
+
+def test_f64_minimal_deployment_installs_only_numpy_and_wheel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel = tmp_path / "pyamplicol-test.whl"
+    wheel.write_bytes(b"wheel")
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        rendered = [os.fspath(item) for item in command]
+        commands.append(rendered)
+        return subprocess.CompletedProcess(rendered, 0, "", "")
+
+    monkeypatch.setattr(deployment, "run", fake_run)
+    deployment._symbolica_absent_f64_smoke(
+        wheel,
+        target_python=Path("/host/python"),
+        sandbox=tmp_path / "deployment",
+        numpy_version="2.4.2",
+    )
+
+    pip_installs = [
+        command
+        for command in commands
+        if command[1:5] == ["-I", "-m", "pip", "install"]
+    ]
+    assert len(pip_installs) == 2
+    assert pip_installs[0][-2:] == ["--only-binary=:all:", "numpy==2.4.2"]
+    assert "--no-deps" in pip_installs[1]
+    assert pip_installs[1][-1] == os.fspath(wheel.resolve())
+    assert all("symbolica" not in command for command in pip_installs)
+    assert all("ufo-model-loader" not in command for command in pip_installs)
+    assert commands[-1][-2:] == ["-c", deployment._SYMBOLICA_ABSENT_F64_SMOKE]
+
+
 def test_installed_backend_smoke_covers_precision_and_compiled_backends() -> None:
     smoke = deployment._INSTALLED_BACKEND_AND_PRECISION_SMOKE
     assert "EvaluatorBackend.JIT" in smoke
