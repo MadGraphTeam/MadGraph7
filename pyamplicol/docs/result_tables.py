@@ -56,6 +56,7 @@ DEFAULT_WORKERS = 50
 DEFAULT_PARALLEL_CELL_CORES = 1
 DEFAULT_REPORT_TARGET_RUNTIME_SECONDS = 20.0
 LEGACY_PROFILE_POLICY = "target_runtime_warmup_v1"
+PYAMPLICOL_GENERATION_PROFILE_POLICY = "precompiled_model_before_generation_v1"
 DEFAULT_LEGACY_PROFILE_WARMUP_POINTS = 100
 DEFAULT_LEGACY_PROFILE_MIN_POINTS = 100
 DEFAULT_LEGACY_PROFILE_MAX_POINTS = 100_000
@@ -3625,9 +3626,15 @@ def _campaign_cells() -> tuple[CampaignCell, ...]:
     return tuple(sorted(cells, key=lambda cell: cell.priority))
 
 
+def _normalized_process_expression(process: str) -> str:
+    return " ".join(process.split())
+
+
 def _select_cells(
     *,
     datasets: set[str] | None = None,
+    cell_ids: set[str] | None = None,
+    processes: set[str] | None = None,
     process_keys: set[str] | None = None,
     variants: set[str] | None = None,
     n_values: set[int] | None = None,
@@ -3636,9 +3643,21 @@ def _select_cells(
     caches: Mapping[str, Mapping[str, object]] | None = None,
 ) -> tuple[CampaignCell, ...]:
     cache_payloads = caches if missing_only else None
+    process_filters = (
+        {_normalized_process_expression(process) for process in processes}
+        if processes is not None
+        else None
+    )
     selected: list[CampaignCell] = []
     for cell in _campaign_cells():
         if datasets is not None and cell.dataset_id not in datasets:
+            continue
+        if cell_ids is not None and cell.cell_id not in cell_ids:
+            continue
+        if (
+            process_filters is not None
+            and _normalized_process_expression(cell.process) not in process_filters
+        ):
             continue
         if process_keys is not None and cell.process_key not in process_keys:
             continue
@@ -3655,6 +3674,14 @@ def _select_cells(
         if limit is not None and len(selected) >= limit:
             break
     return tuple(selected)
+
+
+def _known_cell_ids() -> set[str]:
+    return {cell.cell_id for cell in _campaign_cells()}
+
+
+def _known_process_expressions() -> set[str]:
+    return {_normalized_process_expression(cell.process) for cell in _campaign_cells()}
 
 
 def _campaign_cell_needs_measurement(
@@ -3709,6 +3736,7 @@ def _campaign_cell_needs_measurement(
                     and _legacy_lc_measurement_contract_current(legacy)
                     and bool(_measurement_old_matrix_fields(pyamplicol))
                     and _pyamplicol_timing_profile_current(pyamplicol)
+                    and _pyamplicol_generation_profile_current(pyamplicol)
                     and _pyamplicol_artifacts_current(
                         pyamplicol,
                         require_current_compiled_model_contract=_cell_uses_external_model(
@@ -3723,6 +3751,7 @@ def _campaign_cell_needs_measurement(
             ):
                 return not (
                     _pyamplicol_timing_profile_current(pyamplicol)
+                    and _pyamplicol_generation_profile_current(pyamplicol)
                     and _pyamplicol_artifacts_current(
                         pyamplicol,
                         require_current_compiled_model_contract=_cell_uses_external_model(
@@ -3767,6 +3796,7 @@ def _campaign_cell_needs_measurement(
             if cell.variant != "reference" and status == ResultStatus.OK.value:
                 return not (
                     _pyamplicol_timing_profile_current(measurement)
+                    and _pyamplicol_generation_profile_current(measurement)
                     and _pyamplicol_artifacts_current(
                         measurement,
                         require_current_compiled_model_contract=_cell_uses_external_model(
@@ -3793,9 +3823,14 @@ def _campaign_cell_needs_measurement(
         }:
             return True
         if status == ResultStatus.OK.value:
-            return not _pyamplicol_artifacts_current(
-                measurement,
-                require_current_compiled_model_contract=_cell_uses_external_model(cell),
+            return not (
+                _pyamplicol_generation_profile_current(measurement)
+                and _pyamplicol_artifacts_current(
+                    measurement,
+                    require_current_compiled_model_contract=_cell_uses_external_model(
+                        cell
+                    ),
+                )
             )
         return False
 
@@ -3816,6 +3851,19 @@ def _pyamplicol_timing_profile_current(measurement: Mapping[str, object]) -> boo
         environment.get("wall_time_source") == "runtime_core_repeated_wall_time"
         and environment.get("evaluator_time_source")
         == "runtime_profile_core_evaluator_call_time"
+    )
+
+
+def _pyamplicol_generation_profile_current(
+    measurement: Mapping[str, object],
+) -> bool:
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return False
+    return (
+        metadata.get("model_precompile_policy")
+        == PYAMPLICOL_GENERATION_PROFILE_POLICY
+        and metadata.get("generation_timer_excludes_model_compile") is True
     )
 
 
@@ -3905,6 +3953,8 @@ def _reusable_pyamplicol_generation_seconds(
         previous_measurement.get("generation_seconds")
     )
     if previous_generation_seconds is None:
+        return None
+    if not _pyamplicol_generation_profile_current(previous_measurement):
         return None
     if not (artifact_dir / "artifact.json").is_file():
         return None
@@ -4226,6 +4276,52 @@ def _model_source_for_api(model: ModelSpec) -> object:
     if model_path is None:
         return ModelSource.built_in_sm()
     return ModelSource.from_path(model_path)
+
+
+def _precompile_model_for_generation(
+    model: ModelSpec,
+    config_values: Mapping[str, object],
+) -> tuple[object, dict[str, object]]:
+    source = _model_source_for_api(model)
+    model_config = config_values.get("model")
+    cache_dir: Path | None = None
+    use_cache = True
+    if isinstance(model_config, Mapping):
+        raw_cache_dir = model_config.get("cache_dir")
+        if isinstance(raw_cache_dir, str) and raw_cache_dir:
+            cache_dir = Path(raw_cache_dir).expanduser().resolve(strict=False)
+        raw_use_cache = model_config.get("cache")
+        if isinstance(raw_use_cache, bool):
+            use_cache = raw_use_cache
+    compile_model = getattr(source, "compile", None)
+    if not callable(compile_model):
+        return source, {
+            "model_precompile_policy": PYAMPLICOL_GENERATION_PROFILE_POLICY,
+            "model_precompile_seconds": 0.0,
+            "model_precompile_cache_dir": (
+                None if cache_dir is None else os.fspath(cache_dir)
+            ),
+            "model_precompile_used_cache": use_cache,
+            "model_precompile_source_kind": None,
+            "generation_timer_excludes_model_compile": True,
+        }
+    started = time.perf_counter()
+    compiled = compile_model(
+        cache_dir=cache_dir,
+        use_cache=use_cache,
+        require_supported=True,
+    )
+    precompile_seconds = time.perf_counter() - started
+    return compiled, {
+        "model_precompile_policy": PYAMPLICOL_GENERATION_PROFILE_POLICY,
+        "model_precompile_seconds": precompile_seconds,
+        "model_precompile_cache_dir": (
+            None if cache_dir is None else os.fspath(cache_dir)
+        ),
+        "model_precompile_used_cache": use_cache,
+        "model_precompile_source_kind": getattr(source, "kind", None),
+        "generation_timer_excludes_model_compile": True,
+    }
 
 
 def _model_resolved_process_ir(
@@ -4565,16 +4661,29 @@ def _measure_pyamplicol(
             log.write(f"# pyAmpliCol cell {cell.cell_id} started {_utc_now()}\n")
             log.flush()
             with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
-                started = time.perf_counter()
+                model_for_generation: object | None = None
+                model_precompile_metadata: dict[str, object] = {
+                    "model_precompile_policy": PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                    "model_precompile_seconds": None,
+                    "model_precompile_cache_dir": None,
+                    "model_precompile_used_cache": None,
+                    "model_precompile_source_kind": None,
+                    "generation_timer_excludes_model_compile": True,
+                    "model_precompile_skipped": "artifact_reused_for_timing",
+                }
                 if artifact_reusable:
                     generation_seconds = float(reusable_generation_seconds)
                 else:
+                    model_for_generation, model_precompile_metadata = (
+                        _precompile_model_for_generation(spec.model, config_values)
+                    )
+                    started = time.perf_counter()
                     with _generation_timeout(generation_timeout_seconds):
                         if generation_slice is None:
                             Generator(resolution).generate(
                                 cell.process,
                                 artifact_dir,
-                                model=_model_source_for_api(spec.model),
+                                model=model_for_generation,
                                 mode="replace",
                             )
                         else:
@@ -4584,7 +4693,7 @@ def _measure_pyamplicol(
                                 cell.process,
                                 artifact_dir,
                                 selection=generation_slice,  # type: ignore[arg-type]
-                                model=_model_source_for_api(spec.model),
+                                model=model_for_generation,
                                 mode="replace",
                                 config=resolution,
                             )
@@ -4629,6 +4738,7 @@ def _measure_pyamplicol(
             "high_precision_matrix_element": high_precision_value,
             "high_precision_relative_difference": high_precision_relative_difference,
             "generation_slice": snapshot["generation_slice"],
+            **model_precompile_metadata,
         }
         measurement = {
             **_empty_measurement(),
@@ -8023,6 +8133,24 @@ def _parser() -> argparse.ArgumentParser:
         help="Restrict to one dataset_id; repeat for multiple datasets.",
     )
     populate.add_argument(
+        "--cell-id",
+        action="append",
+        default=None,
+        help=(
+            "Restrict to one exact campaign cell_id from populate --dry-run; "
+            "repeat for multiple cells."
+        ),
+    )
+    populate.add_argument(
+        "--process",
+        action="append",
+        default=None,
+        help=(
+            "Restrict to one exact generated process expression, for example "
+            "'d d~ > z g g'; repeat for multiple expressions."
+        ),
+    )
+    populate.add_argument(
         "--process-key",
         action="append",
         default=None,
@@ -8079,16 +8207,36 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
     service = ReportService()
     if args.command == "validate":
         caches = service.validate()
         print(f"validated {len(caches)} caches and {len(TABLE_INPUTS)} tables")
         return 0
     if args.command == "populate":
+        if args.cell_id is not None:
+            unknown_cell_ids = sorted(set(args.cell_id) - _known_cell_ids())
+            if unknown_cell_ids:
+                parser.error(
+                    f"unknown --cell-id value(s): {', '.join(unknown_cell_ids)}"
+                )
+        if args.process is not None:
+            requested_processes = {
+                _normalized_process_expression(process) for process in args.process
+            }
+            unknown_processes = sorted(
+                requested_processes - _known_process_expressions()
+            )
+            if unknown_processes:
+                parser.error(
+                    f"unknown --process expression(s): {', '.join(unknown_processes)}"
+                )
         caches = load_caches(service.paths) if args.missing_only else None
         cells = _select_cells(
             datasets=None if args.dataset is None else set(args.dataset),
+            cell_ids=None if args.cell_id is None else set(args.cell_id),
+            processes=None if args.process is None else set(args.process),
             process_keys=(None if args.process_key is None else set(args.process_key)),
             variants=None if args.variant is None else set(args.variant),
             n_values=None if args.n_final is None else set(args.n_final),

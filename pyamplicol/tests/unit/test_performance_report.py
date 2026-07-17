@@ -190,7 +190,7 @@ def test_generated_tables_are_complete_and_input_by_main_tex() -> None:
     scalar_gravity = expected_tables["result_scalar_gravity_table.tex"]
     assert r"scalar\_0 scalar\_0 > n*scalar\_0" in scalar_contact
     assert r"scalar\_0 scalar\_0 > n*graviton" in scalar_gravity
-    assert r"\textbf{$n=2$}" in scalar_contact
+    assert r"\textbf{\texttt{n=2}}" in scalar_contact
     assert "status &" not in scalar_contact
     assert "status &" not in scalar_gravity
     assert "generation [s]" in scalar_contact
@@ -786,6 +786,10 @@ def test_missing_only_accepts_builtin_schema8_artifacts_after_schema9_bump(
                 "wall_time_source": "runtime_core_repeated_wall_time",
                 "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
             },
+            "metadata": {
+                "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                "generation_timer_excludes_model_compile": True,
+            },
         }
     )
     entry.update(
@@ -863,6 +867,10 @@ def test_missing_only_retries_external_schema8_artifacts_after_schema9_bump(
             "environment": {
                 "wall_time_source": "runtime_core_repeated_wall_time",
                 "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            },
+            "metadata": {
+                "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                "generation_timer_excludes_model_compile": True,
             },
         }
     )
@@ -966,7 +974,13 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 10))
-    previous = {"generation_seconds": 12.5}
+    previous = {
+        "generation_seconds": 12.5,
+        "metadata": {
+            "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
+            "generation_timer_excludes_model_compile": True,
+        },
+    }
     artifact_dir = tmp_path / "artifact"
     builtin_cell = report.CampaignCell(
         kind="matrix",
@@ -1006,6 +1020,14 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
             builtin_cell,
             artifact_dir,
             {"generation_seconds": 0.0},
+        )
+        is None
+    )
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            {"generation_seconds": 12.5},
         )
         is None
     )
@@ -1184,9 +1206,9 @@ def test_z_tables_use_old_selected_and_all_flow_layout() -> None:
         built_in_payload=caches["z_builtin_sm.json"],
     )
 
-    assert r"\begin{longtable}{@{}r L{0.92in} L{0.48in} L{0.86in} R{0.60in}" in builtin
-    assert r"@{}p{0.20in}@{}" in builtin
-    assert r"R{0.58in} R{0.48in} R{0.58in}" in ufo
+    assert r"\begin{longtable}{@{}r L{0.92in} L{0.48in} L{0.86in} R{0.66in}" in builtin
+    assert r"@{\hspace{0.025in}}p{0.22in}@{\hspace{0.025in}}" in builtin
+    assert r"R{0.62in} R{0.52in} R{0.62in}" in ufo
     assert r"\textbf{selected flow, helicity sum}" in builtin
     assert r"\textbf{all flows, fixed helicity}" in builtin
     assert r"\PAC\ JIT \(\mathrm{O}1\)" in builtin
@@ -1285,6 +1307,40 @@ def test_campaign_schedule_is_fast_first_and_duplicates_sm_tables() -> None:
     assert any(
         cell.dataset_id == "matrix_external_sm_lc" for cell in report._campaign_cells()
     )
+
+
+def test_campaign_selects_exact_cell_id_and_process_expression() -> None:
+    target = next(
+        cell
+        for cell in report._campaign_cells()
+        if cell.dataset_id == "matrix_builtin_sm_lc"
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final == 4
+    )
+
+    assert report._select_cells(cell_ids={target.cell_id}) == (target,)
+
+    selected = report._select_cells(
+        datasets={target.dataset_id},
+        processes={"  d   d~   >   z   g   g   g  "},
+        n_values={target.n_final},
+    )
+
+    assert selected == (target,)
+
+
+def test_campaign_rejects_unknown_exact_filters(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as cell_error:
+        report.main(["populate", "--dry-run", "--cell-id", "missing-cell"])
+    assert cell_error.value.code == 2
+    assert "unknown --cell-id" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit) as process_error:
+        report.main(["populate", "--dry-run", "--process", "x x > y"])
+    assert process_error.value.code == 2
+    assert "unknown --process" in capsys.readouterr().err
 
 
 def test_campaign_workers_serialize_symbolica_by_default() -> None:
