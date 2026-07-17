@@ -146,6 +146,8 @@ momenta = "data/pp_zjj_momenta.json"
 target_runtime = 10.0
 # benchmark.batch_size: Positive benchmark batch size. Default 128.
 batch_size = 128
+# benchmark.precision: Positive decimal precision used by Python evaluation. Default 16.
+precision = 16
 # benchmark.warmup_runs: Non-negative warmup count. Default 2.
 warmup_runs = 2
 # benchmark.minimum_samples: Positive minimum measured samples. Default 5.

@@ -157,7 +157,9 @@ Benchmark a selected runtime through the same optimized total path:
 from pyamplicol import BenchmarkConfig, BenchmarkRunner, Runtime
 
 runtime = Runtime.load("artifacts/pp_zjj", process="p_p_to_z_j_j_4")
-runner = BenchmarkRunner(BenchmarkConfig(target_runtime=1.0, batch_size=128))
+runner = BenchmarkRunner(
+    BenchmarkConfig(target_runtime=1.0, batch_size=128, precision=16)
+)
 result = runner.run(runtime, points=momenta)
 print(result.wall_time_per_point, result.uncertainty)
 ```
@@ -168,8 +170,15 @@ The direct equivalent is:
 pyamplicol benchmark artifacts/pp_zjj \
   --process p_p_to_z_j_j_4 \
   --momenta data/pp_zjj_momenta.json \
-  --target-runtime 1.0
+  --target-runtime 1.0 \
+  --precision 16
 ```
+
+Python benchmarks may request higher precision. Double-precision input points
+are converted through their exact decimal spelling and padded with trailing
+zeros before evaluation at the requested precision. The native evaluator
+profiler is f64-only, so non-f64 benchmarks report wall time for both timing
+fields.
 
 `--process` also accepts the exact concrete expression, for example
 `--process 'd d~ > z g g'`.

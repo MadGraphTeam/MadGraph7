@@ -512,6 +512,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
     )
     benchmark.add_argument(
+        "--precision",
+        dest="benchmark.precision",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="decimal digits used by the Python runtime evaluator",
+    )
+    benchmark.add_argument(
         "--warmup-runs",
         dest="benchmark.warmup_runs",
         type=int,

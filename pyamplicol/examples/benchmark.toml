@@ -12,6 +12,7 @@ momenta = "data/pp_zjj_momenta.json"
 [benchmark]
 target_runtime = 1.0
 batch_size = 128
+precision = 16
 warmup_runs = 2
 minimum_samples = 5
 helicity_ids = []

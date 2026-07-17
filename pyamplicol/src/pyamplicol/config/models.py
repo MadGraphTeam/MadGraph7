@@ -679,6 +679,7 @@ class EvaluationConfig:
 class BenchmarkConfig:
     target_runtime: float = field(default=10.0, metadata=_setting("float"))
     batch_size: int = field(default=128, metadata=_setting("int"))
+    precision: int = field(default=16, metadata=_setting("int"))
     warmup_runs: int = field(default=2, metadata=_setting("int"))
     minimum_samples: int = field(default=5, metadata=_setting("int"))
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
@@ -697,6 +698,9 @@ class BenchmarkConfig:
         )
         object.__setattr__(
             self, "batch_size", _integer(self.batch_size, "benchmark.batch_size")
+        )
+        object.__setattr__(
+            self, "precision", _integer(self.precision, "benchmark.precision")
         )
         object.__setattr__(
             self,

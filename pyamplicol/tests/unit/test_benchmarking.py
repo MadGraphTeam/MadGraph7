@@ -18,6 +18,7 @@ from pyamplicol.config import BenchmarkConfig
 
 class _Runtime:
     calls = 0
+    last_options: dict[str, object] | None = None
 
     @property
     def physics(self) -> ProcessPhysics:
@@ -42,8 +43,8 @@ class _Runtime:
         )
 
     def evaluate(self, momenta: object, **selectors: object) -> tuple[complex, ...]:
-        del selectors
         self.calls += 1
+        self.last_options = selectors
         return tuple(1.0 + 0.0j for _ in momenta)  # type: ignore[union-attr]
 
     def evaluate_resolved(
@@ -135,6 +136,32 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
         == "runtime_profile_core_evaluator_call_time"
     )
     assert result.environment["evaluator_sample_count"] == 3
+    assert result.environment["precision"] == 16
+
+
+def test_non_f64_benchmark_forwards_precision_without_native_profile() -> None:
+    runtime = _RuntimeWithProfile()
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=2,
+        precision=80,
+        warmup_runs=1,
+        minimum_samples=2,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert runtime.profile_calls == 0
+    assert runtime.last_options is not None
+    assert runtime.last_options["precision"] == 80
+    assert result.environment["precision"] == 80
+    assert result.environment["native_profile_unavailable_reason"] == (
+        "non_f64_precision"
+    )
+    assert result.evaluator_time_per_point == result.wall_time_per_point
 
 
 def test_benchmark_falls_back_when_native_profile_is_unavailable() -> None:

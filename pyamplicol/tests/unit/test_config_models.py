@@ -30,7 +30,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 62
+    assert len(FIELD_REGISTRY) == 63
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -125,6 +125,7 @@ def test_contract_defaults_are_typed() -> None:
     assert not config.evaluator.cpp.native_arch
     assert config.evaluator.optimization.max_common_pair_cache_entries == 5_000_000
     assert config.benchmark.target_runtime == 10.0
+    assert config.benchmark.precision == 16
     assert config.output == OutputConfig()
 
 

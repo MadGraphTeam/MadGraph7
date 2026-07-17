@@ -58,7 +58,14 @@ class BenchmarkBackend:
         batch = _benchmark_batch(points, self._config.batch_size)
         helicities = self._config.helicity_ids or None
         color_flows = self._config.color_flow_ids or None
-        profiler = _native_profiler(runtime)
+        profiler = (
+            _native_profiler(runtime) if self._config.precision == 16 else None
+        )
+        evaluation_options = {
+            "helicities": helicities,
+            "color_flows": color_flows,
+            "precision": self._config.precision,
+        }
         task_id = "runtime-benchmark"
         if self._progress is not None:
             self._progress.emit(
@@ -77,8 +84,7 @@ class BenchmarkBackend:
                 for _ in range(self._config.warmup_runs):
                     runtime.evaluate(
                         batch,
-                        helicities=helicities,
-                        color_flows=color_flows,
+                        **evaluation_options,
                     )
                 while (
                     len(samples) < self._config.minimum_samples
@@ -87,8 +93,7 @@ class BenchmarkBackend:
                     started = time.perf_counter()
                     runtime.evaluate(
                         batch,
-                        helicities=helicities,
-                        color_flows=color_flows,
+                        **evaluation_options,
                     )
                     duration = time.perf_counter() - started
                     elapsed += duration
@@ -105,19 +110,23 @@ class BenchmarkBackend:
                 evaluator_environment = {
                     "wall_time_source": "runtime_evaluate_wall_time",
                     "evaluator_time_source": "runtime_evaluate_wall_time",
+                    "native_profile_unavailable_reason": (
+                        "non_f64_precision"
+                        if self._config.precision != 16
+                        else None
+                    ),
                 }
             else:
                 for _ in range(self._config.warmup_runs):
                     runtime.evaluate(
                         batch,
-                        helicities=helicities,
-                        color_flows=color_flows,
+                        **evaluation_options,
                     )
                     profiler(
                         batch,
                         helicities=helicities,
                         color_flows=color_flows,
-                        precision=16,
+                        precision=self._config.precision,
                         include_values=False,
                     )
                 evaluator_samples = []
@@ -129,8 +138,7 @@ class BenchmarkBackend:
                     started = time.perf_counter()
                     runtime.evaluate(
                         batch,
-                        helicities=helicities,
-                        color_flows=color_flows,
+                        **evaluation_options,
                     )
                     duration = time.perf_counter() - started
                     elapsed += duration
@@ -140,7 +148,7 @@ class BenchmarkBackend:
                         batch,
                         helicities=helicities,
                         color_flows=color_flows,
-                        precision=16,
+                        precision=self._config.precision,
                         include_values=False,
                     )
                     evaluator_elapsed += time.perf_counter() - profile_started
@@ -201,6 +209,7 @@ class BenchmarkBackend:
                 "platform": platform.platform(),
                 "machine": platform.machine(),
                 "batch_size": len(batch),
+                "precision": self._config.precision,
                 "elapsed_seconds": elapsed,
                 **evaluator_environment,
             },

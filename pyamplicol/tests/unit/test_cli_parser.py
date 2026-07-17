@@ -216,6 +216,8 @@ def test_runtime_color_flow_flags_remain_available() -> None:
             "benchmark",
             "--process",
             "d d~ > z g",
+            "--precision",
+            "80",
             "--color-flow",
             "flow:2,4,1",
         )
@@ -223,4 +225,5 @@ def test_runtime_color_flow_flags_remain_available() -> None:
 
     assert evaluation.resolve().effective.evaluation.color_flow_ids == ("flow:2,4,1",)
     assert benchmark.resolve().effective.evaluation.process == "d d~ > z g"
+    assert benchmark.resolve().effective.benchmark.precision == 80
     assert benchmark.resolve().effective.benchmark.color_flow_ids == ("flow:2,4,1",)
