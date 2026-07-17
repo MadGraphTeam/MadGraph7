@@ -38,12 +38,15 @@ published on PyPI.
 
 The automatic **Tests** workflow runs a lightweight configuration API matrix
 on every push to `main` and on pull requests, covering CPython 3.11 through
-3.14. Pull requests and manual dispatch additionally run one guarded Ubuntu
-CPython 3.11 candidate job covering selected unit/integration tests,
-generation, the Python/Rust/C++/Fortran APIs, Rust checks, the native SDK,
-self-test, and checkout-independent examples. Keeping the candidate job off
-ordinary `main` pushes prevents rapid documentation or report checkpoints from
-repeatedly cancelling the same expensive dependency build.
+3.14. A separate dependency-minimal CPython 3.11 job checks public API and CLI
+contracts, import laziness, repository policy, deployment harness logic, SDK
+configuration, and release metadata. Pull requests and manual dispatch
+additionally run one guarded Ubuntu candidate job covering selected
+unit/integration tests, generation, the Python/Rust/C++/Fortran APIs, Rust
+checks, the native SDK, self-test, and checkout-independent examples. Keeping
+the candidate job off ordinary `main` pushes prevents rapid documentation or
+report checkpoints from repeatedly cancelling the same expensive dependency
+build.
 
 The full **Candidate artifacts** workflow is `workflow_dispatch` only. It runs
 release-tool preflight, the complete candidate source gate and an isolated

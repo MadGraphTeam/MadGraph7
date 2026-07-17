@@ -70,10 +70,8 @@ jobs:
         run: >-
           python -m pytest
           tests/unit/test_api_requests.py
-          tests/unit/test_build_backend.py
           tests/unit/test_cli_parser.py
           tests/unit/test_deployment_harness.py
-          tests/unit/test_evaluator_defaults.py
           tests/unit/test_public_import_laziness.py
           tests/unit/test_repository_policy.py
           tests/unit/test_sdk_config.py
