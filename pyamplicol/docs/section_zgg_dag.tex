@@ -1,53 +1,328 @@
 % SPDX-License-Identifier: 0BSD
-\section{\texorpdfstring{\(d\bar d\to Zgg\) as a pyAmpliCol DAG}{d dbar -> Z g g as a pyAmpliCol DAG}}
+\section{\texorpdfstring{The \(d\bar d\to Zgg\) DAG and Rusticol}{The d dbar -> Z g g DAG and Rusticol}}
+\label{sec:zgg-dag}
 
-\PAC{} represents the example as a shared-current DAG, not as a list of
-diagrams. A source current is created for each external label. Composite
-currents are keyed by the full current identity: particle state, external-label
-mask, momentum mask, helicity ancestry, spin or chirality state, flavour and
-charge flow, colour-flow state, and any auxiliary-current kind introduced by a
-contact decomposition. If two diagrams need the same current, they point to
-the same node.
+The previous section described the physics graph.  This section gives the
+exact mapping from that graph to compiled multi-output evaluators and then to
+the Rusticol runtime.  The main invariant is simple: generation owns physics
+identity and symbolic lowering; Rusticol owns a validated numerical schedule
+of slots, stages, roots, and reductions.
 
-For \(d\bar d\to Zgg\), typical reusable subcurrents include a gluon current
-on the two-gluon subset \(\{4,5\}\), electroweak quark-line currents in which
-the \(Z\) is emitted before or after QCD radiation, and mixed quark-gluon
-currents that carry the selected LC traversal. The generator sweeps subsets in
-topological order, groups compatible output components into Symbolica stage
-evaluators, and then emits one amplitude-root stage that contracts the final
-current pair into coherent helicity and colour amplitudes.
+\subsection{What identifies a current?}
+
+The immutable \texttt{CurrentIndex} key is defined in
+\path{src/pyamplicol/generation/dag_types.py}.  Two contributions share a
+current if and only if every field in
+\begin{equation}
+ \Omega(J)=\bigl(
+ t,\ m_I,\ I,\ H,\ \chi,\ s,\ F,\ Q,\ C,\ m_p,\ O,\ a,\ \pi_I
+ \bigr)
+ \label{eq:zgg-current-key}
+\end{equation}
+is equal.  There is no process-family or diagram label in this key.
 
 \begin{center}
-\small
-\begin{tabular}{@{}L{1.3in}L{5.5in}@{}}
+\footnotesize
+\begin{tabular}{@{}L{1.48in}L{1.25in}L{3.90in}@{}}
 \toprule
-\textbf{DAG layer} & \textbf{current implementation role} \\
+\textbf{field} & \textbf{example} & \textbf{role} \\
 \midrule
-sources & external wavefunctions and momentum slots for labels \(1,\ldots,5\) \\
-recursive stages & stage-local evaluators for reusable off-shell currents with stable value slots \\
-auxiliary nodes & non-propagating currents used only when a contact tensor is decomposed \\
-amplitude roots & final contractions with model-owned closure tensors, colour weights, and helicity weights \\
-runtime schema & schema-v3 process metadata plus evaluator manifests consumed by Rusticol \\
+\texttt{particle\_id} $t$ & $1$ & off-shell particle carried by the current \\
+\texttt{external\_mask} $m_I$ & $26$ & bit mask of source subset $I=\{2,4,5\}$ \\
+\texttt{external\_labels} $I$ & $(2,4,5)$ & sorted, unordered source-label set \\
+\texttt{helicity\_ancestry} $H$ & source-state bit set & exact one-leg state choices feeding the current \\
+\texttt{chirality} $\chi$ & $+1$ or $-1$ & Weyl-flow branch when applicable \\
+\texttt{spin\_state} $s$ & scalar or tuple & local spin/polarization state beyond chirality \\
+\texttt{flavour\_flow} $F$ & model tuple & conserved flavour-line identity \\
+\texttt{quantum\_number\_flow} $Q$ & name/expression pairs & exact model-derived additive charges \\
+\texttt{color\_state} $C$ & LC state & accuracy, internal sector, line groups, and basis keys \\
+\texttt{momentum\_mask} $m_p$ & $26$ & momentum slot used by kernels and propagator \\
+\texttt{coupling\_orders} $O$ & \texttt{QCD=2} & accumulated perturbative order envelope \\
+\texttt{auxiliary\_kind} $a$ & \texttt{None} & proof-backed contact-decomposition species, if present \\
+\texttt{ordered\_external\_labels} $\pi_I$ & $(2,5,4)$ & colour-sensitive traversal within the same subset \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The report driver uses the private developer
-\texttt{GenerationSlice} helper for the two specialized benchmarks. For the
-selected-flow workload it passes the source-mapped reference colour order and
-the matching LC sector identifiers. For the all-flow workload it passes only
-the validated fixed source-helicity map and leaves the colour sectors complete.
-These controls are deliberately not part of the public generation contract:
-ordinary users generate complete physical coverage, while the report campaign
-uses slices solely to reproduce specialized legacy timings.
+Both the unordered labels and their order are intentional: the former fixes
+the momentum and subset, while the latter prevents two colour-ordered currents
+from being merged incorrectly.  Conversely, exact equality permits reuse
+across every diagram and amplitude root that reaches the same state.  The
+\texttt{\_CurrentTable.add\_or\_get()} operation in
+\path{src/pyamplicol/generation/dag_table.py} is the sole identity-deduplication
+point.  The resulting \texttt{current\_id} is only the dense array index of
+that canonical node.
 
-At runtime, Rusticol loads the serialized artifact, packs model parameters and
-source wavefunctions, executes each stage evaluator in DAG order, scatters the
-stage outputs into current value slots, and evaluates the amplitude-root stage.
-The process-table wall time is the native repeated Rusticol wall statistic
-\texttt{runtime\_core\allowbreak\_repeated\allowbreak\_wall\allowbreak\_time},
-measured after caller-side momentum-buffer packing. The evaluator sum is
-\texttt{runtime\_profile\allowbreak\_core\allowbreak\_evaluator\allowbreak\_call\allowbreak\_time},
-the accumulated time inside the generic-stage and amplitude evaluator calls.
-The two numbers are reported together because their difference diagnoses
-runtime orchestration overhead inside the native core.
+LC generation adds a second, complementary reuse mechanism.  Internal
+currents are built in a shared-ordering state and their ordered labels and
+basis keys record which flow segments they can serve.  Physical sector IDs are
+restored only when a colour line closes into an amplitude root.  The two roots
+in Eq.~\eqref{eq:zgg-physical-flows} therefore share sources, electroweak
+subcurrents, the $J_g(4,5)$ family, and every other exactly equal current,
+instead of cloning a complete recursion per flow.
+
+Each one-leg state receives its own bit when sources are constructed; composing
+currents takes the bitwise OR.  Thus $H$ identifies concrete source-state
+choices, rather than merely the set of external labels.
+
+Finally, \texttt{evaluation\_group\_id} addresses reuse that current identity
+alone cannot express.  If one verified kernel value contributes, possibly
+with different scalar \texttt{evaluation\_factor}s, to several target
+currents, the symbolic stage computes it once.  For the worked graph this
+reduces 242 target attachments to 210 kernel evaluations.  These three notions
+must remain distinct:
+\begin{equation}
+ \underbrace{\text{same current key}}_{\text{one stored node}},\qquad
+ \underbrace{\text{same evaluation group}}_{\text{one symbolic kernel value}},\qquad
+ \underbrace{\text{same physical flow}}_{\text{one public output axis member}}.
+ \label{eq:zgg-three-identities}
+\end{equation}
+
+\subsection{Topological stages and value slots}
+
+The compiler sweeps proper source subsets in increasing cardinality.  An
+interaction whose result covers $k$ source labels belongs to recursion stage
+$k$.  No evaluator can read a current from its own or a later stage, so the
+schedule is acyclic by construction.  For this example,
+\begin{equation}
+ \boxed{11\ \text{sources}}
+ \longrightarrow
+ \boxed{|I|=2:\ 18}
+ \longrightarrow
+ \boxed{|I|=3:\ 40}
+ \longrightarrow
+ \boxed{|I|=4:\ 48}
+ \longrightarrow
+ \boxed{48\ \text{amplitude roots}} .
+ \label{eq:zgg-stage-chain}
+\end{equation}
+For one concrete source-state path, the same schedule can be read as
+\begin{align}
+ E_2:\quad C_{21}&={\cal P}_{21}K_{10}(C_2,C_9),
+ & C_{25}&={\cal P}_{25}K_{14}(C_7,C_9),
+ \label{eq:zgg-e2-concrete}\\
+ E_3:\quad C_{53}&={\cal P}_{53}\bigl[K_{66}(C_{21},C_7)
+                         +K_{82}(C_2,C_{25})+\cdots\bigr],
+ \label{eq:zgg-e3-concrete}\\
+ E_4:\quad C_{69}&={\cal P}_{69}\bigl[K_{90}(C_{53},C_4)+\cdots\bigr],
+ \label{eq:zgg-e4-concrete}\\
+ E_{\rm root}:\quad {\cal A}_0&={\cal C}_0(C_{69},C_1).
+ \label{eq:zgg-root-concrete}
+\end{align}
+Here $C_2$ is the label-2 quark source with helicity $-1$, $C_7$ and
+$C_9$ are the negative-helicity gluon sources on labels 4 and 5, $C_4$ is
+the negative-helicity $Z$ source, and $C_1$ is the endpoint antiquark source.
+The omitted terms are other admissible partitions contributing coherently to
+the same target.  The subscripts on $K$ are evaluation-group IDs, not current
+or interaction IDs.
+
+\begin{lstlisting}
+sources: C2=d(2,-), C7=g(4,-), C9=g(5,-), C4=Z(3,-), C1=dbar(1,+)
+E2: I10: C2 + C9 -> C21 [G10]       I14: C7 + C9 -> C25 [G14]
+E3: I66: C21 + C7 -> C53 [G66]      I83: C2 + C25 -> C53 [G82]
+    I82: C2 + C25 -> C61 [G82]      (one kernel value, two targets)
+E4: I98: C53 + C4 -> C69 [G90]
+root: R0: contract(C69,C1) -> A0
+\end{lstlisting}
+This adjacency-list excerpt is diagnostic but exact for the current graph.
+It also exposes why the namespaces cannot be conflated: $C_{53}$ is a
+canonical current node, $I_{83}$ is one attachment to it, $G_{82}$ identifies
+a reusable symbolic evaluation, and $R_0$ is an amplitude output.  Value-slot
+IDs are a further runtime namespace assigning propagated or unpropagated
+component storage to currents.  Internal LC sector IDs annotate root
+construction; public IDs such as \texttt{flow:2,5,4,1} label the resolved
+physics axis.
+
+The stage records are assembled by
+\texttt{build\_runtime\_schema()} in
+\path{src/pyamplicol/generation/runtime_schema.py}.  They list input/output
+current IDs, value-slot IDs, momentum slots, interaction IDs, and both
+attachment and unique-evaluation counts.
+
+A current and its stored value are not identical notions.  Depending on its
+consumers, one current can have a \texttt{source}, \texttt{unpropagated}, or
+\texttt{propagated} value slot.  Each slot owns a contiguous component range;
+Weyl currents have two complex components and vector currents have four in the
+worked model.  Keeping variants explicit prevents the runtime from silently
+applying a propagator twice and lets the amplitude closure request precisely
+the form it needs.
+
+The complete schema for this graph has 256 complex value components, 13
+four-vector momentum slots (52 real components), and 16 real model-parameter
+slots.  A conceptual flattened state row therefore has
+\begin{equation}
+  x=\bigl[x_{\rm value}\mid x_{\rm momentum}\mid x_{\rm model}\bigr],
+  \qquad |x|=256+52+16=324 .
+  \label{eq:zgg-global-state}
+\end{equation}
+No compiled stage accepts all 324 entries.  Stage-local layout is mandatory:
+for stage $k$, a map $L_k$ selects only the current components, momentum
+components, and model parameters actually used there,
+\begin{equation}
+  x_k=L_k x,\qquad y_k=E_k(x_k),\qquad
+  x[S_k]\mathrel{\leftarrow}y_k .
+  \label{eq:zgg-stage-map}
+\end{equation}
+The construction is in
+\path{src/pyamplicol/generation/stage_parameters.py}; Rusticol stores the same
+local-to-global indices in the execution manifest.  Contiguous index runs are
+precomputed, so most packing and output assignment becomes slice copies rather
+than scalar lookup loops.
+
+\subsection{What Symbolica and SymJIT compile}
+
+\texttt{build\_generic\_stage\_compiler\_blueprint()} in
+\path{src/pyamplicol/generation/stage_planning.py} creates one multi-output
+symbolic blueprint per recursion stage and one for the amplitude roots.  For a
+target current $j$, its output expression is
+\begin{equation}
+  y_j=\mathcal P_j\!\left[
+       \sum_{e:\,\operatorname{target}(e)=j}
+       f_e\,K_{g(e)}(x_k)
+     \right],
+  \label{eq:zgg-stage-expression}
+\end{equation}
+where $K_{g(e)}$ is cached by evaluation-group ID, $f_e$ is the attachment
+factor, and $\mathcal P_j$ is the output propagator or identity.  Component
+expressions, couplings, momentum dependence, and propagators come from the
+selected model; the stage compiler does not know that this example contains a
+$Z$ or a gluon.
+
+Symbolica optimizes the whole multi-output expression of one stage: common
+subexpressions, Horner schemes, and common-pair elimination can therefore
+cross current-component boundaries inside that stage.  With the default JIT
+backend, SymJIT O3 then compiles a batched complex-f64 application.  The direct
+application capability is recorded as
+\texttt{symjit.application.complex-f64.v1}; Rusticol can load and execute this
+f64 payload without importing Symbolica.  Retained Symbolica evaluator state
+is used for higher-precision Python requests.
+
+Output chunking is a compilation boundary, not a physics boundary.  If a
+stage has more than the configured 128 scalar outputs, it is split into
+multi-output chunks sharing the same local input vector.  A fanout-aware
+ordering in \path{src/pyamplicol/generation/stage_planning.py} places outputs
+with common evaluation groups near one another, reducing duplicated work when
+a group would otherwise cross chunk boundaries.  At runtime the local input is
+packed once per stage and batch, each compiled chunk consumes that same packed
+buffer, and the concatenated outputs are scattered to their recorded slots.
+Dependencies are still cut only between recursion stages.
+
+Generation streams these stages.  Once a blueprint has been compiled and
+written, its Symbolica expressions can be released before the next stage is
+built.  This bounds peak expression memory without changing the DAG or the
+runtime schedule.  The relevant writer path is
+\path{src/pyamplicol/generation/stage_artifacts.py}, while backend settings and
+payload construction live in
+\path{src/pyamplicol/evaluators/symbolica_compile.py}.
+
+\subsection{Artifact records and Rusticol execution}
+
+The root \texttt{artifact.json} is a process-artifact schema-v3 manifest.  It
+binds global model/configuration data and payload hashes to process-local
+records.  The files relevant to one concrete process are:
+
+\begin{center}
+\small
+\begin{tabular}{@{}L{2.40in}L{4.22in}@{}}
+\toprule
+\textbf{record} & \textbf{runtime meaning} \\
+\midrule
+\path{processes/evaluators.json} & evaluator capabilities and payload locations \\
+\path{processes/<id>/execution.json} & value/momentum/model layout, sources,
+  ordered stages, chunks, roots, and reduction schedule \\
+\path{processes/<id>/physics.json} & external particles, physical helicity and
+  flow IDs, coverage, symmetry expansion, selectors, and normalization \\
+evaluator applications/libraries & target-specific compiled numerical kernels \\
+\path{API/} & validation point and Python, Rust, C++, and Fortran examples \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The complete \texttt{CurrentIndex} is a generation contract.  The execution
+projection serializes only the fields needed to validate and run its slots;
+ordered-label proofs and other generation-only evidence need not burden the
+hot runtime.  By contrast, physical helicity and flow metadata remains explicit
+because it defines the public resolved axes and selector semantics.
+
+\begin{samepage}
+Rusticol's f64 path is implemented in
+\path{rust/crates/rusticol-core/src/engine/evaluation.rs}.  For a batch of
+points, one execution is:
+\begin{enumerate}
+  \item reuse and clear the state scratch buffer;
+  \item fill source wavefunctions in their source value slots;
+  \item form all recorded all-outgoing momentum sums and copy current model
+        parameter values into the global state;
+  \item for every recursion stage, pack $x_k$, call all evaluator chunks,
+        and assign $y_k$ to the global value slots;
+  \item pack and call the amplitude-root evaluator;
+  \item sum roots coherently, contract colour, expand exact physical symmetry
+        representatives when resolved output is requested, and apply
+        normalization.
+\end{enumerate}
+\end{samepage}
+The stage and amplitude implementations reuse their parameter and output
+scratch buffers across calls.  The global model-parameter vector is mutable at
+runtime; an atomic update validates all supplied values, refreshes derived
+parameters and masses, and recomputes the factor in
+Eq.~\eqref{eq:zgg-normalization}.  No mass, width, or coupling is baked into
+the orchestration schedule merely because it is constant in one run card.
+
+For LC resolved evaluation, the public tensor has shape
+\begin{equation}
+  R_{n,h,c}=|{\cal M}_{h,c}(p_n)|^2,
+  \qquad
+  \operatorname{shape}(R)=
+  (N_{\rm point},N_{\rm helicity},N_{\rm flow}) .
+  \label{eq:zgg-resolved-shape}
+\end{equation}
+For this process the final two dimensions have lengths 48 and 2.  Structural
+zeros occupy their declared entries.  \texttt{evaluate\_resolved()} can select
+stable helicity/flow IDs and materializes these components; its
+\texttt{total()} is their explicit sum.  \texttt{evaluate()} follows the
+optimized summed path directly and need not allocate the resolved tensor.
+Neither interface exposes internal current, slot, or sector IDs.
+
+\subsection{The two runtime timing boundaries}
+
+The profiler deliberately distinguishes orchestration from compiled evaluator
+calls.  Its reported f64 wall sample starts in the native Rusticol method after
+the caller-language buffer conversion and repeatedly executes the ordinary
+core path through final reduction.  It therefore includes Rust-side input
+batch preparation, source and momentum construction, stage-local packing,
+chunk calls, output assignment, root packing/call, and reduction, but excludes
+Python/NumPy, C++, Fortran, or Rust caller-side packing.
+
+The evaluator sum is narrower:
+\begin{equation}
+ t_{\rm eval}=\sum_{k}t\bigl(E_k\bigr)+t\bigl(E_{\rm root}\bigr),
+ \qquad
+ t_{\rm core}=t_{\rm eval}+t_{\rm source}+t_{\rm momentum/model}
+ +t_{\rm pack}+t_{\rm assign}+t_{\rm reduce}+t_{\rm batch} .
+ \label{eq:zgg-timing-boundary}
+\end{equation}
+
+\begin{center}
+\small
+\begin{tabular}{@{}L{2.78in}L{3.84in}@{}}
+\toprule
+\textbf{provenance marker} & \textbf{quantity} \\
+\midrule
+\path{runtime_core_repeated_wall_time} & native repeated total path,
+  normalized per point; common metric for all language APIs \\
+\path{runtime_profile_core_evaluator_call_time} & sum of recursion-stage
+  and amplitude-root evaluator call times only \\
+native component profile & source fill, momentum/model setup, per-stage input
+  pack, evaluator call and output assignment, root pack/call, and reduction \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+These boundaries make a wall/evaluator difference interpretable as work inside
+Rusticol rather than Python probing overhead.  They also make Python, Rust,
+C++, and Fortran measurements comparable when they call the same f64 artifact.
+The CLI calibration, uncertainty estimate, progress display, and interruptible
+sampling policy are implemented in \path{src/pyamplicol/benchmarking.py}; the
+native timers themselves are in
+\path{rust/crates/rusticol-core/src/engine/native_runtime.rs} and
+\path{rust/crates/rusticol-core/src/engine/evaluation.rs}.

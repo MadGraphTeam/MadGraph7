@@ -1,60 +1,667 @@
 % SPDX-License-Identifier: 0BSD
-\section{Arbitrary UFO Support Strategy}
+\section{Arbitrary UFO and Serialized-JSON Models}
+\label{sec:ufo-support}
 
-The external-model path is intended to be generic, but it is not an
-``accept any UFO'' interpreter. It compiles a trusted UFO directory, or a
-portable serialized JSON model, into a normalized model contract that the DAG
-generator and Rusticol can consume without Standard-Model name or PDG
-fallbacks. Unsupported features fail during model preflight or compilation
-with a structured diagnostic.
+The external-model path is a compiler, not a permissive UFO interpreter.  It
+accepts a trusted UFO Python module or its serialized JSON representation,
+normalizes the model to a typed, model-independent intermediate
+representation, and only then exposes interactions to the current-recursion
+generator.  A structure is executable when the compiler can construct its
+component expressions and prove every transformation used to lower or reuse
+them.  Failure to prove a useful optimization merely disables that
+optimization; failure to prove a transformation required for correctness
+rejects the model with a structured diagnostic.
 
-The central design rule is proof-gated specialization. Whenever \PAC{} uses a
-short cut that would otherwise look model-specific, the compiler first derives
-an exact certificate from normalized tensors, source roles, propagators,
-couplings, quantum numbers, and tensor-ordering metadata. These proof records
-are serialized with the compiled model and are checked again when artifacts are
-loaded. Examples include Yang--Mills current reuse, parity and reflection
-relations, LC trace sharing, four-gluon contact decomposition, the
-\(3\otimes\bar 3\otimes 8\) Fierz singlet-subtraction auxiliary, tensor-axis
-ordering, and Goldstone partner contracts for massive vectors.
+This section describes the implemented contract.  The handwritten Standard
+Model in \path{src/pyamplicol/models/builtin/} is deliberately outside that
+contract: \texttt{BuiltinSM}\allowbreak\texttt{Model} may use SM-specific
+formulae, while \texttt{CompiledUFO}\allowbreak\texttt{Model} must derive its
+decisions from particle metadata,
+normalized tensors, propagators, couplings, and exact algebra.  The boundary
+is audited by \path{tests/unit/test_model_boundary_audit.py}; in particular,
+SM PDG classifiers and built-in implementation symbols may not leak into the
+external-model modules.
 
-\subsection{Currently supported model features}
+\subsection{One route from UFO and JSON to an executable model}
 
-The current release path supports scalar particles, Dirac-like fermions,
-vectors, and the proven massless spin-two source and propagator path used by
-the packaged scalar-gravity model. For colour it supports SU(3) singlets,
-fundamentals, antifundamentals, and adjoints, with LC flows and the current
-contracted NLC/full SU(3) calculations. The implemented UFO Lorentz basis
-covers identity, gamma and gamma-five structures, chiral projectors, sigma
-tensors, metrics, momenta, and the tensor patterns certified by the packaged
-models. Trilinear kernels, colour-singlet contact trees, and proof-gated
-coloured contacts are supported.
+The public entry point \texttt{compile\_model\_source()} in
+\path{src/pyamplicol/models/loading.py} recognizes a UFO directory, a JSON
+model, an already compiled model, or the special built-in model.  For an
+external source it lazily invokes \texttt{ufo-model-loader}.  Both source forms
+therefore enter the same route:
+\begin{equation}
+  \begin{aligned}
+    \{\text{UFO directory},\text{ serialized JSON}\}
+      &\xrightarrow{\ \texttt{load\_model}\ }
+        \texttt{ufo-model-loader.Model}\\
+      &\xrightarrow{\ \text{compact serialization and compilation}\ }
+        \texttt{CompiledModelIR}.
+  \end{aligned}
+  \label{eq:ufo-loading-route}
+\end{equation}
+The UFO directory is executable Python and must therefore be trusted.  The
+JSON form is data-only and is the portable form to archive or exchange.
 
-The built-in SM and the packaged UFO-SM are both used in the process matrices.
-They are expected to agree after parameter alignment because they lower to the
-same physics contract through different model-source paths. The scalar-contact
-and scalar-gravity ladders exercise the generic contact and spin-two paths
-without relying on SM-specific kernels.
+The loader is first called with wrapped Lorentz indices disabled.  This lets
+\texttt{\_classify\_external\_propagators()} compare a model-supplied
+propagator against the loader's exact default Feynman-gauge candidates.
+Indices are then wrapped and the model is serialized with
+\texttt{JSONLook.COMPACT}.  Consequently, UFO and JSON inputs do not maintain
+separate physics implementations after loading.
 
-\subsection{Known unsupported features}
+Every source symbol is put in a model-local namespace by
+\path{src/pyamplicol/_internal/physics/symbols.py}.  A model called
+\texttt{sm} uses heads such as
+\(\texttt{model\_sm::GC\_1}\), while compiler-owned currents, momenta, dummy
+indices, and derived couplings use the \texttt{pyamplicol::} namespace.  The
+registry rewrites the loader's temporary \texttt{UFO::} heads; a compiled
+\texttt{CompiledModelIR} is rejected if an executable expression still
+contains a process-global \texttt{UFO::} symbol.  Two loaded models can thus
+coexist without silently identifying equally named parameters or tensors.
 
-Unsupported inputs include Majorana or fermion-number-violating fermions, spin
-\(3/2\), sextet colour representations, epsilon colour tensors, multiple or
-non-SU(3) colour groups, opaque form factors or unknown UFO functions,
-unsupported custom propagator tensors, and general coloured higher-point
-contacts without a certified decomposition. General arbitrary-representation
-full colour is not promised by the current \texttt{full} mode. Massive spin-two
-support remains experimental; the tested report capability is the packaged
-massless scalar-gravity model.
+The canonical IR in \path{src/pyamplicol/models/contracts.py} contains typed
+records for particles, parameters, coupling orders, propagators, vertex terms,
+oriented trivalent kernels, direct and closure contractions, tensor and
+current orderings, and Goldstone partners.  It is not a bag of strings.  On
+reload it checks the model-schema version, compiler version and fingerprint,
+proof identities, tensor-ordering links, and required fields before any DAG is
+built.  The compiler fingerprint includes the pyAmpliCol, Symbolica, and
+\texttt{ufo-model-loader} versions and the relevant serialization and
+lowering policies; a stale compiled model is regenerated rather than guessed
+compatible.
 
-\subsection{Extending the subset}
+\begingroup
+\footnotesize
+\begin{longtable}{@{}L{1.25in}L{2.05in}L{3.35in}@{}}
+\toprule
+\textbf{compiler stage} & \textbf{resulting contract} & \textbf{implementation} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{compiler stage} & \textbf{resulting contract} & \textbf{implementation} \\
+\midrule
+\endhead
+source loading & one compact loader-model payload &
+  \path{models/loading.py}: \texttt{\_load\_external\_model()} and
+  \texttt{preflight\_model()} \\
+parameter resolution & namespaced external and derived expressions &
+  \path{models/compiler_records.py} and
+  \texttt{ModelSymbolRegistry} \\
+tensor normalization & canonical colour and Lorentz expressions &
+  \path{models/tensors.py}, using idenso, Spenso, and Symbolica \\
+kernel construction & oriented trivalent contracts and contact auxiliaries &
+  \path{models/compiler_entry.py}, \path{models/compiler_kernels.py},
+  \path{models/compiler_contacts.py} \\
+ordering construction & explicit source axes, Weyl projections, and current
+  embeddings & \path{models/compiler_tensor_ordering.py} \\
+model-owned closure & propagators, direct/closure contractions, and Goldstone
+  policy & \path{models/compiler_contractions.py},
+  \path{models/compiler_gauge.py} \\
+optimization proofs & kernel equivalence, colour-flow auxiliaries, and exact
+  model symmetries & \path{models/compiler_color_flow.py} and
+  \path{models/external_symmetries.py} \\
+\bottomrule
+\end{longtable}
+\endgroup
 
-Adding a new UFO feature should normally add a compiler proof and a runtime
-contract, not a process-family exception. The extension path is: normalize the
-new tensor or propagator structure, define the source and closure contract,
-prove any intended reuse or decomposition identity, serialize enough metadata
-to reject stale artifacts, and add cross-model numerical gates against a direct
-or high-precision oracle. Once that contract exists, the same DAG construction,
-stage evaluator lowering, artifact format, and Rusticol execution path can
-serve all models that satisfy it.
+\subsection{From a UFO vertex to concrete current kernels}
 
+A UFO vertex is a matrix over colour and Lorentz structures.  The compiler
+expands it into separate terms
+\begin{equation}
+  \mathcal V(1,\ldots,n)
+  = \sum_{a,b} g_{ab}\,
+    C_a(c_1,\ldots,c_n)\,
+    L_b(s_1,p_1;\ldots;s_n,p_n),
+  \label{eq:ufo-vertex-matrix}
+\end{equation}
+and stores the original sources together with their normalized forms and the
+coupling-order vector of \(g_{ab}\).  The normalization in
+\path{src/pyamplicol/models/tensors.py} converts wrapped UFO heads to typed
+Spenso expressions.  It applies idenso's \texttt{simplify\_metrics},
+\texttt{simplify\_gamma}, and \texttt{simplify\_color}; Spenso then
+materializes dense tensor components in a declared Cartesian order.  Residual
+UFO tensor heads, indeterminate expressions, duplicate coordinates, or missing
+dense coordinates are errors.
+
+The currently normalized Lorentz basis includes scalars, momenta, metrics,
+Dirac identity and gamma matrices, \(\gamma_5\), chiral projectors, slashed
+momenta, and sigma tensors.  The supported colour representations are the
+SU(3) singlet, fundamental, antifundamental, and adjoint.  Exact trilinear
+projection recognizes four executable colour families:
+\begin{equation}
+  1,\qquad
+  \delta_i{}^{\bar\jmath},\qquad
+  (T^a)_i{}^{\bar\jmath},\qquad
+  f^{abc}.
+  \label{eq:trilinear-color-basis}
+\end{equation}
+For a proposed basis tensor \(B_\sigma\), projection succeeds only when the
+normalized tensor obeys the componentwise identity
+\begin{equation}
+  C_a(\boldsymbol c)=\kappa_a B_\sigma(\boldsymbol c)
+  \quad\text{for every materialized colour component }\boldsymbol c,
+  \label{eq:exact-color-projection}
+\end{equation}
+with an exact scalar \(\kappa_a\).  Numerical projection exists as a diagnostic
+but does not certify an executable kernel.  The symmetric adjoint invariant
+\(d^{abc}\), for example, can be recognized diagnostically but is not in the
+current executable trilinear colour basis.
+
+For a trilinear term, \texttt{\_compile\_oriented\_kernels()} chooses each
+distinct result species and both nonidentical input orders.  Spenso contracts
+the normalized tensor with formal left and right currents and physical
+momenta.  The resulting component contract has the schematic form
+\begin{equation}
+  K^{A_r}_{r\leftarrow ij}(J_i,J_j)
+  =g_{a b}\,\kappa_a
+    \sum_{A_i,A_j}
+    L_b^{A_r}{}_{A_i A_j}(p_i,p_j,p_r)
+    J_i^{A_i}J_j^{A_j},
+  \qquad p_r=-(p_i+p_j),
+  \label{eq:oriented-kernel}
+\end{equation}
+followed by the model-owned propagator when the result is an internal current.
+The coupling, perturbative orders, runtime parameters, source-leg map, colour
+normalization, and input/output ordering identifiers remain attached to the
+kernel.  Weyl projection is therefore an explicit ordering/embedding contract,
+not an inference made later from a particle name.
+
+The compiler recognizes a compact Yang--Mills three-vector form only after its
+components have been proved equal, up to one exact constant, to the dense
+Spenso result.  This is an implementation optimization, not an alternative
+physics formula.
+
+\subsection{What a proof or certificate asserts}
+
+The word \emph{proof} is used narrowly.  It is a reproducible algebraic
+witness that an optimized or decomposed executable contract reconstructs the
+normalized source contract.  It is not a statement that a model is physically
+consistent, unitary, or gauge complete.  Three assurance mechanisms are
+currently distinct:
+
+\begin{enumerate}
+  \item A \textbf{serialized decomposition proof} is attached to a four-point
+        \texttt{CompiledVertexTerm}.  Its algorithm name and version, source
+        identity, split topology, index map, component basis, signs, and
+        multiplicities are revalidated when the compiled model is loaded.
+  \item \textbf{Kernel-equivalence metadata} is written on oriented kernels.
+        Fully lowered component expressions are compared under input exchange
+        and an exact factor \(\eta=\pm1\).  Equal kernels receive one
+        \texttt{evaluation\_class}, a representative input order, and a factor,
+        so the DAG may evaluate the representative once and fan its value out.
+  \item A \textbf{model-level symmetry certificate} is re-derived by
+        \texttt{derive\_external\_symmetry\_}\allowbreak
+        \texttt{certificates()} when a
+        \texttt{CompiledUFOModel} is constructed.  It binds a theorem to
+        digests of the compiled particle, propagator, ordering, vertex, and
+        executable-kernel contracts.  It is not accepted as a free-form claim
+        from the UFO source.
+\end{enumerate}
+
+For two kernel expressions \(K\) and \(K'\), reusable evaluation requires an
+exact relation
+\begin{equation}
+  K'(x,y;p_x,p_y)
+  =\eta\,K(y,x;p_y,p_x),
+  \qquad \eta\in\{-1,+1\},
+  \label{eq:kernel-equivalence}
+\end{equation}
+after resolving coupling aliases and canonicalizing all component expressions.
+For a global theorem, the digest is
+\begin{equation}
+  D=\operatorname{SHA256}\!\left(
+    \operatorname{canonicalJSON}
+    \{\text{source},\text{propagator},\text{orderings},
+      \text{terms},\text{kernels}\}\right).
+  \label{eq:certificate-digest}
+\end{equation}
+The selectors and 64-character digests must be complete and mutually
+consistent.  Renaming a contracted tensor dummy must not change \(D\), but a
+different contraction graph must.  The internal helper
+\begin{center}
+  \texttt{\_canonical\_tensor\_product\_expressions()}
+\end{center}
+in \path{src/pyamplicol/models/external_symmetries.py} calls Symbolica's
+\texttt{Expression.canonize\_tensors()} on the contracted Lorentz, colour, and
+spinor indices.  Its reserved replacement head is
+\begin{center}
+  \texttt{pyamplicol::canonical\_tensor\_index}.
+\end{center}
+Tests explicitly check alpha-renaming invariance and contraction-graph
+sensitivity.
+
+The important fail-closed distinction is:
+\begin{itemize}
+  \item if a reflection or parity certificate is absent, the generator keeps
+        both configurations and remains correct, but performs less reuse;
+  \item if a four-point contact cannot be lowered without changing its tensor,
+        colour, coupling, or multiplicity, generation stops rather than
+        silently dropping or approximating that interaction.
+\end{itemize}
+
+\begingroup
+\small
+\begin{longtable}{@{}L{1.40in}L{2.20in}L{3.05in}@{}}
+\toprule
+\textbf{proof class} & \textbf{checked identity} & \textbf{optimization or lowering enabled} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{proof class} & \textbf{checked identity} & \textbf{optimization or lowering enabled} \\
+\midrule
+\endhead
+trilinear colour projection & Eq.~\eqref{eq:exact-color-projection} in the
+  supported SU(3) basis & colour-flow interpretation of an oriented kernel \\
+kernel evaluation equivalence & Eq.~\eqref{eq:kernel-equivalence}, including
+  coupling and ordering contracts & one evaluator value reused by
+  symmetry-related current contributions \\
+four-point contact decomposition & exact colour topology, open-axis Lorentz
+  basis, orientation signs, and multiplicity & two trivalent auxiliary-current
+  stages with no artificial pole \\
+fundamental Fierz identity & exact \(T^a\) trilinear projection and eligible
+  massless adjoint-vector metadata & compiler-owned singlet-subtraction
+  auxiliary for LC flow \\
+vectorlike parity & exact fundamental-generator colour and gamma-current
+  Lorentz tensor & global helicity-flip representative reuse \\
+Yang--Mills cubic/quartic sector & exact \(f^{abc}\), three-vector tensor,
+  quartic basis, coupling relation, and closed reachable sector & pure-adjoint
+  helicity-zero theorem and LC trace-reflection folding \\
+local adjoint reflection & every relevant cubic kernel is antisymmetric under
+  left/right exchange & current reflection phase reuse \\
+Goldstone partner contract & quantum numbers, exact mass expression,
+  uniqueness, and propagator policy & unitary-gauge absorption or explicit
+  model-supplied Goldstone treatment \\
+tensor/current ordering & explicit physical axes and component permutations &
+  stable Spenso-to-current and Weyl component maps \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\subsection{Four-point contacts: exact auxiliary-current factorization}
+
+Every momentum-independent valence-four term receives a
+\texttt{CompiledContactDecompositionProof} before lowering.  The serialized
+algorithm is \texttt{ufo-four-point-contact-decomposition}, version 2.  A proof
+has status \texttt{proven} or \texttt{unsupported}; its identity includes the
+term and vertex identifiers, particle tuple, colour and Lorentz matrix
+indices, original sources, and normalized expressions.  A stale version or an
+identity mismatch is rejected.
+
+The record family is explicit:
+\begin{itemize}
+  \item \texttt{CompiledContactDecompositionProof} owns the term identity and
+        all proved result-leg splits;
+  \item \texttt{CompiledContactDecompositionSplit} and
+        \texttt{CompiledContactDummyIndexMapping} describe one topology and
+        its shared colour index;
+  \item \texttt{CompiledContactOrientationProof} fixes every input order and
+        sign; and
+  \item \texttt{CompiledContactUnsupportedReason} carries a stable failure
+        code and context.
+\end{itemize}
+
+Two decomposition kinds are implemented.
+
+\paragraph{Literal colour singlet.}
+If all four legs are colour singlets and \(C=1\), the Lorentz tensor may be
+split directly.  A literal singlet attached to any coloured leg is not treated
+as an implicit contraction; it fails with
+\texttt{literal-singlet-}\allowbreak\texttt{with-colored-legs}.
+
+\paragraph{Product of two structure constants.}
+The coloured gauge-contact path requires exactly
+\begin{equation}
+  C^{a_1a_2a_3a_4}
+  = c\,f^{a_i a_j b}f^{b a_k a_r},
+  \label{eq:two-f-color}
+\end{equation}
+up to exact permutations, with one and only one shared adjoint dummy \(b\) and
+a scalar prefactor \(c\).  For each possible result leg \(r\), the compiler
+records the paired legs \((i,j)\), remaining leg \(k\), dummy-index map,
+permutation parity, LC normalization powers, and the exact scalar coefficient.
+It then introduces a non-propagating auxiliary current
+\begin{align}
+  A^{b}_{\rho\sigma}[i,j]
+    &= f^{b a_i a_j}
+       \sum_{A_i,A_j}
+       P_{\rho\sigma;A_iA_j}
+       J_i^{A_i}J_j^{A_j},
+       \label{eq:contact-partial}\\
+  J_r^{A_r}\big|_{V_4}
+    &= \frac{c\,s_{ijkr}}{m_r}
+       f^{a_r b a_k}
+       \sum_{\rho,\sigma,A_k}
+       F^{A_r}{}_{\rho\sigma A_k}
+       A^{b}_{\rho\sigma}J_k^{A_k}.
+       \label{eq:contact-final}
+\end{align}
+Here \(s_{ijkr}=\pm1\) is the recorded orientation parity and \(m_r\) is the
+number of indistinguishable assignments of the remaining input species.  The
+original coupling and complete perturbative-order vector occur only in
+Eq.~\eqref{eq:contact-final}; Eq.~\eqref{eq:contact-partial} has unit coupling
+and no propagator.  The factorization therefore introduces neither an
+unphysical pole nor a duplicated coupling/order weight.
+
+The Lorentz split is not inferred from the name ``four gluon.''  Spenso first
+contracts the chosen input pair while leaving the result and remaining-leg
+axes open.  \texttt{\_compress\_contact\_components()} stores a basis of
+distinct components and reconstructs every omitted component by an exact
+zero or \(\pm1\) map.  The final kernel contracts that basis and must reproduce
+the source tensor component by component.  This same mechanism covers an
+SU(3) four-vector term such as the four-gluon vertex and colour-singlet
+electroweak-like four-vector contacts built from metric tensors.  What differs
+is the colour proof: \texttt{two-structure-constants} for the former and
+\texttt{literal-color-singlet} for the latter.
+
+The compiler deduplicates identical contact partials and fuses compatible
+finals after proof validation.  Unsupported diagnostics distinguish an
+incorrect topology from a missing feature: wrong factor count, malformed
+structure-constant indices, non-scalar colour prefactor, non-unique shared
+dummy, absent result leg, and a nontrivalent structure-constant topology all
+have separate reason codes in
+\path{src/pyamplicol/models/compiler_contacts.py}.
+
+\subsection{Arbitrary-valence colour-singlet contact trees}
+
+Colour-singlet contacts with valence \(n\geq4\) are lowered by
+\texttt{\_compile\_color\_singlet\_contact\_trees()} in
+\path{src/pyamplicol/models/compiler_contact_trees.py}.  The already proved
+momentum-independent four-point case uses the preceding path; other singlet
+contacts are split recursively at the midpoint into a balanced binary tree.
+For a set of input leaves \(S\), the generic recursion is
+\begin{equation}
+  A_S=\Phi_S(A_{S_L},A_{S_R}),
+  \qquad S=S_L\mathbin{\dot\cup}S_R,
+  \qquad
+  J_r\big|_{V_n}=\frac{g}{m_r}
+      \Psi_r(A_{S_L},A_{S_R}),
+  \label{eq:contact-tree}
+\end{equation}
+where the internal \(A_S\) are non-propagating, \(g\) and its coupling orders
+appear only in the final map \(\Psi_r\), and \(m_r\) removes identical-input
+assignment multiplicity.  A balanced tree has \(O(n)\) auxiliary operations
+and \(O(\log n)\) depth.
+
+For an all-scalar contact, each auxiliary carries one component and
+\(\Phi_S(x,y)=xy\).  This is the path exercised by the arbitrary-valence
+scalar-contact model.  For non-scalar or momentum-dependent singlet contacts,
+an auxiliary carries the current components and four-momentum of every
+physical leaf below it.  At the final node, the original normalized
+\(n\)-point Lorentz expression is reconstructed with
+\begin{equation}
+  p_r=-\sum_{i\ne r}p_i.
+  \label{eq:contact-momentum-conservation}
+\end{equation}
+On Linux, very large dense contractions are evaluated in bounded stages when
+the direct input work exceeds 1024 components; each staged group is limited to
+256 input components and its intermediate tensor is materialized before the
+next contraction.  This changes only contraction order.  The direct function
+\path{eager_color_singlet_vertex_term_components()} remains the
+component oracle used to test the tree result.
+
+This is deliberately not advertised as an arbitrary coloured \(n\)-point
+algorithm.  It is generic in valence, spin, momentum dependence, and Lorentz
+expression only after the colour tensor has been proved to be a singlet that
+requires no unresolved coloured internal channel.
+
+\subsection{Colour-flow and model-level symmetry proofs}
+
+The LC compiler derives its singlet-subtraction channel from the fundamental
+Fierz identity
+\begin{equation}
+  (T^a)_i{}^{\bar\jmath}(T^a)_k{}^{\bar l}
+  =T_R\left(
+    \delta_i{}^{\bar l}\delta_k{}^{\bar\jmath}
+    -\frac{1}{N_c}
+     \delta_i{}^{\bar\jmath}\delta_k{}^{\bar l}
+  \right).
+  \label{eq:fierz}
+\end{equation}
+The compiler function
+\begin{center}
+  \texttt{synthesize\_fundamental\_fierz\_auxiliaries()}
+\end{center}
+in
+\path{src/pyamplicol/models/compiler_color_flow.py} is enabled only for an
+exactly projected \(T^a\) trilinear with fundamental fermion lines and a
+self-conjugate, massless adjoint vector with a standard propagator.  It creates
+one compiler-owned colour-singlet vector auxiliary and reuses the proved
+Lorentz and coupling kernel.  The \(1/N_c\) closure coefficient is attached in
+one canonical orientation.  No gluon name or PDG code participates.
+
+Four further exact recognizers in
+\path{src/pyamplicol/models/external_symmetries.py} recover the reusable
+structure normally associated with a gauge theory:
+\begin{itemize}
+  \item A \textbf{vectorlike parity kernel} has one massless adjoint vector,
+        a fundamental/antifundamental fermion pair, exact \(T^a\) colour, and a
+        Lorentz tensor that is a constant multiple of the gamma-current
+        reference.  Chiral-projector deformations do not pass this proof.
+  \item A \textbf{Yang--Mills cubic kernel} has one self-conjugate massless
+        adjoint-vector species, a standard propagator, exact \(f^{abc}\), and
+        the three-vector Lorentz tensor up to an exact constant.  The effective
+        cubic coupling is retained symbolically.
+  \item A \textbf{Yang--Mills quartic group} must uniquely span the three
+        \(ff\times gg\) basis elements of the four-vector vertex, and each
+        coefficient must obey the exact relation to the square of the cubic
+        coupling.  Recognizing three individually familiar-looking terms is
+        insufficient if the coupling relation fails.
+  \item A \textbf{local adjoint-current reflection} requires every relevant
+        cubic kernel to satisfy Eq.~\eqref{eq:kernel-equivalence} with
+        \(\eta=-1\), exact \(f^{abc}\), and a standard propagator.
+\end{itemize}
+
+A global Yang--Mills theorem is emitted only if the reachable trivalent
+compiled sector is closed: starting from the candidate adjoint source, every
+kernel reachable from two already reachable currents must itself be certified
+Yang--Mills.  Contact auxiliaries are included in this traversal.  One extra
+reachable non-Yang--Mills interaction therefore disables the global theorem
+rather than being ignored.  A complete certificate enables the pure-adjoint
+helicity-zero theorem, global helicity-flip representatives, LC trace
+reflection, and shared single-trace basis.  The ordinary DAG remains complete
+when the certificate is absent.
+
+These generic proofs recover the built-in-SM current topology for the
+established UFO-SM validation ladder without assuming that every future
+UFO model must do so.  The current tests compare the built-in SM and UFO-SM
+for electroweak, QCD, top, pure-gluon, charged-current, multi-boson, and up to
+three-quark-line examples.  They require equal minimal coupling limits and
+equal current, interaction, amplitude-root, and colour-sector counts; exact
+kernel reuse may reduce evaluator calls but may not increase them.  The tests
+also repeat the proof after arbitrary particle-name, PDG, and inventory-order
+changes.  This is strong evidence for the certified classes, not a universal
+topology theorem for all UFO syntax.
+
+\subsection{Propagators, closures, Goldstones, and spin two}
+
+Propagators are model contracts rather than hard-coded particle identities.
+For standard scalar, Dirac, vector, and spin-two records, the evaluator in
+\path{src/pyamplicol/models/external_evaluation.py} implements the expected
+runtime-mass and runtime-width kernels, schematically
+\begin{align}
+  P_0(p)&=\frac{i}{p^2-m^2+i m\Gamma},
+  &P_{1/2}(p)&=\frac{i(\gamma^\mu p_\mu+m)}{p^2-m^2+i m\Gamma},
+  \label{eq:standard-propagators-a}\\
+  P_1^{\mu\nu}(p)&=
+    \frac{-i}{p^2-m^2+i m\Gamma}
+    \left(g^{\mu\nu}-\frac{p^\mu p^\nu}{m^2}\right),
+  &P_2^{\mu\nu,\rho\sigma}(p)&=
+    \frac{i\,\Pi^{\mu\nu,\rho\sigma}(p)}
+         {p^2-m^2+i m\Gamma}.
+  \label{eq:standard-propagators-b}
+\end{align}
+The massless-vector branch is Feynman gauge and does not use the singular
+\(p^\mu p^\nu/m^2\) term.  Weyl currents use explicit chirality projections.
+For spin two, \(\Pi\) is the de Donder massless or Fierz--Pauli massive
+projector represented in a 16-component ordered tensor space.  Synthetic
+contact auxiliaries have the identity map and no propagator; the Fierz
+singlet-subtraction auxiliary propagates as its compiler-owned massless vector.
+
+A custom UFO propagator is accepted when its normalized numerator and
+denominator can be materialized through the same Spenso ordering contract.  It
+is applied exactly and is not silently converted to a preferred gauge.  Its
+presence intentionally disables symmetry theorems that require the standard
+propagator.
+
+\texttt{compile\_contraction\_records()} emits explicit scalar, Dirac, opposite
+Weyl-chirality, mostly-minus vector, and rank-two tensor-product-metric
+contractions.  Rusticol consumes these records and does not infer a closure
+from component count.  Goldstone matching in
+\texttt{compile\_goldstone\_partner\_records()} similarly uses quantum-number
+flow and the exact resolved mass expression.  A unique massive vector with a
+default propagator absorbs its Goldstone in the unitary-gauge path; a custom
+vector propagator retains the model-supplied Goldstone.  Ambiguous matches
+fail closed.
+
+UFO spin code 5 is therefore a real current type, not a special-case scalar:
+it has two ordered Lorentz axes, 16 components, tensor-product closure, and a
+spin-two propagator.  The packaged massless scalar-gravity model validates the
+generic tensor route, including axis relabelling and transposed source storage.
+Massive spin two is accepted with an explicit experimental warning; arbitrary
+massive spin-two phenomenology is not yet a qualified release capability.
+
+\subsection{Implemented support boundary}
+
+The support matrix below separates an exact current capability from
+a known unsupported class.  ``Proof-gated'' means that qualifying models work
+without an SM-specific exception; it does not mean every algebraically
+equivalent UFO spelling is already recognized.
+
+\begingroup
+\small
+\setlength{\LTpre}{0.3em}
+\setlength{\LTpost}{0.3em}
+\begin{longtable}{@{}L{0.83in}L{1.47in}L{0.93in}L{3.15in}@{}}
+\toprule
+\textbf{area} & \textbf{class} & \textbf{status} & \textbf{exact boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{area} & \textbf{class} & \textbf{status} & \textbf{exact boundary} \\
+\midrule
+\endhead
+source & UFO directory / JSON & supported & both lower through one loader-model
+  payload; UFO Python must be trusted \\
+spin & scalar, Dirac, vector & supported & standard wavefunctions,
+  propagators, current orderings, and closures \\
+spin & massless spin two & supported & 16-component tensor path tested by the
+  packaged scalar-gravity model \\
+spin & massive spin two & experimental & Fierz--Pauli path exists, but broad
+  model validation is incomplete \\
+spin & UFO ghosts & partial & one-component metadata and ordering exist;
+  propagating ghosts require an exactly lowerable custom propagator and are
+  not broadly qualified \\
+spin & Majorana/FNV, spin $3/2$ & unsupported & no fermion-number-violating
+  flow or Rarita--Schwinger current contract \\
+colour & $1,3,\bar3,8$ of SU(3) & supported & LC and current contracted NLC/full
+  basis \\
+colour & $6,\bar6$, extra groups & unsupported & no sextet or multi-group
+  flow/contraction representation \\
+arity 3 & $1,\delta,T,f$ colour & supported & exact projection plus generic
+  materializable Lorentz components \\
+arity 3 & $d^{abc}$, $\epsilon$, $K_6$, $T_6$ & unsupported & recognized or
+  known source heads are not sufficient to construct an executable colour
+  contract \\
+arity 4 & colour singlet & supported & momentum-independent proof path;
+  generic singlet-tree path for other materializable tensors \\
+arity 4 & two-$f$ gauge colour & proof-gated & one shared adjoint dummy,
+  trivalent topology, scalar prefactor, exact Lorentz reconstruction \\
+arity 4 & other coloured tensors & unsupported & no certified auxiliary colour
+  channel \\
+arity $>4$ & colour-singlet contact & supported & balanced no-pole tree;
+  original coupling/order only at final node \\
+arity $>4$ & coloured contact & unsupported & no general irreducible-channel
+  factorization proof \\
+Lorentz & idenso/Spenso basis & supported & all source tensor heads must
+  normalize and materialize with explicit axes \\
+Lorentz & form factors / unknown functions & unsupported & no executable and
+  serializable function contract \\
+propagator & standard $0,\frac12,1,2$ & supported & runtime mass/width and
+  explicit ordering/closure \\
+propagator & custom UFO tensor & proof-gated & exact Spenso lowering; gauge
+  conversion and affected symmetry reuse are disabled \\
+symmetry & vectorlike/Yang--Mills/reflection & proof-gated & exact normalized
+  identities and complete reachable-sector digest \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+Preflight in \texttt{preflight\_model()} rejects unsupported spin or colour
+codes, Majorana fermions, form factors, wrong known-function arities, and
+unknown expression functions before expensive compilation.  Tensor
+normalization and contact lowering impose the narrower executable boundary
+after preflight.  Thus recognizing a UFO head such as \texttt{K6} during
+syntax inspection does not imply that a sextet colour current can be built.
+
+\subsection{Extending the proof-gated subset}
+
+A contributor should extend contracts rather than add a process-family or PDG
+exception.  The safe sequence is:
+\begin{enumerate}
+  \item add a typed source representation and normalization rule in
+        \path{models/tensors.py} or the propagator compiler;
+  \item define the component ordering, current embedding, direct contraction,
+        and colour-flow meaning in \path{models/contracts.py} and
+        \path{models/compiler_tensor_ordering.py};
+  \item materialize a direct component oracle before introducing a factored or
+        reused evaluator;
+  \item encode the exact identity, orientation signs, coupling/order placement,
+        and stale-proof identity in a proof record or derived certificate;
+  \item test source-index renaming, particle/PDG renaming, serialization round
+        trip, forged or stale metadata, resolved-sum equality, and comparison
+        with the direct or higher-precision oracle.
+\end{enumerate}
+
+\begingroup
+\footnotesize
+\begin{longtable}{@{}L{1.42in}L{0.75in}L{4.15in}@{}}
+\toprule
+\textbf{remaining class} & \textbf{effort} & \textbf{main missing contract} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{remaining class} & \textbf{effort} & \textbf{main missing contract} \\
+\midrule
+\endhead
+additional scalar UFO functions & low--medium & define a serializable
+  Symbolica lowering and derivatives/branch semantics where relevant \\
+adjoint $d^{abc}$ trilinears & medium & add a physical colour basis,
+  projection, contraction, and LC/NLC/full interpretation \\
+epsilon and sextet tensors & medium--high & add sextet current identities,
+  conjugation, flow basis, and sparse colour metric before tensor lowering \\
+other coloured four-point contacts & medium--high & prove a complete set of
+  auxiliary irreducible channels and exact reconstruction, including repeated
+  representations and multiplicities \\
+coloured valence above four & high & general representation-channel tree with
+  associativity/basis-change proofs and controlled intermediate growth \\
+Majorana/FNV fermions & high & fermion-flow orientation, charge conjugation,
+  signs, wavefunctions, propagators, and closure contracts \\
+spin $3/2$ & high & ordered Rarita--Schwinger wavefunctions, projectors,
+  contractions, and tensor-component qualification \\
+multiple colour groups & high & group-qualified representations, independent
+  invariant tensors, product flow bases, and contracted colour metrics \\
+general massive spin two & medium--high & broader model and gauge/constraint
+  validation around the existing 16-component propagator contract \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The principal regression suites are:
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}L{3.25in}L{3.25in}@{}}
+\path{tests/unit/test_contact_color_proofs.py} &
+\path{tests/unit/test_contact_tensor_execution.py} \\
+\path{tests/unit/test_external_symmetry_certificates.py} &
+\path{tests/unit/test_external_model_independence.py} \\
+\path{tests/unit/test_external_goldstone_contract.py} &
+\path{tests/unit/test_external_spin2_contraction.py} \\
+\path{tests/unit/test_compiler_tensor_order.py} & \\
+\end{tabular}
+\end{center}
+They test not only successful examples but also deliberately deformed tensors,
+couplings, propagators, index orderings, and stale proof records.  That
+negative coverage is what makes the advertised subset useful: an unfamiliar
+model either satisfies the same explicit algebraic contract or receives a
+diagnostic at the boundary where a new proof is required.

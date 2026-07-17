@@ -57,8 +57,8 @@
 \newcommand{\ReportStatus}[1]{\textcolor{ReportMuted}{\textsc{#1}}}
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
-\newcommand{\ReportMatrixLegend}{\ReportTableNote{Matrix cells use the old matrix layout: the upper line shows original Fortran AmpliCol generation time and the pyAmpliCol JIT O3 generation ratio; the lower line shows original Fortran AmpliCol runtime and the pyAmpliCol JIT O3 wall\texttt{|}evaluator runtime ratios. Ratios are pyAmpliCol divided by AmpliCol, so values below one mean pyAmpliCol is faster.}}
-\newcommand{\ReportLadderLegend}{\ReportTableNote{Z tables use the old performance-summary layout: reference rows are original Fortran AmpliCol, pyAmpliCol rows show generation, wall, and evaluator timings with ratios against the reference where available. Variant overrides are machine-readable in JSON.}}
+\newcommand{\ReportMatrixLegend}{\ReportTableNote{Cell ordering and units follow the reading guide at the start of this section. A slash separates the two AmpliCol LC runtime workloads; a vertical bar separates the pyAmpliCol Rusticol-core wall and evaluator-only multipliers. Every multiplier is pyAmpliCol divided by AmpliCol.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Each workload block reports generation in seconds and Rusticol-core wall and evaluator-only runtime in microseconds per point. Parenthesized multipliers compare pyAmpliCol with AmpliCol; the UFO-SM ``vs blt-in'' columns compare the same UFO-SM and built-in-SM setup.}}
 \newcommand{\ReportLandscapeFooter}{}
 
 \lstset{
@@ -83,11 +83,10 @@
 \begin{abstract}
 This report defines the public theory, validation, and performance methodology
 for \PAC{}, release 0.1.0. It fixes the canonical process coverage for the
-built-in Standard Model, an externally loaded Standard Model, a scalar contact
-model, and a scalar-gravity model. Its tables are a reproducible publication
-surface for measurements produced from the developer installation and recorded
-with their effective configuration, environment, artifacts, logs, and
-independent-reference provenance.
+built-in Standard Model, the same physics loaded as a UFO/JSON Standard Model
+(UFO-SM), a scalar contact model, and a scalar-gravity model. Its tables present
+reproducible measurements tied to an effective configuration, execution
+environment, generated artifact, and independent-reference provenance.
 \end{abstract}
 
 \begingroup
@@ -102,7 +101,7 @@ independent-reference provenance.
 \PAC{} generates tree-level scattering-amplitude artifacts and evaluates them
 through the Rusticol runtime. The Python layer resolves models and processes,
 constructs a shared-current directed acyclic graph (DAG), lowers bounded stages
-to Symbolica evaluators, and writes a schema-v3 process artifact. The runtime
+to Symbolica evaluators, and writes a versioned process artifact. The runtime
 loads that artifact and provides summed and resolved evaluation through one
 physics contract to Python, Rust 2021, C++17, and Fortran 2008 clients.
 
@@ -112,15 +111,16 @@ The report has three purposes:
         benchmark;
   \item preserve a stable matrix of representative process families and colour
         approximations; and
-  \item separate measured data from prose by rendering all result tables from
-        validated JSON caches.
+  \item separate measured data from prose by rendering every result table from
+        validated measurement records.
 \end{enumerate}
 
-An \ReportNA{} entry means that the current cache has no recorded measurement
+An \ReportNA{} entry means that the current result set has no recorded measurement
 for that slot. It is neither a zero, a failure, nor a value carried over from
 another implementation. Explicit failure labels such as \ReportStatus{t/o},
-\ReportStatus{RAM>800G}, \ReportStatus{VALIDATION FAILED}, and
-\ReportStatus{ERROR} indicate measured campaign outcomes with saved logs.
+\ReportStatus{RAM>limit}, \ReportStatus{VALIDATION FAILED}, and
+\ReportStatus{ERROR} identify a recorded timeout, resource limit, numerical
+mismatch, or execution failure rather than a physics value.
 
 \section{Current Recursion and Model Lowering}
 
@@ -204,8 +204,9 @@ physics comparison.
 The default JIT artifact embeds a self-contained SymJIT application for f64
 evaluation. Rusticol executes that payload through the separate MIT-licensed
 SymJIT runtime without importing Symbolica or consulting its runtime license
-state. Higher-precision Python evaluation and artifacts generated with the ASM
-or C++ evaluator backends retain an explicit Symbolica runtime capability.
+state. Compiled ASM and C++ f64 payloads are likewise loaded directly by the
+native core. Python evaluation above f64 precision uses the retained Symbolica
+evaluator state and therefore requires Symbolica at runtime.
 
 \section{Benchmark Methodology}
 
@@ -216,27 +217,33 @@ table variant says otherwise, the report contract uses the release defaults:
 requested SymJIT optimization level 3, evaluator batch size 128, output chunk size
 128, stage-local parameter layout, ten Horner iterations, backend-default
 common-pair elimination, a ten-second benchmark target, two warmup runs, and at
-least five timed samples. The process matrices always record requested level 3 in
-their machine-readable benchmark contract; only explicitly labelled comparison
-rows, such as JIT level 1 in the dedicated $Z$ ladder, override it. SymJIT may
-apply its documented backend fallback independently of the requested level.
-Requested and effective configurations are stored separately so resource or
-license adjustments remain visible.
+least five timed samples. The process matrices always request level 3; only
+explicitly labelled comparison rows, such as JIT level 1 in the dedicated $Z$
+ladder, override it. SymJIT may apply its documented backend fallback
+independently of the requested level. Requested and effective configurations
+are retained separately so resource or license adjustments remain visible.
 
 Generation time is wall time for one explicit \texttt{Generator.generate()}
-operation starting from the declared model source and ending with a committed,
-loadable artifact. Model-source conversion, process generation, evaluator
-compilation, and API-bundle emission must be identified separately when they
-are measured separately. Existing artifacts may be benchmarked, but their
-generation slot remains \ReportNA{} unless a matching generation measurement
-is available.
+operation starting from an already compiled canonical model and ending with a
+committed, loadable process artifact. It includes process expansion, DAG and
+evaluator construction, evaluator compilation, validation-point preparation,
+and API-bundle emission. Loading and compiling the UFO/JSON or built-in model
+is performed before the generation timer, passed to either ordinary generation
+or the selected \texttt{GenerationSlice}, and recorded separately as
+\texttt{model\_precompile\_seconds}. It is not included in a process-generation
+cell. Existing artifacts may be benchmarked, but their generation slot remains
+\ReportNA{} unless a matching generation measurement is available.
 
 Runtime measurements use \texttt{BenchmarkRunner} and the summed
-\texttt{Runtime.evaluate()} observable. A cache entry records sample count,
-wall and evaluator time per point, standard deviation, standard error, relative
-standard error, effective settings, and environment. Comparisons are valid only
-for the same process, colour accuracy, parameters, phase-space ensemble,
-precision, selectors, and normalization.
+\texttt{Runtime.evaluate()} observable. The reported wall time begins inside
+Rusticol after caller-language array conversion and covers repeated ordinary
+core evaluations, including source preparation, stage input packing, evaluator
+calls, output assignment, and reduction. The evaluator time is the subset spent
+inside the generated stage and amplitude evaluators. Python/NumPy packing and
+language-binding conversion are therefore excluded from both. A measurement
+records sample count, time per point, uncertainty, effective settings, and
+environment. Comparisons are valid only for the same process, colour accuracy,
+parameters, phase-space ensemble, precision, selectors, and normalization.
 
 \subsection{Numerical validation}
 
@@ -251,13 +258,12 @@ No timing is accepted as a numerical validation result. Conversely, a valid
 matrix element does not populate generation or runtime fields without a
 matching timing run.
 
-\paragraph{Publication workflow.}
+\paragraph{Result provenance.}
 
-The report service validates all cache entries, renders every table in a
-staging directory, optionally compiles the PDF there, and publishes the JSON,
-TeX, and PDF set only after all steps succeed. Failed refreshes leave the
-previous published set in place. Physics generation and benchmarking are not
-implicit report operations.
+Each displayed number is retained with its resolved configuration, software
+revision, hardware and execution environment, numerical check, and timing
+statistics. A result enters the report only after its record is internally
+consistent and its pointwise comparison has the status required by the table.
 
 \clearpage
 \begin{landscape}
@@ -268,18 +274,66 @@ The canonical matrix spans electroweak vector production, charged-current and
 leptonic channels, heavy-quark production, pure gluons, multi-boson final
 states, Higgs-associated final states, and three- and four-quark-line cases.
 Here $n$ is the number of final-state particles. LC coverage retains the
-established grid through $n=9$, with the four bounded families ending at
+declared grid through $n=9$, with the four bounded families ending at
 $n=8$. NLC and full-colour grids retain $n=1,\ldots,5$; cells below a family's
-minimum physical multiplicity remain explicitly marked \ReportNA{} and carry
-an applicability flag in JSON.
+minimum physical multiplicity remain explicitly marked \ReportNA{}.
 
-The external-SM matrices use the same process definitions, colour contracts,
-and numerical input parameters as the built-in matrices. Their model source is
-the packaged Standard Model loaded through the external JSON/UFO compilation
-path, so the comparison isolates model-source and generic-lowering behaviour
-without changing the requested physics or the original Fortran AmpliCol
-reference.
+The UFO-SM matrices use the same process definitions, colour contracts, and
+numerical input parameters as the built-in-SM matrices. Their source is the
+packaged Standard Model loaded through the generic UFO/JSON compiler. The
+comparison therefore isolates model loading and generic lowering without
+changing the requested physics or the original Fortran \AC{} reference.
 
+\subsection*{How to read a process-matrix cell}
+
+Every process-matrix comparison uses \PAC{} JIT at requested optimization level
+3. The process matrices do not include ASM or C++ measurements; those backends
+appear in the dedicated $Z$ ladder. For a time $T$, a parenthesized
+$\texttt{x}r$ is the dimensionless ratio
+\begin{equation}
+  r = \frac{T_{\text{\PAC{}}}}{T_{\text{\AC{}}}}.
+  \label{eq:matrix-time-ratio}
+\end{equation}
+Green, orange, and red denote respectively $r<1$, $1\leq r<2$, and $r\geq2$;
+thus green means that \PAC{} is faster. The compact layout is:
+
+\begin{center}
+\small
+\begin{tabular}{@{}L{0.82in}L{2.30in}L{5.95in}@{}}
+\toprule
+\textbf{contract} & \textbf{line and reference entry} & \textbf{pyAmpliCol entries} \\
+\midrule
+LC, upper & \AC{} generation time in seconds & selected-flow/helicity-sum generation ratio; all-flows/fixed-helicity generation ratio \\
+LC, lower & \AC{} selected-flow/all-flows runtimes in microseconds per point, separated by ``/'' & for each workload, \texttt{(xwall$\mid$eval)} gives the Rusticol-core wall and evaluator-only ratios against the matching \AC{} runtime \\
+NLC/full, upper & \AC{} generation time in seconds & \PAC{} JIT O3 generation ratio \\
+NLC/full, lower & \AC{} fully contracted runtime in microseconds per point & \texttt{(xwall$\mid$eval)} gives the Rusticol-core wall and evaluator-only ratios against that runtime \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The two LC generation ratios correspond to separately generated selected-flow
+and complete-flow \PAC{} artifacts. \AC{} generates one library that supports
+both runtime workloads, so the same \AC{} generation time is the denominator
+of both ratios. ``Selected flow, helicity sum'' evaluates one matched physical
+LC ordering and sums all supported helicities. ``All flows, fixed helicity''
+evaluates every represented physical LC ordering for one supported helicity.
+NLC and full colour instead report one helicity-summed, fully
+colour-contracted workload; no per-flow scalar is defined for those contracts.
+
+At the foot of each multiplicity column, every summary cell has two lines. The
+first contains the \AC{} values as
+\texttt{min$\mid$max$\mid$mean$\mid$median}; generation is in seconds
+and runtime in microseconds per point. The second contains the paired \PAC{}/
+\AC{} multipliers as
+\texttt{min$\mid$max$\mid$mean$\mid$median$\mid$ratio-of-sums}, where the
+last field is
+$\sum_i T_{\text{\PAC{}},i}/\sum_i T_{\text{\AC{}},i}$ over the same valid
+process pairs. LC provides separate generation and runtime summary rows for its
+two workloads. NLC and full colour provide generation, core-wall runtime, and
+evaluator-only runtime rows; the last two share the same \AC{} reference runtime
+because \AC{} has no corresponding evaluator-only timing split.
+
+\clearpage
 \input{result_matrix_builtin_sm_lc_table.tex}
 \ReportMatrixLegend
 \ReportLandscapeFooter
@@ -312,9 +366,17 @@ reference.
 The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
 with JIT level 1, JIT level 3, ASM O3, and C++ O3 evaluator configurations. They retain
 final-state multiplicities $n=1,\ldots,9$ for the built-in model and
-$n=1,\ldots,6$ for the external-model campaign. Variant overrides are stored
-as typed dotted configuration paths in the cache rather than inferred from
-table labels.
+$n=1,\ldots,6$ for the UFO-SM campaign. Each row states its evaluator backend
+and optimization level explicitly; all other workload settings follow the
+benchmark contract above.
+
+Runtime comparisons between these backends also include their present
+vectorization strategy. The SymJIT application evaluates a batch with SIMD
+across phase-space points, whereas the current generated ASM and C++ payloads
+are scalar and Rusticol invokes them point by point. Their ratios therefore
+measure both symbolic/code-generation quality and this SIMD advantage; they
+must not be interpreted as a comparison of otherwise identical vectorized
+kernels.
 
 \subsection*{Worked \(d\bar d\to Zg\) example}
 
@@ -322,7 +384,7 @@ For \(n=2\), the explicit process is
 \[
   d(p_1)\,\bar d(p_2)\to Z(p_3)\,g(p_4).
 \]
-The report labels source particles in process order. The old leading-colour
+The report labels source particles in process order. The selected leading-colour
 reference order for the selected-flow timing is therefore \((2,4,1,3)\): the
 colour line enters through \(\bar d\), traverses the gluon, and exits through
 \(d\), while the colour-singlet \(Z\) remains in the public ordering only to
@@ -372,16 +434,15 @@ performance ratio.
 
 \section{Interpretation}
 
-This report establishes coverage, methodology, and the current measured cache
-state. Performance regression gates should be enabled only after the same
-developer-installed artifact has produced a complete, reviewed baseline on
-named hardware. Consumers should treat every \ReportNA{} entry as unavailable
-and should not interpolate, copy, or estimate a value from neighbouring
-multiplicities or model profiles.
+This report establishes coverage, methodology, and the current measured result
+set. Performance comparisons are meaningful only for a reviewed baseline
+produced from the same effective configuration on named hardware. Readers
+should treat every \ReportNA{} entry as unavailable and should not interpolate,
+copy, or estimate a value from neighbouring multiplicities or model profiles.
 
-The machine-readable caches under \texttt{docs/results/} are authoritative for
-table completeness and measurement provenance. The TeX inputs and this PDF are
-derived publication artifacts.
+The retained measurement records under \texttt{docs/results/} are authoritative
+for table completeness and provenance. The TeX inputs and this PDF are their
+publication presentation.
 
 \clearpage
 \input{section_zgg_example.tex}
