@@ -88,6 +88,10 @@ def test_external_actions_and_rustup_installer_are_immutable() -> None:
 
 def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     workflow = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
+    trigger = workflow.split("on:\n", maxsplit=1)[1].split(
+        "\npermissions:\n", maxsplit=1
+    )[0]
+    assert trigger.strip() == "workflow_dispatch:"
     assert "macos-15\n" in workflow
     assert "macos-15-intel" in workflow
     assert "manylinux_2_28_x86_64" in workflow
@@ -106,6 +110,23 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "tools/release/test_deployment.py" in workflow
     assert "g++ gfortran make" in workflow
     assert "continue-on-error" not in workflow
+
+
+def test_automatic_tests_cover_generation_config_provenance() -> None:
+    workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+    trigger = workflow.split("on:\n", maxsplit=1)[1].split(
+        "\npermissions:\n", maxsplit=1
+    )[0]
+    assert "pull_request:" in trigger
+    assert "push:" in trigger
+    assert "branches: [main]" in trigger
+    assert "workflow_dispatch:" in trigger
+    focused_unit_step = workflow.split(
+        "      - name: Run focused Python unit checks (30 GiB RSS limit)\n",
+        maxsplit=1,
+    )[1].split("\n      - name:", maxsplit=1)[0]
+    assert MEMORY_WATCHDOG in focused_unit_step
+    assert "tests/unit/test_generation_config_provenance.py" in focused_unit_step
 
 
 def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:

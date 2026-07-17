@@ -113,6 +113,7 @@ jobs:
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \
             tests/unit/test_external_model_independence.py \
+            tests/unit/test_generation_config_provenance.py \
             tests/unit/test_generation_execution_schema.py \
             tests/unit/test_generation_stage_contract.py \
             tests/unit/test_model_loading.py \
