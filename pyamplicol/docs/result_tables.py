@@ -14,6 +14,7 @@ import contextlib
 import datetime as _dt
 import fcntl
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -23,12 +24,14 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum, StrEnum
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, Protocol
 
@@ -46,11 +49,25 @@ DEFAULT_LIMIT_GIB = 800.0
 DEFAULT_GENERATION_TIMEOUT_SECONDS = 3600.0
 DEFAULT_WORKERS = 50
 DEFAULT_PARALLEL_CELL_CORES = 1
-DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS = 10_000_000
-DEFAULT_LEGACY_COLOR_PROBE_POINTS = 1_000_000
+DEFAULT_REPORT_TARGET_RUNTIME_SECONDS = 20.0
+LEGACY_PROFILE_POLICY = "target_runtime_warmup_v1"
+DEFAULT_LEGACY_PROFILE_WARMUP_POINTS = 100
+DEFAULT_LEGACY_PROFILE_MIN_POINTS = 100
+DEFAULT_LEGACY_PROFILE_MAX_POINTS = 100_000
+LEGACY_LC_ALL_FLOW_GENERATION_SOURCE = "shared_generated_library_build"
 ALLOW_PARALLEL_SYMBOLICA_ENV = "PYAMPLICOL_REPORT_ALLOW_PARALLEL_SYMBOLICA"
 VALIDATION_RELATIVE_TOLERANCE = 1.0e-8
 VALIDATION_ABSOLUTE_TOLERANCE = 1.0e-15
+LEGACY_REFERENCE_COMPATIBLE_REVISIONS = frozenset(
+    {
+        "38937fc4a0a66ae14c55e77ba455de8c6170547b",
+        "60443f327c2203cf92625da2bf0969c27e68a4ac",
+        "754064d751224ec96c182d5f5d21fd6a11ad28f6",
+    }
+)
+BUILTIN_SM_COMPATIBLE_COMPILED_MODEL_SCHEMAS = frozenset({8, 9})
+_ACTIVE_WORKER_LOCK = threading.Lock()
+_ACTIVE_WORKER_PROCESSES: set[subprocess.Popen[bytes]] = set()
 
 REPORT_CONFIG_OVERRIDES: Mapping[str, object] = {
     "evaluator.backend": "jit",
@@ -62,7 +79,7 @@ REPORT_CONFIG_OVERRIDES: Mapping[str, object] = {
     "evaluator.optimization.max_common_pair_cache_entries": 5_000_000,
     "evaluator.optimization.max_common_pair_distance": 1000,
     "evaluator.jit.optimization_level": 3,
-    "benchmark.target_runtime": 10.0,
+    "benchmark.target_runtime": DEFAULT_REPORT_TARGET_RUNTIME_SECONDS,
     "benchmark.batch_size": 128,
     "benchmark.warmup_runs": 2,
     "benchmark.minimum_samples": 5,
@@ -713,11 +730,14 @@ def _benchmark_contract() -> dict[str, object]:
     return {
         "observable": "summed_matrix_element",
         "runtime_api": "Runtime.evaluate",
-        "target_runtime_seconds": 10.0,
+        "target_runtime_seconds": DEFAULT_REPORT_TARGET_RUNTIME_SECONDS,
         "batch_size": 128,
         "warmup_runs": 2,
         "minimum_samples": 5,
         "config_overrides": dict(REPORT_CONFIG_OVERRIDES),
+        "legacy_profile": _legacy_profile_requested_config(
+            DEFAULT_REPORT_TARGET_RUNTIME_SECONDS
+        ),
     }
 
 
@@ -902,6 +922,8 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
 
     normalized = {str(key): _json_compatible(value) for key, value in payload.items()}
     normalized["schema_version"] = CACHE_SCHEMA_VERSION
+    if normalized.get("kind") in {member.value for member in CacheKind}:
+        normalized["benchmark_contract"] = _benchmark_contract()
     entries = normalized.get("entries")
     if not isinstance(entries, list):
         return normalized
@@ -2103,6 +2125,15 @@ def _matrix_compact_number(value: float) -> str:
     return text.replace("e+0", "e").replace("e+", "e").replace("e-0", "e-")
 
 
+def _matrix_compact_summary_number(value: float) -> str:
+    number = float(value)
+    magnitude = abs(number)
+    if magnitude and (magnitude < 1.0e-3 or magnitude >= 1.0e4):
+        text = f"{number:.1e}"
+        return text.replace("e+0", "e").replace("e+", "e").replace("e-0", "e-")
+    return _matrix_compact_number(number)
+
+
 def _matrix_format_seconds(value: object) -> str:
     return rf"\texttt{{{_matrix_compact_number(float(value))} s}}"
 
@@ -2344,11 +2375,12 @@ def _matrix_lc_generation_ratio(
     *,
     legacy_key: str,
     py_key: str,
+    legacy_fallback_key: str | None = None,
     py_fallback_key: str | None = None,
 ) -> str:
     if not _measurement_ok(pyamplicol):
         return _matrix_failure_label(pyamplicol)
-    reference = _matrix_old_value(legacy, legacy_key)
+    reference = _matrix_old_value(legacy, legacy_key, legacy_fallback_key)
     py_value = _matrix_old_value(pyamplicol, py_key, py_fallback_key)
     return _matrix_py_over_ref_ratio(_safe_divide(py_value, reference))
 
@@ -2414,25 +2446,26 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
     ):
         return _matrix_na()
     if color_accuracy == "lc":
-        reference_generation = _matrix_reference_pair(
+        reference_generation = _matrix_reference_metric(
             legacy,
-            "generation_s",
-            "all_flow_generation_s",
+            "generation_seconds",
             _matrix_plain_number,
-            selected_fallback_key="generation_seconds",
         )
         generation_selected = _matrix_lc_generation_ratio(
             legacy,
             pyamplicol,
             legacy_key="generation_s",
             py_key="selected_generation_s",
+            legacy_fallback_key="generation_seconds",
             py_fallback_key="generation_seconds",
         )
         generation_all_flow = _matrix_lc_generation_ratio(
             legacy,
             pyamplicol,
-            legacy_key="all_flow_generation_s",
+            legacy_key="generation_s",
             py_key="all_flow_generation_s",
+            legacy_fallback_key="generation_seconds",
+            py_fallback_key="generation_seconds",
         )
         reference_runtime = _matrix_reference_pair(
             legacy,
@@ -2516,16 +2549,16 @@ def _matrix_table_macros() -> list[str]:
         (
             r"\providecommand{\matrixcell}[6]{"
             r"\begin{tabular}[t]{@{}l@{\hspace{0.004in}}l@{\hspace{0.004in}}l@{}}"
-            r"\matrixslot{1.08in}{#1}&\matrixslot{0.68in}{#2}&"
+            r"\matrixslot{0.86in}{#1}&\matrixslot{0.68in}{#2}&"
             r"\matrixslot{0.68in}{#3}\\"
-            r"\matrixslot{1.08in}{#4}&\matrixslot{0.68in}{#5}&"
+            r"\matrixslot{0.86in}{#4}&\matrixslot{0.68in}{#5}&"
             r"\matrixslot{0.68in}{#6}"
             r"\end{tabular}}"
         ),
-        r"\providecommand{\matrixrefslot}[1]{\makebox[0.50in][l]{#1}}",
+        r"\providecommand{\matrixrefslot}[1]{\makebox[0.34in][l]{#1}}",
         (
             r"\providecommand{\matrixrefpair}[2]{"
-            r"\begin{tabular}[t]{@{}l@{\hspace{0.004in}\matrixpunct{/}\hspace{0.004in}}l@{}}"
+            r"\begin{tabular}[t]{@{}l@{\hspace{0.006in}\matrixpunct{/}\hspace{0.012in}}l@{}}"
             r"\matrixrefslot{#1}&\matrixrefslot{#2}"
             r"\end{tabular}}"
         ),
@@ -2533,7 +2566,7 @@ def _matrix_table_macros() -> list[str]:
             r"\providecommand{\matrixsummarycell}[2]{"
             r"\begin{tabular}[t]{@{}l@{}}#1\\#2\end{tabular}}"
         ),
-        r"\providecommand{\matrixsummaryfield}[1]{\makebox[0.39in][r]{#1}}",
+        r"\providecommand{\matrixsummaryfield}[1]{\makebox[0.36in][r]{\tiny #1}}",
         (
             r"\providecommand{\matrixsummaryfour}[4]{"
             r"\matrixsummaryfield{#1}\matrixpunct{|}"
@@ -2600,9 +2633,24 @@ def _summary_multiplier_stats_line(
     stats = _summary_stats(values)
     if stats is None:
         return _matrix_na()
-    fields = [_matrix_multiplier_fragment(value) for value in stats]
-    fields.append(_matrix_multiplier_fragment(summed))
+    fields = [_summary_multiplier_fragment(value) for value in stats]
+    fields.append(_summary_multiplier_fragment(summed))
     return r"\matrixsummaryfive{" + "}{".join(fields) + "}"
+
+
+def _summary_multiplier_fragment(value: object) -> str:
+    if value is None:
+        return _matrix_missing_ratio()
+    number = float(value)
+    if not math.isfinite(number):
+        return _matrix_missing_ratio()
+    if number < 1.0:
+        color = "ReportGreen"
+    elif number < 2.0:
+        color = "ReportOrange"
+    else:
+        color = "ReportRed"
+    return rf"\matrixratio{{{color}}}{{{_matrix_compact_summary_number(number)}}}"
 
 
 def _matrix_column_summary(
@@ -2739,20 +2787,21 @@ def _matrix_lc_column_summary(
                 )
                 summary["jit_generation_one_flow_paired"].append(py_generation)
                 summary["jit_generation_one_flow_ref_paired"].append(ref_generation)
-        ref_all_generation = _optional_positive_float(
-            _matrix_old_value(legacy, "all_flow_generation_s")
-        )
-        if ref_all_generation is not None:
-            summary["amplicol_generation_all_flow"].append(ref_all_generation)
+        if ref_generation is not None:
             py_all_generation = _optional_positive_float(
-                _matrix_old_value(pyamplicol, "all_flow_generation_s")
+                _matrix_old_value(
+                    pyamplicol,
+                    "all_flow_generation_s",
+                    "generation_seconds",
+                )
             )
             if _measurement_ok(pyamplicol) and py_all_generation is not None:
+                summary["amplicol_generation_all_flow"].append(ref_generation)
                 summary["jit_generation_all_flow_ratio"].append(
-                    py_all_generation / ref_all_generation
+                    py_all_generation / ref_generation
                 )
                 summary["jit_generation_all_flow_paired"].append(py_all_generation)
-                summary["jit_generation_all_flow_ref_paired"].append(ref_all_generation)
+                summary["jit_generation_all_flow_ref_paired"].append(ref_generation)
         ref_runtime = _optional_positive_float(
             _matrix_old_value(legacy, "runtime_us_per_point")
         )
@@ -2874,8 +2923,21 @@ def _summary_py_over_ref_stats_line(
 
 
 def _summary_py_over_ref_fragment(value: object) -> str:
-    color, text = _matrix_py_over_ref_inner(value)
-    return rf"\textcolor{{{color}}}{{\texttt{{x{text}}}}}"
+    if value is None:
+        return r"\textcolor{ReportRed}{\texttt{xN/A}}"
+    number = float(value)
+    if not math.isfinite(number):
+        return r"\textcolor{ReportRed}{\texttt{xN/A}}"
+    if number < 1.0:
+        color = "ReportGreen"
+    elif number < 2.0:
+        color = "ReportOrange"
+    else:
+        color = "ReportRed"
+    return (
+        rf"\textcolor{{{color}}}"
+        rf"{{\texttt{{x{_matrix_compact_summary_number(number)}}}}}"
+    )
 
 
 def _matrix_py_over_ref_inner(value: object) -> tuple[str, str]:
@@ -3013,8 +3075,10 @@ def render_matrix_table(spec: MatrixSpec, payload: Mapping[str, object]) -> str:
                 heading,
                 r"\begingroup",
                 r"\scriptsize",
+                r"\setlength{\LTpre}{0.15em}",
+                r"\setlength{\LTpost}{0.15em}",
                 r"\setlength{\tabcolsep}{2.2pt}",
-                r"\renewcommand{\arraystretch}{1.13}",
+                r"\renewcommand{\arraystretch}{1.06}",
                 rf"\begin{{longtable}}{{{column_spec}}}",
                 r"\toprule",
                 r"\textbf{ID} & \textbf{base process}"
@@ -3038,7 +3102,7 @@ def render_matrix_table(spec: MatrixSpec, payload: Mapping[str, object]) -> str:
             if row_index % 2 == 0:
                 lines.append(r"\rowcolor{refblue}")
             lines.append(" & ".join(cells) + r" \\")
-            lines.append(r"\addlinespace[0.13em]")
+            lines.append(r"\addlinespace[0.06em]")
         lines.extend(
             _matrix_summary_rows(
                 entries,
@@ -3084,16 +3148,9 @@ def render_performance_ladder(
         }
     display_n_values = tuple(spec.multiplicities)
     section_prefix = "UFO-SM " if compare_to_built_in else ""
-    output_root = ".artifacts/performance-report"
-    model_option = (
-        "--model src/pyamplicol/assets/models/json/sm/sm.json "
-        if compare_to_built_in
-        else ""
-    )
     lines = [
         "% SPDX-License-Identifier: 0BSD",
         "% Generated by docs/result_tables.py; edit the JSON cache, then render.",
-        r"\begin{landscape}",
         (
             rf"\subsection{{\texorpdfstring{{{section_prefix}Dedicated "
             r"\(d\bar d\to Z+\) Gluon Performance}"
@@ -3108,12 +3165,12 @@ def render_performance_ladder(
             + (
                 r"L{0.78in} L{0.40in} L{0.94in} "
                 r"r L{0.42in} r L{0.42in} r "
-                r"@{}p{0.10in}@{} "
+                r"@{}p{0.16in}@{} "
                 r"r L{0.42in} r L{0.42in} r@{}}"
                 if compare_to_built_in
                 else (
                     r"L{0.92in} L{0.48in} L{0.86in} r r r "
-                    r"@{}p{0.10in}@{} r r r@{}}"
+                    r"@{}p{0.16in}@{} r r r@{}}"
                 )
             )
         ),
@@ -3264,67 +3321,7 @@ def render_performance_ladder(
         if n_index != len(display_n_values) - 1:
             lines.append(r"\midrule[0.45pt]")
     lines.extend([r"\bottomrule", r"\end{longtable}", r"\endgroup"])
-    reproduction_n = _z_old_reproduction_n(entries, display_n_values)
-    if reproduction_n is not None:
-        process = _z_old_explicit_process_for_n(reproduction_n)
-        reference_order = _z_reference_color_order_cli(reproduction_n)
-        output_dir = f"{output_root}/manual/{spec.dataset_id}/n{reproduction_n}/jit_o3"
-        lines.extend(
-            [
-                r"\par\smallskip",
-                (
-                    rf"\noindent\footnotesize Reproduce the \(n={reproduction_n}\) "
-                    r"JIT O3 selected-flow entry with the following generation and "
-                    r"timing commands."
-                ),
-                r"\begin{lstlisting}[language=bash,basicstyle=\ttfamily\tiny,breaklines=true,breakatwhitespace=true]",
-                (
-                    ".venv/bin/python -m pyamplicol generate "
-                    + model_option
-                    + f"'{process}' {output_dir} "
-                    "--mode replace --color-accuracy lc --batch-size 64 "
-                    "--output-chunk-size 128 --backend jit "
-                    "--jit-optimization-level 3 "
-                    "--set 'process.reference_color_order=["
-                    + reference_order
-                    + "]' --set 'process.selected_color_sector_ids=[0]'"
-                ),
-                (
-                    ".venv/bin/python -m pyamplicol benchmark "
-                    "--target-runtime 10 --batch-size 64 --format json " + output_dir
-                ),
-                r"\end{lstlisting}",
-            ]
-        )
-    lines.extend(
-        [
-            r"\par\smallskip",
-            (
-                r"\noindent\footnotesize \PAC\ model source: "
-                rf"\texttt{{{_tex_escape(spec.model.label)}}}. "
-                r"Here \(n\) is final-state multiplicity. Each block reports "
-                r"generation seconds and wall/evaluator microseconds per point: "
-                r"one selected flow with the helicity sum on the left, all flows "
-                r"at one fixed helicity on the right. Wall measures Rusticol's "
-                r"public \texttt{evaluate} call; eval separately profiles the "
-                r"evaluator when available. Both use batch 64, stage-local inputs, "
-                r"ten Horner iterations, and a ten-second timing target; output "
-                r"chunks are 128 selected and 8192 all-flow. \AC's generated-library "
-                r"time is reported under wall; its separate eval metric is N/A."
-                + (
-                    r" In this UFO-SM table, each \texttt{vs blt-in} entry is the "
-                    r"adjacent generation- or wall-time ratio to the matching "
-                    r"built-in-SM row at the same multiplicity, backend, and "
-                    r"flow/helicity workload; values below one mean that UFO-SM "
-                    r"is faster."
-                    if compare_to_built_in
-                    else ""
-                )
-            ),
-            r"\end{landscape}",
-            "",
-        ]
-    )
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -3338,7 +3335,7 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
         if isinstance(entry, Mapping)
     }
     multiplicity_count = len(spec.multiplicities)
-    column_spec = "@{}L{1.65in}" + "c" * multiplicity_count + "@{}"
+    column_spec = "@{}L{1.62in}" + "c" * multiplicity_count + "@{}"
     process_family = _tex_escape(spec.process_family)
     measurements = {
         n_final: entries[n_final]["measurement"] for n_final in spec.multiplicities
@@ -3348,21 +3345,41 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
     ):
         raise TypeError("model-ladder measurements must be objects")
 
-    def measurement_row(label: str, field: str) -> str:
+    def model_missing() -> str:
+        return r"\textcolor{ReportMuted}{\texttt{N/A}}"
+
+    def measurement_value(n_final: int, field: str, *, scale: float = 1.0) -> str:
+        measurement = measurements[n_final]
+        assert isinstance(measurement, Mapping)
+        if str(measurement.get("status", NA_STATUS)) != ResultStatus.OK.value:
+            return _measurement_label(measurement)
+        value = measurement.get(field)
+        if value is None:
+            return model_missing()
+        return _matrix_plain_number(scale * float(value))
+
+    def measurement_row(
+        label: str,
+        field: str,
+        *,
+        scale: float = 1.0,
+        color: str | None = None,
+    ) -> list[str]:
         values = (
-            _format_number(measurements[n_final][field])  # type: ignore[index]
+            measurement_value(n_final, field, scale=scale)
             for n_final in spec.multiplicities
         )
-        return f"{label} & " + " & ".join(values) + r" \\"
+        row = f"{label} & " + " & ".join(values) + r" \\"
+        return ([] if color is None else [rf"\rowcolor{{{color}}}"]) + [row]
 
     lines = [
         "% SPDX-License-Identifier: 0BSD",
         "% Generated by docs/result_tables.py; edit the JSON cache, then render.",
         rf"\subsection{{{spec.title}}}",
         r"\begingroup",
-        r"\footnotesize",
+        r"\scriptsize",
         r"\setlength{\tabcolsep}{4pt}",
-        r"\renewcommand{\arraystretch}{1.22}",
+        r"\renewcommand{\arraystretch}{1.12}",
         r"\begin{center}",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
@@ -3371,7 +3388,7 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
             rf"{{\texttt{{{process_family}}}}}" + r" \\"
         ),
         r"\textbf{metric} & "
-        + " & ".join(rf"\textbf{{$X={n}$}}" for n in spec.multiplicities)
+        + " & ".join(rf"\textbf{{$n={n}$}}" for n in spec.multiplicities)
         + r" \\",
         r"\midrule",
         r"status & "
@@ -3380,17 +3397,44 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
             for n_final in spec.multiplicities
         )
         + r" \\",
-        measurement_row("generation [s]", "generation_seconds"),
-        measurement_row("wall [s/pt]", "wall_seconds_per_point"),
-        measurement_row("evaluator [s/pt]", "evaluator_seconds_per_point"),
-        measurement_row("matrix element", "matrix_element"),
+    ]
+    lines.extend(
+        measurement_row(
+            r"generation [$\mu$s]",
+            "generation_seconds",
+            scale=1.0e6,
+            color="ReportGreen!8",
+        )
+    )
+    lines.extend(
+        measurement_row(
+            r"wall [$\mu$s/pt]",
+            "wall_seconds_per_point",
+            scale=1.0e6,
+            color="ReportBlue!7",
+        )
+    )
+    lines.extend(
+        measurement_row(
+            r"evaluator [$\mu$s/pt]",
+            "evaluator_seconds_per_point",
+            scale=1.0e6,
+            color="ReportBlue!7",
+        )
+    )
+    lines.extend(
+        measurement_row("matrix element", "matrix_element", color="refblue")
+    )
+    lines.append(
         "relative difference & "
         + " & ".join(
-            _format_number(entries[n_final]["relative_difference"])
+            model_missing()
+            if entries[n_final]["relative_difference"] is None
+            else _matrix_plain_number(entries[n_final]["relative_difference"])
             for n_final in spec.multiplicities
         )
-        + r" \\",
-    ]
+        + r" \\"
+    )
     lines.extend(
         [
             r"\bottomrule",
@@ -3580,6 +3624,10 @@ def _campaign_cell_needs_measurement(
             if status == NA_STATUS:
                 return True
             if status in {
+                ResultStatus.ERROR.value,
+                ResultStatus.FAILED.value,
+                ResultStatus.MEMORY_LIMIT.value,
+                ResultStatus.TIMEOUT.value,
                 ResultStatus.UNSUPPORTED.value,
                 ResultStatus.VALIDATION_FAILED.value,
             }:
@@ -3588,7 +3636,10 @@ def _campaign_cell_needs_measurement(
             if (
                 isinstance(legacy, Mapping)
                 and str(legacy.get("status", NA_STATUS)) == ResultStatus.OK.value
-                and not _legacy_measurement_revision_current(legacy)
+                and not (
+                    _legacy_measurement_revision_current(legacy)
+                    and _legacy_measurement_profile_current(legacy)
+                )
             ):
                 return True
             if cell.dataset_id.endswith("_lc"):
@@ -3597,15 +3648,30 @@ def _campaign_cell_needs_measurement(
                     isinstance(legacy, Mapping)
                     and isinstance(pyamplicol, Mapping)
                     and bool(_measurement_old_matrix_fields(legacy))
+                    and _legacy_lc_measurement_contract_current(legacy)
                     and bool(_measurement_old_matrix_fields(pyamplicol))
                     and _pyamplicol_timing_profile_current(pyamplicol)
+                    and _pyamplicol_artifacts_current(
+                        pyamplicol,
+                        require_current_compiled_model_contract=_cell_uses_external_model(
+                            cell
+                        ),
+                    )
                 )
             pyamplicol = entry.get("pyamplicol_jit_o3")
             if (
                 isinstance(pyamplicol, Mapping)
                 and str(pyamplicol.get("status", NA_STATUS)) == ResultStatus.OK.value
             ):
-                return not _pyamplicol_timing_profile_current(pyamplicol)
+                return not (
+                    _pyamplicol_timing_profile_current(pyamplicol)
+                    and _pyamplicol_artifacts_current(
+                        pyamplicol,
+                        require_current_compiled_model_contract=_cell_uses_external_model(
+                            cell
+                        ),
+                    )
+                )
             return False
         if cell.kind == "performance_ladder":
             if (
@@ -3619,6 +3685,15 @@ def _campaign_cell_needs_measurement(
             status = str(measurement.get("status", NA_STATUS))
             if status == NA_STATUS:
                 return True
+            if status in {
+                ResultStatus.ERROR.value,
+                ResultStatus.FAILED.value,
+                ResultStatus.MEMORY_LIMIT.value,
+                ResultStatus.TIMEOUT.value,
+                ResultStatus.UNSUPPORTED.value,
+                ResultStatus.VALIDATION_FAILED.value,
+            }:
+                return True
             if (
                 str(entry.get("status", NA_STATUS))
                 == ResultStatus.VALIDATION_FAILED.value
@@ -3627,16 +3702,52 @@ def _campaign_cell_needs_measurement(
             if not bool(_measurement_old_matrix_fields(measurement)):
                 return True
             if cell.variant == "reference" and status == ResultStatus.OK.value:
-                return not _legacy_measurement_revision_current(measurement)
+                return not (
+                    _legacy_measurement_revision_current(measurement)
+                    and _legacy_lc_measurement_contract_current(measurement)
+                )
             if cell.variant != "reference" and status == ResultStatus.OK.value:
-                return not _pyamplicol_timing_profile_current(measurement)
+                return not (
+                    _pyamplicol_timing_profile_current(measurement)
+                    and _pyamplicol_artifacts_current(
+                        measurement,
+                        require_current_compiled_model_contract=_cell_uses_external_model(
+                            cell
+                        ),
+                    )
+                )
             return False
         if entry.get("n_final") != cell.n_final:
             continue
         measurement = entry.get("measurement")
         if not isinstance(measurement, Mapping):
             return True
-        return str(measurement.get("status", NA_STATUS)) == NA_STATUS
+        status = str(measurement.get("status", NA_STATUS))
+        if status == NA_STATUS:
+            return True
+        if status in {
+            ResultStatus.ERROR.value,
+            ResultStatus.FAILED.value,
+            ResultStatus.MEMORY_LIMIT.value,
+            ResultStatus.TIMEOUT.value,
+            ResultStatus.UNSUPPORTED.value,
+            ResultStatus.VALIDATION_FAILED.value,
+        }:
+            return True
+        if status == ResultStatus.OK.value:
+            return not _pyamplicol_artifacts_current(
+                measurement,
+                require_current_compiled_model_contract=_cell_uses_external_model(cell),
+            )
+        return False
+
+
+def _cell_uses_external_model(cell: CampaignCell) -> bool:
+    if cell.kind == "model_ladder":
+        return True
+    return cell.dataset_id.startswith("matrix_external_sm") or (
+        cell.dataset_id == "z_external_sm"
+    )
 
 
 def _pyamplicol_timing_profile_current(measurement: Mapping[str, object]) -> bool:
@@ -3644,9 +3755,103 @@ def _pyamplicol_timing_profile_current(measurement: Mapping[str, object]) -> boo
     if not isinstance(environment, Mapping):
         return False
     return (
-        environment.get("wall_time_source") == "runtime_evaluate_wall_time"
+        environment.get("wall_time_source") == "runtime_core_repeated_wall_time"
         and environment.get("evaluator_time_source")
         == "runtime_profile_core_evaluator_call_time"
+    )
+
+
+@cache
+def _current_compiled_model_contract() -> tuple[int, int]:
+    _ensure_repo_root_on_path()
+    from pyamplicol._internal.versions import COMPILED_MODEL_SCHEMA_VERSION
+    from pyamplicol.models.loading import MODEL_COMPILER_VERSION
+
+    return int(COMPILED_MODEL_SCHEMA_VERSION), int(MODEL_COMPILER_VERSION)
+
+
+def _compiled_model_cache_dir(artifact_root: Path) -> Path:
+    schema_version, compiler_version = _current_compiled_model_contract()
+    return (
+        artifact_root
+        / f"model-cache-schema{schema_version}-compiler{compiler_version}"
+    )
+
+
+def _pyamplicol_artifact_subdir(artifact_subdir: str) -> Path:
+    schema_version, compiler_version = _current_compiled_model_contract()
+    parts = Path(artifact_subdir).parts
+    if parts and parts[0] == "pyamplicol":
+        root = Path(
+            f"pyamplicol-schema{schema_version}-compiler{compiler_version}"
+        )
+        return root.joinpath(*parts[1:])
+    return Path(artifact_subdir)
+
+
+def _pyamplicol_artifacts_current(
+    measurement: Mapping[str, object],
+    *,
+    require_current_compiled_model_contract: bool,
+) -> bool:
+    paths = tuple(_measurement_artifact_paths(measurement))
+    if not paths:
+        return False
+    return all(
+        _artifact_compiled_model_current(
+            path,
+            require_current_compiled_model_contract=require_current_compiled_model_contract,
+        )
+        for path in paths
+    )
+
+
+def _measurement_artifact_paths(
+    value: object,
+    *,
+    _seen: set[int] | None = None,
+) -> Iterator[Path]:
+    if _seen is None:
+        _seen = set()
+    if isinstance(value, Mapping):
+        marker = id(value)
+        if marker in _seen:
+            return
+        _seen.add(marker)
+        raw_path = value.get("artifact_path")
+        if isinstance(raw_path, str) and raw_path:
+            yield Path(raw_path)
+        metadata = value.get("metadata")
+        if isinstance(metadata, Mapping):
+            yield from _measurement_artifact_paths(metadata, _seen=_seen)
+        for key in ("selected_flow_measurement", "all_flow_measurement"):
+            nested = value.get(key)
+            if isinstance(nested, Mapping):
+                yield from _measurement_artifact_paths(nested, _seen=_seen)
+
+
+def _artifact_compiled_model_current(
+    artifact_path: Path,
+    *,
+    require_current_compiled_model_contract: bool,
+) -> bool:
+    model_path = artifact_path / "model" / "compiled-model.json"
+    try:
+        payload = json.loads(model_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, TypeError, ValueError):
+        return False
+    if not isinstance(payload, Mapping):
+        return False
+    schema_version, compiler_version = _current_compiled_model_contract()
+    if require_current_compiled_model_contract:
+        return (
+            payload.get("schema_version") == schema_version
+            and payload.get("model_compiler_version") == compiler_version
+        )
+    payload_schema = payload.get("schema_version")
+    return payload_schema == schema_version or (
+        schema_version == 9
+        and payload_schema in BUILTIN_SM_COMPATIBLE_COMPILED_MODEL_SCHEMAS
     )
 
 
@@ -3659,7 +3864,82 @@ def _legacy_measurement_revision_current(
     _ensure_repo_root_on_path()
     from tools.developer import legacy_amplicol
 
-    return environment.get("revision") == legacy_amplicol.expected_revision()
+    revision = environment.get("revision")
+    expected = legacy_amplicol.expected_revision()
+    if revision == expected:
+        return True
+    return (
+        isinstance(revision, str)
+        and revision in LEGACY_REFERENCE_COMPATIBLE_REVISIONS
+        and expected in LEGACY_REFERENCE_COMPATIBLE_REVISIONS
+    )
+
+
+def _legacy_profile_requested_config(target_runtime: float) -> dict[str, object]:
+    return {
+        "legacy_profile_policy": LEGACY_PROFILE_POLICY,
+        "legacy_profile_target_seconds": float(target_runtime),
+        "legacy_profile_warmup_points": DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
+        "legacy_profile_min_points": DEFAULT_LEGACY_PROFILE_MIN_POINTS,
+        "legacy_profile_max_points": DEFAULT_LEGACY_PROFILE_MAX_POINTS,
+    }
+
+
+def _legacy_measurement_profile_current(
+    measurement: Mapping[str, object],
+) -> bool:
+    requested_config = measurement.get("requested_config")
+    if not isinstance(requested_config, Mapping):
+        return False
+    if requested_config.get("legacy_profile_policy") != LEGACY_PROFILE_POLICY:
+        return False
+    target = _optional_positive_float(
+        requested_config.get("legacy_profile_target_seconds")
+    )
+    if target is None:
+        return False
+    for key, expected in (
+        ("legacy_profile_warmup_points", DEFAULT_LEGACY_PROFILE_WARMUP_POINTS),
+        ("legacy_profile_min_points", DEFAULT_LEGACY_PROFILE_MIN_POINTS),
+        ("legacy_profile_max_points", DEFAULT_LEGACY_PROFILE_MAX_POINTS),
+    ):
+        value = requested_config.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value != expected:
+            return False
+    return True
+
+
+def _legacy_lc_measurement_contract_current(
+    measurement: Mapping[str, object],
+) -> bool:
+    if not _legacy_measurement_profile_current(measurement):
+        return False
+    fields = _measurement_old_matrix_fields(measurement)
+    if not fields:
+        return False
+    all_flow_status = str(fields.get("all_flow_status", NA_STATUS))
+    if all_flow_status == ResultStatus.OK.value:
+        if (
+            fields.get("all_flow_generation_source")
+            != LEGACY_LC_ALL_FLOW_GENERATION_SOURCE
+        ):
+            return False
+        selected_generation = _optional_positive_float(
+            fields.get("generation_s", measurement.get("generation_seconds"))
+        )
+        all_flow_generation = _optional_positive_float(
+            fields.get("all_flow_generation_s")
+        )
+        if selected_generation is None or all_flow_generation is None:
+            return False
+        if not math.isclose(
+            selected_generation,
+            all_flow_generation,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            return False
+    return True
 
 
 def _json_text(value: Mapping[str, object]) -> str:
@@ -3727,15 +4007,19 @@ def _run_config_values(
     variant_overrides: Mapping[str, object],
     process_overrides: Mapping[str, object] | None = None,
     benchmark_overrides: Mapping[str, object] | None = None,
+    artifact_root: Path | None = None,
     target_runtime: float,
     cell_cores: int,
 ) -> dict[str, object]:
     model_path = _model_source_path(model)
+    model_config: dict[str, object] = {
+        "source": "built-in-sm" if model_path is None else os.fspath(model_path),
+        "cache": True,
+    }
+    if model_path is not None and artifact_root is not None:
+        model_config["cache_dir"] = os.fspath(_compiled_model_cache_dir(artifact_root))
     values: dict[str, object] = {
-        "model": {
-            "source": "built-in-sm" if model_path is None else os.fspath(model_path),
-            "cache": True,
-        },
+        "model": model_config,
         "color": {"accuracy": color_accuracy},
         "generation": {
             "workers": max(1, cell_cores),
@@ -3846,20 +4130,44 @@ def _model_resolved_process_ir(
 
         return build_process_ir(process, color_accuracy=color_accuracy)
 
-    from pyamplicol.processes.model import build_model_process_ir
+    from pyamplicol.api import ProcessSet
+    from pyamplicol.config import Action
+    from pyamplicol.config.resolver import resolve_config
+    from pyamplicol.generation.service import GenerationBackend
 
-    model_source = _model_source_for_api(spec.model)
-    compile_model = model_source.compile
-    compiled = compile_model(
-        cache_dir=artifact_root / "model-cache",
-        use_cache=True,
-        require_supported=True,
-    )
-    return build_model_process_ir(
-        process,
-        compiled.ir,
+    config = _run_config_values(
+        model=spec.model,
         color_accuracy=color_accuracy,
+        variant_overrides={
+            "evaluator.backend": "jit",
+            "evaluator.jit.optimization_level": 3,
+        },
+        artifact_root=artifact_root,
+        target_runtime=1.0,
+        cell_cores=1,
     )
+    resolution = resolve_config(
+        config,
+        action=Action.GENERATE,
+        base_dir=_repo_root(),
+    )
+    backend = GenerationBackend(resolution, None)
+    resolved = backend._resolve_model(_model_source_for_api(spec.model))
+    expanded = backend._expand_process_set(
+        ProcessSet.from_expressions((process,)),
+        resolved,
+        _NullGenerationPhase(),
+    )
+    if not expanded:
+        raise RuntimeError(
+            f"model process expansion produced no process for {process!r}"
+        )
+    if len(expanded) != 1:
+        raise RuntimeError(
+            f"model process expansion produced {len(expanded)} processes for "
+            f"{process!r}; report cells require one concrete process"
+        )
+    return expanded[0].process_ir
 
 
 def _reference_coloured_word(
@@ -3985,13 +4293,85 @@ def _selected_lc_sector_ids_for_reference_order(
                     reference_order=wanted,
                 )
         for sector in color_plan.sectors:
-            if wanted in sector.compatibility_words:
+            if wanted in getattr(sector, "admissible_traversal_words", ()):
                 return _lc_colored_word_sibling_sector_ids(color_plan, sector)
         raise ValueError(
             "LC reference colour order does not match any generated colour sector: "
             f"{wanted}"
         )
     return {0}
+
+
+def _selected_lc_reference_partition_words(
+    process: str,
+    *,
+    spec: MatrixSpec | LadderSpec,
+    reference_order: Sequence[int],
+    artifact_root: Path,
+) -> tuple[tuple[int, ...], ...]:
+    from pyamplicol.color.plan import build_color_plan
+
+    process_ir = _model_resolved_process_ir(
+        process,
+        spec=spec,
+        color_accuracy="lc",
+        artifact_root=artifact_root,
+    )
+    color_plan = build_color_plan(
+        process_ir,
+        color_accuracy="lc",
+        max_sectors=None,
+        reference_color_order=reference_order,
+    )
+    selected_ids = _selected_lc_sector_ids_for_reference_order(
+        process,
+        spec=spec,
+        reference_order=reference_order,
+        artifact_root=artifact_root,
+    )
+    wanted_coloured = _reference_coloured_word(
+        color_plan,
+        tuple(int(label) for label in reference_order),
+    )
+    words: list[tuple[int, ...]] = []
+    for sector in color_plan.sectors:
+        if selected_ids is not None and int(sector.id) not in selected_ids:
+            continue
+        for raw_word in (
+            getattr(sector, "word_labels", ()) or (),
+            *getattr(sector, "color_words", ()),
+            *getattr(sector, "legacy_order_words", ()),
+            *getattr(sector, "admissible_traversal_words", ()),
+        ):
+            word = tuple(int(label) for label in raw_word)
+            if word and word not in words:
+                words.append(word)
+    if wanted_coloured and wanted_coloured not in words:
+        words.insert(0, wanted_coloured)
+    return tuple(words or (tuple(int(label) for label in reference_order),))
+
+
+def _generation_slice_snapshot(selection: object | None) -> dict[str, object] | None:
+    if selection is None:
+        return None
+    selected_helicities = getattr(selection, "selected_source_helicities", None)
+    return {
+        "reference_color_order": [
+            int(label) for label in getattr(selection, "reference_color_order", ())
+        ],
+        "selected_color_sector_ids": [
+            int(sector_id)
+            for sector_id in getattr(selection, "selected_color_sector_ids", ())
+        ],
+        "selected_source_helicities": (
+            None
+            if not selected_helicities
+            else {
+                str(label): int(helicity)
+                for label, helicity in selected_helicities.items()
+            }
+        ),
+    }
 
 
 def _measure_pyamplicol(
@@ -4006,6 +4386,7 @@ def _measure_pyamplicol(
     generation_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
+    generation_slice: object | None = None,
     high_precision: bool = False,
     points_override: object | None = None,
     artifact_subdir: str = "pyamplicol",
@@ -4016,7 +4397,7 @@ def _measure_pyamplicol(
     from pyamplicol.config.resolver import config_to_dict, resolve_config
 
     cell_root = artifact_root / "cells" / cell.cell_id
-    artifact_dir = cell_root / artifact_subdir
+    artifact_dir = cell_root / _pyamplicol_artifact_subdir(artifact_subdir)
     log_path = cell_root / "logs" / log_name
     manifest_path = artifact_dir / "manifest.json"
     snapshot_path = cell_root / "inputs" / "pyamplicol-inputs.json"
@@ -4028,6 +4409,7 @@ def _measure_pyamplicol(
         variant_overrides=variant_overrides,
         process_overrides=process_overrides,
         benchmark_overrides=benchmark_overrides,
+        artifact_root=artifact_root,
         target_runtime=target_runtime,
         cell_cores=cell_cores,
     )
@@ -4044,6 +4426,7 @@ def _measure_pyamplicol(
         "variant_overrides": dict(variant_overrides),
         "process_overrides": dict(process_overrides or {}),
         "benchmark_overrides": dict(benchmark_overrides or {}),
+        "generation_slice": _generation_slice_snapshot(generation_slice),
         "target_runtime": target_runtime,
         "cell_cores": cell_cores,
         "captured_at": _utc_now(),
@@ -4065,12 +4448,24 @@ def _measure_pyamplicol(
             with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
                 started = time.perf_counter()
                 with _generation_timeout(generation_timeout_seconds):
-                    Generator(resolution).generate(
-                        cell.process,
-                        artifact_dir,
-                        model=_model_source_for_api(spec.model),
-                        mode="replace",
-                    )
+                    if generation_slice is None:
+                        Generator(resolution).generate(
+                            cell.process,
+                            artifact_dir,
+                            model=_model_source_for_api(spec.model),
+                            mode="replace",
+                        )
+                    else:
+                        from tools.developer.generation_slice import generate_slice
+
+                        generate_slice(
+                            cell.process,
+                            artifact_dir,
+                            selection=generation_slice,  # type: ignore[arg-type]
+                            model=_model_source_for_api(spec.model),
+                            mode="replace",
+                            config=resolution,
+                        )
                 generation_seconds = time.perf_counter() - started
                 runtime_process = _single_artifact_process_id(
                     artifact_dir,
@@ -4106,6 +4501,7 @@ def _measure_pyamplicol(
             "runtime_process": runtime_process,
             "high_precision_matrix_element": high_precision_value,
             "high_precision_relative_difference": high_precision_relative_difference,
+            "generation_slice": snapshot["generation_slice"],
         }
         measurement = {
             **_empty_measurement(),
@@ -4195,31 +4591,30 @@ def _measure_pyamplicol_lc_two_workloads(
     target_runtime: float,
     cell_cores: int,
     points: object | None,
+    fixed_helicity: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], object | None]:
+    from tools.developer.generation_slice import GenerationSlice
+
     old_legacy = _measurement_old_matrix_fields(legacy or {})
-    reference_order = old_legacy.get("reference_color_order_process_file")
-    if not isinstance(reference_order, list) and cell.dataset_id.startswith("z_"):
-        reference_order = _z_reference_color_order_for_n(cell.n_final)
-    process_overrides: dict[str, object] = {}
+    reference_order = _selected_flow_reference_color_order(old_legacy, cell)
+    selected_slice: object | None = None
     if isinstance(reference_order, list) and reference_order:
         normalized_reference_order = [int(label) for label in reference_order]
-        process_overrides["process.reference_color_order"] = normalized_reference_order
         selected_sector_ids = _selected_lc_sector_ids_for_reference_order(
             cell.process,
             spec=spec,
             reference_order=normalized_reference_order,
             artifact_root=artifact_root,
         )
-        if selected_sector_ids:
-            process_overrides["process.selected_color_sector_ids"] = sorted(
-                selected_sector_ids
-            )
+        selected_slice = GenerationSlice(
+            reference_color_order=tuple(normalized_reference_order),
+            selected_color_sector_ids=tuple(sorted(selected_sector_ids or ())),
+        )
     selected, selected_points = _measure_pyamplicol(
         cell=cell,
         spec=spec,
         color_accuracy="lc",
         variant_overrides=variant_overrides,
-        process_overrides=process_overrides,
         benchmark_overrides={
             "benchmark.batch_size": 64,
             "evaluator.batch_size": 64,
@@ -4228,12 +4623,18 @@ def _measure_pyamplicol_lc_two_workloads(
         generation_timeout_seconds=generation_timeout_seconds,
         target_runtime=target_runtime,
         cell_cores=cell_cores,
+        generation_slice=selected_slice,
         points_override=points,
         artifact_subdir="pyamplicol/selected-flow",
         log_name="pyamplicol-selected-flow.log",
     )
 
-    fixed_helicity = _fixed_source_helicity_choice(cell.process)
+    if fixed_helicity is None:
+        fixed_helicity = _fixed_source_helicity_choice(
+            cell.process,
+            spec=spec,
+            artifact_root=artifact_root,
+        )
     all_flow: dict[str, object]
     if _lc_all_flow_supported(cell.process):
         all_flow, _all_flow_points = _measure_pyamplicol(
@@ -4241,11 +4642,6 @@ def _measure_pyamplicol_lc_two_workloads(
             spec=spec,
             color_accuracy="lc",
             variant_overrides=variant_overrides,
-            process_overrides={
-                "process.selected_source_helicities": (
-                    fixed_helicity["source_helicities"]
-                ),
-            },
             benchmark_overrides={
                 "benchmark.batch_size": 64,
                 "evaluator.batch_size": 64,
@@ -4255,19 +4651,30 @@ def _measure_pyamplicol_lc_two_workloads(
             generation_timeout_seconds=generation_timeout_seconds,
             target_runtime=target_runtime,
             cell_cores=cell_cores,
+            generation_slice=GenerationSlice(
+                selected_source_helicities={
+                    int(label): int(helicity)
+                    for label, helicity in fixed_helicity[
+                        "source_helicities"
+                    ].items()
+                }
+            ),
             points_override=points,
             artifact_subdir="pyamplicol/all-flows",
             log_name="pyamplicol-all-flows.log",
         )
     else:
+        all_flow_artifact_dir = (
+            artifact_root
+            / "cells"
+            / cell.cell_id
+            / _pyamplicol_artifact_subdir("pyamplicol/all-flows")
+        )
         all_flow = _failure_measurement(
             ResultStatus.UNSUPPORTED,
             "LC all-flow fixed-helicity timing is unsupported for more than "
             "two quark lines",
-            artifact_path=artifact_root
-            / "cells"
-            / cell.cell_id
-            / "pyamplicol/all-flows",
+            artifact_path=all_flow_artifact_dir,
             metadata={"cell": cell.as_json()},
         )
 
@@ -4314,6 +4721,9 @@ def _measure_pyamplicol_lc_two_workloads(
         "all_flow_output_dir": all_flow.get("artifact_path"),
         "all_flow_error": all_flow.get("failure_message"),
         "all_flow_helicity_mode": fixed_helicity["mode"],
+        "all_flow_helicity_selection_source": fixed_helicity.get(
+            "selection_source"
+        ),
         "all_flow_source_helicities": fixed_helicity["source_helicities"],
         "all_flow_amplicol_helicities": fixed_helicity["amplicol_helicities"],
         "all_flow_validation_note": fixed_helicity["validation_note"],
@@ -4323,6 +4733,18 @@ def _measure_pyamplicol_lc_two_workloads(
     metadata["all_flow_measurement"] = all_flow
     combined["metadata"] = metadata
     return combined, selected_points
+
+
+def _selected_flow_reference_color_order(
+    old_legacy: Mapping[str, object],
+    cell: CampaignCell,
+) -> object:
+    reference_order = old_legacy.get("reference_color_order")
+    if not isinstance(reference_order, list):
+        reference_order = old_legacy.get("reference_color_order_process_file")
+    if not isinstance(reference_order, list) and cell.dataset_id.startswith("z_"):
+        reference_order = _z_reference_color_order_for_n(cell.n_final)
+    return reference_order
 
 
 def _measure_pyamplicol_matrix_jit_o3(
@@ -4335,6 +4757,7 @@ def _measure_pyamplicol_matrix_jit_o3(
     target_runtime: float,
     cell_cores: int,
     points: object | None,
+    fixed_helicity: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], object | None]:
     variant = {
         "evaluator.backend": "jit",
@@ -4362,6 +4785,7 @@ def _measure_pyamplicol_matrix_jit_o3(
         target_runtime=target_runtime,
         cell_cores=cell_cores,
         points=points,
+        fixed_helicity=fixed_helicity,
     )
 
 
@@ -4411,7 +4835,65 @@ def _legacy_pdgs_from_particles(particles: Sequence[object]) -> tuple[int, ...]:
     return tuple(int(particle.pdg) for particle in particles)
 
 
-def _fixed_source_helicity_choice(process: str) -> dict[str, object]:
+class _NullGenerationPhase:
+    def update(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def advance(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+
+def _fixed_source_helicity_choice(
+    process: str,
+    *,
+    spec: MatrixSpec | LadderSpec | None = None,
+    artifact_root: Path | None = None,
+) -> dict[str, object]:
+    fallback = _alternating_fixed_source_helicity_choice(process)
+    if spec is None or artifact_root is None:
+        return fallback
+    try:
+        if _source_helicity_choice_has_amplitudes(
+            process,
+            fallback["source_helicities"],
+            spec=spec,
+            artifact_root=artifact_root,
+        ):
+            return {
+                **fallback,
+                "selection_source": "pyamplicol-dag-selected-helicity-probe",
+            }
+        chiral = _chiral_fermion_fixed_source_helicity_choice(process)
+        if (
+            chiral is not None
+            and _source_helicity_choice_has_amplitudes(
+                process,
+                chiral["source_helicities"],
+                spec=spec,
+                artifact_root=artifact_root,
+            )
+        ):
+            return chiral
+        supported = _first_model_supported_source_helicity_choice(
+            process,
+            spec=spec,
+            artifact_root=artifact_root,
+            preferred=fallback["source_helicities"],
+        )
+        if supported is not None:
+            return supported
+    except Exception as exc:
+        note = str(fallback["validation_note"])
+        return {
+            **fallback,
+            "selection_source": "alternating-fallback-after-dag-probe-error",
+            "selection_error": str(exc),
+            "validation_note": f"{note}; DAG helicity probe failed: {exc}",
+        }
+    return fallback
+
+
+def _alternating_fixed_source_helicity_choice(process: str) -> dict[str, object]:
     _ensure_repo_root_on_path()
     from tools.developer import legacy_amplicol
 
@@ -4448,6 +4930,200 @@ def _fixed_source_helicity_choice(process: str) -> dict[str, object]:
     }
 
 
+def _chiral_fermion_fixed_source_helicity_choice(
+    process: str,
+) -> dict[str, object] | None:
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    source_helicities: dict[str, int] = {}
+    changed = False
+    for index, pdg in enumerate(legacy_amplicol.process_pdgs(process), start=1):
+        helicities = _preferred_helicity_domain(int(pdg))
+        if {-1, 1}.issubset(helicities) and 1 <= abs(int(pdg)) <= 16:
+            helicity = -1 if int(pdg) > 0 else 1
+            old = -1 if index % 2 else 1
+            changed = changed or helicity != old
+        elif 0 in helicities:
+            helicity = 0
+        else:
+            helicity = sorted(helicities)[0]
+        source_helicities[str(index)] = int(helicity)
+    if not changed:
+        return None
+    return _source_helicity_choice_payload(
+        process,
+        source_helicities,
+        selection_source="pyamplicol-dag-validated-chiral-fermion-candidate",
+        validation_note=(
+            "DAG-validated chiral fermion source-helicity selection is used "
+            "for timing; selected-flow spin-summed validation remains authoritative"
+        ),
+    )
+
+
+def _source_helicity_choice_payload(
+    process: str,
+    source_helicities: Mapping[str, object],
+    *,
+    selection_source: str,
+    validation_note: str,
+) -> dict[str, object]:
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    expected = len(legacy_amplicol.process_pdgs(process))
+    normalized = {
+        str(label): int(value)
+        for label, value in sorted(
+            source_helicities.items(),
+            key=lambda item: int(item[0]),
+        )
+    }
+    if sorted(int(label) for label in normalized) != list(range(1, expected + 1)):
+        raise ValueError(
+            "fixed source-helicity choice is not aligned with process labels "
+            f"1..{expected}: {normalized}"
+        )
+    return {
+        "mode": "fixed-source-helicity",
+        "selection_source": selection_source,
+        "source_helicities": dict(normalized),
+        "source_helicities_cli": ",".join(
+            f"{label}={helicity}" for label, helicity in normalized.items()
+        ),
+        "amplicol_helicities": [int(value) for value in normalized.values()],
+        "value_validation_enabled": False,
+        "validation_note": validation_note,
+    }
+
+
+def _source_helicity_choice_has_amplitudes(
+    process: str,
+    source_helicities: Mapping[str, object],
+    *,
+    spec: MatrixSpec | LadderSpec,
+    artifact_root: Path,
+) -> bool:
+    try:
+        _compile_dag_for_fixed_helicity_choice(
+            process,
+            spec=spec,
+            artifact_root=artifact_root,
+            source_helicities=source_helicities,
+        )
+    except Exception as exc:
+        message = str(exc)
+        if "has no model-supported amplitudes" in message:
+            return False
+        raise
+    return True
+
+
+def _first_model_supported_source_helicity_choice(
+    process: str,
+    *,
+    spec: MatrixSpec | LadderSpec,
+    artifact_root: Path,
+    preferred: Mapping[str, object],
+) -> dict[str, object] | None:
+    from pyamplicol.generation.dag_algorithms import (
+        _root_source_helicity_mapping,
+        _source_helicity_signature_by_bit,
+    )
+
+    dag = _compile_dag_for_fixed_helicity_choice(
+        process,
+        spec=spec,
+        artifact_root=artifact_root,
+        source_helicities=None,
+    )
+    source_by_bit = _source_helicity_signature_by_bit(dag)
+    choices: set[tuple[tuple[str, int], ...]] = set()
+    for root in dag.amplitude_roots:
+        mapping = _root_source_helicity_mapping(dag, root, source_by_bit)
+        choices.add(
+            tuple(
+                (str(label), int(helicity))
+                for label, helicity in sorted(mapping.items())
+            )
+        )
+    if not choices:
+        return None
+    preferred_choice = tuple(
+        (str(label), int(value))
+        for label, value in sorted(preferred.items(), key=lambda item: int(item[0]))
+    )
+    selected = preferred_choice if preferred_choice in choices else sorted(choices)[0]
+    return _source_helicity_choice_payload(
+        process,
+        dict(selected),
+        selection_source="pyamplicol-dag-amplitude-root-selection",
+        validation_note=(
+            "DAG-supported source-helicity selection is used for timing; "
+            "selected-flow spin-summed validation remains authoritative"
+        ),
+    )
+
+
+def _compile_dag_for_fixed_helicity_choice(
+    process: str,
+    *,
+    spec: MatrixSpec | LadderSpec,
+    artifact_root: Path,
+    source_helicities: Mapping[str, object] | None,
+) -> object:
+    from pyamplicol.api import ProcessSet
+    from pyamplicol.config import Action
+    from pyamplicol.config.resolver import resolve_config
+    from pyamplicol.generation.service import GenerationBackend
+    from tools.developer.generation_slice import GenerationSlice
+
+    generation_slice = None
+    if source_helicities is not None:
+        generation_slice = GenerationSlice(
+            selected_source_helicities={
+                int(label): int(value) for label, value in source_helicities.items()
+            }
+        )
+    config = _run_config_values(
+        model=spec.model,
+        color_accuracy="lc",
+        variant_overrides={
+            "evaluator.backend": "jit",
+            "evaluator.jit.optimization_level": 3,
+        },
+        artifact_root=artifact_root,
+        target_runtime=1.0,
+        cell_cores=1,
+    )
+    resolution = resolve_config(
+        config,
+        action=Action.GENERATE,
+        base_dir=_repo_root(),
+    )
+    backend = GenerationBackend(
+        resolution,
+        None,
+        process_selection=(
+            None if generation_slice is None else generation_slice._selection()
+        ),
+    )
+    resolved = backend._resolve_model(_model_source_for_api(spec.model))
+    if resolved.model is None:
+        raise RuntimeError("generation model resolution produced no model")
+    expanded = backend._expand_process_set(
+        ProcessSet.from_expressions((process,)),
+        resolved,
+        _NullGenerationPhase(),
+    )
+    dag, _coverage = backend._compile_concrete_process(
+        expanded[0].process_ir,
+        resolved.model,
+    )
+    return dag
+
+
 def _preferred_helicity_domain(pdg: int) -> set[int]:
     absolute = abs(int(pdg))
     if absolute in {1, 2, 3, 4, 5, 6, 11, 12, 13, 14, 15, 16}:
@@ -4464,11 +5140,19 @@ def _legacy_quark_line_count(pdgs: Sequence[int]) -> int:
     return quark_legs // 2
 
 
+def _legacy_lc_color_probe_supported(pdgs: Sequence[int]) -> bool:
+    return _legacy_quark_line_count(pdgs) <= 2
+
+
 def _lc_all_flow_supported(process: str) -> bool:
     _ensure_repo_root_on_path()
     from tools.developer import legacy_amplicol
 
-    return _legacy_quark_line_count(legacy_amplicol.process_pdgs(process)) <= 2
+    return _legacy_lc_color_probe_supported(legacy_amplicol.process_pdgs(process))
+
+
+def _legacy_probe_scope_limited(message: object) -> bool:
+    return "more than two quarks" in str(message).lower()
 
 
 def _legacy_command_record(
@@ -4491,7 +5175,13 @@ def _legacy_command_record(
     output = completed.stdout + "\n" + completed.stderr
     record = {
         "args": rendered,
+        "cwd": os.fspath(cwd.resolve(strict=False)),
         "elapsed_s": elapsed,
+        **(
+            {"env": {"LD_LIBRARY_PATH": env["LD_LIBRARY_PATH"]}}
+            if env is not None and "LD_LIBRARY_PATH" in env
+            else {}
+        ),
         "returncode": completed.returncode,
     }
     if completed.returncode != 0:
@@ -4506,6 +5196,118 @@ def _legacy_library_environment(repository: Path) -> dict[str, str]:
     existing = os.environ.get("LD_LIBRARY_PATH")
     path = os.fspath(repository.resolve(strict=False))
     return {"LD_LIBRARY_PATH": path if not existing else f"{path}:{existing}"}
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _snapshot_legacy_generated_library(
+    repository: Path,
+    destination: Path,
+    *,
+    required_executables: Sequence[str],
+    optional_executables: Sequence[str] = (
+        "amplicol_generate",
+        "amplicol_library_benchmark",
+        "amplicol_color_probe",
+        "amplicol_color_library_probe",
+    ),
+    process_file: Path | None = None,
+) -> dict[str, object]:
+    """Preserve and execute the generated legacy library from a cell artifact."""
+
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    copied: dict[str, dict[str, object]] = {}
+    for source in sorted(repository.glob("libamp*.so")):
+        if source.is_file():
+            target = destination / source.name
+            shutil.copy2(source, target)
+            copied[target.name] = {
+                "path": os.fspath(target),
+                "source": os.fspath(source),
+                "sha256": _file_sha256(target),
+                "size_bytes": target.stat().st_size,
+            }
+
+    source_library = repository / "Library"
+    if not source_library.is_dir():
+        raise FileNotFoundError(
+            f"generated legacy Library directory is missing: {source_library}"
+        )
+    target_library = destination / "Library"
+    shutil.copytree(source_library, target_library)
+    for target in sorted(path for path in target_library.rglob("*") if path.is_file()):
+        source = source_library / target.relative_to(target_library)
+        relative = os.fspath(target.relative_to(destination))
+        copied[relative] = {
+            "path": os.fspath(target),
+            "source": os.fspath(source),
+            "sha256": _file_sha256(target),
+            "size_bytes": target.stat().st_size,
+        }
+
+    required = tuple(
+        dict.fromkeys(str(executable) for executable in required_executables)
+    )
+    optional = tuple(
+        executable
+        for executable in dict.fromkeys(
+            str(executable) for executable in optional_executables
+        )
+        if executable not in required
+    )
+    for executable in (*required, *optional):
+        source = repository / executable
+        if not source.is_file():
+            if executable in required:
+                raise FileNotFoundError(
+                    f"generated legacy executable is missing: {source}"
+                )
+            continue
+        target = destination / source.name
+        shutil.copy2(source, target)
+        copied[target.name] = {
+            "path": os.fspath(target),
+            "source": os.fspath(source),
+            "sha256": _file_sha256(target),
+            "size_bytes": target.stat().st_size,
+        }
+
+    if process_file is not None:
+        target = destination / "processes.txt"
+        shutil.copy2(process_file, target)
+        copied[target.name] = {
+            "path": os.fspath(target),
+            "source": os.fspath(process_file),
+            "sha256": _file_sha256(target),
+            "size_bytes": target.stat().st_size,
+        }
+
+    if not any(name.startswith("libamp") and name.endswith(".so") for name in copied):
+        raise FileNotFoundError(
+            f"generated legacy libraries are missing in {repository}"
+        )
+
+    return {
+        "args": [
+            "snapshot_legacy_generated_library",
+            os.fspath(repository.resolve(strict=False)),
+            os.fspath(destination.resolve(strict=False)),
+        ],
+        "cwd": os.fspath(repository.resolve(strict=False)),
+        "elapsed_s": 0.0,
+        "returncode": 0,
+        "artifact_path": os.fspath(destination),
+        "files": [copied[name] for name in sorted(copied)],
+    }
 
 
 def _legacy_timing_rows(output: str) -> list[dict[str, object]]:
@@ -4555,6 +5357,139 @@ def _legacy_timing_seconds(
         if wanted in str(row.get("label", "")).strip().lower():
             return float(row["seconds"])
     return None
+
+
+def _legacy_profile_elapsed_seconds(
+    record: Mapping[str, object],
+    rows: Sequence[Mapping[str, object]],
+    *labels: str,
+) -> float:
+    for label in labels:
+        seconds = _legacy_timing_seconds(rows, label)
+        if seconds is not None and math.isfinite(seconds) and seconds > 0.0:
+            return seconds
+    elapsed = _optional_positive_float(record.get("elapsed_s"))
+    return 0.0 if elapsed is None else elapsed
+
+
+def _legacy_adaptive_profile_points(
+    warmup_seconds: float,
+    *,
+    target_runtime: float,
+    warmup_points: int = DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
+    min_points: int = DEFAULT_LEGACY_PROFILE_MIN_POINTS,
+    max_points: int = DEFAULT_LEGACY_PROFILE_MAX_POINTS,
+) -> int:
+    warmup_points = max(1, int(warmup_points))
+    min_points = max(1, int(min_points))
+    max_points = max(min_points, int(max_points))
+    target = float(target_runtime)
+    if not math.isfinite(target) or target <= 0.0:
+        target = DEFAULT_REPORT_TARGET_RUNTIME_SECONDS
+    if not math.isfinite(warmup_seconds) or warmup_seconds <= 0.0:
+        return min_points
+    estimated = math.ceil(target * warmup_points / warmup_seconds)
+    return max(min_points, min(max_points, int(estimated)))
+
+
+def _legacy_profile_record(
+    *,
+    probe: str,
+    target_runtime: float,
+    warmup_record: Mapping[str, object],
+    warmup_rows: Sequence[Mapping[str, object]],
+    warmup_seconds: float,
+    measurement_record: Mapping[str, object],
+    measurement_rows: Sequence[Mapping[str, object]],
+    measurement_seconds: float,
+    measurement_points: int,
+    timing_labels: Sequence[str],
+) -> dict[str, object]:
+    return {
+        **_legacy_profile_requested_config(target_runtime),
+        "probe": probe,
+        "warmup_seconds": float(warmup_seconds),
+        "warmup_us_per_point": (
+            1.0e6 * float(warmup_seconds) / DEFAULT_LEGACY_PROFILE_WARMUP_POINTS
+        ),
+        "measurement_points": int(measurement_points),
+        "measurement_seconds": float(measurement_seconds),
+        "measurement_us_per_point": (
+            1.0e6 * float(measurement_seconds) / max(1, int(measurement_points))
+        ),
+        "timing_labels": [str(label) for label in timing_labels],
+        "warmup_record": dict(warmup_record),
+        "warmup_timing_rows": [dict(row) for row in warmup_rows],
+        "measurement_record": dict(measurement_record),
+        "measurement_timing_rows": [dict(row) for row in measurement_rows],
+    }
+
+
+def _legacy_run_command_profiled(
+    command_for_points: Callable[[int], Sequence[str | os.PathLike[str]]],
+    *,
+    cwd: Path,
+    env: Mapping[str, str] | None,
+    target_runtime: float,
+    probe: str,
+    timing_labels: Sequence[str],
+) -> tuple[dict[str, object], str, list[dict[str, object]], int, dict[str, object]]:
+    if not callable(command_for_points):
+        raise TypeError("command_for_points must be callable")
+    warmup_points = DEFAULT_LEGACY_PROFILE_WARMUP_POINTS
+    warmup_record, warmup_output = _legacy_command_record(
+        command_for_points(warmup_points),
+        cwd=cwd,
+        env=env,
+    )
+    warmup_record = {**warmup_record, "profile_phase": "warmup"}
+    warmup_rows = _legacy_timing_rows(warmup_output)
+    warmup_seconds = _legacy_profile_elapsed_seconds(
+        warmup_record,
+        warmup_rows,
+        *timing_labels,
+    )
+    measurement_points = _legacy_adaptive_profile_points(
+        warmup_seconds,
+        target_runtime=target_runtime,
+    )
+    measurement_record, measurement_output = _legacy_command_record(
+        command_for_points(measurement_points),
+        cwd=cwd,
+        env=env,
+    )
+    measurement_record = {
+        **measurement_record,
+        "profile_phase": "measurement",
+        "profile_warmup_points": warmup_points,
+        "profile_points": measurement_points,
+        "profile_target_runtime_seconds": float(target_runtime),
+    }
+    measurement_rows = _legacy_timing_rows(measurement_output)
+    measurement_seconds = _legacy_profile_elapsed_seconds(
+        measurement_record,
+        measurement_rows,
+        *timing_labels,
+    )
+    profile = _legacy_profile_record(
+        probe=probe,
+        target_runtime=target_runtime,
+        warmup_record=warmup_record,
+        warmup_rows=warmup_rows,
+        warmup_seconds=warmup_seconds,
+        measurement_record=measurement_record,
+        measurement_rows=measurement_rows,
+        measurement_seconds=measurement_seconds,
+        measurement_points=measurement_points,
+        timing_labels=timing_labels,
+    )
+    return (
+        measurement_record,
+        measurement_output,
+        measurement_rows,
+        measurement_points,
+        profile,
+    )
 
 
 def _legacy_process_list_command(
@@ -4628,8 +5563,11 @@ def _legacy_run_color_probe_timed(
     entry: object,
     source_pdgs: Sequence[int],
     momenta: Sequence[Sequence[float]],
-    helicities: Sequence[int],
+    helicities: Sequence[int] | None,
     points: int,
+    executable: Path | None = None,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]], object]:
     _ensure_repo_root_on_path()
     from tools.developer import legacy_amplicol
@@ -4640,7 +5578,11 @@ def _legacy_run_color_probe_timed(
         momenta,
     )
     permutation = legacy_amplicol._permutation(source_pdgs, entry.process_pdgs)
-    ordered_helicities = tuple(int(helicities[index]) for index in permutation)
+    ordered_helicities = (
+        ()
+        if helicities is None
+        else tuple(int(helicities[index]) for index in permutation)
+    )
     with tempfile.TemporaryDirectory(prefix="pac-", dir="/tmp") as raw:
         work = Path(raw)
         process_copy = work / "processes.txt"
@@ -4656,7 +5598,7 @@ def _legacy_run_color_probe_timed(
         )
         record, output = _legacy_command_record(
             [
-                (repository / "amplicol_color_probe").resolve(),
+                (executable or (repository / "amplicol_color_probe")).resolve(),
                 str(max(1, int(points))),
                 str(entry.group),
                 str(entry.integral),
@@ -4665,10 +5607,395 @@ def _legacy_run_color_probe_timed(
                 momenta_path,
                 *(str(value) for value in ordered_helicities),
             ],
-            cwd=work,
+            cwd=work if cwd is None else cwd,
+            env=env,
         )
     probe = legacy_amplicol._parse_probe_output(output)
     return record, _legacy_timing_rows(output), probe
+
+
+def _legacy_run_color_probe_profiled(
+    repository: Path,
+    *,
+    process_file: Path,
+    entry: object,
+    source_pdgs: Sequence[int],
+    momenta: Sequence[Sequence[float]],
+    helicities: Sequence[int] | None,
+    target_runtime: float,
+    executable: Path | None = None,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> tuple[
+    dict[str, object],
+    list[dict[str, object]],
+    object,
+    int,
+    dict[str, object],
+]:
+    warmup_record, warmup_rows, _warmup_probe = _legacy_run_color_probe_timed(
+        repository,
+        process_file=process_file,
+        entry=entry,
+        source_pdgs=source_pdgs,
+        momenta=momenta,
+        helicities=helicities,
+        points=DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
+        executable=executable,
+        cwd=cwd,
+        env=env,
+    )
+    warmup_record = {**warmup_record, "profile_phase": "warmup"}
+    warmup_seconds = _legacy_profile_elapsed_seconds(
+        warmup_record,
+        warmup_rows,
+        "total",
+    )
+    measurement_points = _legacy_adaptive_profile_points(
+        warmup_seconds,
+        target_runtime=target_runtime,
+    )
+    record, rows, probe = _legacy_run_color_probe_timed(
+        repository,
+        process_file=process_file,
+        entry=entry,
+        source_pdgs=source_pdgs,
+        momenta=momenta,
+        helicities=helicities,
+        points=measurement_points,
+        executable=executable,
+        cwd=cwd,
+        env=env,
+    )
+    record = {
+        **record,
+        "profile_phase": "measurement",
+        "profile_warmup_points": DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
+        "profile_points": measurement_points,
+        "profile_target_runtime_seconds": float(target_runtime),
+    }
+    measurement_seconds = _legacy_profile_elapsed_seconds(record, rows, "total")
+    profile = _legacy_profile_record(
+        probe="amplicol_color_probe",
+        target_runtime=target_runtime,
+        warmup_record=warmup_record,
+        warmup_rows=warmup_rows,
+        warmup_seconds=warmup_seconds,
+        measurement_record=record,
+        measurement_rows=rows,
+        measurement_seconds=measurement_seconds,
+        measurement_points=measurement_points,
+        timing_labels=("total",),
+    )
+    return record, rows, probe, measurement_points, profile
+
+
+def _legacy_lc_partition_matrix_element(
+    probe: object,
+    *,
+    reference_color_order: Sequence[int],
+    reference_color_order_candidates: Sequence[Sequence[int]] | None = None,
+    source_to_row_permutation: Sequence[int],
+) -> tuple[float, dict[str, object]]:
+    partitions = getattr(probe, "lc_row_partitions", ())
+    if not partitions:
+        raise RuntimeError("AmpliCol LC probe did not emit row partitions")
+    source_partitions: list[tuple[object, tuple[int, ...], float]] = []
+    for partition in partitions:
+        raw_word = tuple(int(label) for label in getattr(partition, "permutation", ()))
+        if any(label < 1 for label in raw_word):
+            raise RuntimeError(
+                "AmpliCol LC probe emitted an invalid row partition permutation"
+            )
+        try:
+            source_word = tuple(
+                int(source_to_row_permutation[label - 1]) + 1 for label in raw_word
+            )
+        except IndexError as error:
+            raise RuntimeError(
+                "AmpliCol LC probe emitted a row partition outside the process legs"
+            ) from error
+        source_partitions.append(
+            (partition, source_word, _real_nonnegative_scalar(partition.value))
+    )
+    coloured_labels = {
+        label
+        for _partition, source_word, _value in source_partitions
+        for label in source_word
+    }
+    raw_targets = reference_color_order_candidates or (reference_color_order,)
+    targets = tuple(
+        dict.fromkeys(
+            tuple(int(label) for label in target if int(label) in coloured_labels)
+            for target in raw_targets
+        )
+    )
+    targets = tuple(target for target in targets if target)
+    if not targets:
+        raise RuntimeError(
+            "AmpliCol LC reference colour order has no coloured labels to match"
+        )
+    matches = [
+        (partition, source_word, value, target)
+        for partition, source_word, value in source_partitions
+        for target in targets
+        if source_word == target
+    ]
+    if len(matches) != 1:
+        available = [
+            list(source_word)
+            for _partition, source_word, _value in source_partitions
+        ]
+        raise RuntimeError(
+            "AmpliCol LC row partition could not be matched uniquely: "
+            f"targets={[list(target) for target in targets]}, available={available}"
+        )
+    partition, source_word, value, target = matches[0]
+    return value, {
+        "reference_color_order_coloured": list(target),
+        "reference_color_order_candidates": [list(target) for target in targets],
+        "reference_lc_partition_row": int(partition.row),
+        "reference_lc_partition_permutation": list(source_word),
+        "lc_row_partitions": [
+            {
+                "row": int(item.row),
+                "value": float(item_value),
+                "permutation": list(item_word),
+            }
+            for item, item_word, item_value in source_partitions
+        ],
+    }
+
+
+def _source_helicity_combinations(
+    source_pdgs: Sequence[int],
+) -> Iterator[tuple[int, ...]]:
+    domains = [
+        tuple(sorted(_preferred_helicity_domain(int(pdg)))) for pdg in source_pdgs
+    ]
+    yield from itertools.product(*domains)
+
+
+def _legacy_lc_selected_flow_matrix_element(
+    repository: Path,
+    *,
+    process_file: Path,
+    entry: object,
+    source_pdgs: Sequence[int],
+    momenta: Sequence[Sequence[float]],
+    reference_color_order: Sequence[int],
+    reference_color_order_candidates: Sequence[Sequence[int]] | None = None,
+) -> tuple[
+    float,
+    list[dict[str, object]],
+    list[dict[str, object]],
+    dict[str, object],
+]:
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    source_to_row = legacy_amplicol._permutation(source_pdgs, entry.process_pdgs)
+    commands: list[dict[str, object]] = []
+    timing_rows: list[dict[str, object]] = []
+    helicity_records: list[dict[str, object]] = []
+    total = 0.0
+    reference_metadata: dict[str, object] | None = None
+    for helicities in _source_helicity_combinations(source_pdgs):
+        record, rows, probe = _legacy_run_color_probe_timed(
+            repository,
+            process_file=process_file,
+            entry=entry,
+            source_pdgs=source_pdgs,
+            momenta=momenta,
+            helicities=helicities,
+            points=1,
+        )
+        value, metadata = _legacy_lc_partition_matrix_element(
+            probe,
+            reference_color_order=reference_color_order,
+            reference_color_order_candidates=reference_color_order_candidates,
+            source_to_row_permutation=source_to_row,
+        )
+        total += value
+        commands.append(record)
+        timing_rows.extend(
+            {**row, "source_helicities": list(helicities)} for row in rows
+        )
+        helicity_records.append(
+            {
+                "source_helicities": list(helicities),
+                "value": float(value),
+                "reference_lc_partition_row": metadata[
+                    "reference_lc_partition_row"
+                ],
+            }
+        )
+        if reference_metadata is None:
+            reference_metadata = dict(metadata)
+    if reference_metadata is None:
+        raise RuntimeError("AmpliCol LC selected-flow helicity sum is empty")
+    return _real_nonnegative_scalar(total), commands, timing_rows, {
+        **reference_metadata,
+        "selected_flow_helicity_sum": helicity_records,
+        "selected_flow_helicity_count": len(helicity_records),
+    }
+
+
+_LEGACY_GENERATED_LIBRARY_PROBE_RE = re.compile(
+    r"^AMPICOL_PROBE_VALUE\s+"
+    r"(?P<point>\d+)\s+(?P<group>\d+)\s+(?P<integral>\d+)\s+"
+    r"(?P<value>[+\-0-9.Ee]+)$",
+    re.MULTILINE,
+)
+
+
+def _parse_legacy_generated_library_probe_value(
+    output: str,
+    *,
+    expected_group: int,
+    expected_integral: int,
+) -> float:
+    matches = list(_LEGACY_GENERATED_LIBRARY_PROBE_RE.finditer(output))
+    if len(matches) != 1:
+        raise RuntimeError(
+            "AmpliCol generated-library probe must emit exactly one "
+            f"AMPICOL_PROBE_VALUE record, got {len(matches)}"
+        )
+    match = matches[0]
+    group = int(match.group("group"))
+    integral = int(match.group("integral"))
+    if group != int(expected_group) or integral != int(expected_integral):
+        raise RuntimeError(
+            "AmpliCol generated-library probe row mismatch: "
+            f"got group={group} integral={integral}, expected "
+            f"group={int(expected_group)} integral={int(expected_integral)}"
+        )
+    return _real_nonnegative_scalar(float(match.group("value")))
+
+
+def _legacy_run_generated_library_probe(
+    repository: Path,
+    *,
+    process_file_arg: str,
+    entry: object,
+    output_path: Path,
+) -> tuple[dict[str, object], float]:
+    record, output = _legacy_command_record(
+        [
+            "./amplicol_generate",
+            "--library=use",
+            f"--process={process_file_arg}",
+            "--amplicol_momenta_probe=1",
+            "--timing=none",
+        ],
+        cwd=repository,
+        env=_legacy_library_environment(repository),
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(output, encoding="utf-8")
+    value = _parse_legacy_generated_library_probe_value(
+        output,
+        expected_group=int(entry.group),
+        expected_integral=int(entry.integral),
+    )
+    record["output_path"] = os.fspath(output_path)
+    return record, value
+
+
+def _legacy_build_selected_flow_library_probe_record(
+    repository: Path,
+    *,
+    jobs: int,
+) -> dict[str, object]:
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    started = time.perf_counter()
+    legacy_amplicol.build_selected_flow_library_probe(
+        repository,
+        jobs=max(1, int(jobs)),
+    )
+    return {
+        "args": [
+            "legacy_amplicol.build_selected_flow_library_probe",
+            os.fspath(repository),
+            f"jobs={max(1, int(jobs))}",
+        ],
+        "elapsed_s": time.perf_counter() - started,
+        "returncode": 0,
+    }
+
+
+def _legacy_selected_flow_probe_payload(result: object) -> dict[str, object]:
+    return {
+        "value": float(result.value),
+        "value_decimal": str(result.value_decimal),
+        "group": int(result.group),
+        "integral": int(result.integral),
+        "process_pdgs": [int(pdg) for pdg in result.process_pdgs],
+        "color_order": [int(label) for label in result.color_order],
+        "amplitudes": int(result.amplitudes),
+        "color_factor": int(result.color_factor),
+        "identical_factor": int(result.identical_factor),
+        "singlet_vertices": int(result.singlet_vertices),
+        "normalization": float(result.normalization),
+        "normalization_decimal": str(result.normalization_decimal),
+    }
+
+
+def _legacy_run_selected_flow_library_probe_record(
+    repository: Path,
+    *,
+    entry: object,
+    source_pdgs: Sequence[int],
+    momenta: Sequence[Sequence[float]],
+    points: int,
+    output_path: Path,
+) -> tuple[dict[str, object], float, dict[str, object]]:
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    started = time.perf_counter()
+    probe_environment = _legacy_library_environment(repository)
+    saved_environment = {
+        key: os.environ.get(key) for key in probe_environment
+    }
+    try:
+        os.environ.update(probe_environment)
+        result = legacy_amplicol.run_selected_flow_library_probe(
+            repository,
+            entry=entry,
+            source_pdgs=source_pdgs,
+            momenta=momenta,
+            points=max(1, int(points)),
+        )
+    finally:
+        for key, value in saved_environment.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    payload = _legacy_selected_flow_probe_payload(result)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(_json_text(payload), encoding="utf-8")
+    record = {
+        "args": [
+            "legacy_amplicol.run_selected_flow_library_probe",
+            os.fspath(repository),
+            f"group={int(entry.group)}",
+            f"integral={int(entry.integral)}",
+            f"points={max(1, int(points))}",
+        ],
+        "cwd": os.fspath(repository.resolve(strict=False)),
+        "elapsed_s": time.perf_counter() - started,
+        "env": {"LD_LIBRARY_PATH": probe_environment["LD_LIBRARY_PATH"]},
+        "executable": os.fspath(
+            (repository / "amplicol_library_benchmark").resolve(strict=False)
+        ),
+        "returncode": 0,
+        "output_path": os.fspath(output_path),
+    }
+    return record, _real_nonnegative_scalar(result.value), payload
 
 
 def _measure_legacy_amplicol(
@@ -4678,11 +6005,17 @@ def _measure_legacy_amplicol(
     artifact_root: Path,
     points: object | None,
     limit_gib: float,
+    target_runtime: float,
     jobs: int = 1,
+    fixed_helicity: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     cell_root = artifact_root / "cells" / cell.cell_id
-    legacy_root = cell_root / "legacy-amplicol"
-    log_path = cell_root / "logs" / "legacy-amplicol.log"
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    legacy_revision = legacy_amplicol.expected_revision()
+    legacy_root = cell_root / f"legacy-amplicol-{legacy_revision[:12]}"
+    log_path = cell_root / "logs" / f"legacy-amplicol-{legacy_revision[:12]}.log"
     manifest_path = legacy_root / "manifest.json"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     legacy_root.mkdir(parents=True, exist_ok=True)
@@ -4693,9 +6026,6 @@ def _measure_legacy_amplicol(
             log.write(f"# legacy AmpliCol cell {cell.cell_id} started {_utc_now()}\n")
             log.flush()
             with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
-                _ensure_repo_root_on_path()
-                from tools.developer import legacy_amplicol
-
                 repository = legacy_amplicol.DEFAULT_REPOSITORY
                 if not repository.exists():
                     raise FileNotFoundError(
@@ -4749,6 +6079,24 @@ def _measure_legacy_amplicol(
                             entry,
                             source_pdgs=source_pdgs,
                         )
+                        selected_lc_reference_words: tuple[tuple[int, ...], ...] = (
+                            (tuple(int(label) for label in mapped_color_order),)
+                        )
+                        if color_accuracy == "lc":
+                            try:
+                                spec = _spec_by_dataset()[cell.dataset_id]
+                                selected_lc_reference_words = (
+                                    _selected_lc_reference_partition_words(
+                                        cell.process,
+                                        spec=spec,
+                                        reference_order=mapped_color_order,
+                                        artifact_root=artifact_root,
+                                    )
+                                )
+                            except Exception:
+                                selected_lc_reference_words = (
+                                    (tuple(int(label) for label in mapped_color_order),)
+                                )
                         _write_legacy_momenta_files(
                             repository,
                             entries=entries,
@@ -4760,6 +6108,13 @@ def _measure_legacy_amplicol(
                             "create-raw" if color_accuracy != "lc" else "create"
                         )
                         make_jobs = max(1, int(jobs))
+                        selected_generated_probe_record: dict[str, object] | None = (
+                            None
+                        )
+                        selected_generated_probe_value: float | None = None
+                        selected_generated_probe_payload: dict[str, object] | None = (
+                            None
+                        )
                         with _legacy_repository_process_file(
                             repository,
                             process_file,
@@ -4796,25 +6151,51 @@ def _measure_legacy_amplicol(
                             if record["args"] != process_record["args"]
                         )
                         if color_accuracy == "lc":
-                            build_benchmark, _build_output = _legacy_command_record(
-                                [
-                                    "make",
-                                    f"-j{make_jobs}",
-                                    "amplicol_library_benchmark",
-                                ],
-                                cwd=repository,
+                            build_benchmark = (
+                                _legacy_build_selected_flow_library_probe_record(
+                                    repository,
+                                    jobs=make_jobs,
+                                )
                             )
-                            benchmark_record, benchmark_output = _legacy_command_record(
-                                [
+                            generated_library_snapshot = (
+                                _snapshot_legacy_generated_library(
+                                    repository,
+                                    legacy_root / "generated-library",
+                                    required_executables=(
+                                        "amplicol_library_benchmark",
+                                    ),
+                                    process_file=process_file,
+                                )
+                            )
+                            generated_library_root = Path(
+                                os.fspath(
+                                    generated_library_snapshot["artifact_path"]
+                                )
+                            )
+                            generated_library_environment = (
+                                _legacy_library_environment(
+                                    generated_library_root,
+                                )
+                            )
+                            (
+                                benchmark_record,
+                                _benchmark_output,
+                                timing_rows,
+                                runtime_sample_count,
+                                runtime_profile,
+                            ) = _legacy_run_command_profiled(
+                                lambda count: [
                                     "./amplicol_library_benchmark",
-                                    str(DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS),
+                                    str(max(1, int(count))),
                                     str(entry.group),
                                     str(entry.integral),
                                 ],
-                                cwd=repository,
-                                env=_legacy_library_environment(repository),
+                                cwd=generated_library_root,
+                                env=generated_library_environment,
+                                target_runtime=target_runtime,
+                                probe="amplicol_library_benchmark",
+                                timing_labels=("amplitude evaluation", "total"),
                             )
-                            timing_rows = _legacy_timing_rows(benchmark_output)
                             runtime_seconds = _legacy_timing_seconds(
                                 timing_rows,
                                 "amplitude evaluation",
@@ -4829,12 +6210,130 @@ def _measure_legacy_amplicol(
                                     "amplicol_library_benchmark did not report "
                                     "an amplitude-evaluation timing row"
                                 )
-                            runtime_seconds /= DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS
-                            runtime_sample_count = (
-                                DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS
-                            )
+                            runtime_seconds /= runtime_sample_count
                             runtime_probe = "direct_generated_library_benchmark"
-                            timing_commands = [build_benchmark, benchmark_record]
+                            (
+                                selected_generated_probe_record,
+                                selected_generated_probe_value,
+                                selected_generated_probe_payload,
+                            ) = _legacy_run_selected_flow_library_probe_record(
+                                generated_library_root,
+                                entry=entry,
+                                source_pdgs=source_pdgs,
+                                momenta=momenta,
+                                points=1,
+                                output_path=(
+                                    legacy_root / "selected-flow-library-probe.json"
+                                ),
+                            )
+                            if selected_generated_probe_record is None:
+                                raise legacy_amplicol.LegacyOracleError(
+                                    "generated LC library probe did not run"
+                                )
+                            matrix_element = _real_nonnegative_scalar(
+                                selected_generated_probe_value
+                            )
+                            matrix_element_probe = (
+                                "amplicol_library_benchmark_selected_flow"
+                            )
+                            selected_probe_rows = []
+                            selected_probe_metadata = {
+                                "selected_flow_probe": matrix_element_probe,
+                                "selected_flow_probe_output": (
+                                    selected_generated_probe_record.get("output_path")
+                                ),
+                                "selected_flow_library_probe": (
+                                    selected_generated_probe_payload
+                                ),
+                                "selected_flow_partition_status": (
+                                    ResultStatus.UNSUPPORTED.value
+                                    if not _legacy_lc_color_probe_supported(source_pdgs)
+                                    else NA_STATUS
+                                ),
+                                "selected_flow_partition_note": (
+                                    "legacy color-probe row partitions are limited "
+                                    "to at most two quark lines; selected scalar "
+                                    "uses the generated-library indexed probe"
+                                    if not _legacy_lc_color_probe_supported(source_pdgs)
+                                    else None
+                                ),
+                            }
+                            timing_commands = [
+                                build_benchmark,
+                                generated_library_snapshot,
+                                benchmark_record,
+                                selected_generated_probe_record,
+                            ]
+                            if _legacy_lc_color_probe_supported(source_pdgs):
+                                build_selected_probe, _build_output = (
+                                    _legacy_command_record(
+                                        [
+                                            "make",
+                                            f"-j{make_jobs}",
+                                            "amplicol_color_probe",
+                                        ],
+                                        cwd=repository,
+                                    )
+                                )
+                                (
+                                    partition_value,
+                                    selected_probe_commands,
+                                    selected_probe_rows,
+                                    selected_probe_metadata,
+                                ) = _legacy_lc_selected_flow_matrix_element(
+                                    repository,
+                                    process_file=process_file,
+                                    entry=entry,
+                                    source_pdgs=source_pdgs,
+                                    momenta=momenta,
+                                    reference_color_order=mapped_color_order,
+                                    reference_color_order_candidates=(
+                                        selected_lc_reference_words
+                                    ),
+                                )
+                                (
+                                    partition_absolute,
+                                    partition_relative,
+                                    partition_status,
+                                ) = _matrix_element_difference(
+                                    matrix_element,
+                                    partition_value,
+                                )
+                                if partition_status != ResultStatus.OK.value:
+                                    raise RuntimeError(
+                                        "AmpliCol generated-library LC scalar and "
+                                        "LC row-partition scalar disagree: "
+                                        f"generated={matrix_element}, "
+                                        f"partition={partition_value}, "
+                                        f"relative={partition_relative}"
+                                    )
+                                selected_probe_metadata = {
+                                    **selected_probe_metadata,
+                                    "selected_flow_probe": matrix_element_probe,
+                                    "selected_flow_probe_output": (
+                                        selected_generated_probe_record.get(
+                                            "output_path"
+                                        )
+                                    ),
+                                    "selected_flow_partition_status": (
+                                        ResultStatus.OK.value
+                                    ),
+                                    "selected_flow_partition_value": float(
+                                        partition_value
+                                    ),
+                                    "selected_flow_partition_absolute_difference": (
+                                        partition_absolute
+                                    ),
+                                    "selected_flow_partition_relative_difference": (
+                                        partition_relative
+                                    ),
+                                }
+                                timing_commands.extend(
+                                    [
+                                        build_selected_probe,
+                                        *selected_probe_commands,
+                                    ]
+                                )
                         else:
                             build_probe, _build_output = _legacy_command_record(
                                 [
@@ -4844,10 +6343,36 @@ def _measure_legacy_amplicol(
                                 ],
                                 cwd=repository,
                             )
-                            probe_record, probe_output = _legacy_command_record(
-                                [
+                            generated_library_snapshot = (
+                                _snapshot_legacy_generated_library(
+                                    repository,
+                                    legacy_root / "generated-library",
+                                    required_executables=(
+                                        "amplicol_color_library_probe",
+                                    ),
+                                    process_file=process_file,
+                                )
+                            )
+                            generated_library_root = Path(
+                                os.fspath(
+                                    generated_library_snapshot["artifact_path"]
+                                )
+                            )
+                            generated_library_environment = (
+                                _legacy_library_environment(
+                                    generated_library_root,
+                                )
+                            )
+                            (
+                                probe_record,
+                                _probe_output,
+                                timing_rows,
+                                runtime_sample_count,
+                                runtime_profile,
+                            ) = _legacy_run_command_profiled(
+                                lambda count: [
                                     "./amplicol_color_library_probe",
-                                    str(DEFAULT_LEGACY_COLOR_PROBE_POINTS),
+                                    str(max(1, int(count))),
                                     str(entry.group),
                                     str(entry.integral),
                                     color_accuracy,
@@ -4856,10 +6381,12 @@ def _measure_legacy_amplicol(
                                     / "ME_checks"
                                     / f"momenta_{entry.group}_{entry.integral}.txt",
                                 ],
-                                cwd=repository,
-                                env=_legacy_library_environment(repository),
+                                cwd=generated_library_root,
+                                env=generated_library_environment,
+                                target_runtime=target_runtime,
+                                probe="amplicol_color_library_probe",
+                                timing_labels=("total",),
                             )
-                            timing_rows = _legacy_timing_rows(probe_output)
                             runtime_seconds = _legacy_timing_seconds(
                                 timing_rows,
                                 "total",
@@ -4869,23 +6396,30 @@ def _measure_legacy_amplicol(
                                     "amplicol_color_library_probe did not report "
                                     "a total timing row"
                                 )
-                            runtime_seconds /= DEFAULT_LEGACY_COLOR_PROBE_POINTS
-                            runtime_sample_count = DEFAULT_LEGACY_COLOR_PROBE_POINTS
+                            runtime_seconds /= runtime_sample_count
                             runtime_probe = "amplicol_color_library_probe"
-                            timing_commands = [build_probe, probe_record]
-                        if not (repository / "amplicol_color_probe").is_file():
-                            legacy_amplicol.build_color_probe(
+                            timing_commands = [
+                                build_probe,
+                                generated_library_snapshot,
+                                probe_record,
+                            ]
+                            if not (repository / "amplicol_color_probe").is_file():
+                                legacy_amplicol.build_color_probe(
+                                    repository,
+                                    jobs=make_jobs,
+                                )
+                            probe = legacy_amplicol.run_color_probe(
                                 repository,
-                                jobs=make_jobs,
+                                process_file=process_file,
+                                entry=entry,
+                                source_pdgs=source_pdgs,
+                                momenta=momenta,
+                                color_accuracy=color_accuracy,
                             )
-                        probe = legacy_amplicol.run_color_probe(
-                            repository,
-                            process_file=process_file,
-                            entry=entry,
-                            source_pdgs=source_pdgs,
-                            momenta=momenta,
-                            color_accuracy=color_accuracy,
-                        )
+                            matrix_element = _real_nonnegative_scalar(probe.value)
+                            matrix_element_probe = "amplicol_color_probe"
+                            selected_probe_rows = []
+                            selected_probe_metadata = {}
                         all_flow_payload: dict[str, object] = {
                             "all_flow_status": None,
                             "all_flow_generation_s": None,
@@ -4897,11 +6431,12 @@ def _measure_legacy_amplicol(
                             "all_flow_timing_rows": [],
                         }
                         all_flow_commands: list[dict[str, object]] = []
-                        fixed_helicity = (
-                            _fixed_source_helicity_choice(cell.process)
-                            if color_accuracy == "lc"
-                            else None
-                        )
+                        if color_accuracy != "lc":
+                            fixed_helicity = None
+                        if color_accuracy == "lc" and fixed_helicity is None:
+                            fixed_helicity = _fixed_source_helicity_choice(
+                                cell.process,
+                            )
                         if color_accuracy == "lc" and fixed_helicity is not None:
                             if _lc_all_flow_supported(cell.process):
                                 build_color_probe, _build_output = (
@@ -4914,44 +6449,69 @@ def _measure_legacy_amplicol(
                                         cwd=repository,
                                     )
                                 )
+                                all_flow_snapshot = (
+                                    _snapshot_legacy_generated_library(
+                                        repository,
+                                        legacy_root / "all-flow-generated-library",
+                                        required_executables=(
+                                            "amplicol_color_probe",
+                                        ),
+                                        process_file=process_file,
+                                    )
+                                )
+                                all_flow_root = Path(
+                                    os.fspath(all_flow_snapshot["artifact_path"])
+                                )
+                                all_flow_environment = _legacy_library_environment(
+                                    all_flow_root
+                                )
                                 (
                                     all_flow_record,
                                     all_flow_rows,
                                     all_flow_probe,
-                                ) = _legacy_run_color_probe_timed(
+                                    all_flow_sample_count,
+                                    all_flow_profile,
+                                ) = _legacy_run_color_probe_profiled(
                                     repository,
                                     process_file=process_file,
                                     entry=entry,
                                     source_pdgs=source_pdgs,
                                     momenta=momenta,
                                     helicities=fixed_helicity["amplicol_helicities"],  # type: ignore[arg-type]
-                                    points=DEFAULT_LEGACY_COLOR_PROBE_POINTS,
+                                    target_runtime=target_runtime,
+                                    executable=(
+                                        all_flow_root / "amplicol_color_probe"
+                                    ),
+                                    cwd=all_flow_root,
+                                    env=all_flow_environment,
                                 )
                                 all_flow_total = _legacy_timing_seconds(
                                     all_flow_rows,
                                     "total",
                                 )
-                                all_flow_setup = _legacy_timing_seconds(
+                                all_flow_probe_setup = _legacy_timing_seconds(
                                     all_flow_rows,
                                     "generation setup",
                                 )
                                 all_flow_payload.update(
                                     {
                                         "all_flow_status": ResultStatus.OK.value,
-                                        "all_flow_generation_s": all_flow_setup,
+                                        "all_flow_generation_s": generation_seconds,
                                         "all_flow_generation_source": (
-                                            "amplicol_color_probe_imode2_explicit_setup"
+                                            LEGACY_LC_ALL_FLOW_GENERATION_SOURCE
                                         ),
+                                        "all_flow_probe_setup_s": all_flow_probe_setup,
                                         "all_flow_runtime_us_per_point": (
                                             None
                                             if all_flow_total is None
                                             else 1.0e6
                                             * all_flow_total
-                                            / DEFAULT_LEGACY_COLOR_PROBE_POINTS
+                                            / all_flow_sample_count
                                         ),
                                         "all_flow_runtime_probe_points": (
-                                            DEFAULT_LEGACY_COLOR_PROBE_POINTS
+                                            all_flow_sample_count
                                         ),
+                                        "all_flow_profile": all_flow_profile,
                                         "all_flow_reference_value": (
                                             _real_nonnegative_scalar(
                                                 all_flow_probe.value
@@ -4970,13 +6530,20 @@ def _measure_legacy_amplicol(
                                         "all_flow_helicity_mode": (
                                             fixed_helicity["mode"]
                                         ),
+                                        "all_flow_helicity_selection_source": (
+                                            fixed_helicity.get("selection_source")
+                                        ),
                                         "all_flow_validation_note": (
                                             fixed_helicity["validation_note"]
                                         ),
                                     }
                                 )
                                 all_flow_commands.extend(
-                                    [build_color_probe, all_flow_record]
+                                    [
+                                        build_color_probe,
+                                        all_flow_snapshot,
+                                        all_flow_record,
+                                    ]
                                 )
                             else:
                                 all_flow_payload.update(
@@ -5003,14 +6570,13 @@ def _measure_legacy_amplicol(
             "standard_deviation_seconds_per_point": 0.0,
             "standard_error_seconds_per_point": 0.0,
             "relative_standard_error": 0.0,
-            "matrix_element": _real_nonnegative_scalar(probe.value),
+            "matrix_element": matrix_element,
             "requested_config": {
                 "method": "legacy_amplicol_generated_library",
                 "color_accuracy": color_accuracy,
                 "point_source": point_source,
                 "jobs": max(1, int(jobs)),
-                "library_benchmark_points": DEFAULT_LEGACY_LIBRARY_BENCHMARK_POINTS,
-                "color_probe_points": DEFAULT_LEGACY_COLOR_PROBE_POINTS,
+                **_legacy_profile_requested_config(target_runtime),
             },
             "effective_config": {
                 "process_file": os.fspath(process_file),
@@ -5035,20 +6601,27 @@ def _measure_legacy_amplicol(
             "metadata": {
                 "cell": cell.as_json(),
                 "timing_method": runtime_probe,
+                "runtime_profile": runtime_profile,
+                "matrix_element_probe": matrix_element_probe,
                 "point_source": point_source,
                 "old_matrix_format": {
                     "status": ResultStatus.OK.value,
                     "generation_s": generation_seconds,
                     "runtime_us_per_point": 1.0e6 * runtime_seconds,
-                    "reference_probe": runtime_probe,
+                    "reference_probe": matrix_element_probe,
+                    "runtime_probe": runtime_probe,
+                    "runtime_profile": runtime_profile,
+                    "runtime_probe_points": runtime_sample_count,
                     "process_file": os.fspath(process_file),
                     "process_list_backend": "legacy",
                     "reference_color_order": list(mapped_color_order),
                     "reference_color_order_process_file": list(entry.color_order),
+                    **selected_probe_metadata,
                     "row_selection_policy": (
                         legacy_amplicol.GENERATED_PROCESS_ROW_SELECTION_POLICY
                     ),
                     "timing_rows": timing_rows,
+                    "selected_flow_probe_timing_rows": selected_probe_rows,
                     "commands": [
                         *generation_records,
                         *timing_commands,
@@ -5068,7 +6641,10 @@ def _measure_legacy_amplicol(
     except Exception as exc:
         status = (
             ResultStatus.UNSUPPORTED
-            if type(exc).__name__ == "LegacyOracleError"
+            if (
+                type(exc).__name__ == "LegacyOracleError"
+                or _legacy_probe_scope_limited(exc)
+            )
             else ResultStatus.ERROR
         )
         return _failure_measurement(
@@ -5282,13 +6858,24 @@ def _measure_cell_payload(
         }
         shared_particles = _shared_validation_particles(cell.process)
         points = _pyamplicol_points_from_particles(shared_particles)
+        fixed_helicity = (
+            _fixed_source_helicity_choice(
+                cell.process,
+                spec=spec,
+                artifact_root=artifact_root,
+            )
+            if spec.color_accuracy == "lc"
+            else None
+        )
         legacy = _measure_legacy_amplicol(
             cell=cell,
             color_accuracy=spec.color_accuracy,
             artifact_root=artifact_root,
             points=points,
             limit_gib=limit_gib,
+            target_runtime=target_runtime,
             jobs=cell_cores,
+            fixed_helicity=fixed_helicity,
         )
         pyamplicol, points = _measure_pyamplicol_matrix_jit_o3(
             cell=cell,
@@ -5299,6 +6886,7 @@ def _measure_cell_payload(
             target_runtime=target_runtime,
             cell_cores=cell_cores,
             points=points,
+            fixed_helicity=fixed_helicity,
         )
         validation = _pointwise_validation(
             legacy,
@@ -5331,7 +6919,13 @@ def _measure_cell_payload(
                 artifact_root=artifact_root,
                 points=points,
                 limit_gib=limit_gib,
+                target_runtime=target_runtime,
                 jobs=cell_cores,
+                fixed_helicity=_fixed_source_helicity_choice(
+                    cell.process,
+                    spec=spec,
+                    artifact_root=artifact_root,
+                ),
             )
         else:
             measurement, _points = _measure_pyamplicol_lc_two_workloads(
@@ -5591,6 +7185,36 @@ def _worker_command(
     ]
 
 
+def _terminate_worker_process(
+    process: subprocess.Popen[bytes],
+    *,
+    grace_seconds: float = 30.0,
+) -> None:
+    if process.poll() is not None:
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=grace_seconds)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+
+
+def _terminate_active_worker_processes(
+    *,
+    grace_seconds: float = 30.0,
+) -> int:
+    with _ACTIVE_WORKER_LOCK:
+        processes = tuple(_ACTIVE_WORKER_PROCESSES)
+    for process in processes:
+        _terminate_worker_process(process, grace_seconds=grace_seconds)
+    return len(processes)
+
+
 def _run_worker_command(
     command: Sequence[str],
     *,
@@ -5610,18 +7234,16 @@ def _run_worker_command(
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        with _ACTIVE_WORKER_LOCK:
+            _ACTIVE_WORKER_PROCESSES.add(process)
         try:
             return process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            _terminate_worker_process(process)
             return 124
+        finally:
+            with _ACTIVE_WORKER_LOCK:
+                _ACTIVE_WORKER_PROCESSES.discard(process)
 
 
 def _campaign_worker_timeout_seconds(
@@ -5954,11 +7576,26 @@ class ReportService:
                         sort_keys=True,
                     )
                     + "\n"
-                )
+            )
             events.flush()
-            with concurrent.futures.ThreadPoolExecutor(
+            print(
+                "campaign start: "
+                f"cells={len(cells)} workers={effective_workers} "
+                f"target_runtime={target_runtime:g}s "
+                f"artifact_root={artifact_root}",
+                file=sys.stderr,
+                flush=True,
+            )
+            started = time.perf_counter()
+            completed = 0
+            status_counts: dict[str, int] = {}
+            executor = concurrent.futures.ThreadPoolExecutor(
                 max_workers=effective_workers
-            ) as executor:
+            )
+            futures: dict[
+                concurrent.futures.Future[dict[str, object]], CampaignCell
+            ] = {}
+            try:
                 futures = {
                     executor.submit(
                         _execute_campaign_cell,
@@ -6001,19 +7638,69 @@ class ReportService:
                         raw_entry,
                         compile_pdf=(refresh_pdf == "always"),
                     )
+                    completed += 1
+                    status = str(raw_entry.get("status", NA_STATUS))
+                    status_counts[status] = status_counts.get(status, 0) + 1
+                    elapsed = time.perf_counter() - started
                     events.write(
                         json.dumps(
                             {
                                 "event": "cell-merged",
                                 "merged_at": _utc_now(),
                                 "cell": completed_cell.as_json(),
-                                "status": raw_entry.get("status"),
+                                "status": status,
+                                "completed": completed,
+                                "cell_count": len(cells),
+                                "elapsed_seconds": elapsed,
+                                "status_counts": dict(sorted(status_counts.items())),
                             },
                             sort_keys=True,
                         )
                         + "\n"
                     )
                     events.flush()
+                    print(
+                        "campaign progress: "
+                        f"{completed}/{len(cells)} merged "
+                        f"elapsed={elapsed / 60.0:.1f}m "
+                        f"status={status} "
+                        f"counts={dict(sorted(status_counts.items()))} "
+                        f"cell={completed_cell.cell_id}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+            except KeyboardInterrupt:
+                executor.shutdown(wait=False, cancel_futures=True)
+                terminated = _terminate_active_worker_processes()
+                for future in futures:
+                    future.cancel()
+                elapsed = time.perf_counter() - started
+                events.write(
+                    json.dumps(
+                        {
+                            "event": "campaign-interrupted",
+                            "interrupted_at": _utc_now(),
+                            "completed": completed,
+                            "cell_count": len(cells),
+                            "elapsed_seconds": elapsed,
+                            "active_workers_terminated": terminated,
+                            "status_counts": dict(sorted(status_counts.items())),
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
+                events.flush()
+                print(
+                    "campaign interrupted: "
+                    f"completed={completed}/{len(cells)} "
+                    f"terminated_active_workers={terminated}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                raise
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
 
     def _merge_and_refresh(
         self,
@@ -6103,7 +7790,11 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_GENERATION_TIMEOUT_SECONDS,
     )
-    populate.add_argument("--target-runtime", type=float, default=10.0)
+    populate.add_argument(
+        "--target-runtime",
+        type=float,
+        default=DEFAULT_REPORT_TARGET_RUNTIME_SECONDS,
+    )
     populate.add_argument("--cell-cores", type=int, default=DEFAULT_PARALLEL_CELL_CORES)
     populate.add_argument("--artifact-root", type=Path, default=DEFAULT_ARTIFACT_ROOT)
     populate.add_argument("--python", type=Path, default=DEFAULT_DEV_PYTHON)
@@ -6174,7 +7865,11 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_GENERATION_TIMEOUT_SECONDS,
     )
-    worker.add_argument("--target-runtime", type=float, default=10.0)
+    worker.add_argument(
+        "--target-runtime",
+        type=float,
+        default=DEFAULT_REPORT_TARGET_RUNTIME_SECONDS,
+    )
     worker.add_argument("--cell-cores", type=int, default=DEFAULT_PARALLEL_CELL_CORES)
     return parser
 
@@ -6202,21 +7897,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(json.dumps(cell.as_json(), sort_keys=True))
             print(f"planned {len(cells)} cells", file=sys.stderr)
             return 0
-        service.populate(
-            cells,
-            workers=args.workers,
-            python=args.python,
-            artifact_root=args.artifact_root,
-            limit_gib=args.limit_gib,
-            generation_timeout_seconds=args.generation_timeout_seconds,
-            target_runtime=args.target_runtime,
-            cell_cores=args.cell_cores,
-            refresh_pdf=args.refresh_pdf,
-            allow_symbolica_parallel=(
-                args.allow_symbolica_parallel
-                or _truthy_environment_flag(ALLOW_PARALLEL_SYMBOLICA_ENV)
-            ),
-        )
+        try:
+            service.populate(
+                cells,
+                workers=args.workers,
+                python=args.python,
+                artifact_root=args.artifact_root,
+                limit_gib=args.limit_gib,
+                generation_timeout_seconds=args.generation_timeout_seconds,
+                target_runtime=args.target_runtime,
+                cell_cores=args.cell_cores,
+                refresh_pdf=args.refresh_pdf,
+                allow_symbolica_parallel=(
+                    args.allow_symbolica_parallel
+                    or _truthy_environment_flag(ALLOW_PARALLEL_SYMBOLICA_ENV)
+                ),
+            )
+        except KeyboardInterrupt:
+            print(
+                "populate interrupted; active worker processes were terminated",
+                file=sys.stderr,
+            )
+            return 130
         print(f"populated {len(cells)} scheduled cells")
         return 0
     if args.command == "measure-cell":

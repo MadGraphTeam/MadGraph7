@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
-import shlex
+import signal
 import sys
+from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,7 +19,6 @@ sys.path.insert(0, str(DOCS))
 import result_tables as report  # noqa: E402
 
 from pyamplicol.api import BenchmarkResult, BenchmarkStatistics  # noqa: E402
-from pyamplicol.cli import parse_cli  # noqa: E402
 from pyamplicol.config import BenchmarkConfig  # noqa: E402
 
 
@@ -154,23 +156,25 @@ def test_generated_tables_are_complete_and_input_by_main_tex() -> None:
     inputs = tuple(re.findall(r"\\input\{([^}]+_table\.tex)\}", tex))
     assert inputs == report.TABLE_INPUTS
 
+    rendered_tables = "\n".join(expected_tables.values())
+    assert (
+        r"\ReportNA" in rendered_tables
+        or r"\matrixna" in rendered_tables
+        or r"\texttt{N/A}" in rendered_tables
+    )
     for name, expected_text in expected_tables.items():
         path = DOCS / name
         assert path.is_file()
         assert path.read_text(encoding="utf-8") == expected_text
         assert expected_text.startswith("% SPDX-License-Identifier: 0BSD\n")
-        assert (
-            r"\ReportNA" in expected_text
-            or r"\matrixna" in expected_text
-            or r"\texttt{N/A}" in expected_text
-        )
 
     scalar_contact = expected_tables["result_scalar_contact_table.tex"]
     scalar_gravity = expected_tables["result_scalar_gravity_table.tex"]
     assert r"scalar\_0 scalar\_0 > X*scalar\_0" in scalar_contact
     assert r"scalar\_0 scalar\_0 > X*graviton" in scalar_gravity
-    assert "evaluator [s/pt]" in scalar_contact
-    assert "evaluator [s/pt]" in scalar_gravity
+    assert r"\textbf{$n=2$}" in scalar_contact
+    assert r"evaluator [$\mu$s/pt]" in scalar_contact
+    assert r"evaluator [$\mu$s/pt]" in scalar_gravity
     assert "scalar\\_0 scalar\\_0 scalar\\_0" not in scalar_contact
     assert "graviton graviton" not in scalar_gravity
 
@@ -256,6 +260,17 @@ def test_matrix_renderer_shows_legacy_jit_o3_multipliers_only() -> None:
     assert "ASM" not in table
 
 
+def test_lc_matrix_reference_runtime_pair_uses_tight_spacing() -> None:
+    macros = "\n".join(report._matrix_table_macros())
+
+    assert r"\matrixslot{0.86in}{#4}" in macros
+    assert r"\makebox[0.34in][l]{#1}" in macros
+    assert (
+        r"\hspace{0.006in}\matrixpunct{/}\hspace{0.012in}"
+        in macros
+    )
+
+
 def test_lc_matrix_fallback_runtime_seconds_are_converted_consistently() -> None:
     legacy = report._empty_measurement()
     legacy.update(
@@ -336,6 +351,656 @@ def test_pointwise_validation_covers_all_flow_fixed_helicity() -> None:
     assert validation["all_flow_relative_difference"] == pytest.approx(0.05)
 
 
+def test_selected_flow_reference_order_prefers_source_mapped_order() -> None:
+    cell = report.CampaignCell(
+        kind="matrix",
+        cache_name="matrix_builtin_sm_lc.json",
+        dataset_id="matrix_builtin_sm_lc",
+        n_final=2,
+        process="d d~ > z g",
+        process_key="dd_z_jets",
+    )
+    old_fields = {
+        "reference_color_order": [2, 4, 1, 3],
+        "reference_color_order_process_file": [2, 3, 1, 4],
+    }
+
+    assert report._selected_flow_reference_color_order(old_fields, cell) == [
+        2,
+        4,
+        1,
+        3,
+    ]
+    assert report._selected_flow_reference_color_order(
+        {"reference_color_order_process_file": [2, 3, 1, 4]},
+        cell,
+    ) == [2, 3, 1, 4]
+
+
+def test_generated_library_probe_parser_requires_matching_row() -> None:
+    output = (
+        "AMPICOL_PROBE_VALUE 1 3 2 1.60358797632899820000000E+000\n"
+    )
+
+    assert report._parse_legacy_generated_library_probe_value(
+        output,
+        expected_group=3,
+        expected_integral=2,
+    ) == pytest.approx(1.6035879763289982)
+    with pytest.raises(RuntimeError, match="row mismatch"):
+        report._parse_legacy_generated_library_probe_value(
+            output,
+            expected_group=1,
+            expected_integral=2,
+        )
+
+
+def test_legacy_lc_color_probe_scope_matches_fortran_probe_limit() -> None:
+    assert report._legacy_lc_color_probe_supported((1, -1, 23, 21, 21, 21))
+    assert not report._legacy_lc_color_probe_supported((1, -1, 2, -2, 3, -3))
+    assert report._legacy_probe_scope_limited(
+        "STOP 1\n more than two quarks           3\n"
+    )
+
+
+def test_selected_flow_library_probe_record_uses_indexed_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from tools.developer import legacy_amplicol
+
+    entry = SimpleNamespace(group=4, integral=2)
+    calls: list[dict[str, object]] = []
+
+    def fake_probe(*args: object, **kwargs: object) -> object:
+        calls.append({"args": args, "kwargs": kwargs})
+        assert os.fspath(tmp_path) in os.environ["LD_LIBRARY_PATH"].split(":")
+        return SimpleNamespace(
+            value=1.25,
+            group=4,
+            integral=2,
+            process_pdgs=(1, -1, 2, -2, 3, -3),
+            color_order=(2, 1, 3, 4, 5, 6),
+            amplitudes=11,
+            color_factor=3,
+            identical_factor=1,
+            singlet_vertices=0,
+            normalization=0.25,
+            value_decimal=Decimal("1.25"),
+            normalization_decimal=Decimal("0.25"),
+        )
+
+    monkeypatch.setattr(
+        legacy_amplicol,
+        "run_selected_flow_library_probe",
+        fake_probe,
+    )
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/existing")
+
+    record, value, payload = report._legacy_run_selected_flow_library_probe_record(
+        tmp_path,
+        entry=entry,
+        source_pdgs=(1, -1, 2, -2, 3, -3),
+        momenta=(),
+        points=1,
+        output_path=tmp_path / "selected-flow-library-probe.json",
+    )
+
+    assert value == pytest.approx(1.25)
+    assert record["returncode"] == 0
+    assert record["cwd"] == os.fspath(tmp_path.resolve(strict=False))
+    assert record["env"]["LD_LIBRARY_PATH"].split(":")[0] == os.fspath(
+        tmp_path.resolve(strict=False)
+    )
+    assert record["executable"] == os.fspath(
+        (tmp_path / "amplicol_library_benchmark").resolve(strict=False)
+    )
+    assert calls[0]["kwargs"]["entry"] is entry
+    assert calls[0]["kwargs"]["source_pdgs"] == (1, -1, 2, -2, 3, -3)
+    assert os.environ["LD_LIBRARY_PATH"] == "/existing"
+    assert payload["process_pdgs"] == [1, -1, 2, -2, 3, -3]
+    assert json.loads(Path(record["output_path"]).read_text(encoding="utf-8"))[
+        "value_decimal"
+    ] == "1.25"
+
+
+def test_snapshot_legacy_generated_library_preserves_executable_and_libs(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    destination = tmp_path / "artifact"
+    repository.mkdir()
+    destination.mkdir()
+    (destination / "stale").write_text("old\n", encoding="utf-8")
+    (repository / "libamp1.so").write_bytes(b"library")
+    (repository / "Library").mkdir()
+    (repository / "Library" / "amplitudes.bin").write_bytes(b"amplitudes")
+    (repository / "amplicol_library_benchmark").write_text(
+        "#!/bin/sh\n",
+        encoding="utf-8",
+    )
+    (repository / "amplicol_generate").write_text(
+        "#!/bin/sh\n",
+        encoding="utf-8",
+    )
+    process_file = repository / "processes.txt"
+    process_file.write_text("d d~ > z\n", encoding="utf-8")
+
+    record = report._snapshot_legacy_generated_library(
+        repository,
+        destination,
+        required_executables=("amplicol_library_benchmark",),
+        process_file=process_file,
+    )
+
+    assert not (destination / "stale").exists()
+    assert (destination / "libamp1.so").read_bytes() == b"library"
+    assert (destination / "Library" / "amplitudes.bin").read_bytes() == b"amplitudes"
+    assert (destination / "amplicol_library_benchmark").is_file()
+    assert (destination / "amplicol_generate").is_file()
+    assert (destination / "processes.txt").read_text(encoding="utf-8") == "d d~ > z\n"
+    copied = {Path(item["path"]).name: item for item in record["files"]}
+    assert copied["libamp1.so"]["sha256"] == report._file_sha256(
+        destination / "libamp1.so"
+    )
+    assert record["artifact_path"] == os.fspath(destination)
+
+
+def test_lc_partition_matrix_element_uses_source_mapped_reference_order() -> None:
+    probe = SimpleNamespace(
+        lc_row_partitions=(
+            SimpleNamespace(row=1, value=1.6035879763289982, permutation=(2, 3, 1)),
+            SimpleNamespace(row=2, value=0.084286088058938, permutation=(2, 1, 3)),
+        )
+    )
+
+    value, metadata = report._legacy_lc_partition_matrix_element(
+        probe,
+        reference_color_order=[2, 4, 1, 3],
+        source_to_row_permutation=(0, 1, 3, 2),
+    )
+
+    assert value == pytest.approx(1.6035879763289982)
+    assert metadata["reference_color_order_coloured"] == [2, 4, 1]
+    assert metadata["reference_lc_partition_row"] == 1
+
+
+def test_lc_selected_flow_matrix_element_sums_fixed_helicity_partitions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[int, ...]] = []
+    entry = SimpleNamespace(process_pdgs=(21, 21, 25, 25))
+
+    def fake_probe(*_args: object, helicities: tuple[int, ...], **_kwargs: object):
+        calls.append(tuple(helicities))
+        value = 1.0 if helicities[0] == helicities[1] else 2.0
+        probe = SimpleNamespace(
+            lc_row_partitions=(
+                SimpleNamespace(row=1, value=value, permutation=(1, 2)),
+            )
+        )
+        return {"args": ["probe", *map(str, helicities)]}, [], probe
+
+    monkeypatch.setattr(report, "_legacy_run_color_probe_timed", fake_probe)
+
+    value, commands, _rows, metadata = report._legacy_lc_selected_flow_matrix_element(
+        tmp_path,
+        process_file=tmp_path / "processes.txt",
+        entry=entry,
+        source_pdgs=(21, 21, 25, 25),
+        momenta=(),
+        reference_color_order=[1, 2, 3, 4],
+    )
+
+    assert value == pytest.approx(6.0)
+    assert calls == [(-1, -1, 0, 0), (-1, 1, 0, 0), (1, -1, 0, 0), (1, 1, 0, 0)]
+    assert len(commands) == 4
+    assert metadata["selected_flow_helicity_count"] == 4
+
+
+def test_legacy_adaptive_profile_points_are_target_runtime_bounded() -> None:
+    assert report._legacy_adaptive_profile_points(
+        0.05,
+        target_runtime=20.0,
+    ) == 40_000
+    assert report._legacy_adaptive_profile_points(
+        1.0e-9,
+        target_runtime=20.0,
+    ) == report.DEFAULT_LEGACY_PROFILE_MAX_POINTS
+    assert report._legacy_adaptive_profile_points(
+        1000.0,
+        target_runtime=20.0,
+    ) == report.DEFAULT_LEGACY_PROFILE_MIN_POINTS
+
+
+def test_legacy_profiled_command_warms_up_and_selects_points(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[int] = []
+
+    def fake_command_record(
+        args: list[str],
+        *,
+        cwd: Path,
+        env: object | None = None,
+    ) -> tuple[dict[str, object], str]:
+        del cwd, env
+        count = int(args[1])
+        calls.append(count)
+        seconds = 0.05 if count == report.DEFAULT_LEGACY_PROFILE_WARMUP_POINTS else 20.0
+        return (
+            {"args": args, "cwd": str(tmp_path), "elapsed_s": seconds, "returncode": 0},
+            f"Timing summary\namplitude evaluation {seconds}\n",
+        )
+
+    monkeypatch.setattr(report, "_legacy_command_record", fake_command_record)
+
+    record, _output, _rows, points, profile = report._legacy_run_command_profiled(
+        lambda count: ["bench", str(count)],
+        cwd=tmp_path,
+        env=None,
+        target_runtime=20.0,
+        probe="bench",
+        timing_labels=("amplitude evaluation",),
+    )
+
+    assert calls == [report.DEFAULT_LEGACY_PROFILE_WARMUP_POINTS, 40_000]
+    assert points == 40_000
+    assert record["profile_points"] == 40_000
+    assert profile["legacy_profile_policy"] == report.LEGACY_PROFILE_POLICY
+    assert profile["measurement_points"] == 40_000
+
+
+def test_terminate_worker_process_sends_process_group_sigterm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int | float | None, int | None]] = []
+
+    class FakeProcess:
+        pid = 42
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            calls.append(("wait", timeout, None))
+            return -signal.SIGTERM
+
+    def fake_killpg(pid: int, sig: int) -> None:
+        calls.append(("killpg", None, sig))
+        assert pid == 42
+
+    monkeypatch.setattr(report.os, "killpg", fake_killpg)
+
+    report._terminate_worker_process(FakeProcess(), grace_seconds=1.5)  # type: ignore[arg-type]
+
+    assert calls == [
+        ("killpg", None, signal.SIGTERM),
+        ("wait", 1.5, None),
+    ]
+
+
+def test_missing_only_retries_matrix_error_rows() -> None:
+    payload = report.build_matrix_cache(report.MATRIX_SPECS[0])
+    entry = payload["entries"][0]
+    entry["status"] = report.ResultStatus.ERROR.value
+    entry["legacy_amplicol"] = {
+        **report._empty_measurement(),
+        "status": report.ResultStatus.ERROR.value,
+    }
+    cell = report.CampaignCell(
+        kind="matrix",
+        cache_name=report.MATRIX_SPECS[0].cache_name,
+        dataset_id=report.MATRIX_SPECS[0].dataset_id,
+        n_final=int(entry["n_final"]),
+        process=str(entry["process"]),
+        process_key=str(entry["process_key"]),
+    )
+
+    assert report._campaign_cell_needs_measurement(
+        cell,
+        {report.MATRIX_SPECS[0].cache_name: payload},
+    )
+
+
+def test_missing_only_retries_z_unsupported_rows() -> None:
+    spec = report.LADDER_SPECS[0]
+    payload = report.build_ladder_cache(spec)
+    entry = next(
+        item
+        for item in payload["entries"]
+        if item["n_final"] == 1 and item["variant"] == "asm_o3"
+    )
+    entry["measurement"] = {
+        **report._empty_measurement(),
+        "status": report.ResultStatus.UNSUPPORTED.value,
+    }
+    cell = report.CampaignCell(
+        kind="performance_ladder",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=int(entry["n_final"]),
+        process=spec.process(int(entry["n_final"])),
+        variant=str(entry["variant"]),
+    )
+
+    assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
+
+
+def test_missing_only_retries_model_ladder_failures() -> None:
+    spec = next(
+        item
+        for item in report.LADDER_SPECS
+        if item.kind == report.CacheKind.MODEL_LADDER
+    )
+    payload = report.build_ladder_cache(spec)
+    entry = payload["entries"][0]
+    entry["measurement"] = {
+        **report._empty_measurement(),
+        "status": report.ResultStatus.TIMEOUT.value,
+    }
+    cell = report.CampaignCell(
+        kind="model_ladder",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=int(entry["n_final"]),
+        process=spec.process(int(entry["n_final"])),
+    )
+
+    assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
+
+
+def test_missing_only_accepts_builtin_schema8_artifacts_after_schema9_bump(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = next(
+        spec
+        for spec in report.MATRIX_SPECS
+        if spec.dataset_id == "matrix_builtin_sm_nlc"
+    )
+    payload = report.build_matrix_cache(spec)
+    entry = payload["entries"][0]
+    artifact_dir = tmp_path / "artifact"
+    model_dir = artifact_dir / "model"
+    model_dir.mkdir(parents=True)
+    compiled_model = model_dir / "compiled-model.json"
+    compiled_model.write_text(
+        json.dumps({"schema_version": 7, "model_compiler_version": 6}),
+        encoding="utf-8",
+    )
+    legacy = report._empty_measurement()
+    legacy.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "requested_config": report._legacy_profile_requested_config(20.0),
+        }
+    )
+    pyamplicol = report._empty_measurement()
+    pyamplicol.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "artifact_path": str(artifact_dir),
+            "environment": {
+                "wall_time_source": "runtime_core_repeated_wall_time",
+                "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            },
+        }
+    )
+    entry.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "legacy_amplicol": legacy,
+            "pyamplicol_jit_o3": pyamplicol,
+        }
+    )
+    cell = report.CampaignCell(
+        kind="matrix",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=int(entry["n_final"]),
+        process=str(entry["process"]),
+        process_key=str(entry["process_key"]),
+    )
+    monkeypatch.setattr(report, "_legacy_measurement_revision_current", lambda _: True)
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 9))
+
+    assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
+
+    compiled_model.write_text(
+        json.dumps({"schema_version": 8, "model_compiler_version": 8}),
+        encoding="utf-8",
+    )
+
+    assert not report._campaign_cell_needs_measurement(
+        cell,
+        {spec.cache_name: payload},
+    )
+
+    compiled_model.write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 10}),
+        encoding="utf-8",
+    )
+
+    assert not report._campaign_cell_needs_measurement(
+        cell,
+        {spec.cache_name: payload},
+    )
+
+
+def test_missing_only_retries_external_schema8_artifacts_after_schema9_bump(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = next(
+        spec
+        for spec in report.MATRIX_SPECS
+        if spec.dataset_id == "matrix_external_sm_nlc"
+    )
+    payload = report.build_matrix_cache(spec)
+    entry = payload["entries"][0]
+    artifact_dir = tmp_path / "artifact"
+    model_dir = artifact_dir / "model"
+    model_dir.mkdir(parents=True)
+    compiled_model = model_dir / "compiled-model.json"
+    compiled_model.write_text(
+        json.dumps({"schema_version": 8, "model_compiler_version": 8}),
+        encoding="utf-8",
+    )
+    legacy = report._empty_measurement()
+    legacy.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "requested_config": report._legacy_profile_requested_config(20.0),
+        }
+    )
+    pyamplicol = report._empty_measurement()
+    pyamplicol.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "artifact_path": str(artifact_dir),
+            "environment": {
+                "wall_time_source": "runtime_core_repeated_wall_time",
+                "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            },
+        }
+    )
+    entry.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "legacy_amplicol": legacy,
+            "pyamplicol_jit_o3": pyamplicol,
+        }
+    )
+    cell = report.CampaignCell(
+        kind="matrix",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=int(entry["n_final"]),
+        process=str(entry["process"]),
+        process_key=str(entry["process_key"]),
+    )
+    monkeypatch.setattr(report, "_legacy_measurement_revision_current", lambda _: True)
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 9))
+
+    assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
+
+    compiled_model.write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 8}),
+        encoding="utf-8",
+    )
+
+    assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
+
+    compiled_model.write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 9}),
+        encoding="utf-8",
+    )
+
+    assert not report._campaign_cell_needs_measurement(
+        cell,
+        {spec.cache_name: payload},
+    )
+
+
+def test_missing_only_retries_old_python_wall_timing_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = next(
+        spec
+        for spec in report.MATRIX_SPECS
+        if spec.dataset_id == "matrix_builtin_sm_nlc"
+    )
+    payload = report.build_matrix_cache(spec)
+    entry = payload["entries"][0]
+    artifact_dir = tmp_path / "artifact"
+    model_dir = artifact_dir / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "compiled-model.json").write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 10}),
+        encoding="utf-8",
+    )
+    legacy = report._empty_measurement()
+    legacy.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "requested_config": report._legacy_profile_requested_config(20.0),
+        }
+    )
+    pyamplicol = report._empty_measurement()
+    pyamplicol.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "artifact_path": str(artifact_dir),
+            "environment": {
+                "wall_time_source": "runtime_evaluate_wall_time",
+                "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            },
+        }
+    )
+    entry.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "legacy_amplicol": legacy,
+            "pyamplicol_jit_o3": pyamplicol,
+        }
+    )
+    cell = report.CampaignCell(
+        kind="matrix",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=int(entry["n_final"]),
+        process=str(entry["process"]),
+        process_key=str(entry["process_key"]),
+    )
+    monkeypatch.setattr(report, "_legacy_measurement_revision_current", lambda _: True)
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 10))
+
+    assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
+
+
+def test_legacy_revision_check_accepts_non_numerical_followup_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revision = "38937fc4a0a66ae14c55e77ba455de8c6170547b"
+    measurement = {
+        "environment": {
+            "revision": revision,
+        },
+    }
+    from tools.developer import legacy_amplicol
+
+    monkeypatch.setattr(
+        legacy_amplicol,
+        "expected_revision",
+        lambda: "754064d751224ec96c182d5f5d21fd6a11ad28f6",
+    )
+
+    assert report._legacy_measurement_revision_current(measurement)
+
+
+def test_legacy_lc_contract_rejects_probe_setup_generation_source() -> None:
+    measurement = report._empty_measurement()
+    measurement.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 4.0,
+            "requested_config": report._legacy_profile_requested_config(20.0),
+            "metadata": {
+                "old_matrix_format": {
+                    "generation_s": 4.0,
+                    "all_flow_generation_s": 0.001,
+                    "all_flow_generation_source": (
+                        "amplicol_color_probe_imode2_explicit_setup"
+                    ),
+                    "all_flow_status": report.ResultStatus.OK.value,
+                }
+            },
+        }
+    )
+
+    assert not report._legacy_lc_measurement_contract_current(measurement)
+
+    fields = measurement["metadata"]["old_matrix_format"]  # type: ignore[index]
+    fields["all_flow_generation_s"] = 4.0  # type: ignore[index]
+    fields["all_flow_generation_source"] = (  # type: ignore[index]
+        report.LEGACY_LC_ALL_FLOW_GENERATION_SOURCE
+    )
+
+    assert report._legacy_lc_measurement_contract_current(measurement)
+
+
+def test_legacy_lc_contract_rejects_fixed_point_profile_config() -> None:
+    measurement = report._empty_measurement()
+    measurement.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 4.0,
+            "requested_config": {
+                "method": "legacy_amplicol_generated_library",
+                "library_benchmark_points": 100_000,
+                "color_probe_points": 100_000,
+            },
+            "metadata": {
+                "old_matrix_format": {
+                    "generation_s": 4.0,
+                    "all_flow_generation_s": 4.0,
+                    "all_flow_generation_source": (
+                        report.LEGACY_LC_ALL_FLOW_GENERATION_SOURCE
+                    ),
+                    "all_flow_status": report.ResultStatus.OK.value,
+                }
+            },
+        }
+    )
+
+    assert not report._legacy_measurement_profile_current(measurement)
+    assert not report._legacy_lc_measurement_contract_current(measurement)
+
+
 def test_z_ladder_revalidates_variants_when_reference_is_available() -> None:
     payload = report.build_ladder_cache(report.LADDER_SPECS[0])
     n_final = report.LADDER_SPECS[0].multiplicities[0]
@@ -412,27 +1077,17 @@ def test_z_tables_use_old_selected_and_all_flow_layout() -> None:
     assert "External-SM" not in ufo
 
 
-def test_z_reproduction_commands_use_the_current_cli() -> None:
+def test_z_tables_are_table_only_fragments() -> None:
     caches = report.load_caches(report.ReportPaths(DOCS))
     rendered = report.render_performance_ladder(
         report.LADDER_SPECS[0],
         caches["z_builtin_sm.json"],
     )
-    listing = re.search(
-        r"\\begin\{lstlisting\}.*?\n(.*?)\\end\{lstlisting\}",
-        rendered,
-        re.S,
-    )
-    assert listing is not None
-    commands = [line for line in listing.group(1).splitlines() if line.strip()]
-    assert len(commands) == 2
-    assert "generate-process" not in rendered
-    assert "time-process" not in rendered
-
-    for command in commands:
-        tokens = shlex.split(command)
-        assert tokens[:3] == [".venv/bin/python", "-m", "pyamplicol"]
-        parse_cli(tokens[3:])
+    assert r"\begin{landscape}" not in rendered
+    assert r"\end{landscape}" not in rendered
+    assert r"\begin{lstlisting}" not in rendered
+    assert "Reproduce the" not in rendered
+    assert r"\PAC\ model source" not in rendered
 
 
 def test_missing_only_treats_generic_z_rows_as_stale() -> None:
