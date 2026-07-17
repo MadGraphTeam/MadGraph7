@@ -3955,6 +3955,29 @@ def _previous_cache_entry_for_cell(cell: CampaignCell) -> Mapping[str, object] |
     return None
 
 
+def _source_provenance_current(provenance: object) -> bool:
+    if not isinstance(provenance, Mapping):
+        return False
+    current = _report_source_provenance()
+    checked_keys = (
+        "head",
+        "report_version",
+        "cache_schema_version",
+        "compiled_model_schema_version",
+        "model_compiler_version",
+    )
+    return all(provenance.get(key) == current.get(key) for key in checked_keys)
+
+
+def _measurement_source_provenance_current(
+    measurement: Mapping[str, object],
+) -> bool:
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return False
+    return _source_provenance_current(metadata.get("source_provenance"))
+
+
 def _reusable_pyamplicol_generation_seconds(
     cell: CampaignCell,
     artifact_dir: Path,
@@ -3966,6 +3989,8 @@ def _reusable_pyamplicol_generation_seconds(
         previous_measurement.get("generation_seconds")
     )
     if previous_generation_seconds is None:
+        return None
+    if not _measurement_source_provenance_current(previous_measurement):
         return None
     if not _pyamplicol_generation_profile_current(previous_measurement):
         return None
