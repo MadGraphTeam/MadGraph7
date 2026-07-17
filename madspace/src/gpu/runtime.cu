@@ -13,6 +13,7 @@
 #include <thrust/fill.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/sequence.h>
 #include <thrust/sort.h>
 
 #include "../kernels/kernels.hpp"
@@ -506,18 +507,10 @@ void batch_scatter_impl(
     }
 }
 
-void op_batch_scatter(
-    const GpuRuntime::Instruction& instruction,
-    TensorVec& locals,
-    const AsyncGpuDevice& device
+void batch_scatter_dispatch(
+    Tensor& indices, Tensor& source, Tensor& output, const AsyncGpuDevice& device
 ) {
-    auto& indices = locals[instruction.input_indices[0]];
-    auto& target = locals[instruction.input_indices[1]];
-    auto& source = locals[instruction.input_indices[2]];
-
-    auto& output = locals[instruction.output_indices[0]];
-    output = target.copy(device, instruction.output_alloc_hints[0]);
-    switch (target.shape().size()) {
+    switch (output.shape().size()) {
     case 1:
         batch_scatter_impl<1>(indices, source, output, device);
         break;
@@ -532,6 +525,162 @@ void op_batch_scatter(
         break;
     default:
         throw std::runtime_error("The number of dimensions must be between 1 and 4");
+    }
+}
+
+void op_batch_scatter(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    auto& indices = locals[instruction.input_indices[0]];
+    auto& target = locals[instruction.input_indices[1]];
+    auto& source = locals[instruction.input_indices[2]];
+
+    auto& output = locals[instruction.output_indices[0]];
+    output = target.copy(device, instruction.output_alloc_hints[0]);
+    batch_scatter_dispatch(indices, source, output, device);
+}
+
+void op_batch_split_by_index(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    auto indices =
+        locals[instruction.input_indices[0]].contiguous(device, AllocHint::temporary);
+    std::size_t count = locals[instruction.input_indices[1]].index_value();
+    std::size_t batch_size = indices.size(0);
+
+    if (batch_size == 0) {
+        for (std::size_t k = 0; k < count; ++k) {
+            locals[instruction.output_indices[k]] = Tensor(
+                DataType::dt_int, {0}, device, instruction.output_alloc_hints[k]
+            );
+        }
+        return;
+    }
+
+    // per-bucket counts, needed on the host to size and split the outputs below
+    Tensor sizes(DataType::dt_int, {count}, device, AllocHint::temporary);
+    {
+        std::size_t temp_storage_bytes = 0;
+        cub::DeviceHistogram::HistogramEven(
+            nullptr,
+            temp_storage_bytes,
+            static_cast<me_int_t*>(indices.data()),
+            static_cast<me_int_t*>(sizes.data()),
+            static_cast<int>(count) + 1,
+            0,
+            static_cast<int>(count),
+            batch_size,
+            device.stream()
+        );
+        Tensor temp(
+            DataType::dt_float,
+            {(temp_storage_bytes + 7) / 8},
+            device,
+            AllocHint::temporary
+        );
+        cub::DeviceHistogram::HistogramEven(
+            temp.data(),
+            temp_storage_bytes,
+            static_cast<me_int_t*>(indices.data()),
+            static_cast<me_int_t*>(sizes.data()),
+            static_cast<int>(count) + 1,
+            0,
+            static_cast<int>(count),
+            batch_size,
+            device.stream()
+        );
+        temp.reset(device);
+    }
+
+    // stable sort of the original positions by bucket index: afterwards each
+    // bucket's positions are contiguous, in their original relative order
+    Tensor values_in(DataType::dt_int, {batch_size}, device, AllocHint::temporary);
+    auto values_in_ptr =
+        thrust::device_pointer_cast(static_cast<me_int_t*>(values_in.data()));
+    thrust::sequence(
+        thrust_par.on(device.stream()), values_in_ptr, values_in_ptr + batch_size
+    );
+    Tensor keys_out(DataType::dt_int, {batch_size}, device, AllocHint::temporary);
+    Tensor values_out(
+        DataType::dt_int, {batch_size}, device, instruction.output_alloc_hints[0]
+    );
+    {
+        std::size_t temp_storage_bytes = 0;
+        cub::DeviceRadixSort::SortPairs(
+            nullptr,
+            temp_storage_bytes,
+            static_cast<me_int_t*>(indices.data()),
+            static_cast<me_int_t*>(keys_out.data()),
+            static_cast<me_int_t*>(values_in.data()),
+            static_cast<me_int_t*>(values_out.data()),
+            batch_size,
+            0,
+            static_cast<int>(sizeof(me_int_t) * 8),
+            device.stream()
+        );
+        Tensor temp(
+            DataType::dt_float,
+            {(temp_storage_bytes + 7) / 8},
+            device,
+            AllocHint::temporary
+        );
+        cub::DeviceRadixSort::SortPairs(
+            temp.data(),
+            temp_storage_bytes,
+            static_cast<me_int_t*>(indices.data()),
+            static_cast<me_int_t*>(keys_out.data()),
+            static_cast<me_int_t*>(values_in.data()),
+            static_cast<me_int_t*>(values_out.data()),
+            batch_size,
+            0,
+            static_cast<int>(sizeof(me_int_t) * 8),
+            device.stream()
+        );
+        temp.reset(device);
+    }
+    values_in.reset(device);
+    keys_out.reset(device);
+    indices.reset(device);
+
+    Tensor sizes_cpu = sizes.cpu(device);
+    check_error(gpuStreamSynchronize(device.stream());
+    auto sizes_view = sizes_cpu.view<me_int_t, 1>();
+    std::size_t offset = 0;
+    for (std::size_t k = 0; k < count; ++k) {
+        std::size_t bucket_size = sizes_view[k];
+        locals[instruction.output_indices[k]] =
+            values_out.slice(0, offset, offset + bucket_size);
+        offset += bucket_size;
+    }
+    values_out.reset(device);
+    sizes.reset(device);
+}
+
+void op_batch_merge_by_index(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    std::size_t batch_size = 0;
+    for (std::size_t i = 0; i < instruction.input_indices.size(); i += 2) {
+        batch_size += locals[instruction.input_indices[i]].size(0);
+    }
+    auto& arg0 = locals[instruction.input_indices[0]];
+    auto& output = locals[instruction.output_indices[0]];
+    Sizes shape = arg0.shape();
+    shape[0] = batch_size;
+    output = Tensor(arg0.dtype(), shape, device, instruction.output_alloc_hints[0]);
+    for (std::size_t i = 0; i < instruction.input_indices.size(); i += 2) {
+        batch_scatter_dispatch(
+            locals[instruction.input_indices[i + 1]],
+            locals[instruction.input_indices[i]],
+            output,
+            device
+        );
     }
 }
 
