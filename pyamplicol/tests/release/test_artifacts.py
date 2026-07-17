@@ -600,6 +600,30 @@ def test_candidate_allows_only_rustup_standard_library_source_paths(
         audit_wheel(other_local_path, mode="candidate", native_scan=False)
 
 
+def test_short_repository_root_is_matched_only_at_a_path_token_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = b"/io"
+    monkeypatch.setattr(artifacts, "_REPOSITORY_PATH_MARKER", marker)
+
+    assert not artifacts._contains_forbidden_path(
+        b"/rustc/hash/library/std/src/io/error.rs",
+        marker,
+    )
+    assert not artifacts._contains_forbidden_path(
+        b"symbolic/path/to/io/helpers.rs",
+        marker,
+    )
+    assert artifacts._contains_forbidden_path(
+        b"compiled from /io/dependencies/checkouts/symjit/rust/lib.rs",
+        marker,
+    )
+    assert artifacts._contains_forbidden_path(
+        b"\0/io/source/rust/crates/rusticol-core/src/lib.rs",
+        marker,
+    )
+
+
 def test_release_allows_rust_standard_library_backtrace_source_paths(
     tmp_path: Path,
 ) -> None:

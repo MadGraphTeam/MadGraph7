@@ -85,6 +85,7 @@ _FORBIDDEN_MEMBER_PARTS = {
     "PYPI_DEPLOYMENT_TEST",
     "target",
 }
+_REPOSITORY_PATH_MARKER = os.fsencode(str(ROOT.resolve()))
 _FORBIDDEN_PATH_MARKERS = (
     b"/tmp/",
     b"/var/tmp/",
@@ -96,10 +97,13 @@ _FORBIDDEN_PATH_MARKERS = (
     b"/opt/python/",
     b"/github/workspace/",
     b"C:\\Users\\",
-    os.fsencode(str(ROOT.resolve())),
+    _REPOSITORY_PATH_MARKER,
 )
 _FORBIDDEN_NATIVE_RELATIVE_MARKERS = (b"../", b"..\\")
 _NATIVE_MEMBER_SUFFIXES = (".a", ".dylib", ".lib", ".pyd", ".so")
+_PATH_TOKEN_BYTES = frozenset(
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~+%-/\\"
+)
 _FORBIDDEN_CAPI_SYMBOLS = (
     "pyobject",
     "pyexc_",
@@ -679,6 +683,33 @@ def _sanitized_native_bytes(data: bytes, *, allow_local_rustup: bool) -> bytes:
     return scanned
 
 
+def _contains_forbidden_path(data: bytes, marker: bytes) -> bool:
+    """Return whether *marker* occurs as the forbidden path it represents.
+
+    Most forbidden markers include enough context to use a direct substring
+    check.  The repository root is environment-dependent, however, and a
+    manylinux build conventionally mounts the checkout at ``/io``.  Matching
+    that three-byte root anywhere would reject ordinary paths such as
+    ``.../library/std/src/io/error.rs``.  Require the repository marker to
+    begin a new path token while still rejecting ``/io/...`` at the start of a
+    string or after punctuation, whitespace, or a NUL byte.
+    """
+
+    needle = marker.lower()
+    if not needle:
+        return False
+    lowered = data.lower()
+    if marker != _REPOSITORY_PATH_MARKER:
+        return needle in lowered
+
+    offset = 0
+    while (index := lowered.find(needle, offset)) >= 0:
+        if index == 0 or lowered[index - 1] not in _PATH_TOKEN_BYTES:
+            return True
+        offset = index + 1
+    return False
+
+
 def _scan_embedded_paths(
     entries: dict[str, bytes], *, allow_local_rustup: bool = False
 ) -> None:
@@ -693,7 +724,7 @@ def _scan_embedded_paths(
         if name.lower().endswith((".dylib", ".pyd", ".so")):
             markers += _FORBIDDEN_NATIVE_RELATIVE_MARKERS
         for marker in markers:
-            if marker and marker.lower() in lowered:
+            if _contains_forbidden_path(lowered, marker):
                 raise ArtifactError(
                     f"wheel member {name} embeds non-relocatable path marker "
                     f"{os.fsdecode(marker)!r}"
@@ -1019,17 +1050,16 @@ def _command_output(command: list[str], *, cwd: Path) -> str:
 
 
 def _reject_native_paths(output: str, description: str) -> None:
-    lowered = output.lower()
+    encoded = os.fsencode(output)
     for marker in _FORBIDDEN_PATH_MARKERS:
         decoded = os.fsdecode(marker).lower()
-        if decoded and decoded in lowered:
+        if _contains_forbidden_path(encoded, marker):
             raise ArtifactError(f"{description} embeds non-relocatable path {decoded}")
 
 
 def _reject_native_path_bytes(data: bytes, description: str) -> None:
-    lowered = data.lower()
     for marker in _FORBIDDEN_PATH_MARKERS:
-        if marker and marker.lower() in lowered:
+        if _contains_forbidden_path(data, marker):
             raise ArtifactError(
                 f"{description} embeds non-relocatable path "
                 f"{os.fsdecode(marker).lower()}"
@@ -1477,7 +1507,7 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
             item = relative_files[name]
             data = item.read_bytes()
             for marker in _FORBIDDEN_PATH_MARKERS:
-                if marker and marker.lower() in data.lower():
+                if _contains_forbidden_path(data, marker):
                     raise ArtifactError(
                         f"sdist member {name} embeds non-relocatable path marker "
                         f"{os.fsdecode(marker)!r}"
