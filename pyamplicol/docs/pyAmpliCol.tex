@@ -247,17 +247,32 @@ parameters, phase-space ensemble, precision, selectors, and normalization.
 
 \subsection{Benchmark platform}
 
-\begingroup
-\setlength{\fboxsep}{0.65em}
-\noindent\fbox{\parbox{0.955\linewidth}{%
-\textbf{Campaign metadata pending.} The table-filling campaign must replace
-this placeholder with the exact benchmark architecture before publication:
-host or cluster partition, CPU model and microarchitecture, instruction-set
-features, physical/logical core topology, installed memory, operating system
-and kernel, Python/Rust/C/C++/Fortran toolchain versions, and the process-worker
-and evaluator-thread policy used for generation and timing. Measurements in
-different tables must identify any platform or policy change explicitly.}}
-\endgroup
+The populated measurements in this report were produced on the cluster host
+\texttt{itphlies.clan} from the Nix developer shell, not from a scheduler-visible
+batch partition in the reporting environment.  The node reports Linux
+\texttt{6.12.63} on NixOS \texttt{26.05}, \texttt{x86\_64}, glibc \texttt{2.42}.
+The processor is a dual-socket AMD EPYC 9754 system (Genoa/Zen~4): 256 physical
+cores are visible across eight NUMA nodes, with 384 logical CPUs online in this
+session.  The advertised instruction-set families include SSE through SSE4.2,
+FMA, AVX, AVX2, AVX-512 foundation/vector, VNNI/BF16, AES/SHA, BMI1/2, ADX,
+VAES, and carry-less multiplication.  Installed memory reported by the kernel
+is \texttt{1188419660 kB} (\(\simeq 1.11\) TiB), with no configured swap.
+
+All report measurements use the repository's developer installation through
+\texttt{.venv/bin/python} inside \texttt{nix develop}.  The effective toolchain
+for the current campaign is Python \texttt{3.11.15} with NumPy \texttt{2.4.2},
+Rust \texttt{1.89.0}, Cargo \texttt{1.89.0}, GCC/G++/GNU Fortran
+\texttt{15.2.0}, and pdfTeX \texttt{3.141592653-2.6-1.40.27} from TeX Live
+2025.  The campaign commands use an 800~GiB RSS watchdog, a 3600~s generation
+timeout per cell generation workload, and a 20~s target runtime for benchmark
+sampling.  Unless a cell's manifest states otherwise, each cell uses one
+generation/evaluator core (\texttt{--cell-cores 1}); the current table-filling
+batches use up to eight concurrent process workers with
+\texttt{--allow-symbolica-parallel}, while the earlier scalar-ladder
+cross-check used one process worker with the same per-cell core and timing
+policy.  Wall times are native Rusticol repeated-core timings after
+caller-language momentum packing, and model compilation is recorded separately
+from process-generation time.
 
 \subsection{Numerical validation}
 
