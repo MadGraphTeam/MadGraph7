@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 from pyamplicol.api.errors import GenerationError, ModelError, PyAmpliColError
@@ -85,6 +86,31 @@ class _ProcessSelection:
     reference_color_order: tuple[int, ...] | None = None
     selected_color_sector_ids: frozenset[int] | None = None
     selected_source_helicities: Mapping[int, int] | None = None
+
+    def __post_init__(self) -> None:
+        if self.reference_color_order is not None:
+            object.__setattr__(
+                self,
+                "reference_color_order",
+                tuple(int(label) for label in self.reference_color_order),
+            )
+        if self.selected_color_sector_ids is not None:
+            object.__setattr__(
+                self,
+                "selected_color_sector_ids",
+                frozenset(int(value) for value in self.selected_color_sector_ids),
+            )
+        if self.selected_source_helicities is not None:
+            object.__setattr__(
+                self,
+                "selected_source_helicities",
+                MappingProxyType(
+                    {
+                        int(label): int(helicity)
+                        for label, helicity in self.selected_source_helicities.items()
+                    }
+                ),
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,12 +224,14 @@ class GenerationBackend:
         progress: ProgressSink | None,
         *,
         api_bundle_hook: ApiBundleHook | None = None,
+        process_selection: _ProcessSelection | None = None,
     ) -> None:
         self._resource_config = config
         self._configuration = _GenerationConfigProvenance.from_config(config)
         self._config = self._configuration.effective
         self._progress = progress
         self._api_bundle_hook = api_bundle_hook
+        self._process_selection_override = process_selection
 
     def plan(
         self,
@@ -925,6 +953,8 @@ class GenerationBackend:
 
     @property
     def _process_selection(self) -> _ProcessSelection:
+        if self._process_selection_override is not None:
+            return self._process_selection_override
         run = self._run_config
         if run is None:
             return _ProcessSelection()
