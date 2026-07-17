@@ -8,6 +8,8 @@ vertex names, PDG assignments, and coupling-order labels are not proof input.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -87,6 +89,34 @@ class ExternalSymmetryCertificates:
     adjoint_current_reflection_phases: tuple[
         tuple[int, tuple[float, float]], ...
     ]
+    parity_kernel_digests: tuple[tuple[int, str], ...]
+    yang_mills_kernel_digests: tuple[tuple[int, str], ...]
+    yang_mills_adjoint_digests: tuple[tuple[str, str], ...]
+    adjoint_current_reflection_digests: tuple[tuple[int, str], ...]
+
+    def __post_init__(self) -> None:
+        expected = (
+            (self.parity_kernel_kinds, self.parity_kernel_digests),
+            (self.yang_mills_kernel_kinds, self.yang_mills_kernel_digests),
+            (self.yang_mills_adjoint_names, self.yang_mills_adjoint_digests),
+            (
+                frozenset(
+                    kind for kind, _phase in self.adjoint_current_reflection_phases
+                ),
+                self.adjoint_current_reflection_digests,
+            ),
+        )
+        for selectors, digests in expected:
+            if len(digests) != len(selectors) or {
+                selector for selector, _digest in digests
+            } != set(selectors):
+                raise ValueError("symmetry certificate digest selectors are incomplete")
+            if any(
+                len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+                for _selector, digest in digests
+            ):
+                raise ValueError("symmetry certificate contains an invalid SHA-256")
 
 
 def derive_external_symmetry_certificates(
@@ -205,12 +235,163 @@ def derive_external_symmetry_certificates(
             yang_mills_kernel_kinds=frozenset(yang_mills_kinds),
         )
     )
+    kernels_by_kind = {kernel.kind: kernel for kernel in ir.oriented_kernels}
+    kernel_digests = {
+        kind: _kernel_contract_digest(kernels_by_kind[kind])
+        for kind in parity_kinds | yang_mills_kinds | set(reflection_phases)
+    }
+    yang_mills_term_ids_by_name = {
+        name: frozenset(
+            {
+                term_id
+                for term_id, term_name in ym_cubic_terms.items()
+                if term_name == name
+            }
+            | set(quartic_groups.get(name, ()))
+        )
+        for name in complete_adjoint_names
+    }
+    adjoint_digests = {
+        name: _adjoint_sector_contract_digest(
+            name,
+            ir,
+            particle=particles[name],
+            propagator=(
+                None
+                if particles[name].propagator is None
+                else propagators.get(particles[name].propagator)
+            ),
+            kernel_digests=kernel_digests,
+            kernel_kinds=frozenset(yang_mills_kinds),
+            term_ids=yang_mills_term_ids_by_name[name],
+        )
+        for name in complete_adjoint_names
+    }
 
     return ExternalSymmetryCertificates(
         parity_kernel_kinds=frozenset(parity_kinds),
         yang_mills_kernel_kinds=frozenset(yang_mills_kinds),
         yang_mills_adjoint_names=complete_adjoint_names,
         adjoint_current_reflection_phases=tuple(sorted(reflection_phases.items())),
+        parity_kernel_digests=tuple(
+            (kind, kernel_digests[kind]) for kind in sorted(parity_kinds)
+        ),
+        yang_mills_kernel_digests=tuple(
+            (kind, kernel_digests[kind]) for kind in sorted(yang_mills_kinds)
+        ),
+        yang_mills_adjoint_digests=tuple(sorted(adjoint_digests.items())),
+        adjoint_current_reflection_digests=tuple(
+            (kind, kernel_digests[kind]) for kind in sorted(reflection_phases)
+        ),
+    )
+
+
+def _contract_digest(payload: object) -> str:
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _kernel_contract_digest(kernel: CompiledOrientedKernel) -> str:
+    """Bind a theorem to the exact oriented executable kernel contract."""
+
+    return _contract_digest(
+        {
+            "kind": kernel.kind,
+            "term_ids": list(kernel.term_ids or (kernel.term_id,)),
+            "particles": list(kernel.particles),
+            "source_particle_legs": list(kernel.source_particle_legs),
+            "component_expressions": list(kernel.component_expressions),
+            "coupling_expression": kernel.coupling_expression,
+            "coupling_orders": [list(item) for item in kernel.coupling_orders],
+            "runtime_parameters": list(kernel.runtime_parameters),
+            "color_expression": kernel.color_expression,
+            "color_projection_structure": kernel.color_projection_structure,
+            "color_projection_coefficient": kernel.color_projection_coefficient,
+            "lc_color_normalization_power": kernel.lc_color_normalization_power,
+            "input_ordering_ids": list(kernel.input_ordering_ids),
+            "output_ordering_id": kernel.output_ordering_id,
+        }
+    )
+
+
+def _adjoint_sector_contract_digest(
+    name: str,
+    ir: CompiledModelIR,
+    *,
+    particle: CompiledParticleRecord,
+    propagator: CompiledPropagatorRecord | None,
+    kernel_digests: dict[int, str],
+    kernel_kinds: frozenset[int],
+    term_ids: frozenset[int],
+) -> str:
+    """Bind global Yang--Mills theorems to source, kernel, and color data."""
+
+    current_orderings = tuple(
+        ordering.to_json_dict()
+        for ordering in ir.current_orderings
+        if ordering.particle == name
+    )
+    terms = tuple(
+        {
+            "id": term.id,
+            "particles": list(term.particles),
+            "tensor_product_signature": _tensor_product_signature(
+                term.color_expression,
+                term.lorentz_expression,
+            ),
+            "coupling_expression": term.coupling_expression,
+            "coupling_orders": [list(item) for item in term.coupling_orders],
+            "backend": term.backend,
+            "lc_color_normalization_power": term.lc_color_normalization_power,
+            "source_ordering_ids": list(term.source_ordering_ids),
+        }
+        for term in ir.vertex_terms
+        if term.id in term_ids
+    )
+    kernels = tuple(
+        (kernel.kind, kernel_digests[kernel.kind])
+        for kernel in ir.oriented_kernels
+        if kernel.kind in kernel_kinds and name in kernel.particles
+    )
+    return _contract_digest(
+        {
+            "particle": {
+                "name": particle.name,
+                "antiname": particle.antiname,
+                "spin": particle.spin,
+                "color": particle.color,
+                "mass": particle.mass,
+                "width": particle.width,
+                "quantum_numbers": [list(item) for item in particle.quantum_numbers],
+                "ghost_number": particle.ghost_number,
+                "propagating": particle.propagating,
+                "goldstoneboson": particle.goldstoneboson,
+                "component_dimension": particle.component_dimension,
+                "auxiliary_kind": particle.auxiliary_kind,
+                "statistics": particle.statistics,
+                "wavefunction_family": particle.wavefunction_family,
+                "color_role": particle.color_role,
+                "self_conjugate": particle.self_conjugate,
+                "source_orientation": particle.source_orientation,
+            },
+            "propagator": (
+                None
+                if propagator is None
+                else {
+                    "numerator": propagator.numerator,
+                    "denominator": propagator.denominator,
+                    "custom": propagator.custom,
+                }
+            ),
+            "current_orderings": current_orderings,
+            "vertex_terms": terms,
+            "oriented_kernels": kernels,
+        }
     )
 
 

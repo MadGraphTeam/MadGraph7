@@ -223,6 +223,29 @@ def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) ->
     reflection_phases = dict(certificates.adjoint_current_reflection_phases)
     assert reflection_phases
     assert set(reflection_phases.values()) == {(-1.0, 0.0)}
+    parity_digests = dict(certificates.parity_kernel_digests)
+    yang_mills_digests = dict(certificates.yang_mills_kernel_digests)
+    adjoint_digests = dict(certificates.yang_mills_adjoint_digests)
+    reflection_digests = dict(
+        certificates.adjoint_current_reflection_digests
+    )
+    assert set(parity_digests) == certificates.parity_kernel_kinds
+    assert set(yang_mills_digests) == certificates.yang_mills_kernel_kinds
+    assert set(adjoint_digests) == certificates.yang_mills_adjoint_names
+    assert set(reflection_digests) == set(reflection_phases)
+    assert all(
+        len(digest) == 64
+        for digest in (
+            *parity_digests.values(),
+            *yang_mills_digests.values(),
+            *adjoint_digests.values(),
+            *reflection_digests.values(),
+        )
+    )
+    assert all(
+        reflection_digests[kind] == parity_digests[kind]
+        for kind in reflection_digests
+    )
 
     pure_adjoint = build_model_process_ir("g g > g g", compiled.ir)
     qcd_vertices = tuple(
@@ -552,6 +575,9 @@ def test_custom_adjoint_propagator_disables_global_symmetries(external_sm) -> No
     assert certificates.yang_mills_kernel_kinds == frozenset()
     assert certificates.yang_mills_adjoint_names == frozenset()
     assert certificates.adjoint_current_reflection_phases == ()
+    assert certificates.yang_mills_kernel_digests == ()
+    assert certificates.yang_mills_adjoint_digests == ()
+    assert certificates.adjoint_current_reflection_digests == ()
 
 
 def test_chiral_gauge_current_does_not_receive_parity_certificate(external_sm) -> None:
