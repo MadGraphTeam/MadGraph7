@@ -5410,15 +5410,20 @@ def _legacy_lc_color_probe_supported(pdgs: Sequence[int]) -> bool:
     return _legacy_quark_line_count(pdgs) <= 2
 
 
+def _legacy_direct_color_probe_supported(pdgs: Sequence[int]) -> bool:
+    return _legacy_quark_line_count(pdgs) <= 3
+
+
 def _lc_all_flow_supported(process: str) -> bool:
     _ensure_repo_root_on_path()
     from tools.developer import legacy_amplicol
 
-    return _legacy_lc_color_probe_supported(legacy_amplicol.process_pdgs(process))
+    return _legacy_direct_color_probe_supported(legacy_amplicol.process_pdgs(process))
 
 
 def _legacy_probe_scope_limited(message: object) -> bool:
-    return "more than two quarks" in str(message).lower()
+    text = str(message).lower()
+    return "more than two quarks" in text or "quark lines exceed" in text
 
 
 def _legacy_command_record(
@@ -5829,6 +5834,7 @@ def _legacy_run_color_probe_timed(
     entry: object,
     source_pdgs: Sequence[int],
     momenta: Sequence[Sequence[float]],
+    color_accuracy: str = "lc",
     helicities: Sequence[int] | None,
     points: int,
     executable: Path | None = None,
@@ -5868,7 +5874,7 @@ def _legacy_run_color_probe_timed(
                 str(max(1, int(points))),
                 str(entry.group),
                 str(entry.integral),
-                "lc",
+                color_accuracy,
                 process_copy,
                 momenta_path,
                 *(str(value) for value in ordered_helicities),
@@ -5887,6 +5893,7 @@ def _legacy_run_color_probe_profiled(
     entry: object,
     source_pdgs: Sequence[int],
     momenta: Sequence[Sequence[float]],
+    color_accuracy: str = "lc",
     helicities: Sequence[int] | None,
     target_runtime: float,
     executable: Path | None = None,
@@ -5905,6 +5912,7 @@ def _legacy_run_color_probe_profiled(
         entry=entry,
         source_pdgs=source_pdgs,
         momenta=momenta,
+        color_accuracy=color_accuracy,
         helicities=helicities,
         points=DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
         executable=executable,
@@ -5927,6 +5935,7 @@ def _legacy_run_color_probe_profiled(
         entry=entry,
         source_pdgs=source_pdgs,
         momenta=momenta,
+        color_accuracy=color_accuracy,
         helicities=helicities,
         points=measurement_points,
         executable=executable,
@@ -6601,91 +6610,167 @@ def _measure_legacy_amplicol(
                                     ]
                                 )
                         else:
-                            build_probe, _build_output = _legacy_command_record(
-                                [
-                                    "make",
-                                    f"-j{make_jobs}",
-                                    "amplicol_color_library_probe",
-                                ],
-                                cwd=repository,
+                            use_direct_color_probe = (
+                                _legacy_direct_color_probe_supported(source_pdgs)
+                                and not _legacy_lc_color_probe_supported(source_pdgs)
                             )
-                            generated_library_snapshot = (
-                                _snapshot_legacy_generated_library(
+                            if use_direct_color_probe:
+                                build_probe, _build_output = _legacy_command_record(
+                                    [
+                                        "make",
+                                        f"-j{make_jobs}",
+                                        "amplicol_color_probe",
+                                    ],
+                                    cwd=repository,
+                                )
+                                generated_library_snapshot = (
+                                    _snapshot_legacy_generated_library(
+                                        repository,
+                                        legacy_root / "generated-library",
+                                        required_executables=(
+                                            "amplicol_color_probe",
+                                        ),
+                                        process_file=process_file,
+                                    )
+                                )
+                                generated_library_root = Path(
+                                    os.fspath(
+                                        generated_library_snapshot["artifact_path"]
+                                    )
+                                )
+                                generated_library_environment = (
+                                    _legacy_library_environment(
+                                        generated_library_root,
+                                    )
+                                )
+                                (
+                                    probe_record,
+                                    timing_rows,
+                                    probe,
+                                    runtime_sample_count,
+                                    runtime_profile,
+                                ) = _legacy_run_color_probe_profiled(
                                     repository,
-                                    legacy_root / "generated-library",
-                                    required_executables=(
-                                        "amplicol_color_library_probe",
-                                    ),
                                     process_file=process_file,
+                                    entry=entry,
+                                    source_pdgs=source_pdgs,
+                                    momenta=momenta,
+                                    color_accuracy=color_accuracy,
+                                    helicities=None,
+                                    target_runtime=target_runtime,
+                                    executable=(
+                                        generated_library_root
+                                        / "amplicol_color_probe"
+                                    ),
+                                    cwd=generated_library_root,
+                                    env=generated_library_environment,
                                 )
-                            )
-                            generated_library_root = Path(
-                                os.fspath(
-                                    generated_library_snapshot["artifact_path"]
+                                runtime_seconds = _legacy_timing_seconds(
+                                    timing_rows,
+                                    "total",
                                 )
-                            )
-                            generated_library_environment = (
-                                _legacy_library_environment(
-                                    generated_library_root,
+                                if runtime_seconds is None:
+                                    raise legacy_amplicol.LegacyOracleError(
+                                        "amplicol_color_probe did not report "
+                                        "a total timing row"
+                                    )
+                                runtime_seconds /= runtime_sample_count
+                                runtime_probe = "amplicol_color_probe"
+                                timing_commands = [
+                                    build_probe,
+                                    generated_library_snapshot,
+                                    probe_record,
+                                ]
+                                matrix_element = _real_nonnegative_scalar(probe.value)
+                                matrix_element_probe = "amplicol_color_probe"
+                                selected_probe_rows = []
+                                selected_probe_metadata = {}
+                            else:
+                                build_probe, _build_output = _legacy_command_record(
+                                    [
+                                        "make",
+                                        f"-j{make_jobs}",
+                                        "amplicol_color_library_probe",
+                                    ],
+                                    cwd=repository,
                                 )
-                            )
-                            (
-                                probe_record,
-                                _probe_output,
-                                timing_rows,
-                                runtime_sample_count,
-                                runtime_profile,
-                            ) = _legacy_run_command_profiled(
-                                lambda count: [
-                                    "./amplicol_color_library_probe",
-                                    str(max(1, int(count))),
-                                    str(entry.group),
-                                    str(entry.integral),
-                                    color_accuracy,
-                                    repository
-                                    / "Utilities"
-                                    / "ME_checks"
-                                    / f"momenta_{entry.group}_{entry.integral}.txt",
-                                ],
-                                cwd=generated_library_root,
-                                env=generated_library_environment,
-                                target_runtime=target_runtime,
-                                probe="amplicol_color_library_probe",
-                                timing_labels=("total",),
-                            )
-                            runtime_seconds = _legacy_timing_seconds(
-                                timing_rows,
-                                "total",
-                            )
-                            if runtime_seconds is None:
-                                raise legacy_amplicol.LegacyOracleError(
-                                    "amplicol_color_library_probe did not report "
-                                    "a total timing row"
+                                generated_library_snapshot = (
+                                    _snapshot_legacy_generated_library(
+                                        repository,
+                                        legacy_root / "generated-library",
+                                        required_executables=(
+                                            "amplicol_color_library_probe",
+                                        ),
+                                        process_file=process_file,
+                                    )
                                 )
-                            runtime_seconds /= runtime_sample_count
-                            runtime_probe = "amplicol_color_library_probe"
-                            timing_commands = [
-                                build_probe,
-                                generated_library_snapshot,
-                                probe_record,
-                            ]
-                            if not (repository / "amplicol_color_probe").is_file():
-                                legacy_amplicol.build_color_probe(
+                                generated_library_root = Path(
+                                    os.fspath(
+                                        generated_library_snapshot["artifact_path"]
+                                    )
+                                )
+                                generated_library_environment = (
+                                    _legacy_library_environment(
+                                        generated_library_root,
+                                    )
+                                )
+                                (
+                                    probe_record,
+                                    _probe_output,
+                                    timing_rows,
+                                    runtime_sample_count,
+                                    runtime_profile,
+                                ) = _legacy_run_command_profiled(
+                                    lambda count: [
+                                        "./amplicol_color_library_probe",
+                                        str(max(1, int(count))),
+                                        str(entry.group),
+                                        str(entry.integral),
+                                        color_accuracy,
+                                        repository
+                                        / "Utilities"
+                                        / "ME_checks"
+                                        / f"momenta_{entry.group}_{entry.integral}.txt",
+                                    ],
+                                    cwd=generated_library_root,
+                                    env=generated_library_environment,
+                                    target_runtime=target_runtime,
+                                    probe="amplicol_color_library_probe",
+                                    timing_labels=("total",),
+                                )
+                                runtime_seconds = _legacy_timing_seconds(
+                                    timing_rows,
+                                    "total",
+                                )
+                                if runtime_seconds is None:
+                                    raise legacy_amplicol.LegacyOracleError(
+                                        "amplicol_color_library_probe did not report "
+                                        "a total timing row"
+                                    )
+                                runtime_seconds /= runtime_sample_count
+                                runtime_probe = "amplicol_color_library_probe"
+                                timing_commands = [
+                                    build_probe,
+                                    generated_library_snapshot,
+                                    probe_record,
+                                ]
+                                if not (repository / "amplicol_color_probe").is_file():
+                                    legacy_amplicol.build_color_probe(
+                                        repository,
+                                        jobs=make_jobs,
+                                    )
+                                probe = legacy_amplicol.run_color_probe(
                                     repository,
-                                    jobs=make_jobs,
+                                    process_file=process_file,
+                                    entry=entry,
+                                    source_pdgs=source_pdgs,
+                                    momenta=momenta,
+                                    color_accuracy=color_accuracy,
                                 )
-                            probe = legacy_amplicol.run_color_probe(
-                                repository,
-                                process_file=process_file,
-                                entry=entry,
-                                source_pdgs=source_pdgs,
-                                momenta=momenta,
-                                color_accuracy=color_accuracy,
-                            )
-                            matrix_element = _real_nonnegative_scalar(probe.value)
-                            matrix_element_probe = "amplicol_color_probe"
-                            selected_probe_rows = []
-                            selected_probe_metadata = {}
+                                matrix_element = _real_nonnegative_scalar(probe.value)
+                                matrix_element_probe = "amplicol_color_probe"
+                                selected_probe_rows = []
+                                selected_probe_metadata = {}
                         all_flow_payload: dict[str, object] = {
                             "all_flow_status": None,
                             "all_flow_generation_s": None,
@@ -6819,7 +6904,7 @@ def _measure_legacy_amplicol(
                                         ),
                                         "all_flow_failure_message": (
                                             "AmpliCol fixed-helicity all-flow probe "
-                                            "is unsupported for more than two "
+                                            "is unsupported for more than three "
                                             "quark lines"
                                         ),
                                     }

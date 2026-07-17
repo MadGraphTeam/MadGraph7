@@ -437,8 +437,12 @@ def test_generated_library_probe_parser_requires_matching_row() -> None:
 def test_legacy_lc_color_probe_scope_matches_fortran_probe_limit() -> None:
     assert report._legacy_lc_color_probe_supported((1, -1, 23, 21, 21, 21))
     assert not report._legacy_lc_color_probe_supported((1, -1, 2, -2, 3, -3))
+    assert report._legacy_direct_color_probe_supported((1, -1, 2, -2, 3, -3))
+    assert not report._legacy_direct_color_probe_supported(
+        (1, -1, 2, -2, 3, -3, 4, -4)
+    )
     assert report._legacy_probe_scope_limited(
-        "STOP 1\n more than two quarks           3\n"
+        "d d~ > u u~ s s~: 3 quark lines exceed the legacy scope"
     )
 
 
@@ -650,6 +654,47 @@ def test_legacy_profiled_command_warms_up_and_selects_points(
     assert record["profile_points"] == 40_000
     assert profile["legacy_profile_policy"] == report.LEGACY_PROFILE_POLICY
     assert profile["measurement_points"] == 40_000
+
+
+def test_legacy_color_probe_profile_passes_color_accuracy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, int]] = []
+    probe = SimpleNamespace(value=2.0)
+
+    def fake_probe(
+        *_args: object,
+        color_accuracy: str,
+        points: int,
+        **_kwargs: object,
+    ) -> tuple[dict[str, object], list[dict[str, object]], object]:
+        calls.append((color_accuracy, points))
+        return (
+            {"args": ["probe"], "elapsed_s": 0.1, "returncode": 0},
+            [{"label": "total", "seconds": 0.1}],
+            probe,
+        )
+
+    monkeypatch.setattr(report, "_legacy_run_color_probe_timed", fake_probe)
+
+    _record, _rows, returned, points, profile = report._legacy_run_color_probe_profiled(
+        tmp_path,
+        process_file=tmp_path / "processes.txt",
+        entry=SimpleNamespace(group=1, integral=1, process_pdgs=(1, -1)),
+        source_pdgs=(1, -1),
+        momenta=(),
+        color_accuracy="full",
+        helicities=None,
+        target_runtime=0.2,
+    )
+
+    assert returned is probe
+    assert calls == [
+        ("full", report.DEFAULT_LEGACY_PROFILE_WARMUP_POINTS),
+        ("full", points),
+    ]
+    assert profile["probe"] == "amplicol_color_probe"
 
 
 def test_terminate_worker_process_sends_process_group_sigterm(
