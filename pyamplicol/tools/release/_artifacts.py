@@ -160,6 +160,7 @@ _REQUIRED_API_TEMPLATE_MEMBERS = {
 _REQUIRED_WHEEL_PACKAGE_MEMBERS = {
     "pyamplicol/__init__.py",
     "pyamplicol/_rusticol.pyi",
+    "pyamplicol/py.typed",
     *_REQUIRED_API_TEMPLATE_MEMBERS,
     *_REQUIRED_PACKAGED_EXAMPLE_MEMBERS,
     *_REQUIRED_PACKAGE_RESOURCES,
