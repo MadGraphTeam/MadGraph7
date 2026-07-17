@@ -198,11 +198,14 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
     fortran_module.write_text(
         "module rusticol\nend module rusticol\n", encoding="utf-8"
     )
+    rust_module = tmp_path / "sdk/rusticol.rs"
+    rust_module.write_text("pub struct Runtime;\n", encoding="utf-8")
     sdk = {
         "cflags": [f"-I{include}"],
         "link_flags": [str(library)],
         "rust_flags": ["-C", f"link-arg={library}"],
         "fortran_source": str(fortran_module),
+        "rust_source": str(rust_module),
     }
     artifact = tmp_path / "installed/artifact"
     python_driver = artifact / "API/python/check_standalone.py"
@@ -291,6 +294,9 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
         index for index, command in enumerate(commands) if command[0] == "/tool/rustc"
     )
     assert "rustc" not in command_environments[rust_compile_index]["PATH"]
+    assert command_environments[rust_compile_index]["RUSTICOL_RUST_SOURCE"] == str(
+        rust_module
+    )
 
 
 def test_four_language_result_comparison_rejects_metadata_drift() -> None:

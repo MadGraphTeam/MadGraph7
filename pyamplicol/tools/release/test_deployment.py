@@ -546,7 +546,13 @@ def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
         ) from error
     if not isinstance(payload, dict):
         raise ReleaseError("rusticol-config SDK metadata must be an object")
-    for key in ("cflags", "link_flags", "rust_flags", "fortran_source"):
+    for key in (
+        "cflags",
+        "link_flags",
+        "rust_flags",
+        "fortran_source",
+        "rust_source",
+    ):
         if key not in payload:
             raise ReleaseError(f"rusticol-config SDK metadata is missing {key}")
     if not isinstance(payload["cflags"], list) or not all(
@@ -776,6 +782,7 @@ def _native_sdk_smoke(
     link_flags = list(map(str, sdk["link_flags"]))
     rust_flags = list(map(str, sdk["rust_flags"]))
     packaged_fortran = Path(str(sdk["fortran_source"])).resolve(strict=True)
+    packaged_rust = Path(str(sdk["rust_source"])).resolve(strict=True)
     run(
         [
             *toolchain.cxx,
@@ -819,7 +826,7 @@ def _native_sdk_smoke(
             *rust_flags,
         ],
         cwd=native,
-        env=environment,
+        env={**environment, "RUSTICOL_RUST_SOURCE": str(packaged_rust)},
         capture_output=True,
     )
     results = {
