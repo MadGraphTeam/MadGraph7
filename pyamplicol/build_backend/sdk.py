@@ -219,7 +219,8 @@ def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
             framework = tokens[index + 1]
             if framework not in MACOS_FRAMEWORKS:
                 raise RuntimeError(f"native framework is not allowlisted: {framework}")
-            result["frameworks"].append(framework)
+            if framework not in result["frameworks"]:
+                result["frameworks"].append(framework)
             index += 2
             continue
         if token.startswith("-l") and len(token) > 2:
@@ -228,7 +229,11 @@ def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
                 raise RuntimeError(
                     f"native system library is not allowlisted: {library}"
                 )
-            result["system_libraries"].append(library)
+            # rustc may repeat native libraries contributed by more than one
+            # crate. Dynamic system libraries do not need repeated linker
+            # entries, so retain their first occurrence and its ordering.
+            if library not in result["system_libraries"]:
+                result["system_libraries"].append(library)
             index += 1
             continue
         if (

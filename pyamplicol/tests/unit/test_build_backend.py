@@ -751,7 +751,16 @@ def test_pep517_backend_rejects_recursive_delegation(
 
 def test_native_link_arguments_are_typed_and_allowlisted() -> None:
     macos = sdk._typed_link_arguments(
-        ["-lgcc_s", "-lSystem", "-lc", "-framework", "Security"],
+        [
+            "-lgcc_s",
+            "-lSystem",
+            "-lc",
+            "-framework",
+            "Security",
+            "-lSystem",
+            "-framework",
+            "Security",
+        ],
         "aarch64-apple-darwin",
     )
     assert "gcc_s" in macos["system_libraries"]
@@ -759,11 +768,30 @@ def test_native_link_arguments_are_typed_and_allowlisted() -> None:
     assert macos["frameworks"] == ["Security"]
 
     linux = sdk._typed_link_arguments(
-        ["-lgcc_s", "-lutil", "-lrt", "-lpthread", "-lm", "-ldl", "-lc"],
+        [
+            "-lgcc_s",
+            "-lutil",
+            "-lrt",
+            "-lpthread",
+            "-lm",
+            "-ldl",
+            "-lc",
+            "-lpthread",
+            "-ldl",
+            "-lc",
+        ],
         "x86_64-unknown-linux-gnu",
     )
     assert linux["frameworks"] == []
-    assert "gcc_s" in linux["system_libraries"]
+    assert linux["system_libraries"] == [
+        "gcc_s",
+        "util",
+        "rt",
+        "pthread",
+        "m",
+        "dl",
+        "c",
+    ]
 
 
 def test_static_archive_byte_scan_rejects_python_markers(tmp_path: Path) -> None:
