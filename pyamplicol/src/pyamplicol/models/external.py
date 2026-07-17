@@ -140,11 +140,23 @@ class CompiledUFOModel(
         ] = {}
         self._custom_propagator_templates: dict[int, tuple[_sym.Expression, ...]] = {}
         self._color_projection_cache: dict[int, tuple[str, complex]] = {}
+        self._goldstone_partner_records = {
+            record.goldstone: record for record in compiled.ir.goldstone_partners
+        }
+        for record in compiled.ir.goldstone_partners:
+            if record.vector is None:
+                continue
+            vector = self._particle_records_by_name[record.vector]
+            propagator = self._propagator_ir(vector.pdg_code)
+            if propagator.goldstone_policy != record.policy:
+                raise ValueError(
+                    f"compiled Goldstone {record.goldstone!r} policy does not "
+                    f"match vector {record.vector!r} lowering"
+                )
         self.inactive_goldstone_names = frozenset(
-            record.name
-            for record in compiled.ir.particles
-            if record.goldstoneboson
-            and self._goldstone_is_redundant_in_unitary_gauge(record)
+            record.goldstone
+            for record in compiled.ir.goldstone_partners
+            if record.policy == "absorbed"
         )
         self.vertices = tuple(
             Vertex(

@@ -287,6 +287,38 @@ def _particle_role_metadata(particle: CompiledParticleRecord) -> dict[str, objec
     }
 
 
+def _resolved_mass_expression(
+    particle: CompiledParticleRecord,
+    parameters: Mapping[str, CompiledParameterRecord],
+) -> str:
+    if particle.mass.upper() == "ZERO":
+        return "0"
+    try:
+        return parameters[particle.mass].resolved_expression
+    except KeyError as exc:
+        raise ValueError(
+            f"particle {particle.name!r} refers to absent mass parameter "
+            f"{particle.mass!r}"
+        ) from exc
+
+
+def _goldstone_vector_quantum_contract_matches(
+    goldstone: CompiledParticleRecord,
+    vector: CompiledParticleRecord,
+    parameters: Mapping[str, CompiledParameterRecord],
+) -> bool:
+    return (
+        vector.spin == 3
+        and vector.wavefunction_family == "vector"
+        and vector.propagating
+        and not vector.goldstoneboson
+        and vector.color == goldstone.color
+        and vector.quantum_numbers == goldstone.quantum_numbers
+        and _resolved_mass_expression(vector, parameters)
+        == _resolved_mass_expression(goldstone, parameters)
+    )
+
+
 @dataclass(frozen=True)
 class CompiledCouplingRecord:
     name: str
@@ -321,6 +353,71 @@ class CompiledPropagatorRecord:
             "denominator": self.denominator,
             "custom": self.custom,
         }
+
+
+@dataclass(frozen=True)
+class CompiledGoldstonePartnerRecord:
+    """Compiler-owned disposition of one UFO-declared Goldstone mode."""
+
+    goldstone: str
+    vector: str | None
+    policy: str
+    mass_expression: str
+    association_basis: str = (
+        "ufo-goldstone+spin+color+quantum-numbers+resolved-mass+propagator-v1"
+    )
+
+    def __post_init__(self) -> None:
+        if self.policy not in {"absorbed", "explicit", "model-supplied"}:
+            raise ValueError(f"invalid compiled Goldstone policy {self.policy!r}")
+        if not self.goldstone or not self.mass_expression or not self.association_basis:
+            raise ValueError("compiled Goldstone metadata must not be empty")
+        if self.policy == "explicit" and self.vector is not None:
+            raise ValueError("an explicit Goldstone mode cannot name a vector partner")
+        if self.policy != "explicit" and not self.vector:
+            raise ValueError(
+                f"a {self.policy} Goldstone mode must name its vector partner"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "goldstone": self.goldstone,
+            "vector": self.vector,
+            "policy": self.policy,
+            "mass_expression": self.mass_expression,
+            "association_basis": self.association_basis,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, object],
+    ) -> CompiledGoldstonePartnerRecord:
+        fields = _strict_record_fields(
+            payload,
+            required={
+                "goldstone",
+                "vector",
+                "policy",
+                "mass_expression",
+                "association_basis",
+            },
+            context="compiled Goldstone partner",
+        )
+        vector_value = fields["vector"]
+        if vector_value is not None and not isinstance(vector_value, str):
+            raise TypeError("compiled Goldstone vector must be a string or null")
+        return cls(
+            goldstone=_strict_string(fields["goldstone"], "goldstone"),
+            vector=vector_value,
+            policy=_strict_string(fields["policy"], "policy"),
+            mass_expression=_strict_string(
+                fields["mass_expression"], "mass expression"
+            ),
+            association_basis=_strict_string(
+                fields["association_basis"], "association basis"
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -562,9 +659,11 @@ class CompiledModelIR:
     closure_contractions: tuple[CompiledClosureContractionRecord, ...]
     tensor_orderings: tuple[TensorOrderingIR, ...] = ()
     current_orderings: tuple[CompiledCurrentOrderingRecord, ...] = ()
+    goldstone_partners: tuple[CompiledGoldstonePartnerRecord, ...] = ()
 
     def __post_init__(self) -> None:
         self._validate_particle_identities()
+        self._validate_goldstone_partners()
         self._validate_contractions()
         self._validate_contact_decomposition_proofs()
         self._validate_tensor_orderings()
@@ -645,6 +744,19 @@ class CompiledModelIR:
                         f"particle/antiparticle pair {particle.name!r}/{anti.name!r} "
                         f"must have exactly negated quantum number {name!r}"
                     )
+
+    def _validate_goldstone_partners(self) -> None:
+        from .compiler_gauge import compile_goldstone_partner_records
+
+        expected = compile_goldstone_partner_records(
+            self.particles,
+            self.parameters,
+            self.propagators,
+        )
+        if self.goldstone_partners != expected:
+            raise ValueError(
+                "compiled Goldstone partner contracts are stale or non-canonical"
+            )
 
     def _validate_contact_decomposition_proofs(self) -> None:
         for term in self.vertex_terms:
@@ -1082,6 +1194,9 @@ class CompiledModelIR:
             "current_orderings": [
                 item.to_json_dict() for item in self.current_orderings
             ],
+            "goldstone_partners": [
+                item.to_dict() for item in self.goldstone_partners
+            ],
             "max_vertex_valence": self.max_vertex_valence,
         }
 
@@ -1307,6 +1422,10 @@ class CompiledModelIR:
             current_orderings=tuple(
                 CompiledCurrentOrderingRecord.from_json_dict(item)
                 for item in _required_mappings(payload, "current_orderings")
+            ),
+            goldstone_partners=tuple(
+                CompiledGoldstonePartnerRecord.from_dict(item)
+                for item in _required_mappings(payload, "goldstone_partners")
             ),
         )
 

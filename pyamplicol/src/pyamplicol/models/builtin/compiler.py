@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .. import compiler_symbolica as _sym
+from ..compiler_gauge import compile_goldstone_partner_records
 from ..compiler_records import (
     _mappings,
     _order,
@@ -45,12 +46,13 @@ def compile_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         )
         for index, vertex in enumerate(_mappings(model.get("vertex_rules")))
     )
+    parameters = tuple(
+        _parameter(item) for item in _mappings(model.get("parameters"))
+    )
     return CompiledModelIR(
         name=str(model.get("name", "built-in-sm")),
         orders=tuple(_order(item) for item in _mappings(model.get("orders"))),
-        parameters=tuple(
-            _parameter(item) for item in _mappings(model.get("parameters"))
-        ),
+        parameters=parameters,
         particles=particles,
         couplings=(),
         propagators=(),
@@ -63,6 +65,11 @@ def compile_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         closure_contractions=tuple(
             CompiledClosureContractionRecord.from_dict(item)
             for item in _mappings(model.get("closure_contractions"))
+        ),
+        goldstone_partners=compile_goldstone_partner_records(
+            particles,
+            parameters,
+            (),
         ),
     )
 

@@ -397,35 +397,6 @@ class ExternalModelKernelMixin:
         name = self._particle_records_by_pdg[int(particle_id)].name
         return self._propagator_records_by_particle_name.get(name)
 
-    def _goldstone_is_redundant_in_unitary_gauge(self, goldstone: Any) -> bool:
-        """Return whether exactly one declared propagator absorbs this mode."""
-
-        absorbing_vectors: list[str] = []
-        for vector in self.compiled.ir.particles:
-            if (
-                vector.spin != 3
-                or vector.goldstoneboson
-                or not vector.propagating
-                or vector.mass != goldstone.mass
-                or vector.color != goldstone.color
-                or not math.isclose(
-                    vector.charge,
-                    goldstone.charge,
-                    rel_tol=0.0,
-                    abs_tol=1.0e-12,
-                )
-            ):
-                continue
-            propagator = self._propagator_ir(vector.pdg_code)
-            if propagator.goldstone_policy == "absorbed":
-                absorbing_vectors.append(vector.name)
-        if len(absorbing_vectors) > 1:
-            raise ValueError(
-                f"Goldstone {goldstone.name!r} ambiguously matches absorbing "
-                f"vectors {absorbing_vectors!r}"
-            )
-        return bool(absorbing_vectors)
-
     def _parameter_default(self, name: str) -> complex:
         if name.upper() == "ZERO":
             return 0.0 + 0.0j

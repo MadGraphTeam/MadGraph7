@@ -25,6 +25,7 @@ from .compiler_contacts import (
     _validated_contact_decomposition_proof,
 )
 from .compiler_contractions import compile_contraction_records
+from .compiler_gauge import compile_goldstone_partner_records
 from .compiler_kernels import (
     _canonicalize_oriented_kernel_component,
     _fuse_oriented_kernels,
@@ -267,6 +268,11 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         parameter_records,
         propagators,
     )
+    goldstone_partners = compile_goldstone_partner_records(
+        particles,
+        parameter_records,
+        propagators,
+    )
     return CompiledModelIR(
         name=model_name,
         orders=tuple(_order(item) for item in _mappings(model.get("orders"))),
@@ -280,6 +286,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         closure_contractions=closure_contractions,
         tensor_orderings=tensor_orderings,
         current_orderings=current_orderings,
+        goldstone_partners=goldstone_partners,
     )
 
 
