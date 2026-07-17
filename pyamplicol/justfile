@@ -7,6 +7,12 @@ build_mode := env_var_or_default("PYAMPLICOL_BUILD_MODE", "release")
 default:
     @just --list
 
+_source-checkout:
+    @if [[ ! -e .git || ! -f dependencies/contributor-lock.toml || ! -f dependencies/install_dependencies.py ]]; then \
+        printf '%s\n' "error: this command requires a full pyAmpliCol Git source checkout; contributor commands are unavailable from a release source distribution" >&2; \
+        exit 1; \
+    fi
+
 build:
     PYAMPLICOL_BUILD_MODE={{build_mode}} {{python}} -m build --wheel
 
@@ -41,16 +47,16 @@ source-runtime:
 
 # Developer-only independent Fortran oracle. `just dev-install` includes the
 # pinned checkout unless it was called with --without-legacy-amplicol.
-legacy-physics:
+legacy-physics: _source-checkout
     {{python}} tools/developer/legacy_amplicol.py --jobs 5
 
-legacy-physics-verify:
+legacy-physics-verify: _source-checkout
     {{python}} tools/developer/legacy_amplicol.py --fixture tests/fixtures/reference/physics-v2.json --jobs 5 --check-output tests/fixtures/reference/legacy-fortran-v2.json
 
 # Release-facing replay of the pinned independent physics evidence. The CI job
 # additionally applies a 30 GiB process limit; local milestone runs invoke this
 # recipe through the repository-external memory watchdog.
-independent-physics-oracle:
+independent-physics-oracle: _source-checkout
     {{python}} tools/developer/legacy_amplicol.py --prepare-checkout --fixture tests/fixtures/reference/physics-v2.json --jobs 2 --check-output tests/fixtures/reference/legacy-fortran-v2.json
 
 installed-smoke:
@@ -106,32 +112,32 @@ install-wheel PYTHON_ARG="":
     if [[ -z "$selected" ]]; then selected="{{python}}"; fi; \
     {{python}} tools/release/install_wheel.py --python "$selected"
 
-dev-install:
+dev-install: _source-checkout
     {{python}} dependencies/install_dependencies.py
 
 # Report/campaign prerequisite. pyAmpliCol is not released yet, so this keeps
 # the explicit build entrypoint tied to the patched dev-install environment.
-dev-build:
+dev-build: _source-checkout
     just dev-install
     {{dev_python}} -c 'import pyamplicol; import pyamplicol.api'
     {{dev_python}} docs/result_tables.py validate
 
-dev-test:
+dev-test: _source-checkout
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just source-gate
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate
 
-test-deployment-candidate:
+test-deployment-candidate: _source-checkout
     PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/release/test_deployment.py --candidate
 
 test-deployment:
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/test_deployment.py
 
-release-artifacts:
+release-artifacts: _source-checkout
     PYAMPLICOL_BUILD_MODE=release just source-gate
     just independent-physics-oracle
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/build_release_artifacts.py
 
-publish-dry-run:
+publish-dry-run: _source-checkout
     PYAMPLICOL_BUILD_MODE=release just source-gate
     just independent-physics-oracle
     PYAMPLICOL_BUILD_MODE=release {{python}} tools/release/publish_dry_run.py

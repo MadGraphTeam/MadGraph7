@@ -34,10 +34,11 @@
 
           rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
-          # Project, test, and candidate Python packages are deliberately absent:
-          # dependencies/install_dependencies.py owns that lock-controlled venv.
+          # Keep the generic PEP 517 frontend for `just wheel`. Project, test,
+          # and candidate packages belong to the lock-controlled contributor venv.
           python = pkgs.python311.withPackages (
             pythonPackages: with pythonPackages; [
+              build
               pip
               setuptools
               wheel

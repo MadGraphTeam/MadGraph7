@@ -19,6 +19,10 @@ from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
 import maturin  # type: ignore[import-untyped]
+from package_version import (
+    canonical_package_version,
+    check_contributor_lock_consistency,
+)
 from sdk import build_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -603,16 +607,18 @@ def _candidate_digest(
     return digest.hexdigest()[:12]
 
 
-def _mark_candidate(overlay: Path) -> None:
+def _mark_candidate(overlay: Path, base_version: str) -> None:
     if not (ROOT / _CONTRIBUTOR_LOCK).is_file():
         raise RuntimeError("candidate build has no contributor dependency contract")
+    check_contributor_lock_consistency(ROOT)
     candidate_lock, candidate_config, installer_state = _candidate_inputs()
     digest = _candidate_digest(
         candidate_lock,
         candidate_config,
         installer_state,
     )
-    cargo_version = f"0.1.0-dev.0+candidate.{digest}"
+    cargo_version = f"{base_version}-dev.0+candidate.{digest}"
+    python_version = cargo_version.replace("-dev.", ".dev")
     shutil.copy2(candidate_lock, overlay / "Cargo.lock")
     overlay_config = overlay / ".cargo" / "config.toml"
     overlay_config.parent.mkdir(parents=True, exist_ok=True)
@@ -621,7 +627,7 @@ def _mark_candidate(overlay: Path) -> None:
     cargo = overlay / "Cargo.toml"
     text = cargo.read_text(encoding="utf-8")
     updated, count = re.subn(
-        r'(?m)^version = "0\.1\.0"$',
+        rf'(?m)^version = "{re.escape(base_version)}"$',
         f'version = "{cargo_version}"',
         text,
         count=1,
@@ -639,7 +645,7 @@ def _mark_candidate(overlay: Path) -> None:
     ):
         pattern = (
             rf'(?m)(\[\[package\]\]\nname = "{package_name}"\n)'
-            r'version = "0\.1\.0"'
+            rf'version = "{re.escape(base_version)}"'
         )
         lock_text, count = re.subn(
             pattern,
@@ -663,7 +669,7 @@ def _mark_candidate(overlay: Path) -> None:
                 "publishable": False,
                 "candidate_fingerprint": digest,
                 "source_revision": source_revision,
-                "version": f"0.1.0.dev0+candidate.{digest}",
+                "version": python_version,
             },
             indent=2,
             sort_keys=True,
@@ -765,6 +771,7 @@ def _stage_cargo_inputs(overlay: Path, mode: str) -> None:
     lock = overlay / "Cargo.lock"
     if not lock.is_file():
         raise RuntimeError("build overlay has no canonical Cargo.lock")
+    base_version = canonical_package_version(overlay)
     config = overlay / ".cargo" / "config.toml"
     if mode == "release":
         if config.exists():
@@ -775,7 +782,7 @@ def _stage_cargo_inputs(overlay: Path, mode: str) -> None:
         if lock.read_bytes() != canonical.read_bytes():
             raise RuntimeError("release build overlay changed canonical Cargo.lock")
         return
-    _mark_candidate(overlay)
+    _mark_candidate(overlay, base_version)
     if not config.is_file():
         raise RuntimeError("candidate build overlay has no Cargo patch configuration")
 
