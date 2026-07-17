@@ -168,6 +168,72 @@ def reordered_external_sm(tmp_path_factory: pytest.TempPathFactory):
 
 
 @pytest.fixture(scope="module")
+def renamed_relabelled_reordered_external_sm(
+    tmp_path_factory: pytest.TempPathFactory,
+):
+    raw = json.loads((MODEL_ROOT / "sm.json").read_text(encoding="utf-8"))
+    transformed = deepcopy(raw)
+    original_names = sorted(str(particle["name"]) for particle in raw["particles"])
+    name_map = {
+        name: f"state_{index:03d}"
+        for index, name in enumerate(original_names, start=1)
+    }
+    absolute_ids = sorted(
+        {abs(int(particle["pdg_code"])) for particle in transformed["particles"]}
+    )
+    pdg_map = {
+        particle_id: 800_000 + index
+        for index, particle_id in enumerate(absolute_ids, start=1)
+    }
+    for particle in transformed["particles"]:
+        particle["name"] = name_map[str(particle["name"])]
+        particle["antiname"] = name_map[str(particle["antiname"])]
+        pdg = int(particle["pdg_code"])
+        particle["pdg_code"] = pdg_map[abs(pdg)] if pdg >= 0 else -pdg_map[abs(pdg)]
+    for propagator in transformed["propagators"]:
+        propagator["particle"] = name_map[str(propagator["particle"])]
+    for vertex in transformed["vertex_rules"]:
+        vertex["particles"] = [name_map[str(name)] for name in vertex["particles"]]
+        colors = vertex["color_structures"]
+        lorentz = vertex["lorentz_structures"]
+        coupling_matrix = vertex["couplings"]
+        color_order = tuple(reversed(range(len(colors))))
+        lorentz_order = tuple(reversed(range(len(lorentz))))
+        vertex["color_structures"] = [colors[index] for index in color_order]
+        vertex["lorentz_structures"] = [lorentz[index] for index in lorentz_order]
+        vertex["couplings"] = [
+            [coupling_matrix[row][column] for column in lorentz_order]
+            for row in color_order
+        ]
+    for field in (
+        "orders",
+        "particles",
+        "couplings",
+        "lorentz_structures",
+        "propagators",
+        "functions",
+        "form_factors",
+        "vertex_rules",
+    ):
+        transformed[field] = list(reversed(transformed[field]))
+
+    model_root = tmp_path_factory.mktemp("renamed-relabelled-reordered-external-sm")
+    model_path = model_root / "sm.json"
+    restriction_path = model_root / "restrict_default.json"
+    model_path.write_text(
+        json.dumps(transformed, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    restriction_path.write_bytes((MODEL_ROOT / "restrict_default.json").read_bytes())
+    compiled = compile_model_source(
+        model_path,
+        restriction=str(restriction_path.resolve()),
+        use_cache=False,
+    )
+    return compiled, CompiledUFOModel(compiled), name_map
+
+
+@pytest.fixture(scope="module")
 def color_dummy_relabelled_external_sm(tmp_path_factory: pytest.TempPathFactory):
     raw = json.loads((MODEL_ROOT / "sm.json").read_text(encoding="utf-8"))
     relabelled = deepcopy(raw)
@@ -210,6 +276,16 @@ def _production_dag_signature(compiled, model, process: str) -> tuple[object, ..
         len(dag.amplitude_roots),
         len(dag.color_plan.sectors),
         dag.interaction_evaluation_count,
+    )
+
+
+def _rename_process(process: str, name_map: dict[str, str]) -> str:
+    folded_map = {
+        name.casefold(): replacement for name, replacement in name_map.items()
+    }
+    return " ".join(
+        name_map.get(token, folded_map.get(token.casefold(), token))
+        for token in process.split()
     )
 
 
@@ -538,6 +614,24 @@ def test_external_sm_topology_is_ufo_inventory_order_invariant(
         reordered,
         reordered_model,
         process,
+    ) == _production_dag_signature(compiled, model, process)
+
+
+@pytest.mark.parametrize("process", _EXTERNAL_SM_TOPOLOGY_LADDER)
+def test_external_sm_topology_survives_combined_identity_and_inventory_changes(
+    external_sm,
+    renamed_relabelled_reordered_external_sm,
+    process: str,
+) -> None:
+    compiled, model = external_sm
+    transformed, transformed_model, name_map = (
+        renamed_relabelled_reordered_external_sm
+    )
+
+    assert _production_dag_signature(
+        transformed,
+        transformed_model,
+        _rename_process(process, name_map),
     ) == _production_dag_signature(compiled, model, process)
 
 
