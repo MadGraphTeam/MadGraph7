@@ -40,7 +40,7 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
     assert all(len(item.revision) == 40 for item in with_legacy)
     legacy = next(item for item in with_legacy if item.key == "legacy-amplicol")
     assert legacy.branch == "amplicol_with_patches"
-    assert legacy.revision == "38937fc4a0a66ae14c55e77ba455de8c6170547b"
+    assert legacy.revision == "60443f327c2203cf92625da2bf0969c27e68a4ac"
 
 
 def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> None:
@@ -85,7 +85,7 @@ def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
     source = module.Source(
         "legacy-amplicol",
         "https://github.com/rikkert-frederix/AmpliCol.git",
-        "38937fc4a0a66ae14c55e77ba455de8c6170547b",
+        "60443f327c2203cf92625da2bf0969c27e68a4ac",
         "amplicol_with_patches",
     )
     calls: list[tuple[list[str], Path | None]] = []
@@ -119,7 +119,7 @@ def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
                 "git",
                 "checkout",
                 "--detach",
-                "38937fc4a0a66ae14c55e77ba455de8c6170547b",
+                "60443f327c2203cf92625da2bf0969c27e68a4ac",
             ],
             source.path,
         ),
