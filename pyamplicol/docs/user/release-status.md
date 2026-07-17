@@ -9,9 +9,10 @@ published on PyPI.
 
 - Schema-v1 TOML, direct CLI, ordered overrides, typed Python configuration,
   and recorded license/resource adjustments.
-- External UFO/JSON model loading and canonical compiled-model schema v9,
-  including packaged `sm`, `scalars`, and `scalar_gravity` assets, plus an
-  immutable public compiled-model handle that keeps compiler IR private.
+- External UFO/JSON model loading, canonical compiled-model schema 9, and
+  model-compiler policy version 10, including packaged `sm`, `scalars`, and
+  `scalar_gravity` assets plus an immutable public compiled-model handle that
+  keeps compiler IR private.
 - Multiprocess planning and transactional schema-v3 generation with append,
   replace, payload integrity, and deterministic validation-point support.
 - The primary external JSON `p p > Z j j` workflow and stable concrete process
@@ -27,6 +28,9 @@ published on PyPI.
   target-compatible ASM/C++ compiled evaluators.
 - `examples list|copy|run`, `config template|resolve`, `doctor`, and installed
   `self-test` utilities.
+- Artifact `inspect` with stable-ID or exact-expression process selection, and
+  adaptive `profile`/`benchmark` timing with statistical uncertainty and native
+  Rusticol phase breakdowns.
 - Workflow definitions for candidate artifacts, retained source distributions,
   audited wheels, clean installed-wheel tests, and OIDC Trusted Publishing.
 
@@ -73,14 +77,20 @@ fails closed while the release dependency contract below remains unverified.
   regeneration explicitly. Default and model-supplied UFO propagators are
   distinguished by normalized expressions rather than object names. The
   compiled-model schema now persists authoritative tensor-ordering and
-  colored-contact proof records. Relabeled-PDG and reordered-UFO-inventory
-  gates preserve topology and tensor-order identities. A scalar-gravity
-  source with transposed spin-2 axes and renamed Lorentz dummy indices compiles
-  to identical canonical kernels and numerical component values. Current
+  colored-contact proof records. Compiler policy 10 derives the fundamental
+  `3 x 3bar x 8` Fierz singlet-subtraction auxiliary from exact UFO tensors,
+  which restores built-in/external current, interaction-evaluation, root, and
+  sector topology through the validated three-quark-line ladder without names
+  or conventional PDGs. Relabeled-PDG and reordered-UFO-inventory gates
+  preserve topology and tensor-order identities. A scalar-gravity source with
+  transposed spin-2 axes and renamed Lorentz dummy indices compiles to
+  identical canonical kernels and numerical component values. Current
   two-structure-constant contact lowering preserves explicit source scalar
   prefactors separately from canonicalized permutation parity, rejects
   residual color tensors, and validates model-owned direct and closure
-  contractions in compiled-model schema v9.
+  contractions in compiled-model schema 9. LC topology replay is reconstructed
+  onto public helicity/color axes for f64 and exact evaluation before selectors
+  are applied.
 - External `generate --dry-run` currently requires a previously compiled model
   or populated model cache; it does not compile a trusted source as a planning
   side effect.
