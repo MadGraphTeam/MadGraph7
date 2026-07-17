@@ -271,6 +271,23 @@ def test_lc_matrix_reference_runtime_pair_uses_tight_spacing() -> None:
     )
 
 
+def test_report_source_provenance_records_git_and_compiler_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report._report_source_provenance.cache_clear()
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 11))
+    try:
+        provenance = report._report_source_provenance()
+    finally:
+        report._report_source_provenance.cache_clear()
+
+    assert provenance["head"] == report._git_rev_parse("HEAD")
+    assert provenance["report_version"] == report.REPORT_VERSION
+    assert provenance["cache_schema_version"] == report.CACHE_SCHEMA_VERSION
+    assert provenance["compiled_model_schema_version"] == 9
+    assert provenance["model_compiler_version"] == 11
+
+
 def test_lc_matrix_fallback_runtime_seconds_are_converted_consistently() -> None:
     legacy = report._empty_measurement()
     legacy.update(

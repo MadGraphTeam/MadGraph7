@@ -3480,6 +3480,40 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _git_rev_parse(ref: str) -> str | None:
+    completed = subprocess.run(
+        ["git", "rev-parse", "--verify", ref],
+        cwd=_repo_root(),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    revision = completed.stdout.strip()
+    return revision or None
+
+
+@cache
+def _report_source_provenance() -> dict[str, object]:
+    schema_version: int | None
+    compiler_version: int | None
+    try:
+        schema_version, compiler_version = _current_compiled_model_contract()
+    except Exception:
+        schema_version, compiler_version = None, None
+    return {
+        "repository": os.fspath(_repo_root()),
+        "head": _git_rev_parse("HEAD"),
+        "origin_main": _git_rev_parse("origin/main"),
+        "report_version": REPORT_VERSION,
+        "cache_schema_version": CACHE_SCHEMA_VERSION,
+        "compiled_model_schema_version": schema_version,
+        "model_compiler_version": compiler_version,
+    }
+
+
 def _ensure_repo_root_on_path() -> None:
     root = os.fspath(_repo_root())
     if root not in sys.path:
@@ -4494,6 +4528,7 @@ def _measure_pyamplicol(
         "target_runtime": target_runtime,
         "cell_cores": cell_cores,
         "artifact_reused_for_timing": artifact_reusable,
+        "source_provenance": _report_source_provenance(),
         "captured_at": _utc_now(),
     }
     snapshot_path.write_text(_json_text(snapshot), encoding="utf-8")
@@ -4571,6 +4606,7 @@ def _measure_pyamplicol(
             "generation_seconds_source": (
                 "previous_measurement" if artifact_reusable else "fresh_generation"
             ),
+            "source_provenance": _report_source_provenance(),
             "high_precision_matrix_element": high_precision_value,
             "high_precision_relative_difference": high_precision_relative_difference,
             "generation_slice": snapshot["generation_slice"],
@@ -4595,6 +4631,7 @@ def _measure_pyamplicol(
             "cell": cell.as_json(),
             "measurement": measurement,
             "input_snapshot_path": os.fspath(snapshot_path),
+            "source_provenance": _report_source_provenance(),
             "captured_at": _utc_now(),
         }
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
@@ -4613,6 +4650,7 @@ def _measure_pyamplicol(
                 metadata={
                     "cell": cell.as_json(),
                     "input_snapshot_path": os.fspath(snapshot_path),
+                    "source_provenance": _report_source_provenance(),
                 },
             ),
             None,
@@ -4636,6 +4674,7 @@ def _measure_pyamplicol(
                 metadata={
                     "cell": cell.as_json(),
                     "input_snapshot_path": os.fspath(snapshot_path),
+                    "source_provenance": _report_source_provenance(),
                 },
             ),
             None,
@@ -6689,6 +6728,7 @@ def _measure_legacy_amplicol(
             "environment": {
                 "repository": os.fspath(repository),
                 "revision": legacy_amplicol.expected_revision(),
+                "report_source": _report_source_provenance(),
             },
             "artifact_path": os.fspath(legacy_root),
             "log_path": os.fspath(log_path),
@@ -6701,6 +6741,7 @@ def _measure_legacy_amplicol(
                 "runtime_profile": runtime_profile,
                 "matrix_element_probe": matrix_element_probe,
                 "point_source": point_source,
+                "source_provenance": _report_source_provenance(),
                 "old_matrix_format": {
                     "status": ResultStatus.OK.value,
                     "generation_s": generation_seconds,
@@ -6731,6 +6772,7 @@ def _measure_legacy_amplicol(
         manifest = {
             "cell": cell.as_json(),
             "measurement": measurement,
+            "source_provenance": _report_source_provenance(),
             "captured_at": _utc_now(),
         }
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
@@ -6753,11 +6795,12 @@ def _measure_legacy_amplicol(
             manifest_path=manifest_path,
             limit_gib=limit_gib,
             command=command,
-            metadata={
-                "cell": cell.as_json(),
-                "old_matrix_format": {
-                    "status": status.value,
-                    "all_flow_status": status.value,
+                metadata={
+                    "cell": cell.as_json(),
+                    "source_provenance": _report_source_provenance(),
+                    "old_matrix_format": {
+                        "status": status.value,
+                        "all_flow_status": status.value,
                 },
             },
         )
@@ -6889,6 +6932,7 @@ def _parameter_alignment_for(
         "ufo_sm_source": None if ufo_source is None else os.fspath(ufo_source),
         "comparison_reference": "original Fortran AmpliCol",
         "model_profile": spec.model.profile,
+        "source_provenance": _report_source_provenance(),
         "captured_at": _utc_now(),
     }
     snapshot_path.write_text(_json_text(snapshot), encoding="utf-8")
@@ -7144,7 +7188,10 @@ def _failure_entry_for_cell(
         log_path=artifact_root / "cells" / cell.cell_id / "logs" / "worker.log",
         limit_gib=limit_gib,
         timeout_seconds=timeout_seconds,
-        metadata={"cell": cell.as_json()},
+        metadata={
+            "cell": cell.as_json(),
+            "source_provenance": _report_source_provenance(),
+        },
     )
     spec = _spec_by_dataset()[cell.dataset_id]
     if isinstance(spec, MatrixSpec):
