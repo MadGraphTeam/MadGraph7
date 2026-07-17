@@ -2525,6 +2525,8 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
 
 def _matrix_table_macros() -> list[str]:
     return [
+        r"\providecommand{\matrixentryfont}{\fontsize{6.3pt}{7.1pt}\selectfont}",
+        r"\providecommand{\matrixsummaryfont}{\fontsize{5.8pt}{6.4pt}\selectfont}",
         r"\providecommand{\matrixpunct}[1]{\textcolor{black}{\texttt{#1}}}",
         r"\providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}",
         r"\providecommand{\matrixratioinner}[2]{#2}",
@@ -2541,21 +2543,23 @@ def _matrix_table_macros() -> list[str]:
         r"\providecommand{\matrixslot}[2]{\makebox[#1][l]{#2}}",
         (
             r"\providecommand{\matrixcelljitothree}[4]{"
+            r"\begingroup\matrixentryfont"
             r"\begin{tabular}[t]{@{}l@{\hspace{0.006in}}l@{}}"
             r"\matrixslot{1.20in}{#1}&\matrixslot{1.12in}{#2}\\"
             r"\matrixslot{1.20in}{#3}&\matrixslot{1.12in}{#4}"
-            r"\end{tabular}}"
+            r"\end{tabular}\endgroup}"
         ),
         (
             r"\providecommand{\matrixcell}[6]{"
+            r"\begingroup\matrixentryfont"
             r"\begin{tabular}[t]{@{}l@{\hspace{0.004in}}l@{\hspace{0.004in}}l@{}}"
             r"\matrixslot{0.86in}{#1}&\matrixslot{0.68in}{#2}&"
             r"\matrixslot{0.68in}{#3}\\"
             r"\matrixslot{0.86in}{#4}&\matrixslot{0.68in}{#5}&"
             r"\matrixslot{0.68in}{#6}"
-            r"\end{tabular}}"
+            r"\end{tabular}\endgroup}"
         ),
-        r"\providecommand{\matrixrefslot}[1]{\makebox[0.34in][l]{#1}}",
+        r"\providecommand{\matrixrefslot}[1]{\makebox[0.27in][l]{#1}}",
         (
             r"\providecommand{\matrixrefpair}[2]{"
             r"\begin{tabular}[t]{@{}l@{\hspace{0.006in}\matrixpunct{/}\hspace{0.012in}}l@{}}"
@@ -2564,9 +2568,10 @@ def _matrix_table_macros() -> list[str]:
         ),
         (
             r"\providecommand{\matrixsummarycell}[2]{"
-            r"\begin{tabular}[t]{@{}l@{}}#1\\#2\end{tabular}}"
+            r"\begingroup\matrixsummaryfont"
+            r"\begin{tabular}[t]{@{}l@{}}#1\\#2\end{tabular}\endgroup}"
         ),
-        r"\providecommand{\matrixsummaryfield}[1]{\makebox[0.36in][r]{\tiny #1}}",
+        r"\providecommand{\matrixsummaryfield}[1]{\makebox[0.38in][r]{#1}}",
         (
             r"\providecommand{\matrixsummaryfour}[4]{"
             r"\matrixsummaryfield{#1}\matrixpunct{|}"

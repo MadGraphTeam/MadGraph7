@@ -264,7 +264,7 @@ def test_lc_matrix_reference_runtime_pair_uses_tight_spacing() -> None:
     macros = "\n".join(report._matrix_table_macros())
 
     assert r"\matrixslot{0.86in}{#4}" in macros
-    assert r"\makebox[0.34in][l]{#1}" in macros
+    assert r"\makebox[0.27in][l]{#1}" in macros
     assert (
         r"\hspace{0.006in}\matrixpunct{/}\hspace{0.012in}"
         in macros
