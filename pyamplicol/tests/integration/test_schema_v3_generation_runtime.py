@@ -12,7 +12,14 @@ from typing import Any
 
 import pytest
 
-from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol import (
+    BenchmarkConfig,
+    BenchmarkRunner,
+    Generator,
+    ModelSource,
+    ProcessSet,
+    Runtime,
+)
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.config import ColorConfig, ModelConfig, RunConfig
 from tools.developer.analytic_oracles import (
@@ -213,6 +220,22 @@ def test_current_source_generates_and_evaluates_schema_v3(
     assert total[0].real == pytest.approx(reference["total"], rel=1.0e-12)
     assert total[0].imag == pytest.approx(0.0, abs=1.0e-15)
     assert resolved.total()[0] == pytest.approx(total[0], rel=1.0e-12)
+
+    if accuracy == "lc":
+        benchmark = BenchmarkRunner(
+            BenchmarkConfig(
+                target_runtime=1.0e-3,
+                batch_size=2,
+                warmup_runs=0,
+                minimum_samples=2,
+            )
+        ).run(runtime, points=momenta)
+        assert benchmark.wall_time_per_point > 0.0
+        assert benchmark.evaluator_time_per_point >= 0.0
+        assert benchmark.environment["wall_time_source"] == (
+            "runtime_core_repeated_wall_time"
+        )
+        assert benchmark.timing_breakdown is not None
 
     exact = runtime.evaluate_resolved(momenta, precision=32)
     assert exact.helicity_ids == resolved.helicity_ids
