@@ -10,7 +10,7 @@ published on PyPI.
 - Schema-v1 TOML, direct CLI, ordered overrides, typed Python configuration,
   and recorded license/resource adjustments.
 - External UFO/JSON model loading, canonical compiled-model schema 9, and
-  model-compiler policy version 10, including packaged `sm`, `scalars`, and
+  model-compiler policy version 11, including packaged `sm`, `scalars`, and
   `scalar_gravity` assets plus an immutable public compiled-model handle that
   keeps compiler IR private.
 - Multiprocess planning and transactional schema-v3 generation with append,
@@ -83,10 +83,14 @@ fails closed while the release dependency contract below remains unverified.
   `3 x 3bar x 8` Fierz singlet-subtraction auxiliary from exact UFO tensors,
   which restores built-in/external current, interaction-evaluation, root, and
   sector topology through the validated three-quark-line ladder without names
-  or conventional PDGs. Relabeled-PDG and reordered-UFO-inventory gates
+  or conventional PDGs. Compiler policy 11 additionally records every declared
+  Goldstone's massive-vector relationship from normalized spin, color,
+  quantum-number, mass-expression, and propagator metadata; ambiguous matches
+  fail during compilation and custom propagators keep their Goldstones
+  explicit. Relabeled-PDG, renamed-particle, and reordered-UFO-inventory gates
   preserve topology and tensor-order identities. A scalar-gravity source with
-  transposed spin-2 axes and renamed Lorentz dummy indices compiles to
-  identical canonical kernels and numerical component values. Current
+  transposed spin-2 axes and renamed Lorentz dummy indices compiles to identical
+  canonical kernels and numerical component values. Current
   two-structure-constant contact lowering preserves explicit source scalar
   prefactors separately from canonicalized permutation parity, rejects
   residual color tensors, and validates model-owned direct and closure

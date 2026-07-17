@@ -126,6 +126,10 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
     assert "push:" in trigger
     assert "branches: [main]" in trigger
     assert "workflow_dispatch:" in trigger
+    assert (
+        "group: tests-${{ github.workflow }}-${{ github.ref }}-"
+        "${{ github.event_name }}"
+    ) in workflow
     candidate_job = workflow.split(
         "  candidate-runtime:\n",
         maxsplit=1,
