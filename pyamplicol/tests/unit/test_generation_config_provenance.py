@@ -85,6 +85,11 @@ def test_programmatic_generator_forwards_config_resolution(
         return _PlanningBackend(config)
 
     monkeypatch.setattr(service_module, "_generator_factory", factory)
+    monkeypatch.setattr(
+        licensing_module,
+        "detect_symbolica_license",
+        lambda **_kwargs: SymbolicaLicenseState(licensed=True, restricted=False),
+    )
 
     Generator(resolution).plan("d d~ > z")
 
