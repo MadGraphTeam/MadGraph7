@@ -53,6 +53,7 @@ ProcessEntry = _model.ProcessEntry
 LcRowPartition = _model.LcRowPartition
 CompilerProvenance = _model.CompilerProvenance
 ProbeResult = _model.ProbeResult
+SelectedFlowProbeResult = _model.SelectedFlowProbeResult
 
 
 def _run(
@@ -113,6 +114,17 @@ def build_color_probe(repository: Path, *, jobs: int) -> None:
     )
 
 
+def build_selected_flow_library_probe(repository: Path, *, jobs: int) -> None:
+    """Build the indexed scalar driver for an already generated LC library."""
+
+    validate_checkout(repository)
+    _run(
+        ["make", f"-j{max(1, jobs)}", "amplicol_library_benchmark"],
+        cwd=repository,
+        capture=False,
+    )
+
+
 def _make_database_variable(database: str, name: str) -> str:
     return _checkout._make_database_variable(database, name)
 
@@ -159,6 +171,7 @@ _LC_ROW_PERMUTATION_RE = _probe._LC_ROW_PERMUTATION_RE
 _LC_ROW_SUM_RE = _probe._LC_ROW_SUM_RE
 _INTEGER_LABELS = _probe._INTEGER_LABELS
 _parse_probe_output = _probe._parse_probe_output
+_parse_selected_flow_probe_output = _probe._parse_selected_flow_probe_output
 _probe_number = _probe._probe_number
 _ordered_binary64_momenta = _probe._ordered_binary64_momenta
 _binary64_input_sha256 = _probe._binary64_input_sha256
@@ -212,6 +225,72 @@ def run_color_probe(
         ]
         completed = _run(command, cwd=work)
     return _parse_probe_output(completed.stdout + "\n" + completed.stderr)
+
+
+def run_selected_flow_library_probe(
+    repository: Path,
+    *,
+    entry: ProcessEntry,
+    source_pdgs: Sequence[int],
+    momenta: Sequence[Sequence[float]],
+    points: int = 1,
+) -> SelectedFlowProbeResult:
+    """Evaluate one indexed LC row through the generated-library interface.
+
+    Unlike ``run_color_probe``, this path does not construct the all-flow color
+    matrix. The generated library's serialized ``col_fac``, ``hel_fac``,
+    coupling-power, and averaging metadata define the returned scalar.
+    """
+
+    validate_selected_flow_quark_line_scope(
+        entry.process_pdgs,
+        context=(
+            "generated-library selected-flow row "
+            f"group {entry.group}, integral {entry.integral}"
+        ),
+    )
+    probe_points = int(points)
+    if probe_points < 1:
+        raise LegacyOracleError("selected-flow probe points must be positive")
+    ordered_momenta = _ordered_binary64_momenta(
+        source_pdgs,
+        entry.process_pdgs,
+        momenta,
+    )
+    with tempfile.TemporaryDirectory(prefix="pac-selected-flow-", dir="/tmp") as raw:
+        momentum_path = Path(raw) / "momenta.dat"
+        momentum_path.write_text(
+            "\n".join(
+                " ".join(format(float(component), ".17g") for component in vector)
+                for vector in ordered_momenta
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        command = [
+            str((repository / "amplicol_library_benchmark").resolve()),
+            str(probe_points),
+            str(entry.group),
+            str(entry.integral),
+            str(momentum_path),
+        ]
+        completed = _run(command, cwd=repository)
+    result = _parse_selected_flow_probe_output(
+        completed.stdout + "\n" + completed.stderr
+    )
+    emitted_identity = (result.group, result.integral)
+    expected_identity = (entry.group, entry.integral)
+    if emitted_identity != expected_identity:
+        raise LegacyOracleError(
+            "generated-library selected-flow probe returned row "
+            f"{emitted_identity}, expected {expected_identity}"
+        )
+    if sorted(result.process_pdgs) != sorted(entry.process_pdgs):
+        raise LegacyOracleError(
+            "generated-library selected-flow PDG multiset "
+            f"{result.process_pdgs} does not match selected row {entry.process_pdgs}"
+        )
+    return result
 
 
 _resolved_case_value = _probe._resolved_case_value

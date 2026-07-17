@@ -63,3 +63,21 @@ class ProbeResult:
     value_decimal: Decimal | None = field(default=None, compare=False)
     component_decimals: tuple[Decimal, ...] = field(default=(), compare=False)
     lc_partition_sum_decimal: Decimal | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class SelectedFlowProbeResult:
+    """Normalized scalar and row metadata from a generated LC library."""
+
+    value: float
+    group: int
+    integral: int
+    process_pdgs: tuple[int, ...]
+    color_order: tuple[int, ...]
+    amplitudes: int
+    color_factor: int
+    identical_factor: int
+    singlet_vertices: int
+    normalization: float
+    value_decimal: Decimal = field(compare=False)
+    normalization_decimal: Decimal = field(compare=False)

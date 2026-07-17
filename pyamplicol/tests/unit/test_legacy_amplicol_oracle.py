@@ -73,6 +73,7 @@ def test_facade_reexports_extracted_oracle_helpers() -> None:
     assert module.LcRowPartition is model.LcRowPartition
     assert module.CompilerProvenance is model.CompilerProvenance
     assert module.ProbeResult is model.ProbeResult
+    assert module.SelectedFlowProbeResult is model.SelectedFlowProbeResult
     assert module.parse_process_file is processes.parse_process_file
     assert module.select_process_entry is processes.select_process_entry
     assert (
@@ -86,6 +87,10 @@ def test_facade_reexports_extracted_oracle_helpers() -> None:
     )
     assert module._permutation is processes._permutation
     assert module._parse_probe_output is probe._parse_probe_output
+    assert (
+        module._parse_selected_flow_probe_output
+        is probe._parse_selected_flow_probe_output
+    )
     assert module._binary64_input_sha256 is probe._binary64_input_sha256
     assert module._resolved_single_lc_row is probe._resolved_single_lc_row
     assert module._reference_fixture_v2_module is evidence._reference_fixture_v2_module
@@ -665,7 +670,7 @@ def test_public_legacy_checkout_uses_noninteractive_https() -> None:
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
     assert module.checkout_branch() == "amplicol_with_patches"
-    assert module.expected_revision() == "60443f327c2203cf92625da2bf0969c27e68a4ac"
+    assert module.expected_revision() == "754064d751224ec96c182d5f5d21fd6a11ad28f6"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(
@@ -778,6 +783,176 @@ AMPICOL_COLOR_PROBE_VALUE lc 1 1 1.0
     assert observed["command"][0] == str(
         (repository / "amplicol_color_probe").resolve()
     )
+
+
+def _selected_flow_probe_output(
+    *,
+    pdgs: tuple[int, ...] = (1, -1, 2, -2, 3, -3),
+    color_order: tuple[int, ...] = (2, 1, 3, 4, 5, 6),
+) -> str:
+    return "\n".join(
+        (
+            "AMPICOL_SELECTED_FLOW_PROBE_VALUE 3 1 6.3359823001718900E-10",
+            "AMPICOL_SELECTED_FLOW_PROBE_PDGS "
+            f"{len(pdgs)} {' '.join(str(value) for value in pdgs)}",
+            "AMPICOL_SELECTED_FLOW_PROBE_COLOR_ORDER "
+            f"{len(color_order)} {' '.join(str(value) for value in color_order)}",
+            "AMPICOL_SELECTED_FLOW_PROBE_AMPLITUDES 4",
+            "AMPICOL_SELECTED_FLOW_PROBE_COLOR_FACTOR 27",
+            "AMPICOL_SELECTED_FLOW_PROBE_IDENTICAL_FACTOR 36",
+            "AMPICOL_SELECTED_FLOW_PROBE_SINGLET_VERTICES 0",
+            "AMPICOL_SELECTED_FLOW_PROBE_NORMALIZATION 1.3425000000000000E-01",
+        )
+    )
+
+
+def test_selected_flow_probe_parser_records_generated_row_metadata() -> None:
+    module = _module()
+
+    result = module._parse_selected_flow_probe_output(_selected_flow_probe_output())
+
+    assert result == module.SelectedFlowProbeResult(
+        value=6.33598230017189e-10,
+        group=3,
+        integral=1,
+        process_pdgs=(1, -1, 2, -2, 3, -3),
+        color_order=(2, 1, 3, 4, 5, 6),
+        amplitudes=4,
+        color_factor=27,
+        identical_factor=36,
+        singlet_vertices=0,
+        normalization=0.13425,
+        value_decimal=Decimal("6.3359823001718900E-10"),
+        normalization_decimal=Decimal("1.3425000000000000E-01"),
+    )
+
+
+def test_selected_flow_library_probe_supports_three_quark_lines_and_indexed_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    repository = tmp_path / "legacy"
+    repository.mkdir()
+    source_pdgs = (1, -1, 2, -2, 3, -3)
+    entry = module.ProcessEntry(
+        group=3,
+        integral=1,
+        process_pdgs=(1, -1, 2, -2, 3, -3),
+        color_order=(2, 1, 3, 4, 5, 6),
+    )
+    momenta = tuple(
+        (float(index), float(index + 1), float(index + 2), float(index + 3))
+        for index in range(0, 24, 4)
+    )
+    observed: dict[str, object] = {}
+
+    def fake_run(command, *, cwd, capture=True):
+        momentum_path = Path(command[4])
+        observed.update(
+            command=tuple(command),
+            cwd=cwd,
+            capture=capture,
+            momenta=momentum_path.read_text(encoding="utf-8"),
+        )
+        return module.subprocess.CompletedProcess(
+            command,
+            0,
+            _selected_flow_probe_output(),
+            "",
+        )
+
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    result = module.run_selected_flow_library_probe(
+        repository,
+        entry=entry,
+        source_pdgs=source_pdgs,
+        momenta=momenta,
+        points=7,
+    )
+
+    assert result.value == pytest.approx(6.33598230017189e-10)
+    assert result.process_pdgs == entry.process_pdgs
+    assert result.color_order == entry.color_order
+    assert observed["cwd"] == repository
+    assert observed["command"][1:4] == ("7", "3", "1")
+    assert observed["momenta"] == "\n".join(
+        " ".join(format(component, ".17g") for component in vector)
+        for vector in momenta
+    ) + "\n"
+
+
+def test_selected_flow_library_probe_accepts_canonicalized_row_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    repository = tmp_path / "legacy"
+    repository.mkdir()
+    entry = module.ProcessEntry(
+        group=3,
+        integral=1,
+        process_pdgs=(1, -1, 2, -2, 3, -3),
+        color_order=(2, 1, 3, 4, 5, 6),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_run",
+        lambda command, *, cwd, capture=True: module.subprocess.CompletedProcess(
+            command,
+            0,
+            _selected_flow_probe_output(
+                pdgs=(2, -2, -3, 3, -1, 1),
+                color_order=(1, 3, 4, 5, 6, 2),
+            ),
+            "",
+        ),
+    )
+
+    result = module.run_selected_flow_library_probe(
+        repository,
+        entry=entry,
+        source_pdgs=entry.process_pdgs,
+        momenta=((1.0, 2.0, 3.0, 4.0),) * 6,
+    )
+
+    assert result.process_pdgs == (2, -2, -3, 3, -1, 1)
+    assert result.color_order == (1, 3, 4, 5, 6, 2)
+
+
+def test_selected_flow_library_probe_rejects_generated_pdg_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    repository = tmp_path / "legacy"
+    repository.mkdir()
+    entry = module.ProcessEntry(
+        group=3,
+        integral=1,
+        process_pdgs=(1, -1, 2, -2, 3, -3),
+        color_order=(2, 1, 3, 4, 5, 6),
+    )
+    monkeypatch.setattr(
+        module,
+        "_run",
+        lambda command, *, cwd, capture=True: module.subprocess.CompletedProcess(
+            command,
+            0,
+            _selected_flow_probe_output(pdgs=(1, -1, 2, -2, 4, -4)),
+            "",
+        ),
+    )
+
+    with pytest.raises(module.LegacyOracleError, match="PDG multiset"):
+        module.run_selected_flow_library_probe(
+            repository,
+            entry=entry,
+            source_pdgs=entry.process_pdgs,
+            momenta=((1.0, 2.0, 3.0, 4.0),) * 6,
+        )
 
 
 def test_binary64_input_hash_covers_exact_post_permutation_values() -> None:

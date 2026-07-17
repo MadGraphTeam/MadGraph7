@@ -20,6 +20,7 @@ from .model import (
     LcRowPartition,
     LegacyOracleError,
     ProbeResult,
+    SelectedFlowProbeResult,
 )
 from .processes import _permutation
 
@@ -52,6 +53,21 @@ _INTEGER_LABELS = {
     "vertices": "AMPICOL_COLOR_PROBE_VERTICES",
     "amplitudes": "AMPICOL_COLOR_PROBE_AMPLITUDES",
     "color_orders": "AMPICOL_COLOR_PROBE_COLOR_ORDERS",
+}
+_SELECTED_FLOW_VALUE_RE = re.compile(
+    r"^AMPICOL_SELECTED_FLOW_PROBE_VALUE\s+(\d+)\s+(\d+)\s+"
+    r"([+\-0-9.Ee]+)$",
+    re.MULTILINE,
+)
+_SELECTED_FLOW_NORMALIZATION_RE = re.compile(
+    r"^AMPICOL_SELECTED_FLOW_PROBE_NORMALIZATION\s+([+\-0-9.Ee]+)$",
+    re.MULTILINE,
+)
+_SELECTED_FLOW_INTEGER_LABELS = {
+    "amplitudes": "AMPICOL_SELECTED_FLOW_PROBE_AMPLITUDES",
+    "color_factor": "AMPICOL_SELECTED_FLOW_PROBE_COLOR_FACTOR",
+    "identical_factor": "AMPICOL_SELECTED_FLOW_PROBE_IDENTICAL_FACTOR",
+    "singlet_vertices": "AMPICOL_SELECTED_FLOW_PROBE_SINGLET_VERTICES",
 }
 
 
@@ -139,6 +155,109 @@ def _parse_probe_output(output: str) -> ProbeResult:
         lc_partition_sum_decimal=lc_partition_sum_decimal,
         **integers,
     )
+
+
+def _parse_selected_flow_probe_output(output: str) -> SelectedFlowProbeResult:
+    """Parse the indexed scalar emitted by the generated-library driver."""
+
+    value_matches = _SELECTED_FLOW_VALUE_RE.findall(output)
+    normalization_matches = _SELECTED_FLOW_NORMALIZATION_RE.findall(output)
+    if len(value_matches) != 1 or len(normalization_matches) != 1:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe must emit exactly one value and "
+            "normalization record"
+        )
+    group = int(value_matches[0][0])
+    integral = int(value_matches[0][1])
+    if group < 1 or integral < 1:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted a non-positive row identity"
+        )
+
+    process_pdgs = _parse_counted_integer_vector(
+        output,
+        "AMPICOL_SELECTED_FLOW_PROBE_PDGS",
+    )
+    color_order = _parse_counted_integer_vector(
+        output,
+        "AMPICOL_SELECTED_FLOW_PROBE_COLOR_ORDER",
+    )
+    if len(process_pdgs) != len(color_order):
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted inconsistent external metadata"
+        )
+    expected_order = tuple(range(1, len(process_pdgs) + 1))
+    if tuple(sorted(color_order)) != expected_order:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe color order is not a permutation of "
+            f"1..{len(process_pdgs)}"
+        )
+
+    integers: dict[str, int] = {}
+    for name, label in _SELECTED_FLOW_INTEGER_LABELS.items():
+        matches = re.findall(rf"^{re.escape(label)}\s+(\d+)$", output, re.MULTILINE)
+        if len(matches) != 1:
+            raise LegacyOracleError(
+                f"Fortran selected-flow probe must emit exactly one {label} record"
+            )
+        integers[name] = int(matches[0])
+    if integers["amplitudes"] < 1:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted no generated amplitudes"
+        )
+    if integers["color_factor"] < 1 or integers["identical_factor"] < 1:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted a non-positive normalization factor"
+        )
+
+    try:
+        value, value_decimal = _probe_number(
+            value_matches[0][2],
+            "selected-flow matrix-element value",
+        )
+        normalization, normalization_decimal = _probe_number(
+            normalization_matches[0],
+            "selected-flow normalization",
+        )
+    except (InvalidOperation, ValueError, OverflowError) as error:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted a malformed number"
+        ) from error
+    if normalization <= 0.0:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted a non-positive normalization"
+        )
+
+    return SelectedFlowProbeResult(
+        value=value,
+        group=group,
+        integral=integral,
+        process_pdgs=process_pdgs,
+        color_order=color_order,
+        normalization=normalization,
+        value_decimal=value_decimal,
+        normalization_decimal=normalization_decimal,
+        **integers,
+    )
+
+
+def _parse_counted_integer_vector(output: str, label: str) -> tuple[int, ...]:
+    matches = re.findall(
+        rf"^{re.escape(label)}\s+(\d+)\s+([+\-0-9 ]+?)\s*$",
+        output,
+        re.MULTILINE,
+    )
+    if len(matches) != 1:
+        raise LegacyOracleError(
+            f"Fortran selected-flow probe must emit exactly one {label} record"
+        )
+    declared_count = int(matches[0][0])
+    values = tuple(int(value) for value in matches[0][1].split())
+    if declared_count < 1 or len(values) != declared_count:
+        raise LegacyOracleError(
+            f"Fortran selected-flow probe emitted an invalid {label} width"
+        )
+    return values
 
 
 def _probe_number(value: str, context: str) -> tuple[float, Decimal]:

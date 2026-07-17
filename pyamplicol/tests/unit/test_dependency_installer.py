@@ -40,7 +40,7 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
     assert all(len(item.revision) == 40 for item in with_legacy)
     legacy = next(item for item in with_legacy if item.key == "legacy-amplicol")
     assert legacy.branch == "amplicol_with_patches"
-    assert legacy.revision == "60443f327c2203cf92625da2bf0969c27e68a4ac"
+    assert legacy.revision == "754064d751224ec96c182d5f5d21fd6a11ad28f6"
 
 
 def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> None:
