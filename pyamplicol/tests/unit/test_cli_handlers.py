@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from pyamplicol.api import BenchmarkResult, BenchmarkStatistics
@@ -83,6 +84,19 @@ class _ProfileServices(_Services):
             process_id="d_dbar_to_z_g",
             process_expression="d d~ > z g",
         )
+
+
+class _InterruptedProfileServices(_Services):
+    def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
+        del config, progress
+        raise KeyboardInterrupt
+
+
+class _PartialProfileServices(_ProfileServices):
+    def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
+        result = super().benchmark(config, progress)
+        assert isinstance(result, BenchmarkResult)
+        return replace(result, interrupted=True)
 
 
 def test_typed_config_entries_preserve_complete_process_set_behavior() -> None:
@@ -197,6 +211,47 @@ def test_profile_json_is_stdout_clean_and_uses_benchmark_service(
     assert services.config is not None
     assert services.config.action == "benchmark"
     assert services.config.evaluation.process == "d d~ > z g"
+
+
+def test_profile_interrupted_before_sampling_exits_without_traceback(
+    tmp_path: Path,
+) -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    status = run_cli(
+        ("profile", str(tmp_path / "artifact"), "--progress", "off"),
+        services=_InterruptedProfileServices(),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 130
+    assert stdout.getvalue() == ""
+    assert "interrupted before a complete result was available" in stderr.getvalue()
+
+
+def test_partial_profile_prints_result_and_exits_as_interrupted(tmp_path: Path) -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    status = run_cli(
+        (
+            "profile",
+            str(tmp_path / "artifact"),
+            "--format",
+            "json",
+            "--progress",
+            "off",
+        ),
+        services=_PartialProfileServices(),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 130
+    assert json.loads(stdout.getvalue())["interrupted"] is True
+    assert stderr.getvalue() == ""
 
 
 def test_inspect_cli_lists_artifact_processes_as_json() -> None:

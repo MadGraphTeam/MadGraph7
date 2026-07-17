@@ -15,7 +15,12 @@ from pyamplicol.api import (
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.benchmarking import BenchmarkBackend
 from pyamplicol.config import BenchmarkConfig
-from pyamplicol.reporting import CallbackProgressSink, ProgressEnd, ProgressStart
+from pyamplicol.reporting import (
+    CallbackProgressSink,
+    ProgressEnd,
+    ProgressStart,
+    ProgressUpdate,
+)
 
 
 class _Runtime:
@@ -274,6 +279,46 @@ def test_benchmark_uses_repeated_native_rusticol_wall_timer(
     assert result.environment["wall_time_source"] == ("runtime_core_repeated_wall_time")
     assert result.environment["elapsed_seconds"] == pytest.approx(0.1)
     assert runtime.native_wall_calls >= result.sample_count
+
+
+def test_keyboard_interrupt_returns_statistics_for_complete_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithNativeWall(clock)
+    events: list[object] = []
+
+    def interrupt_after_two_samples(event: object) -> None:
+        events.append(event)
+        if (
+            isinstance(event, ProgressUpdate)
+            and event.task_id == "runtime-benchmark"
+            and event.completed == 2
+        ):
+            raise KeyboardInterrupt
+
+    result = BenchmarkBackend(
+        BenchmarkConfig(
+            target_runtime=0.1,
+            batch_size=2,
+            warmup_runs=1,
+            minimum_samples=4,
+        ),
+        CallbackProgressSink(interrupt_after_two_samples),
+    ).run(runtime, points=(((1.0, 0.0, 0.0, 1.0),),))
+
+    assert result.interrupted is True
+    assert result.sample_count == 2
+    assert result.environment["interrupted"] is True
+    assert result.environment["completed_sample_count"] == 2
+    assert result.environment["completion_fraction"] == pytest.approx(0.5)
+    assert result.uncertainty.standard_error >= 0.0
+    assert events[-1] == ProgressEnd(
+        "runtime-benchmark",
+        success=False,
+        message=("interrupted after 2/4 complete blocks; reporting partial statistics"),
+    )
 
 
 def test_benchmark_reduces_planned_blocks_for_slow_runtime(

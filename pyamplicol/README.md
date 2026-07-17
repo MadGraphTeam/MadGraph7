@@ -79,7 +79,10 @@ expression, such as `d d~ > z g g`. The profiler warms the selected runtime,
 calibrates independent timed blocks and repetitions per block toward the target
 duration, and reports the mean time per point with standard deviation, standard
 error, and relative standard error. In a terminal it uses a colored progress
-bar and colorized PrettyTables. Native Rusticol profiling is bounded to one
+bar with live elapsed-time, sampling, and uncertainty metadata, followed by
+colorized PrettyTables. Pressing `Ctrl-C` stops sampling and reports a clearly
+marked partial result from every fully completed block. Native Rusticol
+profiling is bounded to one
 call per statistical block, independent of wall-time repetitions, and reports
 source/momentum setup, stage and amplitude packing/evaluator calls, output
 assignment, reduction, and per-stage detail. `--format json` keeps stdout

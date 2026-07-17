@@ -463,6 +463,10 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=argparse.SUPPRESS,
         metavar="SECONDS",
+        help=(
+            "target cumulative Rusticol timing duration; Ctrl-C reports "
+            "statistics from complete samples collected so far"
+        ),
     )
     parser.add_argument(
         "--batch-size",

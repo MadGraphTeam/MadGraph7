@@ -606,7 +606,9 @@ class BenchmarkResult:
     Rusticol around repeated core evaluations of an already packed momentum
     buffer; caller-language conversion and adapter overhead are excluded.
     ``evaluator_time_per_point`` is the sum of generic-stage and amplitude
-    evaluator calls measured by the bounded native profiler.
+    evaluator calls measured by the bounded native profiler. ``interrupted``
+    marks a valid partial result computed only from timing blocks that finished
+    before sampling was interrupted.
     """
 
     requested_config: BenchmarkConfig
@@ -621,6 +623,7 @@ class BenchmarkResult:
     process_id: str | None = None
     process_expression: str | None = None
     timing_breakdown: BenchmarkTimingBreakdown | None = None
+    interrupted: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -629,6 +632,8 @@ class BenchmarkResult:
             or self.sample_count < 1
         ):
             raise ValueError("benchmark sample_count must be positive")
+        if not isinstance(self.interrupted, bool):
+            raise TypeError("benchmark interrupted flag must be a boolean")
         if not math.isfinite(self.wall_time_per_point) or self.wall_time_per_point < 0:
             raise ValueError("benchmark wall_time_per_point must be non-negative")
         if self.evaluator_time_per_point is not None and (

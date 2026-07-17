@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import io
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from pyamplicol.api import (
@@ -110,6 +110,15 @@ def test_benchmark_profile_table_color_is_optional() -> None:
 
     assert rendered is not None
     assert "\x1b[" in rendered
+
+
+def test_interrupted_benchmark_renders_partial_status() -> None:
+    rendered = render_summary(
+        replace(_benchmark_result(), interrupted=True), color=False
+    )
+
+    assert rendered is not None
+    assert "interrupted - partial statistics from 8 complete blocks" in rendered
 
 
 def _artifact_inspection() -> ArtifactInspection:

@@ -177,10 +177,20 @@ Native component profiling is measured separately when the runtime supports it,
 with exactly one native profile per statistical block. It never inherits the
 potentially large wall-time repetition count.
 
+For f64 artifacts, wall time starts inside Rusticol after the caller-language
+momentum buffer has been converted and covers repeated ordinary core
+evaluations through reduction. The evaluator time remains the sum of generated
+stage and amplitude evaluator calls. This keeps Python/NumPy conversion and
+language-wrapper costs out of the runtime metric shared by the Python, Rust,
+C++, and Fortran APIs.
+
 The human result is a colorized PrettyTable showing the selected process, wall
 and evaluator means with standard errors, wall standard deviation and relative
 standard error, calibrated sampling geometry, target versus measured time, and
-timing provenance. TTY progress uses a colored thread-safe progress bar.
+timing provenance. TTY progress uses a colored thread-safe progress bar with
+live wall-time, uncertainty, repetition, and batch metadata. `Ctrl-C` during
+sampling aborts further blocks and still prints the usual result tables using
+only fully completed blocks, with the result explicitly marked as partial.
 Non-TTY progress uses typed, rate-limited log messages on stderr. With
 `--format json`, stdout contains only the machine-readable result.
 

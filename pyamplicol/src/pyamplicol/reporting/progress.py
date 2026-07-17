@@ -161,9 +161,11 @@ class TtyProgressSink:
                 self.stream.flush()
                 return
             if isinstance(event, ProgressUpdate):
-                if event.message:
-                    bar.suffix = event.message
-                bar.update(event.completed, force=True)
+                bar.update(
+                    event.completed,
+                    force=True,
+                    status=event.message or "",
+                )
                 return
             bar.finish(dirty=not event.success)
             if event.message:
@@ -194,6 +196,8 @@ class TtyProgressSink:
                 progressbar.Counter(),
                 " ",
                 progressbar.Timer(),
+                " ",
+                progressbar.DynamicMessage("status"),
             ]
             maximum = progressbar.UnknownLength
         else:
@@ -208,6 +212,8 @@ class TtyProgressSink:
                 progressbar.Counter(),
                 f"/{event.total} ",
                 progressbar.ETA(),
+                " ",
+                progressbar.DynamicMessage("status"),
             ]
             maximum = event.total
         bar = progressbar.ProgressBar(
@@ -222,9 +228,13 @@ class TtyProgressSink:
 
 
 class _ProgressBar(Protocol):
-    suffix: str
-
-    def update(self, completed: int, *, force: bool = False) -> None: ...
+    def update(
+        self,
+        completed: int,
+        *,
+        force: bool = False,
+        status: str = "",
+    ) -> None: ...
 
     def finish(self, *, dirty: bool = False) -> None: ...
 
@@ -233,11 +243,16 @@ class _ProgressBar(Protocol):
 class _LineProgress:
     stream: TextIO
     task_id: str
-    suffix: str = ""
 
-    def update(self, completed: int, *, force: bool = False) -> None:
+    def update(
+        self,
+        completed: int,
+        *,
+        force: bool = False,
+        status: str = "",
+    ) -> None:
         del force
-        message = f": {self.suffix}" if self.suffix else ""
+        message = f": {status}" if status else ""
         self.stream.write(f"{self.task_id} {completed}{message}\n")
         self.stream.flush()
 

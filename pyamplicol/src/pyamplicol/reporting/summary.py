@@ -118,6 +118,17 @@ def _timing_text(
     )
 
 
+def _benchmark_timing_text(
+    seconds: float,
+    uncertainty: BenchmarkStatistics,
+    *,
+    sample_count: int,
+) -> str:
+    if sample_count > 1:
+        return _timing_text(seconds, uncertainty)
+    return f"{_seconds_text(seconds)}/point (uncertainty needs at least 2 blocks)"
+
+
 def _seconds_text(seconds: float) -> str:
     scale, unit = _duration_unit(seconds)
     return f"{seconds * scale:.6g} {unit}"
@@ -127,6 +138,8 @@ def _component_timing_text(timing: BenchmarkComponentTiming | None) -> str:
     if timing is None:
         return "N/A"
     scale, unit = _duration_unit(timing.mean_seconds_per_point)
+    if timing.sample_count < 2:
+        return f"{timing.mean_seconds_per_point * scale:.6g} {unit}/point (SE pending)"
     return (
         f"{timing.mean_seconds_per_point * scale:.6g} +/- "
         f"{timing.uncertainty.standard_error * scale:.3g} {unit}/point"
@@ -156,9 +169,10 @@ def _benchmark_summary(
         if result.evaluator_uncertainty is None:
             evaluator_text = f"{_seconds_text(result.evaluator_time_per_point)}/point"
         else:
-            evaluator_text = _timing_text(
+            evaluator_text = _benchmark_timing_text(
                 result.evaluator_time_per_point,
                 result.evaluator_uncertainty,
+                sample_count=result.sample_count,
             )
 
     relative_error = result.uncertainty.relative_standard_error
@@ -168,22 +182,36 @@ def _benchmark_summary(
         uncertainty_color = "YELLOW"
     else:
         uncertainty_color = "RED"
+    status = (
+        f"interrupted - partial statistics from {result.sample_count} complete blocks"
+        if result.interrupted
+        else "complete"
+    )
     rows: list[tuple[str, str, str | None]] = [
         ("process", process, None),
         ("artifact", _value_text(environment.get("target")), None),
+        ("status", status, "YELLOW" if result.interrupted else "GREEN"),
         (
             "wall time",
-            _timing_text(result.wall_time_per_point, result.uncertainty),
+            _benchmark_timing_text(
+                result.wall_time_per_point,
+                result.uncertainty,
+                sample_count=result.sample_count,
+            ),
             "GREEN",
         ),
         ("evaluator time", evaluator_text, "CYAN"),
         (
             "wall variability",
             (
-                f"SD {_seconds_text(result.uncertainty.standard_deviation)}/point; "
-                f"relative SE {relative_error:.3%}"
+                (
+                    f"SD {_seconds_text(result.uncertainty.standard_deviation)}/point; "
+                    f"relative SE {relative_error:.3%}"
+                )
+                if result.sample_count > 1
+                else "not estimable from one complete block"
             ),
-            uncertainty_color,
+            uncertainty_color if result.sample_count > 1 else "YELLOW",
         ),
         (
             "sampling",

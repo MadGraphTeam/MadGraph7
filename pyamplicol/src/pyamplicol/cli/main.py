@@ -143,7 +143,7 @@ def run_cli(
             stream=output_stream,
             color=color,
         )
-        return 0
+        return 130 if bool(getattr(result, "interrupted", False)) else 0
     except (PyAmpliColError, OSError, RuntimeError, TypeError, ValueError) as exc:
         if logging_configured:
             get_logger("cli").error("%s", exc)
@@ -151,6 +151,14 @@ def run_cli(
             diagnostic_stream.write(f"error: {exc}\n")
             diagnostic_stream.flush()
         return 2
+    except KeyboardInterrupt:
+        message = "interrupted before a complete result was available"
+        if logging_configured:
+            get_logger("cli").warning("%s", message)
+        else:
+            diagnostic_stream.write(f"{message}\n")
+            diagnostic_stream.flush()
+        return 130
     finally:
         if logging_configured:
             reset_cli_logging()

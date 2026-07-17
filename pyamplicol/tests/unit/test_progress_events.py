@@ -75,4 +75,5 @@ def test_tty_progress_is_colored_when_requested() -> None:
     sink.emit(ProgressEnd("profile"))
 
     assert "Profiling runtime" in stream.getvalue()
+    assert "measured" in stream.getvalue()
     assert "\x1b[" in stream.getvalue()

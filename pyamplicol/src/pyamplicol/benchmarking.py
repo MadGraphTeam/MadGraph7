@@ -131,6 +131,16 @@ class BenchmarkBackend:
         task_id = "runtime-benchmark"
         calibration_task_id = "runtime-profile-calibration"
         active_task_id = calibration_task_id
+        warmup_elapsed = 0.0
+        calibration: _Calibration | None = None
+        samples: list[float] = []
+        evaluator_samples: list[float] | None = [] if profiler else None
+        native_profile_samples: list[_NativeProfileSample] | None = (
+            [] if profiler else None
+        )
+        elapsed = 0.0
+        evaluator_elapsed = 0.0
+        interrupted = False
         if self._progress is not None:
             self._progress.emit(
                 ProgressStart(
@@ -140,7 +150,6 @@ class BenchmarkBackend:
                 )
             )
         try:
-            warmup_elapsed = 0.0
             last_warmup_seconds: float | None = None
             for warmup_index in range(self._config.warmup_runs):
                 warmup_started = time.perf_counter()
@@ -190,51 +199,80 @@ class BenchmarkBackend:
                     )
                 )
             active_task_id = task_id
-
-            samples: list[float] = []
-            evaluator_samples: list[float] | None = [] if profiler else None
-            native_profile_samples: list[_NativeProfileSample] | None = (
-                [] if profiler else None
-            )
-            elapsed = 0.0
-            evaluator_elapsed = 0.0
             repetitions = calibration.repetitions_per_sample
-            for sample_index in range(calibration.sample_count):
-                duration = measure_repetitions(repetitions)
-                elapsed += duration
-                samples.append(duration / (repetitions * len(batch)))
-                if (
-                    profiler is not None
-                    and evaluator_samples is not None
-                    and native_profile_samples is not None
-                ):
-                    profile_started = time.perf_counter()
-                    profile = profiler(
-                        batch,
-                        helicities=helicities,
-                        color_flows=color_flows,
-                        precision=self._config.precision,
-                        include_values=False,
-                    )
-                    evaluator_elapsed += time.perf_counter() - profile_started
-                    native_sample = _native_profile_sample(profile, len(batch))
-                    native_profile_samples.append(native_sample)
-                    evaluator_samples.append(
-                        native_sample.stage_evaluator_call_time
-                        + native_sample.amplitude_evaluator_call_time
-                    )
+            try:
+                for _sample_index in range(calibration.sample_count):
+                    duration = measure_repetitions(repetitions)
+                    native_sample: _NativeProfileSample | None = None
+                    profile_duration = 0.0
+                    if (
+                        profiler is not None
+                        and evaluator_samples is not None
+                        and native_profile_samples is not None
+                    ):
+                        profile_started = time.perf_counter()
+                        profile = profiler(
+                            batch,
+                            helicities=helicities,
+                            color_flows=color_flows,
+                            precision=self._config.precision,
+                            include_values=False,
+                        )
+                        profile_duration = time.perf_counter() - profile_started
+                        native_sample = _native_profile_sample(profile, len(batch))
+
+                    samples.append(duration / (repetitions * len(batch)))
+                    elapsed += duration
+                    if native_sample is not None:
+                        assert evaluator_samples is not None
+                        assert native_profile_samples is not None
+                        native_profile_samples.append(native_sample)
+                        evaluator_samples.append(
+                            native_sample.stage_evaluator_call_time
+                            + native_sample.amplitude_evaluator_call_time
+                        )
+                        evaluator_elapsed += profile_duration
+                    if self._progress is not None:
+                        self._progress.emit(
+                            ProgressUpdate(
+                                task_id,
+                                completed=len(samples),
+                                total=calibration.sample_count,
+                                message=_sample_progress_message(
+                                    samples,
+                                    elapsed_seconds=elapsed,
+                                    target_seconds=self._config.target_runtime,
+                                    repetitions=repetitions,
+                                    batch_size=len(batch),
+                                ),
+                            )
+                        )
+            except KeyboardInterrupt:
+                if not samples:
+                    raise
+                interrupted = True
                 if self._progress is not None:
                     self._progress.emit(
-                        ProgressUpdate(
+                        ProgressEnd(
                             task_id,
-                            completed=sample_index + 1,
-                            total=calibration.sample_count,
+                            success=False,
                             message=(
-                                f"{elapsed:.3g}s measured; "
-                                f"{repetitions} repetitions/sample"
+                                f"interrupted after {len(samples)}/"
+                                f"{calibration.sample_count} complete blocks; "
+                                "reporting partial statistics"
                             ),
                         )
                     )
+        except KeyboardInterrupt:
+            if self._progress is not None:
+                self._progress.emit(
+                    ProgressEnd(
+                        active_task_id,
+                        success=False,
+                        message="interrupted before a complete timing block",
+                    )
+                )
+            raise
         except Exception as exc:
             if self._progress is not None:
                 self._progress.emit(
@@ -243,8 +281,10 @@ class BenchmarkBackend:
             if isinstance(exc, EvaluationError):
                 raise
             raise EvaluationError(f"runtime benchmark failed: {exc}") from exc
-        if self._progress is not None:
+        if self._progress is not None and not interrupted:
             self._progress.emit(ProgressEnd(task_id))
+
+        assert calibration is not None
 
         wall_samples = samples
         wall_time_source = (
@@ -320,6 +360,9 @@ class BenchmarkBackend:
                 "batch_size": len(batch),
                 "precision": self._config.precision,
                 "elapsed_seconds": elapsed,
+                "interrupted": interrupted,
+                "completed_sample_count": len(samples),
+                "completion_fraction": len(samples) / calibration.sample_count,
                 "warmup_elapsed_seconds": warmup_elapsed,
                 "planned_sample_count": calibration.sample_count,
                 "repetitions_per_sample": calibration.repetitions_per_sample,
@@ -332,6 +375,7 @@ class BenchmarkBackend:
                 "calibration_elapsed_seconds": calibration.elapsed_seconds,
                 **evaluator_environment,
             },
+            interrupted=interrupted,
             repetitions_per_sample=calibration.repetitions_per_sample,
             evaluator_uncertainty=evaluator_uncertainty,
             process_id=physics.process_id,
@@ -359,6 +403,35 @@ class BenchmarkBackend:
 def _benchmark_batch(points: Momenta, batch_size: int) -> Momenta:
     source = tuple(points)
     return tuple(source[index % len(source)] for index in range(batch_size))
+
+
+def _sample_progress_message(
+    samples: list[float],
+    *,
+    elapsed_seconds: float,
+    target_seconds: float,
+    repetitions: int,
+    batch_size: int,
+) -> str:
+    mean, _deviation, error, relative_error = _sample_statistics(samples)
+    if mean < 1.0e-6:
+        scale, unit = 1.0e9, "ns"
+    elif mean < 1.0e-3:
+        scale, unit = 1.0e6, "us"
+    elif mean < 1.0:
+        scale, unit = 1.0e3, "ms"
+    else:
+        scale, unit = 1.0, "s"
+    uncertainty = (
+        "SE pending"
+        if len(samples) < 2
+        else f"+/- {error * scale:.2g} {unit} ({relative_error:.2%} rel. SE)"
+    )
+    return (
+        f"{elapsed_seconds:.3g}/{target_seconds:.3g}s; "
+        f"wall {mean * scale:.5g} {unit}/point {uncertainty}; "
+        f"{repetitions} calls x {batch_size} points"
+    )
 
 
 def _planned_sample_count(
