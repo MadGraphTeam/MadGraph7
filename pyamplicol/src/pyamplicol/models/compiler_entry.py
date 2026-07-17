@@ -57,6 +57,16 @@ from .tensors import (
     classify_trilinear_color_expression,
     normalize_color_expression,
     normalize_lorentz_expression,
+    project_trilinear_color_expression,
+)
+
+_SUPPORTED_TRILINEAR_COLOR_PROJECTIONS = frozenset(
+    {
+        "singlet",
+        "color-identity",
+        "fundamental-generator",
+        "adjoint-structure-constant",
+    }
 )
 
 
@@ -224,6 +234,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
     oriented_kernels = _annotate_oriented_kernel_color_projections(
         oriented_kernels,
         particles,
+        terms,
     )
     oriented_kernels = _annotate_oriented_kernel_evaluation_equivalence(
         oriented_kernels,
@@ -255,18 +266,68 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
 def _annotate_oriented_kernel_color_projections(
     kernels: Sequence[CompiledOrientedKernel],
     particles: Sequence[CompiledParticleRecord],
+    terms: Sequence[CompiledVertexTerm],
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
+    term_by_id = {term.id: term for term in terms}
     annotated: list[CompiledOrientedKernel] = []
     for kernel in kernels:
-        representations = tuple(
-            particle_by_name[name].color for name in kernel.particles
-        )
-        structure, coefficient = classify_trilinear_color_expression(
-            kernel.color_expression,
-            kernel.color_source,
-            representations,
-        )
+        term = term_by_id.get(kernel.term_id)
+        if term is not None and term.valence == 3 and kernel.vertex == term.vertex:
+            representations = tuple(
+                particle_by_name[name].color for name in term.particles
+            )
+            certified_structure, coefficient = project_trilinear_color_expression(
+                term.color_expression,
+                representations,
+            )
+            if certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS:
+                raise ValueError(
+                    f"vertex {term.vertex!r} has unsupported trilinear color "
+                    f"tensor {term.color_source!r}; pyAmpliCol could not prove it "
+                    "as a singlet, identity, fundamental generator, or adjoint "
+                    "structure constant"
+                )
+            oriented_representations = tuple(
+                particle_by_name[name].color for name in kernel.particles
+            )
+            structure, _ = classify_trilinear_color_expression(
+                kernel.color_expression,
+                kernel.color_source,
+                oriented_representations,
+                allow_source_fallback=True,
+            )
+            if structure not in {certified_structure, "generic-tensor"}:
+                raise ValueError(
+                    f"vertex {term.vertex!r} changed color-tensor family while "
+                    "being oriented"
+                )
+            if (
+                structure == "generic-tensor"
+                and certified_structure != "color-identity"
+            ):
+                # A numeric prefactor can prevent the cheap source recognizer
+                # from identifying an otherwise proven generator/structure
+                # constant. Preserve the certified family and coefficient.
+                structure = certified_structure
+        else:
+            # Contact fragments are emitted only after compiler_contacts has
+            # serialized a complete decomposition proof. Their compact source
+            # is compiler-owned, so textual recognition is safe at this point.
+            representations = tuple(
+                particle_by_name[name].color for name in kernel.particles
+            )
+            structure, coefficient = classify_trilinear_color_expression(
+                kernel.color_expression,
+                kernel.color_source,
+                representations,
+                allow_source_fallback=True,
+            )
+            if structure == "generic-tensor":
+                raise ValueError(
+                    f"compiler-generated kernel {kernel.vertex!r} has no proven "
+                    "color-flow projection"
+                )
         annotated.append(
             replace(
                 kernel,

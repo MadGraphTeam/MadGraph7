@@ -526,8 +526,15 @@ def _tensor_heads(expression: Expression) -> set[str]:
 def project_trilinear_color_expression(
     expression: str,
     color_representations: Sequence[int],
+    *,
+    allow_numeric_fallback: bool = False,
 ) -> tuple[str, complex]:
-    """Project a simplified local color tensor onto the supported SU(3) basis."""
+    """Project a local color tensor onto the supported SU(3) basis.
+
+    The default path accepts only exact Symbolica identities. Dense numerical
+    projection is available for diagnostics, but must not certify executable
+    model contracts.
+    """
 
     representations = tuple(int(value) for value in color_representations)
     _validate_color_representations(representations)
@@ -581,6 +588,8 @@ def project_trilinear_color_expression(
             if coefficient is not None:
                 return structure, coefficient
             normalized_candidates.append((structure, normalized))
+        if not allow_numeric_fallback:
+            return "generic-tensor", 1.0 + 0.0j
         target = _materialized_color_components(expression, colored_legs)
         for structure, normalized in normalized_candidates:
             candidate = _materialized_color_components(
@@ -617,8 +626,15 @@ def classify_trilinear_color_expression(
     expression: str,
     source: str,
     color_representations: Sequence[int],
+    *,
+    allow_source_fallback: bool = False,
 ) -> tuple[str, complex]:
-    """Resolve a trilinear color tensor, retaining a cheap UFO fallback."""
+    """Resolve a trilinear color tensor through an exact tensor projection.
+
+    Source-text recognition is reserved for compiler-generated contact fragments
+    whose color decomposition has already been proven independently.  Arbitrary
+    UFO vertices must never acquire a color-flow contract from spelling alone.
+    """
 
     representations = tuple(int(value) for value in color_representations)
     _validate_color_representations(representations)
@@ -626,6 +642,7 @@ def classify_trilinear_color_expression(
         expression,
         source,
         representations,
+        bool(allow_source_fallback),
     )
 
 
@@ -634,12 +651,15 @@ def _classify_trilinear_color_expression_cached(
     expression: str,
     source: str,
     color_representations: tuple[int, ...],
+    allow_source_fallback: bool,
 ) -> tuple[str, complex]:
     projected = project_trilinear_color_expression(
         expression,
         color_representations,
     )
     if projected[0] != "generic-tensor":
+        return projected
+    if not allow_source_fallback:
         return projected
 
     compact_source = re.sub(r"\s+", "", source)

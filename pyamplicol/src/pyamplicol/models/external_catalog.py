@@ -14,9 +14,6 @@ from .base import (
     VertexEvaluationEquivalence,
     VertexLoweringRule,
 )
-from .tensors import (
-    classify_trilinear_color_expression,
-)
 
 if TYPE_CHECKING:
     pass
@@ -363,10 +360,10 @@ class ExternalModelCatalogMixin:
                 complex(*kernel.color_projection_coefficient),
             )
         else:
-            projected = classify_trilinear_color_expression(
-                kernel.color_expression,
-                kernel.color_source,
-                tuple(self.color_rep(particle_id) for particle_id in vertex.particles),
+            raise ValueError(
+                f"compiled external-model kernel {kernel.kind} has no certified "
+                "color-flow projection; recompile the UFO/JSON model with the "
+                "current pyAmpliCol version"
             )
         self._color_projection_cache[vertex.kind] = projected
         return projected
