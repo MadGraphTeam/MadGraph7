@@ -5,9 +5,19 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from hashlib import sha256
+from threading import Lock
 from typing import Any
 
 _UFO_CANONICAL_NAMESPACE = "UFO::{}::"
+# Symbolica's process-wide symbol table cannot handle concurrent S(...) calls.
+_SYMBOL_CONSTRUCTION_LOCK = Lock()
+
+
+def _symbol(qualified_name: str, *, is_real: bool = False) -> Any:
+    with _SYMBOL_CONSTRUCTION_LOCK:
+        from symbolica import S
+
+        return S(qualified_name, is_real=True) if is_real else S(qualified_name)
 
 
 def _safe_namespace_part(value: object) -> str:
@@ -41,9 +51,7 @@ class ModelSymbolRegistry:
         return f"{self.namespace}::{_safe_symbol_path(name)}"
 
     def symbol(self, name: str) -> Any:
-        from symbolica import S
-
-        return S(self.qualified_name(name))
+        return _symbol(self.qualified_name(name))
 
     def expression(self, source: str) -> Any:
         """Parse a UFO expression after moving every UFO head into this model."""
@@ -93,14 +101,10 @@ class SymbolRegistry:
         return self.qualified_name(name)
 
     def symbol(self, name: str) -> Any:
-        from symbolica import S
-
-        return S(self.qualified_name(name))
+        return _symbol(self.qualified_name(name))
 
     def real_symbol(self, name: str) -> Any:
-        from symbolica import S
-
-        return S(self.qualified_name(name), is_real=True)
+        return _symbol(self.qualified_name(name), is_real=True)
 
     def parameter(self, name: str) -> Any:
         return self.symbol(f"param::{name}")
