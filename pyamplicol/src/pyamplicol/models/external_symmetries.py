@@ -13,7 +13,6 @@ import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from itertools import permutations, product
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
@@ -643,6 +642,7 @@ def _tensor_product_ratio(
     reference_color: str,
     reference_lorentz: str,
 ) -> _sym.Expression | None:
+    _sym._ensure_symbolica()
     target_candidates = _canonical_tensor_product_expressions(
         (_sym.E(color) * _sym.E(lorentz)).expand()
     )
@@ -658,6 +658,7 @@ def _tensor_product_ratio(
 
 
 def _tensor_product_signature(color: str, lorentz: str) -> str:
+    _sym._ensure_symbolica()
     expression = (_sym.E(color) * _sym.E(lorentz)).expand()
     return min(
         str(candidate.to_canonical_string())
@@ -678,30 +679,43 @@ def _canonical_tensor_product_expressions(
     if not groups:
         return (expression,)
 
-    model_symbols = symbols.model("tensor_signature")
-    options: list[tuple[dict[_sym.Expression, _sym.Expression], ...]] = []
-    for (family, representation), source_symbols in sorted(groups.items()):
-        canonical_symbols = tuple(
-            model_symbols.symbol(
-                f"contracted_{family}_{representation}_{index}"
-            )
-            for index in range(len(source_symbols))
-        )
-        options.append(
-            tuple(
-                dict(zip(ordering, canonical_symbols, strict=True))
-                for ordering in permutations(source_symbols)
-            )
+    contracted_indices: list[tuple[_sym.Expression, int]] = []
+    group_contracts: dict[int, tuple[str, str]] = {}
+    for group, ((family, representation), source_symbols) in enumerate(
+        sorted(groups.items())
+    ):
+        group_contracts[group] = (family, representation)
+        contracted_indices.extend(
+            (symbol, group)
+            for symbol in source_symbols
         )
 
-    candidates: list[_sym.Expression] = []
-    for substitutions in product(*options):
-        candidate = expression
-        for mapping in substitutions:
-            for source, target in mapping.items():
-                candidate = candidate.replace(source, target)
-        candidates.append(candidate)
-    return tuple(candidates)
+    canonical, external, dummy = expression.canonize_tensors(contracted_indices)
+    if external:
+        raise ValueError(
+            "contracted UFO tensor indices unexpectedly became external during "
+            "canonization"
+        )
+    group_offsets: dict[int, int] = defaultdict(int)
+    for source, group_expression in dummy:
+        group = int(str(group_expression))
+        family, representation = group_contracts[group]
+        target = symbols.canonical_tensor_index(
+            family,
+            representation,
+            group_offsets[group],
+        )
+        group_offsets[group] += 1
+        canonical = canonical.replace(source, target)
+
+    if any(
+        _CONTRACTED_INDEX.fullmatch(str(symbol))
+        for symbol in canonical.get_all_symbols()
+    ):
+        raise ValueError(
+            "Symbolica tensor canonization left a source-owned contracted index"
+        )
+    return (canonical,)
 
 
 def _expressions_are_constant_multiples(target: str, reference: str) -> bool:

@@ -228,6 +228,20 @@ class SymbolRegistry:
     def contact_leg_tensor_name(self, kind: int, leg: int) -> str:
         return self.qualified_name(f"contact_{int(kind)}_leg_{int(leg)}")
 
+    def canonical_tensor_index(
+        self,
+        family: str,
+        representation: str,
+        index: int,
+    ) -> Any:
+        """Return a reserved dummy-index candidate for tensor canonization."""
+
+        return self.symbol(
+            "canonical_tensor_index::"
+            f"{_safe_symbol_path(family)}::"
+            f"{_safe_symbol_path(representation)}::i{int(index)}"
+        )
+
     @cached_property
     def color_projection_probe_name(self) -> str:
         return self.qualified_name("color_projection_probe")

@@ -31,6 +31,18 @@ def test_builtin_lowering_vocabulary_is_not_on_shared_registry() -> None:
     )
 
 
+def test_tensor_canonization_indices_use_the_shared_namespace() -> None:
+    index = symbols_module.SymbolRegistry().canonical_tensor_index(
+        "c",
+        "adjoint",
+        3,
+    )
+
+    assert index.to_canonical_string() == (
+        "pyamplicol::canonical_tensor_index::c::adjoint::{}::i3"
+    )
+
+
 def test_symbol_construction_is_serialized_and_cached(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
