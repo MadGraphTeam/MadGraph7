@@ -188,6 +188,50 @@ The process matrices use three colour contracts:
 \end{tabular}
 \end{center}
 
+For NLC, ``retained'' applies to a colour-matrix \emph{entry}, not to a
+truncated numerical coefficient.  Write the exact overlap of two colour-flow
+tensors as
+\begin{equation}
+  C_{ab}(N_c)=\sum_p c^{(ab)}_p N_c^p,
+  \qquad
+  p_{ab}=\max\{p:c^{(ab)}_p\ne0\},
+  \label{eq:nlc-entry-gate}
+\end{equation}
+and let \(P\) be the leading power of the complete colour basis.  The sparse
+NLC metric used by
+\texttt{build\_color\_}\allowbreak\texttt{contraction\_plan()} in
+\path{src/pyamplicol/color/contraction.py} is
+\begin{equation}
+  C^{\mathrm{NLC}}_{ab}=
+  \begin{cases}
+    C_{ab}(3), & p_{ab}\ge P-2,\\
+    0,         & p_{ab}<P-2.
+  \end{cases}
+  \label{eq:nlc-exact-coefficient}
+\end{equation}
+Thus every qualifying entry keeps all of its finite-\(N_c\) terms.  For three
+open fundamental lines and one adjoint, \(P=4\).  Representative retained
+off-diagonal overlaps are
+
+\begin{center}
+\begin{tabular}{@{}L{1.45in}L{1.20in}L{1.35in}L{1.35in}@{}}
+\toprule
+\textbf{exact overlap} & \textbf{highest power} &
+  \textbf{NLC at \(N_c=3\)} & \textbf{full at \(N_c=3\)} \\
+\midrule
+\(-N_c^3+N_c\) & \(3\) & \(-24\) & \(-24\) \\
+\(N_c^2-1\) & \(2\) & \(8\) & \(8\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The implementation in
+\path{src/pyamplicol/color/contraction_factors.py} carries these powers as
+exact rational coefficients.  The upper-triangular runtime plan applies a
+separate factor of two to off-diagonal interference terms; that storage
+factor must not be confused with the colour coefficient in
+Eq.~\eqref{eq:nlc-exact-coefficient}.
+
 The optimized \texttt{Runtime.evaluate()} path returns one summed matrix
 element per point.\par
 The resolved method \texttt{Runtime.}\allowbreak\texttt{evaluate\_resolved()} exposes LC values with

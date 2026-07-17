@@ -71,6 +71,34 @@ def test_three_open_lines_keep_distinct_fixed_sink_traversals() -> None:
     )
 
 
+def test_three_open_line_nlc_keeps_exact_qualified_coefficients() -> None:
+    plan = build_color_plan(
+        build_process_ir(
+            "d d~ > u u~ s s~ g",
+            color_accuracy="full",
+        ),
+        color_accuracy="full",
+    )
+    sectors = {sector.word_labels: sector for sector in plan.sectors}
+    reference = sectors[(2, 1, 3, 4, 5, 7, 6)]
+
+    assert color_contraction_factors(plan, reference, reference) == (
+        81.0,
+        72.0,
+        72.0,
+    )
+    assert color_contraction_factors(
+        plan,
+        reference,
+        sectors[(2, 1, 3, 6, 5, 7, 4)],
+    ) == (0.0, -24.0, -24.0)
+    assert color_contraction_factors(
+        plan,
+        reference,
+        sectors[(2, 4, 3, 6, 5, 7, 1)],
+    ) == (0.0, 8.0, 8.0)
+
+
 def test_color_contraction_rejects_inconsistent_helicity_weights() -> None:
     plan = build_color_plan(
         build_process_ir("d d~ > z g", color_accuracy="full"),

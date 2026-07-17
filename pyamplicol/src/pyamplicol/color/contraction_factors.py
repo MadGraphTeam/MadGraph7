@@ -227,8 +227,12 @@ def _multi_open_line_color_factors(
         color_plan.process.adjoint_labels
     )
     lc = _eval_nc_terms(terms, min_power=leading_power)
-    nlc = _eval_nc_terms(terms, min_power=max(leading_power - 2, 0))
     full = _eval_nc_terms(terms)
+    # NLC selects matrix entries by their leading Nc power, but retains the
+    # exact coefficient of every selected entry.  Truncating the coefficient
+    # itself changes off-diagonal multi-line contractions once adjoints are
+    # present (for example 8 -> 9 for three open lines plus one adjoint).
+    nlc = full if max(terms) >= leading_power - 2 else 0.0
     return (lc, nlc, full)
 
 
