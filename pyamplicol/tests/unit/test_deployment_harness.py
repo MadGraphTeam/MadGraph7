@@ -175,6 +175,7 @@ def test_candidate_native_sdk_smoke_reports_explicit_nonvalidation(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.delenv("PYAMPLICOL_REQUIRE_NATIVE_TESTS", raising=False)
     monkeypatch.delenv("CXX", raising=False)
     monkeypatch.delenv("FC", raising=False)
     monkeypatch.setattr(deployment.shutil, "which", lambda _name: None)
