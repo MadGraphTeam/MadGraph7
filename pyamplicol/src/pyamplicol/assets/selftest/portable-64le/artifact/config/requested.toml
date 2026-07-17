@@ -4,7 +4,7 @@ schema_version = 1
 [model]
 source = "built-in-sm"
 simplify = true
-cache = true
+cache = false
 
 [process]
 entries = [{ expression = "d d~ > z" }]
