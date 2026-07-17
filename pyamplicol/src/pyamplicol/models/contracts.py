@@ -7,7 +7,14 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from .._internal.physics.symbols import symbols
-from ._physics_ir import ContractionIR
+from ._physics_ir import (
+    TENSOR_ORDERING_CONTRACT_VERSION,
+    CompiledCurrentOrderingRecord,
+    ContractionIR,
+    TensorAxisIR,
+    TensorIndexBindingIR,
+    TensorOrderingIR,
+)
 from .base import QuantumNumberFlow
 from .contact_decomposition import (
     CompiledContactDecompositionProof,
@@ -319,6 +326,8 @@ class CompiledVertexTerm:
     backend: str = "ufo"
     lc_color_normalization_power: int = 0
     contact_decomposition_proof: CompiledContactDecompositionProof | None = None
+    source_ordering_ids: tuple[str, ...] = ()
+    index_bindings: tuple[TensorIndexBindingIR, ...] = ()
 
     @property
     def valence(self) -> int:
@@ -342,6 +351,8 @@ class CompiledVertexTerm:
             "coupling_orders": [[name, value] for name, value in self.coupling_orders],
             "backend": self.backend,
             "lc_color_normalization_power": self.lc_color_normalization_power,
+            "source_ordering_ids": list(self.source_ordering_ids),
+            "index_bindings": [item.to_json_dict() for item in self.index_bindings],
         }
         if self.contact_decomposition_proof is not None:
             payload["contact_decomposition_proof"] = (
@@ -371,6 +382,8 @@ class CompiledOrientedKernel:
     evaluation_factor: tuple[float, float] = (1.0, 0.0)
     evaluation_input_order: tuple[int, int] = (0, 1)
     evaluation_equivalence_verified: bool = False
+    input_ordering_ids: tuple[str, ...] = ()
+    output_ordering_id: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -397,6 +410,8 @@ class CompiledOrientedKernel:
             "evaluation_factor": list(self.evaluation_factor),
             "evaluation_input_order": list(self.evaluation_input_order),
             "evaluation_equivalence_verified": (self.evaluation_equivalence_verified),
+            "input_ordering_ids": list(self.input_ordering_ids),
+            "output_ordering_id": self.output_ordering_id,
         }
 
 
@@ -530,11 +545,14 @@ class CompiledModelIR:
     oriented_kernels: tuple[CompiledOrientedKernel, ...]
     direct_contractions: tuple[CompiledDirectContractionRecord, ...]
     closure_contractions: tuple[CompiledClosureContractionRecord, ...]
+    tensor_orderings: tuple[TensorOrderingIR, ...] = ()
+    current_orderings: tuple[CompiledCurrentOrderingRecord, ...] = ()
 
     def __post_init__(self) -> None:
         self._validate_particle_identities()
         self._validate_contractions()
         self._validate_contact_decomposition_proofs()
+        self._validate_tensor_orderings()
         for context, expression in self._executable_expressions():
             if "UFO::" in expression:
                 raise ValueError(
@@ -734,6 +752,253 @@ class CompiledModelIR:
                 context=f"closure contraction selector {record.selector!r}",
             )
 
+    def _validate_tensor_orderings(self) -> None:
+        orderings: dict[str, TensorOrderingIR] = {}
+        for ordering in self.tensor_orderings:
+            if not isinstance(ordering, TensorOrderingIR):
+                raise TypeError(
+                    "compiled model tensor orderings must contain TensorOrderingIR"
+                )
+            if ordering.ordering_id in orderings:
+                raise ValueError(
+                    f"compiled model contains duplicate tensor ordering "
+                    f"{ordering.ordering_id!r}"
+                )
+            orderings[ordering.ordering_id] = ordering
+
+        particles = {particle.name: particle for particle in self.particles}
+        parameters = {parameter.name: parameter for parameter in self.parameters}
+        propagators = {propagator.name: propagator for propagator in self.propagators}
+        current_orderings: dict[
+            tuple[str, int], CompiledCurrentOrderingRecord
+        ] = {}
+        for record in self.current_orderings:
+            if not isinstance(record, CompiledCurrentOrderingRecord):
+                raise TypeError(
+                    "compiled model current orderings must contain typed records"
+                )
+            if record.selector in current_orderings:
+                raise ValueError(
+                    f"compiled model contains duplicate current ordering selector "
+                    f"{record.selector!r}"
+                )
+            current_orderings[record.selector] = record
+            try:
+                particle = particles[record.particle]
+            except KeyError as exc:
+                raise ValueError(
+                    f"current ordering refers to absent particle {record.particle!r}"
+                ) from exc
+            try:
+                ordering = orderings[record.ordering_id]
+                kernel_ordering = orderings[record.kernel_ordering_id]
+            except KeyError as exc:
+                raise ValueError(
+                    f"current ordering {record.selector!r} refers to absent tensor "
+                    f"ordering {exc.args[0]!r}"
+                ) from exc
+            expected_dimension = compiled_current_dimension(
+                particle,
+                record.chirality,
+                parameters=parameters,
+                propagators=propagators,
+            )
+            if ordering.stored_size != expected_dimension:
+                raise ValueError(
+                    f"current ordering {record.selector!r} stores "
+                    f"{ordering.stored_size} components, expected {expected_dimension}"
+                )
+            if len(record.input_embedding) != kernel_ordering.stored_size:
+                raise ValueError(
+                    f"current ordering {record.selector!r} input embedding has "
+                    "the wrong kernel size"
+                )
+            embedded = tuple(
+                value for value in record.input_embedding if value is not None
+            )
+            if sorted(embedded) != list(range(ordering.stored_size)):
+                raise ValueError(
+                    f"current ordering {record.selector!r} input embedding does not "
+                    "map every stored component exactly once"
+                )
+            if (
+                len(record.result_projection) != ordering.stored_size
+                or len(set(record.result_projection)) != ordering.stored_size
+                or any(
+                    value < 0 or value >= kernel_ordering.stored_size
+                    for value in record.result_projection
+                )
+            ):
+                raise ValueError(
+                    f"current ordering {record.selector!r} result projection is invalid"
+                )
+
+        has_external_contract = any(
+            term.backend == "ufo" for term in self.vertex_terms
+        )
+        if has_external_contract and (not orderings or not current_orderings):
+            raise ValueError(
+                "compiled UFO model is missing explicit tensor ordering metadata"
+            )
+        if orderings or current_orderings:
+            for particle in self.particles:
+                if (particle.name, 0) not in current_orderings:
+                    raise ValueError(
+                        f"particle {particle.name!r} has no full current ordering"
+                    )
+
+        term_by_id = {term.id: term for term in self.vertex_terms}
+        for term in self.vertex_terms:
+            if term.backend == "ufo" and len(term.source_ordering_ids) != term.valence:
+                raise ValueError(
+                    f"UFO vertex term {term.id} does not declare one source ordering "
+                    "per particle leg"
+                )
+            if term.source_ordering_ids:
+                for leg, (particle_name, ordering_id) in enumerate(
+                    zip(term.particles, term.source_ordering_ids, strict=True),
+                    start=1,
+                ):
+                    if ordering_id not in orderings:
+                        raise ValueError(
+                            f"vertex term {term.id} source leg {leg} refers to absent "
+                            f"tensor ordering {ordering_id!r}"
+                        )
+                    current = current_orderings.get((particle_name, 0))
+                    if current is None or current.kernel_ordering_id != ordering_id:
+                        raise ValueError(
+                            f"vertex term {term.id} source leg {leg} ordering does not "
+                            f"match particle {particle_name!r}"
+                        )
+            normalized_names: set[str] = set()
+            for binding in term.index_bindings:
+                if not isinstance(binding, TensorIndexBindingIR):
+                    raise TypeError(
+                        f"vertex term {term.id} index bindings must be typed records"
+                    )
+                if binding.normalized_name in normalized_names:
+                    raise ValueError(
+                        f"vertex term {term.id} repeats normalized tensor index "
+                        f"{binding.normalized_name!r}"
+                    )
+                normalized_names.add(binding.normalized_name)
+                if binding.source_leg is not None and binding.source_leg > term.valence:
+                    raise ValueError(
+                        f"vertex term {term.id} tensor index refers to absent source "
+                        f"leg {binding.source_leg}"
+                    )
+
+        for kernel in self.oriented_kernels:
+            if len(kernel.input_ordering_ids) != 2 or not kernel.output_ordering_id:
+                if has_external_contract:
+                    raise ValueError(
+                        f"oriented kernel {kernel.kind} is missing tensor ordering "
+                        "references"
+                    )
+                continue
+            referenced_ids = (*kernel.input_ordering_ids, kernel.output_ordering_id)
+            try:
+                for ordering_id in kernel.input_ordering_ids:
+                    orderings[ordering_id]
+                output_ordering = orderings[kernel.output_ordering_id]
+            except KeyError as exc:
+                raise ValueError(
+                    f"oriented kernel {kernel.kind} refers to absent tensor ordering "
+                    f"{exc.args[0]!r}"
+                ) from exc
+            for particle_name, ordering_id in zip(
+                kernel.particles,
+                referenced_ids,
+                strict=True,
+            ):
+                current = current_orderings.get((particle_name, 0))
+                if current is None or current.kernel_ordering_id != ordering_id:
+                    raise ValueError(
+                        f"oriented kernel {kernel.kind} ordering does not match "
+                        f"particle {particle_name!r}"
+                    )
+            if len(kernel.component_expressions) != output_ordering.stored_size:
+                raise ValueError(
+                    f"oriented kernel {kernel.kind} has "
+                    f"{len(kernel.component_expressions)} components for output "
+                    f"ordering size {output_ordering.stored_size}"
+                )
+            term = term_by_id.get(kernel.term_id)
+            if term is None:
+                raise ValueError(
+                    f"oriented kernel {kernel.kind} refers to absent term "
+                    f"{kernel.term_id}"
+                )
+            for kernel_slot, source_leg in enumerate(kernel.source_particle_legs):
+                if source_leg < 0:
+                    continue
+                if source_leg >= term.valence:
+                    raise ValueError(
+                        f"oriented kernel {kernel.kind} refers to absent source leg "
+                        f"{source_leg}"
+                    )
+                if term.source_ordering_ids[source_leg] != referenced_ids[kernel_slot]:
+                    raise ValueError(
+                        f"oriented kernel {kernel.kind} source-leg ordering disagrees "
+                        f"with vertex term {term.id}"
+                    )
+        for record in self.direct_contractions:
+            if current_orderings:
+                for particle, chirality in (
+                    (record.left_particle, record.left_chirality),
+                    (record.right_particle, record.right_chirality),
+                ):
+                    if (particle, chirality) not in current_orderings:
+                        raise ValueError(
+                            f"direct contraction selector {record.selector!r} has no "
+                            f"current ordering metadata for {(particle, chirality)!r}"
+                        )
+        for record in self.closure_contractions:
+            if current_orderings and record.selector not in current_orderings:
+                raise ValueError(
+                    f"closure contraction selector {record.selector!r} has no current "
+                    "ordering metadata"
+                )
+
+        if has_external_contract:
+            # The content IDs make each ordering internally immutable, but they do
+            # not prove that it describes this model. Recompile the complete
+            # contract from the normalized model IR and require exact equality.
+            # This also validates source index bindings and the runtime's chiral
+            # embedding/projection conventions without maintaining a second set of
+            # validation rules.
+            from .compiler_tensor_ordering import compile_tensor_ordering_metadata
+
+            (
+                expected_terms,
+                expected_kernels,
+                expected_orderings,
+                expected_current_orderings,
+            ) = compile_tensor_ordering_metadata(
+                self.vertex_terms,
+                self.particles,
+                self.oriented_kernels,
+                self.parameters,
+                self.propagators,
+            )
+            if expected_terms != self.vertex_terms:
+                raise ValueError(
+                    "compiled UFO model tensor index bindings are not canonical"
+                )
+            if expected_kernels != self.oriented_kernels:
+                raise ValueError(
+                    "compiled UFO model kernel tensor orderings are not canonical"
+                )
+            if expected_orderings != self.tensor_orderings:
+                raise ValueError(
+                    "compiled UFO model tensor orderings do not match its particles "
+                    "and contact proofs"
+                )
+            if expected_current_orderings != self.current_orderings:
+                raise ValueError(
+                    "compiled UFO model current tensor mappings are not canonical"
+                )
+
     def _executable_expressions(self) -> tuple[tuple[str, str], ...]:
         """Return scalar/evaluator expressions, excluding raw tensor source."""
 
@@ -795,6 +1060,12 @@ class CompiledModelIR:
             ],
             "closure_contractions": [
                 item.to_dict() for item in self.closure_contractions
+            ],
+            "tensor_orderings": [
+                item.to_json_dict() for item in self.tensor_orderings
+            ],
+            "current_orderings": [
+                item.to_json_dict() for item in self.current_orderings
             ],
             "max_vertex_valence": self.max_vertex_valence,
         }
@@ -917,6 +1188,24 @@ class CompiledModelIR:
                             )
                         )
                     ),
+                    source_ordering_ids=tuple(
+                        _strict_string(value, "vertex source ordering ID")
+                        for value in _required_sequence_field(
+                            item,
+                            "source_ordering_ids",
+                            context="compiled vertex term",
+                        )
+                    ),
+                    index_bindings=tuple(
+                        TensorIndexBindingIR.from_json_dict(
+                            _strict_mapping(value, "tensor index binding")
+                        )
+                        for value in _required_sequence_field(
+                            item,
+                            "index_bindings",
+                            context="compiled vertex term",
+                        )
+                    ),
                 )
                 for item in _mappings(payload.get("vertex_terms"))
             ),
@@ -969,6 +1258,22 @@ class CompiledModelIR:
                     evaluation_equivalence_verified=bool(
                         item.get("evaluation_equivalence_verified", False)
                     ),
+                    input_ordering_ids=tuple(
+                        _strict_string(value, "kernel input ordering ID")
+                        for value in _required_sequence_field(
+                            item,
+                            "input_ordering_ids",
+                            context="compiled oriented kernel",
+                        )
+                    ),
+                    output_ordering_id=_strict_string(
+                        _required_field(
+                            item,
+                            "output_ordering_id",
+                            context="compiled oriented kernel",
+                        ),
+                        "kernel output ordering ID",
+                    ),
                 )
                 for item in _mappings(payload.get("oriented_kernels"))
             ),
@@ -979,6 +1284,14 @@ class CompiledModelIR:
             closure_contractions=tuple(
                 CompiledClosureContractionRecord.from_dict(item)
                 for item in _required_mappings(payload, "closure_contractions")
+            ),
+            tensor_orderings=tuple(
+                TensorOrderingIR.from_json_dict(item)
+                for item in _required_mappings(payload, "tensor_orderings")
+            ),
+            current_orderings=tuple(
+                CompiledCurrentOrderingRecord.from_json_dict(item)
+                for item in _required_mappings(payload, "current_orderings")
             ),
         )
 
@@ -1146,6 +1459,29 @@ def _required_mappings(
     return tuple(result)
 
 
+def _required_field(
+    payload: Mapping[str, object],
+    field: str,
+    *,
+    context: str,
+) -> object:
+    if field not in payload:
+        raise ValueError(f"{context} is missing required field {field!r}")
+    return payload[field]
+
+
+def _required_sequence_field(
+    payload: Mapping[str, object],
+    field: str,
+    *,
+    context: str,
+) -> tuple[object, ...]:
+    value = _required_field(payload, field, context=context)
+    if isinstance(value, (str, bytes)) or not isinstance(value, list | tuple):
+        raise TypeError(f"{context} field {field!r} must be an array")
+    return tuple(value)
+
+
 def cast_tuple3(value: object) -> tuple[str, str, str]:
     values = tuple(str(item) for item in _sequence(value))
     if len(values) != 3:
@@ -1214,6 +1550,7 @@ def _mappings(value: object) -> list[dict[str, object]]:
 
 __all__ = [
     "SUPPORTED_COLOR_REPRESENTATIONS",
+    "TENSOR_ORDERING_CONTRACT_VERSION",
     "CompiledClosureContractionRecord",
     "CompiledContactDecompositionProof",
     "CompiledContactDecompositionSplit",
@@ -1222,6 +1559,7 @@ __all__ = [
     "CompiledContactUnsupportedReason",
     "CompiledCouplingOrder",
     "CompiledCouplingRecord",
+    "CompiledCurrentOrderingRecord",
     "CompiledDirectContractionRecord",
     "CompiledModelIR",
     "CompiledOrientedKernel",
@@ -1229,6 +1567,9 @@ __all__ = [
     "CompiledParticleRecord",
     "CompiledPropagatorRecord",
     "CompiledVertexTerm",
+    "TensorAxisIR",
+    "TensorIndexBindingIR",
+    "TensorOrderingIR",
     "compiled_current_dimension",
     "compiled_particle_is_chiral_eligible",
     "validate_color_representation",

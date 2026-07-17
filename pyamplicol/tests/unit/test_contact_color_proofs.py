@@ -17,6 +17,9 @@ from pyamplicol.models.compiler_contacts import (
     _record_contact_decomposition_proofs,
 )
 from pyamplicol.models.compiler_entry import _compile_four_point_contact_kernels
+from pyamplicol.models.compiler_tensor_ordering import (
+    compile_tensor_ordering_metadata,
+)
 from pyamplicol.models.contracts import (
     CompiledModelIR,
     CompiledParticleRecord,
@@ -292,6 +295,16 @@ def test_contact_proof_round_trips_and_lowering_does_not_rediscover(
         for index, name in enumerate(term.particles)
     )
     proved_term = _proof_term(term, particles, model_name="serialized-contact-proof")
+    proved_terms, _kernels, orderings, current_orderings = (
+        compile_tensor_ordering_metadata(
+            (proved_term,),
+            particles,
+            (),
+            (),
+            (),
+        )
+    )
+    proved_term = proved_terms[0]
     model = CompiledModelIR(
         name="serialized-contact-proof",
         orders=(),
@@ -303,6 +316,8 @@ def test_contact_proof_round_trips_and_lowering_does_not_rediscover(
         oriented_kernels=(),
         direct_contractions=(),
         closure_contractions=(),
+        tensor_orderings=orderings,
+        current_orderings=current_orderings,
     )
     compiled = CompiledModel(
         source={"kind": "json"},
@@ -370,6 +385,23 @@ def test_contact_proof_identity_and_algorithm_fail_closed() -> None:
     proved_term = _proof_term(term, particles, model_name="closed-contact-proof")
     proof = proved_term.contact_decomposition_proof
     assert proof is not None
+
+    forged_split = replace(
+        proof.splits[0],
+        component_axis_order=("ufo_l_1_1",),
+    )
+    forged_proof = replace(
+        proof,
+        splits=(forged_split, *proof.splits[1:]),
+    )
+    with pytest.raises(ValueError, match="non-canonical component axes"):
+        compile_tensor_ordering_metadata(
+            (replace(proved_term, contact_decomposition_proof=forged_proof),),
+            particles,
+            (),
+            (),
+            (),
+        )
 
     stale = replace(proved_term, color_expression="1")
     with pytest.raises(ValueError, match="proof identity mismatch"):

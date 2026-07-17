@@ -5,10 +5,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from itertools import product
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
 from .compiler_records import _replace_evaluator_constants, _sequence
+from .compiler_tensor_ordering import (
+    OrderedComponents,
+    identity_ordering_for_materialized_axes,
+)
 from .contracts import (
     CompiledOrientedKernel,
     CompiledParameterRecord,
@@ -91,6 +96,8 @@ def _fuse_oriented_kernels(
             kernel.color_source,
             kernel.color_expression,
             kernel.lc_color_normalization_power,
+            kernel.input_ordering_ids,
+            kernel.output_ordering_id,
         )
         groups.setdefault(key, []).append(kernel)
 
@@ -151,6 +158,8 @@ def _fuse_oriented_kernels(
                     for member in members
                     for term_id in (member.term_ids or (member.term_id,))
                 ),
+                input_ordering_ids=first.input_ordering_ids,
+                output_ordering_id=first.output_ordering_id,
             )
         )
     return tuple(fused)
@@ -220,7 +229,7 @@ def _oriented_component_expressions(
     kind: int,
     model_symbols: ModelSymbolRegistry,
     use_transverse_massless_yang_mills: bool = False,
-) -> tuple[str, ...]:
+) -> OrderedComponents:
     library = _sym.TensorLibrary.hep_lib_atom()
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
@@ -284,10 +293,11 @@ def _oriented_component_expressions(
     network = _sym.TensorNetwork(expression, library)
     network.execute(library=library)
     result = network.result_tensor(library)
-    result_components = _ordered_dense_tensor_components(
+    ordered_result = _ordered_dense_tensor_components(
         result,
         _spin_axis_labels(particles[result_leg].spin, result_leg + 1),
     )
+    result_components = ordered_result.values
     expected_dimension = _spin_dimension(particles[result_leg].spin)
     if len(result_components) != expected_dimension:
         raise ValueError(
@@ -319,7 +329,10 @@ def _oriented_component_expressions(
                     right_momentum=right_momentum,
                 )
             components = tuple(scale * component for component in compact)
-    return tuple(component.to_canonical_string() for component in components)
+    return OrderedComponents(
+        ordering=ordered_result.ordering,
+        values=tuple(component.to_canonical_string() for component in components),
+    )
 
 
 def _compact_yang_mills_three_vector_components(
@@ -542,7 +555,7 @@ def _spin_axis_labels(spin: int, leg: int) -> tuple[str, ...]:
 def _ordered_dense_tensor_components(
     tensor: object,
     expected_axis_labels: Sequence[str],
-) -> tuple[object, ...]:
+) -> OrderedComponents:
     """Flatten a dense tensor in explicit physical-index order."""
 
     tensor.to_dense()
@@ -550,7 +563,10 @@ def _ordered_dense_tensor_components(
     if not expected:
         if len(tensor) != 1:
             raise ValueError("scalar tensor result unexpectedly has open indices")
-        return tuple(tensor[index] for index in range(len(tensor)))
+        return OrderedComponents(
+            ordering=identity_ordering_for_materialized_axes((), ()),
+            values=tuple(tensor[index] for index in range(len(tensor))),
+        )
 
     structure = tensor.structure()
     structure.set_name(symbols.display_name("tensor_order_probe"))
@@ -578,7 +594,34 @@ def _ordered_dense_tensor_components(
         if key in by_coordinates:
             raise ValueError(f"tensor result repeats coordinates {key}")
         by_coordinates[key] = tensor[flat_index]
-    return tuple(by_coordinates[key] for key in sorted(by_coordinates))
+    coordinate_ranges: list[tuple[int, ...]] = []
+    for axis in range(len(expected)):
+        coordinates = tuple(sorted({key[axis] for key in by_coordinates}))
+        if coordinates != tuple(range(len(coordinates))):
+            raise ValueError(
+                f"tensor result axis {expected[axis]!r} has non-canonical "
+                f"coordinates {coordinates}"
+            )
+        coordinate_ranges.append(coordinates)
+    canonical_coordinates = tuple(product(*coordinate_ranges))
+    if set(by_coordinates) != set(canonical_coordinates):
+        missing = tuple(
+            coordinates
+            for coordinates in canonical_coordinates
+            if coordinates not in by_coordinates
+        )
+        raise ValueError(
+            "tensor result does not cover the complete Cartesian component grid: "
+            f"missing={missing}"
+        )
+    ordering = identity_ordering_for_materialized_axes(
+        expected,
+        tuple(len(values) for values in coordinate_ranges),
+    )
+    return OrderedComponents(
+        ordering=ordering,
+        values=tuple(by_coordinates[key] for key in canonical_coordinates),
+    )
 
 
 def _spin_dimension(spin: int) -> int:

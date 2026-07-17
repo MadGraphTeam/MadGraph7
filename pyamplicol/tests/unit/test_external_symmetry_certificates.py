@@ -15,6 +15,10 @@ from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.models import BuiltinSMModel, CompiledUFOModel, compile_model_source
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.compiler_contacts import _four_point_contact_color_split
+from pyamplicol.models.compiler_tensor_ordering import (
+    compile_tensor_ordering_metadata,
+)
+from pyamplicol.models.contracts import CompiledModelIR
 from pyamplicol.models.external_symmetries import (
     derive_external_symmetry_certificates,
 )
@@ -51,6 +55,28 @@ _EXTERNAL_SM_TOPOLOGY_LADDER = (
     "d d~ > e+ e- e+ e-",
     "d d~ > u u~ s s~",
 )
+
+
+def _replace_model_with_recompiled_tensor_metadata(
+    model: CompiledModelIR,
+    *,
+    vertex_terms,
+    oriented_kernels,
+) -> CompiledModelIR:
+    terms, kernels, orderings, current_orderings = compile_tensor_ordering_metadata(
+        vertex_terms,
+        model.particles,
+        oriented_kernels,
+        model.parameters,
+        model.propagators,
+    )
+    return replace(
+        model,
+        vertex_terms=terms,
+        oriented_kernels=kernels,
+        tensor_orderings=orderings,
+        current_orderings=current_orderings,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -295,6 +321,45 @@ def test_external_sm_matches_builtin_production_dag_topology(
     )
 
 
+def test_external_sm_tensor_ordering_ids_are_source_inventory_invariant(
+    external_sm,
+    relabelled_external_sm,
+    reordered_external_sm,
+) -> None:
+    compiled, _model = external_sm
+    relabelled, _relabelled_model = relabelled_external_sm
+    reordered, _reordered_model = reordered_external_sm
+
+    assert relabelled.ir.tensor_orderings == compiled.ir.tensor_orderings
+    assert reordered.ir.tensor_orderings == compiled.ir.tensor_orderings
+    assert {
+        (
+            kernel.input_ordering_ids,
+            kernel.output_ordering_id,
+        )
+        for kernel in relabelled.ir.oriented_kernels
+    } == {
+        (
+            kernel.input_ordering_ids,
+            kernel.output_ordering_id,
+        )
+        for kernel in compiled.ir.oriented_kernels
+    }
+    assert {
+        (
+            kernel.input_ordering_ids,
+            kernel.output_ordering_id,
+        )
+        for kernel in reordered.ir.oriented_kernels
+    } == {
+        (
+            kernel.input_ordering_ids,
+            kernel.output_ordering_id,
+        )
+        for kernel in compiled.ir.oriented_kernels
+    }
+
+
 @pytest.mark.parametrize("process", _EXTERNAL_SM_TOPOLOGY_LADDER)
 def test_external_sm_topology_is_pdg_relabel_invariant(
     external_sm,
@@ -402,8 +467,16 @@ def test_chiral_gauge_current_does_not_receive_parity_certificate(external_sm) -
         else term
         for term in compiled.ir.vertex_terms
     )
+    deformed_terms = tuple(
+        replace(term, index_bindings=()) if term.id == vectorlike.id else term
+        for term in deformed_terms
+    )
     certificates = derive_external_symmetry_certificates(
-        replace(compiled.ir, vertex_terms=deformed_terms)
+        _replace_model_with_recompiled_tensor_metadata(
+            compiled.ir,
+            vertex_terms=deformed_terms,
+            oriented_kernels=compiled.ir.oriented_kernels,
+        )
     )
     affected_kinds = {
         kernel.kind
@@ -461,6 +534,7 @@ def test_reachable_non_yang_mills_kernel_disables_global_adjoint_theorems(
         lorentz_name="L_non_yang_mills_adjoint",
         lorentz_source="1",
         lorentz_expression="1",
+        index_bindings=(),
     )
     extra_kernel = replace(
         representative,
@@ -473,7 +547,7 @@ def test_reachable_non_yang_mills_kernel_disables_global_adjoint_theorems(
     )
 
     certificates = derive_external_symmetry_certificates(
-        replace(
+        _replace_model_with_recompiled_tensor_metadata(
             compiled.ir,
             vertex_terms=(*compiled.ir.vertex_terms, extra_term),
             oriented_kernels=(*compiled.ir.oriented_kernels, extra_kernel),

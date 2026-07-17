@@ -585,7 +585,7 @@ class ExternalModelEvaluationMixin:
         tensor_components = _ordered_dense_tensor_components(
             tensor,
             _spin_axis_labels(spin, 2),
-        )
+        ).values
         expected = self.dimension(particle_id)
         if len(tensor_components) != expected:
             raise ValueError(

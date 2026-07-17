@@ -31,7 +31,7 @@ def test_release_gate_reports_only_the_true_upstream_blocker_offline() -> None:
 def test_release_contract_is_lean_exact_and_schema_8() -> None:
     module = _module()
     lock = module._load_lock()
-    assert lock["abis"]["compiled_model"] == 8
+    assert lock["abis"]["compiled_model"] == 9
     assert "python_runtime_lock" not in lock
     assert "legal_status" not in lock
     assert module._locked_python_dependencies(lock) == (

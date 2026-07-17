@@ -33,7 +33,7 @@ pub use metadata::{
 
 pub const PYTHON_API_VERSION: u32 = 1;
 pub const TOML_SCHEMA_VERSION: u32 = 1;
-pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 8;
+pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 9;
 pub const PROCESS_ARTIFACT_SCHEMA_VERSION: u32 = 3;
 pub const RUNTIME_PHYSICS_SCHEMA_VERSION: u32 = 1;
 pub const C_ABI_VERSION: u32 = 1;

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -44,6 +46,462 @@ GoldstonePolicy = Literal[
     "explicit",
     "model-supplied",
 ]
+TensorFlattening = Literal["row-major-last-axis-fastest"]
+TENSOR_ORDERING_CONTRACT_VERSION = 1
+
+
+def _strict_ir_fields(
+    payload: Mapping[str, object],
+    *,
+    required: set[str],
+    context: str,
+) -> Mapping[str, object]:
+    if not isinstance(payload, Mapping):
+        raise TypeError(f"{context} must be a mapping")
+    fields = set(payload)
+    missing = required - fields
+    if missing:
+        names = ", ".join(sorted(missing))
+        raise ValueError(f"{context} is missing required fields: {names}")
+    unknown = fields - required
+    if unknown:
+        names = ", ".join(sorted(str(name) for name in unknown))
+        raise ValueError(f"{context} has unknown fields: {names}")
+    return payload
+
+
+def _strict_ir_sequence(value: object, context: str) -> tuple[object, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise TypeError(f"{context} must be an array")
+    return tuple(value)
+
+
+@dataclass(frozen=True, slots=True)
+class TensorAxisIR:
+    """One semantic tensor axis, independent of a source UFO index label."""
+
+    name: str
+    space: str
+    extent: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name:
+            raise ValueError("tensor axis name must be a non-empty string")
+        if not isinstance(self.space, str) or not self.space:
+            raise ValueError("tensor axis space must be a non-empty string")
+        if isinstance(self.extent, bool) or not isinstance(self.extent, int):
+            raise TypeError("tensor axis extent must be an integer")
+        if self.extent <= 0:
+            raise ValueError("tensor axis extent must be positive")
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {"name": self.name, "space": self.space, "extent": self.extent}
+
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, object]) -> TensorAxisIR:
+        fields = _strict_ir_fields(
+            payload,
+            required={"name", "space", "extent"},
+            context="tensor axis IR",
+        )
+        name = fields["name"]
+        space = fields["space"]
+        extent = fields["extent"]
+        if not isinstance(name, str) or not isinstance(space, str):
+            raise TypeError("tensor axis name and space must be strings")
+        if isinstance(extent, bool) or not isinstance(extent, int):
+            raise TypeError("tensor axis extent must be an integer")
+        return cls(name=name, space=space, extent=extent)
+
+
+@dataclass(frozen=True, slots=True)
+class TensorOrderingIR:
+    """Content-addressed mapping from stored components to a canonical tensor."""
+
+    ordering_id: str
+    basis: str
+    axes: tuple[TensorAxisIR, ...]
+    flattening: TensorFlattening
+    component_basis: tuple[int, ...]
+    component_expansion: tuple[tuple[int, int] | None, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.basis, str) or not self.basis:
+            raise ValueError("tensor ordering basis must be a non-empty string")
+        if self.flattening != "row-major-last-axis-fastest":
+            raise ValueError(f"unsupported tensor flattening {self.flattening!r}")
+        if not all(isinstance(axis, TensorAxisIR) for axis in self.axes):
+            raise TypeError("tensor ordering axes must contain TensorAxisIR records")
+        axis_names = tuple(axis.name for axis in self.axes)
+        if len(set(axis_names)) != len(axis_names):
+            raise ValueError("tensor ordering axis names must be unique")
+        if not self.component_basis:
+            raise ValueError("tensor ordering component basis must not be empty")
+        if any(
+            isinstance(index, bool) or not isinstance(index, int)
+            for index in self.component_basis
+        ):
+            raise TypeError("tensor ordering component basis must contain integers")
+        canonical_size = self.canonical_size
+        if len(self.component_expansion) != canonical_size:
+            raise ValueError(
+                "tensor ordering expansion size does not match its canonical axes"
+            )
+        if len(set(self.component_basis)) != len(self.component_basis):
+            raise ValueError("tensor ordering component basis must be unique")
+        if any(index < 0 or index >= canonical_size for index in self.component_basis):
+            raise ValueError("tensor ordering component basis index is out of range")
+        referenced_slots: set[int] = set()
+        for entry in self.component_expansion:
+            if entry is None:
+                continue
+            if (
+                not isinstance(entry, tuple)
+                or len(entry) != 2
+                or any(
+                    isinstance(value, bool) or not isinstance(value, int)
+                    for value in entry
+                )
+            ):
+                raise TypeError(
+                    "tensor ordering expansion entries must be (slot, sign) pairs"
+                )
+            slot, sign = entry
+            if slot < 0 or slot >= self.stored_size:
+                raise ValueError("tensor ordering expansion refers to an absent slot")
+            if sign not in {-1, 1}:
+                raise ValueError("tensor ordering expansion sign must be +/-1")
+            referenced_slots.add(slot)
+        if referenced_slots != set(range(self.stored_size)):
+            raise ValueError(
+                "tensor ordering expansion does not cover every stored slot"
+            )
+        for slot, canonical_component in enumerate(self.component_basis):
+            if self.component_expansion[canonical_component] != (slot, 1):
+                raise ValueError(
+                    "tensor ordering component basis disagrees with its expansion"
+                )
+        expected_id = self.content_id(
+            basis=self.basis,
+            axes=self.axes,
+            flattening=self.flattening,
+            component_basis=self.component_basis,
+            component_expansion=self.component_expansion,
+        )
+        if self.ordering_id != expected_id:
+            raise ValueError(
+                "tensor ordering ID does not match its semantic component contract"
+            )
+
+    @property
+    def canonical_size(self) -> int:
+        return math.prod(axis.extent for axis in self.axes) if self.axes else 1
+
+    @property
+    def stored_size(self) -> int:
+        return len(self.component_basis)
+
+    @classmethod
+    def identity(
+        cls,
+        *,
+        basis: str,
+        axes: Sequence[TensorAxisIR],
+    ) -> TensorOrderingIR:
+        axis_tuple = tuple(axes)
+        size = math.prod(axis.extent for axis in axis_tuple) if axis_tuple else 1
+        component_basis = tuple(range(size))
+        component_expansion = tuple((index, 1) for index in range(size))
+        return cls.create(
+            basis=basis,
+            axes=axis_tuple,
+            component_basis=component_basis,
+            component_expansion=component_expansion,
+        )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        basis: str,
+        axes: Sequence[TensorAxisIR],
+        component_basis: Sequence[int],
+        component_expansion: Sequence[tuple[int, int] | None],
+        flattening: TensorFlattening = "row-major-last-axis-fastest",
+    ) -> TensorOrderingIR:
+        axis_tuple = tuple(axes)
+        basis_tuple = tuple(component_basis)
+        expansion_tuple = tuple(component_expansion)
+        return cls(
+            ordering_id=cls.content_id(
+                basis=basis,
+                axes=axis_tuple,
+                flattening=flattening,
+                component_basis=basis_tuple,
+                component_expansion=expansion_tuple,
+            ),
+            basis=basis,
+            axes=axis_tuple,
+            flattening=flattening,
+            component_basis=basis_tuple,
+            component_expansion=expansion_tuple,
+        )
+
+    @staticmethod
+    def content_id(
+        *,
+        basis: str,
+        axes: Sequence[TensorAxisIR],
+        flattening: TensorFlattening,
+        component_basis: Sequence[int],
+        component_expansion: Sequence[tuple[int, int] | None],
+    ) -> str:
+        payload = {
+            "basis": basis,
+            "axes": [axis.to_json_dict() for axis in axes],
+            "flattening": flattening,
+            "component_basis": list(component_basis),
+            "component_expansion": [
+                None if entry is None else list(entry) for entry in component_expansion
+            ],
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return "tensor-ordering-sha256:" + hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "ordering_id": self.ordering_id,
+            "basis": self.basis,
+            "axes": [axis.to_json_dict() for axis in self.axes],
+            "flattening": self.flattening,
+            "component_basis": list(self.component_basis),
+            "component_expansion": [
+                None if entry is None else list(entry)
+                for entry in self.component_expansion
+            ],
+        }
+
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, object]) -> TensorOrderingIR:
+        fields = _strict_ir_fields(
+            payload,
+            required={
+                "ordering_id",
+                "basis",
+                "axes",
+                "flattening",
+                "component_basis",
+                "component_expansion",
+            },
+            context="tensor ordering IR",
+        )
+        ordering_id = fields["ordering_id"]
+        basis = fields["basis"]
+        flattening = fields["flattening"]
+        if not all(
+            isinstance(value, str) for value in (ordering_id, basis, flattening)
+        ):
+            raise TypeError("tensor ordering ID, basis, and flattening must be strings")
+        axes = tuple(
+            TensorAxisIR.from_json_dict(axis)
+            for axis in _strict_ir_sequence(fields["axes"], "tensor ordering axes")
+            if isinstance(axis, Mapping)
+        )
+        axis_values = _strict_ir_sequence(fields["axes"], "tensor ordering axes")
+        if len(axes) != len(axis_values):
+            raise TypeError("tensor ordering axes must contain mappings")
+        component_basis_values = _strict_ir_sequence(
+            fields["component_basis"], "tensor ordering component basis"
+        )
+        if any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in component_basis_values
+        ):
+            raise TypeError("tensor ordering component basis must contain integers")
+        expansion_values = _strict_ir_sequence(
+            fields["component_expansion"], "tensor ordering component expansion"
+        )
+        expansion: list[tuple[int, int] | None] = []
+        for entry in expansion_values:
+            if entry is None:
+                expansion.append(None)
+                continue
+            pair = _strict_ir_sequence(entry, "tensor ordering expansion entry")
+            if len(pair) != 2 or any(
+                isinstance(value, bool) or not isinstance(value, int) for value in pair
+            ):
+                raise TypeError(
+                    "tensor ordering expansion entry must be an integer pair"
+                )
+            expansion.append((pair[0], pair[1]))
+        return cls(
+            ordering_id=ordering_id,
+            basis=basis,
+            axes=axes,
+            flattening=cast(TensorFlattening, flattening),
+            component_basis=cast(tuple[int, ...], component_basis_values),
+            component_expansion=tuple(expansion),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TensorIndexBindingIR:
+    """Provenance for one normalized tensor index used by a UFO vertex term."""
+
+    origin: str
+    space: str
+    source_component: int | None
+    source_leg: int | None
+    source_dummy: int | None
+    normalized_name: str
+
+    def __post_init__(self) -> None:
+        for field_name in ("origin", "space", "normalized_name"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"tensor index binding {field_name} must not be empty")
+        if (self.source_leg is None) == (self.source_dummy is None):
+            raise ValueError(
+                "tensor index binding must identify exactly one source leg or dummy"
+            )
+        for field_name in ("source_component", "source_leg", "source_dummy"):
+            value = getattr(self, field_name)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int)
+            ):
+                raise TypeError(f"tensor index binding {field_name} must be an integer")
+        if self.source_component is not None and self.source_component < 0:
+            raise ValueError("tensor index source component must be non-negative")
+        if self.source_leg is not None and self.source_leg <= 0:
+            raise ValueError("tensor index source leg must be positive")
+        if self.source_dummy == 0:
+            raise ValueError("tensor index source dummy must be nonzero")
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "origin": self.origin,
+            "space": self.space,
+            "source_component": self.source_component,
+            "source_leg": self.source_leg,
+            "source_dummy": self.source_dummy,
+            "normalized_name": self.normalized_name,
+        }
+
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, object]) -> TensorIndexBindingIR:
+        fields = _strict_ir_fields(
+            payload,
+            required={
+                "origin",
+                "space",
+                "source_component",
+                "source_leg",
+                "source_dummy",
+                "normalized_name",
+            },
+            context="tensor index binding IR",
+        )
+        for field_name in ("origin", "space", "normalized_name"):
+            if not isinstance(fields[field_name], str):
+                raise TypeError(f"tensor index binding {field_name} must be a string")
+        for field_name in ("source_component", "source_leg", "source_dummy"):
+            value = fields[field_name]
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int)
+            ):
+                raise TypeError(f"tensor index binding {field_name} must be an integer")
+        return cls(
+            origin=cast(str, fields["origin"]),
+            space=cast(str, fields["space"]),
+            source_component=cast(int | None, fields["source_component"]),
+            source_leg=cast(int | None, fields["source_leg"]),
+            source_dummy=cast(int | None, fields["source_dummy"]),
+            normalized_name=cast(str, fields["normalized_name"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledCurrentOrderingRecord:
+    """Map one stored current state to the full ordering used by kernels."""
+
+    particle: str
+    chirality: int
+    ordering_id: str
+    kernel_ordering_id: str
+    input_embedding: tuple[int | None, ...]
+    result_projection: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        for field_name in ("particle", "ordering_id", "kernel_ordering_id"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"current ordering {field_name} must not be empty")
+        if isinstance(self.chirality, bool) or not isinstance(self.chirality, int):
+            raise TypeError("current ordering chirality must be an integer")
+        if any(
+            value is not None
+            and (isinstance(value, bool) or not isinstance(value, int))
+            for value in self.input_embedding
+        ):
+            raise TypeError("current input embedding must contain integers or null")
+        if any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in self.result_projection
+        ):
+            raise TypeError("current result projection must contain integers")
+
+    @property
+    def selector(self) -> tuple[str, int]:
+        return self.particle, self.chirality
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "particle": self.particle,
+            "chirality": self.chirality,
+            "ordering_id": self.ordering_id,
+            "kernel_ordering_id": self.kernel_ordering_id,
+            "input_embedding": list(self.input_embedding),
+            "result_projection": list(self.result_projection),
+        }
+
+    @classmethod
+    def from_json_dict(
+        cls, payload: Mapping[str, object]
+    ) -> CompiledCurrentOrderingRecord:
+        fields = _strict_ir_fields(
+            payload,
+            required={
+                "particle",
+                "chirality",
+                "ordering_id",
+                "kernel_ordering_id",
+                "input_embedding",
+                "result_projection",
+            },
+            context="compiled current ordering",
+        )
+        for field_name in ("particle", "ordering_id", "kernel_ordering_id"):
+            if not isinstance(fields[field_name], str):
+                raise TypeError(f"current ordering {field_name} must be a string")
+        chirality = fields["chirality"]
+        if isinstance(chirality, bool) or not isinstance(chirality, int):
+            raise TypeError("current ordering chirality must be an integer")
+        embedding = _strict_ir_sequence(
+            fields["input_embedding"], "current input embedding"
+        )
+        projection = _strict_ir_sequence(
+            fields["result_projection"], "current result projection"
+        )
+        return cls(
+            particle=cast(str, fields["particle"]),
+            chirality=chirality,
+            ordering_id=cast(str, fields["ordering_id"]),
+            kernel_ordering_id=cast(str, fields["kernel_ordering_id"]),
+            input_embedding=cast(tuple[int | None, ...], embedding),
+            result_projection=cast(tuple[int, ...], projection),
+        )
 
 
 def _integer(value: object, label: str) -> int:

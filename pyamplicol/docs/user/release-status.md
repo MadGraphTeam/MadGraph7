@@ -9,7 +9,7 @@ published on PyPI.
 
 - Schema-v1 TOML, direct CLI, ordered overrides, typed Python configuration,
   and recorded license/resource adjustments.
-- External UFO/JSON model loading and canonical compiled-model schema v8,
+- External UFO/JSON model loading and canonical compiled-model schema v9,
   including packaged `sm`, `scalars`, and `scalar_gravity` assets.
 - Multiprocess planning and transactional schema-v3 generation with append,
   replace, payload integrity, and deterministic validation-point support.
@@ -71,13 +71,14 @@ fails closed while the release dependency contract below remains unverified.
   Artifacts predating the typed source or propagator contracts request
   regeneration explicitly. Default and model-supplied UFO propagators are
   distinguished by normalized expressions rather than object names. The
-  remaining model-independence gate is to persist authoritative tensor-ordering
-  and colored-contact proof records and extend the relabeled-PDG and
-  reordered-UFO-inventory topology gates to component-axis and dummy-index
-  numerical invariance. Current two-structure-constant contact lowering
-  preserves exact scalar prefactors and permutation parity, rejects residual
-  color tensors, and validates model-owned direct and closure contractions in
-  compiled-model schema v8.
+  compiled-model schema now persists authoritative tensor-ordering and
+  colored-contact proof records. Relabeled-PDG and reordered-UFO-inventory
+  gates preserve topology and tensor-order identities; independent
+  component-axis and dummy-index numerical invariance remains. Current
+  two-structure-constant contact lowering preserves explicit source scalar
+  prefactors separately from canonicalized permutation parity, rejects
+  residual color tensors, and validates model-owned direct and closure
+  contractions in compiled-model schema v9.
 - External `generate --dry-run` currently requires a previously compiled model
   or populated model cache; it does not compile a trusted source as a planning
   side effect.

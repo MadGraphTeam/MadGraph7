@@ -24,7 +24,7 @@ accuracy = "lc"
 
 [generation]
 output = "."
-mode = "replace"
+mode = "error"
 workers = 1
 emit_api_bundle = true
 
@@ -74,8 +74,8 @@ color_flow_ids = []
 [output]
 format = "json"
 color = "auto"
-progress = "log"
+progress = "off"
 log_level = "info"
 
 [symbolica]
-suggest_license = true
+suggest_license = false

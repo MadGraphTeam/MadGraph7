@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 CONTACT_DECOMPOSITION_ALGORITHM = "ufo-four-point-contact-decomposition"
-CONTACT_DECOMPOSITION_ALGORITHM_VERSION = 1
+CONTACT_DECOMPOSITION_ALGORITHM_VERSION = 2
 
 
 class _ContactTerm(Protocol):

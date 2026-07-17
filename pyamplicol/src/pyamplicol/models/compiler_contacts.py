@@ -306,7 +306,7 @@ def _execute_dense_tensor(
     network = _sym.TensorNetwork(expression, library)
     network.execute(library=library)
     result = network.result_tensor(library)
-    return tuple(_ordered_dense_tensor_components(result, axis_labels))
+    return _ordered_dense_tensor_components(result, axis_labels).values
 
 
 def _contact_auxiliary_color(
@@ -360,6 +360,7 @@ def _compress_contact_components(
     if not representatives:
         representatives.append(zero)
         representative_indices.append(0)
+        expansion[0] = (0, 1)
     return tuple(representative_indices), tuple(expansion)
 
 

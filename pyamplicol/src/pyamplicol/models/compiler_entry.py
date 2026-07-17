@@ -45,6 +45,7 @@ from .compiler_records import (
     _resolve_parameter_records,
     _sequence,
 )
+from .compiler_tensor_ordering import compile_tensor_ordering_metadata
 from .contracts import (
     CompiledModelIR,
     CompiledOrientedKernel,
@@ -207,6 +208,19 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
     )
     particles = (*particles, *tree_particles)
     oriented_kernels = (*oriented_kernels, *tree_kernels)
+    (
+        annotated_terms,
+        oriented_kernels,
+        tensor_orderings,
+        current_orderings,
+    ) = compile_tensor_ordering_metadata(
+        terms,
+        particles,
+        oriented_kernels,
+        parameter_records,
+        propagators,
+    )
+    terms = list(annotated_terms)
     oriented_kernels = _annotate_oriented_kernel_color_projections(
         oriented_kernels,
         particles,
@@ -233,6 +247,8 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         oriented_kernels=oriented_kernels,
         direct_contractions=direct_contractions,
         closure_contractions=closure_contractions,
+        tensor_orderings=tensor_orderings,
+        current_orderings=current_orderings,
     )
 
 
@@ -424,7 +440,7 @@ def _compile_oriented_kernels(
                         f"vertex {term.vertex} particle {result_source.name} refers to "
                         f"absent antiparticle {result_source.antiname}"
                     ) from exc
-                components = _oriented_component_expressions(
+                ordered_components = _oriented_component_expressions(
                     term,
                     particle_by_name,
                     left_leg=left_leg,
@@ -454,7 +470,9 @@ def _compile_oriented_kernels(
                             result_name,
                         ),
                         source_particle_legs=(left_leg, right_leg, result_leg),
-                        component_expressions=components,
+                        component_expressions=tuple(
+                            str(component) for component in ordered_components.values
+                        ),
                         coupling_expression=term.coupling_expression,
                         coupling_orders=term.coupling_orders,
                         runtime_parameters=runtime_parameters,
@@ -464,6 +482,7 @@ def _compile_oriented_kernels(
                             term.lc_color_normalization_power
                         ),
                         term_ids=(term.id,),
+                        output_ordering_id=ordered_components.ordering_id,
                     )
                 )
     return _fuse_oriented_kernels(
