@@ -493,3 +493,37 @@ def test_model_compiler_fingerprint_covers_all_lowering_sources() -> None:
         "_internal/physics/types.py",
         "processes/core_syntax.py",
     } <= relative_paths
+
+
+def test_model_cache_identity_includes_symbolica_serialization_abi(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from pyamplicol.models import loading
+
+    source = tmp_path / "model.json"
+    source.write_text("{}", encoding="ascii")
+    cache = tmp_path / "cache"
+    _digest, first_fingerprint, first_path = loading._compilation_cache_identity(
+        "json",
+        source,
+        options=ModelCompileOptions(),
+        cache_dir=cache,
+    )
+
+    monkeypatch.setattr(
+        loading,
+        "SYMBOLICA_SERIALIZATION_ABI",
+        "symbolica-test-serialization-v2",
+    )
+    _digest, second_fingerprint, second_path = loading._compilation_cache_identity(
+        "json",
+        source,
+        options=ModelCompileOptions(),
+        cache_dir=cache,
+    )
+
+    assert first_fingerprint["symbolica_serialization_abi"] != (
+        second_fingerprint["symbolica_serialization_abi"]
+    )
+    assert first_path != second_path

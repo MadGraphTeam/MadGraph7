@@ -50,7 +50,7 @@ max_common_pair_distance = 1000
 collect_factors = "auto"
 
 [evaluator.jit]
-optimization_level = 1
+optimization_level = 3
 
 [evaluator.cpp]
 optimization = "O3"

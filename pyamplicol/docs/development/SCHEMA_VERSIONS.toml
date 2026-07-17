@@ -2,7 +2,7 @@
 api = 1
 toml = 1
 compiled_model = 8
-model_compiler = 7
+model_compiler = 8
 process_artifact = 3
 runtime_expression = 2
 runtime_physics_metadata = 1

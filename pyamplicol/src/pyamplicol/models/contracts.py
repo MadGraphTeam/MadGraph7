@@ -9,6 +9,13 @@ from typing import Any, cast
 from .._internal.physics.symbols import symbols
 from ._physics_ir import ContractionIR
 from .base import QuantumNumberFlow
+from .contact_decomposition import (
+    CompiledContactDecompositionProof,
+    CompiledContactDecompositionSplit,
+    CompiledContactDummyIndexMapping,
+    CompiledContactOrientationProof,
+    CompiledContactUnsupportedReason,
+)
 
 PROPAGATOR_SOURCE_FIELD = "pyamplicol_source"
 DEFAULT_FEYNMAN_PROPAGATOR_SOURCE = "default-feynman"
@@ -311,13 +318,14 @@ class CompiledVertexTerm:
     coupling_orders: tuple[tuple[str, int], ...]
     backend: str = "ufo"
     lc_color_normalization_power: int = 0
+    contact_decomposition_proof: CompiledContactDecompositionProof | None = None
 
     @property
     def valence(self) -> int:
         return len(self.particles)
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "id": self.id,
             "vertex": self.vertex,
             "particles": list(self.particles),
@@ -335,6 +343,11 @@ class CompiledVertexTerm:
             "backend": self.backend,
             "lc_color_normalization_power": self.lc_color_normalization_power,
         }
+        if self.contact_decomposition_proof is not None:
+            payload["contact_decomposition_proof"] = (
+                self.contact_decomposition_proof.to_dict()
+            )
+        return payload
 
 
 @dataclass(frozen=True)
@@ -521,6 +534,7 @@ class CompiledModelIR:
     def __post_init__(self) -> None:
         self._validate_particle_identities()
         self._validate_contractions()
+        self._validate_contact_decomposition_proofs()
         for context, expression in self._executable_expressions():
             if "UFO::" in expression:
                 raise ValueError(
@@ -598,6 +612,29 @@ class CompiledModelIR:
                         f"particle/antiparticle pair {particle.name!r}/{anti.name!r} "
                         f"must have exactly negated quantum number {name!r}"
                     )
+
+    def _validate_contact_decomposition_proofs(self) -> None:
+        for term in self.vertex_terms:
+            proof = term.contact_decomposition_proof
+            requires_proof = (
+                term.backend == "ufo"
+                and term.valence == 4
+                and "ufo_momentum_" not in term.lorentz_expression
+            )
+            if proof is None and requires_proof:
+                raise ValueError(
+                    f"UFO four-point term {term.id} has no contact decomposition proof"
+                )
+            if proof is None:
+                continue
+            if term.valence != 4:
+                raise ValueError(
+                    f"contact decomposition proof on non-four-point term {term.id}"
+                )
+            if not proof.matches(term):
+                raise ValueError(
+                    f"contact decomposition proof identity mismatch for term {term.id}"
+                )
 
     def _validate_contractions(self) -> None:
         particles = {particle.name: particle for particle in self.particles}
@@ -869,6 +906,16 @@ class CompiledModelIR:
                     backend=str(item.get("backend", "ufo")),
                     lc_color_normalization_power=_integer(
                         item.get("lc_color_normalization_power", 0)
+                    ),
+                    contact_decomposition_proof=(
+                        None
+                        if item.get("contact_decomposition_proof") is None
+                        else CompiledContactDecompositionProof.from_dict(
+                            _strict_mapping(
+                                item["contact_decomposition_proof"],
+                                "contact decomposition proof",
+                            )
+                        )
                     ),
                 )
                 for item in _mappings(payload.get("vertex_terms"))
@@ -1168,6 +1215,11 @@ def _mappings(value: object) -> list[dict[str, object]]:
 __all__ = [
     "SUPPORTED_COLOR_REPRESENTATIONS",
     "CompiledClosureContractionRecord",
+    "CompiledContactDecompositionProof",
+    "CompiledContactDecompositionSplit",
+    "CompiledContactDummyIndexMapping",
+    "CompiledContactOrientationProof",
+    "CompiledContactUnsupportedReason",
     "CompiledCouplingOrder",
     "CompiledCouplingRecord",
     "CompiledDirectContractionRecord",

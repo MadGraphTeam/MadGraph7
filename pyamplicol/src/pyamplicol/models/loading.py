@@ -17,7 +17,15 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from .._internal.versions import COMPILED_MODEL_SCHEMA_VERSION, package_version
+from .._internal.versions import (
+    COMPILED_MODEL_SCHEMA_VERSION,
+    SYMBOLICA_SERIALIZATION_ABI,
+    package_version,
+)
+from .contact_decomposition import (
+    CONTACT_DECOMPOSITION_ALGORITHM,
+    CONTACT_DECOMPOSITION_ALGORITHM_VERSION,
+)
 from .contracts import (
     DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
     MODEL_SUPPLIED_PROPAGATOR_SOURCE,
@@ -26,7 +34,7 @@ from .contracts import (
 )
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
-MODEL_COMPILER_VERSION = 7
+MODEL_COMPILER_VERSION = 8
 BUILTIN_SM_ALIASES = frozenset(("builtin_sm", "built-in-sm"))
 DEFAULT_MODEL_RESTRICTION = "default"
 NO_MODEL_RESTRICTION = "none"
@@ -292,6 +300,11 @@ def compiler_fingerprint() -> dict[str, object]:
         "compiled_model_schema_version": COMPILED_MODEL_SCHEMA_VERSION,
         "model_compiler_version": MODEL_COMPILER_VERSION,
         "model_compiler_sha256": _model_compiler_digest(),
+        "symbolica_serialization_abi": SYMBOLICA_SERIALIZATION_ABI,
+        "contact_decomposition_policy": (
+            f"{CONTACT_DECOMPOSITION_ALGORITHM}-v"
+            f"{CONTACT_DECOMPOSITION_ALGORITHM_VERSION}"
+        ),
         "model_environment_policy": "sanitize-historical-scalar-options-v1",
         "symbol_namespace_policy": "model-name-and-pyamplicol-registry-v1",
     }

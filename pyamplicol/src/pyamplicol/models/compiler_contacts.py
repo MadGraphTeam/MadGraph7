@@ -17,6 +17,7 @@ from .compiler_kernels import (
     _function_arguments,
     _input_tensor_expression,
     _ordered_dense_tensor_components,
+    _permutation_sign,
     _remap_kernel_symbols,
     _replace_expression_symbols,
     _spin_axis_labels,
@@ -25,6 +26,15 @@ from .compiler_kernels import (
     _spin_slots,
 )
 from .compiler_records import _replace_evaluator_constants
+from .contact_decomposition import (
+    CONTACT_DECOMPOSITION_ALGORITHM,
+    CONTACT_DECOMPOSITION_ALGORITHM_VERSION,
+    CompiledContactDecompositionProof,
+    CompiledContactDecompositionSplit,
+    CompiledContactDummyIndexMapping,
+    CompiledContactOrientationProof,
+    CompiledContactUnsupportedReason,
+)
 from .contracts import (
     CompiledOrientedKernel,
     CompiledParticleRecord,
@@ -296,7 +306,7 @@ def _execute_dense_tensor(
     network = _sym.TensorNetwork(expression, library)
     network.execute(library=library)
     result = network.result_tensor(library)
-    return _ordered_dense_tensor_components(result, axis_labels)
+    return tuple(_ordered_dense_tensor_components(result, axis_labels))
 
 
 def _contact_auxiliary_color(
@@ -314,9 +324,9 @@ def _contact_auxiliary_color(
     remaining = abs(colors[remaining_leg])
     result = abs(colors[result_leg])
     if remaining == 1:
-        return colors[result_leg]
+        return int(colors[result_leg])
     if result == 1:
-        return colors[remaining_leg]
+        return int(colors[remaining_leg])
     if remaining == result == 8:
         return 1
     return 1
@@ -351,6 +361,380 @@ def _compress_contact_components(
         representatives.append(zero)
         representative_indices.append(0)
     return tuple(representative_indices), tuple(expansion)
+
+
+def _record_contact_decomposition_proofs(
+    terms: Sequence[CompiledVertexTerm],
+    particles: Sequence[CompiledParticleRecord],
+    *,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[CompiledVertexTerm, ...]:
+    """Attach explicit proof records before four-point contact lowering."""
+
+    particle_by_name = {particle.name: particle for particle in particles}
+    result: list[CompiledVertexTerm] = []
+    for term in terms:
+        if term.valence != 4 or "ufo_momentum_" in term.lorentz_expression:
+            result.append(term)
+            continue
+        source_particles = tuple(particle_by_name[name] for name in term.particles)
+        proof = _build_contact_decomposition_proof(
+            term,
+            source_particles,
+            particle_by_name,
+            model_symbols=model_symbols,
+        )
+        result.append(replace(term, contact_decomposition_proof=proof))
+    return tuple(result)
+
+
+def _build_contact_decomposition_proof(
+    term: CompiledVertexTerm,
+    source_particles: Sequence[CompiledParticleRecord],
+    particle_by_name: Mapping[str, CompiledParticleRecord],
+    *,
+    model_symbols: ModelSymbolRegistry,
+) -> CompiledContactDecompositionProof:
+    result_legs: list[int] = []
+    result_particle_names: set[str] = set()
+    for result_leg, source_result in enumerate(source_particles):
+        if source_result.name in result_particle_names:
+            continue
+        result_particle_names.add(source_result.name)
+        result_legs.append(result_leg)
+
+    literal_singlet = _contact_term_has_literal_color_singlet(term)
+    if literal_singlet and any(particle.color != 1 for particle in source_particles):
+        return _contact_proof(
+            term,
+            status="unsupported",
+            unsupported_reasons=(
+                _contact_unsupported_reason(
+                    "literal-singlet-with-colored-legs",
+                    "a literal color singlet cannot contract non-singlet external legs",
+                    color_representations=",".join(
+                        str(particle.color) for particle in source_particles
+                    ),
+                ),
+            ),
+        )
+
+    splits: list[CompiledContactDecompositionSplit] = []
+    unsupported: list[CompiledContactUnsupportedReason] = []
+    for result_leg in result_legs:
+        color_split = _four_point_contact_color_split(term, result_leg)
+        if color_split is None:
+            unsupported.append(
+                _unsupported_contact_color_split_reason(term, result_leg)
+            )
+            continue
+        splits.append(
+            _contact_decomposition_split_proof(
+                term,
+                source_particles,
+                particle_by_name,
+                result_leg=result_leg,
+                color_split=color_split,
+                model_symbols=model_symbols,
+            )
+        )
+    if unsupported:
+        return _contact_proof(
+            term,
+            status="unsupported",
+            unsupported_reasons=tuple(unsupported),
+        )
+    return _contact_proof(term, status="proven", splits=tuple(splits))
+
+
+def _contact_decomposition_split_proof(
+    term: CompiledVertexTerm,
+    source_particles: Sequence[CompiledParticleRecord],
+    particle_by_name: Mapping[str, CompiledParticleRecord],
+    *,
+    result_leg: int,
+    color_split: tuple[
+        tuple[int, int],
+        int,
+        str,
+        str,
+        int,
+        int,
+        tuple[int, ...],
+        tuple[int, ...],
+        int,
+        str,
+    ],
+    model_symbols: ModelSymbolRegistry,
+) -> CompiledContactDecompositionSplit:
+    (
+        pair_legs,
+        remaining_leg,
+        outer_color_source,
+        final_color_source,
+        outer_color_power,
+        final_color_power,
+        outer_color_factor,
+        final_color_factor,
+        color_dummy,
+        color_coefficient,
+    ) = color_split
+    open_legs = (
+        min(remaining_leg, result_leg),
+        max(remaining_leg, result_leg),
+    )
+    canonical_components = _contact_partial_component_expressions(
+        term,
+        particle_by_name,
+        left_leg=pair_legs[0],
+        right_leg=pair_legs[1],
+        open_legs=open_legs,
+        kind=term.id,
+        model_symbols=model_symbols,
+    )
+    representative_indices, component_expansion = _compress_contact_components(
+        canonical_components
+    )
+    assignment_multiplicity = sum(
+        source_particles[leg].name == source_particles[remaining_leg].name
+        for leg in range(4)
+        if leg != result_leg
+    )
+    pair_orders = (
+        (pair_legs,)
+        if source_particles[pair_legs[0]].name
+        == source_particles[pair_legs[1]].name
+        else (pair_legs, tuple(reversed(pair_legs)))
+    )
+    canonical_outer_parity = (
+        _permutation_sign(
+            outer_color_factor,
+            (color_dummy, pair_legs[0] + 1, pair_legs[1] + 1),
+        )
+        if outer_color_factor
+        else 1
+    )
+    orientations: list[CompiledContactOrientationProof] = []
+    for left_leg, right_leg in pair_orders:
+        outer_parity = (
+            _permutation_sign(
+                outer_color_factor,
+                (color_dummy, left_leg + 1, right_leg + 1),
+            )
+            if outer_color_factor
+            else 1
+        )
+        orientations.append(
+            CompiledContactOrientationProof(
+                stage="partial",
+                input_legs=(left_leg, right_leg),
+                permutation_parity=outer_parity,
+                scalar_prefactor=_canonical_scalar_prefactor(
+                    _sym.E(str(outer_parity)) / canonical_outer_parity
+                ),
+            )
+        )
+
+    for auxiliary_on_left in (True, False):
+        final_input_tokens = (
+            (color_dummy, remaining_leg + 1)
+            if auxiliary_on_left
+            else (remaining_leg + 1, color_dummy)
+        )
+        final_parity = (
+            _permutation_sign(
+                final_color_factor,
+                (result_leg + 1, *final_input_tokens),
+            )
+            if final_color_factor
+            else 1
+        )
+        orientations.append(
+            CompiledContactOrientationProof(
+                stage="final",
+                input_legs=(
+                    (-1, remaining_leg)
+                    if auxiliary_on_left
+                    else (remaining_leg, -1)
+                ),
+                permutation_parity=final_parity,
+                scalar_prefactor=_canonical_scalar_prefactor(
+                    _sym.E(color_coefficient)
+                    * canonical_outer_parity
+                    * final_parity
+                    / assignment_multiplicity
+                ),
+            )
+        )
+
+    dummy_mapping = (
+        CompiledContactDummyIndexMapping(
+            source_index=color_dummy,
+            normalized_symbol=f"ufo_c_dummy_{abs(color_dummy)}_adjoint",
+            outer_slot=outer_color_factor.index(color_dummy),
+            final_slot=final_color_factor.index(color_dummy),
+        )
+        if outer_color_factor
+        else None
+    )
+    return CompiledContactDecompositionSplit(
+        decomposition_kind=(
+            "two-structure-constants"
+            if outer_color_factor
+            else "literal-color-singlet"
+        ),
+        result_leg=result_leg,
+        pair_legs=pair_legs,
+        remaining_leg=remaining_leg,
+        outer_color_source=outer_color_source,
+        final_color_source=final_color_source,
+        outer_color_factor=outer_color_factor,
+        final_color_factor=final_color_factor,
+        dummy_index_mapping=dummy_mapping,
+        outer_color_normalization_power=outer_color_power,
+        final_color_normalization_power=final_color_power,
+        color_coefficient=color_coefficient,
+        auxiliary_color=_contact_auxiliary_color(
+            term,
+            source_particles,
+            remaining_leg=remaining_leg,
+            result_leg=result_leg,
+        ),
+        open_legs=open_legs,
+        component_axis_order=tuple(
+            label
+            for leg in open_legs
+            for label in _spin_axis_labels(source_particles[leg].spin, leg + 1)
+        ),
+        component_basis_order=representative_indices,
+        component_expansion=component_expansion,
+        assignment_multiplicity=assignment_multiplicity,
+        canonical_outer_parity=canonical_outer_parity,
+        orientations=tuple(orientations),
+    )
+
+
+def _contact_proof(
+    term: CompiledVertexTerm,
+    *,
+    status: str,
+    splits: tuple[CompiledContactDecompositionSplit, ...] = (),
+    unsupported_reasons: tuple[CompiledContactUnsupportedReason, ...] = (),
+) -> CompiledContactDecompositionProof:
+    return CompiledContactDecompositionProof(
+        status=status,
+        algorithm=CONTACT_DECOMPOSITION_ALGORITHM,
+        algorithm_version=CONTACT_DECOMPOSITION_ALGORITHM_VERSION,
+        term_id=term.id,
+        vertex=term.vertex,
+        particles=term.particles,
+        color_index=term.color_index,
+        lorentz_index=term.lorentz_index,
+        original_color_source=term.color_source,
+        normalized_color_expression=term.color_expression,
+        lorentz_name=term.lorentz_name,
+        original_lorentz_source=term.lorentz_source,
+        normalized_lorentz_expression=term.lorentz_expression,
+        splits=splits,
+        unsupported_reasons=unsupported_reasons,
+    )
+
+
+def _contact_unsupported_reason(
+    code: str,
+    message: str,
+    **context: str,
+) -> CompiledContactUnsupportedReason:
+    return CompiledContactUnsupportedReason(
+        code=code,
+        message=message,
+        context=tuple(sorted(context.items())),
+    )
+
+
+def _unsupported_contact_color_split_reason(
+    term: CompiledVertexTerm,
+    result_leg: int,
+) -> CompiledContactUnsupportedReason:
+    common = {
+        "normalized_color_expression": term.color_expression,
+        "result_leg": str(result_leg),
+    }
+    factor_arguments = _function_arguments(term.color_expression, "::f")
+    if len(factor_arguments) != 2:
+        return _contact_unsupported_reason(
+            "unsupported-color-factor-count",
+            "contact color expression is not exactly two structure constants",
+            factor_count=str(len(factor_arguments)),
+            **common,
+        )
+    factors = _normalized_structure_constant_factors(term.color_expression)
+    if len(factors) != 2:
+        return _contact_unsupported_reason(
+            "malformed-structure-constant-indices",
+            "contact structure-constant indices are not normalized adjoint indices",
+            **common,
+        )
+    if (
+        _normalized_structure_constant_product_coefficient(term.color_expression)
+        is None
+    ):
+        return _contact_unsupported_reason(
+            "non-scalar-color-prefactor",
+            "contact structure constants retain a non-scalar color factor",
+            **common,
+        )
+    shared_dummies = set(value for value in factors[0] if value < 0) & set(
+        value for value in factors[1] if value < 0
+    )
+    if len(shared_dummies) != 1:
+        return _contact_unsupported_reason(
+            "non-unique-shared-dummy",
+            "contact structure constants must share exactly one adjoint dummy",
+            shared_dummy_count=str(len(shared_dummies)),
+            **common,
+        )
+    result_index = result_leg + 1
+    if not any(result_index in factor for factor in factors):
+        return _contact_unsupported_reason(
+            "result-leg-absent-from-color-factors",
+            "contact result leg is absent from both structure constants",
+            **common,
+        )
+    return _contact_unsupported_reason(
+        "unsupported-structure-constant-topology",
+        "contact structure constants do not form a trivalent auxiliary split",
+        **common,
+    )
+
+
+def _canonical_scalar_prefactor(expression: _sym.Expression) -> str:
+    return str(expression.to_canonical_string())
+
+
+def _contact_term_has_literal_color_singlet(term: CompiledVertexTerm) -> bool:
+    return term.color_source in {"1", "UFO::{}::1"} or term.color_expression == "1"
+
+
+def _validated_contact_decomposition_proof(
+    term: CompiledVertexTerm,
+) -> CompiledContactDecompositionProof | None:
+    proof = term.contact_decomposition_proof
+    if proof is None:
+        return None
+    if not proof.matches(term):
+        raise ValueError(
+            f"contact decomposition proof identity mismatch for term {term.id}"
+        )
+    if (
+        proof.algorithm != CONTACT_DECOMPOSITION_ALGORITHM
+        or proof.algorithm_version != CONTACT_DECOMPOSITION_ALGORITHM_VERSION
+    ):
+        raise ValueError(
+            f"unsupported contact decomposition proof algorithm for term {term.id}: "
+            f"{proof.algorithm}/v{proof.algorithm_version}"
+        )
+    return proof if proof.status == "proven" else None
 
 
 def _four_point_contact_color_split(
@@ -441,7 +825,7 @@ def _normalized_structure_constant_product_coefficient(
     )
     if coefficient.get_all_symbols():
         return None
-    return coefficient.to_canonical_string()
+    return str(coefficient.to_canonical_string())
 
 
 def _normalized_structure_constant_factors(

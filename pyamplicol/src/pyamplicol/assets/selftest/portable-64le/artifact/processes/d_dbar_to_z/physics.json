@@ -121,11 +121,9 @@
       "coupling_policy": "stage evaluators include local vertex couplings",
       "couplings_in_stage_evaluators": true,
       "electroweak_coupling_power": 1,
-      "final_state_identical_factor": 1,
       "global_coupling_factor": 0.1896710455205285,
       "identical_factor": 1,
-      "qcd_coupling_power": 0,
-      "quark_line_partner_factor": 1
+      "qcd_coupling_power": 0
     },
     "process_key": "d_dbar_to_z",
     "selected_source_helicities": {}
@@ -336,17 +334,17 @@
   "model_parameters": [
     {
       "default_imaginary": 0.0,
-      "default_real": 0.118,
-      "kind": "normalization",
-      "mutable": true,
-      "name": "normalization.alpha_s_me_check"
-    },
-    {
-      "default_imaginary": 0.0,
       "default_real": 0.007546771114,
       "kind": "normalization",
       "mutable": true,
       "name": "normalization.alpha_ew"
+    },
+    {
+      "default_imaginary": 0.0,
+      "default_real": 0.118,
+      "kind": "normalization",
+      "mutable": true,
+      "name": "normalization.alpha_s_me_check"
     },
     {
       "default_imaginary": 0.0,

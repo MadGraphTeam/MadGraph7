@@ -15,12 +15,13 @@ from .compiler_contact_trees import (
     _deduplicate_contact_partials,
 )
 from .compiler_contacts import (
-    _compress_contact_components,
-    _contact_auxiliary_color,
+    _build_contact_decomposition_proof,
     _contact_final_component_expressions,
     _contact_partial_component_expressions,
-    _four_point_contact_color_split,
+    _contact_term_has_literal_color_singlet,
     _fuse_contact_finals,
+    _record_contact_decomposition_proofs,
+    _validated_contact_decomposition_proof,
 )
 from .compiler_contractions import compile_contraction_records
 from .compiler_kernels import (
@@ -28,9 +29,9 @@ from .compiler_kernels import (
     _fuse_oriented_kernels,
     _lc_color_normalization_power,
     _oriented_component_expressions,
-    _permutation_sign,
     _remap_kernel_symbols,
     _replace_expression_symbols,
+    _spin_axis_labels,
     _spin_dimension,
 )
 from .compiler_records import (
@@ -164,6 +165,13 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
                 )
     propagators = tuple(
         _propagator(item, particles) for item in _mappings(model.get("propagators"))
+    )
+    terms = list(
+        _record_contact_decomposition_proofs(
+            terms,
+            particles,
+            model_symbols=model_symbols,
+        )
     )
     oriented_kernels = _compile_oriented_kernels(
         terms,
@@ -494,82 +502,51 @@ def _compile_four_point_contact_kernels(
         if "ufo_momentum_" in term.lorentz_expression:
             continue
         source_particles = tuple(particle_by_name[name] for name in term.particles)
-        result_legs: list[int] = []
-        result_particle_names: set[str] = set()
-        for result_leg, source_result in enumerate(source_particles):
-            if source_result.name in result_particle_names:
-                continue
-            result_particle_names.add(source_result.name)
-            result_legs.append(result_leg)
-        contact_splits = {
-            result_leg: _four_point_contact_color_split(term, result_leg)
-            for result_leg in result_legs
-        }
-        literal_singlet = term.color_source in {"1", "UFO::{}::1"} or (
-            term.color_expression == "1"
-        )
-        if literal_singlet and any(
-            particle.color != 1 for particle in source_particles
+        proof = _validated_contact_decomposition_proof(term)
+        if (
+            proof is None
+            and term.contact_decomposition_proof is None
+            and _contact_term_has_literal_color_singlet(term)
+            and all(particle.color == 1 for particle in source_particles)
         ):
-            continue
-        if any(split is None for split in contact_splits.values()):
-            # Leave the complete term unlowered so model preflight reports a
-            # structured unsupported-contact-color-lowering error.  Partial
-            # orientation output would incorrectly make the term appear valid.
-            continue
-        oriented_result_particles: set[str] = set()
-        for result_leg in result_legs:
-            source_result = source_particles[result_leg]
-            if source_result.name in oriented_result_particles:
-                continue
-            oriented_result_particles.add(source_result.name)
-            contact_split = contact_splits[result_leg]
-            if contact_split is None:
-                raise AssertionError("validated contact split unexpectedly vanished")
-            (
-                pair_legs,
-                remaining_leg,
-                _outer_color_source,
-                _final_color_source,
-                outer_color_power,
-                final_color_power,
-                outer_color_factor,
-                final_color_factor,
-                color_dummy,
-                color_coefficient,
-            ) = contact_split
-            assignment_multiplicity = sum(
-                source_particles[leg].name == source_particles[remaining_leg].name
-                for leg in range(4)
-                if leg != result_leg
-            )
-            open_legs = tuple(sorted((remaining_leg, result_leg)))
-            auxiliary_name = f"__pyamplicol_contact_{term.id}_r{result_leg}"
-            canonical_kind = start_kind + len(kernels)
-            canonical_components = _contact_partial_component_expressions(
+            # Preserve direct construction of uncolored test/compiler terms.
+            # UFO compilation always serializes this trivial proof beforehand.
+            proof = _build_contact_decomposition_proof(
                 term,
+                source_particles,
                 particle_by_name,
-                left_leg=pair_legs[0],
-                right_leg=pair_legs[1],
-                open_legs=open_legs,
-                kind=canonical_kind,
                 model_symbols=model_symbols,
             )
-            representative_indices, component_expansion = _compress_contact_components(
-                canonical_components
+        if proof is None:
+            # Leave the complete term unlowered so model preflight reports a
+            # structured unsupported-contact-color-lowering error. Partial
+            # orientation output would incorrectly make the term appear valid.
+            continue
+        for split in proof.splits:
+            result_leg = split.result_leg
+            source_result = source_particles[result_leg]
+            remaining_leg = split.remaining_leg
+            open_legs = split.open_legs
+            component_axis_order = tuple(
+                label
+                for leg in open_legs
+                for label in _spin_axis_labels(source_particles[leg].spin, leg + 1)
             )
+            if component_axis_order != split.component_axis_order:
+                raise ValueError(
+                    f"contact decomposition component order mismatch for term "
+                    f"{term.id} result leg {result_leg}"
+                )
+            auxiliary_name = f"__pyamplicol_contact_{term.id}_r{result_leg}"
+            representative_indices = split.component_basis_order
+            component_expansion = split.component_expansion
             auxiliary_dimension = len(representative_indices)
             auxiliary = CompiledParticleRecord(
                 name=auxiliary_name,
                 antiname=auxiliary_name,
                 pdg_code=allocate_pdg(),
                 spin=-1,
-                color=_contact_auxiliary_color(
-                    term,
-                    source_particles,
-                    remaining_leg=remaining_leg,
-                    result_leg=result_leg,
-                ),
+                color=split.auxiliary_color,
                 mass="ZERO",
                 width="ZERO",
                 charge=0.0,
@@ -586,21 +563,11 @@ def _compile_four_point_contact_kernels(
             )
             auxiliary_particles.append(auxiliary)
 
-            pair_orders = (
-                (pair_legs,)
-                if source_particles[pair_legs[0]].name
-                == source_particles[pair_legs[1]].name
-                else (pair_legs, tuple(reversed(pair_legs)))
+            partial_orientations = tuple(
+                item for item in split.orientations if item.stage == "partial"
             )
-            canonical_outer_sign = (
-                _permutation_sign(
-                    outer_color_factor,
-                    (color_dummy, pair_legs[0] + 1, pair_legs[1] + 1),
-                )
-                if outer_color_factor
-                else 1
-            )
-            for left_leg, right_leg in pair_orders:
+            for orientation in partial_orientations:
+                left_leg, right_leg = orientation.input_legs
                 kind = start_kind + len(kernels)
                 components = _contact_partial_component_expressions(
                     term,
@@ -610,14 +577,6 @@ def _compile_four_point_contact_kernels(
                     open_legs=open_legs,
                     kind=kind,
                     model_symbols=model_symbols,
-                )
-                outer_sign = (
-                    _permutation_sign(
-                        outer_color_factor,
-                        (color_dummy, left_leg + 1, right_leg + 1),
-                    )
-                    if outer_color_factor
-                    else 1
                 )
                 kernels.append(
                     CompiledOrientedKernel(
@@ -633,8 +592,7 @@ def _compile_four_point_contact_kernels(
                         component_expressions=tuple(
                             _canonicalize_oriented_kernel_component(
                                 _sym.E(components[index])
-                                * outer_sign
-                                / canonical_outer_sign
+                                * _sym.E(orientation.scalar_prefactor)
                             ).to_canonical_string()
                             for index in representative_indices
                         ),
@@ -649,43 +607,27 @@ def _compile_four_point_contact_kernels(
                 )
 
             result_name = particle_by_name[source_result.antiname].name
-            final_orders = (
-                ((True, auxiliary.name, source_particles[remaining_leg].name),)
-                if auxiliary.name == source_particles[remaining_leg].name
-                else (
-                    (True, auxiliary.name, source_particles[remaining_leg].name),
-                    (False, source_particles[remaining_leg].name, auxiliary.name),
-                )
+            final_orientations = tuple(
+                item for item in split.orientations if item.stage == "final"
             )
-            for auxiliary_on_left, left_name, right_name in final_orders:
-                kind = start_kind + len(kernels)
-                final_input_tokens = (
-                    (color_dummy, remaining_leg + 1)
+            for orientation in final_orientations:
+                auxiliary_on_left = orientation.input_legs[0] == -1
+                left_name, right_name = (
+                    (auxiliary.name, source_particles[remaining_leg].name)
                     if auxiliary_on_left
-                    else (remaining_leg + 1, color_dummy)
+                    else (source_particles[remaining_leg].name, auxiliary.name)
                 )
-                final_sign = (
-                    _permutation_sign(
-                        final_color_factor,
-                        (result_leg + 1, *final_input_tokens),
-                    )
-                    if final_color_factor
-                    else 1
-                )
+                kind = start_kind + len(kernels)
                 derived_coupling = symbols.derived_coupling(
                     model_symbols.model_name,
                     term.id,
                 )
-                final_prefactor = (
-                    _sym.E(color_coefficient)
-                    * canonical_outer_sign
-                    * final_sign
-                    * derived_coupling
-                    / assignment_multiplicity
-                )
+                final_prefactor = _sym.E(
+                    orientation.scalar_prefactor
+                ) * derived_coupling
                 combined_color_source = (
-                    "UFO::{}::f(1,2,3)*UFO::{}::f(1,2,3)"
-                    if outer_color_factor
+                    f"{split.outer_color_source}*{split.final_color_source}"
+                    if split.decomposition_kind == "two-structure-constants"
                     else term.color_source
                 )
                 kernels.append(
@@ -719,7 +661,8 @@ def _compile_four_point_contact_kernels(
                         color_source=combined_color_source,
                         color_expression=combined_color_source,
                         lc_color_normalization_power=(
-                            outer_color_power + final_color_power
+                            split.outer_color_normalization_power
+                            + split.final_color_normalization_power
                         ),
                         term_ids=(term.id,),
                     )
