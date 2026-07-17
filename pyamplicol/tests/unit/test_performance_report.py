@@ -170,9 +170,13 @@ def test_generated_tables_are_complete_and_input_by_main_tex() -> None:
 
     scalar_contact = expected_tables["result_scalar_contact_table.tex"]
     scalar_gravity = expected_tables["result_scalar_gravity_table.tex"]
-    assert r"scalar\_0 scalar\_0 > X*scalar\_0" in scalar_contact
-    assert r"scalar\_0 scalar\_0 > X*graviton" in scalar_gravity
+    assert r"scalar\_0 scalar\_0 > n*scalar\_0" in scalar_contact
+    assert r"scalar\_0 scalar\_0 > n*graviton" in scalar_gravity
     assert r"\textbf{$n=2$}" in scalar_contact
+    assert "status &" not in scalar_contact
+    assert "status &" not in scalar_gravity
+    assert "generation [s]" in scalar_contact
+    assert "generation [s]" in scalar_gravity
     assert r"evaluator [$\mu$s/pt]" in scalar_contact
     assert r"evaluator [$\mu$s/pt]" in scalar_gravity
     assert "scalar\\_0 scalar\\_0 scalar\\_0" not in scalar_contact
@@ -1162,7 +1166,9 @@ def test_z_tables_use_old_selected_and_all_flow_layout() -> None:
         built_in_payload=caches["z_builtin_sm.json"],
     )
 
-    assert r"\begin{longtable}{@{}r L{0.92in} L{0.48in} L{0.86in}" in builtin
+    assert r"\begin{longtable}{@{}r L{0.92in} L{0.48in} L{0.86in} R{0.60in}" in builtin
+    assert r"@{}p{0.20in}@{}" in builtin
+    assert r"R{0.58in} R{0.48in} R{0.58in}" in ufo
     assert r"\textbf{selected flow, helicity sum}" in builtin
     assert r"\textbf{all flows, fixed helicity}" in builtin
     assert r"\PAC\ JIT \(\mathrm{O}1\)" in builtin

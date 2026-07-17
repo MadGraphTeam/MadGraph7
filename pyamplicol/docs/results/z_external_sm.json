@@ -5,7 +5,7 @@
     "config_overrides": {
       "benchmark.batch_size": 128,
       "benchmark.minimum_samples": 5,
-      "benchmark.target_runtime": 10.0,
+      "benchmark.target_runtime": 20.0,
       "benchmark.warmup_runs": 2,
       "evaluator.backend": "jit",
       "evaluator.batch_size": 128,
@@ -17,10 +17,17 @@
       "evaluator.optimization.max_horner_variables": 1000,
       "evaluator.output_chunk_size": 128
     },
+    "legacy_profile": {
+      "legacy_profile_max_points": 100000,
+      "legacy_profile_min_points": 100,
+      "legacy_profile_policy": "target_runtime_warmup_v1",
+      "legacy_profile_target_seconds": 20.0,
+      "legacy_profile_warmup_points": 100
+    },
     "minimum_samples": 5,
     "observable": "summed_matrix_element",
     "runtime_api": "Runtime.evaluate",
-    "target_runtime_seconds": 10.0,
+    "target_runtime_seconds": 20.0,
     "warmup_runs": 2
   },
   "color_accuracy": "lc",
@@ -29,2494 +36,513 @@
   "entries": [
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-reference/legacy-amplicol",
-        "command": [
-          "tools/developer/legacy_amplicol.py",
-          "d d~ > z",
-          "lc"
-        ],
-        "effective_config": {
-          "matching_row_count": 1,
-          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-reference/legacy-amplicol/process-list/processes.txt",
-          "row_id": "group:1:integral:1"
-        },
-        "environment": {
-          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
-          "revision": "f3fdca35631c9405d28337a79cdab84994d8e414"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 0.05643451772630215,
-        "limit_gib": 800.0,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-reference/logs/legacy-amplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-reference/legacy-amplicol/manifest.json",
-        "matrix_element": 142.1065337287299,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n1-reference",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 1,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z",
-            "process_key": null,
-            "variant": "reference"
-          },
-          "point_source": "generic_validation_point",
-          "timing_method": "process_list generation plus direct color-probe runtime"
-        },
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.0,
-        "requested_config": {
-          "color_accuracy": "lc",
-          "method": "legacy_amplicol_color_probe",
-          "point_source": "generic_validation_point"
-        },
-        "sample_count": 1,
-        "standard_deviation_seconds_per_point": 0.0,
-        "standard_error_seconds_per_point": 0.0,
-        "status": "ok",
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
         "timeout_seconds": null,
-        "wall_seconds_per_point": 0.011428125202655792
+        "wall_seconds_per_point": null
       },
       "n_final": 1,
       "process": "d d~ > z",
-      "status": "ok",
+      "status": "not_available",
       "variant": "reference"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o1/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "1"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.000098124146461,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 0.4533151853829622,
+        "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o1/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o1/manifest.json",
-        "matrix_element": 142.10653372833178,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n1-jit-o1",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 1,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z",
-            "process_key": null,
-            "variant": "jit_o1"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o1/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z"
-        },
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.000770435287885745,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 69217,
-        "standard_deviation_seconds_per_point": 2.2878316938024508e-07,
-        "standard_error_seconds_per_point": 8.69596305500554e-10,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 1.128707782696364e-06
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
       },
       "n_final": 1,
       "process": "d d~ > z",
-      "status": "ok",
+      "status": "not_available",
       "variant": "jit_o1"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "1"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.000031840056181,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
-        "evaluator_seconds_per_point": null,
-        "failure_kind": null,
-        "failure_message": null,
-        "generation_seconds": 0.4470147956162691,
-        "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o3/manifest.json",
-        "matrix_element": 142.10653372833178,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n1-jit-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 1,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z",
-            "process_key": null,
-            "variant": "jit_o3"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-jit-o3/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z"
-        },
-        "peak_rss_gib": null,
-        "relative_standard_error": 0.0009019137070288321,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 64698,
-        "standard_deviation_seconds_per_point": 2.770199028376768e-07,
-        "standard_error_seconds_per_point": 1.089094449798417e-09,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 1.207537307960662e-06
-      },
-      "n_final": 1,
-      "process": "d d~ > z",
-      "status": "ok",
-      "variant": "jit_o3"
-    },
-    {
-      "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-asm-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "1"
-        ],
+        "artifact_path": null,
+        "command": null,
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "CompatibilityError",
-        "failure_message": "unsupported runtime capability \"symbolica.compiled-asm.complex-f64.v1\": this Rusticol build supports {\"symjit.application.complex-f64.v1\"}",
+        "failure_kind": null,
+        "failure_message": null,
         "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-asm-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-asm-o3/manifest.json",
+        "log_path": null,
+        "manifest_path": null,
         "matrix_element": null,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n1-asm-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 1,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z",
-            "process_key": null,
-            "variant": "asm_o3"
-          },
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-asm-o3/inputs/pyamplicol-inputs.json"
-        },
+        "metadata": {},
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
         "sample_count": null,
         "standard_deviation_seconds_per_point": null,
         "standard_error_seconds_per_point": null,
-        "status": "unsupported",
-        "timeout_seconds": 3600.0,
+        "status": "not_available",
+        "timeout_seconds": null,
         "wall_seconds_per_point": null
       },
       "n_final": 1,
       "process": "d d~ > z",
-      "status": "unsupported",
+      "status": "not_available",
       "variant": "asm_o3"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-cpp-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "1"
-        ],
+        "artifact_path": null,
+        "command": null,
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "CompatibilityError",
-        "failure_message": "unsupported runtime capability \"symbolica.compiled-cpp.complex-f64.v1\": this Rusticol build supports {\"symjit.application.complex-f64.v1\"}",
+        "failure_kind": null,
+        "failure_message": null,
         "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-cpp-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-cpp-o3/manifest.json",
+        "log_path": null,
+        "manifest_path": null,
         "matrix_element": null,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n1-cpp-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 1,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z",
-            "process_key": null,
-            "variant": "cpp_o3"
-          },
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n1-cpp-o3/inputs/pyamplicol-inputs.json"
-        },
+        "metadata": {},
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
         "sample_count": null,
         "standard_deviation_seconds_per_point": null,
         "standard_error_seconds_per_point": null,
-        "status": "unsupported",
-        "timeout_seconds": 3600.0,
+        "status": "not_available",
+        "timeout_seconds": null,
         "wall_seconds_per_point": null
       },
       "n_final": 1,
       "process": "d d~ > z",
-      "status": "unsupported",
+      "status": "not_available",
       "variant": "cpp_o3"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-reference/legacy-amplicol",
-        "command": [
-          "tools/developer/legacy_amplicol.py",
-          "d d~ > z g",
-          "lc"
-        ],
-        "effective_config": {
-          "matching_row_count": 1,
-          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-reference/legacy-amplicol/process-list/processes.txt",
-          "row_id": "group:1:integral:1"
-        },
-        "environment": {
-          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
-          "revision": "f3fdca35631c9405d28337a79cdab84994d8e414"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 0.05707924999296665,
-        "limit_gib": 800.0,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-reference/logs/legacy-amplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-reference/legacy-amplicol/manifest.json",
-        "matrix_element": 0.4067337013575407,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n2-reference",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 2,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g",
-            "process_key": null,
-            "variant": "reference"
-          },
-          "point_source": "generic_validation_point",
-          "timing_method": "process_list generation plus direct color-probe runtime"
-        },
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.0,
-        "requested_config": {
-          "color_accuracy": "lc",
-          "method": "legacy_amplicol_color_probe",
-          "point_source": "generic_validation_point"
-        },
-        "sample_count": 1,
-        "standard_deviation_seconds_per_point": 0.0,
-        "standard_error_seconds_per_point": 0.0,
-        "status": "ok",
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
         "timeout_seconds": null,
-        "wall_seconds_per_point": 0.0053878054022789
+        "wall_seconds_per_point": null
+      },
+      "n_final": 1,
+      "process": "d d~ > z",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "failure_kind": null,
+        "failure_message": null,
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
+        "peak_rss_gib": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
       },
       "n_final": 2,
       "process": "d d~ > z g",
-      "status": "ok",
+      "status": "not_available",
       "variant": "reference"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o1/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "2"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.000152859836817,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 0.45350450463593006,
+        "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o1/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o1/manifest.json",
-        "matrix_element": 0.32984496421999265,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n2-jit-o1",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 2,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g",
-            "process_key": null,
-            "variant": "jit_o1"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o1/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z_g"
-        },
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.00018151045873005545,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 47284,
-        "standard_deviation_seconds_per_point": 6.521405703494694e-08,
-        "standard_error_seconds_per_point": 2.9990528193992296e-10,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 1.652275488906927e-06
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
       },
       "n_final": 2,
       "process": "d d~ > z g",
-      "status": "ok",
+      "status": "not_available",
       "variant": "jit_o1"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "2"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.000113435089588,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
-        "evaluator_seconds_per_point": null,
-        "failure_kind": null,
-        "failure_message": null,
-        "generation_seconds": 0.41626269929111004,
-        "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o3/manifest.json",
-        "matrix_element": 0.32984496421999265,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n2-jit-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 2,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g",
-            "process_key": null,
-            "variant": "jit_o3"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-jit-o3/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z_g"
-        },
-        "peak_rss_gib": null,
-        "relative_standard_error": 0.00024972823838642806,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 47506,
-        "standard_deviation_seconds_per_point": 8.951346695460921e-08,
-        "standard_error_seconds_per_point": 4.106900167560043e-10,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 1.6445477668428706e-06
-      },
-      "n_final": 2,
-      "process": "d d~ > z g",
-      "status": "ok",
-      "variant": "jit_o3"
-    },
-    {
-      "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-asm-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "2"
-        ],
+        "artifact_path": null,
+        "command": null,
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "CompatibilityError",
-        "failure_message": "unsupported runtime capability \"symbolica.compiled-asm.complex-f64.v1\": this Rusticol build supports {\"symjit.application.complex-f64.v1\"}",
+        "failure_kind": null,
+        "failure_message": null,
         "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-asm-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-asm-o3/manifest.json",
+        "log_path": null,
+        "manifest_path": null,
         "matrix_element": null,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n2-asm-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 2,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g",
-            "process_key": null,
-            "variant": "asm_o3"
-          },
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-asm-o3/inputs/pyamplicol-inputs.json"
-        },
+        "metadata": {},
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
         "sample_count": null,
         "standard_deviation_seconds_per_point": null,
         "standard_error_seconds_per_point": null,
-        "status": "unsupported",
-        "timeout_seconds": 3600.0,
+        "status": "not_available",
+        "timeout_seconds": null,
         "wall_seconds_per_point": null
       },
       "n_final": 2,
       "process": "d d~ > z g",
-      "status": "unsupported",
+      "status": "not_available",
       "variant": "asm_o3"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-cpp-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "2"
-        ],
+        "artifact_path": null,
+        "command": null,
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "CompatibilityError",
-        "failure_message": "unsupported runtime capability \"symbolica.compiled-cpp.complex-f64.v1\": this Rusticol build supports {\"symjit.application.complex-f64.v1\"}",
+        "failure_kind": null,
+        "failure_message": null,
         "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-cpp-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-cpp-o3/manifest.json",
+        "log_path": null,
+        "manifest_path": null,
         "matrix_element": null,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n2-cpp-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 2,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g",
-            "process_key": null,
-            "variant": "cpp_o3"
-          },
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n2-cpp-o3/inputs/pyamplicol-inputs.json"
-        },
+        "metadata": {},
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
         "sample_count": null,
         "standard_deviation_seconds_per_point": null,
         "standard_error_seconds_per_point": null,
-        "status": "unsupported",
-        "timeout_seconds": 3600.0,
+        "status": "not_available",
+        "timeout_seconds": null,
         "wall_seconds_per_point": null
       },
       "n_final": 2,
       "process": "d d~ > z g",
-      "status": "unsupported",
+      "status": "not_available",
       "variant": "cpp_o3"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-reference/legacy-amplicol",
-        "command": [
-          "tools/developer/legacy_amplicol.py",
-          "d d~ > z g g",
-          "lc"
-        ],
-        "effective_config": {
-          "matching_row_count": 1,
-          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-reference/legacy-amplicol/process-list/processes.txt",
-          "row_id": "group:1:integral:1"
-        },
-        "environment": {
-          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
-          "revision": "f3fdca35631c9405d28337a79cdab84994d8e414"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 0.15578831359744072,
-        "limit_gib": 800.0,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-reference/logs/legacy-amplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-reference/legacy-amplicol/manifest.json",
-        "matrix_element": 0.00022866903494386885,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n3-reference",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 3,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g",
-            "process_key": null,
-            "variant": "reference"
-          },
-          "point_source": "generic_validation_point",
-          "timing_method": "process_list generation plus direct color-probe runtime"
-        },
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.0,
-        "requested_config": {
-          "color_accuracy": "lc",
-          "method": "legacy_amplicol_color_probe",
-          "point_source": "generic_validation_point"
-        },
-        "sample_count": 1,
-        "standard_deviation_seconds_per_point": 0.0,
-        "standard_error_seconds_per_point": 0.0,
-        "status": "ok",
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
         "timeout_seconds": null,
-        "wall_seconds_per_point": 0.006529759615659714
+        "wall_seconds_per_point": null
+      },
+      "n_final": 2,
+      "process": "d d~ > z g",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "failure_kind": null,
+        "failure_message": null,
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
+        "peak_rss_gib": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
       },
       "n_final": 3,
       "process": "d d~ > z g g",
-      "status": "ok",
+      "status": "not_available",
       "variant": "reference"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o1/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "3"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.000291462987661,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 0.6732278671115637,
+        "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o1/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o1/manifest.json",
-        "matrix_element": 4.100795962478828e-05,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n3-jit-o1",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 3,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g",
-            "process_key": null,
-            "variant": "jit_o1"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o1/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z_g_g"
-        },
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.0005633407701849115,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 21079,
-        "standard_deviation_seconds_per_point": 3.031439250823358e-07,
-        "standard_error_seconds_per_point": 2.087968140252541e-09,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 3.7064033898472935e-06
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
       },
       "n_final": 3,
       "process": "d d~ > z g g",
-      "status": "ok",
+      "status": "not_available",
       "variant": "jit_o1"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "3"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.000402407720685,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
-        "evaluator_seconds_per_point": null,
-        "failure_kind": null,
-        "failure_message": null,
-        "generation_seconds": 0.7122504338622093,
-        "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o3/manifest.json",
-        "matrix_element": 4.100795962478828e-05,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n3-jit-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 3,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g",
-            "process_key": null,
-            "variant": "jit_o3"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-jit-o3/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z_g_g"
-        },
-        "peak_rss_gib": null,
-        "relative_standard_error": 0.0004207432698713902,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 22272,
-        "standard_deviation_seconds_per_point": 2.2026478786697342e-07,
-        "standard_error_seconds_per_point": 1.4759290003473126e-09,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 3.5079087558511965e-06
-      },
-      "n_final": 3,
-      "process": "d d~ > z g g",
-      "status": "ok",
-      "variant": "jit_o3"
-    },
-    {
-      "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-asm-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "3"
-        ],
+        "artifact_path": null,
+        "command": null,
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "CompatibilityError",
-        "failure_message": "unsupported runtime capability \"symbolica.compiled-asm.complex-f64.v1\": this Rusticol build supports {\"symjit.application.complex-f64.v1\"}",
+        "failure_kind": null,
+        "failure_message": null,
         "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-asm-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-asm-o3/manifest.json",
+        "log_path": null,
+        "manifest_path": null,
         "matrix_element": null,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n3-asm-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 3,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g",
-            "process_key": null,
-            "variant": "asm_o3"
-          },
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-asm-o3/inputs/pyamplicol-inputs.json"
-        },
+        "metadata": {},
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
         "sample_count": null,
         "standard_deviation_seconds_per_point": null,
         "standard_error_seconds_per_point": null,
-        "status": "unsupported",
-        "timeout_seconds": 3600.0,
+        "status": "not_available",
+        "timeout_seconds": null,
         "wall_seconds_per_point": null
       },
       "n_final": 3,
       "process": "d d~ > z g g",
-      "status": "unsupported",
+      "status": "not_available",
       "variant": "asm_o3"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-cpp-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "3"
-        ],
+        "artifact_path": null,
+        "command": null,
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "CompatibilityError",
-        "failure_message": "unsupported runtime capability \"symbolica.compiled-cpp.complex-f64.v1\": this Rusticol build supports {\"symjit.application.complex-f64.v1\"}",
+        "failure_kind": null,
+        "failure_message": null,
         "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-cpp-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-cpp-o3/manifest.json",
+        "log_path": null,
+        "manifest_path": null,
         "matrix_element": null,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n3-cpp-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 3,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g",
-            "process_key": null,
-            "variant": "cpp_o3"
-          },
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n3-cpp-o3/inputs/pyamplicol-inputs.json"
-        },
+        "metadata": {},
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
         "sample_count": null,
         "standard_deviation_seconds_per_point": null,
         "standard_error_seconds_per_point": null,
-        "status": "unsupported",
-        "timeout_seconds": 3600.0,
+        "status": "not_available",
+        "timeout_seconds": null,
         "wall_seconds_per_point": null
       },
       "n_final": 3,
       "process": "d d~ > z g g",
-      "status": "unsupported",
+      "status": "not_available",
       "variant": "cpp_o3"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-reference/legacy-amplicol",
-        "command": [
-          "tools/developer/legacy_amplicol.py",
-          "d d~ > z g g g",
-          "lc"
-        ],
+        "artifact_path": null,
+        "command": null,
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "LegacyOracleError",
-        "failure_message": "no expected Fortran process row is declared for 'd d~ > z g g g'",
+        "failure_kind": null,
+        "failure_message": null,
         "generation_seconds": null,
-        "limit_gib": 800.0,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-reference/logs/legacy-amplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-reference/legacy-amplicol/manifest.json",
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
         "matrix_element": null,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n4-reference",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 4,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g g",
-            "process_key": null,
-            "variant": "reference"
-          }
-        },
+        "metadata": {},
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
         "sample_count": null,
         "standard_deviation_seconds_per_point": null,
         "standard_error_seconds_per_point": null,
-        "status": "unsupported",
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
+      },
+      "n_final": 3,
+      "process": "d d~ > z g g",
+      "status": "not_available",
+      "variant": "jit_o3"
+    },
+    {
+      "measurement": {
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "failure_kind": null,
+        "failure_message": null,
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
+        "peak_rss_gib": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
         "timeout_seconds": null,
         "wall_seconds_per_point": null
       },
       "n_final": 4,
       "process": "d d~ > z g g g",
-      "status": "unsupported",
+      "status": "not_available",
       "variant": "reference"
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o1/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "4"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.003231609240174,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 2.903392454609275,
+        "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o1/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o1/manifest.json",
-        "matrix_element": 1.9785724014325756e-08,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n4-jit-o1",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 4,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g g",
-            "process_key": null,
-            "variant": "jit_o1"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o1/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z_g_g_g"
-        },
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.0016370715610584201,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 1
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 2491,
-        "standard_deviation_seconds_per_point": 2.5633691599763515e-06,
-        "standard_error_seconds_per_point": 5.135991439860919e-08,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 3.1373041729100304e-05
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
       },
       "n_final": 4,
       "process": "d d~ > z g g g",
-      "status": "ok",
+      "status": "not_available",
       "variant": "jit_o1"
-    },
-    {
-      "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o3/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "z_external_sm",
-          "--n-final",
-          "4"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.001751396805048,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
-        "evaluator_seconds_per_point": null,
-        "failure_kind": null,
-        "failure_message": null,
-        "generation_seconds": 2.957514736801386,
-        "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o3/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o3/manifest.json",
-        "matrix_element": 1.9785724014325756e-08,
-        "metadata": {
-          "cell": {
-            "cache_name": "z_external_sm.json",
-            "cell_id": "z-external-sm-n4-jit-o3",
-            "dataset_id": "z_external_sm",
-            "kind": "performance_ladder",
-            "n_final": 4,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "d d~ > z g g g",
-            "process_key": null,
-            "variant": "jit_o3"
-          },
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n4-jit-o3/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "runtime_process": "d_dbar_to_z_g_g_g"
-        },
-        "peak_rss_gib": null,
-        "relative_standard_error": 0.0010587458885940048,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/sm/sm.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 2401,
-        "standard_deviation_seconds_per_point": 1.688347125335888e-06,
-        "standard_error_seconds_per_point": 3.445606378236506e-08,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 3.254422440130755e-05
-      },
-      "n_final": 4,
-      "process": "d d~ > z g g g",
-      "status": "ok",
-      "variant": "jit_o3"
     },
     {
       "measurement": {
@@ -2577,6 +603,36 @@
       "process": "d d~ > z g g g",
       "status": "not_available",
       "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "failure_kind": null,
+        "failure_message": null,
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
+        "peak_rss_gib": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
+      },
+      "n_final": 4,
+      "process": "d d~ > z g g g",
+      "status": "not_available",
+      "variant": "jit_o3"
     },
     {
       "measurement": {
@@ -2666,36 +722,6 @@
       "n_final": 5,
       "process": "d d~ > z g g g g",
       "status": "not_available",
-      "variant": "jit_o3"
-    },
-    {
-      "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
-        "failure_kind": null,
-        "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
-        "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
-      },
-      "n_final": 5,
-      "process": "d d~ > z g g g g",
-      "status": "not_available",
       "variant": "asm_o3"
     },
     {
@@ -2727,6 +753,36 @@
       "process": "d d~ > z g g g g",
       "status": "not_available",
       "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "failure_kind": null,
+        "failure_message": null,
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
+        "peak_rss_gib": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
+      },
+      "n_final": 5,
+      "process": "d d~ > z g g g g",
+      "status": "not_available",
+      "variant": "jit_o3"
     },
     {
       "measurement": {
@@ -2816,36 +872,6 @@
       "n_final": 6,
       "process": "d d~ > z g g g g g",
       "status": "not_available",
-      "variant": "jit_o3"
-    },
-    {
-      "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
-        "failure_kind": null,
-        "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
-        "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
-      },
-      "n_final": 6,
-      "process": "d d~ > z g g g g g",
-      "status": "not_available",
       "variant": "asm_o3"
     },
     {
@@ -2877,11 +903,41 @@
       "process": "d d~ > z g g g g g",
       "status": "not_available",
       "variant": "cpp_o3"
+    },
+    {
+      "measurement": {
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
+        "evaluator_seconds_per_point": null,
+        "failure_kind": null,
+        "failure_message": null,
+        "generation_seconds": null,
+        "limit_gib": null,
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
+        "peak_rss_gib": null,
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
+      },
+      "n_final": 6,
+      "process": "d d~ > z g g g g g",
+      "status": "not_available",
+      "variant": "jit_o3"
     }
   ],
   "kind": "performance_ladder",
   "model": {
-    "label": "External Standard Model (UFO/JSON)",
+    "label": "UFO-SM",
     "profile": "external-sm",
     "source_kind": "json"
   },
@@ -2898,7 +954,7 @@
   "report_version": "0.1.0",
   "schema_version": 2,
   "spdx_license_identifier": "0BSD",
-  "updated_at": "2026-07-16T20:31:08+00:00",
+  "updated_at": null,
   "variants": [
     {
       "config_overrides": {},

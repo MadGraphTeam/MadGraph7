@@ -534,7 +534,7 @@ LADDER_SPECS: tuple[LadderSpec, ...] = (
         CacheKind.MODEL_LADDER,
         SCALAR_CONTACT,
         tuple(range(2, 9)),
-        "scalar_0 scalar_0 > X*scalar_0",
+        "scalar_0 scalar_0 > n*scalar_0",
         "scalar_0",
     ),
     LadderSpec(
@@ -545,7 +545,7 @@ LADDER_SPECS: tuple[LadderSpec, ...] = (
         CacheKind.MODEL_LADDER,
         SCALAR_GRAVITY,
         tuple(range(2, 5)),
-        "scalar_0 scalar_0 > X*graviton",
+        "scalar_0 scalar_0 > n*graviton",
         "graviton",
     ),
 )
@@ -3163,19 +3163,21 @@ def render_performance_ladder(
         ),
         r"\begingroup",
         r"\tiny",
-        r"\setlength{\tabcolsep}{1.55pt}",
+        r"\setlength{\tabcolsep}{1.25pt}",
         r"\renewcommand{\arraystretch}{1.03}",
         (
             r"\begin{longtable}{@{}r "
             + (
                 r"L{0.78in} L{0.40in} L{0.94in} "
-                r"r L{0.42in} r L{0.42in} r "
-                r"@{}p{0.16in}@{} "
-                r"r L{0.42in} r L{0.42in} r@{}}"
+                r"R{0.58in} R{0.48in} R{0.58in} R{0.48in} R{0.58in} "
+                r"@{}p{0.20in}@{} "
+                r"R{0.58in} R{0.48in} R{0.58in} R{0.48in} R{0.58in}@{}}"
                 if compare_to_built_in
                 else (
-                    r"L{0.92in} L{0.48in} L{0.86in} r r r "
-                    r"@{}p{0.16in}@{} r r r@{}}"
+                    r"L{0.92in} L{0.48in} L{0.86in} "
+                    r"R{0.60in} R{0.60in} R{0.60in} "
+                    r"@{}p{0.20in}@{} "
+                    r"R{0.60in} R{0.60in} R{0.60in}@{}}"
                 )
             )
         ),
@@ -3340,7 +3342,7 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
         if isinstance(entry, Mapping)
     }
     multiplicity_count = len(spec.multiplicities)
-    column_spec = "@{}L{1.62in}" + "c" * multiplicity_count + "@{}"
+    column_spec = "@{}L{1.82in}" + "R{0.72in}" * multiplicity_count + "@{}"
     process_family = _tex_escape(spec.process_family)
     measurements = {
         n_final: entries[n_final]["measurement"] for n_final in spec.multiplicities
@@ -3351,13 +3353,21 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
         raise TypeError("model-ladder measurements must be objects")
 
     def model_missing() -> str:
-        return r"\textcolor{ReportMuted}{\texttt{N/A}}"
+        return _z_old_missing()
+
+    def model_status_label(measurement: Mapping[str, object]) -> str:
+        status = _z_old_status(measurement.get("status", NA_STATUS))
+        if status == "missing":
+            return model_missing()
+        if status == "ok":
+            return r"\textcolor{speedgreen}{\texttt{ok}}"
+        return _z_old_status_cell(status)
 
     def measurement_value(n_final: int, field: str, *, scale: float = 1.0) -> str:
         measurement = measurements[n_final]
         assert isinstance(measurement, Mapping)
         if str(measurement.get("status", NA_STATUS)) != ResultStatus.OK.value:
-            return _measurement_label(measurement)
+            return model_status_label(measurement)
         value = measurement.get(field)
         if value is None:
             return model_missing()
@@ -3383,8 +3393,8 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
         rf"\subsection{{{spec.title}}}",
         r"\begingroup",
         r"\scriptsize",
-        r"\setlength{\tabcolsep}{4pt}",
-        r"\renewcommand{\arraystretch}{1.12}",
+        r"\setlength{\tabcolsep}{3.2pt}",
+        r"\renewcommand{\arraystretch}{1.10}",
         r"\begin{center}",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
@@ -3396,18 +3406,12 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
         + " & ".join(rf"\textbf{{$n={n}$}}" for n in spec.multiplicities)
         + r" \\",
         r"\midrule",
-        r"status & "
-        + " & ".join(
-            _measurement_label(measurements[n_final])  # type: ignore[arg-type]
-            for n_final in spec.multiplicities
-        )
-        + r" \\",
     ]
     lines.extend(
         measurement_row(
-            r"generation [$\mu$s]",
+            r"generation [s]",
             "generation_seconds",
-            scale=1.0e6,
+            scale=1.0,
             color="ReportGreen!8",
         )
     )
@@ -3430,15 +3434,18 @@ def render_model_ladder(spec: LadderSpec, payload: Mapping[str, object]) -> str:
     lines.extend(
         measurement_row("matrix element", "matrix_element", color="refblue")
     )
-    lines.append(
-        "relative difference & "
-        + " & ".join(
-            model_missing()
-            if entries[n_final]["relative_difference"] is None
-            else _matrix_plain_number(entries[n_final]["relative_difference"])
-            for n_final in spec.multiplicities
-        )
-        + r" \\"
+    lines.extend(
+        [
+            r"\rowcolor{ReportOrange!8}",
+            "relative diff. vs hp & "
+            + " & ".join(
+                model_missing()
+                if entries[n_final]["relative_difference"] is None
+                else _matrix_plain_number(entries[n_final]["relative_difference"])
+                for n_final in spec.multiplicities
+            )
+            + r" \\",
+        ]
     )
     lines.extend(
         [

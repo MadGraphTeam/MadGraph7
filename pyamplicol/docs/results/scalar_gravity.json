@@ -5,7 +5,7 @@
     "config_overrides": {
       "benchmark.batch_size": 128,
       "benchmark.minimum_samples": 5,
-      "benchmark.target_runtime": 10.0,
+      "benchmark.target_runtime": 20.0,
       "benchmark.warmup_runs": 2,
       "evaluator.backend": "jit",
       "evaluator.batch_size": 128,
@@ -17,10 +17,17 @@
       "evaluator.optimization.max_horner_variables": 1000,
       "evaluator.output_chunk_size": 128
     },
+    "legacy_profile": {
+      "legacy_profile_max_points": 100000,
+      "legacy_profile_min_points": 100,
+      "legacy_profile_policy": "target_runtime_warmup_v1",
+      "legacy_profile_target_seconds": 20.0,
+      "legacy_profile_warmup_points": 100
+    },
     "minimum_samples": 5,
     "observable": "summed_matrix_element",
     "runtime_api": "Runtime.evaluate",
-    "target_runtime_seconds": 10.0,
+    "target_runtime_seconds": 20.0,
     "warmup_runs": 2
   },
   "color_accuracy": "lc",
@@ -28,244 +35,35 @@
   "dataset_id": "scalar_gravity",
   "entries": [
     {
-      "high_precision_matrix_element": 1608597053.132274,
+      "high_precision_matrix_element": null,
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-gravity-n2/pyamplicol",
-        "command": [
-          ".venv/bin/python",
-          "docs/result_tables.py",
-          "measure-cell",
-          "--dataset-id",
-          "scalar_gravity",
-          "--n-final",
-          "2"
-        ],
-        "effective_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "environment": {
-          "batch_size": 128,
-          "elapsed_seconds": 10.000116432085633,
-          "machine": "x86_64",
-          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
-          "python": "3.11.15"
-        },
+        "artifact_path": null,
+        "command": null,
+        "effective_config": null,
+        "environment": {},
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 2.806572835892439,
+        "generation_seconds": null,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-gravity-n2/logs/pyamplicol.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-gravity-n2/manifest.json",
-        "matrix_element": 1608597053.1322756,
-        "metadata": {
-          "cell": {
-            "cache_name": "scalar_gravity.json",
-            "cell_id": "scalar-gravity-n2",
-            "dataset_id": "scalar_gravity",
-            "kind": "model_ladder",
-            "n_final": 2,
-            "priority": [
-              0,
-              0,
-              0,
-              ""
-            ],
-            "process": "scalar_0 scalar_0 > graviton graviton",
-            "process_key": null,
-            "variant": null
-          },
-          "high_precision_matrix_element": 1608597053.132274,
-          "high_precision_relative_difference": 1.03750659648492e-15,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-gravity-n2/inputs/pyamplicol-inputs.json",
-          "model_source": {
-            "cache": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
-          },
-          "runtime_process": "scalar_0_scalar_0_to_graviton_graviton"
-        },
+        "log_path": null,
+        "manifest_path": null,
+        "matrix_element": null,
+        "metadata": {},
         "peak_rss_gib": null,
-        "relative_standard_error": 0.0006936912669675821,
-        "requested_config": {
-          "action": "generate",
-          "benchmark": {
-            "batch_size": 128,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "minimum_samples": 5,
-            "target_runtime": 10.0,
-            "warmup_runs": 2
-          },
-          "color": {
-            "accuracy": "lc"
-          },
-          "evaluation": {
-            "artifact": null,
-            "color_flow_ids": [],
-            "helicity_ids": [],
-            "model_parameters": null,
-            "momenta": null,
-            "precision": 16,
-            "process": null,
-            "resolved": false
-          },
-          "evaluator": {
-            "backend": "jit",
-            "batch_size": 128,
-            "cpp": {
-              "compiler": null,
-              "extra_flags": [],
-              "native_arch": false,
-              "optimization": "O3"
-            },
-            "jit": {
-              "optimization_level": 3
-            },
-            "optimization": {
-              "collect_factors": "auto",
-              "cores": 1,
-              "cpe_iterations": null,
-              "horner_iterations": 10,
-              "max_common_pair_cache_entries": 5000000,
-              "max_common_pair_distance": 1000,
-              "max_horner_variables": 1000
-            },
-            "output_chunk_size": 128
-          },
-          "generation": {
-            "emit_api_bundle": true,
-            "mode": "error",
-            "output": null,
-            "validation": {
-              "absolute_tolerance": 1e-300,
-              "enabled": true,
-              "post_build_validation": true,
-              "relative_tolerance": 1e-12,
-              "samples": 10,
-              "seed": 12345
-            },
-            "workers": 1
-          },
-          "model": {
-            "cache": true,
-            "cache_dir": null,
-            "restriction": null,
-            "simplify": true,
-            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
-          },
-          "output": {
-            "color": "auto",
-            "format": "json",
-            "log_level": "info",
-            "progress": "off"
-          },
-          "process": {
-            "coupling_order_policy": "minimal",
-            "entries": [],
-            "flavor_scheme": 5,
-            "max_coupling_orders": {},
-            "max_quark_lines": null,
-            "multiparticles": {}
-          },
-          "schema_version": 1,
-          "symbolica": {
-            "suggest_license": true
-          }
-        },
-        "sample_count": 16850,
-        "standard_deviation_seconds_per_point": 4.1750469283744575e-07,
-        "standard_error_seconds_per_point": 3.2163359781142523e-09,
-        "status": "ok",
-        "timeout_seconds": 3600.0,
-        "wall_seconds_per_point": 4.636552500039704e-06
+        "relative_standard_error": null,
+        "requested_config": null,
+        "sample_count": null,
+        "standard_deviation_seconds_per_point": null,
+        "standard_error_seconds_per_point": null,
+        "status": "not_available",
+        "timeout_seconds": null,
+        "wall_seconds_per_point": null
       },
       "n_final": 2,
       "process": "scalar_0 scalar_0 > graviton graviton",
-      "relative_difference": 1.03750659648492e-15,
-      "status": "ok"
+      "relative_difference": null,
+      "status": "not_available"
     },
     {
       "high_precision_matrix_element": null,
@@ -342,9 +140,9 @@
     4
   ],
   "multiplicity_convention": "final_state",
-  "process_family": "scalar_0 scalar_0 > X*graviton",
+  "process_family": "scalar_0 scalar_0 > n*graviton",
   "report_version": "0.1.0",
   "schema_version": 2,
   "spdx_license_identifier": "0BSD",
-  "updated_at": "2026-07-16T20:17:40+00:00"
+  "updated_at": null
 }
