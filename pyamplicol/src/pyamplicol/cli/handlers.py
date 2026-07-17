@@ -285,7 +285,11 @@ class DefaultCliServices:
         )
 
         compiled = _compile_configured_model(config, require_supported=True)
-        catalog = ModelParticleCatalog(compiled.ir.name, compiled.ir.particles)
+        catalog = ModelParticleCatalog(
+            compiled.ir.name,
+            compiled.ir.particles,
+            compiled.ir.parameters,
+        )
         multiparticles = {
             **catalog.default_multiparticles(),
             **config.process.multiparticles,

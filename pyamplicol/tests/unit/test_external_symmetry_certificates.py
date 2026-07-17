@@ -533,6 +533,27 @@ def test_deformed_adjoint_kernel_disables_local_current_reuse(external_sm) -> No
     assert certificates.adjoint_current_reflection_phases == ()
 
 
+def test_custom_adjoint_propagator_disables_global_symmetries(external_sm) -> None:
+    compiled, model = external_sm
+    original_yang_mills_kinds = model._symmetry_certificates.yang_mills_kernel_kinds
+    propagators = tuple(
+        replace(propagator, custom=True)
+        if propagator.particle == "g"
+        else propagator
+        for propagator in compiled.ir.propagators
+    )
+
+    certificates = derive_external_symmetry_certificates(
+        replace(compiled.ir, propagators=propagators)
+    )
+
+    assert original_yang_mills_kinds
+    assert not (original_yang_mills_kinds & certificates.parity_kernel_kinds)
+    assert certificates.yang_mills_kernel_kinds == frozenset()
+    assert certificates.yang_mills_adjoint_names == frozenset()
+    assert certificates.adjoint_current_reflection_phases == ()
+
+
 def test_chiral_gauge_current_does_not_receive_parity_certificate(external_sm) -> None:
     compiled, _model = external_sm
     vectorlike = next(term for term in compiled.ir.vertex_terms if term.id == 75)
@@ -583,6 +604,52 @@ def test_deformed_quartic_coupling_disables_yang_mills_theorems(external_sm) -> 
     )
     certificates = derive_external_symmetry_certificates(
         replace(compiled.ir, couplings=deformed_couplings)
+    )
+
+    assert certificates.yang_mills_adjoint_names == frozenset()
+    assert certificates.yang_mills_kernel_kinds == frozenset()
+
+
+@pytest.mark.parametrize("field", ("color_expression", "lorentz_expression"))
+def test_rescaled_cubic_tensor_disables_yang_mills_theorems(
+    external_sm,
+    field: str,
+) -> None:
+    compiled, _model = external_sm
+    cubic = next(
+        term for term in compiled.ir.vertex_terms if term.particles == ("g", "g", "g")
+    )
+    deformed_terms = tuple(
+        replace(
+            term,
+            **{field: f"2*({getattr(term, field)})"},
+        )
+        if term.id == cubic.id
+        else term
+        for term in compiled.ir.vertex_terms
+    )
+
+    certificates = derive_external_symmetry_certificates(
+        replace(compiled.ir, vertex_terms=deformed_terms)
+    )
+
+    assert certificates.yang_mills_adjoint_names == frozenset()
+    assert certificates.yang_mills_kernel_kinds == frozenset()
+
+
+def test_duplicate_cubic_term_disables_yang_mills_theorems(external_sm) -> None:
+    compiled, _model = external_sm
+    cubic = next(
+        term for term in compiled.ir.vertex_terms if term.particles == ("g", "g", "g")
+    )
+    duplicate = replace(
+        cubic,
+        id=max(term.id for term in compiled.ir.vertex_terms) + 1,
+        vertex=f"{cubic.vertex}_duplicate",
+    )
+
+    certificates = derive_external_symmetry_certificates(
+        replace(compiled.ir, vertex_terms=(*compiled.ir.vertex_terms, duplicate))
     )
 
     assert certificates.yang_mills_adjoint_names == frozenset()

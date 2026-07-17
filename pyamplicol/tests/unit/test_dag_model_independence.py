@@ -36,6 +36,7 @@ class _StructuralModel(Model):
         vertices: Iterable[Vertex] = (),
         auxiliary_kinds: Mapping[int, str] | None = None,
         trace_reflection_proven: bool = False,
+        single_trace_basis_proven: bool = False,
     ) -> None:
         particle_tuple = tuple(particles)
         super().__init__(
@@ -52,6 +53,7 @@ class _StructuralModel(Model):
         )
         self._auxiliary_kinds = dict(auxiliary_kinds or {})
         self._trace_reflection_proven = bool(trace_reflection_proven)
+        self._single_trace_basis_proven = bool(single_trace_basis_proven)
 
     def color_rep(self, pdg: int) -> int:
         return self._representations[int(pdg)]
@@ -70,6 +72,10 @@ class _StructuralModel(Model):
     def lc_trace_reflection_equivalence_is_proven(self, process: object) -> bool:
         del process
         return self._trace_reflection_proven
+
+    def shared_single_trace_color_basis_is_proven(self, process: object) -> bool:
+        del process
+        return self._single_trace_basis_proven
 
 
 def _process(
@@ -164,6 +170,7 @@ def test_relabelled_adjoint_symmetry_uses_model_role_and_fails_closed() -> None:
         particles=(particle,),
         representations={adjoint: 8},
         massless_adjoint_vectors=(adjoint,),
+        single_trace_basis_proven=True,
     )
 
     proven_engine = ColorEngine(
@@ -206,6 +213,17 @@ def test_relabelled_adjoint_symmetry_uses_model_role_and_fails_closed() -> None:
     assert unproven_engine.shared_lc_orderings is True
     assert unproven_engine.shared_lc_fixed_sink_label is None
     assert unproven_full_engine.shared_single_trace is False
+
+    role_only_model = _StructuralModel(
+        particles=(particle,),
+        representations={adjoint: 8},
+        massless_adjoint_vectors=(adjoint,),
+    )
+    role_only_full_engine = ColorEngine(
+        _single_trace_plan(full_process),
+        role_only_model,
+    )
+    assert role_only_full_engine.shared_single_trace is False
 
 
 def test_color_order_mask_pruning_rejects_plan_roles_not_proven_by_model() -> None:

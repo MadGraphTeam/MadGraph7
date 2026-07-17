@@ -366,6 +366,9 @@ pub(super) fn ext_massive_vector(
     mass: f64,
 ) -> [Complex<f64>; 4] {
     let [energy, px, py, pz] = momentum;
+    if energy < 0.0 {
+        return ext_massive_vector(negate(momentum), -helicity, mass);
+    }
     let sqh = 0.5f64.sqrt();
     let hel = helicity as f64;
     let nsvahl = helicity.abs() as f64;
@@ -409,6 +412,9 @@ where
     T: Real + RealLike + From<f64> + PartialOrd + Clone,
 {
     let energy = momentum[0].clone();
+    if energy.to_f64() < 0.0 {
+        return ext_massive_vector_generic(&negate_generic(momentum), -helicity, mass);
+    }
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
@@ -907,5 +913,44 @@ where
         vec![chi1, chi2]
     } else {
         vec![complex_zero(), complex_zero()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ext_massive_vector, negate};
+
+    fn assert_complex_close(left: num_complex::Complex<f64>, right: num_complex::Complex<f64>) {
+        assert!((left.re - right.re).abs() < 1.0e-13);
+        assert!((left.im - right.im).abs() < 1.0e-13);
+    }
+
+    #[test]
+    fn massive_vector_negative_energy_obeys_crossing_convention() {
+        let momentum = [13.0, 4.0, 8.0, 8.0];
+        for helicity in [-1, 0, 1] {
+            let outgoing = ext_massive_vector(momentum, helicity, 5.0);
+            let incoming = ext_massive_vector(negate(momentum), -helicity, 5.0);
+            for (left, right) in incoming.into_iter().zip(outgoing) {
+                assert_complex_close(left, right);
+            }
+        }
+    }
+
+    #[test]
+    fn massive_vector_is_transverse_for_both_energy_signs() {
+        let momentum = [13.0, 4.0, 8.0, 8.0];
+        for helicity in [-1, 0, 1] {
+            for (candidate, source_helicity) in
+                [(momentum, helicity), (negate(momentum), -helicity)]
+            {
+                let wave = ext_massive_vector(candidate, source_helicity, 5.0);
+                let contraction = candidate[0] * wave[0]
+                    - candidate[1] * wave[1]
+                    - candidate[2] * wave[2]
+                    - candidate[3] * wave[3];
+                assert!(contraction.norm() < 1.0e-12, "{contraction:?}");
+            }
+        }
     }
 }

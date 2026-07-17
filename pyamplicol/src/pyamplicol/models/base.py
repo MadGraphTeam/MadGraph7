@@ -432,6 +432,17 @@ class Model:
         del process
         return False
 
+    def shared_single_trace_color_basis_is_proven(self, process: Any) -> bool:
+        """Return whether NLC/full may use the shared single-trace recursion.
+
+        Adjoint representation metadata alone does not prove that the model's
+        color tensors obey the Yang--Mills trace relations assumed by that
+        optimized recursion. Generic models therefore remain fail-closed.
+        """
+
+        del process
+        return False
+
     def propagator_lowering_rule(
         self,
         particle_id: int,
@@ -529,7 +540,7 @@ class Model:
         particle_id = int(particle_id)
         if self.is_chiral_eligible(particle_id):
             return CrossingIR(chirality_factor=-1, spin_state_factor=-1)
-        if self.is_massless_adjoint_vector(particle_id):
+        if self.source_wavefunction_kind(particle_id) in {"vector", "spin2"}:
             return CrossingIR(helicity_factor=-1, spin_state_factor=-1)
         return CrossingIR()
 

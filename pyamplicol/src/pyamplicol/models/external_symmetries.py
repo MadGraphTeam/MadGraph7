@@ -9,7 +9,7 @@ vertex names, PDG assignments, and coupling-order labels are not proof input.
 from __future__ import annotations
 
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from itertools import permutations, product
 
@@ -21,6 +21,7 @@ from .contracts import (
     CompiledOrientedKernel,
     CompiledParameterRecord,
     CompiledParticleRecord,
+    CompiledPropagatorRecord,
     CompiledVertexTerm,
 )
 from .tensors import (
@@ -97,6 +98,7 @@ def derive_external_symmetry_certificates(
     model_symbols = symbols.model(ir.name)
     particles = {particle.name: particle for particle in ir.particles}
     parameters = {parameter.name: parameter for parameter in ir.parameters}
+    propagators = {propagator.name: propagator for propagator in ir.propagators}
     couplings = {coupling.name: coupling for coupling in ir.couplings}
 
     ym_three_reference = normalize_lorentz_expression(
@@ -104,27 +106,39 @@ def derive_external_symmetry_certificates(
         (3, 3, 3),
         model_symbols=model_symbols,
     ).expression
+    ym_three_color_reference = normalize_color_expression(
+        "UFO::f(1,2,3)",
+        (8, 8, 8),
+    ).expression
     ym_cubic_terms: dict[int, str] = {}
-    ym_coupling_by_adjoint: dict[str, CompiledCouplingRecord] = {}
+    ym_coupling_by_adjoint: dict[str, _sym.Expression] = {}
     vectorlike_terms: set[int] = set()
 
     for term in ir.vertex_terms:
         records = tuple(particles[name] for name in term.particles)
-        if _is_yang_mills_cubic_term(
+        ym_coupling = _yang_mills_cubic_effective_coupling(
             term,
             records,
+            couplings=couplings,
+            ym_three_color_reference=ym_three_color_reference,
             ym_three_reference=ym_three_reference,
             parameters=parameters,
-        ):
+            propagators=propagators,
+        )
+        if ym_coupling is not None:
             adjoint_name = records[0].name
             ym_cubic_terms[term.id] = adjoint_name
-            ym_coupling_by_adjoint.setdefault(adjoint_name, couplings[term.coupling])
+            previous = ym_coupling_by_adjoint.get(adjoint_name, _sym.E("0"))
+            ym_coupling_by_adjoint[adjoint_name] = (
+                previous + ym_coupling
+            ).expand()
             continue
         if _is_vectorlike_gauge_term(
             term,
             records,
             model_symbols=model_symbols,
             parameters=parameters,
+            propagators=propagators,
         ):
             vectorlike_terms.add(term.id)
 
@@ -135,6 +149,7 @@ def derive_external_symmetry_certificates(
         ym_coupling_by_adjoint,
         model_symbols=model_symbols,
         parameters=parameters,
+        propagators=propagators,
     )
     ym_quartic_terms = {
         term_id
@@ -230,30 +245,47 @@ def _yang_mills_sector_is_closed(
     return True
 
 
-def _is_yang_mills_cubic_term(
+def _yang_mills_cubic_effective_coupling(
     term: CompiledVertexTerm,
     particles: tuple[CompiledParticleRecord, ...],
     *,
+    couplings: dict[str, CompiledCouplingRecord],
+    ym_three_color_reference: str,
     ym_three_reference: str,
     parameters: dict[str, CompiledParameterRecord],
-) -> bool:
+    propagators: dict[str, CompiledPropagatorRecord],
+) -> _sym.Expression | None:
     if len(particles) != 3 or len({particle.name for particle in particles}) != 1:
-        return False
+        return None
     particle = particles[0]
-    if not _is_compile_time_massless_adjoint_vector(particle, parameters):
-        return False
+    if not _is_compile_time_massless_adjoint_vector(
+        particle,
+        parameters,
+        propagators,
+    ):
+        return None
     structure, _coefficient = classify_trilinear_color_expression(
         term.color_expression,
         term.color_source,
         tuple(item.color for item in particles),
     )
-    return (
-        structure == "adjoint-structure-constant"
-        and _expressions_are_constant_multiples(
-            term.lorentz_expression,
-            ym_three_reference,
-        )
+    if structure != "adjoint-structure-constant":
+        return None
+    color_ratio = _constant_expression_ratio_exact(
+        _sym.E(term.color_expression),
+        _sym.E(ym_three_color_reference),
     )
+    lorentz_ratio = _constant_expression_ratio_exact(
+        _sym.E(term.lorentz_expression),
+        _sym.E(ym_three_reference),
+    )
+    coupling = couplings.get(term.coupling)
+    if color_ratio is None or lorentz_ratio is None or coupling is None:
+        return None
+    effective = (
+        _sym.E(coupling.expression) * color_ratio * lorentz_ratio
+    ).expand()
+    return None if effective == _sym.E("0") else effective
 
 
 def _is_vectorlike_gauge_term(
@@ -262,6 +294,7 @@ def _is_vectorlike_gauge_term(
     *,
     model_symbols: ModelSymbolRegistry,
     parameters: dict[str, CompiledParameterRecord],
+    propagators: dict[str, CompiledPropagatorRecord],
 ) -> bool:
     if len(particles) != 3:
         return False
@@ -275,7 +308,11 @@ def _is_vectorlike_gauge_term(
         return False
     vector = particles[vector_legs[0]]
     left_fermion, right_fermion = (particles[index] for index in fermion_legs)
-    if not _is_compile_time_massless_adjoint_vector(vector, parameters):
+    if not _is_compile_time_massless_adjoint_vector(
+        vector,
+        parameters,
+        propagators,
+    ):
         return False
     if sorted((left_fermion.color, right_fermion.color)) != [-3, 3]:
         return False
@@ -317,13 +354,14 @@ def _certified_yang_mills_quartic_groups(
     ir: CompiledModelIR,
     particles: dict[str, CompiledParticleRecord],
     couplings: dict[str, CompiledCouplingRecord],
-    cubic_couplings: dict[str, CompiledCouplingRecord],
+    cubic_couplings: dict[str, _sym.Expression],
     *,
     model_symbols: ModelSymbolRegistry,
     parameters: dict[str, CompiledParameterRecord],
+    propagators: dict[str, CompiledPropagatorRecord],
 ) -> dict[str, frozenset[int]]:
-    reference_signatures = Counter(
-        _tensor_product_signature(
+    references = tuple(
+        (
             normalize_color_expression(color, (8, 8, 8, 8)).expression,
             normalize_lorentz_expression(
                 lorentz,
@@ -350,42 +388,105 @@ def _certified_yang_mills_quartic_groups(
         if cubic is None or not _is_compile_time_massless_adjoint_vector(
             particle,
             parameters,
+            propagators,
         ):
             continue
-        actual_signatures = Counter(
-            _tensor_product_signature(term.color_expression, term.lorentz_expression)
-            for term in terms
-        )
-        if actual_signatures != reference_signatures:
-            continue
-        quartic_couplings = {term.coupling for term in terms}
-        if len(quartic_couplings) != 1:
-            continue
-        quartic = couplings[next(iter(quartic_couplings))]
-        if not _has_yang_mills_coupling_relation(cubic, quartic):
+        quartic_coefficients = [_sym.E("0") for _ in references]
+        valid = True
+        for term in terms:
+            matches = tuple(
+                (index, ratio)
+                for index, (color_reference, lorentz_reference) in enumerate(
+                    references
+                )
+                if (
+                    ratio := _tensor_product_ratio(
+                        term.color_expression,
+                        term.lorentz_expression,
+                        color_reference,
+                        lorentz_reference,
+                    )
+                )
+                is not None
+            )
+            coupling = couplings.get(term.coupling)
+            if len(matches) != 1 or coupling is None:
+                valid = False
+                break
+            index, ratio = matches[0]
+            quartic_coefficients[index] = (
+                quartic_coefficients[index]
+                + _sym.E(coupling.expression) * ratio
+            ).expand()
+        if not valid or not _has_yang_mills_coupling_relation(
+            cubic,
+            tuple(quartic_coefficients),
+        ):
             continue
         certified[name] = frozenset(term.id for term in terms)
     return certified
 
 
 def _has_yang_mills_coupling_relation(
-    cubic: CompiledCouplingRecord,
-    quartic: CompiledCouplingRecord,
+    cubic: _sym.Expression,
+    quartic_coefficients: tuple[_sym.Expression, ...],
 ) -> bool:
-    cubic_expression = _sym.E(cubic.expression)
-    if cubic_expression == _sym.E("0"):
+    if cubic == _sym.E("0") or not quartic_coefficients:
         return False
-    ratio = (_sym.E(quartic.expression) / cubic_expression**2).cancel()
+    expected = (_sym.E("1i") * cubic**2).expand()
+    return all(
+        (coefficient - expected).cancel().expand() == _sym.E("0")
+        for coefficient in quartic_coefficients
+    )
+
+
+def _constant_expression_ratio_exact(
+    target: _sym.Expression,
+    reference: _sym.Expression,
+) -> _sym.Expression | None:
+    """Return an exact scalar tensor ratio without converting through float."""
+
+    if reference == _sym.E("0"):
+        return None
+    ratio = (target / reference).cancel()
     if ratio.get_all_symbols(False):
-        return False
-    try:
-        return complex(ratio) == 1j
-    except (RuntimeError, TypeError, ValueError):
-        return False
+        return None
+    if (target - ratio * reference).expand() != _sym.E("0"):
+        return None
+    return ratio
+
+
+def _tensor_product_ratio(
+    color: str,
+    lorentz: str,
+    reference_color: str,
+    reference_lorentz: str,
+) -> _sym.Expression | None:
+    target_candidates = _canonical_tensor_product_expressions(
+        (_sym.E(color) * _sym.E(lorentz)).expand()
+    )
+    reference_candidates = _canonical_tensor_product_expressions(
+        (_sym.E(reference_color) * _sym.E(reference_lorentz)).expand()
+    )
+    for target in target_candidates:
+        for reference in reference_candidates:
+            ratio = _constant_expression_ratio_exact(target, reference)
+            if ratio is not None and ratio != _sym.E("0"):
+                return ratio
+    return None
 
 
 def _tensor_product_signature(color: str, lorentz: str) -> str:
     expression = (_sym.E(color) * _sym.E(lorentz)).expand()
+    return min(
+        str(candidate.to_canonical_string())
+        for candidate in _canonical_tensor_product_expressions(expression)
+    )
+
+
+def _canonical_tensor_product_expressions(
+    expression: _sym.Expression,
+) -> tuple[_sym.Expression, ...]:
     groups: dict[tuple[str, str], list[_sym.Expression]] = defaultdict(list)
     for symbol in expression.get_all_symbols():
         match = _CONTRACTED_INDEX.fullmatch(str(symbol))
@@ -394,7 +495,7 @@ def _tensor_product_signature(color: str, lorentz: str) -> str:
         key = (match.group("family"), match.group("representation") or "index")
         groups[key].append(symbol)
     if not groups:
-        return str(expression.to_canonical_string())
+        return (expression,)
 
     model_symbols = symbols.model("tensor_signature")
     options: list[tuple[dict[_sym.Expression, _sym.Expression], ...]] = []
@@ -412,14 +513,14 @@ def _tensor_product_signature(color: str, lorentz: str) -> str:
             )
         )
 
-    signatures: list[str] = []
+    candidates: list[_sym.Expression] = []
     for substitutions in product(*options):
         candidate = expression
         for mapping in substitutions:
             for source, target in mapping.items():
                 candidate = candidate.replace(source, target)
-        signatures.append(str(candidate.to_canonical_string()))
-    return min(signatures)
+        candidates.append(candidate)
+    return tuple(candidates)
 
 
 def _expressions_are_constant_multiples(target: str, reference: str) -> bool:
@@ -435,7 +536,13 @@ def _expressions_are_constant_multiples(target: str, reference: str) -> bool:
 def _is_compile_time_massless_adjoint_vector(
     particle: CompiledParticleRecord,
     parameters: dict[str, CompiledParameterRecord],
+    propagators: dict[str, CompiledPropagatorRecord],
 ) -> bool:
+    propagator = (
+        None
+        if particle.propagator is None
+        else propagators.get(particle.propagator)
+    )
     return (
         particle.spin == 3
         and particle.color == 8
@@ -443,6 +550,8 @@ def _is_compile_time_massless_adjoint_vector(
         and _parameter_is_compile_time_zero(particle.mass, parameters)
         and particle.propagating
         and particle.ghost_number == 0
+        and propagator is not None
+        and not propagator.custom
     )
 
 
@@ -488,6 +597,7 @@ def _certified_two_source_adjoint_current_reflections(
         if particle is None or not _is_compile_time_massless_adjoint_vector(
             particle,
             parameters,
+            propagators,
         ):
             continue
         propagator = (

@@ -303,6 +303,15 @@ class ExternalModelCatalogMixin:
             self._particle_name_for_leg(leg) in names for leg in legs
         )
 
+    def shared_single_trace_color_basis_is_proven(self, process: Any) -> bool:
+        """Accept shared traces only for the certified Yang--Mills sector."""
+
+        names = self._symmetry_certificates.yang_mills_adjoint_names
+        legs = tuple(getattr(process, "legs", ()))
+        return bool(legs) and all(
+            self._particle_name_for_leg(leg) in names for leg in legs
+        )
+
     def _particle_name_for_leg(self, leg: Any) -> str | None:
         outgoing_pdg = getattr(leg, "outgoing_pdg", None)
         if outgoing_pdg is None:

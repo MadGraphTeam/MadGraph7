@@ -997,6 +997,12 @@ def _massive_vector(
     energy, px, py, pz = momentum
     if mass == 0:
         raise EvaluationError("massive-vector source has zero mass")
+    if energy < 0:
+        return _massive_vector(
+            tuple(-component for component in momentum),
+            -helicity,
+            mass,
+        )
     sqh = _sqrt(_ONE / _TWO, "massive vector source")
     hel = Decimal(helicity)
     nsvahl = Decimal(abs(helicity))

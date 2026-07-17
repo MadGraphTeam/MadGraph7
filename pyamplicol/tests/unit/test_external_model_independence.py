@@ -7,7 +7,11 @@ from pyamplicol.color.plan import build_color_plan
 from pyamplicol.generation.dag_color import ColorEngine
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.models.base import Model, Particle, QuantumNumberFlow, Vertex
-from pyamplicol.models.contracts import CompiledModelIR, CompiledParticleRecord
+from pyamplicol.models.contracts import (
+    CompiledModelIR,
+    CompiledParameterRecord,
+    CompiledParticleRecord,
+)
 from pyamplicol.processes.model import ModelParticleCatalog, build_model_process_ir
 
 
@@ -185,17 +189,56 @@ def test_default_parton_aliases_are_derived_from_particle_metadata() -> None:
             color=3,
             mass="MHEAVY",
         ),
+        _particle(
+            "restricted_massless",
+            "restricted_massless_bar",
+            810_003,
+            spin=2,
+            color=3,
+            mass="MRESTRICTED",
+        ),
+        _particle(
+            "mutable_zero",
+            "mutable_zero_bar",
+            810_004,
+            spin=2,
+            color=3,
+            mass="MMUTABLE",
+        ),
         _particle("singlet", "singlet", 710_001, spin=1, color=1),
+    )
+    parameters = (
+        CompiledParameterRecord(
+            name="MRESTRICTED",
+            nature="internal",
+            parameter_type="real",
+            value=None,
+            expression="0",
+            resolved_expression="0",
+            lhablock=None,
+            lhacode=(),
+        ),
+        CompiledParameterRecord(
+            name="MMUTABLE",
+            nature="external",
+            parameter_type="real",
+            value=(0.0, 0.0),
+            expression=None,
+            resolved_expression="0",
+            lhablock="MASS",
+            lhacode=(810_004,),
+        ),
     )
 
     aliases = ModelParticleCatalog(
         "arbitrary-model-name",
         particles,
+        parameters,
     ).default_multiparticles()
 
     assert aliases == {
-        "p": ("octet_vector", "chi", "chi_bar"),
-        "j": ("octet_vector", "chi", "chi_bar"),
+        "p": ("octet_vector", "chi", "chi_bar", "restricted_massless"),
+        "j": ("octet_vector", "chi", "chi_bar", "restricted_massless"),
     }
 
 

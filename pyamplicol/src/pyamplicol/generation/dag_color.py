@@ -86,11 +86,20 @@ class ColorEngine:
         all_external_massless_adjoint_vectors = (
             self._all_external_massless_adjoint_vectors()
         )
+        try:
+            shared_single_trace_color_basis = (
+                self.model.shared_single_trace_color_basis_is_proven(
+                    color_plan.process
+                )
+            )
+        except (KeyError, NotImplementedError, TypeError, ValueError):
+            shared_single_trace_color_basis = False
         self._shared_single_trace = bool(
             color_plan.color_accuracy in {"nlc", "full"}
             and bool(color_plan.sectors)
             and color_plan_matches_model
             and all_external_massless_adjoint_vectors
+            and shared_single_trace_color_basis
             and all(sector.kind == "single-trace" for sector in color_plan.sectors)
         )
         self._shared_single_trace_words = tuple(

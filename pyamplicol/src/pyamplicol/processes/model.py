@@ -10,6 +10,7 @@ from typing import cast
 
 from ..models.contracts import (
     CompiledModelIR,
+    CompiledParameterRecord,
     CompiledParticleRecord,
     validate_color_representation,
 )
@@ -33,6 +34,7 @@ from .ir import (
 class ModelParticleCatalog:
     model_name: str
     particles: tuple[CompiledParticleRecord, ...]
+    parameters: tuple[CompiledParameterRecord, ...] = ()
 
     def __post_init__(self) -> None:
         names = [particle.name for particle in self.particles]
@@ -114,7 +116,7 @@ class ModelParticleCatalog:
         partons = tuple(
             particle.name
             for particle in self.external_particles
-            if particle.mass.casefold() == "zero"
+            if self._mass_is_compile_time_zero(particle.mass)
             and (
                 (
                     particle.statistics == "fermion"
@@ -127,6 +129,23 @@ class ModelParticleCatalog:
             )
         )
         return {} if not partons else {"p": partons, "j": partons}
+
+    def _mass_is_compile_time_zero(self, name: str) -> bool:
+        if name.casefold() == "zero":
+            return True
+        parameter = next(
+            (parameter for parameter in self.parameters if parameter.name == name),
+            None,
+        )
+        if parameter is None or parameter.nature.casefold() != "internal":
+            return False
+        from ..models import compiler_symbolica as _sym
+
+        _sym._ensure_symbolica()
+        return (
+            _sym.E(parameter.resolved_expression).expand().to_canonical_string()
+            == _sym.E("0").to_canonical_string()
+        )
 
 
 def parse_multiparticle_definitions(
@@ -190,7 +209,7 @@ def build_model_process_ir(
     *,
     color_accuracy: str = "lc",
 ) -> CanonicalProcessIR:
-    catalog = ModelParticleCatalog(model.name, model.particles)
+    catalog = ModelParticleCatalog(model.name, model.particles, model.parameters)
     initial_text, separator, final_text = process.partition(">")
     if not separator or ">" in final_text:
         raise ValueError("invalid collision format; expected 'initial > final'")

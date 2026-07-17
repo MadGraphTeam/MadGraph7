@@ -18,6 +18,7 @@ from pyamplicol.models.contracts import CompiledParticleRecord
 from pyamplicol.models.external_catalog import ExternalModelCatalogMixin
 from pyamplicol.runtime.symbolica_exact import (
     _antiquark_weyl,
+    _massive_vector,
     _particle_mass,
     _quark_weyl,
     _source_wavefunction,
@@ -177,8 +178,12 @@ def test_builtin_source_crossing_is_explicit_and_state_preserving() -> None:
     assert adjoint.crossing.spin_state_factor == -1
 
     singlet_vector = model._source_ir(23)
-    assert singlet_vector.crossing.helicity_factor == 1
-    assert singlet_vector.crossing.spin_state_factor == 1
+    assert singlet_vector.crossing.helicity_factor == -1
+    assert singlet_vector.crossing.spin_state_factor == -1
+    assert tuple(
+        (state.helicity, state.spin_state)
+        for state in map(singlet_vector.crossing.apply, singlet_vector.states)
+    ) == ((1, 1), (0, 0), (-1, -1))
 
 
 def test_external_scalar_and_spin2_sources_are_metadata_driven() -> None:
@@ -200,9 +205,48 @@ def test_external_scalar_and_spin2_sources_are_metadata_driven() -> None:
     assert tuple(state.helicity for state in spin2.states) == (-2, 2)
     assert spin2.crossing.momentum_transform == "negate-four-momentum"
     assert tuple(spin2.crossing.apply(state).helicity for state in spin2.states) == (
-        -2,
         2,
+        -2,
     )
+
+
+@pytest.mark.parametrize("helicity", [-1, 0, 1])
+def test_massive_vector_negative_energy_obeys_crossing_convention(
+    helicity: int,
+) -> None:
+    momentum = tuple(Decimal(value) for value in ("13", "4", "8", "8"))
+    crossed = tuple(-component for component in momentum)
+    mass = Decimal("5")
+
+    assert _massive_vector(crossed, -helicity, mass) == _massive_vector(
+        momentum,
+        helicity,
+        mass,
+    )
+
+
+@pytest.mark.parametrize("helicity", [-1, 0, 1])
+def test_massive_vector_is_transverse_for_both_energy_signs(helicity: int) -> None:
+    momentum = tuple(Decimal(value) for value in ("13", "4", "8", "8"))
+    mass = Decimal("5")
+
+    for candidate, source_helicity in (
+        (momentum, helicity),
+        (tuple(-component for component in momentum), -helicity),
+    ):
+        wave = _massive_vector(candidate, source_helicity, mass)
+        contraction = (
+            candidate[0] * wave[0][0]
+            - candidate[1] * wave[1][0]
+            - candidate[2] * wave[2][0]
+            - candidate[3] * wave[3][0],
+            candidate[0] * wave[0][1]
+            - candidate[1] * wave[1][1]
+            - candidate[2] * wave[2][1]
+            - candidate[3] * wave[3][1],
+        )
+        assert abs(contraction[0]) < Decimal("1e-25")
+        assert abs(contraction[1]) < Decimal("1e-25")
 
 
 def test_source_ir_rejects_inconsistent_statistics() -> None:

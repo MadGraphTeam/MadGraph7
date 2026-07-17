@@ -1159,6 +1159,7 @@ class GenerationBackend:
         catalog = ModelParticleCatalog(
             resolved_model.compiled.ir.name,
             resolved_model.compiled.ir.particles,
+            resolved_model.compiled.ir.parameters,
         )
         run = self._run_config
         multiparticles = None if run is None else run.process.multiparticles

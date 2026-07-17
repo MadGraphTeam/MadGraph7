@@ -553,6 +553,11 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
             for leg in legs
         )
 
+    def shared_single_trace_color_basis_is_proven(self, process: Any) -> bool:
+        """Prove the shared NLC/full trace basis for built-in Yang--Mills."""
+
+        return self.lc_trace_reflection_equivalence_is_proven(process)
+
     def coupling_order_hierarchies(self) -> dict[str, int]:
         return {"QCD": 1, "QED": 2}
 
