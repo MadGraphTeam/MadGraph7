@@ -585,7 +585,7 @@ def test_backend_does_not_advertise_pep660_hooks() -> None:
     assert not [name for name in editable_hooks if hasattr(backend, name)]
 
 
-def test_sdk_build_stages_the_safe_rust_wrapper(
+def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -621,8 +621,8 @@ def test_sdk_build_stages_the_safe_rust_wrapper(
 
     staging = sdk.build_sdk(ROOT, tmp_path / "target")
 
-    rust_source = staging / "rust" / "rusticol.rs"
-    assert rust_source.read_bytes() == (ROOT / sdk.RUST_SDK_SOURCE).read_bytes()
+    assert not (staging / "rust" / "rusticol.rs").exists()
+    assert (ROOT / sdk.RUST_SDK_SOURCE).is_file()
     metadata = json.loads((staging / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["rust_source"] == "rust/rusticol.rs"
 
