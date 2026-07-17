@@ -29,7 +29,7 @@ applies_to = "serialization tool; generated JSON retains source-model terms"
 [[models]]
 id = "built-in-sm"
 format = "python"
-canonical_package_path = "pyamplicol/models/builtin.py"
+canonical_package_path = "pyamplicol/models/builtin/__init__.py"
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/model.py"

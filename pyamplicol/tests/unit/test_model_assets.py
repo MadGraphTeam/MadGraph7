@@ -206,7 +206,7 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
     assert record_paths == set(manifest) - {"PROVENANCE.toml"}
     models = {entry["id"]: entry for entry in provenance["models"]}
     assert models["built-in-sm"]["canonical_package_path"] == (
-        "pyamplicol/models/builtin.py"
+        "pyamplicol/models/builtin/__init__.py"
     )
     assert models["built-in-sm"]["source_sha256"] == (
         "7b3bac9e53193260bf9c2829ef972f87d23246e93dc57f208bda4821195b7ad3"
