@@ -229,6 +229,86 @@ print(json.dumps({"ok": True, "physics": physics[0].detail}, sort_keys=True))
 """
 )
 
+_INSTALLED_BACKEND_AND_PRECISION_SMOKE = (
+    _PATH_ISOLATION_SMOKE
+    + r"""
+import json
+import math
+import os
+from pathlib import Path
+
+from pyamplicol import Generator, Runtime
+from pyamplicol.config import (
+    ColorConfig,
+    EvaluatorBackend,
+    EvaluatorConfig,
+    EvaluatorOptimizationConfig,
+    GenerationConfig,
+    JITConfig,
+    RunConfig,
+    SymbolicaConfig,
+)
+
+root = Path(os.environ["PYAMPLICOL_DEPLOYMENT_SANDBOX"]) / "backend-smoke"
+totals = {}
+for backend in (
+    EvaluatorBackend.JIT,
+    EvaluatorBackend.ASM,
+    EvaluatorBackend.CPP,
+):
+    artifact = root / backend.value
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="lc"),
+        generation=GenerationConfig(workers=1, emit_api_bundle=False),
+        evaluator=EvaluatorConfig(
+            backend=backend,
+            optimization=EvaluatorOptimizationConfig(cores=1),
+            jit=JITConfig(optimization_level=3),
+        ),
+        symbolica=SymbolicaConfig(suggest_license=False),
+    )
+    Generator(config).generate("d d~ > z", artifact)
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process_id = manifest["processes"][0]["id"]
+    validation = json.loads(
+        (
+            artifact
+            / "processes"
+            / process_id
+            / "validation-momenta.json"
+        ).read_text(encoding="utf-8")
+    )
+    momenta = [
+        [
+            [float(component) for component in particle["momentum"]]
+            for particle in validation["points"][0]
+        ]
+    ]
+    runtime = Runtime.load(artifact)
+    total = runtime.evaluate(momenta)[0]
+    resolved = runtime.evaluate_resolved(momenta)
+    assert resolved.total()[0] == total
+    assert math.isclose(total.imag, 0.0, abs_tol=1.0e-15)
+    totals[backend.value] = total.real
+    if backend is EvaluatorBackend.JIT:
+        precise = runtime.evaluate(momenta, precision=80)[0]
+        assert math.isclose(
+            float(precise),
+            total.real,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-15,
+        )
+
+reference = totals[EvaluatorBackend.JIT.value]
+assert all(
+    math.isclose(value, reference, rel_tol=1.0e-12, abs_tol=1.0e-15)
+    for value in totals.values()
+)
+print(json.dumps({"backends": sorted(totals), "total": reference}, sort_keys=True))
+"""
+)
+
 
 @dataclass(frozen=True)
 class DependencyInstallation:
@@ -442,7 +522,9 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
             + " and ".join(missing)
             + " compilers"
         )
-        if mode == "release":
+        if mode == "release" or os.environ.get(
+            "PYAMPLICOL_REQUIRE_NATIVE_TESTS"
+        ) == "1":
             raise ReleaseError(message)
         print(f"Candidate deployment did not run native SDK smoke tests: {message}")
         return None
@@ -922,6 +1004,13 @@ def test_deployment(
         run(
             [python, "-I", "-c", _SYMBOLICA_FREE_F64_SMOKE],
             env=smoke_environment,
+        )
+        backend_environment = dict(smoke_environment)
+        backend_environment["SYMBOLICA_HIDE_BANNER"] = "1"
+        run(
+            [python, "-I", "-c", _INSTALLED_BACKEND_AND_PRECISION_SMOKE],
+            cwd=sandbox,
+            env=backend_environment,
         )
         run(
             [python, "-I", "-m", "pyamplicol", "self-test", "--format", "json"],

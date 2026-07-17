@@ -30,6 +30,16 @@ def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
     assert "for name in sys.modules" in smoke
 
 
+def test_installed_backend_smoke_covers_precision_and_compiled_backends() -> None:
+    smoke = deployment._INSTALLED_BACKEND_AND_PRECISION_SMOKE
+    assert "EvaluatorBackend.JIT" in smoke
+    assert "EvaluatorBackend.ASM" in smoke
+    assert "EvaluatorBackend.CPP" in smoke
+    assert "precision=80" in smoke
+    assert 'Generator(config).generate("d d~ > z", artifact)' in smoke
+    assert "resolved.total()[0] == total" in smoke
+
+
 from _common import ReleaseError, clean_environment  # noqa: E402
 
 
@@ -156,6 +166,24 @@ def test_candidate_native_sdk_smoke_reports_explicit_nonvalidation(
         is False
     )
     assert "did not run native SDK smoke tests" in capsys.readouterr().out
+
+
+def test_candidate_native_sdk_smoke_can_require_all_compilers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_REQUIRE_NATIVE_TESTS", "1")
+    monkeypatch.delenv("CXX", raising=False)
+    monkeypatch.delenv("FC", raising=False)
+    monkeypatch.setattr(deployment.shutil, "which", lambda _name: None)
+
+    with pytest.raises(ReleaseError, match="native SDK validation requires"):
+        deployment._native_sdk_smoke(
+            Path(sys.executable),
+            sandbox=tmp_path,
+            mode="candidate",
+            environment={},
+        )
 
 
 def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(

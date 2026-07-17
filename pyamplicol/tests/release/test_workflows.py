@@ -105,10 +105,15 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "PYAMPLICOL_BUILD_MODE: release" in workflow
     assert "Complete candidate source validation gate" in workflow
     assert workflow.count("needs: candidate-source-validation") == 2
-    assert 'PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"' in workflow
+    assert workflow.count("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == 3
     assert "just source-gate" in workflow
-    assert "tools/release/test_deployment.py" in workflow
+    assert workflow.count("tools/release/test_deployment.py") == 3
     assert "g++ gfortran make" in workflow
+    assert "gcc-c++ gcc-gfortran make" in workflow
+    assert "brew install gcc" in workflow
+    assert workflow.index("Test the installed candidate wheel and native SDK") < (
+        workflow.index("actions/upload-artifact")
+    )
     assert "continue-on-error" not in workflow
 
 
@@ -133,7 +138,7 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     candidate = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
     release = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
 
-    assert candidate.count(MEMORY_WATCHDOG) == 7
+    assert candidate.count(MEMORY_WATCHDOG) == 9
     assert (
         _guarded_count(
             candidate,
@@ -151,9 +156,10 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     assert (
         _guarded_count(
             candidate,
-            r"\.venv/bin/python tools/release/test_deployment\.py",
+            r'(?:\.venv/bin/python|python|"\$PYTHON") '
+            r"tools/release/test_deployment\.py",
         )
-        == 1
+        == 3
     )
     assert (
         _guarded_count(
