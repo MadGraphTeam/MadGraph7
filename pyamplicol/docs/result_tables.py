@@ -3527,6 +3527,13 @@ def _ensure_repo_root_on_path() -> None:
         sys.path.insert(0, root)
 
 
+def _generation_slice_tools() -> tuple[type[object], Callable[..., object]]:
+    _ensure_repo_root_on_path()
+    from tools.developer.generation_slice import GenerationSlice, generate_slice
+
+    return GenerationSlice, generate_slice
+
+
 def _model_source_path(model: ModelSpec) -> Path | None:
     root = _repo_root()
     if model is EXTERNAL_SM or model.profile == EXTERNAL_SM.profile:
@@ -4566,7 +4573,7 @@ def _measure_pyamplicol(
                                 mode="replace",
                             )
                         else:
-                            from tools.developer.generation_slice import generate_slice
+                            _GenerationSlice, generate_slice = _generation_slice_tools()
 
                             generate_slice(
                                 cell.process,
@@ -4712,7 +4719,7 @@ def _measure_pyamplicol_lc_two_workloads(
     fixed_helicity: Mapping[str, object] | None = None,
     previous_measurement: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], object | None]:
-    from tools.developer.generation_slice import GenerationSlice
+    GenerationSlice, _generate_slice = _generation_slice_tools()
 
     old_legacy = _measurement_old_matrix_fields(legacy or {})
     previous_metadata = (
@@ -5220,7 +5227,8 @@ def _compile_dag_for_fixed_helicity_choice(
     from pyamplicol.config import Action
     from pyamplicol.config.resolver import resolve_config
     from pyamplicol.generation.service import GenerationBackend
-    from tools.developer.generation_slice import GenerationSlice
+
+    GenerationSlice, _generate_slice = _generation_slice_tools()
 
     generation_slice = None
     if source_helicities is not None:

@@ -43,6 +43,24 @@ def _measurement_is_na(measurement: object) -> bool:
     )
 
 
+def test_generation_slice_import_guard_restores_repo_root() -> None:
+    root = os.fspath(ROOT)
+    resolved_root = os.fspath(ROOT.resolve())
+    original = list(sys.path)
+    try:
+        sys.path[:] = [
+            entry
+            for entry in sys.path
+            if entry not in {"", root, resolved_root}
+        ]
+        GenerationSlice, generate_slice = report._generation_slice_tools()
+        assert root in sys.path or resolved_root in sys.path
+        assert GenerationSlice.__name__ == "GenerationSlice"
+        assert callable(generate_slice)
+    finally:
+        sys.path[:] = original
+
+
 def test_checked_in_caches_match_schema_and_are_reset_to_na() -> None:
     caches = report.load_caches(report.ReportPaths(DOCS))
     assert len(caches) == 10
