@@ -38,6 +38,11 @@ def test_standard_current_and_amplitude_stages_retain_requested_chunk_size() -> 
     settings = SymbolicaEvaluatorSettings(compiled_output_chunk_size=512)
 
     vector = _stage_symbolica_settings(_stage(slot_width=4), None, settings)
+    auxiliary_tensor = _stage_symbolica_settings(
+        _stage(slot_width=6),
+        None,
+        settings,
+    )
     amplitude = _stage_symbolica_settings(
         _stage(slot_width=16, stage_kind="amplitude"),
         None,
@@ -45,4 +50,5 @@ def test_standard_current_and_amplitude_stages_retain_requested_chunk_size() -> 
     )
 
     assert vector.compiled_output_chunk_size == 512
+    assert auxiliary_tensor.compiled_output_chunk_size == 512
     assert amplitude.compiled_output_chunk_size == 512

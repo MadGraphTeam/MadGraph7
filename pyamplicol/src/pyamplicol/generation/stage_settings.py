@@ -8,7 +8,7 @@ from typing import Any
 
 from .stage_types import GenericCompiledStageBlueprint, GenericStageCompilerBlueprint
 
-_STANDARD_CURRENT_COMPONENT_LIMIT = 4
+_LOW_RANK_CURRENT_COMPONENT_LIMIT = 8
 _HIGH_RANK_CURRENT_CHUNK_LIMIT = 256
 
 
@@ -98,7 +98,7 @@ def _bound_high_rank_current_chunk(
         ),
         default=0,
     )
-    if max_slot_width <= _STANDARD_CURRENT_COMPONENT_LIMIT:
+    if max_slot_width <= _LOW_RANK_CURRENT_COMPONENT_LIMIT:
         return settings
     return replace(
         settings,
