@@ -257,6 +257,33 @@ def test_native_profile_calls_are_bounded_independently_of_wall_repetitions(
     assert result.environment["native_profile_calls_per_block"] == 1
 
 
+def test_native_profile_calls_are_capped_for_long_target_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithNativeWall(clock)
+    config = BenchmarkConfig(
+        target_runtime=20.0,
+        batch_size=2,
+        warmup_runs=2,
+        minimum_samples=5,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.sample_count == 80
+    assert result.environment["native_profile_sample_count"] == 5
+    assert result.environment["native_profile_sample_limit"] == 5
+    assert result.environment["native_profile_calls_per_block"] == pytest.approx(
+        5 / 80
+    )
+    assert runtime.profile_calls == config.warmup_runs + 5
+
+
 def test_benchmark_uses_repeated_native_rusticol_wall_timer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

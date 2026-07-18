@@ -36,6 +36,7 @@ _MAX_REPETITIONS_PER_SAMPLE = 1_000_000_000
 _CALIBRATION_LOWER_RATIO = 0.8
 _CALIBRATION_UPPER_RATIO = 1.25
 _MIN_CLOCK_INTERVAL_SECONDS = 1.0e-12
+_MAX_NATIVE_PROFILE_SAMPLES = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,8 +201,18 @@ class BenchmarkBackend:
                 )
             active_task_id = task_id
             repetitions = calibration.repetitions_per_sample
+            native_profile_sample_limit = min(
+                calibration.sample_count,
+                max(
+                    1,
+                    min(
+                        self._config.minimum_samples,
+                        _MAX_NATIVE_PROFILE_SAMPLES,
+                    ),
+                ),
+            )
             try:
-                for _sample_index in range(calibration.sample_count):
+                for sample_index in range(calibration.sample_count):
                     duration = measure_repetitions(repetitions)
                     native_sample: _NativeProfileSample | None = None
                     profile_duration = 0.0
@@ -209,6 +220,7 @@ class BenchmarkBackend:
                         profiler is not None
                         and evaluator_samples is not None
                         and native_profile_samples is not None
+                        and sample_index < native_profile_sample_limit
                     ):
                         profile_started = time.perf_counter()
                         profile = profiler(
@@ -334,7 +346,10 @@ class BenchmarkBackend:
                 "evaluator_sample_count": len(evaluator_samples),
                 "evaluator_elapsed_seconds": evaluator_elapsed,
                 "native_profile_sample_count": len(evaluator_samples),
-                "native_profile_calls_per_block": 1,
+                "native_profile_sample_limit": native_profile_sample_limit,
+                "native_profile_calls_per_block": (
+                    len(evaluator_samples) / len(samples) if samples else 0.0
+                ),
                 "native_profile_warmup_call_count": self._config.warmup_runs,
                 "native_profile_total_call_count": (
                     self._config.warmup_runs + len(evaluator_samples)
