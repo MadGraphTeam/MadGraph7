@@ -605,6 +605,12 @@ def _source_record(record: Mapping[str, object]) -> dict[str, object]:
 
 
 def _runtime_stage(stage: Mapping[str, object]) -> dict[str, object]:
+    interaction_ids = [
+        int(_mapping(item)["interaction_id"])
+        for item in _sequence(stage["interactions"])
+    ]
+    if len(interaction_ids) != int(stage["interaction_count"]):
+        raise ValueError("runtime stage interaction count is inconsistent")
     return {
         **_select(
             stage,
@@ -617,39 +623,10 @@ def _runtime_stage(stage: Mapping[str, object]) -> dict[str, object]:
             "output_value_slot_ids",
             "interaction_count",
         ),
-        "interactions_compacted": False,
-        "interaction_ids": [],
-        "interactions": [
-            _runtime_interaction(_mapping(item))
-            for item in _sequence(stage["interactions"])
-        ],
+        "interactions_compacted": True,
+        "interaction_ids": interaction_ids,
+        "interactions": [],
     }
-
-
-def _runtime_interaction(record: Mapping[str, object]) -> dict[str, object]:
-    return _select(
-        record,
-        "interaction_id",
-        "vertex_kind",
-        "vertex_particles",
-        "left_current_id",
-        "right_current_id",
-        "result_current_id",
-        "left_slot",
-        "right_slot",
-        "result_slot",
-        "left_value_slot",
-        "right_value_slot",
-        "result_value_slots",
-        "result_requires_propagated_value",
-        "result_requires_unpropagated_value",
-        "momentum_slots",
-        "coupling",
-        "color_weight",
-        "accumulation",
-        "lowering",
-        "full_tensor_network_ready",
-    )
 
 
 def _amplitude_stage(stage: Mapping[str, object]) -> dict[str, object]:

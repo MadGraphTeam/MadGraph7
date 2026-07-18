@@ -103,10 +103,9 @@ def test_execution_plan_is_strict_schema_v3_runtime_dto() -> None:
     for stage in plan["stages"]:
         assert "input_momentum_slot_ids" not in stage
         assert "interaction_evaluation_count" not in stage
-        for interaction in stage["interactions"]:
-            assert "coupling_parameter_names" not in interaction
-            assert "evaluation_group_id" not in interaction
-            assert "evaluation_factor" not in interaction
+        assert stage["interactions_compacted"] is True
+        assert stage["interactions"] == []
+        assert len(stage["interaction_ids"]) == stage["interaction_count"]
 
     amplitude = plan["amplitude_stage"]
     assert "coherent_groups" not in amplitude
