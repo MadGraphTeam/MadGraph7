@@ -30,6 +30,7 @@ from pyamplicol.config import (
     ModelConfig,
     RunConfig,
 )
+from pyamplicol.generation.phase_space import massive_rambo_final_state
 from tools.developer.analytic_oracles import (
     scalar_contact_2to2,
     scalar_gravity_2to2,
@@ -408,6 +409,29 @@ def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
     assert exact.total()[0] == baseline.evaluate_resolved(
         momenta, precision=32
     ).total()[0]
+
+    final_state = massive_rambo_final_state(
+        2,
+        sqrt_s=1000.0,
+        masses=(91.188, 0.0),
+        seed=54321,
+    )
+    alternate = (
+        (500.0, 0.0, 0.0, 500.0),
+        (500.0, 0.0, 0.0, -500.0),
+        *final_state,
+    )
+    mixed_batch = (momenta[0], alternate, momenta[0])
+    assert runtime.evaluate(mixed_batch) == pytest.approx(
+        Runtime.load(artifact).evaluate(mixed_batch),
+        rel=1.0e-13,
+        abs=1.0e-15,
+    )
+    assert runtime.evaluate((alternate,)) == pytest.approx(
+        Runtime.load(artifact).evaluate((alternate,)),
+        rel=1.0e-13,
+        abs=1.0e-15,
+    )
 
 
 @pytest.mark.parametrize("case_name", tuple(EXTERNAL_CASES))

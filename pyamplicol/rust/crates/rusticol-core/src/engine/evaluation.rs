@@ -253,11 +253,11 @@ impl ExecutionRuntime {
         let total_start = Instant::now();
         let n_points = batch.len();
         let state_len = n_points * self.parameter_count;
-        if self.state_scratch_f64.len() != state_len {
-            self.state_scratch_f64.resize(state_len, c64(0.0, 0.0));
-        } else {
-            self.state_scratch_f64.fill(c64(0.0, 0.0));
-        }
+        // Sources, momenta, model parameters, and every generated stage output
+        // are overwritten on each call. Slots that are never generated stay at
+        // their initialization value, so clearing the full state would only
+        // rewrite previously initialized memory between evaluations.
+        self.state_scratch_f64.resize(state_len, c64(0.0, 0.0));
         let state = &mut self.state_scratch_f64;
         let sources = &self.sources;
         let momentum_slots = &self.momentum_slots;
