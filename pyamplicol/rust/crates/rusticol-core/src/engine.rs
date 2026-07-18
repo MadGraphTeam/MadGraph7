@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 #[cfg(feature = "symbolica-runtime")]
 use symbolica::evaluate::JITCompiledEvaluator;
 #[cfg(feature = "symbolica-runtime")]
@@ -1426,6 +1426,8 @@ struct ModelParameterEvaluatorRuntime {
 struct StageRuntime {
     outputs: Vec<(usize, usize)>,
     output_spans: Vec<(usize, usize, usize)>,
+    chunk_outputs: Vec<Vec<(usize, usize)>>,
+    chunk_output_spans: Vec<Vec<(usize, usize, usize)>>,
     input_components: Option<Vec<usize>>,
     input_spans: Vec<(usize, usize, usize)>,
     parameter_scratch_f64: Vec<Complex<f64>>,

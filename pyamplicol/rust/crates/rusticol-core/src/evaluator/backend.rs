@@ -33,6 +33,94 @@ impl EvaluatorGroup {
         self.evaluate_batch(1, params)
     }
 
+    pub(crate) fn output_chunk_lengths(&self) -> Vec<usize> {
+        self.evaluators
+            .iter()
+            .map(|evaluator| evaluator.output_len)
+            .collect()
+    }
+
+    pub(crate) fn is_chunked(&self) -> bool {
+        self.evaluators.len() > 1
+    }
+
+    pub(crate) fn evaluate_chunks_f64_into_state(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+    ) -> RusticolResult<(f64, f64)> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+
+        // Keep timing state out of floating-point registers while generated
+        // evaluators execute. Some native evaluator ABIs use the full SIMD
+        // register file, whereas Duration remains integer-backed.
+        let mut evaluator_elapsed = Duration::ZERO;
+        let mut assign_elapsed = Duration::ZERO;
+        for ((evaluator, outputs), spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(chunk_outputs)
+            .zip(chunk_output_spans)
+        {
+            if params.len() != batch_size * evaluator.input_len {
+                return Err(RusticolError::invalid_argument(format!(
+                    "parameter buffer has length {}, expected {}",
+                    params.len(),
+                    batch_size * evaluator.input_len
+                )));
+            }
+            self.chunk_scratch_f64
+                .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            let eval_start = Instant::now();
+            evaluator.evaluate_f64_batch(batch_size, params, &mut self.chunk_scratch_f64)?;
+            evaluator_elapsed += eval_start.elapsed();
+
+            let assign_start = Instant::now();
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+            assign_elapsed += assign_start.elapsed();
+        }
+        Ok((
+            evaluator_elapsed.as_secs_f64(),
+            assign_elapsed.as_secs_f64(),
+        ))
+    }
+
     pub(crate) fn evaluate_batch_into(
         &mut self,
         batch_size: usize,

@@ -41,6 +41,7 @@ impl StageRuntime {
                 ));
             }
         }
+        outputs.sort_unstable_by_key(|(column, _state_offset)| *column);
         let (input_components, input_spans) =
             if stage.parameter_layout == "stage-local-value-momentum" {
                 let mut map = vec![0usize; stage.parameter_count];
@@ -53,9 +54,13 @@ impl StageRuntime {
                 (None, Vec::new())
             };
         let output_spans = contiguous_output_spans(&outputs);
+        let (chunk_outputs, chunk_output_spans) =
+            localized_chunk_output_layouts(&evaluator.output_chunk_lengths(), &outputs)?;
         Ok(Self {
             outputs,
             output_spans,
+            chunk_outputs,
+            chunk_output_spans,
             input_components,
             input_spans,
             parameter_scratch_f64: Vec::new(),
@@ -70,8 +75,8 @@ impl StageRuntime {
         parameter_count: usize,
         state: &mut [Complex<f64>],
     ) -> RusticolResult<(f64, f64, f64)> {
-        let mut input_pack_s = 0.0;
-        let eval_start;
+        let mut input_pack_elapsed = Duration::ZERO;
+        let evaluator_s;
         if let Some(input_components) = self.input_components.as_ref() {
             let local_parameter_count = input_components.len();
             let pack_start = Instant::now();
@@ -94,19 +99,31 @@ impl StageRuntime {
                     }
                 }
             }
-            input_pack_s = pack_start.elapsed().as_secs_f64();
-            eval_start = Instant::now();
+            input_pack_elapsed = pack_start.elapsed();
+            if self.evaluator.is_chunked() {
+                let (evaluator_s, assign_s) = self.evaluator.evaluate_chunks_f64_into_state(
+                    batch_size,
+                    &self.parameter_scratch_f64,
+                    parameter_count,
+                    state,
+                    &self.chunk_outputs,
+                    &self.chunk_output_spans,
+                )?;
+                return Ok((input_pack_elapsed.as_secs_f64(), evaluator_s, assign_s));
+            }
+            let eval_start = Instant::now();
             self.evaluator.evaluate_batch_into(
                 batch_size,
                 &self.parameter_scratch_f64,
                 &mut self.output_scratch_f64,
             )?;
+            evaluator_s = eval_start.elapsed().as_secs_f64();
         } else {
-            eval_start = Instant::now();
+            let eval_start = Instant::now();
             self.evaluator
                 .evaluate_batch_into(batch_size, state, &mut self.output_scratch_f64)?;
+            evaluator_s = eval_start.elapsed().as_secs_f64();
         }
-        let evaluator_s = eval_start.elapsed().as_secs_f64();
 
         let assign_start = Instant::now();
         for row in 0..batch_size {
@@ -127,7 +144,7 @@ impl StageRuntime {
             }
         }
         Ok((
-            input_pack_s,
+            input_pack_elapsed.as_secs_f64(),
             evaluator_s,
             assign_start.elapsed().as_secs_f64(),
         ))
@@ -234,6 +251,44 @@ impl StageRuntime {
     }
 }
 
+type ChunkOutputs = Vec<Vec<(usize, usize)>>;
+type ChunkOutputSpans = Vec<Vec<(usize, usize, usize)>>;
+
+fn localized_chunk_output_layouts(
+    chunk_lengths: &[usize],
+    outputs: &[(usize, usize)],
+) -> RusticolResult<(ChunkOutputs, ChunkOutputSpans)> {
+    if chunk_lengths.iter().sum::<usize>() != outputs.len() {
+        return Err(RusticolError::invalid_argument(
+            "stage output layout length does not match evaluator output length",
+        ));
+    }
+    let mut chunk_outputs = Vec::with_capacity(chunk_lengths.len());
+    let mut chunk_spans = Vec::with_capacity(chunk_lengths.len());
+    let mut output_offset = 0usize;
+    for chunk_len in chunk_lengths {
+        let chunk_stop = output_offset + *chunk_len;
+        let mut localized = Vec::with_capacity(*chunk_len);
+        for (expected_column, (column, state_offset)) in outputs[output_offset..chunk_stop]
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            let expected_global_column = output_offset + expected_column;
+            if column != expected_global_column {
+                return Err(RusticolError::invalid_argument(
+                    "stage output columns are not contiguous in evaluator order",
+                ));
+            }
+            localized.push((expected_column, state_offset));
+        }
+        chunk_spans.push(contiguous_output_spans(&localized));
+        chunk_outputs.push(localized);
+        output_offset = chunk_stop;
+    }
+    Ok((chunk_outputs, chunk_spans))
+}
+
 pub(crate) fn contiguous_input_spans(input_components: &[usize]) -> Vec<(usize, usize, usize)> {
     if input_components.is_empty() {
         return Vec::new();
@@ -294,5 +349,40 @@ pub(crate) fn contiguous_output_spans(outputs: &[(usize, usize)]) -> Vec<(usize,
         Vec::new()
     } else {
         spans
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunk_output_layouts_are_localized_without_losing_state_offsets() {
+        let outputs = vec![(0, 10), (1, 11), (2, 20), (3, 22), (4, 23)];
+        let (chunks, spans) = localized_chunk_output_layouts(&[2, 3], &outputs).unwrap();
+
+        assert_eq!(chunks[0], vec![(0, 10), (1, 11)]);
+        assert_eq!(chunks[1], vec![(0, 20), (1, 22), (2, 23)]);
+        assert_eq!(spans[0], vec![(0, 10, 2)]);
+        assert_eq!(spans[1], vec![(0, 20, 1), (1, 22, 2)]);
+    }
+
+    #[test]
+    fn chunk_output_layouts_reject_inconsistent_evaluator_metadata() {
+        let length_error = localized_chunk_output_layouts(&[1], &[(0, 10), (1, 11)])
+            .expect_err("chunk lengths must cover every output");
+        assert!(
+            length_error
+                .to_string()
+                .contains("layout length does not match")
+        );
+
+        let order_error = localized_chunk_output_layouts(&[2], &[(0, 10), (2, 11)])
+            .expect_err("output columns must be contiguous");
+        assert!(
+            order_error
+                .to_string()
+                .contains("columns are not contiguous")
+        );
     }
 }
