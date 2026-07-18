@@ -61,6 +61,9 @@ DEFAULT_LEGACY_PROFILE_WARMUP_POINTS = 100
 DEFAULT_LEGACY_PROFILE_MIN_POINTS = 100
 DEFAULT_LEGACY_PROFILE_MAX_POINTS = 100_000
 LEGACY_LC_ALL_FLOW_GENERATION_SOURCE = "shared_generated_library_build"
+ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON = (
+    "original AmpliCol supports at most three open quark lines"
+)
 ALLOW_PARALLEL_SYMBOLICA_ENV = "PYAMPLICOL_REPORT_ALLOW_PARALLEL_SYMBOLICA"
 VALIDATION_RELATIVE_TOLERANCE = 1.0e-8
 VALIDATION_ABSOLUTE_TOLERANCE = 1.0e-15
@@ -3708,6 +3711,11 @@ def _campaign_cell_needs_measurement(
             status = str(entry.get("status", NA_STATUS))
             if status == NA_STATUS:
                 return True
+            if (
+                status == ResultStatus.UNSUPPORTED.value
+                and _matrix_reference_unavailable_by_design(entry)
+            ):
+                return False
             if status in {
                 ResultStatus.ERROR.value,
                 ResultStatus.FAILED.value,
@@ -3976,6 +3984,25 @@ def _measurement_source_provenance_current(
     if not isinstance(metadata, Mapping):
         return False
     return _source_provenance_current(metadata.get("source_provenance"))
+
+
+def _matrix_reference_unavailable_by_design(
+    entry: Mapping[str, object],
+) -> bool:
+    legacy = entry.get("legacy_amplicol")
+    pyamplicol = entry.get("pyamplicol_jit_o3")
+    if not isinstance(legacy, Mapping) or not isinstance(pyamplicol, Mapping):
+        return False
+    if _measurement_status(legacy) != ResultStatus.UNSUPPORTED.value:
+        return False
+    reason = str(legacy.get("failure_message", ""))
+    if ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON not in reason:
+        return False
+    if not _measurement_ok(pyamplicol):
+        return False
+    old_fields = _measurement_old_matrix_fields(pyamplicol)
+    all_flow_status = old_fields.get("all_flow_status")
+    return all_flow_status == ResultStatus.OK.value
 
 
 def _reusable_pyamplicol_generation_seconds(
@@ -4920,11 +4947,24 @@ def _measure_pyamplicol_lc_two_workloads(
             reference_color_order=tuple(normalized_reference_order),
             selected_color_sector_ids=tuple(sorted(selected_sector_ids or ())),
         )
+    else:
+        selected_sector_ids = _selected_lc_sector_ids_for_reference_order(
+            cell.process,
+            spec=spec,
+            reference_order=None,
+            artifact_root=artifact_root,
+        )
+        if selected_sector_ids is not None:
+            selected_slice = GenerationSlice(
+                selected_color_sector_ids=tuple(sorted(selected_sector_ids)),
+            )
+    process_overrides = _pyamplicol_process_overrides_for_process(cell.process)
     selected, selected_points = _measure_pyamplicol(
         cell=cell,
         spec=spec,
         color_accuracy="lc",
         variant_overrides=variant_overrides,
+        process_overrides=process_overrides,
         benchmark_overrides={
             "benchmark.batch_size": 64,
             "evaluator.batch_size": 64,
@@ -4948,51 +4988,36 @@ def _measure_pyamplicol_lc_two_workloads(
             spec=spec,
             artifact_root=artifact_root,
         )
-    all_flow: dict[str, object]
-    if _lc_all_flow_supported(cell.process):
-        all_flow, _all_flow_points = _measure_pyamplicol(
-            cell=cell,
-            spec=spec,
-            color_accuracy="lc",
-            variant_overrides=variant_overrides,
-            benchmark_overrides={
-                "benchmark.batch_size": 64,
-                "evaluator.batch_size": 64,
-                "evaluator.output_chunk_size": 8192,
-            },
-            artifact_root=artifact_root,
-            generation_timeout_seconds=generation_timeout_seconds,
-            target_runtime=target_runtime,
-            cell_cores=cell_cores,
-            generation_slice=GenerationSlice(
-                selected_source_helicities={
-                    int(label): int(helicity)
-                    for label, helicity in fixed_helicity[
-                        "source_helicities"
-                    ].items()
-                }
-            ),
-            points_override=points,
-            artifact_subdir="pyamplicol/all-flows",
-            log_name="pyamplicol-all-flows.log",
-            previous_measurement=(
-                previous_all_flow if isinstance(previous_all_flow, Mapping) else None
-            ),
-        )
-    else:
-        all_flow_artifact_dir = (
-            artifact_root
-            / "cells"
-            / cell.cell_id
-            / _pyamplicol_artifact_subdir("pyamplicol/all-flows")
-        )
-        all_flow = _failure_measurement(
-            ResultStatus.UNSUPPORTED,
-            "LC all-flow fixed-helicity timing is unsupported for more than "
-            "two quark lines",
-            artifact_path=all_flow_artifact_dir,
-            metadata={"cell": cell.as_json()},
-        )
+    all_flow, _all_flow_points = _measure_pyamplicol(
+        cell=cell,
+        spec=spec,
+        color_accuracy="lc",
+        variant_overrides=variant_overrides,
+        process_overrides=process_overrides,
+        benchmark_overrides={
+            "benchmark.batch_size": 64,
+            "evaluator.batch_size": 64,
+            "evaluator.output_chunk_size": 8192,
+        },
+        artifact_root=artifact_root,
+        generation_timeout_seconds=generation_timeout_seconds,
+        target_runtime=target_runtime,
+        cell_cores=cell_cores,
+        generation_slice=GenerationSlice(
+            selected_source_helicities={
+                int(label): int(helicity)
+                for label, helicity in fixed_helicity[
+                    "source_helicities"
+                ].items()
+            }
+        ),
+        points_override=points,
+        artifact_subdir="pyamplicol/all-flows",
+        log_name="pyamplicol-all-flows.log",
+        previous_measurement=(
+            previous_all_flow if isinstance(previous_all_flow, Mapping) else None
+        ),
+    )
 
     combined = dict(selected)
     metadata = dict(
@@ -5086,6 +5111,7 @@ def _measure_pyamplicol_matrix_jit_o3(
             spec=spec,
             color_accuracy=spec.color_accuracy,
             variant_overrides=variant,
+            process_overrides=_pyamplicol_process_overrides_for_process(cell.process),
             artifact_root=artifact_root,
             generation_timeout_seconds=generation_timeout_seconds,
             target_runtime=target_runtime,
@@ -5468,16 +5494,30 @@ def _legacy_direct_color_probe_supported(pdgs: Sequence[int]) -> bool:
     return _legacy_quark_line_count(pdgs) <= 3
 
 
-def _lc_all_flow_supported(process: str) -> bool:
+def _legacy_lc_all_flow_supported(process: str) -> bool:
     _ensure_repo_root_on_path()
     from tools.developer import legacy_amplicol
 
     return _legacy_direct_color_probe_supported(legacy_amplicol.process_pdgs(process))
 
 
+def _pyamplicol_process_overrides_for_process(process: str) -> dict[str, object]:
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    line_count = _legacy_quark_line_count(legacy_amplicol.process_pdgs(process))
+    if line_count <= 3:
+        return {}
+    return {"process.max_quark_lines": line_count}
+
+
 def _legacy_probe_scope_limited(message: object) -> bool:
     text = str(message).lower()
-    return "more than two quarks" in text or "quark lines exceed" in text
+    return (
+        "more than two quarks" in text
+        or "quark lines exceed" in text
+        or ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON.lower() in text
+    )
 
 
 def _legacy_command_record(
@@ -6368,6 +6408,13 @@ def _measure_legacy_amplicol(
                     fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
                     try:
                         source_pdgs = legacy_amplicol.process_pdgs(cell.process)
+                        open_quark_lines = _legacy_quark_line_count(source_pdgs)
+                        if open_quark_lines > 3:
+                            raise legacy_amplicol.LegacyOracleError(
+                                f"{ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON}; "
+                                f"{cell.process} has {open_quark_lines} open "
+                                "quark lines"
+                            )
                         legacy_amplicol.validate_selected_flow_quark_line_scope(
                             source_pdgs,
                             context=cell.process,
@@ -6843,7 +6890,7 @@ def _measure_legacy_amplicol(
                                 cell.process,
                             )
                         if color_accuracy == "lc" and fixed_helicity is not None:
-                            if _lc_all_flow_supported(cell.process):
+                            if _legacy_lc_all_flow_supported(cell.process):
                                 build_color_probe, _build_output = (
                                     _legacy_command_record(
                                         [
@@ -7064,12 +7111,14 @@ def _measure_legacy_amplicol(
             manifest_path=manifest_path,
             limit_gib=limit_gib,
             command=command,
-                metadata={
-                    "cell": cell.as_json(),
-                    "source_provenance": _report_source_provenance(),
-                    "old_matrix_format": {
-                        "status": status.value,
-                        "all_flow_status": status.value,
+            metadata={
+                "cell": cell.as_json(),
+                "source_provenance": _report_source_provenance(),
+                "old_matrix_format": {
+                    "status": status.value,
+                    "all_flow_status": status.value,
+                    "reference_unavailable_reason": str(exc),
+                    "all_flow_reference_unavailable_reason": str(exc),
                 },
             },
         )
@@ -7313,7 +7362,8 @@ def _measure_cell_payload(
             legacy,
             pyamplicol,
             require_all_flow=(
-                spec.color_accuracy == "lc" and _lc_all_flow_supported(cell.process)
+                spec.color_accuracy == "lc"
+                and _legacy_lc_all_flow_supported(cell.process)
             ),
         )
         alignment = _parameter_alignment_for(spec, artifact_root, cell)
