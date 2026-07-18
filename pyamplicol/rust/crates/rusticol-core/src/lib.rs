@@ -10,6 +10,7 @@
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
+mod eager_tables;
 mod engine;
 mod error;
 mod metadata;
@@ -17,6 +18,10 @@ mod metadata;
 pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,
     ProcessAlias, Target, VerifiedArtifact, runtime_target_info,
+};
+pub use eager_tables::{
+    EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY, EagerAttachmentRow,
+    EagerClosureRow, EagerCouplingRow, EagerFinalizationRow, EagerInvocationRow, MISSING_U32,
 };
 pub use engine::{
     NativeColorComponent, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,

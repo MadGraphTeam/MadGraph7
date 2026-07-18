@@ -47,6 +47,11 @@ class EvaluatorBackend(StrEnum):
     CPP = "cpp"
 
 
+class EvaluatorExecutionMode(StrEnum):
+    COMPILED = "compiled"
+    EAGER = "eager"
+
+
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
 _PROCESS_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 
@@ -590,10 +595,40 @@ class CppConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EagerEvaluatorConfig:
+    point_tile_size: int = field(default=1024, metadata=_setting("int"))
+    workspace_mib: int = field(default=256, metadata=_setting("int"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "point_tile_size",
+            _integer(
+                self.point_tile_size,
+                "evaluator.eager.point_tile_size",
+                minimum=1,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "workspace_mib",
+            _integer(
+                self.workspace_mib,
+                "evaluator.eager.workspace_mib",
+                minimum=1,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluatorConfig:
     backend: EvaluatorBackend = field(
         default=EvaluatorBackend.JIT,
         metadata=_setting("str", choices=tuple(EvaluatorBackend)),
+    )
+    execution_mode: EvaluatorExecutionMode = field(
+        default=EvaluatorExecutionMode.COMPILED,
+        metadata=_setting("str", choices=tuple(EvaluatorExecutionMode)),
     )
     batch_size: int = field(default=128, metadata=_setting("int"))
     output_chunk_size: int | None = field(
@@ -604,12 +639,24 @@ class EvaluatorConfig:
     )
     jit: JITConfig = field(default_factory=JITConfig, metadata=_section())
     cpp: CppConfig = field(default_factory=CppConfig, metadata=_section())
+    eager: EagerEvaluatorConfig = field(
+        default_factory=EagerEvaluatorConfig, metadata=_section()
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
             "backend",
             _enum(self.backend, EvaluatorBackend, "evaluator.backend"),
+        )
+        object.__setattr__(
+            self,
+            "execution_mode",
+            _enum(
+                self.execution_mode,
+                EvaluatorExecutionMode,
+                "evaluator.execution_mode",
+            ),
         )
         object.__setattr__(
             self, "batch_size", _integer(self.batch_size, "evaluator.batch_size")
@@ -629,6 +676,8 @@ class EvaluatorConfig:
             raise ConfigurationError("evaluator.jit must be a JITConfig")
         if not isinstance(self.cpp, CppConfig):
             raise ConfigurationError("evaluator.cpp must be a CppConfig")
+        if not isinstance(self.eager, EagerEvaluatorConfig):
+            raise ConfigurationError("evaluator.eager must be an EagerEvaluatorConfig")
 
 
 @dataclass(frozen=True, slots=True)
@@ -823,9 +872,11 @@ __all__ = [
     "ColorMode",
     "CouplingOrderPolicy",
     "CppConfig",
+    "EagerEvaluatorConfig",
     "EvaluationConfig",
     "EvaluatorBackend",
     "EvaluatorConfig",
+    "EvaluatorExecutionMode",
     "EvaluatorOptimizationConfig",
     "GenerationConfig",
     "GenerationMode",

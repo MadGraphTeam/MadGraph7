@@ -315,6 +315,12 @@ def _add_evaluator_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--execution-mode",
+        dest="evaluator.execution_mode",
+        choices=("compiled", "eager"),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--batch-size",
         dest="evaluator.batch_size",
         type=int,
