@@ -545,6 +545,14 @@ class PreparedModelBundle:
     def backend(self) -> PreparedBackend:
         return self.kernel_pack.backend
 
+    def compiled_model_payload(self) -> dict[str, object]:
+        """Return a detached plain-JSON payload for the model deserializer."""
+
+        payload = _thaw_json(self.compiled_model)
+        if not isinstance(payload, dict):  # pragma: no cover - constructor invariant
+            raise PreparedModelBundleError("compiled model root must be an object")
+        return payload
+
     def read_payload(self, member_path: str) -> bytes:
         """Read and revalidate one kernel payload from the archive."""
         normalized = _normalized_member_path(member_path, "member_path")

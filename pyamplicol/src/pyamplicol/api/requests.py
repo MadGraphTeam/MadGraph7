@@ -13,7 +13,13 @@ import pyamplicol as _pyamplicol
 
 from .errors import ModelError
 
-ModelSourceKind: TypeAlias = Literal["built-in-sm", "ufo", "json", "compiled"]
+ModelSourceKind: TypeAlias = Literal[
+    "built-in-sm",
+    "ufo",
+    "json",
+    "compiled",
+    "prepared",
+]
 _PROCESS_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 
 
@@ -32,7 +38,7 @@ class ModelSource:
     simplify: bool = True
 
     def __post_init__(self) -> None:
-        if self.kind not in ("built-in-sm", "ufo", "json", "compiled"):
+        if self.kind not in ("built-in-sm", "ufo", "json", "compiled", "prepared"):
             raise ModelError(f"unsupported model source kind {self.kind!r}")
         if not isinstance(self.simplify, bool):
             raise ModelError("model simplify must be a boolean")
@@ -124,6 +130,8 @@ class ModelSource:
             raise ModelError(f"model source does not exist: {source}")
         if source.is_dir():
             kind: ModelSourceKind = "ufo"
+        elif source.is_file() and source.name.lower().endswith(".pyamplicol-model"):
+            kind = "prepared"
         elif source.is_file() and source.suffix.lower() == ".json":
             lowered_name = source.name.lower()
             kind = (

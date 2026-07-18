@@ -30,6 +30,7 @@ class _CompiledModelPayloadView(Protocol):
     issues: Iterable[object]
     phase_timings: Mapping[str, object]
     conversion_seconds: float
+    prepared_backend: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,6 +288,23 @@ class CompiledModel:
     @property
     def supported(self) -> bool:
         return self._info.supported
+
+    @property
+    def is_prepared(self) -> bool:
+        """Whether this handle owns a validated eager kernel pack."""
+
+        return self.prepared_backend is not None
+
+    @property
+    def prepared_backend(self) -> Literal["jit", "asm", "cpp"] | None:
+        """Backend embedded in the prepared model, if any."""
+
+        backend = getattr(self._payload, "prepared_backend", None)
+        if backend is None:
+            return None
+        if backend not in ("jit", "asm", "cpp"):
+            raise RuntimeError(f"invalid prepared-model backend {backend!r}")
+        return cast(Literal["jit", "asm", "cpp"], backend)
 
     def write(self, path: os.PathLike[str] | str) -> Path:
         """Serialize the compiled model and return its absolute output path."""
