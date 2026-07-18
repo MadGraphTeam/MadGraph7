@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-import json
+import gc
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -456,6 +456,23 @@ class GenerationBackend:
                     )
                     phase.update(1, message=str(write_result.output))
 
+                concrete_requests = tuple(
+                    entry.expanded.request for entry in prepared
+                )
+                validation_points_by_process = {
+                    process.expanded.request.name: process.validation_points
+                    for process in prepared
+                }
+                expected_process_ids = tuple(
+                    process.process_id for process in artifact_processes
+                )
+                del compiled
+                del indexed_compiled
+                del prepared
+                del evaluators
+                del artifact_processes
+                gc.collect()
+
             with reporter.phase(
                 "validation",
                 "Validating generated artifact",
@@ -465,11 +482,8 @@ class GenerationBackend:
                 if validation.post_build_validation:
                     self._validate_generated_artifact(
                         write_result.output,
-                        artifact_processes,
-                        validation_points={
-                            process.expanded.request.name: process.validation_points
-                            for process in prepared
-                        },
+                        expected_process_ids,
+                        validation_points=validation_points_by_process,
                         expected_api_bundle_path=write_result.api_bundle_path,
                     )
                     message = (
@@ -499,7 +513,6 @@ class GenerationBackend:
                 raise
             raise GenerationError(str(exc)) from exc
 
-        concrete_requests = tuple(entry.expanded.request for entry in prepared)
         return GenerationResult(
             output=write_result.output,
             processes=ProcessSet(
@@ -827,7 +840,7 @@ class GenerationBackend:
     def _validate_generated_artifact(
         self,
         output: Path,
-        processes: Sequence[CompiledProcessArtifact],
+        process_ids: Sequence[str],
         *,
         validation_points: Mapping[str, Sequence[ValidationPointRecord]],
         expected_api_bundle_path: str | None,
@@ -838,13 +851,13 @@ class GenerationBackend:
         from pyamplicol.artifacts import load_manifest
 
         manifest = load_manifest(output)
-        expected_ids = {process.process_id for process in processes}
+        expected_ids = set(process_ids)
         actual_ids = {str(process["id"]) for process in manifest.processes}
         if not expected_ids.issubset(actual_ids):
             raise GenerationError("generated artifact omitted concrete processes")
         by_path = {record.path: record for record in manifest.payloads}
-        for process in processes:
-            prefix = f"processes/{process.process_id}"
+        for process_id in process_ids:
+            prefix = f"processes/{process_id}"
             required = {
                 f"{prefix}/physics.json",
                 f"{prefix}/execution.json",
@@ -852,33 +865,17 @@ class GenerationBackend:
             }
             if not required.issubset(by_path):
                 raise GenerationError(
-                    f"artifact payload set is incomplete for {process.process_id!r}"
+                    f"artifact payload set is incomplete for {process_id!r}"
                 )
-            physics = json.loads((output / f"{prefix}/physics.json").read_text())
-            if (
-                physics.get("kind") != "pyamplicol-resolved-physics"
-                or physics.get("process_id") != process.process_id
-            ):
+            runtime = Runtime.load(output, process=process_id)
+            if runtime.physics.process_id != process_id:
                 raise GenerationError(
-                    f"runtime physics identity is invalid for {process.process_id!r}"
-                )
-            execution = json.loads((output / f"{prefix}/execution.json").read_text())
-            compiled = execution.get("compiled")
-            if not isinstance(compiled, Mapping) or not bool(
-                compiled.get("runtime_available")
-            ):
-                raise GenerationError(
-                    f"runtime evaluator is unavailable for {process.process_id!r}"
-                )
-            runtime = Runtime.load(output, process=process.process_id)
-            if runtime.physics.process_id != process.process_id:
-                raise GenerationError(
-                    f"Rusticol selected the wrong process for {process.process_id!r}"
+                    f"Rusticol selected the wrong process for {process_id!r}"
                 )
             validation = self._generation_config.validation
             samples = tuple(
                 point.four_vectors
-                for point in validation_points.get(process.process_id, ())
+                for point in validation_points.get(process_id, ())
                 if point.available
             )
             if validation.enabled and samples:
@@ -887,7 +884,7 @@ class GenerationBackend:
                 if len(total) != len(samples) or len(resolved_total) != len(samples):
                     raise GenerationError(
                         f"Rusticol returned an invalid validation shape for "
-                        f"{process.process_id!r}"
+                        f"{process_id!r}"
                     )
                 for sample_index, (summed, resolved) in enumerate(
                     zip(total, resolved_total, strict=True),
@@ -901,8 +898,8 @@ class GenerationBackend:
                         abs_tol=validation.absolute_tolerance,
                     ):
                         raise GenerationError(
-                            "resolved Rusticol validation does not reduce to the "
-                            f"total for {process.process_id!r} sample {sample_index} "
+                        "resolved Rusticol validation does not reduce to the "
+                        f"total for {process_id!r} sample {sample_index} "
                             f"(absolute difference {difference:.3e})"
                         )
         actual_api_bundle_path = manifest.runtime.get("api_bundle_path")
