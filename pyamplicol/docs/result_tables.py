@@ -53,6 +53,7 @@ REPORT_TEX_INPUTS = (
 )
 DEFAULT_LIMIT_GIB = 800.0
 DEFAULT_GENERATION_TIMEOUT_SECONDS = 3600.0
+DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS = 86400.0
 DEFAULT_WORKERS = 50
 DEFAULT_PARALLEL_CELL_CORES = 1
 DEFAULT_REPORT_TARGET_RUNTIME_SECONDS = 20.0
@@ -67,6 +68,14 @@ ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON = (
 )
 ONE_LINE_NLC_FULL_ORDERING_FIX_REVISION = (
     "cf8017dd393fc000c47f95d97b155ccdba6a5151"
+)
+PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
+    {
+        (
+            "e2149bbdfe9c508e922750b9e22f191edba05b9a",
+            "dda014aa7b3541143b3377705b810cd064720c24",
+        ),
+    }
 )
 ALLOW_PARALLEL_SYMBOLICA_ENV = "PYAMPLICOL_REPORT_ALLOW_PARALLEL_SYMBOLICA"
 VALIDATION_RELATIVE_TOLERANCE = 1.0e-8
@@ -534,7 +543,7 @@ LADDER_SPECS: tuple[LadderSpec, ...] = (
         ),
         CacheKind.PERFORMANCE_LADDER,
         EXTERNAL_SM,
-        tuple(range(1, 7)),
+        tuple(range(1, 10)),
         "d d~ > z + (n-1)g",
         "g",
         Z_VARIANTS,
@@ -956,6 +965,7 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
                 continue
             _refresh_matrix_derived_fields(raw_entry)
     else:
+        matched_ladder_spec: LadderSpec | None = None
         if normalized.get("kind") == CacheKind.PERFORMANCE_LADDER.value:
             dataset_id = str(normalized.get("dataset_id"))
             for spec in LADDER_SPECS:
@@ -963,6 +973,8 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
                     spec.dataset_id == dataset_id
                     and spec.kind == CacheKind.PERFORMANCE_LADDER
                 ):
+                    matched_ladder_spec = spec
+                    normalized["multiplicities"] = list(spec.multiplicities)
                     normalized["variants"] = [
                         variant.as_json() for variant in spec.variants
                     ]
@@ -972,6 +984,40 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
                 continue
             raw_entry["measurement"] = _normalize_measurement(
                 raw_entry.get("measurement")
+            )
+        if matched_ladder_spec is not None:
+            existing: set[tuple[int, str]] = set()
+            for raw_entry in entries:
+                if not isinstance(raw_entry, dict):
+                    continue
+                n_final = raw_entry.get("n_final")
+                variant = raw_entry.get("variant")
+                if isinstance(n_final, int) and isinstance(variant, str):
+                    existing.add((n_final, variant))
+            for n_final in matched_ladder_spec.multiplicities:
+                for variant in matched_ladder_spec.variants:
+                    if (n_final, variant.key) in existing:
+                        continue
+                    entries.append(
+                        {
+                            "n_final": n_final,
+                            "process": matched_ladder_spec.process(n_final),
+                            "variant": variant.key,
+                            "status": NA_STATUS,
+                            "measurement": _empty_measurement(),
+                        }
+                    )
+            variant_order = {
+                variant.key: index
+                for index, variant in enumerate(matched_ladder_spec.variants)
+            }
+            entries.sort(
+                key=lambda entry: (
+                    int(entry.get("n_final", 0)) if isinstance(entry, dict) else 0,
+                    variant_order.get(str(entry.get("variant")), 10_000)
+                    if isinstance(entry, dict)
+                    else 10_000,
+                )
             )
     return normalized
 
@@ -4027,6 +4073,39 @@ def _measurement_source_provenance_current(
     return _source_provenance_current(metadata.get("source_provenance"))
 
 
+def _source_provenance_generation_reusable(provenance: object) -> bool:
+    if _source_provenance_current(provenance):
+        return True
+    if not isinstance(provenance, Mapping):
+        return False
+    current = _report_source_provenance()
+    checked_keys = (
+        "report_version",
+        "cache_schema_version",
+        "compiled_model_schema_version",
+        "model_compiler_version",
+    )
+    if any(provenance.get(key) != current.get(key) for key in checked_keys):
+        return False
+    previous_head = provenance.get("head")
+    current_head = current.get("head")
+    return (
+        isinstance(previous_head, str)
+        and isinstance(current_head, str)
+        and (previous_head, current_head)
+        in PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS
+    )
+
+
+def _measurement_source_provenance_generation_reusable(
+    measurement: Mapping[str, object],
+) -> bool:
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return False
+    return _source_provenance_generation_reusable(metadata.get("source_provenance"))
+
+
 def _measurement_source_revision(
     measurement: Mapping[str, object],
 ) -> str | None:
@@ -4100,7 +4179,7 @@ def _reusable_pyamplicol_generation_seconds(
     )
     if previous_generation_seconds is None:
         return None
-    if not _measurement_source_provenance_current(previous_measurement):
+    if not _measurement_source_provenance_generation_reusable(previous_measurement):
         return None
     if not _pyamplicol_generation_profile_current(previous_measurement):
         return None
@@ -7377,6 +7456,7 @@ def _measure_cell_payload(
     *,
     artifact_root: Path,
     generation_timeout_seconds: float,
+    jit_o3_generation_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
     limit_gib: float,
@@ -7431,7 +7511,7 @@ def _measure_cell_payload(
             spec=spec,
             legacy=legacy,
             artifact_root=artifact_root,
-            generation_timeout_seconds=generation_timeout_seconds,
+            generation_timeout_seconds=jit_o3_generation_timeout_seconds,
             target_runtime=target_runtime,
             cell_cores=cell_cores,
             points=points,
@@ -7489,13 +7569,18 @@ def _measure_cell_payload(
                 ),
             )
         else:
+            py_generation_timeout_seconds = (
+                jit_o3_generation_timeout_seconds
+                if variant.key == "jit_o3"
+                else generation_timeout_seconds
+            )
             measurement, _points = _measure_pyamplicol_lc_two_workloads(
                 cell=cell,
                 spec=spec,
                 variant_overrides=variant.config_overrides,
                 legacy=None,
                 artifact_root=artifact_root,
-                generation_timeout_seconds=generation_timeout_seconds,
+                generation_timeout_seconds=py_generation_timeout_seconds,
                 target_runtime=target_runtime,
                 cell_cores=cell_cores,
                 points=points,
@@ -7528,7 +7613,7 @@ def _measure_cell_payload(
         color_accuracy="lc",
         variant_overrides={},
         artifact_root=artifact_root,
-        generation_timeout_seconds=generation_timeout_seconds,
+        generation_timeout_seconds=jit_o3_generation_timeout_seconds,
         target_runtime=target_runtime,
         cell_cores=cell_cores,
         high_precision=True,
@@ -7736,6 +7821,7 @@ def _worker_command(
     artifact_root: Path,
     limit_gib: float,
     generation_timeout_seconds: float,
+    jit_o3_generation_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
 ) -> list[str]:
@@ -7758,6 +7844,8 @@ def _worker_command(
         f"{limit_gib:g}",
         "--generation-timeout-seconds",
         f"{generation_timeout_seconds:g}",
+        "--jit-o3-generation-timeout-seconds",
+        f"{jit_o3_generation_timeout_seconds:g}",
         "--target-runtime",
         f"{target_runtime:g}",
         "--cell-cores",
@@ -7829,18 +7917,35 @@ def _run_worker_command(
 def _campaign_worker_timeout_seconds(
     cell: CampaignCell,
     generation_timeout_seconds: float,
+    jit_o3_generation_timeout_seconds: float,
 ) -> float | None:
-    if generation_timeout_seconds <= 0:
+    if generation_timeout_seconds <= 0 or jit_o3_generation_timeout_seconds <= 0:
         return None
     if cell.kind == "matrix":
         spec = _spec_by_dataset()[cell.dataset_id]
         assert isinstance(spec, MatrixSpec)
-        generation_workloads = 3 if spec.color_accuracy == "lc" else 2
+        workload_timeouts = (
+            [generation_timeout_seconds, jit_o3_generation_timeout_seconds]
+            if spec.color_accuracy != "lc"
+            else [
+                generation_timeout_seconds,
+                jit_o3_generation_timeout_seconds,
+                jit_o3_generation_timeout_seconds,
+            ]
+        )
     elif cell.kind == "performance_ladder":
-        generation_workloads = 1 if cell.variant == "reference" else 2
+        if cell.variant == "reference":
+            workload_timeouts = [generation_timeout_seconds]
+        else:
+            variant_timeout_seconds = (
+                jit_o3_generation_timeout_seconds
+                if cell.variant == "jit_o3"
+                else generation_timeout_seconds
+            )
+            workload_timeouts = [variant_timeout_seconds, variant_timeout_seconds]
     else:
-        generation_workloads = 1
-    return generation_workloads * generation_timeout_seconds + 900.0
+        workload_timeouts = [jit_o3_generation_timeout_seconds]
+    return sum(workload_timeouts) + 900.0
 
 
 def _worker_log_reports_memory_limit(log_path: Path) -> bool:
@@ -7860,6 +7965,7 @@ def _execute_campaign_cell(
     artifact_root: Path,
     limit_gib: float,
     generation_timeout_seconds: float,
+    jit_o3_generation_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
 ) -> dict[str, object]:
@@ -7875,12 +7981,14 @@ def _execute_campaign_cell(
         artifact_root=artifact_root,
         limit_gib=limit_gib,
         generation_timeout_seconds=generation_timeout_seconds,
+        jit_o3_generation_timeout_seconds=jit_o3_generation_timeout_seconds,
         target_runtime=target_runtime,
         cell_cores=cell_cores,
     )
     worker_timeout_seconds = _campaign_worker_timeout_seconds(
         cell,
         generation_timeout_seconds,
+        jit_o3_generation_timeout_seconds,
     )
     code = _run_worker_command(
         command,
@@ -8104,6 +8212,7 @@ class ReportService:
         artifact_root: Path,
         limit_gib: float,
         generation_timeout_seconds: float,
+        jit_o3_generation_timeout_seconds: float,
         target_runtime: float,
         cell_cores: int,
         refresh_pdf: Literal["always", "never"],
@@ -8140,6 +8249,9 @@ class ReportService:
                         "effective_workers": effective_workers,
                         "limit_gib": limit_gib,
                         "generation_timeout_seconds": generation_timeout_seconds,
+                        "jit_o3_generation_timeout_seconds": (
+                            jit_o3_generation_timeout_seconds
+                        ),
                         "target_runtime": target_runtime,
                         "cell_count": len(cells),
                     },
@@ -8168,6 +8280,8 @@ class ReportService:
             print(
                 "campaign start: "
                 f"cells={len(cells)} workers={effective_workers} "
+                f"generation_timeout={generation_timeout_seconds:g}s "
+                f"jit_o3_generation_timeout={jit_o3_generation_timeout_seconds:g}s "
                 f"target_runtime={target_runtime:g}s "
                 f"artifact_root={artifact_root}",
                 file=sys.stderr,
@@ -8191,6 +8305,9 @@ class ReportService:
                         artifact_root=artifact_root,
                         limit_gib=limit_gib,
                         generation_timeout_seconds=generation_timeout_seconds,
+                        jit_o3_generation_timeout_seconds=(
+                            jit_o3_generation_timeout_seconds
+                        ),
                         target_runtime=target_runtime,
                         cell_cores=cell_cores,
                     ): cell
@@ -8210,7 +8327,11 @@ class ReportService:
                                 message=str(exc),
                                 artifact_root=artifact_root,
                                 limit_gib=limit_gib,
-                                timeout_seconds=generation_timeout_seconds,
+                                timeout_seconds=_campaign_worker_timeout_seconds(
+                                    cell,
+                                    generation_timeout_seconds,
+                                    jit_o3_generation_timeout_seconds,
+                                ),
                             ),
                         }
                     raw_cell = payload.get("cell")
@@ -8376,6 +8497,16 @@ def _parser() -> argparse.ArgumentParser:
         "--generation-timeout-seconds",
         type=float,
         default=DEFAULT_GENERATION_TIMEOUT_SECONDS,
+        help=(
+            "Generation cap for original AmpliCol, JIT O1, ASM, and C++ "
+            "workloads."
+        ),
+    )
+    populate.add_argument(
+        "--jit-o3-generation-timeout-seconds",
+        type=float,
+        default=DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS,
+        help="Generation cap for report-default pyAmpliCol JIT O3 workloads.",
     )
     populate.add_argument(
         "--target-runtime",
@@ -8471,6 +8602,11 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_GENERATION_TIMEOUT_SECONDS,
     )
     worker.add_argument(
+        "--jit-o3-generation-timeout-seconds",
+        type=float,
+        default=DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS,
+    )
+    worker.add_argument(
         "--target-runtime",
         type=float,
         default=DEFAULT_REPORT_TARGET_RUNTIME_SECONDS,
@@ -8530,6 +8666,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 artifact_root=args.artifact_root,
                 limit_gib=args.limit_gib,
                 generation_timeout_seconds=args.generation_timeout_seconds,
+                jit_o3_generation_timeout_seconds=(
+                    args.jit_o3_generation_timeout_seconds
+                ),
                 target_runtime=args.target_runtime,
                 cell_cores=args.cell_cores,
                 refresh_pdf=args.refresh_pdf,
@@ -8555,6 +8694,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             cell,
             artifact_root=args.artifact_root,
             generation_timeout_seconds=args.generation_timeout_seconds,
+            jit_o3_generation_timeout_seconds=args.jit_o3_generation_timeout_seconds,
             target_runtime=args.target_runtime,
             cell_cores=args.cell_cores,
             limit_gib=args.limit_gib,
