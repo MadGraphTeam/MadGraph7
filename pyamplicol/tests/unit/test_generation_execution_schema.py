@@ -23,6 +23,10 @@ def test_execution_plan_is_strict_schema_v3_runtime_dto() -> None:
         model,
         process_id="ddbar_z",
     )
+    for stage in schema["stages"]:
+        assert stage["interactions_compacted"] is True
+        assert stage["interactions"] == []
+        assert len(stage["interaction_ids"]) == stage["interaction_count"]
 
     for leg in schema["external_particles"]:
         assert "particle_class" not in leg

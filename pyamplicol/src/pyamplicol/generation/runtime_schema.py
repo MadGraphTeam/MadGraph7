@@ -77,7 +77,6 @@ def build_runtime_schema(
     stages = _stage_records(
         dag,
         model,
-        current_slots=current_slots,
         value_slots=value_slots,
         momentum_slot_by_mask=momentum_slot_by_mask,
     )
@@ -283,7 +282,6 @@ def _stage_records(
     dag: GenericDAG,
     model: Model,
     *,
-    current_slots: Sequence[Mapping[str, object]],
     value_slots: Mapping[tuple[int, str], Mapping[str, object]],
     momentum_slot_by_mask: Mapping[int, int],
 ) -> list[dict[str, object]]:
@@ -295,17 +293,6 @@ def _stage_records(
     stages: list[dict[str, object]] = []
     for stage_index, size in enumerate(sorted(by_size), start=1):
         interactions = by_size[size]
-        records = [
-            _interaction_record(
-                dag,
-                model,
-                interaction,
-                current_slots=current_slots,
-                value_slots=value_slots,
-                momentum_slot_by_mask=momentum_slot_by_mask,
-            )
-            for interaction in interactions
-        ]
         input_current_ids = {
             current_id
             for interaction in interactions
@@ -313,19 +300,32 @@ def _stage_records(
         }
         output_current_ids = {interaction.result_id for interaction in interactions}
         input_value_slot_ids = {
-            int(record[side]["value_slot_id"])
-            for record in records
-            for side in ("left_value_slot", "right_value_slot")
+            int(
+                _input_value_slot(
+                    dag.currents[current_id],
+                    model,
+                    value_slots,
+                )["value_slot_id"]
+            )
+            for interaction in interactions
+            for current_id in (interaction.left_id, interaction.right_id)
         }
         output_value_slot_ids = {
             int(slot["value_slot_id"])
-            for record in records
-            for slot in _mapping_sequence(record["result_value_slots"])
+            for interaction in interactions
+            for slot in _result_value_slots(
+                dag.currents[interaction.result_id],
+                value_slots,
+            )
         }
         momentum_ids = {
-            int(slot_id)
-            for record in records
-            for slot_id in _mapping(record["momentum_slots"]).values()
+            int(momentum_slot_by_mask[dag.currents[current_id].index.momentum_mask])
+            for interaction in interactions
+            for current_id in (
+                interaction.left_id,
+                interaction.right_id,
+                interaction.result_id,
+            )
         }
         stages.append(
             {
@@ -337,7 +337,7 @@ def _stage_records(
                 "input_value_slot_ids": sorted(input_value_slot_ids),
                 "output_value_slot_ids": sorted(output_value_slot_ids),
                 "input_momentum_slot_ids": sorted(momentum_ids),
-                "interaction_count": len(records),
+                "interaction_count": len(interactions),
                 "interaction_evaluation_count": len(
                     {
                         (
@@ -349,68 +349,12 @@ def _stage_records(
                         for interaction in interactions
                     }
                 ),
-                "interaction_ids": [],
-                "interactions_compacted": False,
-                "interactions": records,
+                "interaction_ids": [interaction.id for interaction in interactions],
+                "interactions_compacted": True,
+                "interactions": [],
             }
         )
     return stages
-
-
-def _interaction_record(
-    dag: GenericDAG,
-    model: Model,
-    interaction: InteractionNode,
-    *,
-    current_slots: Sequence[Mapping[str, object]],
-    value_slots: Mapping[tuple[int, str], Mapping[str, object]],
-    momentum_slot_by_mask: Mapping[int, int],
-) -> dict[str, object]:
-    left = dag.currents[interaction.left_id]
-    right = dag.currents[interaction.right_id]
-    result = dag.currents[interaction.result_id]
-    left_value = _input_value_slot(left, model, value_slots)
-    right_value = _input_value_slot(right, model, value_slots)
-    result_values = _result_value_slots(result, value_slots)
-    rule = model.vertex_lowering_rule(interaction.vertex_kind)
-    return {
-        "interaction_id": interaction.id,
-        "vertex_kind": interaction.vertex_kind,
-        "vertex_particles": list(interaction.vertex_particles),
-        "left_current_id": interaction.left_id,
-        "right_current_id": interaction.right_id,
-        "result_current_id": interaction.result_id,
-        "left_slot": _current_slot_ref(current_slots[interaction.left_id]),
-        "right_slot": _current_slot_ref(current_slots[interaction.right_id]),
-        "result_slot": _current_slot_ref(current_slots[interaction.result_id]),
-        "left_value_slot": _value_slot_ref(left_value),
-        "right_value_slot": _value_slot_ref(right_value),
-        "result_value_slots": [_value_slot_ref(slot) for slot in result_values],
-        "result_requires_propagated_value": any(
-            slot["variant"] == "propagated" for slot in result_values
-        ),
-        "result_requires_unpropagated_value": any(
-            slot["variant"] == "unpropagated" for slot in result_values
-        ),
-        "momentum_slots": {
-            "left": momentum_slot_by_mask[left.index.momentum_mask],
-            "right": momentum_slot_by_mask[right.index.momentum_mask],
-            "result": momentum_slot_by_mask[result.index.momentum_mask],
-        },
-        "coupling": list(interaction.coupling),
-        "coupling_parameter_names": runtime_coupling_parameter_names(
-            interaction.vertex_kind,
-            interaction.vertex_particles,
-            interaction.coupling,
-            model=model,
-        ),
-        "color_weight": list(interaction.color_weight),
-        "evaluation_group_id": interaction.evaluation_group_id,
-        "evaluation_factor": list(interaction.evaluation_factor),
-        "accumulation": "sum-into-result-current",
-        "lowering": rule.to_json_dict(),
-        "full_tensor_network_ready": interaction.full_tensor_network_ready,
-    }
 
 
 def _model_parameter_records(
@@ -833,18 +777,6 @@ def _result_value_slots(
     if current.is_source:
         return (value_slots[(current.id, "source")],)
     raise ValueError(f"result current {current.id} has no runtime value slots")
-
-
-def _current_slot_ref(slot: Mapping[str, object]) -> dict[str, object]:
-    return {
-        key: slot[key]
-        for key in (
-            "current_id",
-            "component_start",
-            "component_stop",
-            "dimension",
-        )
-    }
 
 
 def _value_slot_ref(slot: Mapping[str, object]) -> dict[str, object]:

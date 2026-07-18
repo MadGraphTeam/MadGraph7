@@ -605,10 +605,15 @@ def _source_record(record: Mapping[str, object]) -> dict[str, object]:
 
 
 def _runtime_stage(stage: Mapping[str, object]) -> dict[str, object]:
-    interaction_ids = [
-        int(_mapping(item)["interaction_id"])
-        for item in _sequence(stage["interactions"])
-    ]
+    interactions_compacted = bool(stage.get("interactions_compacted", False))
+    interaction_ids = (
+        [int(value) for value in _sequence(stage.get("interaction_ids", []))]
+        if interactions_compacted
+        else [
+            int(_mapping(item)["interaction_id"])
+            for item in _sequence(stage["interactions"])
+        ]
+    )
     if len(interaction_ids) != int(stage["interaction_count"]):
         raise ValueError("runtime stage interaction count is inconsistent")
     return {
