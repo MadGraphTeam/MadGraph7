@@ -100,9 +100,17 @@ class ArtifactBuilder:
         *,
         role: str,
         process_id: str | None = None,
+        compact: bool = False,
     ) -> PayloadRecord:
         content = (
-            json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
+            json.dumps(
+                value,
+                indent=None if compact else 2,
+                separators=(",", ":") if compact else None,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            + "\n"
         ).encode("utf-8")
         return self.add_bytes(
             relative,

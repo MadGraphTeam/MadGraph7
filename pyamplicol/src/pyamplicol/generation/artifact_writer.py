@@ -315,12 +315,14 @@ def _write_process_payloads(
         physics,
         role="runtime-physics",
         process_id=process.process_id,
+        compact=True,
     )
     builder.add_json(
         execution_path,
         _execution_manifest(process, schema),
         role="evaluator-manifest",
         process_id=process.process_id,
+        compact=True,
     )
     builder.add_json(
         validation_path,

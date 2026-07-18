@@ -101,6 +101,31 @@ def _build(
         )
 
 
+def test_builder_writes_compact_machine_json(tmp_path: Path) -> None:
+    root = tmp_path / "artifact"
+    with ArtifactBuilder(root) as builder:
+        builder.add_json(
+            "physics/process.json",
+            {"beta": [1, 2], "alpha": True},
+            role="runtime-physics",
+            process_id="dd_to_z",
+            compact=True,
+        )
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=_producer(),
+            model=_model(),
+            configuration=_configuration(),
+            processes=[_process()],
+            default_process_id="dd_to_z",
+            runtime=_runtime(),
+        )
+
+    assert (root / "physics/process.json").read_text(encoding="utf-8") == (
+        '{"alpha":true,"beta":[1,2]}\n'
+    )
+
+
 def test_builder_round_trip_and_tamper_detection(tmp_path: Path) -> None:
     root = tmp_path / "artifact"
     _build(root)
