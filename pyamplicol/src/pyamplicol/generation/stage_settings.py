@@ -8,6 +8,9 @@ from typing import Any
 
 from .stage_types import GenericCompiledStageBlueprint, GenericStageCompilerBlueprint
 
+_STANDARD_CURRENT_COMPONENT_LIMIT = 4
+_HIGH_RANK_CURRENT_CHUNK_LIMIT = 256
+
 
 def _stage_symbolica_settings(
     stage: GenericCompiledStageBlueprint,
@@ -17,7 +20,9 @@ def _stage_symbolica_settings(
     current_stage_position: int | None = None,
     current_stage_count: int | None = None,
 ) -> Any:
-    """Apply the optional recursion-stage output-chunk taper."""
+    """Derive the stage-specific evaluator output-chunk policy."""
+
+    settings = _bound_high_rank_current_chunk(stage, settings)
 
     strategy = getattr(settings, "output_chunk_strategy", "uniform")
     if strategy == "auto":
@@ -71,3 +76,31 @@ def _stage_symbolica_settings(
     else:
         chunk_size = int(base) * 2
     return replace(settings, compiled_output_chunk_size=chunk_size)
+
+
+def _bound_high_rank_current_chunk(
+    stage: GenericCompiledStageBlueprint,
+    settings: Any,
+) -> Any:
+    """Keep native evaluators for higher-rank current states at a safe size."""
+
+    chunk_size = getattr(settings, "compiled_output_chunk_size", None)
+    if (
+        chunk_size is None
+        or int(chunk_size) <= _HIGH_RANK_CURRENT_CHUNK_LIMIT
+        or str(stage.stage_kind).startswith("amplitude")
+    ):
+        return settings
+    max_slot_width = max(
+        (
+            int(slot.output_stop) - int(slot.output_start)
+            for slot in stage.output_slots
+        ),
+        default=0,
+    )
+    if max_slot_width <= _STANDARD_CURRENT_COMPONENT_LIMIT:
+        return settings
+    return replace(
+        settings,
+        compiled_output_chunk_size=_HIGH_RANK_CURRENT_CHUNK_LIMIT,
+    )
