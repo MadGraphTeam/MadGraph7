@@ -12,6 +12,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -135,7 +136,10 @@ def _fortran_sign(value: Decimal, sign_source: Decimal) -> Decimal:
 
 @dataclass(slots=True)
 class _ExactEvaluator:
-    chunks: tuple[Any, ...]
+    input_len: int
+    evaluator: Any | None = None
+    chunks: tuple[_ExactEvaluator, ...] = ()
+    chunk_input_indices: tuple[tuple[int, ...], ...] = ()
 
     @classmethod
     def load(cls, manifest: Mapping[str, object], root: Path) -> _ExactEvaluator:
@@ -146,14 +150,51 @@ class _ExactEvaluator:
                 raw_chunks, Sequence
             ):
                 raise ArtifactError("chunked evaluator has no chunk list")
-            evaluators: list[Any] = []
+            evaluators: list[_ExactEvaluator] = []
             for raw_chunk in raw_chunks:
                 if not isinstance(raw_chunk, Mapping):
                     raise ArtifactError("chunked evaluator entry is not an object")
-                evaluators.extend(cls.load(raw_chunk, root).chunks)
+                evaluators.append(cls.load(raw_chunk, root))
             if not evaluators:
                 raise ArtifactError("chunked evaluator has no evaluators")
-            return cls(tuple(evaluators))
+            raw_input_len = manifest.get("input_len")
+            raw_input_indices = manifest.get("chunk_input_indices")
+            if raw_input_len is None and raw_input_indices is None:
+                child_lengths = {evaluator.input_len for evaluator in evaluators}
+                if len(child_lengths) != 1:
+                    raise ArtifactError(
+                        "legacy chunked evaluator children have inconsistent inputs"
+                    )
+                input_len = child_lengths.pop()
+                input_indices = tuple(
+                    tuple(range(input_len)) for _evaluator in evaluators
+                )
+            elif isinstance(raw_input_len, int) and not isinstance(
+                raw_input_len, bool
+            ) and isinstance(raw_input_indices, Sequence) and not isinstance(
+                raw_input_indices, str | bytes
+            ):
+                input_len = raw_input_len
+                input_indices = tuple(
+                    _exact_chunk_input_indices(indices, input_len)
+                    for indices in raw_input_indices
+                )
+            else:
+                raise ArtifactError("chunked evaluator input metadata is incomplete")
+            if len(input_indices) != len(evaluators):
+                raise ArtifactError(
+                    "chunked evaluator input maps do not match evaluator chunks"
+                )
+            for evaluator, indices in zip(evaluators, input_indices, strict=True):
+                if len(indices) != evaluator.input_len:
+                    raise ArtifactError(
+                        "chunked evaluator input map has inconsistent length"
+                    )
+            return cls(
+                input_len=input_len,
+                chunks=tuple(evaluators),
+                chunk_input_indices=input_indices,
+            )
 
         state_path = manifest.get("evaluator_state_path")
         if not isinstance(state_path, str) or not state_path:
@@ -182,8 +223,18 @@ class _ExactEvaluator:
                 f"could not read retained Symbolica evaluator state {path}: {exc}"
             ) from exc
         try:
-            return cls((Evaluator.load(state),))
+            raw_leaf_input_len = manifest.get("input_len")
+            if isinstance(raw_leaf_input_len, bool) or not isinstance(
+                raw_leaf_input_len, int
+            ):
+                raise ArtifactError("evaluator state has no valid input length")
+            return cls(
+                input_len=raw_leaf_input_len,
+                evaluator=Evaluator.load(state),
+            )
         except Exception as exc:
+            if isinstance(exc, ArtifactError):
+                raise
             raise CompatibilityError(
                 f"Symbolica could not load retained evaluator state {path}: {exc}"
             ) from exc
@@ -194,24 +245,64 @@ class _ExactEvaluator:
         precision: int,
     ) -> tuple[_ComplexDecimal, ...]:
         prepared_values = _upcast_complex_inputs(values, precision)
-        outputs: list[_ComplexDecimal] = []
-        for evaluator in self.chunks:
+        if len(prepared_values) != self.input_len:
+            raise EvaluationError(
+                "Symbolica high-precision evaluator input width is inconsistent"
+            )
+        return self._evaluate_prepared(prepared_values, precision)
+
+    def _evaluate_prepared(
+        self,
+        values: tuple[_ComplexDecimal, ...],
+        precision: int,
+    ) -> tuple[_ComplexDecimal, ...]:
+        if self.evaluator is not None:
             try:
-                result = evaluator.evaluate_complex_with_prec(
-                    prepared_values, precision
-                )
+                result = self.evaluator.evaluate_complex_with_prec(values, precision)
             except Exception as exc:
                 raise EvaluationError(
                     f"Symbolica high-precision evaluator failed: {exc}"
                 ) from exc
-            outputs.extend(
+            return tuple(
                 (
                     _decimal(value[0], "evaluator real output"),
                     _decimal(value[1], "evaluator imaginary output"),
                 )
                 for value in result
             )
+
+        outputs: list[_ComplexDecimal] = []
+        for evaluator, indices in zip(
+            self.chunks,
+            self.chunk_input_indices,
+            strict=True,
+        ):
+            outputs.extend(
+                evaluator._evaluate_prepared(
+                    tuple(values[index] for index in indices),
+                    precision,
+                )
+            )
         return tuple(outputs)
+
+
+def _exact_chunk_input_indices(value: object, input_len: int) -> tuple[int, ...]:
+    if (
+        input_len < 0
+        or isinstance(value, str | bytes)
+        or not isinstance(value, Sequence)
+    ):
+        raise ArtifactError("chunked evaluator input map is invalid")
+    indices = tuple(value)
+    if any(
+        isinstance(index, bool)
+        or not isinstance(index, int)
+        or index < 0
+        or index >= input_len
+        for index in indices
+    ) or any(left >= right for left, right in pairwise(indices)):
+        raise ArtifactError("chunked evaluator input map is invalid")
+    return cast(tuple[int, ...], indices)
 
 
 class SymbolicaExactExecutor:

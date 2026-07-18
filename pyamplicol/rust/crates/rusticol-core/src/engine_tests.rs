@@ -628,7 +628,10 @@ fn final_state_alias_three_cycle_preserves_contracted_color_reduction() {
 fn empty_evaluator_group() -> EvaluatorGroup {
     EvaluatorGroup {
         evaluators: Vec::new(),
+        input_len: 0,
+        input_mappings: Vec::new(),
         output_len: 0,
+        chunk_parameter_scratch_f64: Vec::new(),
         chunk_scratch_f64: Vec::new(),
     }
 }

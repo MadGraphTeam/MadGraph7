@@ -981,13 +981,102 @@ enum EvaluatorManifest {
     #[serde(rename = "chunked-symbolica-evaluator")]
     Chunked {
         required_runtime_capabilities: Vec<String>,
+        #[serde(default)]
+        input_len: Option<usize>,
+        #[serde(default)]
+        chunk_input_indices: Option<Vec<Vec<usize>>>,
         chunks: Vec<EvaluatorManifest>,
     },
 }
 
+impl EvaluatorManifest {
+    fn io_len(&self) -> RusticolResult<(usize, usize)> {
+        match self {
+            Self::SymjitApplication {
+                input_len,
+                output_len,
+                ..
+            }
+            | Self::Jit {
+                input_len,
+                output_len,
+                ..
+            }
+            | Self::CompiledComplex {
+                input_len,
+                output_len,
+                ..
+            } => Ok((*input_len, *output_len)),
+            Self::Chunked {
+                input_len,
+                chunk_input_indices,
+                chunks,
+                ..
+            } => {
+                if chunks.is_empty() {
+                    return Err(RusticolError::artifact(
+                        "generic serialized evaluator chunk list is empty",
+                    ));
+                }
+                let mut child_layouts = Vec::with_capacity(chunks.len());
+                let mut output_len = 0usize;
+                for chunk in chunks {
+                    let layout = chunk.io_len()?;
+                    output_len = output_len.checked_add(layout.1).ok_or_else(|| {
+                        RusticolError::artifact(
+                            "generic serialized evaluator output length overflows usize",
+                        )
+                    })?;
+                    child_layouts.push(layout);
+                }
+                match (input_len, chunk_input_indices) {
+                    (None, None) => {
+                        let parent_input_len = child_layouts[0].0;
+                        if child_layouts
+                            .iter()
+                            .any(|(child_input_len, _)| *child_input_len != parent_input_len)
+                        {
+                            return Err(RusticolError::artifact(
+                                "legacy chunked evaluator children have inconsistent input lengths",
+                            ));
+                        }
+                        Ok((parent_input_len, output_len))
+                    }
+                    (Some(parent_input_len), Some(input_indices)) => {
+                        if input_indices.len() != chunks.len() {
+                            return Err(RusticolError::artifact(
+                                "chunked evaluator input maps do not match evaluator chunks",
+                            ));
+                        }
+                        for (indices, (child_input_len, _)) in
+                            input_indices.iter().zip(&child_layouts)
+                        {
+                            if indices.len() != *child_input_len
+                                || indices.iter().any(|index| *index >= *parent_input_len)
+                                || indices.windows(2).any(|pair| pair[0] >= pair[1])
+                            {
+                                return Err(RusticolError::artifact(
+                                    "chunked evaluator input map is inconsistent with child inputs",
+                                ));
+                            }
+                        }
+                        Ok((*parent_input_len, output_len))
+                    }
+                    _ => Err(RusticolError::artifact(
+                        "chunked evaluator input metadata is incomplete",
+                    )),
+                }
+            }
+        }
+    }
+}
+
 struct EvaluatorGroup {
     evaluators: Vec<LoadedEvaluator>,
+    input_len: usize,
+    input_mappings: Vec<Option<Vec<usize>>>,
     output_len: usize,
+    chunk_parameter_scratch_f64: Vec<Complex<f64>>,
     chunk_scratch_f64: Vec<Complex<f64>>,
 }
 

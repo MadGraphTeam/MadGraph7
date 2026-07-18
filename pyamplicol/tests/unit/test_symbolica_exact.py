@@ -49,7 +49,7 @@ def test_upcast_decimal_preserves_value_and_carries_requested_precision() -> Non
 
 def test_exact_evaluator_upcasts_every_complex_input() -> None:
     recording = _RecordingEvaluator()
-    evaluator = _ExactEvaluator((recording,))
+    evaluator = _ExactEvaluator(input_len=2, evaluator=recording)
 
     result = evaluator.evaluate(
         ((Decimal("500"), Decimal("0")), (Decimal("0.125"), Decimal("-2"))),
@@ -65,6 +65,37 @@ def test_exact_evaluator_upcasts_every_complex_input() -> None:
         assert isinstance(imaginary, Decimal)
         assert len(real.as_tuple().digits) == 80 or real.is_zero()
         assert len(imaginary.as_tuple().digits) == 80 or imaginary.is_zero()
+
+
+def test_exact_chunked_evaluator_selects_parent_inputs() -> None:
+    first = _RecordingEvaluator()
+    second = _RecordingEvaluator()
+    evaluator = _ExactEvaluator(
+        input_len=3,
+        chunks=(
+            _ExactEvaluator(input_len=2, evaluator=first),
+            _ExactEvaluator(input_len=1, evaluator=second),
+        ),
+        chunk_input_indices=((0, 2), (1,)),
+    )
+
+    result = evaluator.evaluate(
+        (
+            (Decimal("1"), Decimal("0")),
+            (Decimal("10"), Decimal("0")),
+            (Decimal("3"), Decimal("0")),
+        ),
+        40,
+    )
+
+    assert result == (
+        (Decimal("1.25"), Decimal("-0.5")),
+        (Decimal("1.25"), Decimal("-0.5")),
+    )
+    assert first.values is not None
+    assert second.values is not None
+    assert tuple(value[0] for value in first.values) == (Decimal("1"), Decimal("3"))
+    assert tuple(value[0] for value in second.values) == (Decimal("10"),)
 
 
 def test_upcast_rounding_does_not_depend_on_ambient_decimal_context() -> None:

@@ -21,7 +21,15 @@ from pyamplicol import (
     Runtime,
 )
 from pyamplicol.api.errors import EvaluationError
-from pyamplicol.config import ColorConfig, ModelConfig, RunConfig
+from pyamplicol.config import (
+    ColorConfig,
+    EvaluatorConfig,
+    EvaluatorOptimizationConfig,
+    GenerationConfig,
+    JITConfig,
+    ModelConfig,
+    RunConfig,
+)
 from tools.developer.analytic_oracles import (
     scalar_contact_2to2,
     scalar_gravity_2to2,
@@ -334,6 +342,72 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
     # same deterministic validation point.
     assert total[0].real == pytest.approx(5.285188765700242e-4, rel=1.0e-12)
     assert total[0].imag == pytest.approx(0.0, abs=1.0e-15)
+
+
+def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
+    tmp_path: Path,
+) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    def config(output_chunk_size: int | None) -> RunConfig:
+        return RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy="lc"),
+            generation=GenerationConfig(workers=1, emit_api_bundle=False),
+            evaluator=EvaluatorConfig(
+                output_chunk_size=output_chunk_size,
+                optimization=EvaluatorOptimizationConfig(cores=1),
+                jit=JITConfig(optimization_level=1),
+            ),
+        )
+
+    artifact = tmp_path / "mapped-chunks"
+    baseline_artifact = tmp_path / "unchunked"
+    Generator(config(2)).generate("d d~ > z g", artifact)
+    Generator(config(None)).generate("d d~ > z g", baseline_artifact)
+
+    execution = json.loads(
+        (
+            artifact / "processes" / "d_dbar_to_z_g" / "execution.json"
+        ).read_text(encoding="utf-8")
+    )
+    stages = execution["compiled"]["stage_evaluators"]
+    evaluator_manifests = [
+        *(stage["evaluator"] for stage in stages["stages"]),
+        stages["amplitude_stage"]["evaluator"],
+    ]
+    chunked = [
+        manifest
+        for manifest in evaluator_manifests
+        if manifest["kind"] == "chunked-symbolica-evaluator"
+    ]
+    assert chunked
+    assert any(
+        len(indices) < manifest["input_len"]
+        for manifest in chunked
+        for indices in manifest["chunk_input_indices"]
+    )
+    for manifest in chunked:
+        assert len(manifest["chunks"]) == len(manifest["chunk_input_indices"])
+        for child, indices in zip(
+            manifest["chunks"], manifest["chunk_input_indices"], strict=True
+        ):
+            assert child["input_len"] == len(indices)
+            assert indices == sorted(set(indices))
+
+    runtime = Runtime.load(artifact)
+    baseline = Runtime.load(baseline_artifact)
+    momenta = runtime._backend.validation_momenta()
+    assert momenta is not None
+    resolved = runtime.evaluate_resolved(momenta)
+    exact = runtime.evaluate_resolved(momenta, precision=32)
+    assert resolved.total()[0] == pytest.approx(
+        baseline.evaluate_resolved(momenta).total()[0], rel=1.0e-12
+    )
+    assert exact.total()[0] == baseline.evaluate_resolved(
+        momenta, precision=32
+    ).total()[0]
 
 
 @pytest.mark.parametrize("case_name", tuple(EXTERNAL_CASES))

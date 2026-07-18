@@ -6,12 +6,24 @@ use super::*;
 impl EvaluatorGroup {
     pub(crate) fn load(manifest: &EvaluatorManifest, root: &Path) -> RusticolResult<Self> {
         ensure_evaluator_capabilities_supported(manifest)?;
+        let (input_len, _) = manifest.io_len()?;
         let mut evaluators = Vec::new();
-        flatten_evaluators(manifest, root, &mut evaluators)?;
+        let mut input_mappings = Vec::new();
+        flatten_evaluators_with_mappings(
+            manifest,
+            root,
+            None,
+            input_len,
+            &mut evaluators,
+            &mut input_mappings,
+        )?;
         let output_len = evaluators.iter().map(|e| e.output_len).sum();
         Ok(Self {
             evaluators,
+            input_len,
+            input_mappings,
             output_len,
+            chunk_parameter_scratch_f64: Vec::new(),
             chunk_scratch_f64: Vec::new(),
         })
     }
@@ -75,23 +87,36 @@ impl EvaluatorGroup {
         // register file, whereas Duration remains integer-backed.
         let mut evaluator_elapsed = Duration::ZERO;
         let mut assign_elapsed = Duration::ZERO;
-        for ((evaluator, outputs), spans) in self
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        for (((evaluator, input_mapping), outputs), spans) in self
             .evaluators
             .iter_mut()
+            .zip(&self.input_mappings)
             .zip(chunk_outputs)
             .zip(chunk_output_spans)
         {
-            if params.len() != batch_size * evaluator.input_len {
-                return Err(RusticolError::invalid_argument(format!(
-                    "parameter buffer has length {}, expected {}",
-                    params.len(),
-                    batch_size * evaluator.input_len
-                )));
-            }
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
             self.chunk_scratch_f64
                 .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
             let eval_start = Instant::now();
-            evaluator.evaluate_f64_batch(batch_size, params, &mut self.chunk_scratch_f64)?;
+            evaluator.evaluate_f64_batch(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
             evaluator_elapsed += eval_start.elapsed();
 
             let assign_start = Instant::now();
@@ -131,30 +156,43 @@ impl EvaluatorGroup {
         if out.len() != expected_output_len {
             out.resize(expected_output_len, c64(0.0, 0.0));
         }
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
         if self.evaluators.len() == 1 {
             let evaluator = &mut self.evaluators[0];
-            if params.len() != batch_size * evaluator.input_len {
-                return Err(RusticolError::invalid_argument(format!(
-                    "parameter buffer has length {}, expected {}",
-                    params.len(),
-                    batch_size * evaluator.input_len
-                )));
-            }
-            evaluator.evaluate_f64_batch(batch_size, params, out)?;
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                self.input_mappings[0].as_deref(),
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            evaluator.evaluate_f64_batch(batch_size, evaluator_params, out)?;
             return Ok(());
         }
         let mut output_offset = 0;
-        for evaluator in &mut self.evaluators {
-            if params.len() != batch_size * evaluator.input_len {
-                return Err(RusticolError::invalid_argument(format!(
-                    "parameter buffer has length {}, expected {}",
-                    params.len(),
-                    batch_size * evaluator.input_len
-                )));
-            }
+        for (evaluator, input_mapping) in self.evaluators.iter_mut().zip(&self.input_mappings) {
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
             self.chunk_scratch_f64
                 .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
-            evaluator.evaluate_f64_batch(batch_size, params, &mut self.chunk_scratch_f64)?;
+            evaluator.evaluate_f64_batch(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
             for row in 0..batch_size {
                 let src = row * evaluator.output_len;
                 let dst = row * self.output_len + output_offset;
@@ -178,22 +216,35 @@ impl EvaluatorGroup {
         Complex<T>: Real + EvaluationDomain,
     {
         let mut out = vec![complex_zero::<T>(); batch_size * self.output_len];
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
         let mut output_offset = 0;
-        for evaluator in &mut self.evaluators {
-            if params.len() != batch_size * evaluator.input_len {
-                return Err(RusticolError::invalid_argument(format!(
-                    "parameter buffer has length {}, expected {}",
-                    params.len(),
-                    batch_size * evaluator.input_len
-                )));
-            }
+        for (evaluator, input_mapping) in self.evaluators.iter_mut().zip(&self.input_mappings) {
+            let mapped_params = input_mapping.as_ref().map(|indices| {
+                let mut mapped = Vec::with_capacity(batch_size * indices.len());
+                for row in 0..batch_size {
+                    let row_start = row * self.input_len;
+                    mapped.extend(
+                        indices
+                            .iter()
+                            .map(|index| params[row_start + *index].clone()),
+                    );
+                }
+                mapped
+            });
+            let evaluator_params = mapped_params.as_deref().unwrap_or(params);
             let mut chunk_out = vec![complex_zero::<T>(); batch_size * evaluator.output_len];
             for row in 0..batch_size {
                 let in_start = row * evaluator.input_len;
                 let out_start = row * evaluator.output_len;
                 T::evaluate_loaded(
                     evaluator,
-                    &params[in_start..in_start + evaluator.input_len],
+                    &evaluator_params[in_start..in_start + evaluator.input_len],
                     &mut chunk_out[out_start..out_start + evaluator.output_len],
                     binary_precision,
                 )?;
@@ -208,6 +259,42 @@ impl EvaluatorGroup {
         }
         Ok(out)
     }
+}
+
+fn mapped_f64_parameters<'a>(
+    params: &'a [Complex<f64>],
+    batch_size: usize,
+    parent_input_len: usize,
+    input_mapping: Option<&[usize]>,
+    scratch: &'a mut Vec<Complex<f64>>,
+) -> &'a [Complex<f64>] {
+    let Some(indices) = input_mapping else {
+        return params;
+    };
+    scratch.resize(batch_size * indices.len(), c64(0.0, 0.0));
+    for row in 0..batch_size {
+        let source_start = row * parent_input_len;
+        let target_start = row * indices.len();
+        for (local_index, parent_index) in indices.iter().enumerate() {
+            scratch[target_start + local_index] = params[source_start + *parent_index];
+        }
+    }
+    scratch
+}
+
+fn validate_leaf_parameter_length(
+    evaluator: &LoadedEvaluator,
+    batch_size: usize,
+    params: &[Complex<f64>],
+) -> RusticolResult<()> {
+    if params.len() != batch_size * evaluator.input_len {
+        return Err(RusticolError::artifact(format!(
+            "mapped evaluator parameter buffer has length {}, expected {}",
+            params.len(),
+            batch_size * evaluator.input_len
+        )));
+    }
+    Ok(())
 }
 
 impl LoadedEvaluator {
@@ -260,6 +347,104 @@ impl LoadedEvaluator {
                     .map_err(RusticolError::evaluation)
             }
         }
+    }
+}
+
+fn flatten_evaluators_with_mappings(
+    manifest: &EvaluatorManifest,
+    root: &Path,
+    inherited_mapping: Option<&[usize]>,
+    root_input_len: usize,
+    output: &mut Vec<LoadedEvaluator>,
+    input_mappings: &mut Vec<Option<Vec<usize>>>,
+) -> RusticolResult<()> {
+    if let EvaluatorManifest::Chunked {
+        input_len,
+        chunk_input_indices,
+        chunks,
+        ..
+    } = manifest
+    {
+        manifest.io_len()?;
+        match (input_len, chunk_input_indices) {
+            (None, None) => {
+                for chunk in chunks {
+                    flatten_evaluators_with_mappings(
+                        chunk,
+                        root,
+                        inherited_mapping,
+                        root_input_len,
+                        output,
+                        input_mappings,
+                    )?;
+                }
+            }
+            (Some(_), Some(chunk_indices)) => {
+                for (chunk, indices) in chunks.iter().zip(chunk_indices) {
+                    let composed =
+                        compose_input_mapping(inherited_mapping, indices, root_input_len);
+                    flatten_evaluators_with_mappings(
+                        chunk,
+                        root,
+                        composed.as_deref(),
+                        root_input_len,
+                        output,
+                        input_mappings,
+                    )?;
+                }
+            }
+            _ => unreachable!("chunk input metadata was validated above"),
+        }
+        return Ok(());
+    }
+
+    let (leaf_input_len, _) = manifest.io_len()?;
+    let mapping = inherited_mapping.map(ToOwned::to_owned);
+    if let Some(indices) = mapping.as_ref()
+        && indices.len() != leaf_input_len
+    {
+        return Err(RusticolError::artifact(
+            "flattened evaluator input map does not match leaf input length",
+        ));
+    }
+    let normalized = mapping.and_then(|indices| {
+        if indices.len() == root_input_len
+            && indices
+                .iter()
+                .enumerate()
+                .all(|(expected, index)| expected == *index)
+        {
+            None
+        } else {
+            Some(indices)
+        }
+    });
+    flatten_evaluators(manifest, root, output)?;
+    input_mappings.push(normalized);
+    Ok(())
+}
+
+fn compose_input_mapping(
+    inherited_mapping: Option<&[usize]>,
+    child_indices: &[usize],
+    root_input_len: usize,
+) -> Option<Vec<usize>> {
+    let composed = match inherited_mapping {
+        Some(parent_indices) => child_indices
+            .iter()
+            .map(|index| parent_indices[*index])
+            .collect::<Vec<_>>(),
+        None => child_indices.to_vec(),
+    };
+    if composed.len() == root_input_len
+        && composed
+            .iter()
+            .enumerate()
+            .all(|(expected, index)| expected == *index)
+    {
+        None
+    } else {
+        Some(composed)
     }
 }
 
@@ -512,6 +697,7 @@ fn collect_evaluator_capabilities(
         EvaluatorManifest::Chunked {
             required_runtime_capabilities,
             chunks,
+            ..
         } => {
             let mut actual = BTreeSet::new();
             for chunk in chunks {

@@ -67,30 +67,53 @@ def _compile_symbolica_outputs(
             )
         chunk_ranges = tuple(enumerate(range(0, len(outputs), chunk_size)))
 
-        def compile_chunk(chunk_index: int, start: int) -> Any:
+        def compile_chunk(
+            chunk_index: int,
+            start: int,
+        ) -> tuple[Any, tuple[int, ...]]:
             stop = min(start + chunk_size, len(outputs))
+            chunk_outputs = outputs[start:stop]
+            chunk_input_indices = _chunk_parameter_indices(
+                chunk_outputs,
+                params,
+                aliases=aliases,
+                functions=functions,
+            )
+            chunk_params = [params[index] for index in chunk_input_indices]
+            parent_real_params = set(real_params)
+            chunk_real_params = tuple(
+                local_index
+                for local_index, parent_index in enumerate(chunk_input_indices)
+                if parent_index in parent_real_params
+            )
             _report_progress(
                 progress_callback,
                 stage=progress_stage,
-                item=f"{label} chunk {chunk_index + 1}/{len(chunk_ranges)}",
+                item=(
+                    f"{label} chunk {chunk_index + 1}/{len(chunk_ranges)} "
+                    f"p={len(chunk_params)}/{len(params)}"
+                ),
             )
-            return _compile_symbolica_outputs(
-                outputs[start:stop],
-                params,
-                merge_evaluators_strategy=merge_evaluators_strategy,
-                verbose_evaluator_build=verbose_evaluator_build,
-                aliases=aliases,
-                functions=functions,
-                real_params=real_params,
-                symbolica_settings=unchunked_settings,
-                jit_compile=jit_compile,
-                label=f"{label}_chunk_{chunk_index}",
-                progress_callback=progress_callback,
+            return (
+                _compile_symbolica_outputs(
+                    chunk_outputs,
+                    chunk_params,
+                    merge_evaluators_strategy=merge_evaluators_strategy,
+                    verbose_evaluator_build=verbose_evaluator_build,
+                    aliases=aliases,
+                    functions=functions,
+                    real_params=chunk_real_params,
+                    symbolica_settings=unchunked_settings,
+                    jit_compile=jit_compile,
+                    label=f"{label}_chunk_{chunk_index}",
+                    progress_callback=progress_callback,
+                ),
+                chunk_input_indices,
             )
 
         workers = min(settings.compiled_chunk_compile_workers, len(chunk_ranges))
         if workers <= 1:
-            chunks = [
+            compiled_chunks = [
                 compile_chunk(chunk_index, start) for chunk_index, start in chunk_ranges
             ]
         else:
@@ -99,8 +122,13 @@ def _compile_symbolica_outputs(
                     executor.submit(compile_chunk, chunk_index, start)
                     for chunk_index, start in chunk_ranges
                 ]
-                chunks = [future.result() for future in futures]
-        chunked = _ChunkedSymbolicaEvaluator(tuple(chunks))
+                compiled_chunks = [future.result() for future in futures]
+        chunks, chunk_input_indices = zip(*compiled_chunks, strict=True)
+        chunked = _ChunkedSymbolicaEvaluator(
+            tuple(chunks),
+            input_len=len(params),
+            chunk_input_indices=tuple(chunk_input_indices),
+        )
         chunked.build_timing = {
             "output_prepare_s": output_prepare_s,
             "symbolica_evaluator_build_s": time.perf_counter() - total_started,
@@ -306,6 +334,45 @@ def _compile_symbolica_outputs(
         },
     )
     return adapter
+
+
+def _chunk_parameter_indices(
+    outputs: Sequence[Any],
+    params: Sequence[Any],
+    *,
+    aliases: Sequence[tuple[Any, Any]] = (),
+    functions: Mapping[tuple[Any, tuple[Any, ...]], Any] | None = None,
+) -> tuple[int, ...]:
+    """Return parent parameter indices needed by one output chunk.
+
+    Symbolica already exposes structural symbol discovery, including symbols in
+    function arguments.  Function bodies and aliases are included
+    conservatively so a model kernel that closes over a runtime parameter can
+    never be under-specified.  Parent ordering is retained to keep generated
+    evaluator signatures and real-parameter metadata deterministic.
+    """
+
+    used_symbols: set[Any] = set()
+    for expression in outputs:
+        used_symbols.update(_expression_symbols(expression))
+    for left, right in aliases:
+        used_symbols.update(_expression_symbols(left))
+        used_symbols.update(_expression_symbols(right))
+    if functions:
+        for body in functions.values():
+            used_symbols.update(_expression_symbols(body))
+    return tuple(
+        index for index, parameter in enumerate(params) if parameter in used_symbols
+    )
+
+
+def _expression_symbols(expression: Any) -> set[Any]:
+    getter = getattr(expression, "get_all_symbols", None)
+    if not callable(getter):
+        raise NativeEvaluationError(
+            "Symbolica expression does not expose structural symbol discovery"
+        )
+    return set(getter(False))
 
 
 def _set_evaluator_build_timing(evaluator: Any, timing: Mapping[str, float]) -> None:

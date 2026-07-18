@@ -398,6 +398,75 @@ mod tests {
     }
 
     #[test]
+    fn chunked_group_gathers_mapped_parent_inputs() {
+        let path = write_application(&application_bytes(), "mapped-inputs");
+        let root = path.parent().unwrap();
+        let application_path = path.file_name().unwrap().to_str().unwrap().to_string();
+        let manifest = EvaluatorManifest::Chunked {
+            required_runtime_capabilities: vec![SYMJIT_APPLICATION_RUNTIME_CAPABILITY.to_string()],
+            input_len: Some(3),
+            chunk_input_indices: Some(vec![vec![0, 2], vec![1, 2]]),
+            chunks: vec![
+                direct_manifest(application_path.clone()),
+                direct_manifest(application_path),
+            ],
+        };
+
+        let mut group = EvaluatorGroup::load(&manifest, root).unwrap();
+        let output = group
+            .evaluate_batch(
+                2,
+                &[
+                    Complex::new(1.0, 0.0),
+                    Complex::new(10.0, 0.0),
+                    Complex::new(3.0, 0.0),
+                    Complex::new(2.0, 0.0),
+                    Complex::new(20.0, 0.0),
+                    Complex::new(5.0, 0.0),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(
+            output,
+            vec![
+                Complex::new(4.0, 0.0),
+                Complex::new(13.0, 0.0),
+                Complex::new(7.0, 0.0),
+                Complex::new(25.0, 0.0),
+            ]
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn legacy_chunked_group_reuses_full_parent_inputs() {
+        let path = write_application(&application_bytes(), "legacy-chunks");
+        let root = path.parent().unwrap();
+        let application_path = path.file_name().unwrap().to_str().unwrap().to_string();
+        let manifest = EvaluatorManifest::Chunked {
+            required_runtime_capabilities: vec![SYMJIT_APPLICATION_RUNTIME_CAPABILITY.to_string()],
+            input_len: None,
+            chunk_input_indices: None,
+            chunks: vec![
+                direct_manifest(application_path.clone()),
+                direct_manifest(application_path),
+            ],
+        };
+
+        let mut group = EvaluatorGroup::load(&manifest, root).unwrap();
+        let output = group
+            .evaluate_batch(1, &[Complex::new(2.0, 3.0), Complex::new(5.0, 7.0)])
+            .unwrap();
+
+        assert_eq!(
+            output,
+            vec![Complex::new(7.0, 10.0), Complex::new(7.0, 10.0)]
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn direct_f64_group_loads_without_exact_fallback_metadata() {
         let path = write_application(&application_bytes(), "no-exact-fallback");
         let root = path.parent().unwrap();

@@ -10,6 +10,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -408,41 +409,131 @@ def _compiled_runtime_capability(settings: Mapping[str, object]) -> str:
 
 
 class _ChunkedSymbolicaEvaluator:
-    def __init__(self, evaluators: tuple[Any, ...]) -> None:
+    def __init__(
+        self,
+        evaluators: tuple[Any, ...],
+        *,
+        input_len: int | None = None,
+        chunk_input_indices: tuple[tuple[int, ...], ...] | None = None,
+    ) -> None:
         if not evaluators:
             raise NativeEvaluationError("chunked evaluator needs at least one chunk")
+        child_input_lengths = tuple(
+            _evaluator_input_len(evaluator) for evaluator in evaluators
+        )
+        if input_len is None:
+            if len(set(child_input_lengths)) != 1:
+                raise NativeEvaluationError(
+                    "legacy chunked evaluators need equal child input lengths"
+                )
+            input_len = child_input_lengths[0]
+        if (
+            isinstance(input_len, bool)
+            or not isinstance(input_len, int)
+            or input_len < 0
+        ):
+            raise NativeEvaluationError("chunked evaluator input length is invalid")
+        if chunk_input_indices is None:
+            chunk_input_indices = tuple(
+                tuple(range(input_len)) for _evaluator in evaluators
+            )
+        if len(chunk_input_indices) != len(evaluators):
+            raise NativeEvaluationError(
+                "chunked evaluator input maps do not match evaluator chunks"
+            )
+        normalized_indices: list[tuple[int, ...]] = []
+        for child_input_len, raw_indices in zip(
+            child_input_lengths,
+            chunk_input_indices,
+            strict=True,
+        ):
+            indices = tuple(raw_indices)
+            if len(indices) != child_input_len:
+                raise NativeEvaluationError(
+                    "chunked evaluator input map length does not match child "
+                    "input length"
+                )
+            if any(
+                isinstance(index, bool)
+                or not isinstance(index, int)
+                or index < 0
+                or index >= input_len
+                for index in indices
+            ):
+                raise NativeEvaluationError(
+                    "chunked evaluator input map contains an invalid parent index"
+                )
+            if any(left >= right for left, right in pairwise(indices)):
+                raise NativeEvaluationError(
+                    "chunked evaluator input maps must be strictly increasing"
+                )
+            normalized_indices.append(indices)
         self._evaluators = evaluators
+        self.input_len = input_len
+        self._chunk_input_indices = tuple(normalized_indices)
         self.build_timing: dict[str, float] = {}
 
     def evaluate_complex(self, parameter_rows: Any) -> Any:
         return np.concatenate(self.evaluate_complex_chunks(parameter_rows), axis=1)
 
     def evaluate_complex_chunks(self, parameter_rows: Any) -> tuple[Any, ...]:
-        prepared_rows = _complex128_parameter_rows(parameter_rows)
+        prepared_rows = self._prepare_parameter_rows(parameter_rows)
         return tuple(
-            _evaluate_prepared_complex(evaluator, prepared_rows)
-            for evaluator in self._evaluators
+            _evaluate_prepared_complex(
+                evaluator,
+                self._chunk_parameter_rows(prepared_rows, indices),
+            )
+            for evaluator, indices in zip(
+                self._evaluators,
+                self._chunk_input_indices,
+                strict=True,
+            )
         )
 
     def evaluate_complex_profiled(
         self, parameter_rows: Any
     ) -> tuple[tuple[Any, ...], tuple[float, float, float]]:
-        prepared_rows = _complex128_parameter_rows(parameter_rows)
+        prepared_rows = self._prepare_parameter_rows(parameter_rows)
         outputs: list[Any] = []
         profiles: list[tuple[float, float, float]] = []
-        for evaluator in self._evaluators:
+        gather_s = 0.0
+        for evaluator, indices in zip(
+            self._evaluators,
+            self._chunk_input_indices,
+            strict=True,
+        ):
+            gather_started = time.perf_counter()
+            chunk_rows = self._chunk_parameter_rows(prepared_rows, indices)
+            gather_s += time.perf_counter() - gather_started
             output, profile = _evaluate_prepared_complex_profiled(
-                evaluator, prepared_rows
+                evaluator, chunk_rows
             )
             outputs.append(output)
             profiles.append(profile)
-        pack_times = sorted(profile[0] for profile in profiles)
-        shared_pack_s = pack_times[len(pack_times) // 2]
         return tuple(outputs), (
-            shared_pack_s,
+            gather_s + sum(profile[0] for profile in profiles),
             sum(profile[1] for profile in profiles),
             sum(profile[2] for profile in profiles),
         )
+
+    def _prepare_parameter_rows(self, parameter_rows: Any) -> np.ndarray:
+        prepared_rows = _complex128_parameter_rows(parameter_rows)
+        if prepared_rows.ndim != 2 or prepared_rows.shape[1] != self.input_len:
+            raise NativeEvaluationError(
+                "chunked evaluator parameter rows have an inconsistent width"
+            )
+        return prepared_rows
+
+    def _chunk_parameter_rows(
+        self,
+        parameter_rows: np.ndarray,
+        indices: tuple[int, ...],
+    ) -> np.ndarray:
+        if len(indices) == self.input_len and all(
+            index == expected for expected, index in enumerate(indices)
+        ):
+            return parameter_rows
+        return np.ascontiguousarray(parameter_rows[:, indices])
 
     def supports_complex_profiled(self) -> bool:
         return all(
@@ -459,11 +550,35 @@ class _ChunkedSymbolicaEvaluator:
         chunks = manifest.get("chunks")
         if not isinstance(chunks, list):
             raise NativeEvaluationError("chunked evaluator artifact is missing chunks")
+        raw_input_indices = manifest.get("chunk_input_indices")
+        chunk_input_indices = None
+        if raw_input_indices is not None:
+            if not isinstance(raw_input_indices, list):
+                raise NativeEvaluationError(
+                    "chunked evaluator artifact has invalid input maps"
+                )
+            parsed_indices: list[tuple[int, ...]] = []
+            for indices in raw_input_indices:
+                if not isinstance(indices, list):
+                    raise NativeEvaluationError(
+                        "chunked evaluator artifact has invalid input maps"
+                    )
+                parsed_indices.append(tuple(indices))
+            chunk_input_indices = tuple(parsed_indices)
+        raw_input_len = manifest.get("input_len")
+        if raw_input_len is not None and (
+            isinstance(raw_input_len, bool) or not isinstance(raw_input_len, int)
+        ):
+            raise NativeEvaluationError(
+                "chunked evaluator artifact has an invalid input length"
+            )
         return cls(
             tuple(
                 _load_symbolica_evaluator_artifact(chunk, artifact_dir)
                 for chunk in chunks
-            )
+            ),
+            input_len=raw_input_len,
+            chunk_input_indices=chunk_input_indices,
         )
 
     def artifact_manifest(self, artifact_dir: Path) -> dict[str, Any]:
@@ -506,12 +621,23 @@ class _ChunkedSymbolicaEvaluator:
                     )
         return {
             "kind": "chunked-symbolica-evaluator",
+            "input_len": self.input_len,
+            "chunk_input_indices": [
+                list(indices) for indices in self._chunk_input_indices
+            ],
             "chunks": chunks,
             "required_runtime_capabilities": list(
                 aggregate_runtime_capabilities(chunks)
             ),
             "build_timing": timing_totals,
         }
+
+
+def _evaluator_input_len(evaluator: Any) -> int:
+    value = getattr(evaluator, "input_len", None)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise NativeEvaluationError("evaluator chunk has no valid input length")
+    return value
 
 
 def _load_symbolica_evaluator_artifact(

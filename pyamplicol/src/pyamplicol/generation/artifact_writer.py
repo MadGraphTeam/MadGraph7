@@ -869,6 +869,11 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
     if kind == "chunked-symbolica-evaluator":
         result = {
             "kind": kind,
+            "input_len": record["input_len"],
+            "chunk_input_indices": [
+                list(_sequence(indices))
+                for indices in _sequence(record["chunk_input_indices"])
+            ],
             "required_runtime_capabilities": list(
                 _required_runtime_capabilities(record)
             ),

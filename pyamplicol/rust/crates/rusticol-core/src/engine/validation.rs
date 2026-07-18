@@ -1559,7 +1559,7 @@ fn validate_generic_serialized_stage_evaluator(
         )));
     }
     validate_generic_stage_output_slots(stage)?;
-    let (input_len, output_len) = evaluator_manifest_io_len(&stage.evaluator)?;
+    let (input_len, output_len) = stage.evaluator.io_len()?;
     if stage_is_global && input_len != expected_parameter_count {
         return Err(RusticolError::artifact(format!(
             "generic serialized stage evaluator {} has inconsistent global evaluator input length",
@@ -1735,43 +1735,6 @@ fn validate_generic_stage_input_components(
         )));
     }
     Ok(())
-}
-
-fn evaluator_manifest_io_len(manifest: &EvaluatorManifest) -> RusticolResult<(usize, usize)> {
-    match manifest {
-        EvaluatorManifest::SymjitApplication {
-            input_len,
-            output_len,
-            ..
-        }
-        | EvaluatorManifest::Jit {
-            input_len,
-            output_len,
-            ..
-        }
-        | EvaluatorManifest::CompiledComplex {
-            input_len,
-            output_len,
-            ..
-        } => Ok((*input_len, *output_len)),
-        EvaluatorManifest::Chunked { chunks, .. } => {
-            let mut iter = chunks.iter();
-            let first = iter.next().ok_or_else(|| {
-                RusticolError::artifact("generic serialized evaluator chunk list is empty")
-            })?;
-            let (input_len, mut output_len) = evaluator_manifest_io_len(first)?;
-            for chunk in iter {
-                let (chunk_input_len, chunk_output_len) = evaluator_manifest_io_len(chunk)?;
-                if chunk_input_len != input_len {
-                    return Err(RusticolError::artifact(
-                        "generic serialized evaluator chunks have inconsistent input lengths",
-                    ));
-                }
-                output_len += chunk_output_len;
-            }
-            Ok((input_len, output_len))
-        }
-    }
 }
 
 pub(super) fn validate_slot_ref(

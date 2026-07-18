@@ -22,6 +22,7 @@ from pyamplicol.evaluators.symbolica_adapters import (
     _compiled_runtime_capability,
     _JITSymbolicaEvaluatorAdapter,
 )
+from pyamplicol.evaluators.symbolica_compile import _chunk_parameter_indices
 from pyamplicol.evaluators.symbolica_settings import SymbolicaEvaluatorSettings
 from pyamplicol.generation.artifact_writer import _evaluator, _stage_evaluator_set
 
@@ -44,6 +45,15 @@ class _FakeJITEvaluator:
 
     def save(self) -> bytes:
         return b"symbolica-evaluator-state"
+
+
+class _MappedEvaluator:
+    def __init__(self, input_len: int) -> None:
+        self.input_len = input_len
+
+    def evaluate_complex(self, rows: Any) -> np.ndarray:
+        values = np.asarray(rows, dtype=np.complex128)
+        return values.sum(axis=1, keepdims=True)
 
 
 def _jit_adapter(
@@ -114,7 +124,39 @@ def test_chunked_evaluator_aggregates_primary_capabilities(tmp_path: Path) -> No
     ).artifact_manifest(tmp_path)
 
     assert manifest["required_runtime_capabilities"] == [SYMJIT_F64_RUNTIME_CAPABILITY]
+    assert manifest["input_len"] == 3
+    assert manifest["chunk_input_indices"] == [[0, 1, 2], [0, 1, 2]]
     assert evaluator_runtime_capabilities(manifest) == (SYMJIT_F64_RUNTIME_CAPABILITY,)
+    serialized = _evaluator(manifest)
+    assert serialized["input_len"] == 3
+    assert serialized["chunk_input_indices"] == [[0, 1, 2], [0, 1, 2]]
+
+
+def test_chunked_evaluator_selects_parent_inputs_per_chunk() -> None:
+    evaluator = _ChunkedSymbolicaEvaluator(
+        (_MappedEvaluator(2), _MappedEvaluator(1)),
+        input_len=3,
+        chunk_input_indices=((0, 2), (1,)),
+    )
+
+    values = evaluator.evaluate_complex(
+        np.asarray([[1.0, 10.0, 3.0], [2.0, 20.0, 5.0]], dtype=np.complex128)
+    )
+
+    assert values.tolist() == [[4.0 + 0.0j, 10.0 + 0.0j], [7.0 + 0.0j, 20.0 + 0.0j]]
+
+
+def test_symbolica_chunk_dependencies_preserve_parent_parameter_order() -> None:
+    from symbolica import S
+
+    x, y, z, closed, argument = S("chunk_x", "chunk_y", "chunk_z", "closed", "arg")
+    function = S("chunk_function")
+
+    assert _chunk_parameter_indices(
+        (z + function(x),),
+        (x, y, z, closed),
+        functions={(function, (argument,)): argument + closed},
+    ) == (0, 2, 3)
 
 
 def test_compiled_capability_distinguishes_cpp_and_asm() -> None:
