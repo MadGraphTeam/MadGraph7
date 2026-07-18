@@ -11,7 +11,14 @@ def _stage(*, slot_width: int, stage_kind: str = "current-combine") -> object:
     return SimpleNamespace(
         stage_kind=stage_kind,
         output_length=1024,
-        output_slots=(SimpleNamespace(output_start=0, output_stop=slot_width),),
+        output_slots=(
+            SimpleNamespace(
+                component_start=0,
+                component_stop=slot_width,
+                output_start=0,
+                output_stop=16 * slot_width,
+            ),
+        ),
     )
 
 

@@ -93,7 +93,7 @@ def _bound_high_rank_current_chunk(
         return settings
     max_slot_width = max(
         (
-            int(slot.output_stop) - int(slot.output_start)
+            int(slot.component_stop) - int(slot.component_start)
             for slot in stage.output_slots
         ),
         default=0,
