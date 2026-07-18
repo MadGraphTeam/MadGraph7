@@ -5,9 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol import ModelSource
-from pyamplicol.api.errors import ModelError
+import pyamplicol.licensing as licensing
+from pyamplicol import Generator, ModelSource
+from pyamplicol.api.errors import GenerationError, ModelError
 from pyamplicol.api.models import _compiled_model_payload
+from pyamplicol.config import Action, EvaluatorConfig, RunConfig
+from pyamplicol.licensing import SymbolicaLicenseState
 from pyamplicol.models.loading import compile_model_source, load_compiled_model
 from pyamplicol.models.prepared import (
     PreparedKernelPack,
@@ -94,3 +97,39 @@ def test_prepared_model_rejects_compilation_options(tmp_path: Path) -> None:
 
     with pytest.raises(ModelError, match="already compiled"):
         ModelSource.from_path(bundle_path, simplify=False).compile(use_cache=False)
+
+
+def _eager_config() -> RunConfig:
+    return RunConfig(
+        action=Action.GENERATE,
+        evaluator=EvaluatorConfig(execution_mode="eager"),
+    )
+
+
+def _restricted_license(**_kwargs: object) -> SymbolicaLicenseState:
+    return SymbolicaLicenseState(licensed=False, restricted=True)
+
+
+def test_eager_plan_fails_before_dag_without_prepared_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+
+    with pytest.raises(
+        GenerationError,
+        match=r"pyamplicol model compile.*--backend jit",
+    ):
+        Generator(_eager_config()).plan("d d~ > z")
+
+
+def test_eager_plan_accepts_prepared_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    model = ModelSource.from_path(_prepared_builtin_sm(tmp_path))
+
+    plan = Generator(_eager_config()).plan("d d~ > z", model=model)
+
+    assert len(plan.concrete_processes) == 1
+    assert plan.estimated_coverage["model_kind"] == "prepared"

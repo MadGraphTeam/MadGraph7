@@ -253,6 +253,7 @@ class GenerationBackend:
             license_state = self._detect_symbolica_license()
             self._apply_symbolica_resource_policy(license_state)
             resolved_model = self._resolve_model_for_plan(source)
+            self._require_eager_kernel_pack(resolved_model)
             expanded = self._expand_process_set(
                 processes,
                 resolved_model,
@@ -320,6 +321,7 @@ class GenerationBackend:
             ) as phase:
                 resolved_model = self._resolve_model(source)
                 artifact_model = self._artifact_model(resolved_model)
+                self._require_eager_kernel_pack(resolved_model)
                 phase.update(1, message=artifact_model.name)
             generation_model = resolved_model.model
             if generation_model is None:
@@ -1007,7 +1009,7 @@ class GenerationBackend:
         from ..models.loading import load_cached_model_source, load_compiled_model
 
         try:
-            if source.kind == "compiled":
+            if source.kind in {"compiled", "prepared"}:
                 compiled = load_compiled_model(source.path)
             else:
                 run = self._run_config
@@ -1056,6 +1058,8 @@ class GenerationBackend:
 
     @staticmethod
     def _source_for_compiled_model(compiled: _CompiledModelPayload) -> ModelSource:
+        if compiled.prepared_bundle is not None:
+            return ModelSource(kind="prepared", path=compiled.prepared_bundle.path)
         return ModelSource(kind="compiled", path=compiled._serialized_path)
 
     @staticmethod
@@ -1091,7 +1095,7 @@ class GenerationBackend:
         from ..models.loading import compile_model_source, load_compiled_model
 
         try:
-            if source.kind == "compiled":
+            if source.kind in {"compiled", "prepared"}:
                 compiled = load_compiled_model(source.path)
             else:
                 run = self._run_config
@@ -1118,6 +1122,20 @@ class GenerationBackend:
                 use_compiled_process_catalog=False,
             )
         return _ResolvedModel(source, CompiledUFOModel(compiled), compiled)
+
+    def _require_eager_kernel_pack(self, resolved: _ResolvedModel) -> None:
+        run = self._run_config
+        if run is None or str(run.evaluator.execution_mode) != "eager":
+            return
+        compiled = resolved.compiled
+        if compiled is None or compiled.prepared_bundle is None:
+            source = resolved.source.path or resolved.source.kind
+            backend = str(run.evaluator.backend)
+            raise GenerationError(
+                "eager generation requires a prepared model kernel pack; run: "
+                f"pyamplicol model compile {source} MODEL.pyamplicol-model "
+                f"--backend {backend}"
+            )
 
     def _expand_request(
         self,
