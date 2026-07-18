@@ -26,6 +26,7 @@ from pyamplicol.config import (
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
     GenerationConfig,
+    GenerationValidationConfig,
     JITConfig,
     ModelConfig,
     RunConfig,
@@ -343,6 +344,103 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
     # same deterministic validation point.
     assert total[0].real == pytest.approx(5.285188765700242e-4, rel=1.0e-12)
     assert total[0].imag == pytest.approx(0.0, abs=1.0e-15)
+
+
+def test_recursive_current_reuse_matches_unshared_contracted_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    from pyamplicol.generation import dag_compiler as dag_compiler_module
+
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="full"),
+        generation=GenerationConfig(
+            workers=1,
+            emit_api_bundle=False,
+            validation=GenerationValidationConfig(samples=1),
+        ),
+        evaluator=EvaluatorConfig(
+            output_chunk_size=512,
+            optimization=EvaluatorOptimizationConfig(cores=1),
+            jit=JITConfig(optimization_level=1),
+        ),
+    )
+    optimized_artifact = tmp_path / "recursive-current-reuse"
+    external_artifact = tmp_path / "external-recursive-current-reuse"
+    baseline_artifact = tmp_path / "attachment-local-reuse"
+    Generator(config).generate("d d~ > t t~ g g", optimized_artifact)
+    Generator(config).generate(
+        "d d~ > t t~ g g",
+        external_artifact,
+        model=ModelSource.from_path(EXTERNAL_SM_SOURCES["json"]),
+    )
+
+    monkeypatch.setattr(
+        dag_compiler_module,
+        "assign_recursive_current_evaluation_reuse",
+        lambda dag, _model: dag,
+    )
+    Generator(config).generate("d d~ > t t~ g g", baseline_artifact)
+
+    optimized = Runtime.load(optimized_artifact)
+    external = Runtime.load(external_artifact)
+    baseline = Runtime.load(baseline_artifact)
+    momenta = optimized._backend.validation_momenta()
+    assert momenta is not None
+    optimized_total = optimized.evaluate(momenta)
+    baseline_total = baseline.evaluate(momenta)
+    assert optimized_total == pytest.approx(
+        baseline_total,
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert external.evaluate(momenta) == pytest.approx(
+        optimized_total,
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+
+    optimized_resolved = optimized.evaluate_resolved(momenta)
+    external_resolved = external.evaluate_resolved(momenta)
+    baseline_resolved = baseline.evaluate_resolved(momenta)
+    assert optimized_resolved.helicity_ids == baseline_resolved.helicity_ids
+    assert optimized_resolved.color_ids == baseline_resolved.color_ids
+    assert external_resolved.helicity_ids == optimized_resolved.helicity_ids
+    assert external_resolved.color_ids == optimized_resolved.color_ids
+    for optimized_helicities, baseline_helicities in zip(
+        optimized_resolved.values,
+        baseline_resolved.values,
+        strict=True,
+    ):
+        for optimized_colors, baseline_colors in zip(
+            optimized_helicities,
+            baseline_helicities,
+            strict=True,
+        ):
+            assert optimized_colors == pytest.approx(
+                baseline_colors,
+                rel=1.0e-12,
+                abs=1.0e-15,
+            )
+    for external_helicities, optimized_helicities in zip(
+        external_resolved.values,
+        optimized_resolved.values,
+        strict=True,
+    ):
+        for external_colors, optimized_colors in zip(
+            external_helicities,
+            optimized_helicities,
+            strict=True,
+        ):
+            assert external_colors == pytest.approx(
+                optimized_colors,
+                rel=1.0e-12,
+                abs=1.0e-15,
+            )
 
 
 def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(

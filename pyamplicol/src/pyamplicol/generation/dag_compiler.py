@@ -16,6 +16,7 @@ from ..models.base import (
 from ..processes.ir import CanonicalProcessIR
 from .dag_algorithms import _normalize_generation_cap
 from .dag_color import ColorEngine
+from .dag_equivalence import assign_recursive_current_evaluation_reuse
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
@@ -727,7 +728,7 @@ class GenericDAGCompiler:
                                                 ),
                                             )
 
-        return GenericDAG(
+        dag = GenericDAG(
             process=process_ir,
             color_plan=color_plan,
             currents=tuple(table.currents),
@@ -746,6 +747,7 @@ class GenericDAGCompiler:
             color_coverage=color_coverage,
             selected_source_helicities=selected_source_helicities,
         )
+        return assign_recursive_current_evaluation_reuse(dag, self.model)
 
     def _build_sources(
         self,
