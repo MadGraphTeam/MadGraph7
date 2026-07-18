@@ -493,6 +493,7 @@ class CompiledOrientedKernel:
     evaluation_class: str = ""
     evaluation_factor: tuple[float, float] = (1.0, 0.0)
     evaluation_input_order: tuple[int, int] = (0, 1)
+    evaluation_input_exchange_factor: tuple[float, float] | None = None
     evaluation_equivalence_verified: bool = False
     input_ordering_ids: tuple[str, ...] = ()
     output_ordering_id: str = ""
@@ -521,6 +522,11 @@ class CompiledOrientedKernel:
             "evaluation_class": self.evaluation_class,
             "evaluation_factor": list(self.evaluation_factor),
             "evaluation_input_order": list(self.evaluation_input_order),
+            "evaluation_input_exchange_factor": (
+                None
+                if self.evaluation_input_exchange_factor is None
+                else list(self.evaluation_input_exchange_factor)
+            ),
             "evaluation_equivalence_verified": (self.evaluation_equivalence_verified),
             "input_ordering_ids": list(self.input_ordering_ids),
             "output_ordering_id": self.output_ordering_id,
@@ -1016,6 +1022,22 @@ class CompiledModelIR:
                     )
 
         for kernel in self.oriented_kernels:
+            if kernel.evaluation_input_order not in {(0, 1), (1, 0)}:
+                raise ValueError(
+                    f"oriented kernel {kernel.kind} has invalid evaluation input order"
+                )
+            exchange_factor = kernel.evaluation_input_exchange_factor
+            if exchange_factor is not None:
+                if not kernel.evaluation_equivalence_verified:
+                    raise ValueError(
+                        f"oriented kernel {kernel.kind} has an unverified input-"
+                        "exchange relation"
+                    )
+                if exchange_factor not in {(1.0, 0.0), (-1.0, 0.0)}:
+                    raise ValueError(
+                        f"oriented kernel {kernel.kind} has invalid input-exchange "
+                        "phase"
+                    )
             if len(kernel.input_ordering_ids) != 2 or not kernel.output_ordering_id:
                 if has_external_contract:
                     raise ValueError(
@@ -1384,6 +1406,11 @@ class CompiledModelIR:
                     evaluation_factor=_pair(item.get("evaluation_factor", (1.0, 0.0))),
                     evaluation_input_order=cast_int_tuple2(
                         item.get("evaluation_input_order", (0, 1))
+                    ),
+                    evaluation_input_exchange_factor=(
+                        None
+                        if item.get("evaluation_input_exchange_factor") is None
+                        else _pair(item.get("evaluation_input_exchange_factor"))
                     ),
                     evaluation_equivalence_verified=bool(
                         item.get("evaluation_equivalence_verified", False)

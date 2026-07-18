@@ -333,6 +333,23 @@ def test_compiled_model_ordering_graph_round_trips_and_rejects_stale_links() -> 
     with pytest.raises(ValueError, match="does not map every stored component"):
         CompiledModelIR.from_dict(invalid_embedding)
 
+    unverified_exchange = deepcopy(payload)
+    unverified_exchange["oriented_kernels"][0][
+        "evaluation_input_exchange_factor"
+    ] = [-1.0, 0.0]
+    with pytest.raises(ValueError, match="unverified input-exchange relation"):
+        CompiledModelIR.from_dict(unverified_exchange)
+
+    invalid_exchange = deepcopy(unverified_exchange)
+    invalid_exchange["oriented_kernels"][0][
+        "evaluation_equivalence_verified"
+    ] = True
+    invalid_exchange["oriented_kernels"][0][
+        "evaluation_input_exchange_factor"
+    ] = [0.0, 1.0]
+    with pytest.raises(ValueError, match="invalid input-exchange phase"):
+        CompiledModelIR.from_dict(invalid_exchange)
+
 
 def test_compiled_model_rejects_self_consistent_but_false_ordering() -> None:
     payload = _compiled_scalar_model().to_dict()

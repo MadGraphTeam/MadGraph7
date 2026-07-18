@@ -31,6 +31,29 @@ class _CurrentValueEquivalence:
     factor: _ComplexWeight
 
 
+def _canonical_kernel_evaluation(
+    equivalence: VertexEvaluationEquivalence,
+    left_id: int,
+    right_id: int,
+) -> tuple[tuple[int, int], _ComplexWeight]:
+    """Return canonical representative inputs and the concrete-kernel factor."""
+
+    canonical_inputs = (left_id, right_id)
+    if equivalence.input_order == (1, 0):
+        canonical_inputs = (right_id, left_id)
+    factor = equivalence.factor
+    if (
+        equivalence.input_exchange_factor is not None
+        and canonical_inputs[1] < canonical_inputs[0]
+    ):
+        canonical_inputs = (canonical_inputs[1], canonical_inputs[0])
+        factor = _complex_weight_mul(
+            factor,
+            equivalence.input_exchange_factor,
+        )
+    return canonical_inputs, factor
+
+
 def assign_recursive_current_evaluation_reuse(
     dag: GenericDAG,
     model: Model,
@@ -70,9 +93,11 @@ def assign_recursive_current_evaluation_reuse(
         )
         left = current_equivalences[interaction.left_id]
         right = current_equivalences[interaction.right_id]
-        canonical_inputs = (left.representative_id, right.representative_id)
-        if kernel_equivalence.input_order == (1, 0):
-            canonical_inputs = (canonical_inputs[1], canonical_inputs[0])
+        canonical_inputs, kernel_factor = _canonical_kernel_evaluation(
+            kernel_equivalence,
+            left.representative_id,
+            right.representative_id,
+        )
         result = dag.currents[interaction.result_id]
         evaluation_key = (
             kernel_equivalence.class_id,
@@ -87,7 +112,7 @@ def assign_recursive_current_evaluation_reuse(
         )
         input_factor = _complex_weight_mul(left.factor, right.factor)
         evaluation_factor = _complex_weight_mul(
-            kernel_equivalence.factor,
+            kernel_factor,
             input_factor,
         )
         interactions.append(
@@ -226,9 +251,11 @@ def _current_term_vector(
             raise ValueError(
                 "current-value equivalence requires parents from an earlier subset"
             )
-        canonical_inputs = (left.representative_id, right.representative_id)
-        if kernel_equivalence.input_order == (1, 0):
-            canonical_inputs = (canonical_inputs[1], canonical_inputs[0])
+        canonical_inputs, kernel_factor = _canonical_kernel_evaluation(
+            kernel_equivalence,
+            left.representative_id,
+            right.representative_id,
+        )
         term_key = (
             kernel_equivalence.class_id,
             canonical_inputs,
@@ -239,7 +266,7 @@ def _current_term_vector(
         input_factor = _complex_weight_mul(left.factor, right.factor)
         coefficient = _complex_weight_mul(
             interaction.color_weight,
-            _complex_weight_mul(kernel_equivalence.factor, input_factor),
+            _complex_weight_mul(kernel_factor, input_factor),
         )
         coefficients_by_key[term_key].append(coefficient)
 

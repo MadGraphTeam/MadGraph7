@@ -48,6 +48,82 @@ def test_model_builtin_lowering_metadata_uses_owned_symbol_names() -> None:
     )
 
 
+def test_builtin_yang_mills_kernel_evaluation_relations_are_exact() -> None:
+    model = BuiltinSMModel()
+    left = (1.0 + 2.0j, -0.5j, 3.0, -2.0 + 0.25j)
+    right = (0.75, 1.5 - 0.5j, -1.0j, 2.25)
+    left_momentum = (5.0, 1.0, -2.0, 0.5)
+    right_momentum = (4.0, -0.5, 1.5, -1.0)
+
+    three_vector = model.vertex_component_expression(
+        0,
+        left,
+        right,
+        result_particle_id=21,
+        result_chirality=0,
+        left_momentum=left_momentum,
+        right_momentum=right_momentum,
+    )
+    three_vector_swapped = model.vertex_component_expression(
+        0,
+        right,
+        left,
+        result_particle_id=21,
+        result_chirality=0,
+        left_momentum=right_momentum,
+        right_momentum=left_momentum,
+    )
+    assert three_vector_swapped == pytest.approx(
+        tuple(-value for value in three_vector)
+    )
+
+    tensor = model.vertex_component_expression(
+        1,
+        left,
+        right,
+        result_particle_id=-21,
+        result_chirality=0,
+    )
+    tensor_swapped = model.vertex_component_expression(
+        1,
+        right,
+        left,
+        result_particle_id=-21,
+        result_chirality=0,
+    )
+    assert tensor_swapped == pytest.approx(tuple(-value for value in tensor))
+
+    tensor_vector = model.vertex_component_expression(
+        2,
+        tensor,
+        left,
+        result_particle_id=21,
+        result_chirality=0,
+    )
+    vector_tensor = model.vertex_component_expression(
+        3,
+        left,
+        tensor,
+        result_particle_id=21,
+        result_chirality=0,
+    )
+    assert vector_tensor == pytest.approx(tuple(-value for value in tensor_vector))
+
+    assert model.vertex_evaluation_equivalence(0).input_exchange_factor == (
+        -1.0,
+        0.0,
+    )
+    assert model.vertex_evaluation_equivalence(1).input_exchange_factor == (
+        -1.0,
+        0.0,
+    )
+    assert model.vertex_evaluation_equivalence(2).class_id == (
+        model.vertex_evaluation_equivalence(3).class_id
+    )
+    assert model.vertex_evaluation_equivalence(3).input_order == (1, 0)
+    assert model.vertex_evaluation_equivalence(3).factor == (-1.0, 0.0)
+
+
 def test_model_builtin_compiles_to_canonical_records_without_replacing_path() -> None:
     compiled = compile_model_source("built-in-sm", use_cache=False)
 

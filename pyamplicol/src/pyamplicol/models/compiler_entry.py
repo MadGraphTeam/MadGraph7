@@ -413,6 +413,9 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             )
         )
         candidates: list[tuple[str, tuple[int, int], tuple[float, float], str]] = []
+        components_by_input_order: dict[
+            tuple[int, int], tuple[_sym.Expression, ...]
+        ] = {}
         for input_order, swap_sides in (((0, 1), False), ((1, 0), True)):
             oriented_components = tuple(
                 _canonicalize_oriented_kernel_component(
@@ -430,6 +433,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                 )
                 for component in kernel.component_expressions
             )
+            components_by_input_order[input_order] = oriented_components
             oriented_dimensions = (
                 dimensions[input_order[0]],
                 dimensions[input_order[1]],
@@ -463,12 +467,30 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             candidates,
             key=lambda candidate: candidate[0],
         )
+        input_exchange_factor: tuple[float, float] | None = None
+        if dimensions[0] == dimensions[1]:
+            direct_components = components_by_input_order[(0, 1)]
+            swapped_components = components_by_input_order[(1, 0)]
+            zero = _sym.E("0").to_canonical_string()
+            for exchange_sign in (1.0, -1.0):
+                if all(
+                    (swapped - exchange_sign * direct).expand().to_canonical_string()
+                    == zero
+                    for direct, swapped in zip(
+                        direct_components,
+                        swapped_components,
+                        strict=True,
+                    )
+                ):
+                    input_exchange_factor = (exchange_sign, 0.0)
+                    break
         annotated.append(
             replace(
                 kernel,
                 evaluation_class=f"symbolica-sha256:{class_digest}",
                 evaluation_factor=factor,
                 evaluation_input_order=input_order,
+                evaluation_input_exchange_factor=input_exchange_factor,
                 evaluation_equivalence_verified=True,
             )
         )

@@ -7,6 +7,7 @@ from typing import Any
 
 from .._physics_ir import PropagatorIR
 from ..base import (
+    VertexEvaluationEquivalence,
     VertexLoweringRule,
 )
 from ..expressions import (
@@ -374,6 +375,37 @@ class BuiltinSMLoweringMixin:
             description="no native pyamplicol lowering rule is registered yet",
             kernel="unknown",
         )
+
+    def vertex_evaluation_equivalence(
+        self,
+        kind: int,
+    ) -> VertexEvaluationEquivalence:
+        """Expose exact input-orientation identities of built-in kernels."""
+
+        antisymmetric_same_inputs = {
+            0: "three-vector-current",
+            1: "two-vector-to-tensor",
+        }
+        if kind in antisymmetric_same_inputs:
+            return VertexEvaluationEquivalence(
+                class_id=f"builtin-sm:{antisymmetric_same_inputs[kind]}",
+                input_exchange_factor=(-1.0, 0.0),
+            )
+
+        pure_gauge_orientations = {
+            2: ("tensor-vector-to-vector", (0, 1), (1.0, 0.0)),
+            3: ("tensor-vector-to-vector", (1, 0), (-1.0, 0.0)),
+        }
+        relation = pure_gauge_orientations.get(kind)
+        if relation is not None:
+            class_name, input_order, factor = relation
+            return VertexEvaluationEquivalence(
+                class_id=f"builtin-sm:{class_name}",
+                factor=factor,
+                input_order=input_order,
+            )
+
+        return super().vertex_evaluation_equivalence(kind)
 
     def vertex_component_expression(
         self,

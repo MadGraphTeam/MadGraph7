@@ -32,6 +32,8 @@ from pyamplicol.config import (
     RunConfig,
 )
 from pyamplicol.generation.phase_space import massive_rambo_final_state
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.base import Model
 from tools.developer.analytic_oracles import (
     scalar_contact_2to2,
     scalar_gravity_2to2,
@@ -346,9 +348,18 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
     assert total[0].imag == pytest.approx(0.0, abs=1.0e-15)
 
 
+@pytest.mark.parametrize(
+    ("process", "color_accuracy"),
+    (
+        ("d d~ > t t~ g g", "full"),
+        ("g g > g g g", "nlc"),
+    ),
+)
 def test_recursive_current_reuse_matches_unshared_contracted_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    process: str,
+    color_accuracy: str,
 ) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
@@ -357,7 +368,7 @@ def test_recursive_current_reuse_matches_unshared_contracted_runtime(
 
     config = RunConfig(
         action="generate",
-        color=ColorConfig(accuracy="full"),
+        color=ColorConfig(accuracy=color_accuracy),
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=False,
@@ -372,9 +383,9 @@ def test_recursive_current_reuse_matches_unshared_contracted_runtime(
     optimized_artifact = tmp_path / "recursive-current-reuse"
     external_artifact = tmp_path / "external-recursive-current-reuse"
     baseline_artifact = tmp_path / "attachment-local-reuse"
-    Generator(config).generate("d d~ > t t~ g g", optimized_artifact)
+    Generator(config).generate(process, optimized_artifact)
     Generator(config).generate(
-        "d d~ > t t~ g g",
+        process,
         external_artifact,
         model=ModelSource.from_path(EXTERNAL_SM_SOURCES["json"]),
     )
@@ -384,7 +395,12 @@ def test_recursive_current_reuse_matches_unshared_contracted_runtime(
         "assign_recursive_current_evaluation_reuse",
         lambda dag, _model: dag,
     )
-    Generator(config).generate("d d~ > t t~ g g", baseline_artifact)
+    monkeypatch.setattr(
+        BuiltinSMModel,
+        "vertex_evaluation_equivalence",
+        Model.vertex_evaluation_equivalence,
+    )
+    Generator(config).generate(process, baseline_artifact)
 
     optimized = Runtime.load(optimized_artifact)
     external = Runtime.load(external_artifact)

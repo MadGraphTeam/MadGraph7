@@ -99,13 +99,16 @@ class VertexEvaluationEquivalence:
 
     ``factor`` states that the concrete oriented kernel equals ``factor`` times
     its equivalence-class representative after applying ``input_order``.
-    Keeping this model-owned lets compiled UFO models persist relations proven
-    from their actual lowered Symbolica expressions.
+    ``input_exchange_factor``, when present, additionally proves that exchanging
+    the representative's two inputs multiplies it by that factor. Keeping this
+    model-owned lets compiled UFO models persist relations proven from their
+    actual lowered Symbolica expressions.
     """
 
     class_id: str
     factor: tuple[float, float] = (1.0, 0.0)
     input_order: tuple[int, int] = (0, 1)
+    input_exchange_factor: tuple[float, float] | None = None
     verified: bool = True
 
     def __post_init__(self) -> None:
@@ -117,12 +120,28 @@ class VertexEvaluationEquivalence:
             raise ValueError("vertex evaluation equivalence factor must be finite")
         if self.factor == (0.0, 0.0):
             raise ValueError("vertex evaluation equivalence factor must be nonzero")
+        if self.input_exchange_factor is not None:
+            if not all(
+                math.isfinite(component) for component in self.input_exchange_factor
+            ):
+                raise ValueError(
+                    "vertex evaluation input-exchange factor must be finite"
+                )
+            if self.input_exchange_factor == (0.0, 0.0):
+                raise ValueError(
+                    "vertex evaluation input-exchange factor must be nonzero"
+                )
 
     def to_json_dict(self) -> dict[str, object]:
         return {
             "class_id": self.class_id,
             "factor": list(self.factor),
             "input_order": list(self.input_order),
+            "input_exchange_factor": (
+                None
+                if self.input_exchange_factor is None
+                else list(self.input_exchange_factor)
+            ),
             "verified": self.verified,
         }
 

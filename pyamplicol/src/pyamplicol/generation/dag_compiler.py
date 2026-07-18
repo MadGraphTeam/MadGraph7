@@ -16,7 +16,10 @@ from ..models.base import (
 from ..processes.ir import CanonicalProcessIR
 from .dag_algorithms import _normalize_generation_cap
 from .dag_color import ColorEngine
-from .dag_equivalence import assign_recursive_current_evaluation_reuse
+from .dag_equivalence import (
+    _canonical_kernel_evaluation,
+    assign_recursive_current_evaluation_reuse,
+)
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
@@ -661,9 +664,14 @@ class GenericDAGCompiler:
                                             evaluation_equivalence_by_kind[
                                                 vertex.kind
                                             ] = equivalence
-                                        canonical_inputs = (left_id, right_id)
-                                        if equivalence.input_order == (1, 0):
-                                            canonical_inputs = (right_id, left_id)
+                                        (
+                                            canonical_inputs,
+                                            evaluation_factor,
+                                        ) = _canonical_kernel_evaluation(
+                                            equivalence,
+                                            left_id,
+                                            right_id,
+                                        )
                                         evaluation_key = (
                                             equivalence.class_id,
                                             canonical_inputs,
@@ -698,7 +706,7 @@ class GenericDAGCompiler:
                                                 evaluation_group_id=(
                                                     evaluation_group_id
                                                 ),
-                                                evaluation_factor=equivalence.factor,
+                                                evaluation_factor=evaluation_factor,
                                             )
                                         )
                                         if (

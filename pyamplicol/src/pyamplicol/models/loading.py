@@ -35,7 +35,7 @@ from .contracts import (
 )
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
-MODEL_COMPILER_VERSION = 12
+MODEL_COMPILER_VERSION = 13
 BUILTIN_SM_ALIASES = frozenset(("builtin_sm", "built-in-sm"))
 DEFAULT_MODEL_RESTRICTION = "default"
 NO_MODEL_RESTRICTION = "none"
@@ -453,6 +453,11 @@ def compile_model_source(
         ),
         "swapped_kernel_evaluation_relation_count": sum(
             kernel.evaluation_input_order == (1, 0)
+            for kernel in model_ir.oriented_kernels
+            if kernel.evaluation_equivalence_verified
+        ),
+        "exchange_symmetric_kernel_evaluation_relation_count": sum(
+            kernel.evaluation_input_exchange_factor is not None
             for kernel in model_ir.oriented_kernels
             if kernel.evaluation_equivalence_verified
         ),

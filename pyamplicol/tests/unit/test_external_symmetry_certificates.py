@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -16,7 +17,7 @@ from pyamplicol.generation.dag_equivalence import (
     _derive_current_value_equivalences,
     assign_recursive_current_evaluation_reuse,
 )
-from pyamplicol.generation.dag_types import InteractionNode
+from pyamplicol.generation.dag_types import CurrentNode, InteractionNode
 from pyamplicol.models import BuiltinSMModel, CompiledUFOModel, compile_model_source
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.compiler_contacts import _four_point_contact_color_split
@@ -353,6 +354,37 @@ def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) ->
     )
     assert model.lc_trace_reflection_equivalence_is_proven(pure_adjoint)
 
+    cubic_kernel = next(
+        kernel
+        for kernel in compiled.ir.oriented_kernels
+        if kernel.particles == ("g", "g", "g")
+    )
+    assert cubic_kernel.evaluation_input_exchange_factor == (-1.0, 0.0)
+    auxiliary_input = next(
+        kernel
+        for kernel in compiled.ir.oriented_kernels
+        if kernel.particles[:2] == ("g", "g")
+        and kernel.kind in certificates.yang_mills_kernel_kinds
+        and kernel.kind != cubic_kernel.kind
+    )
+    assert auxiliary_input.evaluation_input_exchange_factor == (-1.0, 0.0)
+    auxiliary_outputs = tuple(
+        kernel
+        for kernel in compiled.ir.oriented_kernels
+        if kernel.kind in certificates.yang_mills_kernel_kinds
+        and kernel.kind not in {cubic_kernel.kind, auxiliary_input.kind}
+    )
+    assert len(auxiliary_outputs) == 2
+    assert len({kernel.evaluation_class for kernel in auxiliary_outputs}) == 1
+    assert {kernel.evaluation_input_order for kernel in auxiliary_outputs} == {
+        (0, 1),
+        (1, 0),
+    }
+    assert {kernel.evaluation_factor for kernel in auxiliary_outputs} == {
+        (1.0, 0.0),
+        (-1.0, 0.0),
+    }
+
 
 def test_tensor_product_signature_alpha_normalizes_contracted_indices() -> None:
     left = (
@@ -600,8 +632,8 @@ def test_recursive_current_reuse_recovers_legacy_mixed_line_fanout(
     # nonzero helicities. The recursive proof may recover additional exact
     # model-generic relations, but it must not retain the former 46,032 groups.
     legacy_kernel_evaluations = 652 * 64
-    assert builtin_dag.interaction_evaluation_count == 32_124
-    assert external_dag.interaction_evaluation_count == 29_868
+    assert builtin_dag.interaction_evaluation_count == 22_356
+    assert external_dag.interaction_evaluation_count == 22_356
     assert builtin_dag.interaction_evaluation_count < legacy_kernel_evaluations
     assert external_dag.interaction_evaluation_count < legacy_kernel_evaluations
     assert assign_recursive_current_evaluation_reuse(
@@ -612,6 +644,73 @@ def test_recursive_current_reuse_recovers_legacy_mixed_line_fanout(
         external_dag,
         external_model,
     ) == external_dag
+
+
+def test_recursive_reuse_covers_every_materialized_gluon_reflection(
+    external_sm,
+) -> None:
+    compiled, external_model = external_sm
+    cases = (
+        (
+            BuiltinSMModel(),
+            build_process_ir("g g > g g g", color_accuracy="nlc"),
+        ),
+        (
+            external_model,
+            build_model_process_ir(
+                "g g > g g g",
+                compiled.ir,
+                color_accuracy="nlc",
+            ),
+        ),
+    )
+
+    for model, process in cases:
+        dag = compile_generic_dag(
+            process,
+            model=model,
+            max_coupling_orders={"QCD": 3, "QED": 0},
+        )
+        equivalences = _derive_current_value_equivalences(dag, model)
+        currents_by_contract: dict[tuple[object, ...], list[CurrentNode]] = defaultdict(
+            list
+        )
+        for current in dag.currents:
+            index = current.index
+            if len(index.ordered_external_labels) < 2:
+                continue
+            contract = (
+                int(index.particle_id),
+                int(index.external_mask),
+                index.external_labels,
+                int(index.helicity_ancestry),
+                int(index.chirality),
+                index.spin_state,
+                index.flavour_flow,
+                index.quantum_number_flow,
+                int(index.momentum_mask),
+                index.coupling_orders,
+                index.auxiliary_kind,
+                int(current.dimension),
+            )
+            currents_by_contract[contract].append(current)
+
+        checked = 0
+        for currents in currents_by_contract.values():
+            representatives_by_order: dict[tuple[int, ...], set[int]] = defaultdict(set)
+            for current in currents:
+                representatives_by_order[current.index.ordered_external_labels].add(
+                    equivalences[current.id].representative_id
+                )
+            for ordering, representatives in representatives_by_order.items():
+                reversed_representatives = representatives_by_order.get(
+                    tuple(reversed(ordering))
+                )
+                if reversed_representatives is None:
+                    continue
+                checked += 1
+                assert representatives & reversed_representatives
+        assert checked > 0
 
 
 def test_recursive_current_reuse_fails_closed_after_coefficient_deformation(

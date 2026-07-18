@@ -246,6 +246,7 @@ class ExternalModelCatalogMixin:
             class_id=kernel.evaluation_class,
             factor=kernel.evaluation_factor,
             input_order=input_order,
+            input_exchange_factor=(kernel.evaluation_input_exchange_factor),
             verified=True,
         )
 
