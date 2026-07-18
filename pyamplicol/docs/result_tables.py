@@ -64,6 +64,9 @@ LEGACY_LC_ALL_FLOW_GENERATION_SOURCE = "shared_generated_library_build"
 ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON = (
     "original AmpliCol supports at most three open quark lines"
 )
+ONE_LINE_NLC_FULL_ORDERING_FIX_REVISION = (
+    "cf8017dd393fc000c47f95d97b155ccdba6a5151"
+)
 ALLOW_PARALLEL_SYMBOLICA_ENV = "PYAMPLICOL_REPORT_ALLOW_PARALLEL_SYMBOLICA"
 VALIDATION_RELATIVE_TOLERANCE = 1.0e-8
 VALIDATION_ABSOLUTE_TOLERANCE = 1.0e-15
@@ -3512,6 +3515,18 @@ def _git_rev_parse(ref: str) -> str | None:
 
 
 @cache
+def _git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=_repo_root(),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+@cache
 def _report_source_provenance() -> dict[str, object]:
     schema_version: int | None
     compiler_version: int | None
@@ -3745,6 +3760,10 @@ def _campaign_cell_needs_measurement(
                     and bool(_measurement_old_matrix_fields(pyamplicol))
                     and _pyamplicol_timing_profile_current(pyamplicol)
                     and _pyamplicol_generation_profile_current(pyamplicol)
+                    and _pyamplicol_measurement_source_fences_current(
+                        cell,
+                        pyamplicol,
+                    )
                     and _pyamplicol_artifacts_current(
                         pyamplicol,
                         require_current_compiled_model_contract=_cell_uses_external_model(
@@ -3760,6 +3779,10 @@ def _campaign_cell_needs_measurement(
                 return not (
                     _pyamplicol_timing_profile_current(pyamplicol)
                     and _pyamplicol_generation_profile_current(pyamplicol)
+                    and _pyamplicol_measurement_source_fences_current(
+                        cell,
+                        pyamplicol,
+                    )
                     and _pyamplicol_artifacts_current(
                         pyamplicol,
                         require_current_compiled_model_contract=_cell_uses_external_model(
@@ -3984,6 +4007,48 @@ def _measurement_source_provenance_current(
     if not isinstance(metadata, Mapping):
         return False
     return _source_provenance_current(metadata.get("source_provenance"))
+
+
+def _measurement_source_revision(
+    measurement: Mapping[str, object],
+) -> str | None:
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    provenance = metadata.get("source_provenance")
+    if not isinstance(provenance, Mapping):
+        return None
+    revision = provenance.get("head")
+    return revision if isinstance(revision, str) and revision else None
+
+
+def _pyamplicol_required_minimum_source_revision(
+    cell: CampaignCell,
+) -> str | None:
+    spec = _spec_by_dataset().get(cell.dataset_id)
+    if not isinstance(spec, MatrixSpec):
+        return None
+    if spec.color_accuracy not in {"nlc", "full"}:
+        return None
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    if _legacy_quark_line_count(legacy_amplicol.process_pdgs(cell.process)) > 1:
+        return None
+    return ONE_LINE_NLC_FULL_ORDERING_FIX_REVISION
+
+
+def _pyamplicol_measurement_source_fences_current(
+    cell: CampaignCell,
+    measurement: Mapping[str, object],
+) -> bool:
+    required_revision = _pyamplicol_required_minimum_source_revision(cell)
+    if required_revision is None:
+        return True
+    measurement_revision = _measurement_source_revision(measurement)
+    if measurement_revision is None:
+        return False
+    return _git_is_ancestor(required_revision, measurement_revision)
 
 
 def _matrix_reference_unavailable_by_design(
