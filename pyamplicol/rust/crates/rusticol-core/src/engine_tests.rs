@@ -630,6 +630,7 @@ fn empty_evaluator_group() -> EvaluatorGroup {
         evaluators: Vec::new(),
         input_len: 0,
         input_mappings: Vec::new(),
+        input_mapping_spans: Vec::new(),
         output_len: 0,
         chunk_parameter_scratch_f64: Vec::new(),
         chunk_scratch_f64: Vec::new(),

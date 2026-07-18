@@ -17,11 +17,21 @@ impl EvaluatorGroup {
             &mut evaluators,
             &mut input_mappings,
         )?;
+        let input_mapping_spans = input_mappings
+            .iter()
+            .map(|mapping| {
+                mapping
+                    .as_deref()
+                    .map(contiguous_input_spans)
+                    .unwrap_or_default()
+            })
+            .collect();
         let output_len = evaluators.iter().map(|e| e.output_len).sum();
         Ok(Self {
             evaluators,
             input_len,
             input_mappings,
+            input_mapping_spans,
             output_len,
             chunk_parameter_scratch_f64: Vec::new(),
             chunk_scratch_f64: Vec::new(),
@@ -94,10 +104,11 @@ impl EvaluatorGroup {
                 batch_size * self.input_len
             )));
         }
-        for (((evaluator, input_mapping), outputs), spans) in self
+        for ((((evaluator, input_mapping), input_spans), outputs), spans) in self
             .evaluators
             .iter_mut()
             .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
             .zip(chunk_outputs)
             .zip(chunk_output_spans)
         {
@@ -106,6 +117,7 @@ impl EvaluatorGroup {
                 batch_size,
                 self.input_len,
                 input_mapping.as_deref(),
+                input_spans,
                 &mut self.chunk_parameter_scratch_f64,
             );
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
@@ -170,6 +182,7 @@ impl EvaluatorGroup {
                 batch_size,
                 self.input_len,
                 self.input_mappings[0].as_deref(),
+                &self.input_mapping_spans[0],
                 &mut self.chunk_parameter_scratch_f64,
             );
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
@@ -177,12 +190,18 @@ impl EvaluatorGroup {
             return Ok(());
         }
         let mut output_offset = 0;
-        for (evaluator, input_mapping) in self.evaluators.iter_mut().zip(&self.input_mappings) {
+        for ((evaluator, input_mapping), input_spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
+        {
             let evaluator_params = mapped_f64_parameters(
                 params,
                 batch_size,
                 self.input_len,
                 input_mapping.as_deref(),
+                input_spans,
                 &mut self.chunk_parameter_scratch_f64,
             );
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
@@ -266,6 +285,7 @@ fn mapped_f64_parameters<'a>(
     batch_size: usize,
     parent_input_len: usize,
     input_mapping: Option<&[usize]>,
+    input_spans: &[(usize, usize, usize)],
     scratch: &'a mut Vec<Complex<f64>>,
 ) -> &'a [Complex<f64>] {
     let Some(indices) = input_mapping else {
@@ -275,8 +295,16 @@ fn mapped_f64_parameters<'a>(
     for row in 0..batch_size {
         let source_start = row * parent_input_len;
         let target_start = row * indices.len();
-        for (local_index, parent_index) in indices.iter().enumerate() {
-            scratch[target_start + local_index] = params[source_start + *parent_index];
+        if input_spans.is_empty() {
+            for (local_index, parent_index) in indices.iter().enumerate() {
+                scratch[target_start + local_index] = params[source_start + *parent_index];
+            }
+        } else {
+            for (local_start, parent_start, len) in input_spans {
+                let target = target_start + *local_start;
+                let source = source_start + *parent_start;
+                scratch[target..target + *len].copy_from_slice(&params[source..source + *len]);
+            }
         }
     }
     scratch

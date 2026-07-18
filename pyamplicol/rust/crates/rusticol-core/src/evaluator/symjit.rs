@@ -440,6 +440,54 @@ mod tests {
     }
 
     #[test]
+    fn chunked_group_copies_contiguous_mapped_input_spans() {
+        let path = write_application(&application_bytes(), "mapped-input-spans");
+        let root = path.parent().unwrap();
+        let application_path = path.file_name().unwrap().to_str().unwrap().to_string();
+        let manifest = EvaluatorManifest::Chunked {
+            required_runtime_capabilities: vec![SYMJIT_APPLICATION_RUNTIME_CAPABILITY.to_string()],
+            input_len: Some(4),
+            chunk_input_indices: Some(vec![vec![0, 1], vec![2, 3]]),
+            chunks: vec![
+                direct_manifest(application_path.clone()),
+                direct_manifest(application_path),
+            ],
+        };
+
+        let mut group = EvaluatorGroup::load(&manifest, root).unwrap();
+        assert_eq!(
+            group.input_mapping_spans,
+            vec![vec![(0, 0, 2)], vec![(0, 2, 2)]]
+        );
+        let output = group
+            .evaluate_batch(
+                2,
+                &[
+                    Complex::new(1.0, 0.0),
+                    Complex::new(3.0, 0.0),
+                    Complex::new(10.0, 0.0),
+                    Complex::new(30.0, 0.0),
+                    Complex::new(2.0, 0.0),
+                    Complex::new(5.0, 0.0),
+                    Complex::new(20.0, 0.0),
+                    Complex::new(50.0, 0.0),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(
+            output,
+            vec![
+                Complex::new(4.0, 0.0),
+                Complex::new(40.0, 0.0),
+                Complex::new(7.0, 0.0),
+                Complex::new(70.0, 0.0),
+            ]
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn legacy_chunked_group_reuses_full_parent_inputs() {
         let path = write_application(&application_bytes(), "legacy-chunks");
         let root = path.parent().unwrap();

@@ -1075,6 +1075,7 @@ struct EvaluatorGroup {
     evaluators: Vec<LoadedEvaluator>,
     input_len: usize,
     input_mappings: Vec<Option<Vec<usize>>>,
+    input_mapping_spans: Vec<Vec<(usize, usize, usize)>>,
     output_len: usize,
     chunk_parameter_scratch_f64: Vec<Complex<f64>>,
     chunk_scratch_f64: Vec<Complex<f64>>,
