@@ -252,11 +252,14 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         passed = reldiff <= _TOLERANCE
         message = None
         if not passed:
+            # A cross-section was successfully obtained here, just outside
+            # tolerance -- no need for the (noisy) log tail, the deviation
+            # itself is the useful diagnostic.
             message = (
                 '%s (%s): mg7 xsec %.6g +- %.3g pb differs from reference '
-                '%.6g pb by %.3f%% (> %.3f%% tolerance)\n\n%s'
+                '%.6g pb by %.3f%% (> %.3f%% tolerance)'
                 % (entry['id'], entry['process'], got, err, ref_x,
-                   100 * reldiff, 100 * _TOLERANCE, _tail(log)))
+                   100 * reldiff, 100 * _TOLERANCE))
         self._record_result(entry, section, 'pass' if passed else 'fail',
                              got=got, err=err, message=message)
         self.assertLessEqual(reldiff, _TOLERANCE, message)
