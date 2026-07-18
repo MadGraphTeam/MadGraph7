@@ -82,7 +82,10 @@ def _sequence(value: object, context: str) -> Sequence[object]:
 
 
 def _computed(value: object, context: str) -> bool:
-    computed = _mapping(value, context).get("computed")
+    record = _mapping(value, context)
+    if record.get("kind") == "contracted-color":
+        return True
+    computed = record.get("computed")
     if not isinstance(computed, bool):
         raise ArtifactError(f"{context}.computed must be a boolean")
     return computed

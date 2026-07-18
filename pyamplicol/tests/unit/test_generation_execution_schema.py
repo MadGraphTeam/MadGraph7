@@ -68,6 +68,8 @@ def test_execution_plan_is_strict_schema_v3_runtime_dto() -> None:
         "normalization.alpha_ew",
     }
     physics_normalization = schema["physics"]["extensions"]["normalization"]
+    assert "coherent_groups" not in schema["physics"]["extensions"]
+    assert "color_contraction" not in schema["physics"]["extensions"]
     assert "final_state_identical_factor" not in physics_normalization
     assert "quark_line_partner_factor" not in physics_normalization
 

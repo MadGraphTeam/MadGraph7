@@ -89,8 +89,6 @@ def build_resolved_physics_payload(
         },
         "extensions": {
             "process_key": dag.process.key,
-            "coherent_groups": [dict(group) for group in coherent_groups],
-            "color_contraction": amplitude_stage.get("color_contraction"),
             "normalization": {
                 key: normalization[key]
                 for key in _NORMALIZATION_EXTENSION_KEYS

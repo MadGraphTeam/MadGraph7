@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pyamplicol.artifacts import inspect_artifact
+from pyamplicol.artifacts.inspection import _computed
 
 ROOT = Path(__file__).resolve().parents[2]
 PORTABLE_ARTIFACT = ROOT / "src/pyamplicol/assets/selftest/portable-64le/artifact"
@@ -31,3 +32,15 @@ def test_artifact_inspection_lists_processes_without_loading_evaluators() -> Non
     assert process.computed_color_components == 1
     assert process.helicity_coverage == "complete"
     assert process.color_coverage == "complete"
+
+
+def test_contracted_color_is_definitionally_computed() -> None:
+    assert _computed(
+        {
+            "kind": "contracted-color",
+            "id": "color:contracted",
+            "index": 0,
+            "description": "fully contracted color",
+        },
+        "color component",
+    )
