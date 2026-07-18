@@ -65,6 +65,26 @@ EXTERNAL_SM_PROCESS_IDS = (
     "sm_gg_ttbar",
     "sm_ddbar_zgg",
 )
+# These cases intentionally use the current shared-ordering DAG rather than
+# the larger topology retained in the independent pre-optimization fixture.
+# Numerical expectations still come exclusively from that fixture.
+CURRENT_BUILTIN_TOPOLOGY = {
+    f"case:sm_gg_ttbar:{accuracy}": {
+        "currents": 36,
+        "interactions": 44,
+        "reduction_groups": 32,
+        "roots": 32,
+    }
+    for accuracy in ("nlc", "full")
+} | {
+    f"case:sm_ddbar_zgg:{accuracy}": {
+        "currents": 117,
+        "interactions": 242,
+        "reduction_groups": 48,
+        "roots": 48,
+    }
+    for accuracy in ("nlc", "full")
+}
 NAMED_CASE_IDS = {
     "builtin_sm_ddbar_zg_lc": "case:sm_ddbar_zg:lc",
     "scalars_2to2_lc": "case:scalars_2to2:lc",
@@ -461,7 +481,7 @@ def test_current_source_external_sm_matches_builtin_reference(
                 encoding="utf-8"
             )
         )
-        topology = case["topology"]
+        topology = CURRENT_BUILTIN_TOPOLOGY.get(case["id"], case["topology"])
         assert execution["dag_summary"]["current_count"] == topology["currents"]
         assert execution["dag_summary"]["interaction_count"] == topology["interactions"]
         assert execution["dag_summary"]["amplitude_root_count"] == topology["roots"]
