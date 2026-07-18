@@ -140,7 +140,10 @@ class ColorEngine:
             word for sector in color_plan.sectors for word in (sector.color_words or ())
         )
         self._shared_lc_orderings = (
-            color_plan.color_accuracy == "lc"
+            (
+                color_plan.color_accuracy == "lc"
+                or self._fundamental_fermion_pair_count <= 1
+            )
             and bool(color_plan.sectors)
             and bool(self._shared_lc_coloured_labels)
             and color_plan_matches_model
@@ -1036,19 +1039,32 @@ class ColorEngine:
         left_index: CurrentIndex,
         right_index: CurrentIndex,
     ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
-        word = tuple(
+        left_word = tuple(
             label
-            for label in (
-                *left_index.ordered_external_labels,
-                *right_index.ordered_external_labels,
-            )
+            for label in left_index.ordered_external_labels
             if label in self._shared_lc_coloured_labels
         )
-        if not word:
+        right_word = tuple(
+            label
+            for label in right_index.ordered_external_labels
+            if label in self._shared_lc_coloured_labels
+        )
+        if not left_word or not right_word:
             return None
-        sector_ids = self._shared_lc_sector_ids_by_word.get(word, ())
-        if not sector_ids:
+        candidates = [(*left_word, *right_word)]
+        if self.color_plan.color_accuracy != "lc":
+            candidates.append((*right_word, *left_word))
+        word = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate in self._shared_lc_sector_ids_by_word
+            ),
+            None,
+        )
+        if word is None:
             return None
+        sector_ids = self._shared_lc_sector_ids_by_word[word]
         basis_keys = (
             *left_index.color_state.basis_key,
             *right_index.color_state.basis_key,

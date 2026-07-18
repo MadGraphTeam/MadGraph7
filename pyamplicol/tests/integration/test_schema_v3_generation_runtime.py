@@ -278,6 +278,44 @@ def test_current_source_generates_and_evaluates_schema_v3(
             assert actual.imag == pytest.approx(0.0, abs=1.0e-15)
 
 
+def test_nlc_one_line_shared_orderings_match_sector_local_reference(
+    tmp_path: Path,
+) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    artifact = tmp_path / "nlc-shared-one-line"
+    Generator(
+        RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy="nlc"),
+        )
+    ).generate("g g > t t~ g", artifact)
+
+    execution = json.loads(
+        (
+            artifact / "processes" / "g_g_to_t_tbar_g" / "execution.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert execution["dag_summary"] == {
+        "amplitude_root_count": 192,
+        "current_count": 250,
+        "interaction_count": 624,
+        "source_count": 10,
+        "truncated": False,
+    }
+
+    runtime = Runtime.load(artifact)
+    momenta = runtime._backend.validation_momenta()
+    assert momenta is not None
+    total = runtime.evaluate(momenta)
+
+    # Captured with the previous exact sector-local NLC construction at the
+    # same deterministic validation point.
+    assert total[0].real == pytest.approx(5.285188765700242e-4, rel=1.0e-12)
+    assert total[0].imag == pytest.approx(0.0, abs=1.0e-15)
+
+
 @pytest.mark.parametrize("case_name", tuple(EXTERNAL_CASES))
 def test_current_source_external_models_match_reference(
     tmp_path: Path,

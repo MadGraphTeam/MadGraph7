@@ -10,7 +10,10 @@ from pyamplicol.color import (
     build_color_plan,
     color_contraction_factors,
 )
+from pyamplicol.generation.dag_color import ColorEngine
+from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_ordering import _sector_intermediate_order_words
+from pyamplicol.models.builtin.model import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
@@ -97,6 +100,31 @@ def test_three_open_line_nlc_keeps_exact_qualified_coefficients() -> None:
         reference,
         sectors[(2, 4, 3, 6, 5, 7, 1)],
     ) == (0.0, 8.0, 8.0)
+
+
+def test_nlc_one_open_line_recycles_orderings_in_one_shared_dag() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("g g > t t~ g", color_accuracy="nlc")
+    plan = build_color_plan(process, color_accuracy="nlc")
+    engine = ColorEngine(plan, model)
+    dag = compile_generic_dag(process, model=model)
+
+    assert plan.sector_count == 6
+    assert engine.shared_lc_orderings is True
+    assert len(dag.currents) == 250
+    assert len(dag.interactions) == 624
+    assert dag.interaction_evaluation_count == 504
+    assert len(dag.amplitude_roots) == 192
+
+
+def test_nlc_multiple_open_lines_keep_pairing_identity_sector_local() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("d d~ > u u~ s s~", color_accuracy="nlc")
+    plan = build_color_plan(process, color_accuracy="nlc")
+    engine = ColorEngine(plan, model)
+
+    assert plan.sector_count > 1
+    assert engine.shared_lc_orderings is False
 
 
 def test_color_contraction_rejects_inconsistent_helicity_weights() -> None:
