@@ -61,7 +61,7 @@ runtime-mutable.
 
 - `backend: jit | asm | cpp = jit`
 - `batch_size: int = 128`
-- `output_chunk_size: int | null = 128`
+- `output_chunk_size: int | null = 512`
 - Stage-local parameter layout is mandatory and is not a public toggle.
 
 ### Evaluator Optimization

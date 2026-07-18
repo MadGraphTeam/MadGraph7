@@ -597,7 +597,7 @@ class EvaluatorConfig:
     )
     batch_size: int = field(default=128, metadata=_setting("int"))
     output_chunk_size: int | None = field(
-        default=128, metadata=_setting("int", nullable=True)
+        default=512, metadata=_setting("int", nullable=True)
     )
     optimization: EvaluatorOptimizationConfig = field(
         default_factory=EvaluatorOptimizationConfig, metadata=_section()

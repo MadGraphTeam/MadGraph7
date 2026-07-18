@@ -151,7 +151,8 @@ explicit sum must agree with the total.
 | `asm` | Symbolica assembly evaluator |
 | `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
 
-The default batch and output chunk sizes are 128. Optimization defaults are 10
+The default batch size is 128 and the default output chunk size is 512.
+Optimization defaults are 10
 Horner iterations, backend-selected common-pair iterations, 1000 Horner
 variables, 5,000,000 common-pair cache entries, and pair distance 1000.
 Stage-local parameters are mandatory and are not a user toggle.

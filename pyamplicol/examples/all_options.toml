@@ -89,8 +89,8 @@ post_build_validation = true
 backend = "jit"
 # evaluator.batch_size: Positive evaluation batch size. Default 128.
 batch_size = 128
-# evaluator.output_chunk_size: Positive size or null. Default 128.
-output_chunk_size = 128
+# evaluator.output_chunk_size: Positive size or null. Default 512.
+output_chunk_size = 512
 
 [evaluator.optimization]
 # evaluator.optimization.horner_iterations: Non-negative count. Default 10.

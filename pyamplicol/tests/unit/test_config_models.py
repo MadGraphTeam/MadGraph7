@@ -121,7 +121,7 @@ def test_contract_defaults_are_typed() -> None:
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.schema_version == 1
     assert config.generation.validation.samples == 10
-    assert config.evaluator.output_chunk_size == 128
+    assert config.evaluator.output_chunk_size == 512
     assert not config.evaluator.cpp.native_arch
     assert config.evaluator.optimization.max_common_pair_cache_entries == 5_000_000
     assert config.benchmark.target_runtime == 10.0
