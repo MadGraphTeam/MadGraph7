@@ -142,7 +142,10 @@ class ColorEngine:
         self._shared_lc_orderings = (
             (
                 color_plan.color_accuracy == "lc"
-                or self._fundamental_fermion_pair_count <= 1
+                or (
+                    color_plan.color_accuracy in {"nlc", "full"}
+                    and self._fundamental_fermion_pair_count == 1
+                )
             )
             and bool(color_plan.sectors)
             and bool(self._shared_lc_coloured_labels)

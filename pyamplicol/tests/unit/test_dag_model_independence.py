@@ -213,6 +213,7 @@ def test_relabelled_adjoint_symmetry_uses_model_role_and_fails_closed() -> None:
     assert unproven_engine.shared_lc_orderings is True
     assert unproven_engine.shared_lc_fixed_sink_label is None
     assert unproven_full_engine.shared_single_trace is False
+    assert unproven_full_engine.shared_lc_orderings is False
 
     role_only_model = _StructuralModel(
         particles=(particle,),
@@ -224,6 +225,7 @@ def test_relabelled_adjoint_symmetry_uses_model_role_and_fails_closed() -> None:
         role_only_model,
     )
     assert role_only_full_engine.shared_single_trace is False
+    assert role_only_full_engine.shared_lc_orderings is False
 
 
 def test_color_order_mask_pruning_rejects_plan_roles_not_proven_by_model() -> None:
