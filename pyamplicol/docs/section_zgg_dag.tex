@@ -198,7 +198,7 @@ f64 payload without importing Symbolica.  Retained Symbolica evaluator state
 is used for higher-precision Python requests.
 
 Output chunking is a compilation boundary, not a physics boundary.  If a
-stage has more than the configured 128 scalar outputs, it is split into
+stage has more than the configured 512 scalar outputs, it is split into
 multi-output chunks sharing the same local input vector.  A fanout-aware
 ordering in \path{src/pyamplicol/generation/stage_planning.py} places outputs
 with common evaluation groups near one another, reducing duplicated work when

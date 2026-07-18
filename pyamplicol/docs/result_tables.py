@@ -26,6 +26,7 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -84,7 +85,7 @@ _ACTIVE_WORKER_PROCESSES: set[subprocess.Popen[bytes]] = set()
 REPORT_CONFIG_OVERRIDES: Mapping[str, object] = {
     "evaluator.backend": "jit",
     "evaluator.batch_size": 128,
-    "evaluator.output_chunk_size": 128,
+    "evaluator.output_chunk_size": 512,
     "evaluator.optimization.horner_iterations": 10,
     "evaluator.optimization.cpe_iterations": None,
     "evaluator.optimization.max_horner_variables": 1000,
@@ -3945,6 +3946,7 @@ def _pyamplicol_artifacts_current(
     return all(
         (
             _artifact_producer_version_current(path)
+            and _artifact_output_chunk_size_current(path)
             and _artifact_compiled_model_current(
                 path,
                 require_current_compiled_model_contract=(
@@ -3954,6 +3956,22 @@ def _pyamplicol_artifacts_current(
         )
         for path in paths
     )
+
+
+def _artifact_output_chunk_size_current(artifact_path: Path) -> bool:
+    config_path = artifact_path / "config" / "effective.toml"
+    try:
+        payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, tomllib.TOMLDecodeError):
+        return False
+    if not isinstance(payload, Mapping):
+        return False
+    evaluator = payload.get("evaluator")
+    if not isinstance(evaluator, Mapping):
+        return False
+    output_chunk_size = evaluator.get("output_chunk_size")
+    expected = REPORT_CONFIG_OVERRIDES.get("evaluator.output_chunk_size")
+    return output_chunk_size == expected
 
 
 def _previous_cache_entry_for_cell(cell: CampaignCell) -> Mapping[str, object] | None:
@@ -4089,6 +4107,8 @@ def _reusable_pyamplicol_generation_seconds(
     if not (artifact_dir / "artifact.json").is_file():
         return None
     if not _artifact_producer_version_current(artifact_dir):
+        return None
+    if not _artifact_output_chunk_size_current(artifact_dir):
         return None
     if not _artifact_compiled_model_current(
         artifact_dir,
@@ -4342,7 +4362,7 @@ def _run_config_values(
         "evaluator": {
             "backend": "jit",
             "batch_size": 128,
-            "output_chunk_size": 128,
+            "output_chunk_size": 512,
             "optimization": {
                 "horner_iterations": 10,
                 "cpe_iterations": None,
@@ -5062,7 +5082,6 @@ def _measure_pyamplicol_lc_two_workloads(
         benchmark_overrides={
             "benchmark.batch_size": 64,
             "evaluator.batch_size": 64,
-            "evaluator.output_chunk_size": 8192,
         },
         artifact_root=artifact_root,
         generation_timeout_seconds=generation_timeout_seconds,

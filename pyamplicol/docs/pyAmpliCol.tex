@@ -259,8 +259,8 @@ evaluator state and therefore requires Symbolica at runtime.
 Each measurement begins from an immutable resolved configuration. Unless a
 table variant says otherwise, the report contract uses the release defaults:
 requested SymJIT optimization level 3, evaluator batch size 128, output chunk size
-128, stage-local parameter layout, ten Horner iterations, backend-default
-common-pair elimination, a ten-second benchmark target, two warmup runs, and at
+512, stage-local parameter layout, ten Horner iterations, backend-default
+common-pair elimination, a twenty-second benchmark target, two warmup runs, and at
 least five timed samples. The process matrices always request level 3; only
 explicitly labelled comparison rows, such as JIT level 1 in the dedicated $Z$
 ladder, override it. SymJIT may apply its documented backend fallback
