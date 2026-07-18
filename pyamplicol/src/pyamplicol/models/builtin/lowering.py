@@ -21,6 +21,7 @@ from ..expressions import (
     _number,
 )
 from .expressions import (
+    _embed_weyl_current_in_dirac,
     _expr_fermion_antifermion_to_vector_dirac,
     _expr_fermion_antifermion_to_vector_weyl,
     _expr_fermion_scalar_to_fermion,
@@ -575,6 +576,7 @@ class BuiltinSMLoweringMixin:
                 if kind == 10
                 else (tuple(right), tuple(left))
             )
+            input_chirality = left_chirality if kind == 10 else right_chirality
             if len(fermion) == 4:
                 return _expr_fermion_vector_dirac(
                     fermion,
@@ -582,19 +584,23 @@ class BuiltinSMLoweringMixin:
                     antifermion=False,
                     coupling=coupling,
                 )
-            return _expr_fermion_vector_weyl(
+            current = _expr_fermion_vector_weyl(
                 fermion,
                 vector,
-                result_chirality,
+                input_chirality,
                 antifermion=False,
                 coupling=coupling,
             )
+            if self.current_dimension(result_particle_id, result_chirality) == 4:
+                return _embed_weyl_current_in_dirac(current, input_chirality)
+            return current
         if kind in {11, 24}:
             antifermion, vector = (
                 (tuple(left), tuple(right))
                 if kind == 11
                 else (tuple(right), tuple(left))
             )
+            input_chirality = left_chirality if kind == 11 else right_chirality
             if len(antifermion) == 4:
                 return _expr_fermion_vector_dirac(
                     antifermion,
@@ -602,13 +608,16 @@ class BuiltinSMLoweringMixin:
                     antifermion=True,
                     coupling=coupling,
                 )
-            return _expr_fermion_vector_weyl(
+            current = _expr_fermion_vector_weyl(
                 antifermion,
                 vector,
-                result_chirality,
+                input_chirality,
                 antifermion=True,
                 coupling=coupling,
             )
+            if self.current_dimension(result_particle_id, result_chirality) == 4:
+                return _embed_weyl_current_in_dirac(current, input_chirality)
+            return current
         if kind == 21:
             return _expr_fermion_antifermion_to_vector_weyl(
                 fermion=tuple(left),

@@ -72,11 +72,11 @@ def test_every_builtin_vertex_kind_has_a_constructive_binding(
         == {vertex.kind for vertex in model.vertices}
         == set(range(25))
     )
-    assert all(
-        gap.contract_kind == "vertex" and "kind=" in gap.context
+    assert not [
+        gap
         for gap in catalog.unsupported_variants
         if gap.contract_kind == "vertex"
-    )
+    ]
 
 
 def test_builtin_chirality_dimensions_and_propagator_coverage(
