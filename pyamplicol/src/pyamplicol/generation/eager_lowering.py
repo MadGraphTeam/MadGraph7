@@ -257,6 +257,29 @@ class EagerExecutionTables:
     def attachment_count(self) -> int:
         return sum(len(stage.attachments) for stage in self.stages)
 
+    @property
+    def referenced_kernel_ids(self) -> frozenset[int]:
+        return frozenset(
+            {
+                *(
+                    row.kernel_id
+                    for stage in self.stages
+                    for row in stage.invocations
+                ),
+                *(
+                    row.kernel_id
+                    for stage in self.stages
+                    for row in stage.finalizations
+                    if row.kernel_id != MISSING_U32
+                ),
+                *(
+                    row.kernel_id
+                    for row in self.closures
+                    if row.kernel_id != MISSING_U32
+                ),
+            }
+        )
+
     def binary_payloads(self, *, prefix: str = "eager") -> dict[str, bytes]:
         payloads = {f"{prefix}/couplings.bin": pack_rows(self.couplings)}
         for stage in self.stages:

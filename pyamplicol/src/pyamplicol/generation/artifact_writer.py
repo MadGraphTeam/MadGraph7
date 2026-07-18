@@ -208,9 +208,18 @@ def write_schema_v3_artifact(
                 compiled_model=compiled_model,
                 requested_bytes=requested_bytes,
                 effective_bytes=effective_bytes,
-                include_eager_kernel_pack=any(
-                    isinstance(process, EagerProcessArtifact) for process in processes
-                ),
+            )
+        eager_kernel_ids = _eager_kernel_ids(
+            output,
+            existing,
+            compiled_model=compiled_model,
+            processes=processes,
+        )
+        if eager_kernel_ids:
+            _write_eager_kernel_pack(
+                builder,
+                compiled_model,
+                kernel_ids=eager_kernel_ids,
                 target=target,
             )
         for process in processes:
@@ -289,8 +298,6 @@ def _write_global_payloads(
     compiled_model: CompiledModel,
     requested_bytes: bytes,
     effective_bytes: bytes,
-    include_eager_kernel_pack: bool,
-    target: Mapping[str, object],
 ) -> None:
     builder.add_bytes(
         _CONFIG_REQUESTED_PATH,
@@ -321,26 +328,40 @@ def _write_global_payloads(
         },
         role="model-parameters",
     )
-    if include_eager_kernel_pack:
-        _write_eager_kernel_pack(builder, compiled_model, target=target)
-
-
 def _write_eager_kernel_pack(
     builder: ArtifactBuilder,
     compiled_model: CompiledModel,
     *,
+    kernel_ids: frozenset[int],
     target: Mapping[str, object],
 ) -> None:
     bundle = compiled_model.prepared_bundle
     if bundle is None:
         raise ValueError("eager artifact writing requires a prepared model bundle")
+    selected = tuple(
+        kernel
+        for kernel in bundle.kernel_pack.kernels
+        if kernel.kernel_id in kernel_ids
+    )
+    if {kernel.kernel_id for kernel in selected} != set(kernel_ids):
+        missing = sorted(set(kernel_ids) - {kernel.kernel_id for kernel in selected})
+        raise ValueError(f"prepared model omits referenced eager kernels {missing}")
+    pack_payload = bundle.kernel_pack.to_dict()
+    pack_payload["kernels"] = [kernel.to_dict() for kernel in selected]
+    pack_payload["resolver_manifest"] = _filtered_eager_resolver_manifest(
+        bundle.kernel_pack.resolver_manifest,
+        kernel_ids,
+    )
     builder.add_json(
         _EAGER_KERNEL_PACK_PATH,
-        bundle.kernel_pack.to_dict(),
+        pack_payload,
         role="evaluator-manifest",
         compact=True,
     )
-    for member_path in bundle.kernel_pack.referenced_payload_paths:
+    referenced_payloads = {
+        path for kernel in selected for path in kernel.referenced_payload_paths
+    }
+    for member_path in sorted(referenced_payloads):
         builder.add_bytes(
             f"{_EAGER_KERNEL_PAYLOAD_ROOT}/{member_path}",
             bundle.read_payload(member_path),
@@ -348,6 +369,74 @@ def _write_eager_kernel_pack(
             media_type=_media_type(Path(member_path)),
             target=target,
         )
+
+
+def _eager_kernel_ids(
+    output: Path,
+    existing: ArtifactManifest | None,
+    *,
+    compiled_model: CompiledModel,
+    processes: Sequence[ProcessArtifact],
+) -> frozenset[int]:
+    has_eager_process = any(
+        isinstance(process, EagerProcessArtifact) for process in processes
+    )
+    kernel_ids = {
+        kernel_id
+        for process in processes
+        if isinstance(process, EagerProcessArtifact)
+        for kernel_id in process.eager_tables.referenced_kernel_ids
+    }
+    has_existing_pack = (
+        existing is not None and (output / _EAGER_KERNEL_PACK_PATH).is_file()
+    )
+    if has_existing_pack:
+        try:
+            prior = json.loads(
+                (output / _EAGER_KERNEL_PACK_PATH).read_text(encoding="utf-8")
+            )
+            kernel_ids.update(
+                int(_mapping(item)["kernel_id"])
+                for item in _sequence(_mapping(prior)["kernels"])
+            )
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "existing eager kernel pack is malformed; replace the artifact"
+            ) from exc
+    if has_eager_process or has_existing_pack:
+        bundle = compiled_model.prepared_bundle
+        if bundle is None:
+            raise ValueError("eager artifact writing requires a prepared model bundle")
+        parameter_kernel_id = bundle.kernel_pack.resolver_manifest.get(
+            "model_parameter_kernel_id"
+        )
+        if parameter_kernel_id is not None:
+            kernel_ids.add(int(parameter_kernel_id))
+    return frozenset(kernel_ids)
+
+
+def _filtered_eager_resolver_manifest(
+    manifest: Mapping[str, object],
+    kernel_ids: frozenset[int],
+) -> dict[str, object]:
+    result = _plain_mapping(manifest)
+    for field in (
+        "vertex_bindings",
+        "propagator_bindings",
+        "closure_bindings",
+    ):
+        if field not in manifest:
+            continue
+        result[field] = [
+            _plain_mapping(record)
+            for item in _sequence(manifest[field])
+            if (record := _mapping(item)).get("kernel_id") is None
+            or int(record["kernel_id"]) in kernel_ids
+        ]
+    parameter_kernel_id = manifest.get("model_parameter_kernel_id")
+    if parameter_kernel_id is not None and int(parameter_kernel_id) not in kernel_ids:
+        result["model_parameter_kernel_id"] = None
+    return result
 
 
 def _write_process_payloads(

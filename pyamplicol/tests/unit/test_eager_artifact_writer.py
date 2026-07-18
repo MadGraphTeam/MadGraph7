@@ -132,10 +132,35 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         closure_kernels={},
     )
     tables = lower_eager_execution_tables(dag, model, schema, resolver)
+    appended_vertex_kernels = {
+        kind: 500 + kind for kind in sorted(dag.required_vertex_kinds)
+    }
+    appended_propagator_kernels = {
+        key: 2000 + index for index, key in enumerate(sorted(propagated))
+    }
+    appended_resolver = MappingEagerKernelResolver(
+        vertex_kernels=appended_vertex_kernels,
+        propagator_kernels=appended_propagator_kernels,
+        closure_kernels={},
+    )
+    appended_tables = lower_eager_execution_tables(
+        dag,
+        model,
+        schema,
+        appended_resolver,
+    )
     bundle_path, compiled_model = _prepared_model(
         tmp_path,
         kernel_ids=tuple(
-            sorted({*vertex_kernels.values(), *propagator_kernels.values()})
+            sorted(
+                {
+                    *vertex_kernels.values(),
+                    *propagator_kernels.values(),
+                    *appended_vertex_kernels.values(),
+                    *appended_propagator_kernels.values(),
+                    4242,
+                }
+            )
         ),
     )
     process = EagerProcessArtifact(
@@ -202,6 +227,68 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     assert "model/eager-kernel-pack.json" in declared
     assert "processes/gg_gg/eager/couplings.bin" in declared
     assert "processes/gg_gg/eager/closures.bin" in declared
+    emitted_pack = json.loads(
+        (output / "model/eager-kernel-pack.json").read_text(encoding="utf-8")
+    )
+    assert {kernel["kernel_id"] for kernel in emitted_pack["kernels"]} == set(
+        tables.referenced_kernel_ids
+    )
     for kernel in compiled_model.prepared_bundle.kernel_pack.kernels:
         for path in kernel.referenced_payload_paths:
-            assert f"model/eager-kernels/{path}" in declared
+            emitted = f"model/eager-kernels/{path}" in declared
+            assert emitted is (kernel.kernel_id in tables.referenced_kernel_ids)
+
+    appended_runtime_schema = build_runtime_expression_schema(
+        dag,
+        model,
+        process_id="gg_gg_appended",
+    )
+    appended_process = EagerProcessArtifact(
+        process_id="gg_gg_appended",
+        expression=process_ir.process,
+        color_accuracy=process_ir.color_accuracy,
+        external_pdgs=(*process_ir.initial_pdgs, *process_ir.final_pdgs),
+        aliases=(),
+        runtime_schema=appended_runtime_schema,
+        eager_tables=appended_tables,
+        point_tile_size=2048,
+        workspace_mib=384,
+        dag_summary=process.dag_summary,
+        validation_point=build_validation_point(
+            dag,
+            model,
+            process_id="gg_gg_appended",
+            seed=11,
+        ),
+        generation_filters={},
+    )
+    write_schema_v3_artifact(
+        output,
+        mode="append",
+        source=ModelSource.from_path(bundle_path),
+        compiled_model=compiled_model,
+        configuration=_GenerationConfigProvenance.from_config(run),
+        processes=(appended_process,),
+        timings={"total": 0.1},
+        api_bundle_hook=None,
+    )
+
+    appended_manifest = load_manifest(output)
+    appended_pack = json.loads(
+        (output / "model/eager-kernel-pack.json").read_text(encoding="utf-8")
+    )
+    expected_kernel_ids = (
+        tables.referenced_kernel_ids | appended_tables.referenced_kernel_ids
+    )
+    assert {kernel["kernel_id"] for kernel in appended_pack["kernels"]} == set(
+        expected_kernel_ids
+    )
+    assert {record["id"] for record in appended_manifest.processes} == {
+        "gg_gg",
+        "gg_gg_appended",
+    }
+    appended_payloads = {payload.path for payload in appended_manifest.payloads}
+    for kernel in compiled_model.prepared_bundle.kernel_pack.kernels:
+        for path in kernel.referenced_payload_paths:
+            emitted = f"model/eager-kernels/{path}" in appended_payloads
+            assert emitted is (kernel.kernel_id in expected_kernel_ids)
