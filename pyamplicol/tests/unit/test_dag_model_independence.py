@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from itertools import permutations
 
 import pytest
 
@@ -14,7 +15,10 @@ from pyamplicol.generation.dag_color import ColorEngine
 from pyamplicol.generation.dag_ordering import (
     _canonical_sink_mask,
     _lc_color_order_reachable_masks,
+    _ordered_combination_segment,
+    _shared_single_trace_closure_matches_word,
 )
+from pyamplicol.generation.dag_types import ColorState, CurrentIndex
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.base import Model, Particle, Vertex
 from pyamplicol.models.builtin.process_ir import build_process_ir
@@ -137,6 +141,32 @@ def _single_trace_plan(process: CanonicalProcessIR) -> GenericColorPlan:
     )
 
 
+def _adjoint_index(
+    labels: tuple[int, ...],
+    *,
+    ordered: tuple[int, ...],
+    accuracy: str = "full",
+) -> CurrentIndex:
+    mask = sum(1 << (label - 1) for label in labels)
+    return CurrentIndex(
+        particle_id=21,
+        external_mask=mask,
+        external_labels=tuple(sorted(labels)),
+        ordered_external_labels=ordered,
+        helicity_ancestry=mask,
+        chirality=0,
+        spin_state=0,
+        flavour_flow=(),
+        quantum_number_flow=(),
+        color_state=ColorState(
+            accuracy=accuracy,
+            sector_id=0,
+            line_groups=(0,),
+        ),
+        momentum_mask=mask,
+    )
+
+
 def test_sink_selection_uses_model_fermion_statistics_not_process_metadata() -> None:
     scalar = 710_001
     fermion = 810_001
@@ -226,6 +256,74 @@ def test_relabelled_adjoint_symmetry_uses_model_role_and_fails_closed() -> None:
     )
     assert role_only_full_engine.shared_single_trace is False
     assert role_only_full_engine.shared_lc_orderings is False
+
+
+def test_shared_single_trace_indexes_match_word_scan_exactly() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("g g > g g", color_accuracy="full")
+    plan = build_color_plan(process, color_accuracy="full")
+    engine = ColorEngine(plan, model)
+    vertex = next(
+        vertex
+        for vertex in model.vertices
+        if vertex.particles == (21, 21, 21)
+    )
+    primary_words = tuple(
+        word for sector in plan.sectors for word in (sector.color_words or ())
+    )
+
+    for ordering in permutations((1, 2, 3, 4)):
+        for split in range(1, len(ordering)):
+            left_order = tuple(ordering[:split])
+            right_order = tuple(ordering[split:])
+            left = _adjoint_index(left_order, ordered=left_order)
+            right = _adjoint_index(right_order, ordered=right_order)
+            expected_segment = next(
+                (
+                    segment
+                    for word in primary_words
+                    for segment in (
+                        _ordered_combination_segment(
+                            left_order,
+                            right_order,
+                            word,
+                        ),
+                    )
+                    if segment is not None
+                ),
+                None,
+            )
+            assert (
+                engine.ordered_combination_labels(left, right, vertex)
+                == expected_segment
+            )
+
+            expected_allowed = any(
+                _shared_single_trace_closure_matches_word(
+                    left_order,
+                    right_order,
+                    word,
+                )
+                for word in primary_words
+            )
+            assert engine.ordered_closure_allowed(left, right) is expected_allowed
+            expected_sector_ids = tuple(
+                sector.id
+                for sector in plan.sectors
+                if any(
+                    _shared_single_trace_closure_matches_word(
+                        left_order,
+                        right_order,
+                        word,
+                    )
+                    for word in sector.admissible_traversal_words
+                )
+            )
+            actual_sector_ids = tuple(
+                flow.state.sector_id
+                for flow in engine.shared_single_trace_closure_flows(left, right)
+            )
+            assert actual_sector_ids == expected_sector_ids
 
 
 def test_color_order_mask_pruning_rejects_plan_roles_not_proven_by_model() -> None:

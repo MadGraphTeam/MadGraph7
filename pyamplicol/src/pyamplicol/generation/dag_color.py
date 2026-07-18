@@ -20,7 +20,6 @@ from .dag_ordering import (
     _ordered_combination_segment,
     _sector_group_indices_for_label,
     _sector_intermediate_order_words,
-    _shared_single_trace_closure_matches_word,
     _word_contains_ordered_segment,
 )
 from .dag_types import (
@@ -139,6 +138,25 @@ class ColorEngine:
         self._shared_single_trace_words = tuple(
             word for sector in color_plan.sectors for word in (sector.color_words or ())
         )
+        self._shared_single_trace_word_set = frozenset(
+            self._shared_single_trace_words
+        )
+        self._shared_single_trace_segments = frozenset(
+            tuple(word[start:stop])
+            for word in self._shared_single_trace_words
+            for start in range(len(word))
+            for stop in range(start + 1, len(word) + 1)
+        )
+        closure_sector_ids_by_word: dict[tuple[int, ...], set[int]] = {}
+        for sector in color_plan.sectors:
+            for word in sector.admissible_traversal_words:
+                closure_sector_ids_by_word.setdefault(tuple(word), set()).add(
+                    int(sector.id)
+                )
+        self._shared_single_trace_closure_sector_ids_by_word = {
+            word: tuple(sorted(sector_ids))
+            for word, sector_ids in closure_sector_ids_by_word.items()
+        }
         self._shared_lc_orderings = (
             (
                 color_plan.color_accuracy == "lc"
@@ -801,17 +819,15 @@ class ColorEngine:
             self._ordered_combination_labels_cache[cache_key] = None
             return None
         if self._shared_single_trace:
-            for word in self._shared_single_trace_words:
-                segment = _ordered_combination_segment(
-                    left_index.ordered_external_labels,
-                    right_index.ordered_external_labels,
-                    word,
-                )
-                if segment is not None:
-                    self._ordered_combination_labels_cache[cache_key] = segment
-                    return segment
-            self._ordered_combination_labels_cache[cache_key] = None
-            return None
+            segment = (
+                *left_index.ordered_external_labels,
+                *right_index.ordered_external_labels,
+            )
+            labels = (
+                segment if segment in self._shared_single_trace_segments else None
+            )
+            self._ordered_combination_labels_cache[cache_key] = labels
+            return labels
         if self._shared_lc_orderings:
             labels = self._shared_lc_ordered_combination_labels(
                 left_index,
@@ -879,14 +895,10 @@ class ColorEngine:
         right_index: CurrentIndex,
     ) -> bool:
         if self._shared_single_trace:
-            return any(
-                _shared_single_trace_closure_matches_word(
-                    left_index.ordered_external_labels,
-                    right_index.ordered_external_labels,
-                    word,
-                )
-                for word in self._shared_single_trace_words
-            )
+            return (
+                *left_index.ordered_external_labels,
+                *right_index.ordered_external_labels,
+            ) in self._shared_single_trace_word_set
         if self._shared_lc_orderings:
             return self._shared_lc_closure_word(left_index, right_index) is not None
         if left_index.color_state.sector_id != right_index.color_state.sector_id:
@@ -914,30 +926,23 @@ class ColorEngine:
     ) -> tuple[ColorFlow, ...]:
         if not self._shared_single_trace:
             return ()
-        flows: list[ColorFlow] = []
-        seen: set[int] = set()
-        for sector in self.color_plan.sectors:
-            if sector.id in seen:
-                continue
-            if any(
-                _shared_single_trace_closure_matches_word(
-                    left_index.ordered_external_labels,
-                    right_index.ordered_external_labels,
-                    word,
+        closure_word = (
+            *left_index.ordered_external_labels,
+            *right_index.ordered_external_labels,
+        )
+        return tuple(
+            ColorFlow(
+                state=ColorState(
+                    accuracy=self.color_plan.color_accuracy,
+                    sector_id=sector_id,
+                    line_groups=(0,),
                 )
-                for word in sector.admissible_traversal_words
-            ):
-                seen.add(sector.id)
-                flows.append(
-                    ColorFlow(
-                        state=ColorState(
-                            accuracy=self.color_plan.color_accuracy,
-                            sector_id=sector.id,
-                            line_groups=(0,),
-                        )
-                    )
-                )
-        return tuple(flows)
+            )
+            for sector_id in self._shared_single_trace_closure_sector_ids_by_word.get(
+                closure_word,
+                (),
+            )
+        )
 
     @property
     def shared_single_trace(self) -> bool:
