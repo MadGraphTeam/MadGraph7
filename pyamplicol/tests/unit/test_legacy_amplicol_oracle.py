@@ -701,7 +701,7 @@ def test_public_legacy_checkout_uses_noninteractive_https() -> None:
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
     assert module.checkout_branch() == "amplicol_with_patches"
-    assert module.expected_revision() == "c09ee22249b7b5c019d23ca07da27f4df16b3fed"
+    assert module.expected_revision() == "d32b891ee8bd78e8c13cf0696452cc4aed422705"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(
