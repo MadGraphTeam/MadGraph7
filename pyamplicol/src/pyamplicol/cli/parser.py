@@ -307,31 +307,36 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_evaluator_options(parser: argparse.ArgumentParser) -> None:
+def _add_evaluator_options(
+    parser: argparse.ArgumentParser,
+    *,
+    include_runtime_controls: bool = True,
+) -> None:
     parser.add_argument(
         "--backend",
         dest="evaluator.backend",
         choices=("jit", "asm", "cpp"),
         default=argparse.SUPPRESS,
     )
-    parser.add_argument(
-        "--execution-mode",
-        dest="evaluator.execution_mode",
-        choices=("compiled", "eager"),
-        default=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--batch-size",
-        dest="evaluator.batch_size",
-        type=int,
-        default=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--output-chunk-size",
-        dest="evaluator.output_chunk_size",
-        type=_nullable_int,
-        default=argparse.SUPPRESS,
-    )
+    if include_runtime_controls:
+        parser.add_argument(
+            "--execution-mode",
+            dest="evaluator.execution_mode",
+            choices=("compiled", "eager"),
+            default=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "--batch-size",
+            dest="evaluator.batch_size",
+            type=int,
+            default=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "--output-chunk-size",
+            dest="evaluator.output_chunk_size",
+            type=_nullable_int,
+            default=argparse.SUPPRESS,
+        )
     parser.add_argument(
         "--horner-iterations",
         dest="evaluator.optimization.horner_iterations",
@@ -617,12 +622,24 @@ def build_parser() -> argparse.ArgumentParser:
     model_compile = model_commands.add_parser(
         "compile",
         parents=[common],
-        help="Compile a model into a pyAmpliCol model artifact.",
+        help=(
+            "Compile portable model IR or prepare one eager evaluator backend pack."
+        ),
     )
     model_compile.add_argument("source", nargs="?", default=None)
-    model_compile.add_argument("output", type=Path, nargs="?", default=None)
+    model_compile.add_argument(
+        "output",
+        type=Path,
+        nargs="?",
+        default=None,
+        help=(
+            "IR output path, or a .pyamplicol-model path for a self-contained "
+            "prepared bundle"
+        ),
+    )
     _add_model_options(model_compile)
     _add_generation_options(model_compile)
+    _add_evaluator_options(model_compile, include_runtime_controls=False)
 
     model_processes = model_commands.add_parser(
         "processes",
@@ -674,6 +691,15 @@ def build_card_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _is_prepared_model_output(value: object) -> bool:
+    if value is None or value == argparse.SUPPRESS:
+        return False
+    try:
+        return str(os.fspath(value)).lower().endswith(".pyamplicol-model")
+    except TypeError:
+        return False
+
+
 def _namespace_to_invocation(
     namespace: argparse.Namespace,
 ) -> CliInvocation | LicenseRequestInvocation:
@@ -695,6 +721,21 @@ def _namespace_to_invocation(
             assume_yes=bool(raw.pop("assume_yes", False)),
         )
     action = Action(action_value) if action_value is not None else None
+    if action is Action.MODEL_COMPILE:
+        evaluator_arguments = tuple(
+            sorted(key for key in raw if key.startswith("evaluator."))
+        )
+        evaluator_overrides = tuple(
+            value
+            for value in raw.get("_overrides", ())
+            if str(value).partition("=")[0].strip().startswith("evaluator.")
+        )
+        has_evaluator_options = evaluator_arguments or evaluator_overrides
+        if has_evaluator_options and not _is_prepared_model_output(raw.get("output")):
+            raise ConfigurationError(
+                "model compile evaluator options require an output ending with "
+                "'.pyamplicol-model'; IR-only model outputs do not compile kernels"
+            )
     card_value = raw.pop("card", None)
     card = (
         Path(os.fspath(card_value)).expanduser().resolve(strict=False)

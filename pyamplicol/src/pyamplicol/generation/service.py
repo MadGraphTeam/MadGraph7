@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import gc
+import logging
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -22,7 +23,14 @@ from pyamplicol.api.requests import (
     ProcessSet,
 )
 from pyamplicol.api.results import GenerationPlan, GenerationResult
-from pyamplicol.config import ConfigResolution, GenerationConfig, RunConfig
+from pyamplicol.config import (
+    ClampRequest,
+    ConfigResolution,
+    GenerationConfig,
+    RunConfig,
+    config_to_dict,
+    resolve_config,
+)
 from pyamplicol.reporting import (
     ProgressEnd,
     ProgressSink,
@@ -32,9 +40,11 @@ from pyamplicol.reporting import (
 from ..color.plan import build_color_plan
 from ..models.base import Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
+from ..models.prepared import PreparedKernelPack
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .artifact_writer import (
     CompiledProcessArtifact,
+    EagerProcessArtifact,
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
 )
@@ -45,6 +55,10 @@ from .dag_algorithms import (
 )
 from .dag_compiler import _restrict_color_plan, compile_generic_dag
 from .dag_types import GenericDAG
+from .eager_lowering import (
+    PreparedCatalogEagerKernelResolver,
+    lower_eager_execution_tables,
+)
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .runtime_schema import build_runtime_expression_schema
 from .stage_compiler import (
@@ -61,6 +75,7 @@ if TYPE_CHECKING:
 _ProcessInput = TypeVar("_ProcessInput")
 _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
+_LOGGER = logging.getLogger("pyamplicol.generation")
 # Symbolica releases the GIL while retaining process-wide mutable symbol state.
 # Keep each complete lowering/compilation transaction atomic across generators.
 _SYMBOLICA_MATERIALIZATION_LOCK = Lock()
@@ -70,6 +85,67 @@ def _builtin_sm_model() -> Model:
     from ..models import BuiltinSMModel
 
     return BuiltinSMModel()
+
+
+def _nested_config_value(values: Mapping[str, object], path: str) -> object:
+    current: object = values
+    for component in path.split("."):
+        if not isinstance(current, Mapping) or component not in current:
+            raise GenerationError(
+                f"prepared model references unknown configuration path {path!r}"
+            )
+        current = current[component]
+    return current
+
+
+def _prepared_pack_effective_values(
+    pack: PreparedKernelPack,
+) -> dict[str, object]:
+    settings = pack.optimization_settings
+
+    def required(name: str) -> object:
+        if name not in settings:
+            raise GenerationError(
+                f"prepared kernel pack omits optimization setting {name!r}"
+            )
+        return settings[name]
+
+    values: dict[str, object] = {
+        "evaluator.backend": pack.backend,
+        "evaluator.optimization.horner_iterations": required("iterations"),
+        "evaluator.optimization.cpe_iterations": required("cpe_iterations"),
+        "evaluator.optimization.max_horner_variables": required(
+            "max_horner_scheme_variables"
+        ),
+        "evaluator.optimization.max_common_pair_cache_entries": required(
+            "max_common_pair_cache_entries"
+        ),
+        "evaluator.optimization.max_common_pair_distance": required(
+            "max_common_pair_distance"
+        ),
+        "evaluator.optimization.collect_factors": required("collect_factors"),
+    }
+    if pack.backend == "jit":
+        values["evaluator.jit.optimization_level"] = required(
+            "jit_optimization_level"
+        )
+        return values
+    optimization_level = required("compiled_optimization_level")
+    if isinstance(optimization_level, bool) or not isinstance(
+        optimization_level, int
+    ):
+        raise GenerationError(
+            "prepared native kernel pack has an invalid optimization level"
+        )
+    values.update(
+        {
+            "evaluator.cpp.optimization": f"O{optimization_level}",
+            "evaluator.cpp.native_arch": required("compiled_native"),
+            "evaluator.cpp.compiler": required("compiler_path"),
+            "evaluator.cpp.extra_flags": required("compiler_flags"),
+        }
+    )
+    return values
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,6 +308,7 @@ class GenerationBackend:
         self._progress = progress
         self._api_bundle_hook = api_bundle_hook
         self._process_selection_override = process_selection
+        self._prepared_pack_warning_emitted = False
 
     def plan(
         self,
@@ -254,6 +331,7 @@ class GenerationBackend:
             self._apply_symbolica_resource_policy(license_state)
             resolved_model = self._resolve_model_for_plan(source)
             self._require_eager_kernel_pack(resolved_model)
+            self._apply_prepared_kernel_pack_policy(resolved_model)
             expanded = self._expand_process_set(
                 processes,
                 resolved_model,
@@ -322,6 +400,7 @@ class GenerationBackend:
                 resolved_model = self._resolve_model(source)
                 artifact_model = self._artifact_model(resolved_model)
                 self._require_eager_kernel_pack(resolved_model)
+                self._apply_prepared_kernel_pack_policy(resolved_model)
                 phase.update(1, message=artifact_model.name)
             generation_model = resolved_model.model
             if generation_model is None:
@@ -391,52 +470,73 @@ class GenerationBackend:
                             item_name=lambda indexed: indexed[1].expanded.request.name,
                         )
 
-                    with reporter.phase(
-                        "evaluator-construction",
-                        "Constructing runtime evaluator schemas",
-                        total=len(prepared),
-                    ) as phase:
-                        evaluators = _map_process_phase(
-                            prepared,
-                            lambda entry: self._construct_evaluator(
-                                entry,
-                                generation_model,
-                                phase,
-                            ),
-                            executor=executor,
-                            max_in_flight=worker_count,
-                            phase_name="runtime evaluator-schema construction",
-                            item_name=lambda entry: entry.expanded.request.name,
-                        )
+                    if self._eager_execution_enabled:
+                        with reporter.phase(
+                            "eager-lowering",
+                            "Lowering prepared-kernel DAG invocation tables",
+                            total=len(prepared),
+                        ) as phase:
+                            artifact_processes = _map_process_phase(
+                                prepared,
+                                lambda entry: self._construct_eager_artifact(
+                                    entry,
+                                    generation_model,
+                                    resolved_model,
+                                    phase,
+                                ),
+                                executor=executor,
+                                max_in_flight=worker_count,
+                                phase_name="eager DAG-table lowering",
+                                item_name=lambda entry: entry.expanded.request.name,
+                            )
+                    else:
+                        with reporter.phase(
+                            "evaluator-construction",
+                            "Constructing runtime evaluator schemas",
+                            total=len(prepared),
+                        ) as phase:
+                            evaluators = _map_process_phase(
+                                prepared,
+                                lambda entry: self._construct_evaluator(
+                                    entry,
+                                    generation_model,
+                                    phase,
+                                ),
+                                executor=executor,
+                                max_in_flight=worker_count,
+                                phase_name="runtime evaluator-schema construction",
+                                item_name=lambda entry: entry.expanded.request.name,
+                            )
 
-                    jit_total = sum(
-                        _runtime_stage_count(evaluator.runtime_schema) + 1
-                        for evaluator in evaluators
-                    )
-                    with reporter.phase(
-                        "jit",
-                        "Compiling and materializing stage evaluators",
-                        total=jit_total,
-                    ) as phase:
-                        # Symbolica expressions are created while resolving the model on
-                        # this caller thread. Keep materialization on that same thread.
-                        # The process-wide lock already made this phase serial; moving
-                        # between worker threads can violate backend thread affinity.
-                        artifact_processes = _map_process_phase(
-                            evaluators,
-                            lambda evaluator: self._materialize_evaluator(
-                                evaluator,
-                                generation_model,
-                                temporary_root,
-                                phase,
-                            ),
-                            executor=None,
-                            max_in_flight=1,
-                            phase_name="evaluator materialization",
-                            item_name=lambda evaluator: (
-                                evaluator.compiled.expanded.request.name
-                            ),
+                        jit_total = sum(
+                            _runtime_stage_count(evaluator.runtime_schema) + 1
+                            for evaluator in evaluators
                         )
+                        with reporter.phase(
+                            "jit",
+                            "Compiling and materializing stage evaluators",
+                            total=jit_total,
+                        ) as phase:
+                            # Symbolica expressions are created while resolving the
+                            # model on this caller thread. Keep materialization on that
+                            # same thread. The process-wide lock already made this phase
+                            # serial; moving between worker threads can violate backend
+                            # thread affinity.
+                            artifact_processes = _map_process_phase(
+                                evaluators,
+                                lambda evaluator: self._materialize_evaluator(
+                                    evaluator,
+                                    generation_model,
+                                    temporary_root,
+                                    phase,
+                                ),
+                                executor=None,
+                                max_in_flight=1,
+                                phase_name="evaluator materialization",
+                                item_name=lambda evaluator: (
+                                    evaluator.compiled.expanded.request.name
+                                ),
+                            )
                 finally:
                     if executor is not None:
                         executor.shutdown(wait=True, cancel_futures=True)
@@ -471,7 +571,6 @@ class GenerationBackend:
                 del compiled
                 del indexed_compiled
                 del prepared
-                del evaluators
                 del artifact_processes
                 gc.collect()
 
@@ -679,6 +778,63 @@ class GenerationBackend:
             compiled=process,
             runtime_schema=schema,
             stage_input=StageCompilationInput(process.dag, model, schema),
+        )
+
+    def _construct_eager_artifact(
+        self,
+        process: _CompiledProcess,
+        model: Model,
+        resolved_model: _ResolvedModel,
+        phase: PhaseHandle,
+    ) -> EagerProcessArtifact:
+        compiled_model = resolved_model.compiled
+        prepared_bundle = (
+            None if compiled_model is None else compiled_model.prepared_bundle
+        )
+        if prepared_bundle is None:
+            raise GenerationError(
+                "eager DAG lowering requires a loaded prepared model bundle"
+            )
+        schema = build_runtime_expression_schema(
+            process.dag,
+            model,
+            process_id=process.expanded.request.name,
+        )
+        resolver = PreparedCatalogEagerKernelResolver(
+            process.dag,
+            prepared_bundle.kernel_pack.resolver_manifest,
+        )
+        eager_tables = lower_eager_execution_tables(
+            process.dag,
+            model,
+            schema.to_mapping(),
+            resolver,
+        )
+        phase.advance(message=process.expanded.request.name)
+        run = self._run_config
+        if run is None:  # pragma: no cover - eager mode requires RunConfig
+            raise GenerationError("eager generation has no evaluator configuration")
+        ir = process.expanded.process_ir
+        dag = process.dag
+        return EagerProcessArtifact(
+            process_id=process.expanded.request.name,
+            expression=ir.process,
+            color_accuracy=ir.color_accuracy,
+            external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
+            aliases=process.expanded.aliases,
+            runtime_schema=schema,
+            eager_tables=eager_tables,
+            point_tile_size=run.evaluator.eager.point_tile_size,
+            workspace_mib=run.evaluator.eager.workspace_mib,
+            dag_summary={
+                "current_count": len(dag.currents),
+                "source_count": len(dag.sources),
+                "interaction_count": len(dag.interactions),
+                "amplitude_root_count": len(dag.amplitude_roots),
+                "truncated": False,
+            },
+            validation_point=process.validation_points[0],
+            generation_filters=process.filters,
         )
 
     def _materialize_evaluator(
@@ -913,6 +1069,11 @@ class GenerationBackend:
         return self._config if isinstance(self._config, RunConfig) else None
 
     @property
+    def _eager_execution_enabled(self) -> bool:
+        run = self._run_config
+        return run is not None and str(run.evaluator.execution_mode) == "eager"
+
+    @property
     def _generation_config(self) -> GenerationConfig:
         config = self._config
         return config.generation if isinstance(config, RunConfig) else config
@@ -1136,6 +1297,53 @@ class GenerationBackend:
                 f"pyamplicol model compile {source} MODEL.pyamplicol-model "
                 f"--backend {backend}"
             )
+
+    def _apply_prepared_kernel_pack_policy(self, resolved: _ResolvedModel) -> None:
+        if not self._eager_execution_enabled:
+            return
+        compiled = resolved.compiled
+        bundle = None if compiled is None else compiled.prepared_bundle
+        if bundle is None:  # pragma: no cover - guarded by _require_eager_kernel_pack
+            raise GenerationError("eager generation has no prepared kernel pack")
+        resolution = self._resource_config
+        if not isinstance(resolution, ConfigResolution):
+            resolution = resolve_config(config_to_dict(self._config))
+        effective_values = config_to_dict(resolution.effective)
+        pack_values = _prepared_pack_effective_values(bundle.kernel_pack)
+        replacement_paths = frozenset(pack_values)
+        inherited = [
+            ClampRequest(item.path, item.effective, item.reason)
+            for item in resolution.clamps
+            if item.path not in replacement_paths
+        ]
+        prepared_clamps: list[ClampRequest] = []
+        for path, value in pack_values.items():
+            if _nested_config_value(effective_values, path) == value:
+                continue
+            prepared_clamps.append(
+                ClampRequest(
+                    path,
+                    value,
+                    "prepared eager kernel pack is authoritative for backend "
+                    "and code-shaping optimization settings",
+                )
+            )
+        if not prepared_clamps:
+            return
+        updated = resolve_config(
+            config_to_dict(resolution.requested),
+            clamps=(*inherited, *prepared_clamps),
+        )
+        self._resource_config = updated
+        self._configuration = _GenerationConfigProvenance.from_config(updated)
+        self._config = updated.effective
+        if not self._prepared_pack_warning_emitted:
+            rendered = ", ".join(clamp.path for clamp in prepared_clamps)
+            _LOGGER.warning(
+                "eager generation uses prepared model settings for: %s",
+                rendered,
+            )
+            self._prepared_pack_warning_emitted = True
 
     def _expand_request(
         self,

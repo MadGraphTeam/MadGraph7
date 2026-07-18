@@ -37,7 +37,24 @@ def _kernel(
         input_arity=2,
         output_arity=1,
         input_layout=("left-current", "right-current"),
+        input_contracts=(
+            {
+                "role": "left-current",
+                "component": 0,
+                "symbol": "pyamplicol::left",
+                "model_parameter_name": None,
+                "model_parameter_index": None,
+            },
+            {
+                "role": "right-current",
+                "component": 0,
+                "symbol": "pyamplicol::right",
+                "model_parameter_name": None,
+                "model_parameter_index": None,
+            },
+        ),
         output_layout=("current-contribution",),
+        exact_expressions=("pyamplicol::left+pyamplicol::right",),
         exact_evaluator_state_path=f"{root}/exact.evaluator.bin",
         f64_evaluator_manifest={
             "kind": "symjit-application-evaluator",
@@ -68,6 +85,10 @@ def _pack(*kernels: PreparedKernelRecord) -> PreparedKernelPack:
             "endianness": "little",
             "target_triple": "portable-symjit-mir",
             "cpu_features": [],
+        },
+        resolver_manifest={
+            "abi": "pyamplicol-prepared-kernel-catalog-v1",
+            "model_name": "test-model",
         },
         kernels=kernels or (_kernel(),),
     )
@@ -224,7 +245,17 @@ def test_writer_rejects_unsafe_payload_references(
             input_arity=1,
             output_arity=1,
             input_layout=("input",),
+            input_contracts=(
+                {
+                    "role": "current",
+                    "component": 0,
+                    "symbol": "pyamplicol::input",
+                    "model_parameter_name": None,
+                    "model_parameter_index": None,
+                },
+            ),
             output_layout=("output",),
+            exact_expressions=("pyamplicol::input",),
             exact_evaluator_state_path=payload_path,
             f64_evaluator_manifest={
                 "kind": "test",

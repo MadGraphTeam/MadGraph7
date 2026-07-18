@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ..models.base import Model
+from ..models.prepared_catalog import (
+    ClosureKernelKey,
+    PropagatorKernelKey,
+    VertexKernelKey,
+)
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import CurrentNode, GenericDAG, InteractionNode
 from .eager_tables import (
@@ -28,7 +33,7 @@ EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
 class EagerKernelResolver(Protocol):
     """Resolve model-local prepared kernels without compiling them."""
 
-    def vertex_kernel_id(self, interaction: InteractionNode) -> int: ...
+    def vertex_kernel(self, interaction: InteractionNode) -> EagerResolvedKernel: ...
 
     def propagator_kernel_id(
         self,
@@ -36,7 +41,26 @@ class EagerKernelResolver(Protocol):
         propagator: Mapping[str, object],
     ) -> int | None: ...
 
-    def closure_kernel_id(self, root: Mapping[str, object]) -> int | None: ...
+    def closure_kernel(
+        self, root: Mapping[str, object]
+    ) -> EagerResolvedKernel | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class EagerResolvedKernel:
+    """Prepared callable plus the exact transformation into its canonical ABI."""
+
+    kernel_id: int
+    canonical_input_order: tuple[int, int] = (0, 1)
+    normalization_factor: tuple[float, float] = (1.0, 0.0)
+
+    def __post_init__(self) -> None:
+        if self.kernel_id < 0:
+            raise ValueError("prepared kernel ID must be nonnegative")
+        if self.canonical_input_order not in ((0, 1), (1, 0)):
+            raise ValueError("prepared binary input order must be a permutation")
+        if complex(*self.normalization_factor) == 0j:
+            raise ValueError("prepared kernel normalization factor must be nonzero")
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,9 +71,11 @@ class MappingEagerKernelResolver:
     propagator_kernels: Mapping[tuple[int, int], int]
     closure_kernels: Mapping[tuple[str, int | None], int]
 
-    def vertex_kernel_id(self, interaction: InteractionNode) -> int:
+    def vertex_kernel(self, interaction: InteractionNode) -> EagerResolvedKernel:
         try:
-            return int(self.vertex_kernels[interaction.vertex_kind])
+            return EagerResolvedKernel(
+                int(self.vertex_kernels[interaction.vertex_kind])
+            )
         except KeyError as error:
             raise ValueError(
                 f"prepared model has no vertex kernel for kind "
@@ -71,17 +97,130 @@ class MappingEagerKernelResolver:
                 f"prepared model has no propagator kernel for particle/chirality {key}"
             ) from error
 
-    def closure_kernel_id(self, root: Mapping[str, object]) -> int | None:
+    def closure_kernel(
+        self, root: Mapping[str, object]
+    ) -> EagerResolvedKernel | None:
         kind = str(root.get("kind"))
         vertex_kind = root.get("vertex_kind")
         key = (kind, None if vertex_kind is None else int(vertex_kind))
         if kind == "direct-contraction":
             return None
         try:
-            return int(self.closure_kernels[key])
+            return EagerResolvedKernel(int(self.closure_kernels[key]))
         except KeyError as error:
             raise ValueError(
                 f"prepared model has no closure kernel for {key}"
+            ) from error
+
+
+class PreparedCatalogEagerKernelResolver:
+    """Resolve typed model bindings retained in a prepared-model bundle."""
+
+    def __init__(
+        self,
+        dag: GenericDAG,
+        manifest: Mapping[str, object],
+    ) -> None:
+        if manifest.get("abi") != "pyamplicol-prepared-kernel-catalog-v1":
+            raise ValueError("prepared model has an incompatible resolver ABI")
+        self._dag = dag
+        self._vertices: dict[VertexKernelKey, EagerResolvedKernel] = {}
+        self._propagators: dict[PropagatorKernelKey, int | None] = {}
+        self._closures: dict[ClosureKernelKey, EagerResolvedKernel] = {}
+        for raw in _mapping_sequence(
+            manifest.get("vertex_bindings"), "resolver.vertex_bindings"
+        ):
+            key = _vertex_kernel_key(
+                _mapping(raw.get("key"), "resolver.vertex.key")
+            )
+            self._vertices[key] = _resolved_kernel(raw, "resolver.vertex")
+        for raw in _mapping_sequence(
+            manifest.get("propagator_bindings"), "resolver.propagator_bindings"
+        ):
+            key_data = _mapping(raw.get("key"), "resolver.propagator.key")
+            key = PropagatorKernelKey(
+                int(key_data["particle_id"]), int(key_data["chirality"])
+            )
+            kernel_id = raw.get("kernel_id")
+            self._propagators[key] = None if kernel_id is None else int(kernel_id)
+        for raw in _mapping_sequence(
+            manifest.get("closure_bindings"), "resolver.closure_bindings"
+        ):
+            key = _closure_kernel_key(
+                _mapping(raw.get("key"), "resolver.closure.key")
+            )
+            self._closures[key] = _resolved_kernel(raw, "resolver.closure")
+
+    def vertex_kernel(self, interaction: InteractionNode) -> EagerResolvedKernel:
+        left = self._dag.currents[interaction.left_id]
+        right = self._dag.currents[interaction.right_id]
+        result = self._dag.currents[interaction.result_id]
+        key = VertexKernelKey(
+            kind=int(interaction.vertex_kind),
+            particles=tuple(int(value) for value in interaction.vertex_particles),
+            left_chirality=int(left.index.chirality),
+            right_chirality=int(right.index.chirality),
+            result_chirality=int(result.index.chirality),
+            coupling=tuple(float(value) for value in interaction.coupling),
+        )
+        try:
+            return self._vertices[key]
+        except KeyError as error:
+            raise ValueError(
+                f"prepared model has no vertex binding for {key}"
+            ) from error
+
+    def propagator_kernel_id(
+        self,
+        current: CurrentNode,
+        propagator: Mapping[str, object],
+    ) -> int | None:
+        if not bool(propagator.get("applies_propagator", False)):
+            return None
+        key = PropagatorKernelKey(
+            int(current.index.particle_id), int(current.index.chirality)
+        )
+        try:
+            kernel_id = self._propagators[key]
+        except KeyError as error:
+            raise ValueError(
+                f"prepared model has no propagator binding for {key}"
+            ) from error
+        if kernel_id is None:
+            raise ValueError(
+                f"prepared propagator binding {key} does not provide a kernel"
+            )
+        return kernel_id
+
+    def closure_kernel(
+        self, root: Mapping[str, object]
+    ) -> EagerResolvedKernel | None:
+        if str(root.get("kind")) == "direct-contraction":
+            return None
+        kind = root.get("vertex_kind")
+        particles = root.get("vertex_particles")
+        if kind is None or particles is None:
+            raise ValueError("prepared vertex closure lacks vertex identity")
+        left = self._dag.currents[int(root["left_current_id"])]
+        right = self._dag.currents[int(root["right_current_id"])]
+        key = ClosureKernelKey(
+            kind=int(kind),
+            particles=tuple(
+                int(value)
+                for value in _sequence(particles, "closure.vertex_particles")
+            ),
+            left_chirality=int(left.index.chirality),
+            right_chirality=int(right.index.chirality),
+            coupling=tuple(
+                float(value)
+                for value in _sequence(root.get("coupling"), "closure.coupling")
+            ),
+        )
+        try:
+            return self._closures[key]
+        except KeyError as error:
+            raise ValueError(
+                f"prepared model has no closure binding for {key}"
             ) from error
 
 
@@ -305,6 +444,7 @@ def lower_eager_execution_tables(
         attachments: list[EagerAttachmentRow] = []
         for interactions in grouped.values():
             representative = interactions[0]
+            resolved_kernel = resolver.vertex_kernel(representative)
             representative_factor = complex(*representative.evaluation_factor)
             if representative_factor == 0j:
                 raise ValueError(
@@ -329,6 +469,7 @@ def lower_eager_execution_tables(
                 factor = (
                     complex(*interaction.color_weight)
                     * complex(*interaction.evaluation_factor)
+                    * complex(*resolved_kernel.normalization_factor)
                     / representative_factor
                 )
                 attachments.append(
@@ -340,13 +481,18 @@ def lower_eager_execution_tables(
                 )
             left = dag.currents[representative.left_id]
             right = dag.currents[representative.right_id]
+            input_currents = (left, right)
+            ordered_currents = tuple(
+                input_currents[index]
+                for index in resolved_kernel.canonical_input_order
+            )
             invocations.append(
                 EagerInvocationRow(
-                    resolver.vertex_kernel_id(representative),
-                    input_slot_by_current[left.id],
-                    input_slot_by_current[right.id],
-                    momentum_slot_by_mask[left.index.momentum_mask],
-                    momentum_slot_by_mask[right.index.momentum_mask],
+                    resolved_kernel.kernel_id,
+                    input_slot_by_current[ordered_currents[0].id],
+                    input_slot_by_current[ordered_currents[1].id],
+                    momentum_slot_by_mask[ordered_currents[0].index.momentum_mask],
+                    momentum_slot_by_mask[ordered_currents[1].index.momentum_mask],
                     coupling_slot_id,
                     attachment_start,
                     len(interactions),
@@ -384,27 +530,35 @@ def lower_eager_execution_tables(
     for root in _mapping_sequence(
         amplitude_stage.get("roots"), "amplitude_stage.roots"
     ):
-        kernel_id = resolver.closure_kernel_id(root)
+        resolved_kernel = resolver.closure_kernel(root)
         coupling_slot_id = MISSING_U32
-        if kernel_id is not None:
+        if resolved_kernel is not None:
             coupling_slot_id = coupling_catalog.add(
                 _sequence(root.get("coupling"), "root.coupling"),
                 _optional_sequence(root.get("coupling_parameter_names")),
             )
         color_weight = _complex_pair(root.get("color_weight"), "root.color_weight")
+        left_slot_id = int(
+            _mapping(root.get("left_value_slot"), "left_value_slot")[
+                "value_slot_id"
+            ]
+        )
+        right_slot_id = int(
+            _mapping(root.get("right_value_slot"), "right_value_slot")[
+                "value_slot_id"
+            ]
+        )
+        if resolved_kernel is not None:
+            slots = (left_slot_id, right_slot_id)
+            left_slot_id, right_slot_id = (
+                slots[index] for index in resolved_kernel.canonical_input_order
+            )
+            color_weight *= complex(*resolved_kernel.normalization_factor)
         closures.append(
             EagerClosureRow(
-                MISSING_U32 if kernel_id is None else kernel_id,
-                int(
-                    _mapping(root.get("left_value_slot"), "left_value_slot")[
-                        "value_slot_id"
-                    ]
-                ),
-                int(
-                    _mapping(root.get("right_value_slot"), "right_value_slot")[
-                        "value_slot_id"
-                    ]
-                ),
+                MISSING_U32 if resolved_kernel is None else resolved_kernel.kernel_id,
+                left_slot_id,
+                right_slot_id,
                 int(root["output_index"]),
                 coupling_slot_id,
                 color_weight.real,
@@ -488,11 +642,81 @@ def _complex_pair(value: object, context: str) -> complex:
     return complex(float(components[0]), float(components[1]))
 
 
+def _resolved_kernel(
+    record: Mapping[str, object],
+    context: str,
+) -> EagerResolvedKernel:
+    order = tuple(
+        int(value)
+        for value in _sequence(
+            record.get("canonical_input_order"),
+            f"{context}.canonical_input_order",
+        )
+    )
+    factor = tuple(
+        float(value)
+        for value in _sequence(
+            record.get("equivalence_factor"),
+            f"{context}.equivalence_factor",
+        )
+    )
+    if len(order) != 2 or len(factor) != 2:
+        raise ValueError(f"{context} has malformed input transformation metadata")
+    return EagerResolvedKernel(
+        kernel_id=int(record["kernel_id"]),
+        canonical_input_order=(order[0], order[1]),
+        normalization_factor=(factor[0], factor[1]),
+    )
+
+
+def _vertex_kernel_key(record: Mapping[str, object]) -> VertexKernelKey:
+    particles = tuple(
+        int(value)
+        for value in _sequence(record.get("particles"), "vertex.particles")
+    )
+    coupling = tuple(
+        float(value)
+        for value in _sequence(record.get("coupling"), "vertex.coupling")
+    )
+    if len(particles) != 3 or len(coupling) != 2:
+        raise ValueError("prepared vertex key has malformed particles or coupling")
+    return VertexKernelKey(
+        kind=int(record["kind"]),
+        particles=(particles[0], particles[1], particles[2]),
+        left_chirality=int(record["left_chirality"]),
+        right_chirality=int(record["right_chirality"]),
+        result_chirality=int(record["result_chirality"]),
+        coupling=(coupling[0], coupling[1]),
+    )
+
+
+def _closure_kernel_key(record: Mapping[str, object]) -> ClosureKernelKey:
+    particles = tuple(
+        int(value)
+        for value in _sequence(record.get("particles"), "closure.particles")
+    )
+    coupling = tuple(
+        float(value)
+        for value in _sequence(record.get("coupling"), "closure.coupling")
+    )
+    if len(particles) != 3 or len(coupling) != 2:
+        raise ValueError("prepared closure key has malformed particles or coupling")
+    return ClosureKernelKey(
+        kind=int(record["kind"]),
+        particles=(particles[0], particles[1], particles[2]),
+        left_chirality=int(record["left_chirality"]),
+        right_chirality=int(record["right_chirality"]),
+        coupling=(coupling[0], coupling[1]),
+    )
+
+
 __all__ = [
     "EAGER_RUNTIME_KIND",
     "EagerExecutionTables",
     "EagerKernelResolver",
+    "EagerResolvedKernel",
     "EagerStageTables",
     "MappingEagerKernelResolver",
+    "PreparedCatalogEagerKernelResolver",
     "lower_eager_execution_tables",
 ]

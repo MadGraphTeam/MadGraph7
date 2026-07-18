@@ -9,10 +9,11 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import ClassVar, Protocol, TypeVar
 
+from .._internal.versions import EAGER_DAG_F64_RUNTIME_CAPABILITY
 from ..models.prepared import EAGER_KERNEL_ABI
 
 EAGER_PLAN_ABI = "pyamplicol-eager-plan-v1"
-EAGER_RUNTIME_CAPABILITY = "rusticol.eager-dag.complex-f64.v1"
+EAGER_RUNTIME_CAPABILITY = EAGER_DAG_F64_RUNTIME_CAPABILITY
 MISSING_U32 = (1 << 32) - 1
 
 

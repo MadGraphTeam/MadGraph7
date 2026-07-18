@@ -240,7 +240,9 @@ class PreparedKernelRecord:
     input_arity: int
     output_arity: int
     input_layout: tuple[str, ...]
+    input_contracts: tuple[Mapping[str, object], ...]
     output_layout: tuple[str, ...]
+    exact_expressions: tuple[str, ...]
     exact_evaluator_state_path: str
     f64_evaluator_manifest: Mapping[str, object]
 
@@ -275,6 +277,49 @@ class PreparedKernelRecord:
             )
         object.__setattr__(self, "input_layout", input_layout)
         object.__setattr__(self, "output_layout", output_layout)
+        input_contracts = tuple(
+            _freeze_mapping(item, f"kernel.input_contracts[{index}]")
+            for index, item in enumerate(self.input_contracts)
+        )
+        if len(input_contracts) != input_arity:
+            raise PreparedModelBundleError(
+                "kernel input contract count must equal input arity"
+            )
+        for index, contract in enumerate(input_contracts):
+            _require_exact_keys(
+                contract,
+                f"kernel.input_contracts[{index}]",
+                frozenset(
+                    (
+                        "role",
+                        "component",
+                        "symbol",
+                        "model_parameter_name",
+                        "model_parameter_index",
+                    )
+                ),
+            )
+            _nonempty_string(
+                contract.get("role"), f"kernel.input_contracts[{index}].role"
+            )
+            _nonnegative_integer(
+                contract.get("component"),
+                f"kernel.input_contracts[{index}].component",
+            )
+            _nonempty_string(
+                contract.get("symbol"),
+                f"kernel.input_contracts[{index}].symbol",
+            )
+        object.__setattr__(self, "input_contracts", input_contracts)
+        exact_expressions = tuple(
+            _nonempty_string(item, f"kernel.exact_expressions[{index}]")
+            for index, item in enumerate(self.exact_expressions)
+        )
+        if len(exact_expressions) != output_arity:
+            raise PreparedModelBundleError(
+                "kernel exact expression count must equal output arity"
+            )
+        object.__setattr__(self, "exact_expressions", exact_expressions)
         object.__setattr__(
             self,
             "exact_evaluator_state_path",
@@ -315,7 +360,11 @@ class PreparedKernelRecord:
             "input_arity": self.input_arity,
             "output_arity": self.output_arity,
             "input_layout": list(self.input_layout),
+            "input_contracts": [
+                _thaw_json(contract) for contract in self.input_contracts
+            ],
             "output_layout": list(self.output_layout),
+            "exact_expressions": list(self.exact_expressions),
             "exact_evaluator_state_path": self.exact_evaluator_state_path,
             "f64_evaluator_manifest": _thaw_json(self.f64_evaluator_manifest),
         }
@@ -330,7 +379,9 @@ class PreparedKernelRecord:
                 "input_arity",
                 "output_arity",
                 "input_layout",
+                "input_contracts",
                 "output_layout",
+                "exact_expressions",
                 "exact_evaluator_state_path",
                 "f64_evaluator_manifest",
             )
@@ -359,10 +410,27 @@ class PreparedKernelRecord:
                     _sequence(value.get("input_layout"), "kernel.input_layout")
                 )
             ),
+            input_contracts=tuple(
+                _mapping(item, f"kernel.input_contracts[{index}]")
+                for index, item in enumerate(
+                    _sequence(
+                        value.get("input_contracts"), "kernel.input_contracts"
+                    )
+                )
+            ),
             output_layout=tuple(
                 _nonempty_string(item, f"kernel.output_layout[{index}]")
                 for index, item in enumerate(
                     _sequence(value.get("output_layout"), "kernel.output_layout")
+                )
+            ),
+            exact_expressions=tuple(
+                _nonempty_string(item, f"kernel.exact_expressions[{index}]")
+                for index, item in enumerate(
+                    _sequence(
+                        value.get("exact_expressions"),
+                        "kernel.exact_expressions",
+                    )
                 )
             ),
             exact_evaluator_state_path=_normalized_member_path(
@@ -386,6 +454,7 @@ class PreparedKernelPack:
     dependency_abis: Mapping[str, object]
     provenance: Mapping[str, object]
     target: Mapping[str, object]
+    resolver_manifest: Mapping[str, object]
     kernels: tuple[PreparedKernelRecord, ...]
 
     def __post_init__(self) -> None:
@@ -399,6 +468,7 @@ class PreparedKernelPack:
             "dependency_abis",
             "provenance",
             "target",
+            "resolver_manifest",
         ):
             value = cast(Mapping[str, object], getattr(self, name))
             if not value:
@@ -470,6 +540,7 @@ class PreparedKernelPack:
             "dependency_abis": _thaw_json(self.dependency_abis),
             "provenance": _thaw_json(self.provenance),
             "target": _thaw_json(self.target),
+            "resolver_manifest": _thaw_json(self.resolver_manifest),
             "kernels": [kernel.to_dict() for kernel in self.kernels],
         }
 
@@ -483,6 +554,7 @@ class PreparedKernelPack:
                 "dependency_abis",
                 "provenance",
                 "target",
+                "resolver_manifest",
                 "kernels",
             )
         )
@@ -509,6 +581,10 @@ class PreparedKernelPack:
             ),
             provenance=_mapping(value.get("provenance"), "kernel_pack.provenance"),
             target=_mapping(value.get("target"), "kernel_pack.target"),
+            resolver_manifest=_mapping(
+                value.get("resolver_manifest"),
+                "kernel_pack.resolver_manifest",
+            ),
             kernels=kernels,
         )
 

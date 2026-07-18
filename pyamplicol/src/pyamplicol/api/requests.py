@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal, TypeAlias
 
 import pyamplicol as _pyamplicol
+from pyamplicol.config import EvaluatorConfig
 
 from .errors import ModelError
 
@@ -181,8 +182,25 @@ class ModelSource:
         cache_dir: os.PathLike[str] | str | None = None,
         use_cache: bool = True,
         require_supported: bool = True,
+        prepared_output: os.PathLike[str] | str | None = None,
+        evaluator: EvaluatorConfig | None = None,
     ) -> _pyamplicol.CompiledModel:
-        """Compile or load this source and return the canonical compiled model."""
+        """Compile or load this source and return its compiled-model handle.
+
+        By default this only creates the canonical, portable model IR in memory.
+        Supplying both ``prepared_output`` and ``evaluator`` additionally writes
+        one self-contained ``.pyamplicol-model`` bundle containing exactly the
+        requested evaluator backend pack. The returned handle is loaded from that
+        bundle and can be passed directly to eager generation.
+        """
+
+        if (prepared_output is None) != (evaluator is None):
+            raise ModelError(
+                "prepared model compilation requires both prepared_output and "
+                "an EvaluatorConfig"
+            )
+        if evaluator is not None and not isinstance(evaluator, EvaluatorConfig):
+            raise ModelError("evaluator must be an EvaluatorConfig or null")
 
         if self.kind == "built-in-sm":
             source: str | Path = "built-in-sm"
@@ -200,6 +218,22 @@ class ModelSource:
                 raise ModelError(
                     "model cache directory must be path-like or null"
                 ) from exc
+        resolved_prepared_output: Path | None = None
+        if prepared_output is not None:
+            try:
+                resolved_prepared_output = (
+                    Path(os.fspath(prepared_output)).expanduser().resolve(strict=False)
+                )
+            except TypeError as exc:
+                raise ModelError(
+                    "prepared model output must be path-like or null"
+                ) from exc
+            if not resolved_prepared_output.name.lower().endswith(
+                ".pyamplicol-model"
+            ):
+                raise ModelError(
+                    "prepared model output must end with '.pyamplicol-model'"
+                )
         from pyamplicol.models.loading import compile_model_source
 
         try:
@@ -215,6 +249,18 @@ class ModelSource:
                 use_cache=use_cache,
                 require_supported=require_supported,
             )
+            if resolved_prepared_output is not None:
+                assert evaluator is not None
+                from pyamplicol.models.prepared_compile import prepare_model_bundle
+
+                prepared = prepare_model_bundle(
+                    payload,
+                    resolved_prepared_output,
+                    evaluator=evaluator,
+                )
+                from pyamplicol.models.loading import load_compiled_model
+
+                payload = load_compiled_model(prepared.output)
             from .models import _compiled_model_from_payload
 
             return _compiled_model_from_payload(payload)

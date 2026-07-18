@@ -9,7 +9,7 @@ import pyamplicol.licensing as licensing
 from pyamplicol import Generator, ModelSource
 from pyamplicol.api.errors import GenerationError, ModelError
 from pyamplicol.api.models import _compiled_model_payload
-from pyamplicol.config import Action, EvaluatorConfig, RunConfig
+from pyamplicol.config import Action, EvaluatorConfig, JITConfig, RunConfig
 from pyamplicol.licensing import SymbolicaLicenseState
 from pyamplicol.models.loading import compile_model_source, load_compiled_model
 from pyamplicol.models.prepared import (
@@ -28,7 +28,17 @@ def _prepared_builtin_sm(tmp_path: Path) -> Path:
         input_arity=1,
         output_arity=1,
         input_layout=("input",),
+        input_contracts=(
+            {
+                "role": "current",
+                "component": 0,
+                "symbol": "pyamplicol::input",
+                "model_parameter_name": None,
+                "model_parameter_index": None,
+            },
+        ),
         output_layout=("output",),
+        exact_expressions=("pyamplicol::input",),
         exact_evaluator_state_path="kernels/0/exact.evaluator.bin",
         f64_evaluator_manifest={
             "kind": "symjit-application-evaluator",
@@ -40,7 +50,15 @@ def _prepared_builtin_sm(tmp_path: Path) -> Path:
     )
     pack = PreparedKernelPack(
         backend="jit",
-        optimization_settings={"optimization_level": 3},
+        optimization_settings={
+            "iterations": 10,
+            "cpe_iterations": None,
+            "jit_optimization_level": 3,
+            "max_horner_scheme_variables": 1000,
+            "max_common_pair_cache_entries": 5_000_000,
+            "max_common_pair_distance": 1000,
+            "collect_factors": False,
+        },
         producer={"distribution": "pyamplicol", "version": "test"},
         dependency_abis={"symjit_application": "test-v1"},
         provenance={"compiled_model": "test"},
@@ -50,6 +68,10 @@ def _prepared_builtin_sm(tmp_path: Path) -> Path:
             "endianness": "little",
             "target_triple": "test-target",
             "cpu_features": [],
+        },
+        resolver_manifest={
+            "abi": "pyamplicol-prepared-kernel-catalog-v1",
+            "model_name": "built-in-sm",
         },
         kernels=(kernel,),
     )
@@ -133,3 +155,38 @@ def test_eager_plan_accepts_prepared_model(
 
     assert len(plan.concrete_processes) == 1
     assert plan.estimated_coverage["model_kind"] == "prepared"
+    assert plan.effective_settings.evaluator.backend == "jit"
+    assert plan.effective_settings.evaluator.jit.optimization_level == 3
+    assert {
+        adjustment.path for adjustment in plan.adjustments
+    } >= {"evaluator.optimization.collect_factors"}
+
+
+def test_eager_prepared_pack_settings_are_authoritative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    model = ModelSource.from_path(_prepared_builtin_sm(tmp_path))
+    config = RunConfig(
+        action=Action.GENERATE,
+        evaluator=EvaluatorConfig(
+            backend="cpp",
+            execution_mode="eager",
+            jit=JITConfig(optimization_level=1),
+        ),
+    )
+
+    plan = Generator(config).plan("d d~ > z", model=model)
+
+    assert plan.requested_settings.evaluator.backend == "cpp"
+    assert plan.requested_settings.evaluator.jit.optimization_level == 1
+    assert plan.effective_settings.evaluator.backend == "jit"
+    assert plan.effective_settings.evaluator.jit.optimization_level == 3
+    by_path = {adjustment.path: adjustment for adjustment in plan.adjustments}
+    assert by_path["evaluator.backend"].requested == "cpp"
+    assert by_path["evaluator.backend"].effective == "jit"
+    assert by_path["evaluator.jit.optimization_level"].requested == 1
+    assert by_path["evaluator.jit.optimization_level"].effective == 3
+    assert "prepared model settings" in caplog.text
