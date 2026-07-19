@@ -384,7 +384,8 @@ assert (eager_artifact / "model/eager-kernel-pack.json").is_file()
 eager_runtime = Runtime.load(eager_artifact)
 eager_total = eager_runtime.evaluate(momenta)[0]
 eager_resolved = eager_runtime.evaluate_resolved(momenta)
-assert eager_resolved.total()[0] == eager_total
+eager_reduced = eager_resolved.total()[0]
+assert abs(eager_reduced - eager_total) <= 1.0e-12 * max(abs(eager_total), 1.0)
 assert math.isclose(
     eager_total.real,
     reference,

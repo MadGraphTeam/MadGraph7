@@ -223,6 +223,16 @@ def _selftest_files(
             "api-source",
             "text/x-python",
         ),
+        "API/c/Makefile": (
+            b"# synthetic C Makefile\n",
+            "api-build-file",
+            "text/x-makefile",
+        ),
+        "API/c/check_standalone.c": (
+            b"/* synthetic C driver */\n",
+            "api-source",
+            "text/x-csrc",
+        ),
         "API/cpp/Makefile": (
             b"# synthetic C++ Makefile\n",
             "api-build-file",
@@ -1006,7 +1016,7 @@ def test_wheel_selftest_producer_and_model_metadata_match_release_schema(
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
-def test_wheel_selftest_requires_the_complete_four_language_api_bundle(
+def test_wheel_selftest_requires_the_complete_five_language_api_bundle(
     tmp_path: Path,
 ) -> None:
     wheel = _wheel(
@@ -1014,7 +1024,7 @@ def test_wheel_selftest_requires_the_complete_four_language_api_bundle(
         omitted_selftest_api_payload="API/rust/check_standalone.rs",
     )
 
-    with pytest.raises(ArtifactError, match=r"four-language API.*API/rust"):
+    with pytest.raises(ArtifactError, match=r"five-language API.*API/rust"):
         audit_wheel(wheel, mode="release", native_scan=False)
 
 

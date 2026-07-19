@@ -184,6 +184,8 @@ _REQUIRED_WHEEL_PACKAGE_MEMBERS = {
 _REQUIRED_SELFTEST_API_PAYLOADS = {
     "API/validation_points.dat",
     "API/python/check_standalone.py",
+    "API/c/Makefile",
+    "API/c/check_standalone.c",
     "API/cpp/Makefile",
     "API/cpp/check_standalone.cpp",
     "API/fortran/Makefile",
@@ -1068,7 +1070,7 @@ def _validate_selftest_fixture(
     missing_api_payloads = sorted(_REQUIRED_SELFTEST_API_PAYLOADS - declared)
     if missing_api_payloads:
         raise ArtifactError(
-            "wheel self-test artifact is missing four-language API payloads: "
+            "wheel self-test artifact is missing five-language API payloads: "
             + ", ".join(missing_api_payloads)
         )
     if direct_symjit == 0:

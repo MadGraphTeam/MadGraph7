@@ -4,7 +4,7 @@ schema_version = 1
 [model]
 source = "built-in-sm"
 simplify = true
-cache = false
+cache = true
 
 [process]
 entries = [{ expression = "d d~ > z" }]
@@ -38,6 +38,7 @@ post_build_validation = true
 
 [evaluator]
 backend = "jit"
+execution_mode = "compiled"
 batch_size = 128
 output_chunk_size = 128
 
@@ -56,6 +57,10 @@ optimization_level = 1
 optimization = "O3"
 native_arch = false
 extra_flags = []
+
+[evaluator.eager]
+point_tile_size = 1024
+workspace_mib = 256
 
 [evaluation]
 precision = 16

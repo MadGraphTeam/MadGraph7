@@ -87,6 +87,7 @@ def test_installed_backend_smoke_covers_precision_compiled_and_eager() -> None:
     assert '"pyamplicol-runtime-eager-execution"' in smoke
     assert '"model/eager-kernel-pack.json"' in smoke
     assert "eager_runtime.evaluate(momenta)" in smoke
+    assert "abs(eager_reduced - eager_total)" in smoke
     assert "eager_runtime.evaluate(momenta, precision=80)" in smoke
 
 
