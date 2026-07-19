@@ -132,16 +132,52 @@ def _restricted_license(**_kwargs: object) -> SymbolicaLicenseState:
     return SymbolicaLicenseState(licensed=False, restricted=True)
 
 
-def test_eager_plan_fails_before_dag_without_prepared_model(
+def test_eager_plan_uses_packaged_builtin_model(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    bundle_path = _prepared_builtin_sm(tmp_path)
+    monkeypatch.setattr(
+        "pyamplicol.assets.prepared_models.materialize_packaged_prepared_model",
+        lambda: bundle_path,
+    )
+
+    plan = Generator(_eager_config()).plan("d d~ > z")
+
+    assert len(plan.concrete_processes) == 1
+    assert plan.estimated_coverage["model_kind"] == "prepared"
+
+
+def test_eager_compiled_handle_without_pack_fails_before_dag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    model = ModelSource.built_in_sm().compile(use_cache=False)
 
     with pytest.raises(
         GenerationError,
         match=r"pyamplicol model compile.*--backend jit",
     ):
-        Generator(_eager_config()).plan("d d~ > z")
+        Generator(_eager_config()).plan("d d~ > z", model=model)
+
+
+def test_compiled_plan_does_not_materialize_packaged_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+
+    def fail() -> Path:
+        raise AssertionError("compiled mode touched eager packaged resources")
+
+    monkeypatch.setattr(
+        "pyamplicol.assets.prepared_models.materialize_packaged_prepared_model",
+        fail,
+    )
+
+    plan = Generator(RunConfig(action=Action.GENERATE)).plan("d d~ > z")
+
+    assert plan.estimated_coverage["model_kind"] == "built-in-sm"
 
 
 def test_eager_plan_accepts_prepared_model(

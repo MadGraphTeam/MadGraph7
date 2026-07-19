@@ -1163,7 +1163,9 @@ class GenerationBackend:
                 use_compiled_process_catalog=not is_builtin,
             )
         if source.kind == "built-in-sm":
-            return _ResolvedModel(source, _builtin_sm_model())
+            if not self._eager_execution_enabled:
+                return _ResolvedModel(source, _builtin_sm_model())
+            source = self._packaged_builtin_eager_source()
         if source.path is None:
             raise ModelError("external model source has no path")
 
@@ -1249,7 +1251,9 @@ class GenerationBackend:
                 compiled,
             )
         if source.kind == "built-in-sm":
-            return _ResolvedModel(source, _builtin_sm_model())
+            if not self._eager_execution_enabled:
+                return _ResolvedModel(source, _builtin_sm_model())
+            source = self._packaged_builtin_eager_source()
         if source.path is None:
             raise ModelError("external model source has no path")
         from ..models.external import CompiledUFOModel
@@ -1283,6 +1287,22 @@ class GenerationBackend:
                 use_compiled_process_catalog=False,
             )
         return _ResolvedModel(source, CompiledUFOModel(compiled), compiled)
+
+    @staticmethod
+    def _packaged_builtin_eager_source() -> ModelSource:
+        from ..assets.prepared_models import (
+            PackagedPreparedModelError,
+            materialize_packaged_prepared_model,
+        )
+
+        try:
+            path = materialize_packaged_prepared_model()
+        except (OSError, PackagedPreparedModelError, RuntimeError, ValueError) as exc:
+            raise ModelError(
+                "the wheel-owned built-in-SM eager model is unavailable or stale: "
+                f"{exc}"
+            ) from exc
+        return ModelSource.from_path(path)
 
     def _require_eager_kernel_pack(self, resolved: _ResolvedModel) -> None:
         run = self._run_config

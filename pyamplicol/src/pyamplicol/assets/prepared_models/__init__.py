@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from importlib import resources
@@ -101,6 +103,64 @@ def open_packaged_prepared_model(
 
     with packaged_prepared_model_path(identifier) as path:
         yield load_prepared_model_bundle(path)
+
+
+def materialize_packaged_prepared_model(
+    identifier: str = BUILTIN_SM_JIT_O3,
+    *,
+    cache_dir: Path | None = None,
+) -> Path:
+    """Return a stable path for a validated wheel-owned prepared model.
+
+    Installed wheels normally expose resources as ordinary files, but the
+    resource API also permits transient extraction from archive importers.
+    Eager generation retains the bundle path while it copies referenced
+    kernels into the process artifact, so materialize one content-addressed
+    cache entry instead of leaking a temporary resource path.
+    """
+
+    with packaged_prepared_model_path(identifier) as source:
+        data = source.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    if cache_dir is None:
+        from platformdirs import user_cache_path
+
+        root = user_cache_path("pyamplicol") / "prepared_models" / digest
+    else:
+        root = Path(cache_dir).expanduser().resolve(strict=False) / digest
+    root.mkdir(parents=True, exist_ok=True)
+    if root.is_symlink() or not root.is_dir():
+        raise PackagedPreparedModelError(
+            "packaged prepared-model cache must be a regular directory"
+        )
+    output = root / _BUNDLE_NAME
+    if output.exists():
+        if output.is_symlink() or not output.is_file():
+            raise PackagedPreparedModelError(
+                "packaged prepared-model cache entry must be a regular file"
+            )
+        if hashlib.sha256(output.read_bytes()).hexdigest() == digest:
+            return output
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{_BUNDLE_NAME}.",
+        suffix=".tmp",
+        dir=root,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
+    if hashlib.sha256(output.read_bytes()).hexdigest() != digest:
+        raise PackagedPreparedModelError(
+            "materialized prepared-model cache entry has a SHA-256 mismatch"
+        )
+    return output
 
 
 def _validate_bundle(path: Path, metadata: Mapping[str, object]) -> None:
@@ -265,6 +325,7 @@ __all__ = [
     "BUILTIN_SM_JIT_O3",
     "PackagedPreparedModelError",
     "available_prepared_models",
+    "materialize_packaged_prepared_model",
     "open_packaged_prepared_model",
     "packaged_prepared_model_path",
 ]

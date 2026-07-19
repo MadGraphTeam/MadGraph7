@@ -61,6 +61,34 @@ def test_packaged_builtin_sm_jit_o3_is_discoverable_and_validated(
         assert bundle.kernel_pack.target["cpu_features"] == ()
 
 
+def test_packaged_prepared_model_materializes_stable_cached_copy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import pyamplicol._internal.versions as versions
+    import pyamplicol.models.loading as loading
+
+    metadata = _metadata()
+    producer = metadata["producer"]
+    assert isinstance(producer, dict)
+    monkeypatch.setattr(
+        versions,
+        "package_version",
+        lambda: producer["package_version"],
+    )
+    monkeypatch.setattr(loading, "package_version", lambda: producer["package_version"])
+
+    first = prepared_models.materialize_packaged_prepared_model(cache_dir=tmp_path)
+    second = prepared_models.materialize_packaged_prepared_model(cache_dir=tmp_path)
+
+    assert first == second
+    assert first.is_file()
+    assert first.parent.name == _metadata()["bundle_sha256"]
+    assert first.read_bytes() == (
+        ASSET_ROOT / "built-in-sm-jit-o3.pyamplicol-model"
+    ).read_bytes()
+
+
 def test_packaged_prepared_model_rejects_unknown_identity() -> None:
     with (
         pytest.raises(
