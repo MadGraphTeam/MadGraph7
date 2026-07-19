@@ -975,6 +975,7 @@ def _from_overlay(
     operation: Callable[..., _Result],
     *args: Any,
     with_sdk: bool,
+    validate_prepared_models: bool = False,
     **kwargs: Any,
 ) -> _Result:
     with _delegating():
@@ -990,6 +991,8 @@ def _from_overlay(
             if sys.platform == "darwin":
                 environment["MACOSX_DEPLOYMENT_TARGET"] = "11.0"
             with _environment(environment), _working_directory(overlay):
+                if validate_prepared_models and not with_sdk:
+                    stage_packaged_prepared_models(overlay, mode)
                 if with_sdk:
                     _stage_packaged_examples(overlay)
                     _stage_python_stub(overlay)
@@ -1032,6 +1035,7 @@ def build_sdist(
         sdist_directory,
         config_settings,
         with_sdk=False,
+        validate_prepared_models=True,
     )
 
 

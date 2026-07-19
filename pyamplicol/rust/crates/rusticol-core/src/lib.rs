@@ -41,7 +41,8 @@ pub use engine::{
     NativeColorComponent, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,
     NativeExternalParticle, NativeHelicityConfiguration, NativeModelParameter,
     NativeProfiledEvaluation, NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata,
-    NativeRuntimeProfile, RuntimeCapability, supported_runtime_capabilities,
+    NativeRuntimeProfile, RuntimeCapability, preflight_prepared_kernel_pack,
+    supported_runtime_capabilities,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{

@@ -608,7 +608,9 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     assert bool(sdk_stages) is with_sdk
     assert selftest_stages == ([(overlay, "aarch64-apple-darwin")] if with_sdk else [])
     assert prepared_model_stages == (
-        [(overlay, "release")] if with_sdk else []
+        [(overlay, "release")]
+        if with_sdk or hook == "build_sdist"
+        else []
     )
     for name, value in injected.items():
         assert os.environ[name] == value
@@ -778,6 +780,11 @@ def test_pep517_backend_rejects_recursive_delegation(
 
     monkeypatch.setattr(backend, "_overlay", fake_overlay)
     monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
+    monkeypatch.setattr(
+        backend,
+        "stage_packaged_prepared_models",
+        lambda _path, _mode: None,
+    )
     monkeypatch.setattr(
         backend.maturin,
         "build_sdist",

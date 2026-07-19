@@ -109,6 +109,33 @@ impl PreparedEvaluatorBackend {
         }
         Ok(Self { kernels })
     }
+
+    pub(super) fn preflight_all(
+        pack: &PreparedKernelPackManifest,
+        payload_root: &Path,
+    ) -> RusticolResult<usize> {
+        let backend = Self::load(pack, payload_root)?;
+        let mut loaded = backend.kernels.len();
+        for kernel in &pack.kernels {
+            if kernel.contract_kind != "model-parameter" {
+                continue;
+            }
+            let evaluator_manifest = kernel.runtime_evaluator_manifest()?;
+            ensure_evaluator_capabilities_supported(&evaluator_manifest)?;
+            let (input_len, output_len) = evaluator_manifest.io_len()?;
+            if input_len != kernel.input_arity
+                || output_len != usize::try_from(kernel.output_arity).unwrap_or(usize::MAX)
+            {
+                return Err(RusticolError::integrity(format!(
+                    "prepared model-parameter kernel {} evaluator I/O ({input_len}, {output_len}) does not match ({}, {})",
+                    kernel.kernel_id, kernel.input_arity, kernel.output_arity
+                )));
+            }
+            let _evaluator = EvaluatorGroup::load(&evaluator_manifest, payload_root)?;
+            loaded += 1;
+        }
+        Ok(loaded)
+    }
 }
 
 impl EagerKernelBackend for PreparedEvaluatorBackend {

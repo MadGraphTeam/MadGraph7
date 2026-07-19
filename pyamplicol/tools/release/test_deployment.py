@@ -423,6 +423,7 @@ class DependencyInstallation:
 
 @dataclass(frozen=True)
 class NativeToolchain:
+    cc: tuple[str, ...]
     cxx: tuple[str, ...]
     fortran: tuple[str, ...]
     rustc: tuple[str, ...]
@@ -623,12 +624,14 @@ def _native_command(variable: str, defaults: Sequence[str]) -> tuple[str, ...] |
 
 
 def _native_toolchain(mode: str) -> NativeToolchain | None:
+    cc = _native_command("CC", ("cc", "clang", "gcc"))
     cxx = _native_command("CXX", ("c++", "clang++", "g++"))
     fortran = _native_command("FC", ("gfortran", "flang-new", "flang", "ifx"))
     rustc = _native_command("RUSTC", ("rustc",))
     missing = tuple(
         name
         for name, command in (
+            ("C11", cc),
             ("C++17", cxx),
             ("Fortran 2008", fortran),
             ("Rust 2021", rustc),
@@ -647,8 +650,10 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
             raise ReleaseError(message)
         print(f"Candidate deployment did not run native SDK smoke tests: {message}")
         return None
-    assert cxx is not None and fortran is not None and rustc is not None
-    return NativeToolchain(cxx=cxx, fortran=fortran, rustc=rustc)
+    assert all(command is not None for command in (cc, cxx, fortran, rustc))
+    assert cc is not None and cxx is not None
+    assert fortran is not None and rustc is not None
+    return NativeToolchain(cc=cc, cxx=cxx, fortran=fortran, rustc=rustc)
 
 
 def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
@@ -831,10 +836,10 @@ def _driver_result(
 
 
 def _compare_driver_results(results: dict[str, dict[str, Any]]) -> None:
-    expected_languages = {"python", "cpp", "fortran", "rust"}
+    expected_languages = {"python", "c", "cpp", "fortran", "rust"}
     if set(results) != expected_languages:
         raise ReleaseError(
-            "installed API comparison did not exercise all four languages"
+            "installed API comparison did not exercise all five languages"
         )
     reference = results["python"]
     result_keys = ("values", "resolved_sum", "compatibility_total")
@@ -878,21 +883,23 @@ def _native_sdk_smoke(
     native = sandbox / "native-sdk-smoke"
     native.mkdir(parents=True, exist_ok=False)
     python_source = fixture.artifact / "API" / "python" / "check_standalone.py"
+    c_source = fixture.artifact / "API" / "c" / "check_standalone.c"
     cpp_source = fixture.artifact / "API" / "cpp" / "check_standalone.cpp"
     fortran_source = fixture.artifact / "API" / "fortran" / "check_standalone.f90"
     rust_source = fixture.artifact / "API" / "rust" / "check_standalone.rs"
     missing_sources = [
         source
-        for source in (python_source, cpp_source, fortran_source, rust_source)
+        for source in (python_source, c_source, cpp_source, fortran_source, rust_source)
         if not source.is_file()
     ]
     if missing_sources:
         raise ReleaseError(
-            "installed self-test artifact has no complete four-language API bundle: "
+            "installed self-test artifact has no complete five-language API bundle: "
             + ", ".join(
                 str(path.relative_to(fixture.artifact)) for path in missing_sources
             )
         )
+    c_binary = native / "check_standalone_c"
     cpp_binary = native / "check_standalone_cpp"
     fortran_binary = native / "check_standalone_fortran"
     rust_binary = native / "check_standalone_rust"
@@ -902,6 +909,20 @@ def _native_sdk_smoke(
     rust_flags = list(map(str, sdk["rust_flags"]))
     packaged_fortran = Path(str(sdk["fortran_source"])).resolve(strict=True)
     packaged_rust = Path(str(sdk["rust_source"])).resolve(strict=True)
+    run(
+        [
+            *toolchain.cc,
+            "-std=c11",
+            *cflags,
+            c_source,
+            "-o",
+            c_binary,
+            *link_flags,
+        ],
+        cwd=native,
+        env=environment,
+        capture_output=True,
+    )
     run(
         [
             *toolchain.cxx,
@@ -952,6 +973,12 @@ def _native_sdk_smoke(
         "python": _driver_result(
             (python, "-I", python_source),
             language="python",
+            fixture=fixture,
+            environment=environment,
+        ),
+        "c": _driver_result(
+            (c_binary,),
+            language="c",
             fixture=fixture,
             environment=environment,
         ),

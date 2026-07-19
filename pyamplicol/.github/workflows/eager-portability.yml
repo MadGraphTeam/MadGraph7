@@ -4,10 +4,55 @@ on:
   pull_request:
     paths:
       - .github/workflows/eager-portability.yml
+      - Cargo.lock
+      - Cargo.toml
       - build_backend/prepared_models.py
-      - rust/crates/rusticol-core/src/engine/eager_*.rs
+      - dependencies/candidate-Cargo.lock
+      - dependencies/contributor-lock.toml
+      - dependencies/patches/symbolica/**
+      - rust/crates/rusticol-core/src/eager_runtime/**
+      - rust/crates/rusticol-core/src/eager_runtime.rs
+      - rust/crates/rusticol-core/src/eager_tables.rs
+      - rust/crates/rusticol-core/src/engine/**
+      - rust/crates/rusticol-core/src/engine.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit.rs
+      - rust/crates/rusticol-core/src/lib.rs
+      - rust/crates/rusticol-python/src/lib.rs
+      - src/pyamplicol/_internal/physics/symbols.py
+      - src/pyamplicol/_internal/versions.py
       - src/pyamplicol/assets/prepared_models/**
+      - src/pyamplicol/config/**
+      - src/pyamplicol/evaluators/symbolica*.py
+      - src/pyamplicol/generation/**
       - src/pyamplicol/models/prepared*.py
+      - src/pyamplicol/runtime/eager_exact/**
+      - tools/ci/eager_portability*.py
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/eager-portability.yml
+      - Cargo.lock
+      - Cargo.toml
+      - build_backend/prepared_models.py
+      - dependencies/candidate-Cargo.lock
+      - dependencies/contributor-lock.toml
+      - dependencies/patches/symbolica/**
+      - rust/crates/rusticol-core/src/eager_runtime/**
+      - rust/crates/rusticol-core/src/eager_runtime.rs
+      - rust/crates/rusticol-core/src/eager_tables.rs
+      - rust/crates/rusticol-core/src/engine/**
+      - rust/crates/rusticol-core/src/engine.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit.rs
+      - rust/crates/rusticol-core/src/lib.rs
+      - rust/crates/rusticol-python/src/lib.rs
+      - src/pyamplicol/_internal/physics/symbols.py
+      - src/pyamplicol/_internal/versions.py
+      - src/pyamplicol/assets/prepared_models/**
+      - src/pyamplicol/config/**
+      - src/pyamplicol/evaluators/symbolica*.py
+      - src/pyamplicol/generation/**
+      - src/pyamplicol/models/prepared*.py
+      - src/pyamplicol/runtime/eager_exact/**
       - tools/ci/eager_portability*.py
   workflow_dispatch:
 

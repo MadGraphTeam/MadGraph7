@@ -25,6 +25,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import zipfile
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 
@@ -336,6 +337,58 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     os.replace(temporary, path)
 
 
+def _preflight_all_prepared_applications(bundle: Path) -> int:
+    from pyamplicol import _rusticol
+
+    with zipfile.ZipFile(bundle) as archive:
+        try:
+            manifest = _object(
+                json.loads(archive.read("manifest.json")),
+                "prepared bundle manifest",
+            )
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise PortabilityError("prepared bundle manifest is invalid") from error
+        kernel_pack = _object(
+            manifest.get("kernel_pack"),
+            "prepared bundle kernel_pack",
+        )
+        kernel_pack = dict(kernel_pack)
+        kernel_pack["eager_kernel_abi"] = _string(
+            manifest.get("eager_kernel_abi"),
+            "prepared bundle eager_kernel_abi",
+        )
+        members = _array(manifest.get("members"), "prepared bundle members")
+        with tempfile.TemporaryDirectory(
+            prefix="pyamplicol-eager-portability-preflight-"
+        ) as raw:
+            root = Path(raw)
+            pack_path = root / "kernel-pack.json"
+            pack_path.write_text(
+                json.dumps(kernel_pack, sort_keys=True, separators=(",", ":"))
+                + "\n",
+                encoding="utf-8",
+            )
+            for index, raw_member in enumerate(members):
+                member = _object(raw_member, f"prepared bundle members[{index}]")
+                relative = _canonical_member_path(
+                    member.get("path"),
+                    f"prepared bundle members[{index}].path",
+                )
+                destination = root.joinpath(*PurePosixPath(relative).parts)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(archive.read(relative))
+            loaded = _rusticol._preflight_eager_kernel_pack(pack_path, root)
+    expected = len(_array(kernel_pack.get("kernels"), "kernel_pack.kernels")) + len(
+        _array(kernel_pack.get("kernel_variants"), "kernel_pack.kernel_variants")
+    )
+    if loaded != expected:
+        raise PortabilityError(
+            "prepared application preflight loaded "
+            f"{loaded} evaluators, expected {expected}"
+        )
+    return loaded
+
+
 def produce_transfer(
     output_directory: Path,
     *,
@@ -370,6 +423,7 @@ def produce_transfer(
         raise PortabilityError(
             "prepared bundle producer version differs from the installed package"
         )
+    audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(bundle)
 
     with tempfile.TemporaryDirectory(
         prefix="pyamplicol-eager-portability-producer-"
@@ -709,6 +763,12 @@ def consume_transfer(
         raise PortabilityError(
             "transferred bundle producer version differs from the consumer package"
         )
+    preflight_count = _preflight_all_prepared_applications(bundle)
+    if bundle_record.get("preflight_evaluator_count") != preflight_count:
+        raise PortabilityError(
+            "consumer prepared-application preflight count differs from producer"
+        )
+    audit["preflight_evaluator_count"] = preflight_count
     if fixture.get("producer") is None:
         raise PortabilityError("transfer fixture omits producer provenance")
     producer = _object(fixture.get("producer"), "transfer.producer")

@@ -97,6 +97,7 @@ def _write_bundle(
                     "kernel_id": 0,
                 }
             ],
+            "kernel_variants": [],
             "optimization_settings": {
                 "backend": "jit",
                 "compiled_inline_asm": "none",
@@ -160,6 +161,7 @@ def _write_transfer_fixture(
             "architecture_class": architecture,
             "bundle_sha256": portability._sha256_file(bundle),
             "filename": bundle.name,
+            "preflight_evaluator_count": 1,
         },
         "expected": {
             "atol": portability.DEFAULT_ATOL,
@@ -462,6 +464,11 @@ def test_consumer_accepts_same_architecture_pack_across_operating_systems(
     monkeypatch.setattr(portability.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(portability, "_runtime_contracts", lambda: contracts)
     monkeypatch.setattr(portability, "_git_commit", lambda: "fixture-commit")
+    monkeypatch.setattr(
+        portability,
+        "_preflight_all_prepared_applications",
+        lambda _bundle: 1,
+    )
 
     class GenerationStarted(RuntimeError):
         pass
@@ -500,8 +507,14 @@ def test_portability_workflow_transfers_matching_architecture_packs() -> None:
     )[0]
 
     assert "pull_request:" in trigger
+    assert "push:" in trigger
     assert "workflow_dispatch:" in trigger
     assert "src/pyamplicol/assets/prepared_models/**" in trigger
+    assert "rust/crates/rusticol-core/src/eager_runtime/**" in trigger
+    assert "rust/crates/rusticol-core/src/engine/**" in trigger
+    assert "rust/crates/rusticol-core/src/evaluator/symjit.rs" in trigger
+    assert "dependencies/contributor-lock.toml" in trigger
+    assert "src/pyamplicol/evaluators/symbolica*.py" in trigger
     assert workflow.count("eager_portability.py produce") == 1
     assert workflow.count("eager_portability.py consume") == 1
     assert workflow.count("pyamplicol-eager-jit-transfer-${{") == 2

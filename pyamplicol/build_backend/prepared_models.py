@@ -221,12 +221,14 @@ def _validate_bundle(
         package_root / "models" / "loading.py", "MODEL_COMPILER_VERSION"
     )
     compiler_digest = _model_compiler_digest(package_root)
+    prepared_pack_compiler_digest = _prepared_pack_compiler_digest(package_root)
     source_digest = _built_in_source_digest(package_root)
     packaged_producer = _mapping(metadata.get("producer"), "metadata.producer")
     expected_producer = {
         "compiled_model_schema": compiled_schema,
         "model_compiler_version": compiler_version,
         "model_compiler_sha256": compiler_digest,
+        "prepared_pack_compiler_sha256": prepared_pack_compiler_digest,
         "model_source_digest": source_digest,
         "package_version": _expected_package_version(overlay, mode),
     }
@@ -366,6 +368,25 @@ def _model_compiler_digest(package_root: Path) -> str:
             *(package_root / "_internal" / "physics").glob("*.py"),
             package_root / "processes" / "core_syntax.py",
         )
+    )
+    digest = hashlib.sha256()
+    for path in paths:
+        relative = path.relative_to(package_root).as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _prepared_pack_compiler_digest(package_root: Path) -> str:
+    paths = sorted(
+        {
+            *(package_root / "models").glob("prepared*.py"),
+            *(package_root / "evaluators").glob("symbolica*.py"),
+            *(package_root / "config").glob("*.py"),
+            package_root / "_internal" / "physics" / "symbols.py",
+            package_root / "_internal" / "versions.py",
+        }
     )
     digest = hashlib.sha256()
     for path in paths:

@@ -226,6 +226,7 @@ def _validate_bundle(
         "compiled_model_schema": COMPILED_MODEL_SCHEMA_VERSION,
         "model_compiler_version": MODEL_COMPILER_VERSION,
         "model_compiler_sha256": fingerprint["model_compiler_sha256"],
+        "prepared_pack_compiler_sha256": _prepared_pack_compiler_digest(),
         "model_source_digest": _compiled_source_digest(source_digest()),
     }
     for key, value in expected.items():
@@ -334,6 +335,32 @@ def _compiled_source_digest(implementation_digest: str) -> str:
     digest = hashlib.sha256()
     digest.update(b"built-in-sm\0")
     digest.update(implementation_digest.encode("ascii"))
+    return digest.hexdigest()
+
+
+def _prepared_pack_compiler_digest() -> str:
+    """Fingerprint first-party code that emits prepared evaluator payloads."""
+
+    package_root = Path(__file__).resolve().parents[2]
+    paths = {
+        *(package_root / "models").glob("prepared*.py"),
+        *(package_root / "evaluators").glob("symbolica*.py"),
+        *(package_root / "config").glob("*.py"),
+        package_root / "_internal" / "physics" / "symbols.py",
+        package_root / "_internal" / "versions.py",
+    }
+    missing = sorted(path for path in paths if not path.is_file())
+    if missing:
+        raise PackagedPreparedModelError(
+            "prepared-pack compiler fingerprint sources are missing: "
+            + ", ".join(str(path) for path in missing)
+        )
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        relative = path.relative_to(package_root).as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
     return digest.hexdigest()
 
 

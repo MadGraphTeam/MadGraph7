@@ -89,6 +89,28 @@ def test_wheel_staging_rejects_built_in_source_drift(tmp_path: Path) -> None:
         stage_packaged_prepared_models(overlay, "candidate")
 
 
+def test_wheel_staging_rejects_prepared_payload_compiler_drift(
+    tmp_path: Path,
+) -> None:
+    overlay = _overlay(tmp_path)
+    source = (
+        overlay
+        / "src"
+        / "pyamplicol"
+        / "evaluators"
+        / "symbolica_compile.py"
+    )
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n# drift\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="prepared_pack_compiler_sha256 is stale",
+    ):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
 def test_wheel_staging_rejects_bundle_hash_drift(tmp_path: Path) -> None:
     overlay = _overlay(tmp_path)
     bundle = (

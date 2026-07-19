@@ -10,7 +10,7 @@ use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
     NativeResolvedEvaluation, NativeRuntime, NativeRuntimeProfile, ParameterKind, ParticleRole,
     ProcessPhysics as CoreProcessPhysics, ReductionKind, RusticolError as CoreError,
-    RusticolErrorKind, runtime_target_info,
+    RusticolErrorKind, preflight_prepared_kernel_pack, runtime_target_info,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -918,6 +918,11 @@ fn target_info() -> TargetInfo {
     }
 }
 
+#[pyfunction]
+fn _preflight_eager_kernel_pack(manifest_path: PathBuf, payload_root: PathBuf) -> PyResult<usize> {
+    preflight_prepared_kernel_pack(&manifest_path, &payload_root).map_err(python_error)
+}
+
 #[pymodule]
 fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("RusticolError", module.py().get_type::<RusticolError>())?;
@@ -946,6 +951,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(abi_version, module)?)?;
     module.add_function(wrap_pyfunction!(package_version, module)?)?;
     module.add_function(wrap_pyfunction!(target_info, module)?)?;
+    module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
     Ok(())
 }
 

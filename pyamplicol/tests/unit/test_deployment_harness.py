@@ -284,14 +284,17 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
     }
     artifact = tmp_path / "installed/artifact"
     python_driver = artifact / "API/python/check_standalone.py"
+    c_driver = artifact / "API/c/check_standalone.c"
     cpp_driver = artifact / "API/cpp/check_standalone.cpp"
     fortran_driver = artifact / "API/fortran/check_standalone.f90"
     rust_driver = artifact / "API/rust/check_standalone.rs"
     python_driver.parent.mkdir(parents=True)
+    c_driver.parent.mkdir(parents=True)
     cpp_driver.parent.mkdir(parents=True)
     fortran_driver.parent.mkdir(parents=True)
     rust_driver.parent.mkdir(parents=True)
     python_driver.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    c_driver.write_text("int main(void) { return 0; }\n", encoding="utf-8")
     cpp_driver.write_text("int main() { return 0; }\n", encoding="utf-8")
     fortran_driver.write_text("program main\nend program main\n", encoding="utf-8")
     rust_driver.write_text("fn main() {}\n", encoding="utf-8")
@@ -308,6 +311,7 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
         deployment,
         "_native_toolchain",
         lambda _mode: deployment.NativeToolchain(
+            cc=("/tool/cc",),
             cxx=("/tool/c++",),
             fortran=("/tool/gfortran",),
             rustc=("/tool/rustc",),
@@ -329,7 +333,7 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
         if any(item.endswith("check_standalone.py") for item in rendered):
             language = "python"
         else:
-            for candidate in ("cpp", "fortran", "rust"):
+            for candidate in ("c", "cpp", "fortran", "rust"):
                 if rendered[0].endswith(f"check_standalone_{candidate}"):
                     language = candidate
                     break
@@ -358,10 +362,12 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
         is True
     )
 
+    assert any(command[0] == "/tool/cc" for command in commands)
     assert any(command[0] == "/tool/c++" for command in commands)
     assert any(command[0] == "/tool/gfortran" for command in commands)
     assert any(command[0] == "/tool/rustc" for command in commands)
     assert any(command[0] == os.fspath(Path(sys.executable)) for command in commands)
+    assert any(command[0].endswith("check_standalone_c") for command in commands)
     assert any(command[0].endswith("check_standalone_cpp") for command in commands)
     assert any(command[0].endswith("check_standalone_fortran") for command in commands)
     assert any(command[0].endswith("check_standalone_rust") for command in commands)
@@ -374,7 +380,7 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
     )
 
 
-def test_four_language_result_comparison_rejects_metadata_drift() -> None:
+def test_five_language_result_comparison_rejects_metadata_drift() -> None:
     common = {
         "available": True,
         "precision": 16,
@@ -386,7 +392,7 @@ def test_four_language_result_comparison_rejects_metadata_drift() -> None:
     }
     results = {
         language: {"language": language, **common}
-        for language in ("python", "cpp", "fortran", "rust")
+        for language in ("python", "c", "cpp", "fortran", "rust")
     }
     results["rust"]["process_key"] = "different"
 

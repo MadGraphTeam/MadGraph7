@@ -55,6 +55,27 @@ pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
 #[cfg(feature = "f64-symjit")]
 pub const SYMJIT_APPLICATION_STORAGE_ABI: &str = "symjit-application-storage-v3";
 
+#[doc(hidden)]
+pub fn preflight_prepared_kernel_pack(
+    manifest_path: &Path,
+    payload_root: &Path,
+) -> RusticolResult<usize> {
+    let bytes = fs::read(manifest_path).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not read prepared kernel pack {}: {error}",
+            manifest_path.display()
+        ))
+    })?;
+    let pack: PreparedKernelPackManifest = serde_json::from_slice(&bytes).map_err(|error| {
+        RusticolError::serialization(format!(
+            "could not parse prepared kernel pack {}: {error}",
+            manifest_path.display()
+        ))
+    })?;
+    pack.validate()?;
+    PreparedEvaluatorBackend::preflight_all(&pack, payload_root)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {

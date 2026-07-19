@@ -48,11 +48,52 @@ _BUILTIN_MODEL_SOURCE_FILES = {
     "pyamplicol/models/builtin/adapters.py": b"def source_digest():\n    pass\n",
     "pyamplicol/models/builtin/model.py": b"MODEL_NAME = 'sm'\n",
 }
+_PREPARED_PACK_COMPILER_SOURCE_FILES = {
+    **{
+        f"pyamplicol/models/{name}.py": f"# synthetic {name}\n".encode()
+        for name in (
+            "prepared",
+            "prepared_catalog",
+            "prepared_catalog_builder",
+            "prepared_catalog_helpers",
+            "prepared_compile",
+            "prepared_target",
+        )
+    },
+    **{
+        f"pyamplicol/evaluators/{name}.py": f"# synthetic {name}\n".encode()
+        for name in (
+            "symbolica",
+            "symbolica_adapters",
+            "symbolica_compile",
+            "symbolica_helpers",
+            "symbolica_settings",
+        )
+    },
+    **{
+        f"pyamplicol/config/{name}.py": f"# synthetic config {name}\n".encode()
+        for name in ("__init__", "errors", "models", "registry", "resolver")
+    },
+    "pyamplicol/_internal/physics/symbols.py": b"# synthetic symbols\n",
+    "pyamplicol/_internal/versions.py": b"# synthetic versions\n",
+}
 
 
 def _model_compiler_digest() -> str:
     digest = hashlib.sha256()
-    for name, data in sorted(_MODEL_COMPILER_SOURCE_FILES.items()):
+    sources = dict(_MODEL_COMPILER_SOURCE_FILES)
+    sources.update(
+        {
+            name: data
+            for name, data in _PREPARED_PACK_COMPILER_SOURCE_FILES.items()
+            if PurePosixPath(name).parent
+            in {
+                PurePosixPath("pyamplicol/models"),
+                PurePosixPath("pyamplicol/_internal/physics"),
+            }
+        }
+    )
+    for name, data in sorted(sources.items()):
         relative = PurePosixPath(name).relative_to("pyamplicol").as_posix()
         digest.update(relative.encode("utf-8") + b"\0")
         digest.update(data)
@@ -70,6 +111,16 @@ def _builtin_model_source_digest() -> str:
     outer.update(b"built-in-sm\0")
     outer.update(inner.hexdigest().encode("ascii"))
     return outer.hexdigest()
+
+
+def _prepared_pack_compiler_digest() -> str:
+    digest = hashlib.sha256()
+    for name, data in sorted(_PREPARED_PACK_COMPILER_SOURCE_FILES.items()):
+        relative = PurePosixPath(name).relative_to("pyamplicol").as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 import _artifacts as artifacts  # noqa: E402
@@ -96,7 +147,11 @@ def _record_hash(data: bytes) -> str:
     return f"sha256={encoded}"
 
 
-def _prepared_model_files(prefix: str) -> dict[str, bytes]:
+def _prepared_model_files(
+    prefix: str,
+    *,
+    mode: str = "release",
+) -> dict[str, bytes]:
     root = prefix.rstrip("/")
     files = {f"{root}/__init__.py": b'"""Synthetic prepared models."""\n'}
     for architecture in PREPARED_MODEL_ARCHITECTURES:
@@ -117,6 +172,12 @@ def _prepared_model_files(prefix: str) -> dict[str, bytes]:
             "dependencies": {
                 "symbolica_serialization_abi": "symbolica-bincode2-v1",
                 "symjit_application_abi": "symjit-application-storage-v3",
+            },
+            "build_contract": {"candidate_fingerprint": None, "mode": mode},
+            "producer": {
+                "prepared_pack_compiler_sha256": (
+                    _prepared_pack_compiler_digest()
+                )
             },
             "target": {
                 "portable": False,
@@ -447,7 +508,13 @@ def _wheel(
     )
     files.update(_MODEL_COMPILER_SOURCE_FILES)
     files.update(_BUILTIN_MODEL_SOURCE_FILES)
-    files.update(_prepared_model_files("pyamplicol/assets/prepared_models"))
+    files.update(_PREPARED_PACK_COMPILER_SOURCE_FILES)
+    files.update(
+        _prepared_model_files(
+            "pyamplicol/assets/prepared_models",
+            mode="candidate" if candidate else "release",
+        )
+    )
     files.update(
         _selftest_files(
             rust_target,
@@ -559,6 +626,12 @@ def _sdist(
             "tools/release/install_wheel.py": b"",
             "tools/release/publish_dry_run.py": b"",
             "tools/release/test_deployment.py": b"",
+        }
+    )
+    files.update(
+        {
+            f"src/{name}": data
+            for name, data in _PREPARED_PACK_COMPILER_SOURCE_FILES.items()
         }
     )
     files.update(_prepared_model_files("src/pyamplicol/assets/prepared_models"))
@@ -1334,6 +1407,37 @@ def test_sdist_validates_prepared_model_target_and_bundle_identity(
     wrong_digest = _sdist(tmp_path, extra_files={metadata_name: metadata})
     with pytest.raises(ArtifactError, match="bundle hash/size is invalid"):
         audit_sdist(wrong_digest, mode="release")
+
+
+def test_sdist_rejects_candidate_prepared_model_assets(tmp_path: Path) -> None:
+    prefix = "src/pyamplicol/assets/prepared_models"
+    metadata_name, metadata_bytes = _modified_prepared_metadata(
+        prefix,
+        "aarch64",
+    )
+    metadata = json.loads(metadata_bytes)
+    metadata["build_contract"]["mode"] = "candidate"
+    sdist = _sdist(
+        tmp_path,
+        extra_files={
+            metadata_name: (json.dumps(metadata, sort_keys=True) + "\n").encode()
+        },
+    )
+
+    with pytest.raises(ArtifactError, match="build mode is invalid"):
+        audit_sdist(sdist, mode="release")
+
+
+def test_sdist_rejects_prepared_payload_compiler_drift(tmp_path: Path) -> None:
+    sdist = _sdist(
+        tmp_path,
+        extra_files={
+            "src/pyamplicol/evaluators/symbolica_compile.py": b"# drift\n"
+        },
+    )
+
+    with pytest.raises(ArtifactError, match="payload compiler digest is stale"):
+        audit_sdist(sdist, mode="release")
 
 
 @pytest.mark.parametrize(

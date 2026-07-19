@@ -163,6 +163,13 @@ _REQUIRED_PACKAGED_EXAMPLE_MEMBERS = {
     "pyamplicol/_examples/data/pp_zjj_momenta.json",
 }
 _REQUIRED_API_TEMPLATE_MEMBERS = {
+    "pyamplicol/assets/api_templates/c/Makefile",
+    "pyamplicol/assets/api_templates/c/check_standalone.c",
+    "pyamplicol/assets/api_templates/cpp/Makefile",
+    "pyamplicol/assets/api_templates/cpp/check_standalone.cpp",
+    "pyamplicol/assets/api_templates/fortran/Makefile",
+    "pyamplicol/assets/api_templates/fortran/check_standalone.f90",
+    "pyamplicol/assets/api_templates/python/check_standalone.py",
     "pyamplicol/assets/api_templates/rust/Makefile",
     "pyamplicol/assets/api_templates/rust/check_standalone.rs",
 }
@@ -606,6 +613,7 @@ def _validate_prepared_model_assets(
     entries: dict[str, bytes],
     *,
     prefix: str,
+    mode: str,
 ) -> None:
     abis = _dependency_lock().get("abis")
     if not isinstance(abis, dict):
@@ -653,6 +661,25 @@ def _validate_prepared_model_assets(
                 f"prepared-model SymJIT storage ABI is invalid: {metadata_name}"
             )
 
+        build_contract = metadata.get("build_contract")
+        if (
+            not isinstance(build_contract, dict)
+            or build_contract.get("mode") != mode
+        ):
+            raise ArtifactError(
+                f"prepared-model build mode is invalid: {metadata_name}"
+            )
+        producer = metadata.get("producer")
+        package_root = PurePosixPath(prefix).parents[1]
+        if (
+            not isinstance(producer, dict)
+            or producer.get("prepared_pack_compiler_sha256")
+            != _prepared_pack_compiler_digest(entries, package_root=package_root)
+        ):
+            raise ArtifactError(
+                f"prepared-model payload compiler digest is stale: {metadata_name}"
+            )
+
         expected_target = {
             "portable": False,
             "word_bits": 64,
@@ -679,6 +706,57 @@ def _validate_prepared_model_assets(
             raise ArtifactError(
                 f"prepared-model bundle hash/size is invalid: {bundle_name}"
             )
+
+
+def _prepared_pack_compiler_digest(
+    entries: dict[str, bytes],
+    *,
+    package_root: PurePosixPath,
+) -> str:
+    model_root = package_root / "models"
+    evaluator_root = package_root / "evaluators"
+    config_root = package_root / "config"
+    exact = {
+        package_root / "_internal" / "physics" / "symbols.py",
+        package_root / "_internal" / "versions.py",
+    }
+    required = {
+        model_root / "prepared.py",
+        model_root / "prepared_compile.py",
+        evaluator_root / "symbolica_compile.py",
+        config_root / "models.py",
+        *exact,
+    }
+    source_names = []
+    for name in entries:
+        path = PurePosixPath(name)
+        if path in exact or (
+            path.suffix == ".py"
+            and (
+                (path.parent == model_root and path.name.startswith("prepared"))
+                or (
+                    path.parent == evaluator_root
+                    and path.name.startswith("symbolica")
+                )
+                or path.parent == config_root
+            )
+        ):
+            source_names.append(name)
+    missing = sorted(
+        path.as_posix() for path in required if path.as_posix() not in entries
+    )
+    if missing:
+        raise ArtifactError(
+            "artifact is missing prepared-pack compiler fingerprint sources: "
+            + ", ".join(missing)
+        )
+    digest = hashlib.sha256()
+    for name in sorted(source_names):
+        relative = PurePosixPath(name).relative_to(package_root).as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(entries[name])
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _wheel_model_compiler_digest(entries: dict[str, bytes]) -> str:
@@ -1087,7 +1165,11 @@ def _validate_wheel_inventory(
     rust_target: str,
     mode: str,
 ) -> None:
-    _validate_prepared_model_assets(entries, prefix=_PREPARED_MODEL_WHEEL_PREFIX)
+    _validate_prepared_model_assets(
+        entries,
+        prefix=_PREPARED_MODEL_WHEEL_PREFIX,
+        mode=mode,
+    )
     expected = set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
     expected.add(extension_name)
     if mode == "candidate":
@@ -1562,12 +1644,9 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
         }
         _validate_sdist_inventory(set(relative_files))
         _validate_prepared_model_assets(
-            {
-                name: item.read_bytes()
-                for name, item in relative_files.items()
-                if name.startswith(f"{_PREPARED_MODEL_SDIST_PREFIX}/")
-            },
+            {name: item.read_bytes() for name, item in relative_files.items()},
             prefix=_PREPARED_MODEL_SDIST_PREFIX,
+            mode="release",
         )
         cargo = relative_files["Cargo.toml"].read_text(encoding="utf-8")
         match = re.search(r'(?m)^version = "([^"]+)"$', cargo)

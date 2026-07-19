@@ -171,7 +171,11 @@ jobs:
           tests/integration/test_spenso_restricted_mode.py
           tests/integration/test_schema_v3_generation_runtime.py
           -q
-      - name: Build and exercise Python, C++, Fortran, and Rust APIs (30 GiB RSS limit)
+      - name: Run bounded eager generation and runtime performance smoke
+        env:
+          PYAMPLICOL_EAGER_BUILTIN_PACK: ${{ github.workspace }}/src/pyamplicol/assets/prepared_models/built-in-sm-jit-o3-x86_64.pyamplicol-model
+        run: just eager-smoke
+      - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python -m pytest
