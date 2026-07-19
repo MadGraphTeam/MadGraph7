@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Sequence
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 import pytest
 
-from pyamplicol.api.errors import ArtifactError, CompatibilityError
+from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.artifacts import ArtifactBuilder
 from pyamplicol.generation.eager_lowering import EAGER_RUNTIME_KIND
 from pyamplicol.generation.eager_tables import (
@@ -33,8 +34,21 @@ _ExactCallable = Callable[[Sequence[_ComplexDecimal], int], Sequence[_ComplexDec
 
 
 class _NativeRuntime:
+    def __init__(
+        self,
+        model_parameter_values: Sequence[float] = (),
+        normalization_factor: float = 1.0,
+    ) -> None:
+        self._model_parameter_values = tuple(model_parameter_values)
+        self._normalization_factor = normalization_factor
+
     def _exact_runtime_state_json(self) -> str:
-        return json.dumps({"model_parameter_values": [], "normalization_factor": 1.0})
+        return json.dumps(
+            {
+                "model_parameter_values": self._model_parameter_values,
+                "normalization_factor": self._normalization_factor,
+            }
+        )
 
 
 def _contract(role: str, component: int) -> dict[str, object]:
@@ -61,6 +75,8 @@ def _kernel(
     kernel_id: int,
     kind: str,
     contracts: tuple[dict[str, object], ...],
+    *,
+    output_layout: tuple[str, ...] = ("scalar:0",),
 ) -> PreparedKernelRecord:
     exact_path = f"kernels/{kernel_id:06d}/exact.bin"
     return PreparedKernelRecord(
@@ -68,18 +84,20 @@ def _kernel(
         contract_kind=kind,  # type: ignore[arg-type]
         canonical_signature=f"test:{kind}:{kernel_id}",
         input_arity=len(contracts),
-        output_arity=1,
+        output_arity=len(output_layout),
         input_layout=tuple(
             f"{contract['role']}:{contract['component']}" for contract in contracts
         ),
         input_contracts=contracts,
-        output_layout=("scalar:0",),
-        exact_expressions=("test::output",),
+        output_layout=output_layout,
+        exact_expressions=tuple(
+            f"test::output::{index}" for index in range(len(output_layout))
+        ),
         exact_evaluator_state_path=exact_path,
         f64_evaluator_manifest={
             "kind": "test-evaluator",
             "input_len": len(contracts),
-            "output_len": 1,
+            "output_len": len(output_layout),
             "evaluator_state_path": exact_path,
         },
     )
@@ -322,13 +340,18 @@ def _build_artifact(
     plan_abi: str = EAGER_PLAN_ABI,
     kernel_abi: str | None = EAGER_KERNEL_ABI,
     prepared_backend: str = "jit",
+    vertex_contracts: tuple[dict[str, object], ...] | None = None,
+    parameter_kernel: PreparedKernelRecord | None = None,
+    model_parameters: Sequence[dict[str, object]] = (),
+    coupling_row: EagerCouplingRow | None = None,
 ) -> None:
     payload_target = {"triple": "test-target", "cpu_features": []}
     kernels = (
         _kernel(
             10,
             "vertex",
-            (
+            vertex_contracts
+            or (
                 _contract("left-current", 0),
                 _contract("right-current", 0),
                 _contract("coupling-real", 0),
@@ -348,7 +371,7 @@ def _build_artifact(
                 _contract("coupling-real", 0),
             ),
         ),
-    )
+    ) + (() if parameter_kernel is None else (parameter_kernel,))
     pack = PreparedKernelPack(
         backend="jit",
         optimization_settings={"optimization_level": 3},
@@ -372,7 +395,9 @@ def _build_artifact(
     if kernel_abi is not None:
         pack_payload["eager_kernel_abi"] = kernel_abi
     pack_payload["backend"] = prepared_backend
-    coupling_rows = (EagerCouplingRow(MISSING_U32, MISSING_U32, 1.0, 0.0),)
+    coupling_rows = (
+        coupling_row or EagerCouplingRow(MISSING_U32, MISSING_U32, 1.0, 0.0),
+    )
     invocations = (
         EagerInvocationRow(invocation_kernel_id, 0, 0, 0, 0, 0, 0, 1),
         EagerInvocationRow(invocation_kernel_id, 0, 0, 0, 0, 0, 1, 1),
@@ -439,6 +464,16 @@ def _build_artifact(
             "row_size": EagerClosureRow._STRUCT.size,
         },
     }
+    runtime_schema = _runtime_schema(direct_closure=direct_closure)
+    runtime_schema["model_parameters"] = list(model_parameters)
+    parameter_layout = runtime_schema["parameter_layout"]
+    assert isinstance(parameter_layout, dict)
+    parameter_layout["model_parameter_count"] = len(model_parameters)
+    parameter_layout["parameter_count_if_flattened"] = (
+        int(parameter_layout["source_component_parameter_count"])
+        + int(parameter_layout["momentum_parameter_count"])
+        + len(model_parameters)
+    )
     execution = {
         "schema_version": 3,
         "kind": EAGER_RUNTIME_KIND,
@@ -455,7 +490,7 @@ def _build_artifact(
         "runtime_options": {"point_tile_size": 1024, "workspace_mib": 256},
         "plan": plan,
         "dag_summary": {},
-        "runtime_schema": _runtime_schema(direct_closure=direct_closure),
+        "runtime_schema": runtime_schema,
     }
 
     with ArtifactBuilder(root) as builder:
@@ -637,6 +672,456 @@ def test_eager_exact_projects_sparse_complex_prepared_parameters() -> None:
         coupling=None,
         prepared_parameters=projected,
     ) == (projected[7], projected[157])
+
+
+def test_eager_exact_derives_complex_parameters_at_requested_precision(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    parameter_kernel = _kernel(
+        20,
+        "model-parameter",
+        (_parameter_contract("alpha", 7),),
+        output_layout=("model-parameter:derived",),
+    )
+    model_parameters = (
+        {
+            "name": "alpha.real",
+            "kind": "external_parameter_component",
+            "parameter_index": 0,
+            "runtime_name": "alpha",
+            "complex_component": "real",
+            "default": 2.0,
+        },
+        {
+            "name": "alpha.imag",
+            "kind": "external_parameter_component",
+            "parameter_index": 1,
+            "runtime_name": "alpha",
+            "complex_component": "imag",
+            "default": 0.25,
+        },
+        {
+            "name": "derived.real",
+            "kind": "derived_parameter_component",
+            "parameter_index": 2,
+            "runtime_name": "derived",
+            "complex_component": "real",
+            "default": 5.351713562373095,
+        },
+        {
+            "name": "derived.imag",
+            "kind": "derived_parameter_component",
+            "parameter_index": 3,
+            "runtime_name": "derived",
+            "complex_component": "imag",
+            "default": 1.3333333333333333,
+        },
+    )
+    _build_artifact(
+        artifact,
+        parameter_kernel=parameter_kernel,
+        model_parameters=model_parameters,
+        vertex_contracts=(
+            _contract("left-current", 0),
+            _contract("right-current", 0),
+            _contract("coupling-real", 0),
+            _contract("coupling-imag", 0),
+            _parameter_contract("derived", 157),
+        ),
+        coupling_row=EagerCouplingRow(2, 3, 0.0, 0.0),
+    )
+    loaded_kernel_ids: list[int] = []
+    parameter_calls: list[tuple[tuple[_ComplexDecimal, ...], int]] = []
+    vertex_inputs: list[tuple[_ComplexDecimal, ...]] = []
+    finalization_inputs: list[tuple[_ComplexDecimal, ...]] = []
+
+    def load(record: PreparedKernelRecord, root: Path) -> _ExactCallable:
+        loaded_kernel_ids.append(record.kernel_id)
+        if record.kernel_id == 20:
+
+            def derive(
+                values: Sequence[_ComplexDecimal], precision: int
+            ) -> tuple[_ComplexDecimal, ...]:
+                parameter_calls.append((tuple(values), precision))
+                real, imaginary = values[0]
+                return (
+                    (
+                        real * real - imaginary * imaginary + Decimal(2).sqrt(),
+                        Decimal(2) * real * imaginary + Decimal(1) / Decimal(3),
+                    ),
+                )
+
+            return derive
+        if record.kernel_id == 10:
+
+            def vertex(
+                values: Sequence[_ComplexDecimal], _precision: int
+            ) -> tuple[_ComplexDecimal, ...]:
+                vertex_inputs.append(tuple(values))
+                return (
+                    (
+                        values[0][0]
+                        + values[1][0]
+                        + values[2][0]
+                        + values[3][0]
+                        + values[4][0]
+                        + values[4][1],
+                        Decimal(0),
+                    ),
+                )
+
+            return vertex
+        return _loader(finalization_inputs)(record, root)
+
+    native_derived = (
+        2.0 * 2.0 - 0.25 * 0.25 + math.sqrt(2.0),
+        2.0 * 2.0 * 0.25 + 1.0 / 3.0,
+    )
+    executor = EagerExactExecutor(
+        artifact,
+        "synthetic",
+        _NativeRuntime((2.0, 0.25, *native_derived)),
+        kernel_loader=load,
+    )
+    assert loaded_kernel_ids == []
+
+    result = executor.evaluate_resolved(
+        [[(5, 0, 0, 0)], [(7, 0, 0, 0)]],
+        helicities=None,
+        color_flows=None,
+        precision=60,
+    )
+
+    assert result.values
+    assert len(parameter_calls) == 1
+    parameter_inputs, working_precision = parameter_calls[0]
+    assert loaded_kernel_ids[0] == 20
+    assert loaded_kernel_ids.count(20) == 1
+    assert parameter_inputs == ((Decimal(2), Decimal("0.25")),)
+    assert working_precision > 60
+    with localcontext() as context:
+        context.prec = working_precision
+        exact_derived = (
+            Decimal(2) ** 2 - Decimal("0.25") ** 2 + Decimal(2).sqrt(),
+            Decimal(2) * Decimal(2) * Decimal("0.25") + Decimal(1) / Decimal(3),
+        )
+    assert exact_derived[0] != Decimal(str(native_derived[0]))
+    assert exact_derived[1] != Decimal(str(native_derived[1]))
+    assert len(vertex_inputs) == 4
+    for values in vertex_inputs:
+        assert values[2] == (exact_derived[0], Decimal(0))
+        assert values[3] == (exact_derived[1], Decimal(0))
+        assert values[4] == exact_derived
+
+    def expected_values(derived: _ComplexDecimal) -> tuple[Decimal, ...]:
+        with localcontext() as context:
+            context.prec = working_precision
+            vertex = Decimal(2) + Decimal(2) * (derived[0] + derived[1])
+            raw = tuple(
+                (Decimal(30) * vertex + energy + Decimal(1) + derived[0]) ** 2
+                for energy in (Decimal(5), Decimal(7))
+            )
+        with localcontext() as context:
+            context.prec = 60
+            return tuple(+value for value in raw)
+
+    exact_values = expected_values(exact_derived)
+    native_decimal: _ComplexDecimal = (
+        Decimal(str(native_derived[0])),
+        Decimal(str(native_derived[1])),
+    )
+    native_values = expected_values(native_decimal)
+    assert result.values == tuple(((value,),) for value in exact_values)
+    assert result.values != tuple(((value,),) for value in native_values)
+
+
+def test_eager_exact_preserves_native_derived_values_without_kernel(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    model_parameters = (
+        {
+            "name": "derived.real",
+            "kind": "derived_parameter_component",
+            "parameter_index": 0,
+            "runtime_name": "derived",
+            "complex_component": "real",
+            "default": 1.25,
+        },
+        {
+            "name": "derived.imag",
+            "kind": "derived_parameter_component",
+            "parameter_index": 1,
+            "runtime_name": "derived",
+            "complex_component": "imag",
+            "default": -0.5,
+        },
+    )
+    _build_artifact(
+        artifact,
+        model_parameters=model_parameters,
+        vertex_contracts=(
+            _contract("left-current", 0),
+            _contract("right-current", 0),
+            _contract("coupling-real", 0),
+            _contract("coupling-imag", 0),
+            _parameter_contract("derived", 3),
+        ),
+        coupling_row=EagerCouplingRow(0, 1, 0.0, 0.0),
+    )
+    vertex_inputs: list[tuple[_ComplexDecimal, ...]] = []
+    fallback = _loader([])
+
+    def load(record: PreparedKernelRecord, root: Path) -> _ExactCallable:
+        if record.kernel_id != 10:
+            return fallback(record, root)
+
+        def vertex(
+            values: Sequence[_ComplexDecimal], _precision: int
+        ) -> tuple[_ComplexDecimal, ...]:
+            vertex_inputs.append(tuple(values))
+            total = sum((value[0] for value in values), start=Decimal(0))
+            return ((total, Decimal(0)),)
+
+        return vertex
+
+    executor = EagerExactExecutor(
+        artifact,
+        "synthetic",
+        _NativeRuntime((1.25, -0.5)),
+        kernel_loader=load,
+    )
+    executor.evaluate_resolved(
+        [[(5, 0, 0, 0)]],
+        helicities=None,
+        color_flows=None,
+        precision=50,
+    )
+
+    assert vertex_inputs
+    for values in vertex_inputs:
+        assert values[2] == (Decimal("1.25"), Decimal(0))
+        assert values[3] == (Decimal("-0.5"), Decimal(0))
+        assert values[4] == (Decimal("1.25"), Decimal("-0.5"))
+
+
+@pytest.mark.parametrize(
+    "output_layout, match",
+    [
+        ((), "declares no outputs"),
+        (("scalar:0",), "invalid layout"),
+        (("model-parameter: derived",), "invalid layout"),
+        (
+            ("model-parameter:derived", "model-parameter:derived"),
+            "repeats output parameter",
+        ),
+    ],
+)
+def test_eager_exact_rejects_malformed_parameter_output_layout(
+    tmp_path: Path,
+    output_layout: tuple[str, ...],
+    match: str,
+) -> None:
+    artifact = tmp_path / "artifact"
+    parameter_kernel = _kernel(
+        20,
+        "model-parameter",
+        (_parameter_contract("alpha", 7),),
+        output_layout=output_layout,
+    )
+    _build_artifact(
+        artifact,
+        parameter_kernel=parameter_kernel,
+        model_parameters=(
+            {
+                "name": "alpha",
+                "kind": "external_parameter",
+                "parameter_index": 0,
+                "default": 2.0,
+            },
+            {
+                "name": "derived.real",
+                "kind": "derived_parameter_component",
+                "parameter_index": 1,
+                "runtime_name": "derived",
+                "complex_component": "real",
+                "default": 0.0,
+            },
+            {
+                "name": "derived.imag",
+                "kind": "derived_parameter_component",
+                "parameter_index": 2,
+                "runtime_name": "derived",
+                "complex_component": "imag",
+                "default": 0.0,
+            },
+        ),
+    )
+    with pytest.raises(ArtifactError, match=match):
+        EagerExactExecutor(
+            artifact,
+            "synthetic",
+            _NativeRuntime((2.0, 0.0, 0.0)),
+            kernel_loader=_loader([]),
+        )
+
+
+def test_eager_exact_rejects_missing_runtime_derived_output(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact"
+    parameter_kernel = _kernel(
+        20,
+        "model-parameter",
+        (_parameter_contract("alpha", 7),),
+        output_layout=("model-parameter:unused",),
+    )
+    _build_artifact(
+        artifact,
+        parameter_kernel=parameter_kernel,
+        model_parameters=(
+            {
+                "name": "alpha",
+                "kind": "external_parameter",
+                "parameter_index": 0,
+                "default": 2.0,
+            },
+            {
+                "name": "derived.real",
+                "kind": "derived_parameter_component",
+                "parameter_index": 1,
+                "runtime_name": "derived",
+                "complex_component": "real",
+                "default": 0.0,
+            },
+            {
+                "name": "derived.imag",
+                "kind": "derived_parameter_component",
+                "parameter_index": 2,
+                "runtime_name": "derived",
+                "complex_component": "imag",
+                "default": 0.0,
+            },
+        ),
+    )
+
+    with pytest.raises(
+        ArtifactError,
+        match="does not output runtime derived parameters: 'derived'",
+    ):
+        EagerExactExecutor(
+            artifact,
+            "synthetic",
+            _NativeRuntime((2.0, 0.0, 0.0)),
+            kernel_loader=_loader([]),
+        )
+
+
+def test_eager_exact_rejects_malformed_parameter_input_contract(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    input_contract = _parameter_contract("alpha", 7)
+    input_contract["component"] = 1
+    parameter_kernel = _kernel(
+        20,
+        "model-parameter",
+        (input_contract,),
+        output_layout=("model-parameter:derived",),
+    )
+    _build_artifact(
+        artifact,
+        parameter_kernel=parameter_kernel,
+        model_parameters=(
+            {
+                "name": "alpha",
+                "kind": "external_parameter",
+                "parameter_index": 0,
+                "default": 2.0,
+            },
+            {
+                "name": "derived.real",
+                "kind": "derived_parameter_component",
+                "parameter_index": 1,
+                "runtime_name": "derived",
+                "complex_component": "real",
+                "default": 0.0,
+            },
+            {
+                "name": "derived.imag",
+                "kind": "derived_parameter_component",
+                "parameter_index": 2,
+                "runtime_name": "derived",
+                "complex_component": "imag",
+                "default": 0.0,
+            },
+        ),
+    )
+
+    with pytest.raises(ArtifactError, match="input 0 has invalid component 1"):
+        EagerExactExecutor(
+            artifact,
+            "synthetic",
+            _NativeRuntime((2.0, 0.0, 0.0)),
+            kernel_loader=_loader([]),
+        )
+
+
+def test_eager_exact_rejects_parameter_evaluator_output_arity(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact"
+    parameter_kernel = _kernel(
+        20,
+        "model-parameter",
+        (_parameter_contract("alpha", 7),),
+        output_layout=("model-parameter:derived",),
+    )
+    _build_artifact(
+        artifact,
+        parameter_kernel=parameter_kernel,
+        model_parameters=(
+            {
+                "name": "alpha",
+                "kind": "external_parameter",
+                "parameter_index": 0,
+                "default": 2.0,
+            },
+            {
+                "name": "derived.real",
+                "kind": "derived_parameter_component",
+                "parameter_index": 1,
+                "runtime_name": "derived",
+                "complex_component": "real",
+                "default": 0.0,
+            },
+            {
+                "name": "derived.imag",
+                "kind": "derived_parameter_component",
+                "parameter_index": 2,
+                "runtime_name": "derived",
+                "complex_component": "imag",
+                "default": 0.0,
+            },
+        ),
+    )
+    fallback = _loader([])
+
+    def load(record: PreparedKernelRecord, root: Path) -> _ExactCallable:
+        if record.kernel_id == 20:
+            return lambda _values, _precision: ()
+        return fallback(record, root)
+
+    executor = EagerExactExecutor(
+        artifact,
+        "synthetic",
+        _NativeRuntime((2.0, 0.0, 0.0)),
+        kernel_loader=load,
+    )
+    with pytest.raises(EvaluationError, match="produced 0 outputs, expected 1"):
+        executor.evaluate_resolved(
+            [[(5, 0, 0, 0)]],
+            helicities=None,
+            color_flows=None,
+            precision=40,
+        )
 
 
 def test_eager_exact_executes_direct_contraction(tmp_path: Path) -> None:

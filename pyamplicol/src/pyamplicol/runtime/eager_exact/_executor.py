@@ -116,6 +116,10 @@ class EagerExactExecutor:
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
+            exact_parameters = self._plan.resolve_model_parameters(
+                parameters,
+                working_precision,
+            )
             evaluation_points = (
                 points
                 if self._lc_replay is None
@@ -126,7 +130,13 @@ class EagerExactExecutor:
                 )
             )
             amplitudes = tuple(
-                _evaluate_point(self._plan, point, parameters, working_precision)
+                _evaluate_point(
+                    self._plan,
+                    point,
+                    exact_parameters.runtime,
+                    exact_parameters.prepared,
+                    working_precision,
+                )
                 for point in evaluation_points
             )
             values, helicity_ids, color_ids = _reduce_resolved(

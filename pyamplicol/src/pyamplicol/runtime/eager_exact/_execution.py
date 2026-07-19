@@ -33,6 +33,7 @@ def _evaluate_point(
     plan: _EagerExactPlan,
     point: tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...],
     model_parameters: tuple[Decimal, ...],
+    prepared_parameters: tuple[_ComplexDecimal, ...],
     precision: int,
 ) -> tuple[_ComplexDecimal, ...]:
     if len(model_parameters) != plan.parameter_count:
@@ -50,8 +51,6 @@ def _evaluate_point(
     momenta = flattened[plan.value_component_count :]
     currents = [_complex_zero() for _ in range(plan.current_component_count)]
     couplings = _resolve_couplings(plan, model_parameters)
-    prepared_parameters = plan.project_model_parameters(model_parameters)
-
     for stage in plan.stages:
         for invocation in stage.invocations:
             kernel = plan.kernels[invocation.kernel_id]

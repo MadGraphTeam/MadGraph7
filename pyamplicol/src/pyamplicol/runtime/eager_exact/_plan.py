@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
-from pyamplicol.api.errors import ArtifactError, CompatibilityError
+from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.artifacts.manifest import ArtifactManifest
 from pyamplicol.artifacts.security import confined_path, normalize_relative_path
 from pyamplicol.generation.eager_tables import (
@@ -57,10 +57,12 @@ class _ExactStage:
 class _RuntimeParameterSlots:
     real: int
     imaginary: int | None
+    kind: str
 
 
 @dataclass(frozen=True, slots=True)
 class _PreparedParameterProjectionEntry:
+    name: str
     prepared_index: int
     runtime_real_index: int
     runtime_imaginary_index: int | None
@@ -94,6 +96,62 @@ class _PreparedParameterProjection:
             )
         return tuple(result)
 
+    def entry(self, name: str) -> _PreparedParameterProjectionEntry | None:
+        return next((entry for entry in self.entries if entry.name == name), None)
+
+
+@dataclass(frozen=True, slots=True)
+class _DerivedParameterTarget:
+    name: str
+    prepared_index: int | None
+    runtime_real_index: int
+    runtime_imaginary_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactModelParameterState:
+    runtime: tuple[Decimal, ...]
+    prepared: tuple[tuple[Decimal, Decimal], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactParameterDerivation:
+    kernel: _LazyExactKernel
+    input_parameter_indices: tuple[int, ...]
+    targets: tuple[_DerivedParameterTarget | None, ...]
+
+    def evaluate(
+        self,
+        runtime_parameters: Sequence[Decimal],
+        prepared_parameters: Sequence[tuple[Decimal, Decimal]],
+        precision: int,
+    ) -> _ExactModelParameterState:
+        inputs = tuple(
+            prepared_parameters[index] for index in self.input_parameter_indices
+        )
+        outputs = self.kernel.evaluate(inputs, precision)
+        if len(outputs) != len(self.targets):
+            raise ArtifactError(
+                "exact model-parameter output count does not match its layout"
+            )
+        runtime = list(runtime_parameters)
+        prepared = list(prepared_parameters)
+        zero = Decimal(0)
+        for output, target in zip(outputs, self.targets, strict=True):
+            if target is None:
+                continue
+            if target.prepared_index is not None:
+                prepared[target.prepared_index] = output
+            runtime[target.runtime_real_index] = output[0]
+            if target.runtime_imaginary_index is not None:
+                runtime[target.runtime_imaginary_index] = output[1]
+            elif output[1] != zero:
+                raise EvaluationError(
+                    f"exact derived scalar parameter {target.name!r} has a "
+                    "nonzero imaginary component"
+                )
+        return _ExactModelParameterState(tuple(runtime), tuple(prepared))
+
 
 @dataclass(slots=True)
 class _EagerExactPlan:
@@ -107,6 +165,7 @@ class _EagerExactPlan:
     current_component_count: int
     parameter_count: int
     parameter_projection: _PreparedParameterProjection
+    parameter_derivation: _ExactParameterDerivation | None
     amplitude_count: int
     couplings: tuple[EagerCouplingRow, ...]
     stages: tuple[_ExactStage, ...]
@@ -217,6 +276,13 @@ class _EagerExactPlan:
             runtime_schema,
             parameter_count,
         )
+        parameter_derivation = _exact_parameter_derivation(
+            pack.kernels,
+            runtime_schema,
+            parameter_projection,
+            payload_root,
+            kernel_loader,
+        )
         plan_record = _mapping(execution.get("plan"), "plan")
         process_prefix = f"processes/{process_id}"
         couplings = _load_table(
@@ -305,6 +371,7 @@ class _EagerExactPlan:
             current_component_count=current_count,
             parameter_count=parameter_count,
             parameter_projection=parameter_projection,
+            parameter_derivation=parameter_derivation,
             amplitude_count=amplitude_count,
             couplings=couplings,
             stages=tuple(stages),
@@ -317,6 +384,17 @@ class _EagerExactPlan:
         self, runtime_parameters: Sequence[Decimal]
     ) -> tuple[tuple[Decimal, Decimal], ...]:
         return self.parameter_projection.project(runtime_parameters)
+
+    def resolve_model_parameters(
+        self,
+        runtime_parameters: Sequence[Decimal],
+        precision: int,
+    ) -> _ExactModelParameterState:
+        runtime = tuple(runtime_parameters)
+        prepared = self.parameter_projection.project(runtime)
+        if self.parameter_derivation is None:
+            return _ExactModelParameterState(runtime, prepared)
+        return self.parameter_derivation.evaluate(runtime, prepared, precision)
 
     def _validate(self) -> None:
         for index, coupling in enumerate(self.couplings):
@@ -671,6 +749,7 @@ def _prepared_parameter_projection(
             )
         entries.append(
             _PreparedParameterProjectionEntry(
+                name=name,
                 prepared_index=prepared_index,
                 runtime_real_index=slots.real,
                 runtime_imaginary_index=slots.imaginary,
@@ -690,6 +769,7 @@ def _runtime_parameter_slots(
 ) -> Mapping[str, _RuntimeParameterSlots]:
     direct: dict[str, _RuntimeParameterSlots] = {}
     complex_components: dict[str, list[int | None]] = {}
+    complex_kinds: dict[str, str] = {}
     seen_indices: set[int] = set()
     records = _sequence(runtime_schema.get("model_parameters"), "model parameters")
     for record_index, raw_record in enumerate(records):
@@ -705,10 +785,13 @@ def _runtime_parameter_slots(
         if not isinstance(name, str) or not name:
             raise ArtifactError("runtime model parameter has no name")
         runtime_name = record.get("runtime_name")
+        kind = record.get("kind")
+        if not isinstance(kind, str) or not kind:
+            raise ArtifactError("runtime model parameter has no kind")
         if runtime_name is None:
             if name in direct or name in complex_components:
                 raise ArtifactError(f"runtime model parameter {name!r} is duplicated")
-            direct[name] = _RuntimeParameterSlots(parameter_index, None)
+            direct[name] = _RuntimeParameterSlots(parameter_index, None, kind)
             continue
         if not isinstance(runtime_name, str) or not runtime_name:
             raise ArtifactError("complex runtime model parameter has no logical name")
@@ -719,6 +802,11 @@ def _runtime_parameter_slots(
                 f"{component!r}"
             )
         slots = complex_components.setdefault(runtime_name, [None, None])
+        previous_kind = complex_kinds.setdefault(runtime_name, kind)
+        if previous_kind != kind:
+            raise ArtifactError(
+                f"runtime model parameter {runtime_name!r} has mixed component kinds"
+            )
         component_index = 0 if component == "real" else 1
         if slots[component_index] is not None:
             raise ArtifactError(
@@ -739,5 +827,156 @@ def _runtime_parameter_slots(
             raise ArtifactError(
                 f"runtime model parameter {name!r} has scalar and complex records"
             )
-        direct[name] = _RuntimeParameterSlots(real, imaginary)
+        if imaginary is None:
+            raise ArtifactError(
+                f"complex runtime model parameter {name!r} lacks an imaginary component"
+            )
+        direct[name] = _RuntimeParameterSlots(real, imaginary, complex_kinds[name])
     return direct
+
+
+def _exact_parameter_derivation(
+    kernels: Sequence[PreparedKernelRecord],
+    runtime_schema: Mapping[str, object],
+    projection: _PreparedParameterProjection,
+    payload_root: Path,
+    kernel_loader: _KernelLoader,
+) -> _ExactParameterDerivation | None:
+    records = tuple(
+        kernel for kernel in kernels if kernel.contract_kind == "model-parameter"
+    )
+    if not records:
+        return None
+    if len(records) != 1:
+        raise ArtifactError(
+            "eager kernel pack declares multiple model-parameter kernels"
+        )
+    record = records[0]
+    runtime_slots = _runtime_parameter_slots(
+        runtime_schema,
+        projection.runtime_parameter_count,
+    )
+    output_names: set[str] = set()
+    parsed_outputs: list[str] = []
+    prefix = "model-parameter:"
+    if not record.output_layout:
+        raise ArtifactError("model-parameter kernel declares no outputs")
+    for index, layout in enumerate(record.output_layout):
+        if not layout.startswith(prefix) or len(layout) == len(prefix):
+            raise ArtifactError(
+                f"model-parameter kernel output {index} has invalid layout {layout!r}"
+            )
+        output_name = layout[len(prefix) :]
+        if output_name != output_name.strip():
+            raise ArtifactError(
+                f"model-parameter kernel output {index} has invalid layout {layout!r}"
+            )
+        if output_name in output_names:
+            raise ArtifactError(
+                f"model-parameter kernel repeats output parameter {output_name!r}"
+            )
+        output_names.add(output_name)
+        parsed_outputs.append(output_name)
+
+    input_names: set[str] = set()
+    input_parameter_indices: list[int] = []
+    for index, contract in enumerate(record.input_contracts):
+        if contract.get("role") != "model-parameter":
+            raise ArtifactError(
+                f"model-parameter kernel input {index} is not a model parameter"
+            )
+        input_name = contract.get("model_parameter_name")
+        stable_index = contract.get("model_parameter_index")
+        component = contract.get("component")
+        if not isinstance(input_name, str) or not input_name:
+            raise ArtifactError(
+                f"model-parameter kernel input {index} lacks a logical name"
+            )
+        if (
+            isinstance(stable_index, bool)
+            or not isinstance(stable_index, int)
+            or stable_index < 0
+        ):
+            raise ArtifactError(
+                f"model-parameter kernel input {index} lacks a stable index"
+            )
+        if component != 0:
+            raise ArtifactError(
+                f"model-parameter kernel input {index} has invalid component "
+                f"{component!r}"
+            )
+        entry = projection.entry(input_name)
+        if entry is None or entry.prepared_index != stable_index:
+            raise ArtifactError(
+                f"model-parameter kernel input {input_name!r} has no matching "
+                "projection"
+            )
+        input_slots = runtime_slots[input_name]
+        if input_slots.kind not in {
+            "external_parameter",
+            "external_parameter_component",
+        }:
+            raise ArtifactError(
+                f"model-parameter kernel input {input_name!r} is not an "
+                "external/base "
+                "parameter"
+            )
+        if input_name in input_names:
+            raise ArtifactError(
+                f"model-parameter kernel repeats input parameter {input_name!r}"
+            )
+        input_names.add(input_name)
+        input_parameter_indices.append(stable_index)
+    overlap = input_names & output_names
+    if overlap:
+        raise ArtifactError(
+            "model-parameter kernel inputs overlap its derived outputs: "
+            + ", ".join(sorted(overlap))
+        )
+
+    derived_runtime_names = {
+        runtime_name
+        for runtime_name, runtime_slots_record in runtime_slots.items()
+        if runtime_slots_record.kind == "derived_parameter_component"
+    }
+    missing_outputs = derived_runtime_names - output_names
+    if missing_outputs:
+        raise ArtifactError(
+            "model-parameter kernel does not output runtime derived parameters: "
+            + ", ".join(repr(name) for name in sorted(missing_outputs))
+        )
+
+    targets: list[_DerivedParameterTarget | None] = []
+    for output_name in parsed_outputs:
+        output_slots = runtime_slots.get(output_name)
+        entry = projection.entry(output_name)
+        if output_slots is None:
+            if entry is not None:
+                raise ArtifactError(
+                    f"derived prepared parameter {output_name!r} has no runtime slots"
+                )
+            targets.append(None)
+            continue
+        if output_slots.kind != "derived_parameter_component":
+            raise ArtifactError(
+                f"model-parameter kernel output {output_name!r} does not target "
+                "derived runtime slots"
+            )
+        if output_slots.imaginary is None:
+            raise ArtifactError(
+                f"derived runtime parameter {output_name!r} lacks an imaginary "
+                "component"
+            )
+        targets.append(
+            _DerivedParameterTarget(
+                name=output_name,
+                prepared_index=(None if entry is None else entry.prepared_index),
+                runtime_real_index=output_slots.real,
+                runtime_imaginary_index=output_slots.imaginary,
+            )
+        )
+    return _ExactParameterDerivation(
+        _LazyExactKernel(record, payload_root, kernel_loader),
+        tuple(input_parameter_indices),
+        tuple(targets),
+    )
