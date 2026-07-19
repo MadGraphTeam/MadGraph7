@@ -60,9 +60,22 @@ runtime-mutable.
 ## Evaluator
 
 - `backend: jit | asm | cpp = jit`
+- `execution_mode: compiled | eager = compiled`
 - `batch_size: int = 128`
 - `output_chunk_size: int | null = 512`
 - Stage-local parameter layout is mandatory and is not a public toggle.
+
+### Eager Execution
+
+- `point_tile_size: int = 1024`
+- `workspace_mib: int = 256`
+
+Eager mode requires a prepared model bundle before DAG construction. A
+`built-in-sm` source resolves to the wheel-owned portable JIT O3 bundle; other
+models and built-in C++/ASM execution require an explicit prepared path. The
+prepared pack is authoritative for backend and code-shaping optimization
+settings. The runtime may reduce `point_tile_size` to honor the workspace
+limit, but never increases it.
 
 ### Evaluator Optimization
 

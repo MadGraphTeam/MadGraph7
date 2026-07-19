@@ -145,11 +145,32 @@ explicit sum must agree with the total.
 
 ## Evaluators
 
+Execution mode and evaluator backend are independent choices:
+
+| Execution mode | Process artifact |
+| --- | --- |
+| `compiled` | Default. Compiles process-wide stage evaluators during generation. |
+| `eager` | Uses a prepared model's local kernels and writes compact DAG invocation tables. |
+
 | Backend | Use |
 | --- | --- |
 | `jit` | Default direct SymJIT application, optimization level 3 |
 | `asm` | Symbolica assembly evaluator |
 | `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
+
+Eager mode normally requires a `.pyamplicol-model` bundle already prepared for
+exactly one backend. The `built-in-sm` source is the exception: installed
+wheels resolve it to their bundled portable JIT O3 prepared model. Generation
+never compiles missing eager kernels. The prepared backend and code-shaping
+optimization settings are authoritative; conflicting requests are retained in
+the requested configuration, adjusted in the effective configuration, and
+reported once. Pass an explicit prepared-model path to select built-in C++ or
+ASM instead of the packaged JIT O3 pack.
+
+`evaluator.eager.point_tile_size` defaults to 1024 and is an upper bound. The
+runtime reduces it as needed to keep reusable storage within
+`evaluator.eager.workspace_mib`, which defaults to 256 MiB. Arbitrarily large
+input batches are processed through those fixed-size tiles.
 
 The default batch size is 128 and the default output chunk size is 512.
 Optimization defaults are 10

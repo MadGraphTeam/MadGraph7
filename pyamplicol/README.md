@@ -201,6 +201,46 @@ pyamplicol doctor
 pyamplicol self-test
 ```
 
+## Prepared Eager Execution
+
+The default `compiled` execution mode builds process-wide stage evaluators.
+The opt-in `eager` mode prepares model-local kernels once and lets Rusticol
+execute compact process DAG tables. Wheels include a portable built-in-SM JIT
+O3 pack, so the common path needs no model-preparation command:
+
+```console
+pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_eager \
+  --model built-in-sm \
+  --execution-mode eager --color-accuracy nlc
+```
+
+Prepare a local bundle when using an external model or selecting a C++/ASM
+pack instead:
+
+```console
+pyamplicol model compile models/json/sm/sm.json models/ufo-sm-cpp-o3.pyamplicol-model \
+  --backend cpp
+pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_cpp_eager \
+  --model models/ufo-sm-cpp-o3.pyamplicol-model --execution-mode eager
+```
+
+The `.pyamplicol-model` bundle is self-contained and retains exact expressions
+alongside one prepared JIT, ASM, or C++ kernel pack. Eager generation requires
+a matching pack and fails with the exact preparation command when one is
+absent; it never silently compiles kernels. The pack's backend and optimization
+settings are authoritative and any requested adjustment is recorded.
+Consequently, `--model built-in-sm` in eager mode resolves to the wheel-owned
+JIT O3 pack; pass an explicitly prepared path to select another backend.
+
+Rusticol tiles large point batches through a reusable workspace. Configure the
+upper bounds with `[evaluator.eager] point_tile_size = 1024` and
+`workspace_mib = 256`. The generated artifact supports the same Python,
+Rust, C++17, and Fortran 2008 total/resolved APIs and selectors as compiled
+mode. JIT f64 evaluation of saved SymJIT applications is Symbolica-free after
+generation. Eager generation and non-f64 evaluation retain the normal
+Symbolica requirement. ASM and C++ accept batches but remain scalar; only
+SymJIT may auto-SIMD.
+
 ## Typed Python
 
 The Python API uses the same resolved configuration. External sources are
