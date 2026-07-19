@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 # Built-in Standard Model generation with prepared eager JIT O3 kernels.
-# Uses the portable prepared model bundled with the installed wheel.
+# Uses the wheel's automatically selected x86_64 or aarch64 prepared pack.
 
 schema_version = 1
 action = "generate"

@@ -74,7 +74,7 @@ def test_f64_minimal_deployment_installs_only_numpy_and_wheel(
     assert commands[-1][-2:] == ["-c", deployment._SYMBOLICA_ABSENT_F64_SMOKE]
 
 
-def test_installed_backend_smoke_covers_precision_and_compiled_backends() -> None:
+def test_installed_backend_smoke_covers_precision_compiled_and_eager() -> None:
     smoke = deployment._INSTALLED_BACKEND_AND_PRECISION_SMOKE
     assert "EvaluatorBackend.JIT" in smoke
     assert "EvaluatorBackend.ASM" in smoke
@@ -82,6 +82,12 @@ def test_installed_backend_smoke_covers_precision_and_compiled_backends() -> Non
     assert "precision=80" in smoke
     assert 'Generator(config).generate("d d~ > z", artifact)' in smoke
     assert "resolved.total()[0] == total" in smoke
+    assert "EvaluatorExecutionMode.EAGER" in smoke
+    assert 'Generator(eager_config).generate("d d~ > z", eager_artifact)' in smoke
+    assert '"pyamplicol-runtime-eager-execution"' in smoke
+    assert '"model/eager-kernel-pack.json"' in smoke
+    assert "eager_runtime.evaluate(momenta)" in smoke
+    assert "eager_runtime.evaluate(momenta, precision=80)" in smoke
 
 
 from _common import ReleaseError, clean_environment  # noqa: E402

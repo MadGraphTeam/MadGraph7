@@ -160,12 +160,18 @@ Execution mode and evaluator backend are independent choices:
 
 Eager mode normally requires a `.pyamplicol-model` bundle already prepared for
 exactly one backend. The `built-in-sm` source is the exception: installed
-wheels resolve it to their bundled portable JIT O3 prepared model. Generation
-never compiles missing eager kernels. The prepared backend and code-shaping
-optimization settings are authoritative; conflicting requests are retained in
-the requested configuration, adjusted in the effective configuration, and
-reported once. Pass an explicit prepared-model path to select built-in C++ or
-ASM instead of the packaged JIT O3 pack.
+wheels carry `x86_64` and `aarch64` JIT O3 packs and select the host architecture
+automatically. Generation never compiles missing eager kernels. The prepared
+backend and code-shaping optimization settings are authoritative; conflicting
+requests are retained in the requested configuration, adjusted in the effective
+configuration, and reported once. Pass an explicit prepared-model path to
+select built-in C++ or ASM instead of the packaged JIT O3 pack.
+
+`.pyAmplicol-model.json` model IR is architecture-independent. SymJIT
+storage-v3 prepared packs are instead portable only within their architecture
+class; same-architecture transfer across supported operating systems is tested.
+An explicit `x86_64`/`aarch64` mismatch is rejected before DAG construction or
+SymJIT loading. A future SymJIT storage ABI may widen this contract.
 
 `evaluator.eager.point_tile_size` defaults to 1024 and is an upper bound. The
 runtime reduces it as needed to keep reusable storage within

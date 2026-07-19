@@ -288,6 +288,7 @@ from pyamplicol.config import (
     ColorConfig,
     EvaluatorBackend,
     EvaluatorConfig,
+    EvaluatorExecutionMode,
     EvaluatorOptimizationConfig,
     GenerationConfig,
     JITConfig,
@@ -351,7 +352,64 @@ assert all(
     math.isclose(value, reference, rel_tol=1.0e-12, abs_tol=1.0e-15)
     for value in totals.values()
 )
-print(json.dumps({"backends": sorted(totals), "total": reference}, sort_keys=True))
+
+eager_artifact = root / "eager-jit"
+eager_config = RunConfig(
+    action="generate",
+    color=ColorConfig(accuracy="lc"),
+    generation=GenerationConfig(workers=1, emit_api_bundle=False),
+    evaluator=EvaluatorConfig(
+        backend=EvaluatorBackend.JIT,
+        execution_mode=EvaluatorExecutionMode.EAGER,
+        optimization=EvaluatorOptimizationConfig(cores=1),
+        jit=JITConfig(optimization_level=3),
+    ),
+    symbolica=SymbolicaConfig(suggest_license=False),
+)
+Generator(eager_config).generate("d d~ > z", eager_artifact)
+eager_manifest = json.loads(
+    (eager_artifact / "artifact.json").read_text(encoding="utf-8")
+)
+eager_process_id = eager_manifest["processes"][0]["id"]
+eager_execution = json.loads(
+    (
+        eager_artifact
+        / "processes"
+        / eager_process_id
+        / "execution.json"
+    ).read_text(encoding="utf-8")
+)
+assert eager_execution["kind"] == "pyamplicol-runtime-eager-execution"
+assert (eager_artifact / "model/eager-kernel-pack.json").is_file()
+eager_runtime = Runtime.load(eager_artifact)
+eager_total = eager_runtime.evaluate(momenta)[0]
+eager_resolved = eager_runtime.evaluate_resolved(momenta)
+assert eager_resolved.total()[0] == eager_total
+assert math.isclose(
+    eager_total.real,
+    reference,
+    rel_tol=1.0e-12,
+    abs_tol=1.0e-15,
+)
+assert math.isclose(eager_total.imag, 0.0, abs_tol=1.0e-15)
+eager_precise = eager_runtime.evaluate(momenta, precision=80)[0]
+assert math.isclose(
+    float(eager_precise),
+    eager_total.real,
+    rel_tol=1.0e-12,
+    abs_tol=1.0e-15,
+)
+
+print(
+    json.dumps(
+        {
+            "backends": sorted(totals),
+            "eager_execution": True,
+            "total": reference,
+        },
+        sort_keys=True,
+    )
+)
 """
 )
 

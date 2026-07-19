@@ -155,6 +155,15 @@ jobs:
             tests/unit/test_sdk_config.py \
             tests/unit/test_selftest_fixture.py \
             -q
+      - name: Run eager prepared-model and runtime unit checks (30 GiB RSS limit)
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python -m pytest
+          tests/unit/test_eager_*.py
+          tests/unit/test_model_source_prepared_compile.py
+          tests/unit/test_packaged_prepared_model*.py
+          tests/unit/test_prepared_*.py
+          -q
       - name: Run focused generation and runtime integration (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
