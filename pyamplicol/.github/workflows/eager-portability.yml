@@ -1,0 +1,116 @@
+name: Eager JIT pack portability
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eager-portability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  produce-linux-x86-64:
+    name: Produce prepared JIT pack (Linux x86-64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYAMPLICOL_BUILD_MODE: candidate
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Build the pinned non-publishable contributor environment
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python dependencies/install_dependencies.py
+          --without-legacy-amplicol
+      - name: Produce one transferable built-in-SM JIT O3 pack
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/eager_portability.py produce
+          .artifacts/eager-portability-transfer
+          --python .venv/bin/python
+          --expected-system Linux
+          --expected-machine x86_64
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-eager-jit-transfer
+          path: .artifacts/eager-portability-transfer/
+          if-no-files-found: error
+          retention-days: 14
+
+  consume-transferred-pack:
+    name: Consume transferred pack (${{ matrix.target }})
+    needs: produce-linux-x86-64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x86-64
+            system: Linux
+            machine: x86_64
+          - runner: macos-15-intel
+            target: macos-x86-64
+            system: Darwin
+            machine: x86_64
+          - runner: macos-15
+            target: macos-arm64
+            system: Darwin
+            machine: arm64
+    env:
+      PYAMPLICOL_BUILD_MODE: candidate
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: pyamplicol-eager-jit-transfer
+          path: .artifacts/eager-portability-transfer
+      - name: Build the matching pinned non-publishable consumer environment
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python dependencies/install_dependencies.py
+          --without-legacy-amplicol
+      - name: Generate and evaluate from the transferred pack
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/eager_portability.py consume
+          .artifacts/eager-portability-transfer
+          --python .venv/bin/python
+          --expected-system ${{ matrix.system }}
+          --expected-machine ${{ matrix.machine }}
+          --report .artifacts/eager-portability-results/${{ matrix.target }}.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-eager-jit-result-${{ matrix.target }}
+          path: .artifacts/eager-portability-results/${{ matrix.target }}.json
+          if-no-files-found: error
+          retention-days: 14
