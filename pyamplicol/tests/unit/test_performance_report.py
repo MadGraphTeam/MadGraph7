@@ -148,7 +148,7 @@ def test_ladders_preserve_expected_multiplicities_and_variants() -> None:
     caches = report.load_caches(report.ReportPaths(DOCS))
     expected = {
         "z_builtin_sm": list(range(1, 10)),
-        "z_external_sm": list(range(1, 7)),
+        "z_external_sm": list(range(1, 10)),
         "scalar_contact": list(range(2, 9)),
         "scalar_gravity": list(range(2, 5)),
     }
@@ -290,6 +290,29 @@ def test_lc_matrix_reference_runtime_pair_uses_tight_spacing() -> None:
     assert (
         r"\hspace{0.006in}\matrixpunct{/}\hspace{0.012in}"
         in macros
+    )
+
+
+def _synthetic_source_provenance(
+    compiled_model_schema_version: int,
+    model_compiler_version: int,
+) -> dict[str, object]:
+    return {
+        "head": report._git_rev_parse("HEAD"),
+        "report_version": report.REPORT_VERSION,
+        "cache_schema_version": report.CACHE_SCHEMA_VERSION,
+        "compiled_model_schema_version": compiled_model_schema_version,
+        "model_compiler_version": model_compiler_version,
+    }
+
+
+def _write_current_effective_config(artifact_dir: Path) -> None:
+    config_dir = artifact_dir / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    output_chunk_size = report.REPORT_CONFIG_OVERRIDES["evaluator.output_chunk_size"]
+    (config_dir / "effective.toml").write_text(
+        f"[evaluator]\noutput_chunk_size = {output_chunk_size}\n",
+        encoding="utf-8",
     )
 
 
@@ -814,6 +837,7 @@ def test_missing_only_accepts_builtin_schema8_artifacts_after_schema9_bump(
         json.dumps({"producer": {"version": "current"}}),
         encoding="utf-8",
     )
+    _write_current_effective_config(artifact_dir)
     compiled_model = model_dir / "compiled-model.json"
     compiled_model.write_text(
         json.dumps({"schema_version": 7, "model_compiler_version": 6}),
@@ -838,6 +862,7 @@ def test_missing_only_accepts_builtin_schema8_artifacts_after_schema9_bump(
             "metadata": {
                 "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
                 "generation_timer_excludes_model_compile": True,
+                "source_provenance": _synthetic_source_provenance(9, 9),
             },
         }
     )
@@ -901,6 +926,7 @@ def test_missing_only_retries_external_schema8_artifacts_after_schema9_bump(
         json.dumps({"producer": {"version": "current"}}),
         encoding="utf-8",
     )
+    _write_current_effective_config(artifact_dir)
     compiled_model = model_dir / "compiled-model.json"
     compiled_model.write_text(
         json.dumps({"schema_version": 8, "model_compiler_version": 8}),
@@ -925,6 +951,7 @@ def test_missing_only_retries_external_schema8_artifacts_after_schema9_bump(
             "metadata": {
                 "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
                 "generation_timer_excludes_model_compile": True,
+                "source_provenance": _synthetic_source_provenance(9, 9),
             },
         }
     )
@@ -1035,6 +1062,7 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
         "metadata": {
             "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
             "generation_timer_excludes_model_compile": True,
+            "source_provenance": _synthetic_source_provenance(9, 10),
         },
     }
     artifact_dir = tmp_path / "artifact"
@@ -1057,12 +1085,13 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
     )
 
     (artifact_dir / "model").mkdir(parents=True)
+    _write_current_effective_config(artifact_dir)
     (artifact_dir / "artifact.json").write_text(
         json.dumps({"producer": {"version": "old"}}),
         encoding="utf-8",
     )
     (artifact_dir / "model" / "compiled-model.json").write_text(
-        json.dumps({"schema_version": 9, "model_compiler_version": 9}),
+        json.dumps({"schema_version": 9, "model_compiler_version": 10}),
         encoding="utf-8",
     )
 
@@ -1112,6 +1141,10 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
         n_final=1,
         process="d d~ > z",
         process_key="dd_z_jets",
+    )
+    (artifact_dir / "model" / "compiled-model.json").write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 9}),
+        encoding="utf-8",
     )
     assert (
         report._reusable_pyamplicol_generation_seconds(
@@ -1457,12 +1490,66 @@ def test_campaign_worker_timeout_accounts_for_every_generation_workload() -> Non
         for cell in cells
         if cell.dataset_id == "z_builtin_sm" and cell.variant == "jit_o3"
     )
+    z_jit_o1 = next(
+        cell
+        for cell in cells
+        if cell.dataset_id == "z_builtin_sm" and cell.variant == "jit_o1"
+    )
 
-    assert report._campaign_worker_timeout_seconds(matrix_lc, 3600) == 11_700
-    assert report._campaign_worker_timeout_seconds(matrix_nlc, 3600) == 8_100
-    assert report._campaign_worker_timeout_seconds(z_reference, 3600) == 4_500
-    assert report._campaign_worker_timeout_seconds(z_jit, 3600) == 8_100
-    assert report._campaign_worker_timeout_seconds(matrix_lc, 0) is None
+    assert (
+        report._campaign_worker_timeout_seconds(
+            matrix_lc,
+            generation_timeout_seconds=3600,
+            jit_o3_generation_timeout_seconds=86_400,
+            reference_timeout_seconds=3600,
+        )
+        == 177_300
+    )
+    assert (
+        report._campaign_worker_timeout_seconds(
+            matrix_nlc,
+            generation_timeout_seconds=3600,
+            jit_o3_generation_timeout_seconds=86_400,
+            reference_timeout_seconds=3600,
+        )
+        == 90_900
+    )
+    assert (
+        report._campaign_worker_timeout_seconds(
+            z_reference,
+            generation_timeout_seconds=3600,
+            jit_o3_generation_timeout_seconds=86_400,
+            reference_timeout_seconds=3600,
+        )
+        == 4_500
+    )
+    assert (
+        report._campaign_worker_timeout_seconds(
+            z_jit,
+            generation_timeout_seconds=3600,
+            jit_o3_generation_timeout_seconds=86_400,
+            reference_timeout_seconds=3600,
+        )
+        == 173_700
+    )
+    assert (
+        report._campaign_worker_timeout_seconds(
+            z_jit_o1,
+            generation_timeout_seconds=3600,
+            jit_o3_generation_timeout_seconds=86_400,
+            reference_timeout_seconds=3600,
+        )
+        == 173_700
+    )
+    assert (
+        report._campaign_worker_timeout_seconds(
+            matrix_lc,
+            generation_timeout_seconds=3600,
+            jit_o3_generation_timeout_seconds=86_400,
+            reference_timeout_seconds=0,
+        )
+        is None
+    )
 
 
 def test_memory_limit_exit_requires_the_watchdog_marker(tmp_path: Path) -> None:

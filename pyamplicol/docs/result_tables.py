@@ -54,6 +54,7 @@ REPORT_TEX_INPUTS = (
 DEFAULT_LIMIT_GIB = 800.0
 DEFAULT_GENERATION_TIMEOUT_SECONDS = 3600.0
 DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS = 86400.0
+DEFAULT_REFERENCE_TIMEOUT_SECONDS = 0.0
 DEFAULT_WORKERS = 50
 DEFAULT_PARALLEL_CELL_CORES = 1
 DEFAULT_REPORT_TARGET_RUNTIME_SECONDS = 20.0
@@ -62,6 +63,7 @@ PYAMPLICOL_GENERATION_PROFILE_POLICY = "precompiled_model_before_generation_v1"
 DEFAULT_LEGACY_PROFILE_WARMUP_POINTS = 100
 DEFAULT_LEGACY_PROFILE_MIN_POINTS = 100
 DEFAULT_LEGACY_PROFILE_MAX_POINTS = 100_000
+DEFAULT_LEGACY_LC_PARTITION_CROSS_CHECK_MAX_HELICITY_PROBES = 128
 LEGACY_LC_ALL_FLOW_GENERATION_SOURCE = "shared_generated_library_build"
 ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON = (
     "original AmpliCol supports at most three open quark lines"
@@ -517,6 +519,12 @@ Z_VARIANTS: tuple[VariantSpec, ...] = (
     ),
 )
 
+LONG_JIT_TIMEOUT_VARIANTS = frozenset({"jit_o1", "jit_o3"})
+
+
+def _variant_uses_long_jit_timeout(variant_key: object) -> bool:
+    return variant_key in LONG_JIT_TIMEOUT_VARIANTS
+
 LADDER_SPECS: tuple[LadderSpec, ...] = (
     LadderSpec(
         "z_builtin_sm",
@@ -689,7 +697,36 @@ def _optional_positive_float(value: object) -> float | None:
 
 
 def _measurement_status(value: Mapping[str, object]) -> str:
-    return str(value.get("status", NA_STATUS))
+    return _normalized_failure_status(
+        value.get("status", NA_STATUS),
+        failure_kind=value.get("failure_kind"),
+        failure_message=value.get("failure_message"),
+    )
+
+
+def _normalized_failure_status(
+    status: object,
+    *,
+    failure_kind: object | None = None,
+    failure_message: object | None = None,
+) -> str:
+    status_text = str(status)
+    if status_text == ResultStatus.TIMEOUT.value:
+        return status_text
+    if status_text != ResultStatus.ERROR.value:
+        return status_text
+    failure_text = " ".join(
+        str(part)
+        for part in (failure_kind, failure_message)
+        if part is not None and str(part)
+    ).lower()
+    if (
+        "timeout" in failure_text
+        or "timed out" in failure_text
+        or "generation exceeded" in failure_text
+    ):
+        return ResultStatus.TIMEOUT.value
+    return status_text
 
 
 def _measurement_ok(value: Mapping[str, object]) -> bool:
@@ -5062,7 +5099,24 @@ def _measurement_old_matrix_fields(
     if not isinstance(metadata, Mapping):
         return {}
     fields = metadata.get("old_matrix_format")
-    return fields if isinstance(fields, Mapping) else {}
+    if not isinstance(fields, Mapping):
+        return {}
+    normalized_fields = dict(fields)
+    selected_status = _normalized_failure_status(
+        normalized_fields.get("status", measurement.get("status", NA_STATUS)),
+        failure_kind=measurement.get("failure_kind"),
+        failure_message=measurement.get("failure_message"),
+    )
+    normalized_fields["status"] = selected_status
+    all_flow = metadata.get("all_flow_measurement")
+    if isinstance(all_flow, Mapping):
+        normalized_fields["all_flow_status"] = _measurement_status(all_flow)
+    else:
+        normalized_fields["all_flow_status"] = _normalized_failure_status(
+            normalized_fields.get("all_flow_status", NA_STATUS),
+            failure_message=normalized_fields.get("all_flow_error"),
+        )
+    return normalized_fields
 
 
 def _measure_pyamplicol_lc_two_workloads(
@@ -5191,7 +5245,7 @@ def _measure_pyamplicol_lc_two_workloads(
     jit_level = variant_overrides.get("evaluator.jit.optimization_level")
     backend = variant_overrides.get("evaluator.backend", "jit")
     old_fields = {
-        "status": selected.get("status"),
+        "status": _measurement_status(selected),
         "generation_s": selected.get("generation_seconds"),
         "selected_generation_s": selected.get("generation_seconds"),
         "runtime_us_per_point": (
@@ -5207,7 +5261,7 @@ def _measure_pyamplicol_lc_two_workloads(
         "selected_backend": backend,
         "selected_jit_optimization_level": jit_level,
         "selected_output_dir": selected.get("artifact_path"),
-        "all_flow_status": all_flow.get("status"),
+        "all_flow_status": _measurement_status(all_flow),
         "all_flow_generation_s": all_flow.get("generation_seconds"),
         "all_flow_runtime_us_per_point": (
             None
@@ -6308,6 +6362,13 @@ def _source_helicity_combinations(
     yield from itertools.product(*domains)
 
 
+def _source_helicity_combination_count(source_pdgs: Sequence[int]) -> int:
+    total = 1
+    for pdg in source_pdgs:
+        total *= len(_preferred_helicity_domain(int(pdg)))
+    return total
+
+
 def _legacy_lc_selected_flow_matrix_element(
     repository: Path,
     *,
@@ -6618,10 +6679,26 @@ def _measure_legacy_amplicol(
                             entry,
                             source_pdgs=source_pdgs,
                         )
+                        partition_probe_supported = (
+                            color_accuracy == "lc"
+                            and _legacy_lc_color_probe_supported(source_pdgs)
+                        )
+                        partition_helicity_count = (
+                            _source_helicity_combination_count(source_pdgs)
+                            if color_accuracy == "lc"
+                            else 0
+                        )
+                        partition_probe_limit = (
+                            DEFAULT_LEGACY_LC_PARTITION_CROSS_CHECK_MAX_HELICITY_PROBES
+                        )
+                        partition_probe_within_budget = (
+                            color_accuracy == "lc"
+                            and partition_helicity_count <= partition_probe_limit
+                        )
                         selected_lc_reference_words: tuple[tuple[int, ...], ...] = (
                             (tuple(int(label) for label in mapped_color_order),)
                         )
-                        if color_accuracy == "lc":
+                        if partition_probe_supported and partition_probe_within_budget:
                             try:
                                 spec = _spec_by_dataset()[cell.dataset_id]
                                 selected_lc_reference_words = (
@@ -6784,17 +6861,31 @@ def _measure_legacy_amplicol(
                                 "selected_flow_library_probe": (
                                     selected_generated_probe_payload
                                 ),
+                                "selected_flow_partition_helicity_count": (
+                                    partition_helicity_count
+                                ),
+                                "selected_flow_partition_probe_limit": (
+                                    partition_probe_limit
+                                ),
                                 "selected_flow_partition_status": (
                                     ResultStatus.UNSUPPORTED.value
-                                    if not _legacy_lc_color_probe_supported(source_pdgs)
+                                    if not partition_probe_supported
                                     else NA_STATUS
                                 ),
                                 "selected_flow_partition_note": (
                                     "legacy color-probe row partitions are limited "
                                     "to at most two quark lines; selected scalar "
                                     "uses the generated-library indexed probe"
-                                    if not _legacy_lc_color_probe_supported(source_pdgs)
-                                    else None
+                                    if not partition_probe_supported
+                                    else (
+                                        "LC row-partition cross-check skipped because "
+                                        f"it would require {partition_helicity_count} "
+                                        "one-point legacy helicity probes; selected "
+                                        "scalar uses the generated-library indexed "
+                                        "probe"
+                                        if not partition_probe_within_budget
+                                        else None
+                                    )
                                 ),
                             }
                             timing_commands = [
@@ -6803,7 +6894,10 @@ def _measure_legacy_amplicol(
                                 benchmark_record,
                                 selected_generated_probe_record,
                             ]
-                            if _legacy_lc_color_probe_supported(source_pdgs):
+                            if (
+                                partition_probe_supported
+                                and partition_probe_within_budget
+                            ):
                                 build_selected_probe, _build_output = (
                                     _legacy_command_record(
                                         [
@@ -7562,16 +7656,12 @@ def _measure_cell_payload(
                 limit_gib=limit_gib,
                 target_runtime=target_runtime,
                 jobs=cell_cores,
-                fixed_helicity=_fixed_source_helicity_choice(
-                    cell.process,
-                    spec=spec,
-                    artifact_root=artifact_root,
-                ),
+                fixed_helicity=_fixed_source_helicity_choice(cell.process),
             )
         else:
             py_generation_timeout_seconds = (
                 jit_o3_generation_timeout_seconds
-                if variant.key == "jit_o3"
+                if _variant_uses_long_jit_timeout(variant.key)
                 else generation_timeout_seconds
             )
             measurement, _points = _measure_pyamplicol_lc_two_workloads(
@@ -7822,6 +7912,7 @@ def _worker_command(
     limit_gib: float,
     generation_timeout_seconds: float,
     jit_o3_generation_timeout_seconds: float,
+    reference_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
 ) -> list[str]:
@@ -7846,6 +7937,8 @@ def _worker_command(
         f"{generation_timeout_seconds:g}",
         "--jit-o3-generation-timeout-seconds",
         f"{jit_o3_generation_timeout_seconds:g}",
+        "--reference-timeout-seconds",
+        f"{reference_timeout_seconds:g}",
         "--target-runtime",
         f"{target_runtime:g}",
         "--cell-cores",
@@ -7918,34 +8011,39 @@ def _campaign_worker_timeout_seconds(
     cell: CampaignCell,
     generation_timeout_seconds: float,
     jit_o3_generation_timeout_seconds: float,
+    reference_timeout_seconds: float,
 ) -> float | None:
-    if generation_timeout_seconds <= 0 or jit_o3_generation_timeout_seconds <= 0:
-        return None
+    def normalized(seconds: float) -> float | None:
+        return None if seconds <= 0 else float(seconds)
+
     if cell.kind == "matrix":
         spec = _spec_by_dataset()[cell.dataset_id]
         assert isinstance(spec, MatrixSpec)
         workload_timeouts = (
-            [generation_timeout_seconds, jit_o3_generation_timeout_seconds]
+            [reference_timeout_seconds, jit_o3_generation_timeout_seconds]
             if spec.color_accuracy != "lc"
             else [
-                generation_timeout_seconds,
+                reference_timeout_seconds,
                 jit_o3_generation_timeout_seconds,
                 jit_o3_generation_timeout_seconds,
             ]
         )
     elif cell.kind == "performance_ladder":
         if cell.variant == "reference":
-            workload_timeouts = [generation_timeout_seconds]
+            workload_timeouts = [reference_timeout_seconds]
         else:
             variant_timeout_seconds = (
                 jit_o3_generation_timeout_seconds
-                if cell.variant == "jit_o3"
+                if _variant_uses_long_jit_timeout(cell.variant)
                 else generation_timeout_seconds
             )
             workload_timeouts = [variant_timeout_seconds, variant_timeout_seconds]
     else:
         workload_timeouts = [jit_o3_generation_timeout_seconds]
-    return sum(workload_timeouts) + 900.0
+    normalized_timeouts = [normalized(timeout) for timeout in workload_timeouts]
+    if any(timeout is None for timeout in normalized_timeouts):
+        return None
+    return sum(float(timeout) for timeout in normalized_timeouts) + 900.0
 
 
 def _worker_log_reports_memory_limit(log_path: Path) -> bool:
@@ -7966,6 +8064,7 @@ def _execute_campaign_cell(
     limit_gib: float,
     generation_timeout_seconds: float,
     jit_o3_generation_timeout_seconds: float,
+    reference_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
 ) -> dict[str, object]:
@@ -7982,6 +8081,7 @@ def _execute_campaign_cell(
         limit_gib=limit_gib,
         generation_timeout_seconds=generation_timeout_seconds,
         jit_o3_generation_timeout_seconds=jit_o3_generation_timeout_seconds,
+        reference_timeout_seconds=reference_timeout_seconds,
         target_runtime=target_runtime,
         cell_cores=cell_cores,
     )
@@ -7989,6 +8089,7 @@ def _execute_campaign_cell(
         cell,
         generation_timeout_seconds,
         jit_o3_generation_timeout_seconds,
+        reference_timeout_seconds,
     )
     code = _run_worker_command(
         command,
@@ -8028,7 +8129,7 @@ def _execute_campaign_cell(
             artifact_root=artifact_root,
             limit_gib=limit_gib,
             timeout_seconds=(
-                generation_timeout_seconds
+                reference_timeout_seconds
                 if worker_timeout_seconds is None
                 else worker_timeout_seconds
             ),
@@ -8213,6 +8314,7 @@ class ReportService:
         limit_gib: float,
         generation_timeout_seconds: float,
         jit_o3_generation_timeout_seconds: float,
+        reference_timeout_seconds: float,
         target_runtime: float,
         cell_cores: int,
         refresh_pdf: Literal["always", "never"],
@@ -8252,6 +8354,7 @@ class ReportService:
                         "jit_o3_generation_timeout_seconds": (
                             jit_o3_generation_timeout_seconds
                         ),
+                        "reference_timeout_seconds": reference_timeout_seconds,
                         "target_runtime": target_runtime,
                         "cell_count": len(cells),
                     },
@@ -8282,6 +8385,7 @@ class ReportService:
                 f"cells={len(cells)} workers={effective_workers} "
                 f"generation_timeout={generation_timeout_seconds:g}s "
                 f"jit_o3_generation_timeout={jit_o3_generation_timeout_seconds:g}s "
+                f"reference_timeout={reference_timeout_seconds:g}s "
                 f"target_runtime={target_runtime:g}s "
                 f"artifact_root={artifact_root}",
                 file=sys.stderr,
@@ -8308,6 +8412,7 @@ class ReportService:
                         jit_o3_generation_timeout_seconds=(
                             jit_o3_generation_timeout_seconds
                         ),
+                        reference_timeout_seconds=reference_timeout_seconds,
                         target_runtime=target_runtime,
                         cell_cores=cell_cores,
                     ): cell
@@ -8331,6 +8436,7 @@ class ReportService:
                                     cell,
                                     generation_timeout_seconds,
                                     jit_o3_generation_timeout_seconds,
+                                    reference_timeout_seconds,
                                 ),
                             ),
                         }
@@ -8497,16 +8603,24 @@ def _parser() -> argparse.ArgumentParser:
         "--generation-timeout-seconds",
         type=float,
         default=DEFAULT_GENERATION_TIMEOUT_SECONDS,
-        help=(
-            "Generation cap for original AmpliCol, JIT O1, ASM, and C++ "
-            "workloads."
-        ),
+        help="Generation cap for ASM and C++ generated-backend workloads.",
     )
     populate.add_argument(
+        "--jit-generation-timeout-seconds",
         "--jit-o3-generation-timeout-seconds",
+        dest="jit_o3_generation_timeout_seconds",
         type=float,
         default=DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS,
-        help="Generation cap for report-default pyAmpliCol JIT O3 workloads.",
+        help="Generation cap for pyAmpliCol JIT O1 and JIT O3 workloads.",
+    )
+    populate.add_argument(
+        "--reference-timeout-seconds",
+        type=float,
+        default=DEFAULT_REFERENCE_TIMEOUT_SECONDS,
+        help=(
+            "Aggregate supervision cap for original AmpliCol reference "
+            "workloads. Use 0 for no reference cap."
+        ),
     )
     populate.add_argument(
         "--target-runtime",
@@ -8602,9 +8716,16 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_GENERATION_TIMEOUT_SECONDS,
     )
     worker.add_argument(
+        "--jit-generation-timeout-seconds",
         "--jit-o3-generation-timeout-seconds",
+        dest="jit_o3_generation_timeout_seconds",
         type=float,
         default=DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS,
+    )
+    worker.add_argument(
+        "--reference-timeout-seconds",
+        type=float,
+        default=DEFAULT_REFERENCE_TIMEOUT_SECONDS,
     )
     worker.add_argument(
         "--target-runtime",
@@ -8669,6 +8790,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 jit_o3_generation_timeout_seconds=(
                     args.jit_o3_generation_timeout_seconds
                 ),
+                reference_timeout_seconds=args.reference_timeout_seconds,
                 target_runtime=args.target_runtime,
                 cell_cores=args.cell_cores,
                 refresh_pdf=args.refresh_pdf,
