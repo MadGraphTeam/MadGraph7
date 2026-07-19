@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import json
+import struct
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import pyamplicol.artifacts.inspection as artifact_inspection
 import pyamplicol.generation.artifact_writer as artifact_writer
+from pyamplicol.api.errors import ArtifactError
 from pyamplicol.api.requests import ModelSource
 from pyamplicol.artifacts import ArtifactBuilder, inspect_artifact, load_manifest
 from pyamplicol.config import Action, EvaluatorConfig, GenerationConfig, RunConfig
@@ -293,7 +296,14 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     assert inspected_process.effective_point_tile_size is None
     assert inspected_process.workspace_limit_bytes == 384 * 1024 * 1024
     assert inspected_process.workspace_bytes is None
-    assert not inspected_process.selector_closure_available
+    assert inspected_process.selector_closure_available
+    assert tables.selector_closures is not None
+    assert inspected_process.selector_domain_count == len(
+        tables.selector_closures.domains
+    )
+    assert inspected_process.selector_domain_membership_count == len(
+        tables.selector_closures.domain_group_ids
+    )
     pack_identity = manifest.extensions["eager_prepared_pack"]
     assert pack_identity["kind"] == "pyamplicol-prepared-kernel-pack-identity"
     assert pack_identity["schema_version"] == 1
@@ -307,6 +317,9 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     assert "model/eager-kernel-pack.json" in declared
     assert "processes/gg_gg/eager/couplings.bin" in declared
     assert "processes/gg_gg/eager/closures.bin" in declared
+    assert "processes/gg_gg/eager/selector-domains.bin" in declared
+    assert "processes/gg_gg/eager/selector-domain-group-ids.bin" in declared
+    assert "processes/gg_gg/eager/closure-domains.bin" in declared
     emitted_pack = json.loads(
         (output / "model/eager-kernel-pack.json").read_text(encoding="utf-8")
     )
@@ -318,6 +331,19 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         for path in kernel.referenced_payload_paths:
             emitted = f"model/eager-kernels/{path}" in declared
             assert emitted is (kernel.kernel_id in tables.referenced_kernel_ids)
+
+    execution_path = output / "processes/gg_gg/execution.json"
+    closure_domains_path = output / "processes/gg_gg/eager/closure-domains.bin"
+    original_closure_domains = closure_domains_path.read_bytes()
+    closure_domains_path.write_bytes(
+        struct.pack("<I", len(tables.selector_closures.domains))
+        + original_closure_domains[4:]
+    )
+    try:
+        with pytest.raises(ArtifactError, match="references unknown domain"):
+            artifact_inspection._execution_inspection(manifest, execution_path)
+    finally:
+        closure_domains_path.write_bytes(original_closure_domains)
 
     appended_runtime_schema = build_runtime_expression_schema(
         dag,

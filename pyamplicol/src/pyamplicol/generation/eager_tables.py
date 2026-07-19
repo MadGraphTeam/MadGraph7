@@ -14,6 +14,7 @@ from ..models.prepared import EAGER_KERNEL_ABI
 
 EAGER_PLAN_ABI = "pyamplicol-eager-plan-v1"
 EAGER_RUNTIME_CAPABILITY = EAGER_DAG_F64_RUNTIME_CAPABILITY
+EAGER_SELECTOR_DOMAINS_ABI = "pyamplicol-eager-selector-domains-v1"
 MISSING_U32 = (1 << 32) - 1
 
 
@@ -254,6 +255,69 @@ class EagerClosureRow:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class EagerSelectorDomainRow:
+    """One range into the flattened coherent-group membership table."""
+
+    member_start: int
+    member_count: int
+
+    _STRUCT: ClassVar[struct.Struct] = struct.Struct("<QQ")
+
+    def __post_init__(self) -> None:
+        for field in ("member_start", "member_count"):
+            object.__setattr__(self, field, _u64(getattr(self, field), field))
+
+    def _values(self) -> tuple[int | float, ...]:
+        return self.member_start, self.member_count
+
+    @classmethod
+    def _from_values(cls, values: tuple[int | float, ...]) -> EagerSelectorDomainRow:
+        return cls(int(values[0]), int(values[1]))
+
+
+@dataclass(frozen=True, slots=True)
+class EagerSelectorGroupRow:
+    """One coherent reduction-group member of an interned selector domain."""
+
+    coherent_group_id: int
+
+    _STRUCT: ClassVar[struct.Struct] = struct.Struct("<I")
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "coherent_group_id",
+            _u32(self.coherent_group_id, "coherent_group_id"),
+        )
+
+    def _values(self) -> tuple[int | float, ...]:
+        return (self.coherent_group_id,)
+
+    @classmethod
+    def _from_values(cls, values: tuple[int | float, ...]) -> EagerSelectorGroupRow:
+        return cls(int(values[0]))
+
+
+@dataclass(frozen=True, slots=True)
+class EagerSelectorDomainIdRow:
+    """One reference to an interned selector domain."""
+
+    domain_id: int
+
+    _STRUCT: ClassVar[struct.Struct] = struct.Struct("<I")
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "domain_id", _u32(self.domain_id, "domain_id"))
+
+    def _values(self) -> tuple[int | float, ...]:
+        return (self.domain_id,)
+
+    @classmethod
+    def _from_values(cls, values: tuple[int | float, ...]) -> EagerSelectorDomainIdRow:
+        return cls(int(values[0]))
+
+
 def pack_rows(rows: Iterable[_FixedWidthRow]) -> bytes:
     """Serialize homogeneous rows without padding or a redundant header."""
 
@@ -284,12 +348,16 @@ __all__ = [
     "EAGER_KERNEL_ABI",
     "EAGER_PLAN_ABI",
     "EAGER_RUNTIME_CAPABILITY",
+    "EAGER_SELECTOR_DOMAINS_ABI",
     "MISSING_U32",
     "EagerAttachmentRow",
     "EagerClosureRow",
     "EagerCouplingRow",
     "EagerFinalizationRow",
     "EagerInvocationRow",
+    "EagerSelectorDomainIdRow",
+    "EagerSelectorDomainRow",
+    "EagerSelectorGroupRow",
     "pack_rows",
     "unpack_rows",
 ]

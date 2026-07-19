@@ -1,15 +1,21 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import struct
+
 import pytest
 
 from pyamplicol.generation.eager_tables import (
+    EAGER_SELECTOR_DOMAINS_ABI,
     MISSING_U32,
     EagerAttachmentRow,
     EagerClosureRow,
     EagerCouplingRow,
     EagerFinalizationRow,
     EagerInvocationRow,
+    EagerSelectorDomainIdRow,
+    EagerSelectorDomainRow,
+    EagerSelectorGroupRow,
     pack_rows,
     unpack_rows,
 )
@@ -38,6 +44,18 @@ from pyamplicol.generation.eager_tables import (
             EagerClosureRow(2, 3, 5, 7, 11, -1.0, 0.5),
             EagerClosureRow(13, 17, 19, 23, 29, 1.0, 0.0),
         ),
+        (
+            EagerSelectorDomainRow(0, 0),
+            EagerSelectorDomainRow(17, 19),
+        ),
+        (
+            EagerSelectorGroupRow(0x01020304),
+            EagerSelectorGroupRow(29),
+        ),
+        (
+            EagerSelectorDomainIdRow(0x05060708),
+            EagerSelectorDomainIdRow(31),
+        ),
     ),
 )
 def test_eager_fixed_width_tables_round_trip(rows: tuple[object, ...]) -> None:
@@ -61,6 +79,17 @@ def test_eager_table_rejects_truncated_payload() -> None:
     payload = pack_rows((EagerInvocationRow(0, 1, 2, 3, 4, 5, 6, 7),))
     with pytest.raises(ValueError, match="not a multiple"):
         unpack_rows(payload[:-1], EagerInvocationRow)
+
+
+def test_selector_domain_rows_have_exact_little_endian_bytes() -> None:
+    assert EAGER_SELECTOR_DOMAINS_ABI == "pyamplicol-eager-selector-domains-v1"
+    assert pack_rows((EagerSelectorDomainRow(0x0102030405060708, 2),)) == (
+        struct.pack("<QQ", 0x0102030405060708, 2)
+    )
+    assert pack_rows((EagerSelectorGroupRow(0x01020304),)) == b"\x04\x03\x02\x01"
+    assert pack_rows((EagerSelectorDomainIdRow(0x05060708),)) == (
+        b"\x08\x07\x06\x05"
+    )
 
 
 def test_eager_table_identifiers_are_bounded() -> None:

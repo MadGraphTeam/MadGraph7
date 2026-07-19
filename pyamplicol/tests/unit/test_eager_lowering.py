@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.eager_lowering import (
@@ -10,7 +11,10 @@ from pyamplicol.generation.eager_lowering import (
     PreparedCatalogEagerKernelResolver,
     lower_eager_execution_tables,
 )
-from pyamplicol.generation.eager_tables import MISSING_U32
+from pyamplicol.generation.eager_tables import (
+    EAGER_SELECTOR_DOMAINS_ABI,
+    MISSING_U32,
+)
 from pyamplicol.generation.runtime_schema import build_runtime_schema
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
@@ -33,6 +37,21 @@ def _gluon_scattering_tables():
     )
     tables = lower_eager_execution_tables(dag, model, schema, resolver)
     return model, dag, schema, tables
+
+
+def _selector_domain_members(tables):
+    selector = tables.selector_closures
+    assert selector is not None
+    members = tuple(
+        frozenset(
+            row.coherent_group_id
+            for row in selector.domain_group_ids[
+                domain.member_start : domain.member_start + domain.member_count
+            ]
+        )
+        for domain in selector.domains
+    )
+    return selector, members
 
 
 def test_eager_lowering_preserves_compiled_evaluation_groups_and_fanout() -> None:
@@ -98,6 +117,59 @@ def test_eager_attachment_factors_use_the_compiled_representative_ratio() -> Non
             )
 
 
+def test_selector_domains_preserve_shared_invocation_partial_fanout() -> None:
+    _model, _dag, schema, tables = _gluon_scattering_tables()
+    selector, members = _selector_domain_members(tables)
+
+    found_partial_fanout = False
+    for stage, selector_stage in zip(tables.stages, selector.stages, strict=True):
+        finalization_domains = {
+            finalization.current_id: (
+                members[unpropagated.domain_id] | members[propagated.domain_id]
+            )
+            for finalization, unpropagated, propagated in zip(
+                stage.finalizations,
+                selector_stage.unpropagated_finalization_domains,
+                selector_stage.propagated_finalization_domains,
+                strict=True,
+            )
+        }
+        for attachment, domain in zip(
+            stage.attachments,
+            selector_stage.attachment_domains,
+            strict=True,
+        ):
+            assert members[domain.domain_id] == finalization_domains[
+                attachment.result_current_id
+            ]
+
+        for invocation, domain in zip(
+            stage.invocations,
+            selector_stage.invocation_domains,
+            strict=True,
+        ):
+            attachment_domains = selector_stage.attachment_domains[
+                invocation.attachment_start : invocation.attachment_start
+                + invocation.attachment_count
+            ]
+            attachment_members = tuple(
+                members[attachment.domain_id] for attachment in attachment_domains
+            )
+            expected = frozenset().union(*attachment_members)
+            assert members[domain.domain_id] == expected
+            if len(set(attachment_members)) > 1:
+                found_partial_fanout = True
+
+    roots = schema["amplitude_stage"]["roots"]
+    for root, closure_domain in zip(
+        roots,
+        selector.closure_domains,
+        strict=True,
+    ):
+        assert members[closure_domain.domain_id] == {int(root["coherent_group_id"])}
+    assert found_partial_fanout
+
+
 def test_eager_lowering_emits_standalone_binary_table_metadata() -> None:
     _model, _dag, _schema, tables = _gluon_scattering_tables()
 
@@ -109,19 +181,42 @@ def test_eager_lowering_emits_standalone_binary_table_metadata() -> None:
     assert metadata["required_runtime_capabilities"] == [
         "rusticol.eager-dag.complex-f64.v1"
     ]
+    selector = metadata["selector_closures"]
+    assert selector["abi"] == EAGER_SELECTOR_DOMAINS_ABI
     assert set(payloads) == {
         "eager/couplings.bin",
         "eager/closures.bin",
+        "eager/selector-domains.bin",
+        "eager/selector-domain-group-ids.bin",
+        "eager/closure-domains.bin",
         *{
             f"eager/stage-{stage.stage_index}-{kind}.bin"
             for stage in tables.stages
-            for kind in ("invocations", "attachments", "finalizations")
+            for kind in (
+                "invocations",
+                "attachments",
+                "finalizations",
+                "invocation-domains",
+                "attachment-domains",
+                "unpropagated-finalization-domains",
+                "propagated-finalization-domains",
+            )
         },
     }
     for stage, record in zip(tables.stages, metadata["stages"], strict=True):
         assert len(payloads[record["invocations"]["path"]]) == (
             len(stage.invocations) * record["invocations"]["row_size"]
         )
+
+
+def test_selector_domains_remain_additive_to_eager_plan_v1() -> None:
+    _model, _dag, _schema, tables = _gluon_scattering_tables()
+    legacy_tables = replace(tables, selector_closures=None)
+
+    assert "selector_closures" not in legacy_tables.to_metadata()
+    assert not any(
+        "domain" in path for path in legacy_tables.binary_payloads()
+    )
 
 
 def test_direct_contractions_remain_native_and_couplings_are_parameterized() -> None:

@@ -18,12 +18,16 @@ from .dag_types import CurrentNode, GenericDAG, InteractionNode
 from .eager_tables import (
     EAGER_PLAN_ABI,
     EAGER_RUNTIME_CAPABILITY,
+    EAGER_SELECTOR_DOMAINS_ABI,
     MISSING_U32,
     EagerAttachmentRow,
     EagerClosureRow,
     EagerCouplingRow,
     EagerFinalizationRow,
     EagerInvocationRow,
+    EagerSelectorDomainIdRow,
+    EagerSelectorDomainRow,
+    EagerSelectorGroupRow,
     pack_rows,
 )
 
@@ -243,11 +247,190 @@ class EagerStageTables:
 
 
 @dataclass(frozen=True, slots=True)
+class EagerStageSelectorDomains:
+    """Domain references aligned one-for-one with one eager execution stage."""
+
+    stage_index: int
+    invocation_domains: tuple[EagerSelectorDomainIdRow, ...]
+    attachment_domains: tuple[EagerSelectorDomainIdRow, ...]
+    unpropagated_finalization_domains: tuple[EagerSelectorDomainIdRow, ...]
+    propagated_finalization_domains: tuple[EagerSelectorDomainIdRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EagerSelectorClosureTables:
+    """Interned coherent-group dependency domains for selector pruning."""
+
+    domains: tuple[EagerSelectorDomainRow, ...]
+    domain_group_ids: tuple[EagerSelectorGroupRow, ...]
+    stages: tuple[EagerStageSelectorDomains, ...]
+    closure_domains: tuple[EagerSelectorDomainIdRow, ...]
+
+    def __post_init__(self) -> None:
+        cursor = 0
+        for domain_id, domain in enumerate(self.domains):
+            if domain.member_start != cursor:
+                raise ValueError(
+                    f"eager selector domain {domain_id} does not start at {cursor}"
+                )
+            stop = cursor + domain.member_count
+            if stop > len(self.domain_group_ids):
+                raise ValueError(
+                    f"eager selector domain {domain_id} exceeds its membership table"
+                )
+            members = tuple(
+                row.coherent_group_id for row in self.domain_group_ids[cursor:stop]
+            )
+            if members != tuple(sorted(set(members))):
+                raise ValueError(
+                    f"eager selector domain {domain_id} members must be unique "
+                    "and sorted"
+                )
+            cursor = stop
+        if cursor != len(self.domain_group_ids):
+            raise ValueError(
+                "eager selector domains do not cover their membership table"
+            )
+
+        domain_count = len(self.domains)
+        for reference in self._domain_references():
+            if reference.domain_id >= domain_count:
+                raise ValueError(
+                    f"eager selector domain ID {reference.domain_id} is out of range"
+                )
+
+    def _domain_references(self) -> tuple[EagerSelectorDomainIdRow, ...]:
+        return (
+            *self.closure_domains,
+            *(
+                reference
+                for stage in self.stages
+                for references in (
+                    stage.invocation_domains,
+                    stage.attachment_domains,
+                    stage.unpropagated_finalization_domains,
+                    stage.propagated_finalization_domains,
+                )
+                for reference in references
+            ),
+        )
+
+    def binary_payloads(self, *, prefix: str) -> dict[str, bytes]:
+        payloads = {
+            f"{prefix}/selector-domains.bin": pack_rows(self.domains),
+            f"{prefix}/selector-domain-group-ids.bin": pack_rows(
+                self.domain_group_ids
+            ),
+            f"{prefix}/closure-domains.bin": pack_rows(self.closure_domains),
+        }
+        for stage in self.stages:
+            base = f"{prefix}/stage-{stage.stage_index}"
+            payloads[f"{base}-invocation-domains.bin"] = pack_rows(
+                stage.invocation_domains
+            )
+            payloads[f"{base}-attachment-domains.bin"] = pack_rows(
+                stage.attachment_domains
+            )
+            payloads[f"{base}-unpropagated-finalization-domains.bin"] = pack_rows(
+                stage.unpropagated_finalization_domains
+            )
+            payloads[f"{base}-propagated-finalization-domains.bin"] = pack_rows(
+                stage.propagated_finalization_domains
+            )
+        return payloads
+
+    def to_metadata(self, *, prefix: str) -> dict[str, object]:
+        def table(path: str, count: int, row_size: int) -> dict[str, object]:
+            return {"path": path, "count": count, "row_size": row_size}
+
+        return {
+            "abi": EAGER_SELECTOR_DOMAINS_ABI,
+            "domains": table(
+                f"{prefix}/selector-domains.bin",
+                len(self.domains),
+                EagerSelectorDomainRow._STRUCT.size,
+            ),
+            "domain_group_ids": table(
+                f"{prefix}/selector-domain-group-ids.bin",
+                len(self.domain_group_ids),
+                EagerSelectorGroupRow._STRUCT.size,
+            ),
+            "stages": [
+                {
+                    "stage_index": stage.stage_index,
+                    "invocation_domains": table(
+                        f"{prefix}/stage-{stage.stage_index}-invocation-domains.bin",
+                        len(stage.invocation_domains),
+                        EagerSelectorDomainIdRow._STRUCT.size,
+                    ),
+                    "attachment_domains": table(
+                        f"{prefix}/stage-{stage.stage_index}-attachment-domains.bin",
+                        len(stage.attachment_domains),
+                        EagerSelectorDomainIdRow._STRUCT.size,
+                    ),
+                    "unpropagated_finalization_domains": table(
+                        f"{prefix}/stage-{stage.stage_index}"
+                        "-unpropagated-finalization-domains.bin",
+                        len(stage.unpropagated_finalization_domains),
+                        EagerSelectorDomainIdRow._STRUCT.size,
+                    ),
+                    "propagated_finalization_domains": table(
+                        f"{prefix}/stage-{stage.stage_index}"
+                        "-propagated-finalization-domains.bin",
+                        len(stage.propagated_finalization_domains),
+                        EagerSelectorDomainIdRow._STRUCT.size,
+                    ),
+                }
+                for stage in self.stages
+            ],
+            "closure_domains": table(
+                f"{prefix}/closure-domains.bin",
+                len(self.closure_domains),
+                EagerSelectorDomainIdRow._STRUCT.size,
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EagerExecutionTables:
     process_key: str
     couplings: tuple[EagerCouplingRow, ...]
     stages: tuple[EagerStageTables, ...]
     closures: tuple[EagerClosureRow, ...]
+    selector_closures: EagerSelectorClosureTables | None = None
+
+    def __post_init__(self) -> None:
+        selector_closures = self.selector_closures
+        if selector_closures is None:
+            return
+        if len(selector_closures.stages) != len(self.stages):
+            raise ValueError("eager selector domains do not cover every stage")
+        for stage, domains in zip(
+            self.stages,
+            selector_closures.stages,
+            strict=True,
+        ):
+            if domains.stage_index != stage.stage_index:
+                raise ValueError("eager selector-domain stage index mismatch")
+            expected_counts = (
+                len(stage.invocations),
+                len(stage.attachments),
+                len(stage.finalizations),
+                len(stage.finalizations),
+            )
+            actual_counts = (
+                len(domains.invocation_domains),
+                len(domains.attachment_domains),
+                len(domains.unpropagated_finalization_domains),
+                len(domains.propagated_finalization_domains),
+            )
+            if actual_counts != expected_counts:
+                raise ValueError(
+                    f"eager selector-domain row counts do not match stage "
+                    f"{stage.stage_index}"
+                )
+        if len(selector_closures.closure_domains) != len(self.closures):
+            raise ValueError("eager selector domains do not cover every closure")
 
     @property
     def invocation_count(self) -> int:
@@ -288,10 +471,12 @@ class EagerExecutionTables:
             payloads[f"{base}-attachments.bin"] = pack_rows(stage.attachments)
             payloads[f"{base}-finalizations.bin"] = pack_rows(stage.finalizations)
         payloads[f"{prefix}/closures.bin"] = pack_rows(self.closures)
+        if self.selector_closures is not None:
+            payloads.update(self.selector_closures.binary_payloads(prefix=prefix))
         return payloads
 
     def to_metadata(self, *, prefix: str = "eager") -> dict[str, object]:
-        return {
+        metadata: dict[str, object] = {
             "kind": EAGER_RUNTIME_KIND,
             "eager_plan_abi": EAGER_PLAN_ABI,
             "required_runtime_capabilities": [EAGER_RUNTIME_CAPABILITY],
@@ -331,6 +516,11 @@ class EagerExecutionTables:
                 "row_size": EagerClosureRow._STRUCT.size,
             },
         }
+        if self.selector_closures is not None:
+            metadata["selector_closures"] = self.selector_closures.to_metadata(
+                prefix=prefix
+            )
+        return metadata
 
 
 class _CouplingCatalog:
@@ -594,6 +784,174 @@ def lower_eager_execution_tables(
         couplings=tuple(coupling_catalog.rows),
         stages=tuple(stages),
         closures=tuple(closures),
+        selector_closures=_build_selector_closure_tables(
+            tuple(stages),
+            tuple(closures),
+            amplitude_stage,
+        ),
+    )
+
+
+def _build_selector_closure_tables(
+    stages: tuple[EagerStageTables, ...],
+    closures: tuple[EagerClosureRow, ...],
+    amplitude_stage: Mapping[str, object],
+) -> EagerSelectorClosureTables:
+    """Propagate coherent-group dependencies backwards through eager rows."""
+
+    roots = _mapping_sequence(amplitude_stage.get("roots"), "amplitude_stage.roots")
+    if len(roots) != len(closures):
+        raise ValueError("eager closures do not match runtime amplitude roots")
+
+    declared_groups = tuple(
+        int(group["group_id"])
+        for group in _mapping_sequence(
+            amplitude_stage.get("coherent_groups"),
+            "amplitude_stage.coherent_groups",
+        )
+    )
+    if len(declared_groups) != len(set(declared_groups)) or any(
+        group_id < 0 or group_id > MISSING_U32 for group_id in declared_groups
+    ):
+        raise ValueError("runtime coherent-group IDs must be unique unsigned integers")
+    declared_group_set = set(declared_groups)
+
+    value_domains: dict[int, set[int]] = {}
+    closure_domains: list[frozenset[int]] = []
+    for closure, root in zip(closures, roots, strict=True):
+        if closure.amplitude_index != int(root["output_index"]):
+            raise ValueError(
+                "eager closure order does not match runtime amplitude roots"
+            )
+        group_id = int(root["coherent_group_id"])
+        if group_id not in declared_group_set:
+            raise ValueError(
+                f"amplitude root references undeclared coherent group {group_id}"
+            )
+        domain = frozenset((group_id,))
+        closure_domains.append(domain)
+        value_domains.setdefault(closure.left_value_slot_id, set()).add(group_id)
+        value_domains.setdefault(closure.right_value_slot_id, set()).add(group_id)
+
+    stage_domain_sets: dict[
+        int,
+        tuple[
+            tuple[frozenset[int], ...],
+            tuple[frozenset[int], ...],
+            tuple[frozenset[int], ...],
+            tuple[frozenset[int], ...],
+        ],
+    ] = {}
+    empty_domain: frozenset[int] = frozenset()
+
+    for stage in reversed(stages):
+        unpropagated_domains: list[frozenset[int]] = []
+        propagated_domains: list[frozenset[int]] = []
+        current_domains: dict[int, frozenset[int]] = {}
+        for finalization in stage.finalizations:
+            if finalization.current_id in current_domains:
+                raise ValueError(
+                    f"eager stage {stage.stage_index} finalizes current "
+                    f"{finalization.current_id} more than once"
+                )
+            unpropagated = (
+                frozenset(
+                    value_domains.get(finalization.unpropagated_value_slot_id, ())
+                )
+                if finalization.stores_unpropagated
+                else empty_domain
+            )
+            propagated = (
+                frozenset(
+                    value_domains.get(finalization.propagated_value_slot_id, ())
+                )
+                if finalization.stores_propagated
+                else empty_domain
+            )
+            unpropagated_domains.append(unpropagated)
+            propagated_domains.append(propagated)
+            current_domains[finalization.current_id] = unpropagated | propagated
+
+        attachment_domains: list[frozenset[int]] = []
+        for attachment in stage.attachments:
+            try:
+                attachment_domains.append(current_domains[attachment.result_current_id])
+            except KeyError as error:
+                raise ValueError(
+                    f"eager attachment targets current {attachment.result_current_id} "
+                    f"without a stage-{stage.stage_index} finalization"
+                ) from error
+
+        invocation_domains: list[frozenset[int]] = []
+        for invocation in stage.invocations:
+            start = invocation.attachment_start
+            stop = start + invocation.attachment_count
+            domain = frozenset(
+                group_id
+                for attachment_domain in attachment_domains[start:stop]
+                for group_id in attachment_domain
+            )
+            invocation_domains.append(domain)
+            value_domains.setdefault(invocation.left_value_slot_id, set()).update(
+                domain
+            )
+            value_domains.setdefault(invocation.right_value_slot_id, set()).update(
+                domain
+            )
+
+        stage_domain_sets[stage.stage_index] = (
+            tuple(invocation_domains),
+            tuple(attachment_domains),
+            tuple(unpropagated_domains),
+            tuple(propagated_domains),
+        )
+
+    unique_domains = {empty_domain, *closure_domains}
+    for domain_sets in stage_domain_sets.values():
+        for domains in domain_sets:
+            unique_domains.update(domains)
+    ordered_domains = tuple(
+        sorted(unique_domains, key=lambda domain: (len(domain), tuple(sorted(domain))))
+    )
+    domain_ids = {domain: domain_id for domain_id, domain in enumerate(ordered_domains)}
+
+    domain_rows: list[EagerSelectorDomainRow] = []
+    group_rows: list[EagerSelectorGroupRow] = []
+    for domain in ordered_domains:
+        members = tuple(sorted(domain))
+        domain_rows.append(EagerSelectorDomainRow(len(group_rows), len(members)))
+        group_rows.extend(EagerSelectorGroupRow(group_id) for group_id in members)
+
+    def references(
+        domains: Sequence[frozenset[int]],
+    ) -> tuple[EagerSelectorDomainIdRow, ...]:
+        return tuple(EagerSelectorDomainIdRow(domain_ids[domain]) for domain in domains)
+
+    selector_stages = []
+    for stage in stages:
+        (
+            invocation_domains,
+            attachment_domains,
+            unpropagated_domains,
+            propagated_domains,
+        ) = stage_domain_sets[stage.stage_index]
+        selector_stages.append(
+            EagerStageSelectorDomains(
+                stage_index=stage.stage_index,
+                invocation_domains=references(invocation_domains),
+                attachment_domains=references(attachment_domains),
+                unpropagated_finalization_domains=references(
+                    unpropagated_domains
+                ),
+                propagated_finalization_domains=references(propagated_domains),
+            )
+        )
+
+    return EagerSelectorClosureTables(
+        domains=tuple(domain_rows),
+        domain_group_ids=tuple(group_rows),
+        stages=tuple(selector_stages),
+        closure_domains=references(closure_domains),
     )
 
 
@@ -743,6 +1101,8 @@ __all__ = [
     "EagerExecutionTables",
     "EagerKernelResolver",
     "EagerResolvedKernel",
+    "EagerSelectorClosureTables",
+    "EagerStageSelectorDomains",
     "EagerStageTables",
     "MappingEagerKernelResolver",
     "PreparedCatalogEagerKernelResolver",

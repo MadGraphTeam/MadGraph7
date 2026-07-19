@@ -20,6 +20,10 @@ _MISSING_U32 = (1 << 32) - 1
 _EAGER_INVOCATION = struct.Struct("<IIIIIIQQ")
 _EAGER_FINALIZATION = struct.Struct("<IIIII")
 _EAGER_CLOSURE = struct.Struct("<IIIIIdd")
+_EAGER_SELECTOR_DOMAINS_ABI = "pyamplicol-eager-selector-domains-v1"
+_EAGER_SELECTOR_DOMAIN = struct.Struct("<QQ")
+_EAGER_SELECTOR_GROUP = struct.Struct("<I")
+_EAGER_SELECTOR_DOMAIN_ID = struct.Struct("<I")
 _COMPILED_PROFILE_PHASES = (
     "source-fill",
     "momentum-setup",
@@ -70,6 +74,8 @@ class ArtifactProcessInspection:
     finalization_count: int | None = None
     closure_count: int | None = None
     selector_closure_available: bool = False
+    selector_domain_count: int | None = None
+    selector_domain_membership_count: int | None = None
     requested_point_tile_size: int | None = None
     effective_point_tile_size: int | None = None
     workspace_limit_bytes: int | None = None
@@ -224,6 +230,8 @@ class _ExecutionInspection:
     finalization_count: int | None = None
     closure_count: int | None = None
     selector_closure_available: bool = False
+    selector_domain_count: int | None = None
+    selector_domain_membership_count: int | None = None
     requested_point_tile_size: int | None = None
     effective_point_tile_size: int | None = None
     workspace_limit_bytes: int | None = None
@@ -299,6 +307,273 @@ def _profile_phases(execution: Mapping[str, object]) -> tuple[str, ...]:
     return phases
 
 
+def _selector_domain_ids(
+    manifest: ArtifactManifest,
+    execution_root: Path,
+    table: object,
+    *,
+    expected_count: int,
+    domain_count: int,
+    context: str,
+) -> tuple[int, ...]:
+    rows = _table_rows(
+        manifest,
+        execution_root,
+        table,
+        _EAGER_SELECTOR_DOMAIN_ID,
+        context,
+    )
+    if len(rows) != expected_count:
+        raise ArtifactError(
+            f"{context} has {len(rows)} rows, expected {expected_count}"
+        )
+    result = tuple(int(row[0]) for row in rows)
+    invalid = next((value for value in result if value >= domain_count), None)
+    if invalid is not None:
+        raise ArtifactError(f"{context} references unknown domain {invalid}")
+    return result
+
+
+def _selector_domain_inspection(
+    manifest: ArtifactManifest,
+    execution: Mapping[str, object],
+    execution_root: Path,
+    selector_closures: object,
+    *,
+    stages: Sequence[
+        tuple[
+            Mapping[str, object],
+            tuple[tuple[int | float, ...], ...],
+            int,
+            tuple[tuple[int | float, ...], ...],
+        ]
+    ],
+    closures: tuple[tuple[int | float, ...], ...],
+) -> tuple[int, int]:
+    selector = _mapping(
+        selector_closures,
+        "eager execution.plan.selector_closures",
+    )
+    abi = _string(
+        selector.get("abi"),
+        "eager execution.plan.selector_closures.abi",
+    )
+    if abi != _EAGER_SELECTOR_DOMAINS_ABI:
+        raise ArtifactError(f"unsupported eager selector-domain ABI {abi!r}")
+
+    domain_rows = _table_rows(
+        manifest,
+        execution_root,
+        selector.get("domains"),
+        _EAGER_SELECTOR_DOMAIN,
+        "eager execution.plan.selector_closures.domains",
+    )
+    group_rows = _table_rows(
+        manifest,
+        execution_root,
+        selector.get("domain_group_ids"),
+        _EAGER_SELECTOR_GROUP,
+        "eager execution.plan.selector_closures.domain_group_ids",
+    )
+    memberships: list[frozenset[int]] = []
+    cursor = 0
+    for domain_id, row in enumerate(domain_rows):
+        start, count = int(row[0]), int(row[1])
+        if start != cursor:
+            raise ArtifactError(
+                f"eager selector domain {domain_id} starts at {start}, "
+                f"expected {cursor}"
+            )
+        stop = start + count
+        if stop > len(group_rows):
+            raise ArtifactError(
+                f"eager selector domain {domain_id} exceeds its membership table"
+            )
+        members = tuple(int(member[0]) for member in group_rows[start:stop])
+        if members != tuple(sorted(set(members))):
+            raise ArtifactError(
+                f"eager selector domain {domain_id} members are not unique and sorted"
+            )
+        memberships.append(frozenset(members))
+        cursor = stop
+    if cursor != len(group_rows):
+        raise ArtifactError(
+            "eager selector domains do not cover their membership table"
+        )
+    if len(memberships) != len(set(memberships)):
+        raise ArtifactError("eager selector domains contain duplicate memberships")
+
+    runtime_schema = _mapping(
+        execution.get("runtime_schema"), "eager execution.runtime_schema"
+    )
+    amplitude_stage = _mapping(
+        runtime_schema.get("amplitude_stage"),
+        "eager execution.runtime_schema.amplitude_stage",
+    )
+    roots = _sequence(
+        amplitude_stage.get("roots"),
+        "eager execution.runtime_schema.amplitude_stage.roots",
+    )
+    groups_by_output: dict[int, int] = {}
+    for index, raw_root in enumerate(roots):
+        root = _mapping(
+            raw_root,
+            f"eager execution.runtime_schema.amplitude_stage.roots[{index}]",
+        )
+        output_index = _integer(
+            root.get("output_index"),
+            f"eager execution.runtime_schema.amplitude_stage.roots[{index}]"
+            ".output_index",
+        )
+        group_id = _integer(
+            root.get("coherent_group_id"),
+            f"eager execution.runtime_schema.amplitude_stage.roots[{index}]"
+            ".coherent_group_id",
+        )
+        if output_index in groups_by_output:
+            raise ArtifactError(
+                f"eager amplitude roots repeat output index {output_index}"
+            )
+        groups_by_output[output_index] = group_id
+
+    declared_groups = set(groups_by_output.values())
+    unknown_groups = (
+        set().union(*memberships) - declared_groups if memberships else set()
+    )
+    if unknown_groups:
+        rendered = ", ".join(str(value) for value in sorted(unknown_groups))
+        raise ArtifactError(
+            f"eager selector domains reference undeclared coherent groups: {rendered}"
+        )
+
+    selector_stages = _sequence(
+        selector.get("stages"),
+        "eager execution.plan.selector_closures.stages",
+    )
+    if len(selector_stages) != len(stages):
+        raise ArtifactError("eager selector domains do not cover every stage")
+    domain_count = len(memberships)
+    for index, (raw_selector_stage, execution_stage) in enumerate(
+        zip(selector_stages, stages, strict=True)
+    ):
+        selector_stage = _mapping(
+            raw_selector_stage,
+            f"eager execution.plan.selector_closures.stages[{index}]",
+        )
+        stage, invocations, attachment_count, finalizations = execution_stage
+        stage_index = _integer(
+            stage.get("stage_index"),
+            f"eager execution.plan.stages[{index}].stage_index",
+        )
+        selector_stage_index = _integer(
+            selector_stage.get("stage_index"),
+            f"eager execution.plan.selector_closures.stages[{index}].stage_index",
+        )
+        if selector_stage_index != stage_index:
+            raise ArtifactError("eager selector-domain stage index mismatch")
+        invocation_domains = _selector_domain_ids(
+            manifest,
+            execution_root,
+            selector_stage.get("invocation_domains"),
+            expected_count=len(invocations),
+            domain_count=domain_count,
+            context=(
+                f"eager execution.plan.selector_closures.stages[{index}]"
+                ".invocation_domains"
+            ),
+        )
+        attachment_domains = _selector_domain_ids(
+            manifest,
+            execution_root,
+            selector_stage.get("attachment_domains"),
+            expected_count=attachment_count,
+            domain_count=domain_count,
+            context=(
+                f"eager execution.plan.selector_closures.stages[{index}]"
+                ".attachment_domains"
+            ),
+        )
+        unpropagated_domains = _selector_domain_ids(
+            manifest,
+            execution_root,
+            selector_stage.get("unpropagated_finalization_domains"),
+            expected_count=len(finalizations),
+            domain_count=domain_count,
+            context=(
+                f"eager execution.plan.selector_closures.stages[{index}]"
+                ".unpropagated_finalization_domains"
+            ),
+        )
+        propagated_domains = _selector_domain_ids(
+            manifest,
+            execution_root,
+            selector_stage.get("propagated_finalization_domains"),
+            expected_count=len(finalizations),
+            domain_count=domain_count,
+            context=(
+                f"eager execution.plan.selector_closures.stages[{index}]"
+                ".propagated_finalization_domains"
+            ),
+        )
+
+        for invocation, domain_id in zip(
+            invocations, invocation_domains, strict=True
+        ):
+            start, count = int(invocation[6]), int(invocation[7])
+            stop = start + count
+            if stop > len(attachment_domains):
+                raise ArtifactError(
+                    "eager invocation selector range exceeds attachment domains"
+                )
+            expected_domain = frozenset(
+                group_id
+                for attachment_domain_id in attachment_domains[start:stop]
+                for group_id in memberships[attachment_domain_id]
+            )
+            if memberships[domain_id] != expected_domain:
+                raise ArtifactError(
+                    "eager invocation selector domain does not equal its "
+                    "attachment-domain union"
+                )
+        for finalization, unpropagated, propagated in zip(
+            finalizations,
+            unpropagated_domains,
+            propagated_domains,
+            strict=True,
+        ):
+            if int(finalization[2]) == _MISSING_U32 and memberships[unpropagated]:
+                raise ArtifactError(
+                    "missing eager unpropagated output has a nonempty selector domain"
+                )
+            if int(finalization[3]) == _MISSING_U32 and memberships[propagated]:
+                raise ArtifactError(
+                    "missing eager propagated output has a nonempty selector domain"
+                )
+
+    closure_domains = _selector_domain_ids(
+        manifest,
+        execution_root,
+        selector.get("closure_domains"),
+        expected_count=len(closures),
+        domain_count=domain_count,
+        context="eager execution.plan.selector_closures.closure_domains",
+    )
+    for closure, domain_id in zip(closures, closure_domains, strict=True):
+        output_index = int(closure[3])
+        try:
+            expected = frozenset((groups_by_output[output_index],))
+        except KeyError as exc:
+            raise ArtifactError(
+                f"eager closure references unknown amplitude output {output_index}"
+            ) from exc
+        if memberships[domain_id] != expected:
+            raise ArtifactError(
+                "eager closure selector domain does not match its coherent group"
+            )
+
+    return domain_count, len(group_rows)
+
+
 def _eager_execution_inspection(
     manifest: ArtifactManifest,
     execution: Mapping[str, object],
@@ -334,6 +609,14 @@ def _eager_execution_inspection(
     finalization_count = 0
     maximum_fanout = 0
     referenced_kernel_ids: set[int] = set()
+    inspected_stages: list[
+        tuple[
+            Mapping[str, object],
+            tuple[tuple[int | float, ...], ...],
+            int,
+            tuple[tuple[int | float, ...], ...],
+        ]
+    ] = []
     for index, raw_stage in enumerate(stages):
         stage = _mapping(raw_stage, f"eager execution.plan.stages[{index}]")
         invocations = _table_rows(
@@ -353,6 +636,9 @@ def _eager_execution_inspection(
             stage.get("finalizations"),
             _EAGER_FINALIZATION,
             f"eager execution.plan.stages[{index}].finalizations",
+        )
+        inspected_stages.append(
+            (stage, invocations, stage_attachments, finalizations)
         )
         invocation_count += len(invocations)
         attachment_count += stage_attachments
@@ -412,10 +698,21 @@ def _eager_execution_inspection(
 
     selector_closures = plan.get("selector_closures")
     selector_closure_available = False
+    selector_domain_count = None
+    selector_domain_membership_count = None
     if selector_closures is not None:
-        selector_closure_available = bool(
-            _sequence(selector_closures, "eager execution.plan.selector_closures")
+        (
+            selector_domain_count,
+            selector_domain_membership_count,
+        ) = _selector_domain_inspection(
+            manifest,
+            execution,
+            execution_root,
+            selector_closures,
+            stages=tuple(inspected_stages),
+            closures=closures,
         )
+        selector_closure_available = True
 
     return _ExecutionInspection(
         execution_mode="eager",
@@ -431,6 +728,8 @@ def _eager_execution_inspection(
         finalization_count=finalization_count,
         closure_count=len(closures),
         selector_closure_available=selector_closure_available,
+        selector_domain_count=selector_domain_count,
+        selector_domain_membership_count=selector_domain_membership_count,
         requested_point_tile_size=requested_tile,
         effective_point_tile_size=effective_tile,
         workspace_limit_bytes=workspace_mib * 1024 * 1024,
@@ -557,6 +856,8 @@ def _process_inspection(
         finalization_count=execution.finalization_count,
         closure_count=execution.closure_count,
         selector_closure_available=execution.selector_closure_available,
+        selector_domain_count=execution.selector_domain_count,
+        selector_domain_membership_count=execution.selector_domain_membership_count,
         requested_point_tile_size=execution.requested_point_tile_size,
         effective_point_tile_size=execution.effective_point_tile_size,
         workspace_limit_bytes=execution.workspace_limit_bytes,
