@@ -18,6 +18,8 @@ import pytest
 from pyamplicol import CompiledModel, Generator, ModelSource, ProcessSet
 from pyamplicol.config import (
     ColorConfig,
+    CppConfig,
+    EvaluatorBackend,
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
     GenerationConfig,
@@ -152,12 +154,15 @@ def native_tools() -> _NativeTools:
 def _generation_config(
     accuracy: str,
     execution_mode: Literal["compiled", "eager"] = "compiled",
+    *,
+    evaluator: EvaluatorConfig | None = None,
 ) -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy=accuracy),
         generation=GenerationConfig(workers=1, emit_api_bundle=True),
-        evaluator=EvaluatorConfig(
+        evaluator=evaluator
+        or EvaluatorConfig(
             execution_mode=execution_mode,
             optimization=EvaluatorOptimizationConfig(cores=1),
             jit=JITConfig(optimization_level=1),
@@ -226,9 +231,16 @@ def _build_bundle(
     model: CompiledModel | None,
     tools: _NativeTools,
     execution_mode: Literal["compiled", "eager"] = "compiled",
+    evaluator: EvaluatorConfig | None = None,
 ) -> _BuiltBundle:
     processes = ProcessSet.from_expressions(expressions, names=names)
-    Generator(_generation_config(accuracy, execution_mode)).generate(
+    Generator(
+        _generation_config(
+            accuracy,
+            execution_mode,
+            evaluator=evaluator,
+        )
+    ).generate(
         processes,
         artifact,
         model=model,
@@ -464,6 +476,38 @@ def generated_eager_bundle(
     )
 
 
+@pytest.fixture(scope="module")
+def generated_native_eager_bundles(
+    tmp_path_factory: pytest.TempPathFactory,
+    native_tools: _NativeTools,
+) -> dict[str, _BuiltBundle]:
+    root = tmp_path_factory.mktemp("multilanguage-native-eager-api")
+    bundles: dict[str, _BuiltBundle] = {}
+    for backend in (EvaluatorBackend.ASM, EvaluatorBackend.CPP):
+        evaluator = EvaluatorConfig(
+            backend=backend,
+            execution_mode="eager",
+            optimization=EvaluatorOptimizationConfig(cores=1),
+            cpp=CppConfig(compiler=native_tools.cxx),
+        )
+        prepared = ModelSource.built_in_sm().compile(
+            use_cache=True,
+            prepared_output=root / f"built-in-sm-{backend}.pyamplicol-model",
+            evaluator=evaluator,
+        )
+        bundles[str(backend)] = _build_bundle(
+            root / f"single-eager-{backend}",
+            (_EAGER_PROCESS,),
+            (f"ddbar_z_eager_{backend}",),
+            "lc",
+            prepared,
+            native_tools,
+            execution_mode="eager",
+            evaluator=evaluator,
+        )
+    return bundles
+
+
 def _driver_command(bundle: _BuiltBundle, language: str) -> list[str]:
     if language == "python":
         return [sys.executable, str(bundle.python_driver)]
@@ -608,6 +652,19 @@ def test_all_generated_clients_load_and_evaluate_the_same_eager_artifact(
     assert card["python"]["compatibility_total"] != pytest.approx(
         baseline["python"]["compatibility_total"], rel=1.0e-10
     )
+
+
+def test_all_generated_clients_support_native_eager_kernel_backends(
+    generated_native_eager_bundles: dict[str, _BuiltBundle],
+) -> None:
+    for backend, bundle in generated_native_eager_bundles.items():
+        manifest = json.loads(
+            (bundle.artifact / "artifact.json").read_text(encoding="utf-8")
+        )
+        assert manifest["extensions"]["eager_prepared_pack"]["backend"] == backend
+        _assert_language_payloads(
+            _all_languages(bundle, process=bundle.process_ids[0])
+        )
 
 
 def test_mixed_lc_bundle_agrees_for_all_processes_and_parameter_updates(

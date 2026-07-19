@@ -49,7 +49,7 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert all("API/cpp/check_standalone" not in text for text in makefiles.values())
     assert "CC ?= cc" in makefiles["API/c/Makefile"]
     assert "CXX ?= c++" in makefiles["API/cpp/Makefile"]
-    assert "FC ?= gfortran" in makefiles["API/fortran/Makefile"]
+    assert "FC = gfortran" in makefiles["API/fortran/Makefile"]
     rust_makefile = makefiles["API/rust/Makefile"]
     assert "RUSTC ?= rustc" in rust_makefile
     assert "$(RUSTICOL_CONFIG) --rust-source" in rust_makefile
