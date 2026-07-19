@@ -6,9 +6,9 @@ use super::{
     EagerSelectorPayloads, EagerStagePayload,
 };
 use crate::{
-    EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerFinalizationRow,
-    EagerInvocationRow, EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow,
-    MISSING_U32, RusticolError, RusticolResult,
+    EAGER_OUTPUT_FACTOR_NONE, EagerAttachmentRow, EagerClosureRow, EagerCouplingRow,
+    EagerFinalizationRow, EagerInvocationRow, EagerSelectorDomainIdRow, EagerSelectorDomainRow,
+    EagerSelectorGroupRow, MISSING_U32, RusticolError, RusticolResult,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -84,6 +84,7 @@ pub(super) struct ScheduledAttachment {
     pub(super) row: EagerAttachmentRow,
     pub(super) current: ComponentRange,
     pub(super) selector_domain_id: Option<u32>,
+    pub(super) initializes_current: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -108,6 +109,7 @@ pub(super) struct ScheduledClosure {
     pub(super) left_values: ComponentRange,
     pub(super) right_values: ComponentRange,
     pub(super) selector_domain_id: Option<u32>,
+    pub(super) initializes_amplitude: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +119,7 @@ pub(super) struct ScheduledDirectClosure {
     pub(super) right_values: ComponentRange,
     pub(super) coefficients: Vec<EagerComplex64>,
     pub(super) selector_domain_id: Option<u32>,
+    pub(super) initializes_amplitude: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -151,10 +154,12 @@ struct DecodedSelectorPayload {
 #[derive(Clone, Debug)]
 pub(super) struct EagerStagePlan {
     pub(super) stage_index: u32,
+    pub(super) current_component_count: usize,
     pub(super) invocations: Vec<ScheduledInvocation>,
     pub(super) attachments: Vec<ScheduledAttachment>,
     pub(super) finalization_copies: Vec<FinalizationCopy>,
     pub(super) finalizations: Vec<ScheduledFinalization>,
+    pub(super) zero_current_ranges: Vec<ComponentRange>,
 }
 
 #[derive(Clone, Debug)]
@@ -172,6 +177,8 @@ pub struct EagerExecutionPlan {
     pub(super) reduction_groups: Vec<EagerReductionGroup>,
     pub(super) reduction_entries: Vec<EagerReductionEntry>,
     pub(super) selector_domains: Option<SelectorDomainPlan>,
+    pub(super) initial_value_ranges: Vec<ComponentRange>,
+    pub(super) zero_amplitude_indices: Vec<usize>,
 }
 
 impl EagerExecutionPlan {
@@ -245,7 +252,7 @@ impl EagerExecutionPlan {
                 "eager closure selector-domain count does not match the closure table",
             ));
         }
-        let (closures, direct_closures) = load_closures(
+        let (mut closures, mut direct_closures) = load_closures(
             &closure_rows,
             closure_domains,
             &definition.direct_closures,
@@ -270,6 +277,17 @@ impl EagerExecutionPlan {
             )?;
         }
 
+        let initial_value_ranges = values
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(slot_id, range)| {
+                (!stored_value_slots.contains(&(slot_id as u32))).then_some(*range)
+            })
+            .collect();
+        let zero_amplitude_indices =
+            mark_initial_amplitude_writes(&mut closures, &mut direct_closures, amplitude_count);
+
         Ok(Self {
             values,
             momenta,
@@ -284,6 +302,8 @@ impl EagerExecutionPlan {
             reduction_groups: definition.reduction_groups,
             reduction_entries: definition.reduction_entries,
             selector_domains: selector_payload.map(|selector| selector.plan),
+            initial_value_ranges,
+            zero_amplitude_indices,
         })
     }
 
@@ -297,6 +317,14 @@ impl EagerExecutionPlan {
 
     pub fn current_component_count(&self) -> usize {
         self.currents.component_count
+    }
+
+    pub(super) fn current_workspace_component_count(&self) -> usize {
+        self.stages
+            .iter()
+            .map(|stage| stage.current_component_count)
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn parameter_count(&self) -> usize {
@@ -701,6 +729,28 @@ fn validate_kernel_specs(
                 spec.kernel_id
             )));
         }
+        if spec.independent_block_size != 1 {
+            if spec.independent_block_size != super::EAGER_INDEPENDENT_BLOCK_SIZE {
+                return Err(RusticolError::artifact(format!(
+                    "eager kernel {} has unsupported independent block size {}",
+                    spec.kernel_id, spec.independent_block_size
+                )));
+            }
+            if spec.role != EagerKernelRole::Vertex
+                || spec.inputs.iter().any(|input| {
+                    !matches!(
+                        input,
+                        EagerKernelInput::FirstCurrentComponent(_)
+                            | EagerKernelInput::SecondCurrentComponent(_)
+                    )
+                })
+            {
+                return Err(RusticolError::artifact(format!(
+                    "eager kernel {} applies an independent block to a non-current vertex contract",
+                    spec.kernel_id
+                )));
+            }
+        }
         let mut unique_inputs = BTreeSet::new();
         for input in &spec.inputs {
             if !unique_inputs.insert(*input) {
@@ -911,6 +961,7 @@ fn load_stage(
                 current,
                 selector_domain_id: selector_stage
                     .map(|selector| selector.attachment_domains[attachment_index]),
+                initializes_current: false,
             });
         }
         invocations.push(ScheduledInvocation {
@@ -932,6 +983,8 @@ fn load_stage(
 
     let mut finalizations = Vec::new();
     let mut finalization_copies = Vec::new();
+    let mut stage_current_ranges = BTreeMap::new();
+    let mut current_component_count = 0usize;
     finalizations
         .try_reserve_exact(finalization_rows.len())
         .map_err(|error| {
@@ -966,6 +1019,19 @@ fn load_stage(
             }
         }
         let current = currents.get(row.current_id, "eager finalization current")?;
+        let local_current = ComponentRange {
+            start: current_component_count,
+            len: current.len,
+        };
+        current_component_count = current_component_count
+            .checked_add(current.len)
+            .ok_or_else(|| {
+                RusticolError::artifact(format!(
+                    "eager stage {} current workspace overflows usize",
+                    payload.stage_index
+                ))
+            })?;
+        stage_current_ranges.insert(row.current_id, local_current);
         let unpropagated = optional_component_range(
             values,
             row.unpropagated_value_slot_id,
@@ -993,7 +1059,7 @@ fn load_stage(
             let selector_domain_id =
                 selector_stage.map(|selector| selector.unpropagated_finalization_domains[index]);
             finalization_copies.push(FinalizationCopy {
-                current,
+                current: local_current,
                 unpropagated,
                 selector_domain_id,
             });
@@ -1036,7 +1102,7 @@ fn load_stage(
             }
             finalizations.push(ScheduledFinalization {
                 row,
-                current,
+                current: local_current,
                 propagated,
                 momentum,
                 selector_domain_id: selector_stage
@@ -1066,17 +1132,43 @@ fn load_stage(
             payload.stage_index
         )));
     }
+    if !finalized_currents.is_subset(&attached_currents) {
+        let unwritten = finalized_currents
+            .difference(&attached_currents)
+            .next()
+            .copied()
+            .unwrap_or(MISSING_U32);
+        return Err(RusticolError::artifact(format!(
+            "eager stage {} finalizes unwritten current {unwritten}",
+            payload.stage_index
+        )));
+    }
+
+    for attachment in &mut scheduled_attachments {
+        attachment.current = *stage_current_ranges
+            .get(&attachment.row.result_current_id)
+            .ok_or_else(|| {
+                RusticolError::internal(format!(
+                    "eager stage {} lost current {} while compacting its workspace",
+                    payload.stage_index, attachment.row.result_current_id
+                ))
+            })?;
+    }
 
     // Stable sorting makes equal-kernel rows contiguous for packetization while
     // preserving artifact order, which defines deterministic lane ordering.
     invocations.sort_by_key(|item| item.row.kernel_id);
     finalizations.sort_by_key(|item| item.row.kernel_id);
+    let zero_current_ranges =
+        mark_initial_current_writes(&invocations, &mut scheduled_attachments, &finalizations);
     Ok(EagerStagePlan {
         stage_index: payload.stage_index,
+        current_component_count,
         invocations,
         attachments: scheduled_attachments,
         finalization_copies,
         finalizations,
+        zero_current_ranges,
     })
 }
 
@@ -1133,6 +1225,11 @@ fn load_closures(
                     "eager direct closure {index} unexpectedly references a coupling"
                 )));
             }
+            if row.output_factor_source != EAGER_OUTPUT_FACTOR_NONE {
+                return Err(RusticolError::artifact(format!(
+                    "eager direct closure {index} has a dynamic output factor"
+                )));
+            }
             let spec = direct_by_index.remove(&index).ok_or_else(|| {
                 RusticolError::artifact(format!(
                     "eager direct closure {index} lacks contraction coefficients"
@@ -1149,6 +1246,7 @@ fn load_closures(
                 right_values,
                 coefficients: spec.coefficients.clone(),
                 selector_domain_id: selector_domain_ids.map(|domains| domains[index]),
+                initializes_amplitude: false,
             });
             continue;
         }
@@ -1185,6 +1283,7 @@ fn load_closures(
             left_values,
             right_values,
             selector_domain_id: selector_domain_ids.map(|domains| domains[index]),
+            initializes_amplitude: false,
         });
     }
     if let Some(index) = direct_by_index.keys().next() {
@@ -1195,6 +1294,40 @@ fn load_closures(
     // Keep the same stable equal-kernel ordering contract as stage invocations.
     closures.sort_by_key(|item| item.row.kernel_id);
     Ok((closures, direct_closures))
+}
+
+pub(super) fn mark_initial_current_writes(
+    invocations: &[ScheduledInvocation],
+    attachments: &mut [ScheduledAttachment],
+    finalizations: &[ScheduledFinalization],
+) -> Vec<ComponentRange> {
+    let mut written = BTreeSet::new();
+    for invocation in invocations {
+        for attachment in &mut attachments[invocation.attachment_range.clone()] {
+            attachment.initializes_current = written.insert(attachment.row.result_current_id);
+        }
+    }
+    finalizations
+        .iter()
+        .filter_map(|item| (!written.contains(&item.row.current_id)).then_some(item.current))
+        .collect()
+}
+
+pub(super) fn mark_initial_amplitude_writes(
+    closures: &mut [ScheduledClosure],
+    direct_closures: &mut [ScheduledDirectClosure],
+    amplitude_count: usize,
+) -> Vec<usize> {
+    let mut written = BTreeSet::new();
+    for closure in closures {
+        closure.initializes_amplitude = written.insert(closure.row.amplitude_index);
+    }
+    for closure in direct_closures {
+        closure.initializes_amplitude = written.insert(closure.row.amplitude_index);
+    }
+    (0..amplitude_count)
+        .filter(|index| !written.contains(&(*index as u32)))
+        .collect()
 }
 
 fn validate_reduction_plan(

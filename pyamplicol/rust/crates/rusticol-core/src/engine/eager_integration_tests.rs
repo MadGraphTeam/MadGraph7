@@ -82,6 +82,7 @@ fn kernel(
         input_contracts: inputs,
         output_layout: vec!["output-0".to_string()],
         exact_expressions: vec!["test-expression".to_string()],
+        proof_classes: Vec::new(),
         f64_evaluator_manifest: symjit_manifest(
             application_path,
             &exact_evaluator_state_path,
@@ -117,6 +118,7 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
             "closure_bindings": []
         }),
         kernels,
+        kernel_variants: Vec::new(),
     }
 }
 
@@ -132,6 +134,7 @@ fn compiled_pack(backend: &str, runtime_capability: &str) -> PreparedKernelPackM
         input_contracts: vec![input("left-current", 0)],
         output_layout: vec!["output-0".to_string()],
         exact_expressions: vec!["test-expression".to_string()],
+        proof_classes: Vec::new(),
         f64_evaluator_manifest: compiled_manifest(
             runtime_capability,
             &exact_evaluator_state_path,
@@ -163,6 +166,7 @@ fn compiled_pack(backend: &str, runtime_capability: &str) -> PreparedKernelPackM
             "closure_bindings": []
         }),
         kernels: vec![kernel],
+        kernel_variants: Vec::new(),
     }
 }
 
@@ -345,6 +349,8 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
                 EagerKernelInput::SecondCurrentComponent(0),
             ],
             output_component_count: 1,
+            homogeneous_linear_first_current: false,
+            independent_block_size: 1,
         }],
         direct_closures: Vec::new(),
         reduction_groups: vec![EagerReductionGroup {
@@ -370,6 +376,7 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
         right_value_slot_id: 1,
         amplitude_index: 0,
         coupling_slot_id: 0,
+        output_factor_source: crate::EAGER_OUTPUT_FACTOR_NONE,
         factor_real: 1.0,
         factor_imag: 0.0,
     }])
@@ -445,13 +452,13 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
         ]
     );
     assert_eq!(reduced, [121.0, 484.0, 1089.0]);
-    assert!(profile.total_s > 0.0);
-    assert!(profile.initialize_s > 0.0);
-    assert!(profile.kernel_call_s > 0.0);
-    assert!(profile.closure_s > 0.0);
-    assert!(profile.reduction_s > 0.0);
-    assert!(profile.copy_out_s > 0.0);
-    assert!(profile.accounted_s() <= profile.total_s);
+    assert!(!profile.total.is_zero());
+    assert!(!profile.initialize.is_zero());
+    assert!(!profile.kernel_call.is_zero());
+    assert!(!profile.closure.is_zero());
+    assert!(!profile.reduction.is_zero());
+    assert!(!profile.copy_out.is_zero());
+    assert!(profile.accounted() <= profile.total);
 
     let _ = fs::remove_dir_all(root);
 }

@@ -23,14 +23,16 @@ pub use artifact::{
 };
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub use eager_runtime::{
-    DEFAULT_EAGER_POINT_TILE_SIZE, DEFAULT_EAGER_WORKSPACE_MIB, EagerComplex64,
+    DEFAULT_EAGER_POINT_TILE_SIZE, DEFAULT_EAGER_WORKSPACE_MIB,
+    EAGER_HOMOGENEOUS_LINEAR_CURRENT_PROOF, EAGER_INDEPENDENT_BLOCK_SIZE, EagerComplex64,
     EagerDirectClosureSpec, EagerExecutionPlan, EagerExecutionRuntime, EagerKernelBackend,
     EagerKernelCall, EagerKernelInput, EagerKernelRole, EagerKernelSpec, EagerPlanDefinition,
     EagerPlanDimensions, EagerPlanPayloads, EagerReductionEntry, EagerReductionGroup,
     EagerRuntimeOptions, EagerSelectorPayloads, EagerSelectorStagePayload, EagerStagePayload,
 };
 pub use eager_tables::{
-    EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY, EAGER_SELECTOR_DOMAINS_ABI,
+    EAGER_KERNEL_ABI, EAGER_OUTPUT_FACTOR_COUPLING_IMAG, EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+    EAGER_OUTPUT_FACTOR_NONE, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY, EAGER_SELECTOR_DOMAINS_ABI,
     EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerFinalizationRow,
     EagerInvocationRow, EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow,
     MISSING_U32,

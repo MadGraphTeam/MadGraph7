@@ -2,11 +2,15 @@
 
 use crate::{RusticolError, RusticolResult};
 use num_complex::Complex;
+use std::time::Duration;
 
 pub type EagerComplex64 = Complex<f64>;
 
 pub const DEFAULT_EAGER_POINT_TILE_SIZE: usize = 1024;
 pub const DEFAULT_EAGER_WORKSPACE_MIB: usize = 256;
+pub const EAGER_HOMOGENEOUS_LINEAR_CURRENT_PROOF: &str =
+    "prepared-kernel-homogeneous-complex-linear-current-v1";
+pub const EAGER_INDEPENDENT_BLOCK_SIZE: u32 = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum EagerKernelRole {
@@ -33,6 +37,13 @@ pub struct EagerKernelSpec {
     pub role: EagerKernelRole,
     pub inputs: Vec<EagerKernelInput>,
     pub output_component_count: u32,
+    pub homogeneous_linear_first_current: bool,
+    /// Prepared evaluator width for independent invocation blocks.
+    ///
+    /// A value greater than one is valid only for vertex kernels whose
+    /// prepared pack contains the correspondingly widened evaluator. The
+    /// scheduler retains the scalar evaluator for incomplete tails.
+    pub independent_block_size: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,6 +145,7 @@ impl Default for EagerRuntimeOptions {
 
 pub struct EagerKernelCall<'a> {
     pub kernel_id: u32,
+    pub independent_block_size: u32,
     pub lane_count: usize,
     pub input_component_count: usize,
     pub output_component_count: usize,
@@ -155,32 +167,32 @@ pub trait EagerKernelBackend {
 /// Opt-in wall-clock accounting for one eager scheduler evaluation.
 ///
 /// Every field is an aggregate over all point tiles. The phases are mutually
-/// exclusive, so [`Self::accounted_s`] can be compared directly with
-/// [`Self::total_s`]. Timer bookkeeping and validation account for the small
+/// exclusive, so [`Self::accounted`] can be compared directly with
+/// [`Self::total`]. Timer bookkeeping and validation account for the small
 /// unclassified remainder.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct EagerExecutionProfile {
-    pub(crate) initialize_s: f64,
-    pub(crate) gather_s: f64,
-    pub(crate) kernel_call_s: f64,
-    pub(crate) invocation_scatter_s: f64,
-    pub(crate) finalization_s: f64,
-    pub(crate) closure_s: f64,
-    pub(crate) reduction_s: f64,
-    pub(crate) copy_out_s: f64,
-    pub(crate) total_s: f64,
+    pub(crate) initialize: Duration,
+    pub(crate) gather: Duration,
+    pub(crate) kernel_call: Duration,
+    pub(crate) invocation_scatter: Duration,
+    pub(crate) finalization: Duration,
+    pub(crate) closure: Duration,
+    pub(crate) reduction: Duration,
+    pub(crate) copy_out: Duration,
+    pub(crate) total: Duration,
 }
 
 impl EagerExecutionProfile {
-    pub(crate) fn accounted_s(self) -> f64 {
-        self.initialize_s
-            + self.gather_s
-            + self.kernel_call_s
-            + self.invocation_scatter_s
-            + self.finalization_s
-            + self.closure_s
-            + self.reduction_s
-            + self.copy_out_s
+    pub(crate) fn accounted(self) -> Duration {
+        self.initialize
+            + self.gather
+            + self.kernel_call
+            + self.invocation_scatter
+            + self.finalization
+            + self.closure
+            + self.reduction
+            + self.copy_out
     }
 }
 

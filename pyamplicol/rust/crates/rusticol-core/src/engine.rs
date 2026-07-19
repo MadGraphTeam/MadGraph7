@@ -1231,6 +1231,8 @@ struct RuntimeProfile {
     eager_initialize_s: f64,
     eager_gather_s: f64,
     eager_kernel_call_s: f64,
+    eager_invocation_scatter_s: f64,
+    eager_finalization_s: f64,
     eager_scatter_finalization_s: f64,
     eager_closure_s: f64,
     eager_reduction_s: f64,
@@ -1252,6 +1254,8 @@ impl RuntimeProfile {
         self.eager_initialize_s += sector.eager_initialize_s;
         self.eager_gather_s += sector.eager_gather_s;
         self.eager_kernel_call_s += sector.eager_kernel_call_s;
+        self.eager_invocation_scatter_s += sector.eager_invocation_scatter_s;
+        self.eager_finalization_s += sector.eager_finalization_s;
         self.eager_scatter_finalization_s += sector.eager_scatter_finalization_s;
         self.eager_closure_s += sector.eager_closure_s;
         self.eager_reduction_s += sector.eager_reduction_s;
@@ -1380,6 +1384,8 @@ pub struct NativeRuntimeProfile {
     pub eager_initialize_s: f64,
     pub eager_gather_s: f64,
     pub eager_kernel_call_s: f64,
+    pub eager_invocation_scatter_s: f64,
+    pub eager_finalization_s: f64,
     pub eager_scatter_finalization_s: f64,
     pub eager_closure_s: f64,
     pub eager_reduction_s: f64,
@@ -1406,6 +1412,8 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             eager_initialize_s: profile.eager_initialize_s,
             eager_gather_s: profile.eager_gather_s,
             eager_kernel_call_s: profile.eager_kernel_call_s,
+            eager_invocation_scatter_s: profile.eager_invocation_scatter_s,
+            eager_finalization_s: profile.eager_finalization_s,
             eager_scatter_finalization_s: profile.eager_scatter_finalization_s,
             eager_closure_s: profile.eager_closure_s,
             eager_reduction_s: profile.eager_reduction_s,

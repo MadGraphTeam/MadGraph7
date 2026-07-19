@@ -65,10 +65,14 @@ class _NativeProfileSample:
     stage_input_pack_times: tuple[float, ...] | None
     stage_evaluator_call_times: tuple[float, ...] | None
     stage_output_assign_times: tuple[float, ...] | None
+    eager_initialize_time: float | None
     eager_gather_time: float | None
     eager_kernel_call_time: float | None
+    eager_invocation_scatter_time: float | None
+    eager_finalization_time: float | None
     eager_scatter_finalization_time: float | None
     eager_closure_time: float | None
+    eager_copy_out_time: float | None
 
 
 class BenchmarkBackend:
@@ -749,12 +753,18 @@ def _native_profile_sample(
         stage_input_pack_times=normalized_sequence(stage_input_pack),
         stage_evaluator_call_times=normalized_sequence(stage_evaluator_call),
         stage_output_assign_times=normalized_sequence(stage_output_assign),
+        eager_initialize_time=normalized("eager_initialize_time_s"),
         eager_gather_time=normalized("eager_gather_time_s"),
         eager_kernel_call_time=normalized("eager_kernel_call_time_s"),
+        eager_invocation_scatter_time=normalized(
+            "eager_invocation_scatter_time_s"
+        ),
+        eager_finalization_time=normalized("eager_finalization_time_s"),
         eager_scatter_finalization_time=normalized(
             "eager_scatter_finalization_time_s"
         ),
         eager_closure_time=normalized("eager_closure_time_s"),
+        eager_copy_out_time=normalized("eager_copy_out_time_s"),
     )
 
 
@@ -871,17 +881,29 @@ def _timing_breakdown(
         eager_execution_time=(
             evaluator_call_time if execution_mode == "eager" else None
         ),
+        eager_initialize_time=_component_timing(
+            [sample.eager_initialize_time for sample in samples]
+        ),
         eager_gather_time=_component_timing(
             [sample.eager_gather_time for sample in samples]
         ),
         eager_kernel_call_time=_component_timing(
             [sample.eager_kernel_call_time for sample in samples]
         ),
+        eager_invocation_scatter_time=_component_timing(
+            [sample.eager_invocation_scatter_time for sample in samples]
+        ),
+        eager_finalization_time=_component_timing(
+            [sample.eager_finalization_time for sample in samples]
+        ),
         eager_scatter_finalization_time=_component_timing(
             [sample.eager_scatter_finalization_time for sample in samples]
         ),
         eager_closure_time=_component_timing(
             [sample.eager_closure_time for sample in samples]
+        ),
+        eager_copy_out_time=_component_timing(
+            [sample.eager_copy_out_time for sample in samples]
         ),
         stages=tuple(stages),
     )

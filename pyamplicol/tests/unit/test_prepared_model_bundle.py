@@ -6,6 +6,7 @@ import json
 import stat
 import zipfile
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,14 +14,20 @@ import pytest
 from pyamplicol.models import prepared as prepared_module
 from pyamplicol.models.prepared import (
     EAGER_KERNEL_ABI,
+    PREPARED_KERNEL_VARIANT_ABI,
     PREPARED_MODEL_BUNDLE_KIND,
     PREPARED_MODEL_BUNDLE_SCHEMA_VERSION,
     PREPARED_MODEL_COMPILED_MODEL_PATH,
     PREPARED_MODEL_MANIFEST_PATH,
     PreparedKernelPack,
     PreparedKernelRecord,
+    PreparedKernelVariantRecord,
     PreparedModelBundleError,
     load_prepared_model_bundle,
+    prepared_expression_digest,
+    prepared_input_contract_digest,
+    prepared_optimization_settings_digest,
+    prepared_output_contract_digest,
     write_prepared_model_bundle,
 )
 
@@ -67,7 +74,10 @@ def _kernel(
     )
 
 
-def _pack(*kernels: PreparedKernelRecord) -> PreparedKernelPack:
+def _pack(
+    *kernels: PreparedKernelRecord,
+    kernel_variants: tuple[PreparedKernelVariantRecord, ...] = (),
+) -> PreparedKernelPack:
     return PreparedKernelPack(
         backend="jit",
         optimization_settings={"optimization_level": 3, "cpe_rounds": "default"},
@@ -92,6 +102,52 @@ def _pack(*kernels: PreparedKernelRecord) -> PreparedKernelPack:
             "model_name": "test-model",
         },
         kernels=kernels or (_kernel(),),
+        kernel_variants=kernel_variants,
+    )
+
+
+def _block_variant(kernel: PreparedKernelRecord) -> PreparedKernelVariantRecord:
+    settings = {"optimization_level": 3, "cpe_rounds": "default"}
+    root = f"kernels/{kernel.kernel_id}/variants/independent-block-4"
+    return PreparedKernelVariantRecord(
+        variant_id="independent-block-4",
+        variant_abi=PREPARED_KERNEL_VARIANT_ABI,
+        kind="independent-block",
+        block_size=4,
+        lane_layout="lane-major",
+        base_kernel_id=kernel.kernel_id,
+        base_canonical_signature=kernel.canonical_signature,
+        base_expression_digest=prepared_expression_digest(kernel.exact_expressions),
+        base_input_contract_digest=prepared_input_contract_digest(
+            kernel.input_layout,
+            kernel.input_contracts,
+        ),
+        base_output_contract_digest=prepared_output_contract_digest(
+            kernel.output_layout
+        ),
+        backend="jit",
+        optimization_settings_digest=prepared_optimization_settings_digest(settings),
+        input_arity=4 * kernel.input_arity,
+        output_arity=4 * kernel.output_arity,
+        input_lane_stride=kernel.input_arity,
+        output_lane_stride=kernel.output_arity,
+        input_layout=tuple(
+            f"lane:{lane}:{item}"
+            for lane in range(4)
+            for item in kernel.input_layout
+        ),
+        output_layout=tuple(
+            f"lane:{lane}:{item}"
+            for lane in range(4)
+            for item in kernel.output_layout
+        ),
+        f64_evaluator_manifest={
+            "kind": "symjit-application-evaluator",
+            "input_len": 4 * kernel.input_arity,
+            "output_len": 4 * kernel.output_arity,
+            "application_path": f"{root}/application.symjit",
+            "evaluator_state_path": f"{root}/evaluator-state.evaluator.bin",
+        },
     )
 
 
@@ -110,6 +166,16 @@ def _payloads(*kernels: PreparedKernelRecord) -> dict[str, bytes]:
         result[kernel.exact_evaluator_state_path] = f"exact:{kernel.kernel_id}".encode()
         application_path = str(kernel.f64_evaluator_manifest["application_path"])
         result[application_path] = f"jit:{kernel.kernel_id}".encode()
+    return result
+
+
+def _variant_payloads(
+    *variants: PreparedKernelVariantRecord,
+) -> dict[str, bytes]:
+    result: dict[str, bytes] = {}
+    for variant in variants:
+        for path in variant.referenced_payload_paths:
+            result[path] = f"variant:{variant.base_kernel_id}:{path}".encode()
     return result
 
 
@@ -201,6 +267,77 @@ def test_prepared_model_bundle_round_trip_and_payload_copy(tmp_path: Path) -> No
         "kernels/0/application.symjit",
         "kernels/0/exact.evaluator.bin",
     }
+
+
+def test_prepared_block_variant_round_trip_and_payload_index(tmp_path: Path) -> None:
+    kernel = _kernel(signature="a" * 64)
+    variant = _block_variant(kernel)
+    pack = _pack(kernel, kernel_variants=(variant,))
+    path = write_prepared_model_bundle(
+        tmp_path / "block",
+        compiled_model=_compiled_model(),
+        kernel_pack=pack,
+        payloads={**_payloads(kernel), **_variant_payloads(variant)},
+    )
+
+    loaded = load_prepared_model_bundle(path)
+
+    assert loaded.kernel_pack.kernel_variants == (variant,)
+    assert variant.input_lane_stride == kernel.input_arity
+    assert variant.output_lane_stride == kernel.output_arity
+    assert set(variant.referenced_payload_paths).issubset(
+        loaded.kernel_pack.referenced_payload_paths
+    )
+    assert loaded.read_payload(
+        "kernels/0/variants/independent-block-4/application.symjit"
+    ).startswith(b"variant:0:")
+
+
+def test_reader_accepts_legacy_pack_without_kernel_variants(tmp_path: Path) -> None:
+    path = _valid_bundle(tmp_path)
+
+    def remove_variants(manifest: dict[str, object]) -> None:
+        pack = manifest["kernel_pack"]
+        assert isinstance(pack, dict)
+        del pack["kernel_variants"]
+
+    _mutate_manifest(path, remove_variants)
+
+    assert load_prepared_model_bundle(path).kernel_pack.kernel_variants == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement_value", "pattern"),
+    (
+        ("base_kernel_id", 7, "unknown base kernel"),
+        ("base_expression_digest", "0" * 64, "contract digest"),
+        ("base_input_contract_digest", "0" * 64, "contract digest"),
+        ("base_output_contract_digest", "0" * 64, "contract digest"),
+        ("backend", "cpp", "backend does not match"),
+        ("optimization_settings_digest", "0" * 64, "optimization digest"),
+        ("input_layout", tuple(f"wrong:{index}" for index in range(8)), "layout"),
+    ),
+)
+def test_pack_rejects_mismatched_block_variant_binding(
+    field: str,
+    replacement_value: object,
+    pattern: str,
+) -> None:
+    kernel = _kernel(signature="a" * 64)
+    variant = replace(_block_variant(kernel), **{field: replacement_value})
+
+    with pytest.raises(PreparedModelBundleError, match=pattern):
+        _pack(kernel, kernel_variants=(variant,))
+
+
+def test_block_variant_rejects_evaluator_arity_mismatch() -> None:
+    kernel = _kernel(signature="a" * 64)
+    variant = _block_variant(kernel)
+    manifest = dict(variant.f64_evaluator_manifest)
+    manifest["output_len"] = 3
+
+    with pytest.raises(PreparedModelBundleError, match="output_len"):
+        replace(variant, f64_evaluator_manifest=manifest)
 
 
 def test_payload_reference_index_is_reused_after_bundle_load(

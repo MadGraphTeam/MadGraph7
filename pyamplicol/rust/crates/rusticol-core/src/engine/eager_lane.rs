@@ -29,6 +29,37 @@ pub(super) struct EagerNativeRuntime {
     color_group_scratch: Vec<crate::EagerComplex64>,
     reduced: Vec<f64>,
     selected_groups: Vec<u32>,
+    source_schedule: Option<EagerSourceSchedule>,
+    source_wavefunction_scratch: Vec<Complex<f64>>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct EagerSourceKey {
+    source_kind: String,
+    leg_label: usize,
+    family: u8,
+    dimension: usize,
+    pdg_label: i32,
+    anti_pdg_label: i32,
+    orientation: u8,
+    momentum_transform: u8,
+    phase_real: u64,
+    phase_imaginary: u64,
+    source_helicity: i32,
+    chirality: i32,
+}
+
+#[derive(Debug)]
+struct EagerSourceClass {
+    representative_index: usize,
+    target_component_starts: Vec<usize>,
+    dimension: usize,
+}
+
+#[derive(Debug)]
+struct EagerSourceSchedule {
+    classes: Vec<EagerSourceClass>,
+    maximum_dimension: usize,
 }
 
 impl EagerNativeRuntime {
@@ -54,6 +85,8 @@ impl EagerNativeRuntime {
             color_group_scratch: Vec::new(),
             reduced: Vec::new(),
             selected_groups: Vec::new(),
+            source_schedule: None,
+            source_wavefunction_scratch: Vec::new(),
         }
     }
 
@@ -81,58 +114,13 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let state_len = point_count
-            .checked_mul(common.parameter_count)
-            .ok_or_else(|| RusticolError::invalid_argument("eager source state overflows"))?;
-        common
-            .state_scratch_f64
-            .resize(state_len, Complex::new(0.0, 0.0));
-        common.state_scratch_f64.fill(Complex::new(0.0, 0.0));
-
-        let source_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_sources_row(
-                &common.sources,
-                common.external_count,
-                &common.particle_masses,
-                row_state,
-                point,
-            )?;
-        }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
-
-        let momentum_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_momenta_row(
-                &common.momentum_slots,
-                common.value_parameter_count,
-                common.external_count,
-                &common.external_is_initial,
-                row_state,
-                point,
-            )?;
-        }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
-
-        transpose_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            0,
-            common.value_parameter_count,
+        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+            common,
+            batch,
             &mut self.initial_values,
-        )?;
-        transpose_real_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            common.value_parameter_count,
-            common.momentum_parameter_count,
             &mut self.momenta,
+            &mut self.source_schedule,
+            &mut self.source_wavefunction_scratch,
         )?;
         project_model_parameters(
             &self.parameter_projection,
@@ -186,58 +174,13 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let state_len = point_count
-            .checked_mul(common.parameter_count)
-            .ok_or_else(|| RusticolError::invalid_argument("eager source state overflows"))?;
-        common
-            .state_scratch_f64
-            .resize(state_len, Complex::new(0.0, 0.0));
-        common.state_scratch_f64.fill(Complex::new(0.0, 0.0));
-
-        let source_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_sources_row(
-                &common.sources,
-                common.external_count,
-                &common.particle_masses,
-                row_state,
-                point,
-            )?;
-        }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
-
-        let momentum_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_momenta_row(
-                &common.momentum_slots,
-                common.value_parameter_count,
-                common.external_count,
-                &common.external_is_initial,
-                row_state,
-                point,
-            )?;
-        }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
-
-        transpose_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            0,
-            common.value_parameter_count,
+        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+            common,
+            batch,
             &mut self.initial_values,
-        )?;
-        transpose_real_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            common.value_parameter_count,
-            common.momentum_parameter_count,
             &mut self.momenta,
+            &mut self.source_schedule,
+            &mut self.source_wavefunction_scratch,
         )?;
         project_model_parameters(
             &self.parameter_projection,
@@ -260,6 +203,7 @@ impl EagerNativeRuntime {
             &mut self.amplitudes,
             &mut self.reduced,
         )?;
+        validate_eager_profile_accounting(&eager)?;
         for value in &mut self.reduced {
             *value *= common.normalization_factor;
         }
@@ -269,17 +213,20 @@ impl EagerNativeRuntime {
             RuntimeProfile {
                 source_fill_s,
                 momentum_setup_s,
-                stage_evaluator_call_s: eager.total_s,
-                stage_evaluator_s: eager.total_s,
-                reduction_s: eager.reduction_s,
+                stage_evaluator_call_s: eager.total.as_secs_f64(),
+                stage_evaluator_s: eager.total.as_secs_f64(),
+                reduction_s: eager.reduction.as_secs_f64(),
                 total_s: total_start.elapsed().as_secs_f64(),
-                eager_initialize_s: eager.initialize_s,
-                eager_gather_s: eager.gather_s,
-                eager_kernel_call_s: eager.kernel_call_s,
-                eager_scatter_finalization_s: eager.invocation_scatter_s + eager.finalization_s,
-                eager_closure_s: eager.closure_s,
-                eager_reduction_s: eager.reduction_s,
-                eager_copy_out_s: eager.copy_out_s,
+                eager_initialize_s: eager.initialize.as_secs_f64(),
+                eager_gather_s: eager.gather.as_secs_f64(),
+                eager_kernel_call_s: eager.kernel_call.as_secs_f64(),
+                eager_invocation_scatter_s: eager.invocation_scatter.as_secs_f64(),
+                eager_finalization_s: eager.finalization.as_secs_f64(),
+                eager_scatter_finalization_s: (eager.invocation_scatter + eager.finalization)
+                    .as_secs_f64(),
+                eager_closure_s: eager.closure.as_secs_f64(),
+                eager_reduction_s: eager.reduction.as_secs_f64(),
+                eager_copy_out_s: eager.copy_out.as_secs_f64(),
                 ..RuntimeProfile::default()
             },
         ))
@@ -299,58 +246,13 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let state_len = point_count
-            .checked_mul(common.parameter_count)
-            .ok_or_else(|| RusticolError::invalid_argument("eager source state overflows"))?;
-        common
-            .state_scratch_f64
-            .resize(state_len, Complex::new(0.0, 0.0));
-        common.state_scratch_f64.fill(Complex::new(0.0, 0.0));
-
-        let source_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_sources_row(
-                &common.sources,
-                common.external_count,
-                &common.particle_masses,
-                row_state,
-                point,
-            )?;
-        }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
-
-        let momentum_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_momenta_row(
-                &common.momentum_slots,
-                common.value_parameter_count,
-                common.external_count,
-                &common.external_is_initial,
-                row_state,
-                point,
-            )?;
-        }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
-
-        transpose_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            0,
-            common.value_parameter_count,
+        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+            common,
+            batch,
             &mut self.initial_values,
-        )?;
-        transpose_real_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            common.value_parameter_count,
-            common.momentum_parameter_count,
             &mut self.momenta,
+            &mut self.source_schedule,
+            &mut self.source_wavefunction_scratch,
         )?;
         project_model_parameters(
             &self.parameter_projection,
@@ -383,7 +285,7 @@ impl EagerNativeRuntime {
         };
         let execute_start = Instant::now();
         if has_selected_groups {
-            self.scheduler.evaluate_selected_amplitudes_into(
+            self.scheduler.evaluate_selected_active_amplitudes_into(
                 &mut self.backend,
                 &self.selected_groups,
                 point_count,
@@ -445,58 +347,13 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let state_len = point_count
-            .checked_mul(common.parameter_count)
-            .ok_or_else(|| RusticolError::invalid_argument("eager source state overflows"))?;
-        common
-            .state_scratch_f64
-            .resize(state_len, Complex::new(0.0, 0.0));
-        common.state_scratch_f64.fill(Complex::new(0.0, 0.0));
-
-        let source_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_sources_row(
-                &common.sources,
-                common.external_count,
-                &common.particle_masses,
-                row_state,
-                point,
-            )?;
-        }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
-
-        let momentum_start = Instant::now();
-        for (row, point) in batch.iter().enumerate() {
-            let row_state = &mut common.state_scratch_f64
-                [row * common.parameter_count..(row + 1) * common.parameter_count];
-            ExecutionRuntime::fill_momenta_row(
-                &common.momentum_slots,
-                common.value_parameter_count,
-                common.external_count,
-                &common.external_is_initial,
-                row_state,
-                point,
-            )?;
-        }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
-
-        transpose_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            0,
-            common.value_parameter_count,
+        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+            common,
+            batch,
             &mut self.initial_values,
-        )?;
-        transpose_real_state_components(
-            &common.state_scratch_f64,
-            point_count,
-            common.parameter_count,
-            common.value_parameter_count,
-            common.momentum_parameter_count,
             &mut self.momenta,
+            &mut self.source_schedule,
+            &mut self.source_wavefunction_scratch,
         )?;
         project_model_parameters(
             &self.parameter_projection,
@@ -548,6 +405,7 @@ impl EagerNativeRuntime {
                 &mut self.reduced,
             )?
         };
+        validate_eager_profile_accounting(&eager)?;
         let reduction_start = Instant::now();
         let resolved = reduce_eager_amplitudes_resolved(
             &self.amplitudes,
@@ -561,23 +419,26 @@ impl EagerNativeRuntime {
             selected_color_ids,
         )?;
         let resolved_reduction_s = reduction_start.elapsed().as_secs_f64();
-        let reduction_s = eager.reduction_s + resolved_reduction_s;
+        let reduction_s = eager.reduction.as_secs_f64() + resolved_reduction_s;
         Ok((
             resolved,
             RuntimeProfile {
                 source_fill_s,
                 momentum_setup_s,
-                stage_evaluator_call_s: eager.total_s,
-                stage_evaluator_s: eager.total_s,
+                stage_evaluator_call_s: eager.total.as_secs_f64(),
+                stage_evaluator_s: eager.total.as_secs_f64(),
                 reduction_s,
                 total_s: total_start.elapsed().as_secs_f64(),
-                eager_initialize_s: eager.initialize_s,
-                eager_gather_s: eager.gather_s,
-                eager_kernel_call_s: eager.kernel_call_s,
-                eager_scatter_finalization_s: eager.invocation_scatter_s + eager.finalization_s,
-                eager_closure_s: eager.closure_s,
+                eager_initialize_s: eager.initialize.as_secs_f64(),
+                eager_gather_s: eager.gather.as_secs_f64(),
+                eager_kernel_call_s: eager.kernel_call.as_secs_f64(),
+                eager_invocation_scatter_s: eager.invocation_scatter.as_secs_f64(),
+                eager_finalization_s: eager.finalization.as_secs_f64(),
+                eager_scatter_finalization_s: (eager.invocation_scatter + eager.finalization)
+                    .as_secs_f64(),
+                eager_closure_s: eager.closure.as_secs_f64(),
                 eager_reduction_s: reduction_s,
-                eager_copy_out_s: eager.copy_out_s,
+                eager_copy_out_s: eager.copy_out.as_secs_f64(),
                 ..RuntimeProfile::default()
             },
         ))
@@ -865,50 +726,288 @@ fn selected_position_map(
     Ok(positions)
 }
 
-fn transpose_state_components(
-    state: &[Complex<f64>],
-    point_count: usize,
-    row_width: usize,
-    component_start: usize,
-    component_count: usize,
-    output: &mut Vec<crate::EagerComplex64>,
-) -> RusticolResult<()> {
-    let output_len = point_count
-        .checked_mul(component_count)
+fn prepare_eager_inputs(
+    common: &mut ExecutionRuntime,
+    batch: &[Vec<[f64; 4]>],
+    initial_values: &mut Vec<crate::EagerComplex64>,
+    momenta: &mut Vec<f64>,
+    source_schedule: &mut Option<EagerSourceSchedule>,
+    source_wavefunction_scratch: &mut Vec<Complex<f64>>,
+) -> RusticolResult<(f64, f64)> {
+    let point_count = batch.len();
+    let value_len = point_count
+        .checked_mul(common.value_parameter_count)
         .ok_or_else(|| RusticolError::invalid_argument("eager value input overflows"))?;
-    output.resize(output_len, crate::EagerComplex64::new(0.0, 0.0));
-    for component in 0..component_count {
-        for point in 0..point_count {
-            let value = state[point * row_width + component_start + component];
-            output[component * point_count + point] =
-                crate::EagerComplex64::new(value.re, value.im);
+    let momentum_len = point_count
+        .checked_mul(common.momentum_parameter_count)
+        .ok_or_else(|| RusticolError::invalid_argument("eager momentum input overflows"))?;
+    initial_values.resize(value_len, crate::EagerComplex64::new(0.0, 0.0));
+    momenta.resize(momentum_len, 0.0);
+
+    if source_schedule.is_none() {
+        *source_schedule = Some(build_eager_source_schedule(
+            &common.sources,
+            common.value_parameter_count,
+        )?);
+    }
+    let source_schedule = source_schedule
+        .as_ref()
+        .expect("eager source schedule was initialized above");
+    source_wavefunction_scratch.resize(source_schedule.maximum_dimension, Complex::new(0.0, 0.0));
+
+    let source_started = Instant::now();
+    for (point_index, point) in batch.iter().enumerate() {
+        for class in &source_schedule.classes {
+            let source = &common.sources[class.representative_index];
+            let wavefunction = &mut source_wavefunction_scratch[..class.dimension];
+            ExecutionRuntime::write_source_wavefunction(
+                source,
+                common.external_count,
+                &common.particle_masses,
+                point,
+                wavefunction,
+            )?;
+            for target_start in &class.target_component_starts {
+                for (component, value) in wavefunction.iter().enumerate() {
+                    initial_values[(target_start + component) * point_count + point_index] =
+                        crate::EagerComplex64::new(value.re, value.im);
+                }
+            }
         }
+    }
+    let source_fill_s = source_started.elapsed().as_secs_f64();
+
+    let momentum_started = Instant::now();
+    for (point_index, point) in batch.iter().enumerate() {
+        for slot in &common.momentum_slots {
+            let start = slot.component_start;
+            let stop = slot.component_stop;
+            if stop > common.momentum_parameter_count || stop < start || stop - start != 4 {
+                return Err(RusticolError::invalid_argument(format!(
+                    "generic momentum slot {} has an invalid component range",
+                    slot.momentum_slot_id
+                )));
+            }
+            let mut momentum = [0.0; 4];
+            for label in &slot.external_labels {
+                let index = label.checked_sub(1).ok_or_else(|| {
+                    RusticolError::invalid_argument("generic momentum labels are one-based")
+                })?;
+                if index >= common.external_count || index >= common.external_is_initial.len() {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "generic momentum slot {} refers to unknown external label {}",
+                        slot.momentum_slot_id, label
+                    )));
+                }
+                let sign = if common.external_is_initial[index] {
+                    -1.0
+                } else {
+                    1.0
+                };
+                for (output, input) in momentum.iter_mut().zip(&point[index]) {
+                    *output += sign * input;
+                }
+            }
+            for (component, value) in momentum.into_iter().enumerate() {
+                momenta[(start + component) * point_count + point_index] = value;
+            }
+        }
+    }
+    Ok((source_fill_s, momentum_started.elapsed().as_secs_f64()))
+}
+
+fn build_eager_source_schedule(
+    sources: &[GenericSourceRecordManifest],
+    value_component_count: usize,
+) -> RusticolResult<EagerSourceSchedule> {
+    let mut class_by_key: BTreeMap<EagerSourceKey, usize> = BTreeMap::new();
+    let mut classes: Vec<EagerSourceClass> = Vec::new();
+    let mut maximum_dimension = 0usize;
+    for (source_index, source) in sources.iter().enumerate() {
+        let start = source.value_slot.component_start;
+        let stop = source.value_slot.component_stop;
+        if stop > value_component_count || stop < start || stop - start != source.dimension {
+            return Err(RusticolError::artifact(format!(
+                "eager source {} has an invalid value-slot range",
+                source.source_id
+            )));
+        }
+        let key = eager_source_key(source);
+        if let Some(class_index) = class_by_key.get(&key).copied() {
+            let class = &mut classes[class_index];
+            if class.dimension != source.dimension {
+                return Err(RusticolError::internal(
+                    "equivalent eager sources have inconsistent dimensions",
+                ));
+            }
+            class.target_component_starts.push(start);
+        } else {
+            let class_index = classes.len();
+            class_by_key.insert(key, class_index);
+            classes.push(EagerSourceClass {
+                representative_index: source_index,
+                target_component_starts: vec![start],
+                dimension: source.dimension,
+            });
+        }
+        maximum_dimension = maximum_dimension.max(source.dimension);
+    }
+    Ok(EagerSourceSchedule {
+        classes,
+        maximum_dimension,
+    })
+}
+
+fn eager_source_key(source: &GenericSourceRecordManifest) -> EagerSourceKey {
+    EagerSourceKey {
+        source_kind: source.source_kind.clone(),
+        leg_label: source.leg_label,
+        family: match source.source_ir.wavefunction_family {
+            GenericWavefunctionFamilyManifest::Scalar => 0,
+            GenericWavefunctionFamilyManifest::Fermion => 1,
+            GenericWavefunctionFamilyManifest::Vector => 2,
+            GenericWavefunctionFamilyManifest::Spin2 => 3,
+            GenericWavefunctionFamilyManifest::Ghost => 4,
+            GenericWavefunctionFamilyManifest::Auxiliary => 5,
+        },
+        dimension: source.source_ir.component_dimension,
+        pdg_label: source.source_ir.identity.pdg_label,
+        anti_pdg_label: source.source_ir.identity.anti_pdg_label,
+        orientation: match source.source_ir.identity.orientation {
+            GenericSourceOrientationManifest::Particle => 0,
+            GenericSourceOrientationManifest::Antiparticle => 1,
+            GenericSourceOrientationManifest::SelfConjugate => 2,
+        },
+        momentum_transform: match source.applied_crossing.momentum_transform {
+            GenericMomentumTransformManifest::Identity => 0,
+            GenericMomentumTransformManifest::NegateFourMomentum => 1,
+        },
+        phase_real: source.applied_crossing.phase[0].to_bits(),
+        phase_imaginary: source.applied_crossing.phase[1].to_bits(),
+        source_helicity: source.source_helicity,
+        chirality: source.chirality,
+    }
+}
+
+fn validate_eager_profile_accounting(
+    profile: &crate::eager_runtime::EagerExecutionProfile,
+) -> RusticolResult<()> {
+    let accounted = profile.accounted();
+    let tolerance = Duration::from_nanos(1);
+    if accounted > profile.total.saturating_add(tolerance) {
+        return Err(RusticolError::internal(format!(
+            "eager runtime profile phases account for {accounted_s:.9e}s, exceeding the aggregate {total_s:.9e}s: {profile:?}",
+            accounted_s = accounted.as_secs_f64(),
+            total_s = profile.total.as_secs_f64(),
+        )));
     }
     Ok(())
 }
 
-fn transpose_real_state_components(
-    state: &[Complex<f64>],
+#[inline(always)]
+#[cfg(test)]
+fn store_complex_row_component_major(
+    row: &[Complex<f64>],
+    point_index: usize,
     point_count: usize,
-    row_width: usize,
-    component_start: usize,
-    component_count: usize,
-    output: &mut Vec<f64>,
+    output: &mut [crate::EagerComplex64],
+) {
+    debug_assert!(point_index < point_count);
+    debug_assert_eq!(output.len(), row.len() * point_count);
+    for (component, value) in row.iter().enumerate() {
+        output[component * point_count + point_index] =
+            crate::EagerComplex64::new(value.re, value.im);
+    }
+}
+
+#[inline(always)]
+#[cfg(test)]
+fn store_real_row_component_major(
+    row: &[Complex<f64>],
+    point_index: usize,
+    point_count: usize,
+    output: &mut [f64],
 ) -> RusticolResult<()> {
-    let output_len = point_count
-        .checked_mul(component_count)
-        .ok_or_else(|| RusticolError::invalid_argument("eager momentum input overflows"))?;
-    output.resize(output_len, 0.0);
-    for component in 0..component_count {
-        for point in 0..point_count {
-            let value = state[point * row_width + component_start + component];
-            if value.im != 0.0 {
-                return Err(RusticolError::internal(
-                    "eager momentum setup produced an imaginary component",
-                ));
-            }
-            output[component * point_count + point] = value.re;
+    debug_assert!(point_index < point_count);
+    debug_assert_eq!(output.len(), row.len() * point_count);
+    for (component, value) in row.iter().enumerate() {
+        if value.im != 0.0 {
+            return Err(RusticolError::internal(
+                "eager momentum setup produced an imaginary component",
+            ));
         }
+        output[component * point_count + point_index] = value.re;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn eager_input_rows_are_stored_component_major() {
+        let point_count = 2;
+        let mut complex = vec![crate::EagerComplex64::new(0.0, 0.0); 6];
+        let mut real = vec![0.0; 6];
+        for (point, values) in [
+            [
+                Complex::new(1.0, -1.0),
+                Complex::new(2.0, -2.0),
+                Complex::new(3.0, -3.0),
+            ],
+            [
+                Complex::new(4.0, -4.0),
+                Complex::new(5.0, -5.0),
+                Complex::new(6.0, -6.0),
+            ],
+        ]
+        .iter()
+        .enumerate()
+        {
+            store_complex_row_component_major(values, point, point_count, &mut complex);
+            let real_values = values.map(|value| Complex::new(value.re, 0.0));
+            store_real_row_component_major(&real_values, point, point_count, &mut real).unwrap();
+        }
+        assert_eq!(
+            complex,
+            [
+                crate::EagerComplex64::new(1.0, -1.0),
+                crate::EagerComplex64::new(4.0, -4.0),
+                crate::EagerComplex64::new(2.0, -2.0),
+                crate::EagerComplex64::new(5.0, -5.0),
+                crate::EagerComplex64::new(3.0, -3.0),
+                crate::EagerComplex64::new(6.0, -6.0),
+            ]
+        );
+        assert_eq!(real, [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+    }
+
+    #[test]
+    fn eager_real_input_rejects_imaginary_components() {
+        let error = store_real_row_component_major(&[Complex::new(1.0, 1.0)], 0, 1, &mut [0.0])
+            .unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Internal);
+    }
+
+    #[test]
+    fn eager_profile_rejects_impossible_phase_totals() {
+        let valid = crate::eager_runtime::EagerExecutionProfile {
+            initialize: Duration::from_millis(2),
+            gather: Duration::from_millis(3),
+            kernel_call: Duration::from_millis(4),
+            total: Duration::from_millis(10),
+            ..crate::eager_runtime::EagerExecutionProfile::default()
+        };
+        validate_eager_profile_accounting(&valid).unwrap();
+
+        let impossible = crate::eager_runtime::EagerExecutionProfile {
+            invocation_scatter: Duration::from_millis(20),
+            total: Duration::from_millis(10),
+            ..crate::eager_runtime::EagerExecutionProfile::default()
+        };
+        let error = validate_eager_profile_accounting(&impossible).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Internal);
+        assert!(error.to_string().contains("exceeding the aggregate"));
+    }
 }

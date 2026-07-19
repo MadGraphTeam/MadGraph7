@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::execute::{
-    copy_tile_amplitudes, copy_tile_results, execute_closures, execute_stage, initialize_tile,
-    reduce_tile,
+    copy_selected_tile_amplitudes, copy_tile_amplitudes, copy_tile_results, execute_closures,
+    execute_stage, initialize_tile, reduce_tile,
 };
 use super::plan::{
-    ClosureExecutionRows, EagerExecutionPlan, EagerStagePlan, ScheduledClosure,
-    ScheduledDirectClosure, complex_is_finite,
+    ClosureExecutionRows, ComponentRange, EagerExecutionPlan, EagerStagePlan, ScheduledClosure,
+    ScheduledDirectClosure, ScheduledFinalization, complex_is_finite,
 };
 use super::profile::{execute_closures_profiled, execute_stage_profiled};
 use super::{
@@ -19,6 +19,14 @@ use std::mem::size_of;
 use std::ops::Range;
 use std::time::Instant;
 
+// `workspace_bytes` is a hard upper bound, not a target packet size. Keeping
+// one gather/evaluate/scatter packet cache-sized avoids turning otherwise
+// linear eager execution into a memory-bandwidth workload when many
+// invocations share one prepared kernel.
+const MAX_PACKET_BUFFER_BYTES: usize = 4 * 1024 * 1024;
+const MAX_PERSISTENT_TILE_BYTES: usize = 16 * 1024 * 1024;
+const PREFERRED_TILE_ALIGNMENT: usize = 8;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PacketRole {
     Invocation,
@@ -30,9 +38,24 @@ pub(super) enum PacketRole {
 pub(super) struct KernelPacket {
     pub(super) role: PacketRole,
     pub(super) kernel_id: u32,
+    pub(super) independent_block_size: usize,
     pub(super) item_range: Range<usize>,
     pub(super) input_components: usize,
     pub(super) output_components: usize,
+    pub(super) linear_finalization: Option<LinearFinalizationPacket>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct LinearFinalizationPacket {
+    pub(super) momentum_groups: Vec<ComponentRange>,
+    pub(super) item_group_indices: Vec<usize>,
+    pub(super) current_components: Vec<u32>,
+}
+
+impl LinearFinalizationPacket {
+    pub(super) fn lane_multiplier(&self) -> usize {
+        self.momentum_groups.len() * self.current_components.len()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -51,9 +74,12 @@ pub(super) struct ExecutionSchedule {
 #[derive(Clone, Debug)]
 struct SelectedExecution {
     active_groups: Vec<u32>,
+    active_amplitude_indices: Vec<usize>,
     stages: Vec<EagerStagePlan>,
     closures: Vec<ScheduledClosure>,
     direct_closures: Vec<ScheduledDirectClosure>,
+    zero_amplitude_indices: Vec<usize>,
+    active_zero_amplitude_indices: Vec<usize>,
     schedule: ExecutionSchedule,
 }
 
@@ -95,7 +121,7 @@ impl EagerExecutionRuntime {
         let persistent_complex_components = plan
             .values
             .component_count
-            .checked_add(plan.currents.component_count)
+            .checked_add(plan.current_workspace_component_count())
             .and_then(|value| value.checked_add(plan.amplitude_count))
             .and_then(|value| value.checked_add(plan.reduction_groups.len()))
             .ok_or_else(|| {
@@ -116,24 +142,31 @@ impl EagerExecutionRuntime {
             .ok_or_else(|| {
                 RusticolError::invalid_argument("eager workspace cannot hold coupling values")
             })?;
-        let maximum_tile = dynamic_bytes
+        let workspace_maximum_tile = dynamic_bytes
             .checked_div(minimum_bytes_per_point)
             .unwrap_or(0);
-        if maximum_tile == 0 {
+        if workspace_maximum_tile == 0 {
             return Err(RusticolError::invalid_argument(format!(
                 "eager workspace needs at least {} bytes for one point",
                 static_bytes + minimum_bytes_per_point
             )));
         }
-        let tile_capacity = min(options.point_tile_size, maximum_tile);
+        let tile_capacity = effective_tile_capacity(
+            options.point_tile_size,
+            workspace_maximum_tile,
+            persistent_bytes_per_point,
+        );
         let persistent_bytes = persistent_bytes_per_point
             .checked_mul(tile_capacity)
             .ok_or_else(|| {
                 RusticolError::invalid_argument("eager persistent workspace overflows")
             })?;
-        let packet_budget = dynamic_bytes.checked_sub(persistent_bytes).ok_or_else(|| {
-            RusticolError::internal("eager workspace accounting lost its packet budget")
-        })?;
+        let packet_budget = dynamic_bytes
+            .checked_sub(persistent_bytes)
+            .ok_or_else(|| {
+                RusticolError::internal("eager workspace accounting lost its packet budget")
+            })?
+            .min(MAX_PACKET_BUFFER_BYTES);
         let schedule = build_schedule(&plan, tile_capacity, packet_budget)?;
         let workspace = allocate_workspace(&plan, tile_capacity, schedule.packet_buffer_len)?;
         let workspace_bytes = static_bytes
@@ -197,6 +230,53 @@ impl EagerExecutionRuntime {
         model_parameters: &[EagerComplex64],
         amplitudes: &mut [EagerComplex64],
     ) -> RusticolResult<()> {
+        self.evaluate_selected_amplitudes_impl(
+            backend,
+            active_groups,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            amplitudes,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_selected_active_amplitudes_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        active_groups: &[u32],
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        amplitudes: &mut [EagerComplex64],
+    ) -> RusticolResult<()> {
+        self.evaluate_selected_amplitudes_impl(
+            backend,
+            active_groups,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            amplitudes,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_selected_amplitudes_impl<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        active_groups: &[u32],
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        amplitudes: &mut [EagerComplex64],
+        active_amplitudes_only: bool,
+    ) -> RusticolResult<()> {
         validate_selected_execution_buffers(
             &self.plan,
             point_count,
@@ -214,8 +294,16 @@ impl EagerExecutionRuntime {
             &mut self.workspace,
         );
         resolve_couplings(&plan.couplings, model_parameters, &mut workspace.couplings);
-        let (stages, closures, direct_closures, schedule) =
-            selected_execution_rows(plan, full_schedule, selected.as_ref());
+        let (stages, closures, direct_closures, zero_amplitudes, schedule) =
+            selected_execution_rows(
+                plan,
+                full_schedule,
+                selected.as_ref(),
+                active_amplitudes_only,
+            );
+        let active_amplitude_indices = selected
+            .as_ref()
+            .map(|selected| selected.active_amplitude_indices.as_slice());
         let tile_capacity = workspace.tile_capacity;
         let mut tile_start = 0usize;
         while tile_start < point_count {
@@ -227,6 +315,7 @@ impl EagerExecutionRuntime {
                 tile_start,
                 tile_points,
                 initial_values,
+                zero_amplitudes,
             );
             for (stage, stage_schedule) in stages.iter().zip(&schedule.stages) {
                 execute_stage(
@@ -254,14 +343,25 @@ impl EagerExecutionRuntime {
                 tile_points,
                 model_parameters,
             )?;
-            copy_tile_amplitudes(
-                plan,
-                workspace,
-                point_count,
-                tile_start,
-                tile_points,
-                amplitudes,
-            );
+            if active_amplitudes_only {
+                copy_selected_tile_amplitudes(
+                    active_amplitude_indices.unwrap_or(&[]),
+                    workspace,
+                    point_count,
+                    tile_start,
+                    tile_points,
+                    amplitudes,
+                );
+            } else {
+                copy_tile_amplitudes(
+                    plan,
+                    workspace,
+                    point_count,
+                    tile_start,
+                    tile_points,
+                    amplitudes,
+                );
+            }
             tile_start += tile_points;
         }
         Ok(())
@@ -298,11 +398,14 @@ impl EagerExecutionRuntime {
         let initialize_started = Instant::now();
         resolve_couplings(&plan.couplings, model_parameters, &mut workspace.couplings);
         let mut profile = EagerExecutionProfile {
-            initialize_s: initialize_started.elapsed().as_secs_f64(),
+            initialize: initialize_started.elapsed(),
             ..EagerExecutionProfile::default()
         };
-        let (stages, closures, direct_closures, schedule) =
-            selected_execution_rows(plan, full_schedule, selected.as_ref());
+        let (stages, closures, direct_closures, zero_amplitudes, schedule) =
+            selected_execution_rows(plan, full_schedule, selected.as_ref(), true);
+        let active_amplitude_indices = selected
+            .as_ref()
+            .map(|selected| selected.active_amplitude_indices.as_slice());
         let tile_capacity = workspace.tile_capacity;
         let mut tile_start = 0usize;
         while tile_start < point_count {
@@ -315,8 +418,9 @@ impl EagerExecutionRuntime {
                 tile_start,
                 tile_points,
                 initial_values,
+                zero_amplitudes,
             );
-            profile.initialize_s += initialize_started.elapsed().as_secs_f64();
+            profile.initialize += initialize_started.elapsed();
             for (stage, stage_schedule) in stages.iter().zip(&schedule.stages) {
                 execute_stage_profiled(
                     stage,
@@ -346,18 +450,18 @@ impl EagerExecutionRuntime {
                 &mut profile,
             )?;
             let copy_started = Instant::now();
-            copy_tile_amplitudes(
-                plan,
+            copy_selected_tile_amplitudes(
+                active_amplitude_indices.unwrap_or(&[]),
                 workspace,
                 point_count,
                 tile_start,
                 tile_points,
                 amplitudes,
             );
-            profile.copy_out_s += copy_started.elapsed().as_secs_f64();
+            profile.copy_out += copy_started.elapsed();
             tile_start += tile_points;
         }
-        profile.total_s = total_started.elapsed().as_secs_f64();
+        profile.total = total_started.elapsed();
         Ok(profile)
     }
 
@@ -444,6 +548,7 @@ impl EagerExecutionRuntime {
                 tile_start,
                 tile_points,
                 initial_values,
+                &self.plan.zero_amplitude_indices,
             );
             for (stage, schedule) in self.plan.stages.iter().zip(&self.schedule.stages) {
                 execute_stage(
@@ -523,7 +628,7 @@ impl EagerExecutionRuntime {
             &mut self.workspace.couplings,
         );
         let mut profile = EagerExecutionProfile {
-            initialize_s: initialize_started.elapsed().as_secs_f64(),
+            initialize: initialize_started.elapsed(),
             ..EagerExecutionProfile::default()
         };
         let tile_capacity = self.workspace.tile_capacity;
@@ -539,8 +644,9 @@ impl EagerExecutionRuntime {
                 tile_start,
                 tile_points,
                 initial_values,
+                &self.plan.zero_amplitude_indices,
             );
-            profile.initialize_s += initialize_started.elapsed().as_secs_f64();
+            profile.initialize += initialize_started.elapsed();
 
             for (stage, schedule) in self.plan.stages.iter().zip(&self.schedule.stages) {
                 execute_stage_profiled(
@@ -573,7 +679,7 @@ impl EagerExecutionRuntime {
 
             let reduction_started = Instant::now();
             reduce_tile(&self.plan, &mut self.workspace, tile_points);
-            profile.reduction_s += reduction_started.elapsed().as_secs_f64();
+            profile.reduction += reduction_started.elapsed();
 
             let copy_started = Instant::now();
             copy_tile_results(
@@ -585,13 +691,27 @@ impl EagerExecutionRuntime {
                 amplitudes,
                 reduced,
             );
-            profile.copy_out_s += copy_started.elapsed().as_secs_f64();
+            profile.copy_out += copy_started.elapsed();
             tile_start += tile_points;
         }
-        profile.total_s = total_started.elapsed().as_secs_f64();
-        debug_assert!(profile.accounted_s() <= profile.total_s * 1.05 + f64::EPSILON);
+        profile.total = total_started.elapsed();
+        debug_assert!(profile.accounted() <= profile.total);
         Ok(profile)
     }
+}
+
+fn effective_tile_capacity(
+    requested_tile: usize,
+    workspace_maximum_tile: usize,
+    persistent_bytes_per_point: usize,
+) -> usize {
+    let cache_maximum_tile = (MAX_PERSISTENT_TILE_BYTES / persistent_bytes_per_point).max(1);
+    let maximum_tile = workspace_maximum_tile.min(cache_maximum_tile);
+    let mut tile_capacity = min(requested_tile, maximum_tile);
+    if tile_capacity < requested_tile && tile_capacity >= PREFERRED_TILE_ALIGNMENT {
+        tile_capacity -= tile_capacity % PREFERRED_TILE_ALIGNMENT;
+    }
+    tile_capacity
 }
 
 fn used_kernel_io_components(plan: &EagerExecutionPlan) -> RusticolResult<usize> {
@@ -667,13 +787,18 @@ fn build_schedule_for_rows(
             .iter()
             .map(|item| item.row.kernel_id)
             .collect::<Vec<_>>();
-        let finalization_packets = packetize(
+        let mut finalization_packets = packetize(
             PacketRole::Finalization,
             &finalization_ids,
             kernels,
             tile_capacity,
             packet_budget,
             &mut packet_buffer_len,
+        )?;
+        configure_linear_finalization_packets(
+            &mut finalization_packets,
+            &stage.finalizations,
+            kernels,
         )?;
         stages.push(StageSchedule {
             invocation_packets,
@@ -765,10 +890,12 @@ fn build_selected_execution(
         }
         stages.push(EagerStagePlan {
             stage_index: stage.stage_index,
+            current_component_count: stage.current_component_count,
             invocations,
             attachments,
             finalization_copies,
             finalizations,
+            zero_current_ranges: Vec::new(),
         });
     }
     let mut closures = Vec::new();
@@ -783,6 +910,36 @@ fn build_selected_execution(
             direct_closures.push(item.clone());
         }
     }
+    for stage in &mut stages {
+        stage.zero_current_ranges = super::plan::mark_initial_current_writes(
+            &stage.invocations,
+            &mut stage.attachments,
+            &stage.finalizations,
+        );
+    }
+    let zero_amplitude_indices = super::plan::mark_initial_amplitude_writes(
+        &mut closures,
+        &mut direct_closures,
+        plan.amplitude_count,
+    );
+    let mut active_amplitude_indices = plan
+        .reduction_groups
+        .iter()
+        .filter(|group| {
+            active_groups
+                .binary_search(&group.coherent_group_id)
+                .is_ok()
+        })
+        .flat_map(|group| group.amplitude_indices.iter().copied())
+        .map(|index| index as usize)
+        .collect::<Vec<_>>();
+    active_amplitude_indices.sort_unstable();
+    active_amplitude_indices.dedup();
+    let active_zero_amplitude_indices = zero_amplitude_indices
+        .iter()
+        .copied()
+        .filter(|index| active_amplitude_indices.binary_search(index).is_ok())
+        .collect::<Vec<_>>();
     let schedule = build_schedule_for_rows(
         &plan.kernels,
         &stages,
@@ -792,9 +949,12 @@ fn build_selected_execution(
     )?;
     Ok(SelectedExecution {
         active_groups: active_groups.to_vec(),
+        active_amplitude_indices,
         stages,
         closures,
         direct_closures,
+        zero_amplitude_indices,
+        active_zero_amplitude_indices,
         schedule,
     })
 }
@@ -803,10 +963,12 @@ fn selected_execution_rows<'a>(
     plan: &'a EagerExecutionPlan,
     full_schedule: &'a ExecutionSchedule,
     selected: Option<&'a SelectedExecution>,
+    active_amplitudes_only: bool,
 ) -> (
     &'a [EagerStagePlan],
     &'a [ScheduledClosure],
     &'a [ScheduledDirectClosure],
+    &'a [usize],
     &'a ExecutionSchedule,
 ) {
     if let Some(selected) = selected {
@@ -814,6 +976,11 @@ fn selected_execution_rows<'a>(
             &selected.stages,
             &selected.closures,
             &selected.direct_closures,
+            if active_amplitudes_only {
+                &selected.active_zero_amplitude_indices
+            } else {
+                &selected.zero_amplitude_indices
+            },
             &selected.schedule,
         );
     }
@@ -821,6 +988,7 @@ fn selected_execution_rows<'a>(
         &plan.stages,
         &plan.closures,
         &plan.direct_closures,
+        &plan.zero_amplitude_indices,
         full_schedule,
     )
 }
@@ -860,7 +1028,44 @@ fn packetize(
                 "eager workspace cannot hold one kernel {kernel_id} packet"
             )));
         }
+        let requested_block_size = if role == PacketRole::Invocation {
+            usize::try_from(kernel.independent_block_size)
+                .map_err(|_| RusticolError::artifact("eager block size does not fit usize"))?
+        } else {
+            1
+        };
+        let block_size = if requested_block_size > 1 && capacity >= requested_block_size {
+            requested_block_size
+        } else {
+            1
+        };
+        let blocked_end = if block_size > 1 {
+            start + ((run_end - start) / block_size) * block_size
+        } else {
+            start
+        };
         let mut packet_start = start;
+        let blocked_capacity = (capacity / block_size) * block_size;
+        while packet_start < blocked_end {
+            let packet_end = min(blocked_end, packet_start + blocked_capacity);
+            let invocation_count = packet_end - packet_start;
+            let elements = input_components
+                .checked_add(output_components)
+                .and_then(|value| value.checked_mul(invocation_count))
+                .and_then(|value| value.checked_mul(tile_capacity))
+                .ok_or_else(|| RusticolError::invalid_argument("eager packet size overflows"))?;
+            *packet_buffer_len = (*packet_buffer_len).max(elements);
+            packets.push(KernelPacket {
+                role,
+                kernel_id,
+                independent_block_size: block_size,
+                item_range: packet_start..packet_end,
+                input_components,
+                output_components,
+                linear_finalization: None,
+            });
+            packet_start = packet_end;
+        }
         while packet_start < run_end {
             let packet_end = min(run_end, packet_start + capacity);
             let invocation_count = packet_end - packet_start;
@@ -873,15 +1078,78 @@ fn packetize(
             packets.push(KernelPacket {
                 role,
                 kernel_id,
+                independent_block_size: 1,
                 item_range: packet_start..packet_end,
                 input_components,
                 output_components,
+                linear_finalization: None,
             });
             packet_start = packet_end;
         }
         start = run_end;
     }
     Ok(packets)
+}
+
+fn configure_linear_finalization_packets(
+    packets: &mut [KernelPacket],
+    rows: &[ScheduledFinalization],
+    kernels: &BTreeMap<u32, EagerKernelSpec>,
+) -> RusticolResult<()> {
+    for packet in packets {
+        let items = &rows[packet.item_range.clone()];
+        let kernel = kernels.get(&packet.kernel_id).ok_or_else(|| {
+            RusticolError::internal(format!(
+                "eager schedule lost finalization kernel {}",
+                packet.kernel_id
+            ))
+        })?;
+        if !kernel.homogeneous_linear_first_current {
+            continue;
+        }
+        let current_components = kernel
+            .inputs
+            .iter()
+            .filter_map(|input| match input {
+                super::EagerKernelInput::FirstCurrentComponent(component) => Some(*component),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if current_components.is_empty() {
+            continue;
+        }
+
+        let mut momentum_groups = Vec::<ComponentRange>::new();
+        let mut item_group_indices = Vec::with_capacity(items.len());
+        for item in items {
+            let group_index = momentum_groups
+                .iter()
+                .position(|momentum| *momentum == item.momentum)
+                .unwrap_or_else(|| {
+                    momentum_groups.push(item.momentum);
+                    momentum_groups.len() - 1
+                });
+            item_group_indices.push(group_index);
+        }
+        let lane_multiplier = momentum_groups
+            .len()
+            .checked_mul(current_components.len())
+            .ok_or_else(|| {
+                RusticolError::invalid_argument("eager linear finalization overflows")
+            })?;
+        // Basis evaluation is useful only when shared momentum dependence
+        // reduces the number of backend lanes. Otherwise retain the direct
+        // prepared-kernel path and its simpler scatter.
+        if lane_multiplier >= items.len() {
+            continue;
+        }
+        packet.linear_finalization = Some(LinearFinalizationPacket {
+            momentum_groups,
+            item_group_indices,
+            current_components,
+        });
+    }
+    Ok(())
 }
 
 fn allocate_workspace(
@@ -893,7 +1161,7 @@ fn allocate_workspace(
         tile_capacity,
         values: zeroed_complex_workspace(plan.values.component_count, tile_capacity, "values")?,
         currents: zeroed_complex_workspace(
-            plan.currents.component_count,
+            plan.current_workspace_component_count(),
             tile_capacity,
             "currents",
         )?,
@@ -1110,6 +1378,8 @@ mod tests {
                     EagerKernelInput::FirstMomentumComponent(0),
                 ],
                 output_component_count: 1,
+                homogeneous_linear_first_current: false,
+                independent_block_size: 1,
             }],
             direct_closures: vec![EagerDirectClosureSpec {
                 closure_index: 0,
@@ -1139,6 +1409,7 @@ mod tests {
             left_momentum_slot_id: 0,
             right_momentum_slot_id: 0,
             coupling_slot_id: 0,
+            output_factor_source: crate::EAGER_OUTPUT_FACTOR_NONE,
             attachment_start: 0,
             attachment_count: 1,
         }])
@@ -1163,6 +1434,7 @@ mod tests {
             right_value_slot_id: 0,
             amplitude_index: 0,
             coupling_slot_id: MISSING_U32,
+            output_factor_source: crate::EAGER_OUTPUT_FACTOR_NONE,
             factor_real: 1.0,
             factor_imag: 0.0,
         }])
@@ -1242,14 +1514,88 @@ mod tests {
 
         assert_eq!(profiled_amplitudes, hot_amplitudes);
         assert_eq!(profiled_reduced, hot_reduced);
-        assert!(profile.initialize_s > 0.0);
-        assert!(profile.gather_s > 0.0);
-        assert!(profile.kernel_call_s > 0.0);
-        assert!(profile.invocation_scatter_s > 0.0);
-        assert!(profile.finalization_s > 0.0);
-        assert!(profile.closure_s > 0.0);
-        assert!(profile.reduction_s > 0.0);
-        assert!(profile.copy_out_s > 0.0);
-        assert!(profile.accounted_s() <= profile.total_s);
+        assert!(!profile.initialize.is_zero());
+        assert!(!profile.gather.is_zero());
+        assert!(!profile.kernel_call.is_zero());
+        assert!(!profile.invocation_scatter.is_zero());
+        assert!(!profile.finalization.is_zero());
+        assert!(!profile.closure.is_zero());
+        assert!(!profile.reduction.is_zero());
+        assert!(!profile.copy_out.is_zero());
+        assert!(profile.accounted() <= profile.total);
+    }
+
+    #[test]
+    fn effective_tile_uses_requested_size_as_an_upper_bound() {
+        assert_eq!(effective_tile_capacity(32, 4096, 63_240), 32);
+        assert_eq!(effective_tile_capacity(1024, 4096, 63_240), 264);
+        assert_eq!(effective_tile_capacity(1024, 4096, usize::MAX), 1);
+    }
+
+    #[test]
+    fn shared_linear_finalization_requires_an_exact_kernel_proof() {
+        let rows = [0_u32, 1_u32].map(|current_id| ScheduledFinalization {
+            row: EagerFinalizationRow {
+                kernel_id: 7,
+                current_id,
+                unpropagated_value_slot_id: MISSING_U32,
+                propagated_value_slot_id: current_id,
+                momentum_slot_id: 0,
+            },
+            current: ComponentRange {
+                start: current_id as usize,
+                len: 1,
+            },
+            propagated: Some(ComponentRange {
+                start: current_id as usize,
+                len: 1,
+            }),
+            momentum: ComponentRange { start: 0, len: 1 },
+            selector_domain_id: None,
+        });
+        let packet = KernelPacket {
+            role: PacketRole::Finalization,
+            kernel_id: 7,
+            independent_block_size: 1,
+            item_range: 0..2,
+            input_components: 2,
+            output_components: 1,
+            linear_finalization: None,
+        };
+        let kernel = |proved| EagerKernelSpec {
+            kernel_id: 7,
+            role: EagerKernelRole::Finalization,
+            inputs: vec![
+                EagerKernelInput::FirstCurrentComponent(0),
+                EagerKernelInput::FirstMomentumComponent(0),
+            ],
+            output_component_count: 1,
+            homogeneous_linear_first_current: proved,
+            independent_block_size: 1,
+        };
+
+        let mut packets = vec![packet.clone()];
+        configure_linear_finalization_packets(
+            &mut packets,
+            &rows,
+            &BTreeMap::from([(7, kernel(false))]),
+        )
+        .unwrap();
+        assert!(packets[0].linear_finalization.is_none());
+
+        configure_linear_finalization_packets(
+            &mut packets,
+            &rows,
+            &BTreeMap::from([(7, kernel(true))]),
+        )
+        .unwrap();
+        assert_eq!(
+            packets[0]
+                .linear_finalization
+                .as_ref()
+                .unwrap()
+                .lane_multiplier(),
+            1
+        );
     }
 }

@@ -12,10 +12,20 @@ from typing import ClassVar, Protocol, TypeVar
 from .._internal.versions import EAGER_DAG_F64_RUNTIME_CAPABILITY
 from ..models.prepared import EAGER_KERNEL_ABI
 
-EAGER_PLAN_ABI = "pyamplicol-eager-plan-v1"
+EAGER_PLAN_ABI = "pyamplicol-eager-plan-v2"
 EAGER_RUNTIME_CAPABILITY = EAGER_DAG_F64_RUNTIME_CAPABILITY
 EAGER_SELECTOR_DOMAINS_ABI = "pyamplicol-eager-selector-domains-v1"
 MISSING_U32 = (1 << 32) - 1
+EAGER_OUTPUT_FACTOR_NONE = 0
+EAGER_OUTPUT_FACTOR_COUPLING_REAL = 1
+EAGER_OUTPUT_FACTOR_COUPLING_IMAG = 2
+_EAGER_OUTPUT_FACTOR_SOURCES = frozenset(
+    (
+        EAGER_OUTPUT_FACTOR_NONE,
+        EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+        EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
+    )
+)
 
 
 class _FixedWidthRow(Protocol):
@@ -54,10 +64,11 @@ class EagerInvocationRow:
     left_momentum_slot_id: int
     right_momentum_slot_id: int
     coupling_slot_id: int
+    output_factor_source: int
     attachment_start: int
     attachment_count: int
 
-    _STRUCT: ClassVar[struct.Struct] = struct.Struct("<IIIIIIQQ")
+    _STRUCT: ClassVar[struct.Struct] = struct.Struct("<IIIIIIIQQ")
 
     def __post_init__(self) -> None:
         for field in (
@@ -67,8 +78,11 @@ class EagerInvocationRow:
             "left_momentum_slot_id",
             "right_momentum_slot_id",
             "coupling_slot_id",
+            "output_factor_source",
         ):
             object.__setattr__(self, field, _u32(getattr(self, field), field))
+        if self.output_factor_source not in _EAGER_OUTPUT_FACTOR_SOURCES:
+            raise ValueError("unsupported eager invocation output factor source")
         for field in ("attachment_start", "attachment_count"):
             object.__setattr__(self, field, _u64(getattr(self, field), field))
 
@@ -80,6 +94,7 @@ class EagerInvocationRow:
             self.left_momentum_slot_id,
             self.right_momentum_slot_id,
             self.coupling_slot_id,
+            self.output_factor_source,
             self.attachment_start,
             self.attachment_count,
         )
@@ -87,6 +102,33 @@ class EagerInvocationRow:
     @classmethod
     def _from_values(cls, values: tuple[int | float, ...]) -> EagerInvocationRow:
         return cls(*(int(value) for value in values))
+
+    @classmethod
+    def _from_trusted_values(
+        cls,
+        kernel_id: int,
+        left_value_slot_id: int,
+        right_value_slot_id: int,
+        left_momentum_slot_id: int,
+        right_momentum_slot_id: int,
+        coupling_slot_id: int,
+        output_factor_source: int,
+        attachment_start: int,
+        attachment_count: int,
+    ) -> EagerInvocationRow:
+        """Construct an internally proven row without repeating boundary checks."""
+
+        row = object.__new__(cls)
+        object.__setattr__(row, "kernel_id", kernel_id)
+        object.__setattr__(row, "left_value_slot_id", left_value_slot_id)
+        object.__setattr__(row, "right_value_slot_id", right_value_slot_id)
+        object.__setattr__(row, "left_momentum_slot_id", left_momentum_slot_id)
+        object.__setattr__(row, "right_momentum_slot_id", right_momentum_slot_id)
+        object.__setattr__(row, "coupling_slot_id", coupling_slot_id)
+        object.__setattr__(row, "output_factor_source", output_factor_source)
+        object.__setattr__(row, "attachment_start", attachment_start)
+        object.__setattr__(row, "attachment_count", attachment_count)
+        return row
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +158,19 @@ class EagerAttachmentRow:
     @classmethod
     def _from_values(cls, values: tuple[int | float, ...]) -> EagerAttachmentRow:
         return cls(int(values[0]), float(values[1]), float(values[2]))
+
+    @classmethod
+    def _from_trusted_values(
+        cls,
+        result_current_id: int,
+        factor_real: float,
+        factor_imag: float,
+    ) -> EagerAttachmentRow:
+        row = object.__new__(cls)
+        object.__setattr__(row, "result_current_id", result_current_id)
+        object.__setattr__(row, "factor_real", factor_real)
+        object.__setattr__(row, "factor_imag", factor_imag)
+        return row
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +208,21 @@ class EagerCouplingRow:
             float(values[2]),
             float(values[3]),
         )
+
+    @classmethod
+    def _from_trusted_values(
+        cls,
+        real_parameter_id: int,
+        imag_parameter_id: int,
+        constant_real: float,
+        constant_imag: float,
+    ) -> EagerCouplingRow:
+        row = object.__new__(cls)
+        object.__setattr__(row, "real_parameter_id", real_parameter_id)
+        object.__setattr__(row, "imag_parameter_id", imag_parameter_id)
+        object.__setattr__(row, "constant_real", constant_real)
+        object.__setattr__(row, "constant_imag", constant_imag)
+        return row
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +272,27 @@ class EagerFinalizationRow:
     def _from_values(cls, values: tuple[int | float, ...]) -> EagerFinalizationRow:
         return cls(*(int(value) for value in values))
 
+    @classmethod
+    def _from_trusted_values(
+        cls,
+        kernel_id: int,
+        current_id: int,
+        unpropagated_value_slot_id: int,
+        propagated_value_slot_id: int,
+        momentum_slot_id: int,
+    ) -> EagerFinalizationRow:
+        row = object.__new__(cls)
+        object.__setattr__(row, "kernel_id", kernel_id)
+        object.__setattr__(row, "current_id", current_id)
+        object.__setattr__(
+            row,
+            "unpropagated_value_slot_id",
+            unpropagated_value_slot_id,
+        )
+        object.__setattr__(row, "propagated_value_slot_id", propagated_value_slot_id)
+        object.__setattr__(row, "momentum_slot_id", momentum_slot_id)
+        return row
+
 
 @dataclass(frozen=True, slots=True)
 class EagerClosureRow:
@@ -212,10 +303,11 @@ class EagerClosureRow:
     right_value_slot_id: int
     amplitude_index: int
     coupling_slot_id: int
+    output_factor_source: int
     factor_real: float
     factor_imag: float
 
-    _STRUCT: ClassVar[struct.Struct] = struct.Struct("<IIIIIdd")
+    _STRUCT: ClassVar[struct.Struct] = struct.Struct("<IIIIIIdd")
 
     def __post_init__(self) -> None:
         for field in (
@@ -224,8 +316,11 @@ class EagerClosureRow:
             "right_value_slot_id",
             "amplitude_index",
             "coupling_slot_id",
+            "output_factor_source",
         ):
             object.__setattr__(self, field, _u32(getattr(self, field), field))
+        if self.output_factor_source not in _EAGER_OUTPUT_FACTOR_SOURCES:
+            raise ValueError("unsupported eager closure output factor source")
         object.__setattr__(self, "factor_real", float(self.factor_real))
         object.__setattr__(self, "factor_imag", float(self.factor_imag))
         if not isfinite(self.factor_real) or not isfinite(self.factor_imag):
@@ -238,6 +333,7 @@ class EagerClosureRow:
             self.right_value_slot_id,
             self.amplitude_index,
             self.coupling_slot_id,
+            self.output_factor_source,
             self.factor_real,
             self.factor_imag,
         )
@@ -250,9 +346,33 @@ class EagerClosureRow:
             int(values[2]),
             int(values[3]),
             int(values[4]),
-            float(values[5]),
+            int(values[5]),
             float(values[6]),
+            float(values[7]),
         )
+
+    @classmethod
+    def _from_trusted_values(
+        cls,
+        kernel_id: int,
+        left_value_slot_id: int,
+        right_value_slot_id: int,
+        amplitude_index: int,
+        coupling_slot_id: int,
+        output_factor_source: int,
+        factor_real: float,
+        factor_imag: float,
+    ) -> EagerClosureRow:
+        row = object.__new__(cls)
+        object.__setattr__(row, "kernel_id", kernel_id)
+        object.__setattr__(row, "left_value_slot_id", left_value_slot_id)
+        object.__setattr__(row, "right_value_slot_id", right_value_slot_id)
+        object.__setattr__(row, "amplitude_index", amplitude_index)
+        object.__setattr__(row, "coupling_slot_id", coupling_slot_id)
+        object.__setattr__(row, "output_factor_source", output_factor_source)
+        object.__setattr__(row, "factor_real", factor_real)
+        object.__setattr__(row, "factor_imag", factor_imag)
+        return row
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +394,17 @@ class EagerSelectorDomainRow:
     @classmethod
     def _from_values(cls, values: tuple[int | float, ...]) -> EagerSelectorDomainRow:
         return cls(int(values[0]), int(values[1]))
+
+    @classmethod
+    def _from_trusted_values(
+        cls,
+        member_start: int,
+        member_count: int,
+    ) -> EagerSelectorDomainRow:
+        row = object.__new__(cls)
+        object.__setattr__(row, "member_start", member_start)
+        object.__setattr__(row, "member_count", member_count)
+        return row
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,6 +429,12 @@ class EagerSelectorGroupRow:
     def _from_values(cls, values: tuple[int | float, ...]) -> EagerSelectorGroupRow:
         return cls(int(values[0]))
 
+    @classmethod
+    def _from_trusted_values(cls, coherent_group_id: int) -> EagerSelectorGroupRow:
+        row = object.__new__(cls)
+        object.__setattr__(row, "coherent_group_id", coherent_group_id)
+        return row
+
 
 @dataclass(frozen=True, slots=True)
 class EagerSelectorDomainIdRow:
@@ -316,6 +453,12 @@ class EagerSelectorDomainIdRow:
     @classmethod
     def _from_values(cls, values: tuple[int | float, ...]) -> EagerSelectorDomainIdRow:
         return cls(int(values[0]))
+
+    @classmethod
+    def _from_trusted_values(cls, domain_id: int) -> EagerSelectorDomainIdRow:
+        row = object.__new__(cls)
+        object.__setattr__(row, "domain_id", domain_id)
+        return row
 
 
 def pack_rows(rows: Iterable[_FixedWidthRow]) -> bytes:
@@ -346,6 +489,9 @@ def unpack_rows(payload: bytes, row_type: type[_RowT]) -> tuple[_RowT, ...]:
 
 __all__ = [
     "EAGER_KERNEL_ABI",
+    "EAGER_OUTPUT_FACTOR_COUPLING_IMAG",
+    "EAGER_OUTPUT_FACTOR_COUPLING_REAL",
+    "EAGER_OUTPUT_FACTOR_NONE",
     "EAGER_PLAN_ABI",
     "EAGER_RUNTIME_CAPABILITY",
     "EAGER_SELECTOR_DOMAINS_ABI",

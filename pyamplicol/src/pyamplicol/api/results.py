@@ -563,10 +563,14 @@ class BenchmarkTimingBreakdown:
     amplitude_evaluator_call_time: BenchmarkComponentTiming | None = None
     reduction_time: BenchmarkComponentTiming | None = None
     eager_execution_time: BenchmarkComponentTiming | None = None
+    eager_initialize_time: BenchmarkComponentTiming | None = None
     eager_gather_time: BenchmarkComponentTiming | None = None
     eager_kernel_call_time: BenchmarkComponentTiming | None = None
+    eager_invocation_scatter_time: BenchmarkComponentTiming | None = None
+    eager_finalization_time: BenchmarkComponentTiming | None = None
     eager_scatter_finalization_time: BenchmarkComponentTiming | None = None
     eager_closure_time: BenchmarkComponentTiming | None = None
+    eager_copy_out_time: BenchmarkComponentTiming | None = None
     stages: tuple[BenchmarkStageTiming, ...] = ()
 
     def __post_init__(self) -> None:
@@ -591,10 +595,14 @@ class BenchmarkTimingBreakdown:
             "amplitude_evaluator_call_time",
             "reduction_time",
             "eager_execution_time",
+            "eager_initialize_time",
             "eager_gather_time",
             "eager_kernel_call_time",
+            "eager_invocation_scatter_time",
+            "eager_finalization_time",
             "eager_scatter_finalization_time",
             "eager_closure_time",
+            "eager_copy_out_time",
         ):
             value = getattr(self, name)
             if value is not None and not isinstance(value, BenchmarkComponentTiming):

@@ -8,6 +8,7 @@ from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.eager_lowering import (
     EAGER_RUNTIME_KIND,
     MappingEagerKernelResolver,
+    PreparedCatalogEagerKernelIndex,
     PreparedCatalogEagerKernelResolver,
     lower_eager_execution_tables,
 )
@@ -219,7 +220,7 @@ def test_selector_domains_remain_additive_to_eager_plan_v1() -> None:
     )
 
 
-def test_direct_contractions_remain_native_and_couplings_are_parameterized() -> None:
+def test_direct_contractions_remain_native_and_fixed_couplings_are_constant() -> None:
     _model, _dag, _schema, tables = _gluon_scattering_tables()
 
     assert tables.closures
@@ -231,7 +232,8 @@ def test_direct_contractions_remain_native_and_couplings_are_parameterized() -> 
     )
     assert all(row.coupling_slot_id == MISSING_U32 for row in tables.closures)
     assert tables.couplings
-    assert all(row.real_parameter_id != MISSING_U32 for row in tables.couplings)
+    assert all(row.real_parameter_id == MISSING_U32 for row in tables.couplings)
+    assert all(row.imag_parameter_id == MISSING_U32 for row in tables.couplings)
 
 
 def test_prepared_catalog_resolves_every_real_dag_orientation() -> None:
@@ -239,7 +241,9 @@ def test_prepared_catalog_resolves_every_real_dag_orientation() -> None:
     dag = compile_generic_dag(build_process_ir("g g > g g"), model=model)
     schema = build_runtime_schema(dag, model, process_id="gg_gg")
     catalog = build_prepared_kernel_catalog(model)
-    resolver = PreparedCatalogEagerKernelResolver(dag, catalog.resolver_manifest())
+    manifest = catalog.resolver_manifest()
+    index = PreparedCatalogEagerKernelIndex.from_manifest(manifest)
+    resolver = PreparedCatalogEagerKernelResolver(dag, index)
 
     tables = lower_eager_execution_tables(dag, model, schema, resolver)
 

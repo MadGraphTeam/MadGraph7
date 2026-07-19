@@ -14,10 +14,16 @@ from pyamplicol.models import (
     compile_model_source,
 )
 from pyamplicol.models.prepared_catalog import (
+    PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF,
+    PREPARED_INDEPENDENT_BLOCK_PROOF,
     PreparedKernelCatalogError,
     PropagatorKernelKey,
     build_prepared_kernel_catalog,
 )
+from pyamplicol.models.prepared_catalog_helpers import (
+    proves_homogeneous_complex_linearity,
+)
+from pyamplicol.models.prepared_compile import _independent_block_contract
 
 MODEL_ROOT = (
     Path(__file__).resolve().parents[2]
@@ -28,6 +34,26 @@ MODEL_ROOT = (
     / "json"
     / "sm"
 )
+
+
+def test_homogeneous_current_linearity_proof_fails_closed() -> None:
+    from symbolica import E
+
+    current = (E("proof_current_0"), E("proof_current_1"))
+    momentum = E("proof_momentum")
+
+    assert proves_homogeneous_complex_linearity(
+        (current[0] * momentum + 2 * current[1],), current
+    )
+    assert not proves_homogeneous_complex_linearity(
+        (current[0] * momentum + 2 * current[1] + 3,), current
+    )
+    assert not proves_homogeneous_complex_linearity(
+        (current[0] * current[1],), current
+    )
+    assert not proves_homogeneous_complex_linearity(
+        (E("conj(proof_current_0)"),), current
+    )
 
 
 @pytest.fixture(scope="module")
@@ -73,9 +99,7 @@ def test_every_builtin_vertex_kind_has_a_constructive_binding(
         == set(range(25))
     )
     assert not [
-        gap
-        for gap in catalog.unsupported_variants
-        if gap.contract_kind == "vertex"
+        gap for gap in catalog.unsupported_variants if gap.contract_kind == "vertex"
     ]
 
 
@@ -135,6 +159,17 @@ def test_builtin_chirality_dimensions_and_propagator_coverage(
         (binding.kernel_id is not None) == binding.applies_propagator
         for binding in catalog.propagator_bindings
     )
+    assert all(
+        PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF
+        in by_id[binding.kernel_id].proof_classes
+        for binding in catalog.propagator_bindings
+        if binding.kernel_id is not None
+    )
+    assert all(
+        PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF not in kernel.proof_classes
+        for kernel in catalog.kernels
+        if kernel.contract_kind != "propagator"
+    )
 
 
 def test_direct_contractions_remain_native_while_vertex_closures_are_catalogued(
@@ -147,6 +182,34 @@ def test_direct_contractions_remain_native_while_vertex_closures_are_catalogued(
     assert kinds["closure"] > 0
     assert catalog.closure_bindings
     assert all(binding.projection == "scalar" for binding in catalog.closure_bindings)
+
+
+def test_builtin_catalog_factors_and_deduplicates_linear_coupling_outputs(
+    builtin_catalog,
+) -> None:
+    _model, catalog = builtin_catalog
+    bindings_by_kernel: dict[int, set[str]] = {}
+    factored_bindings = 0
+    for binding in catalog.vertex_bindings:
+        bindings_by_kernel.setdefault(binding.kernel_id, set()).add(
+            binding.output_factor_source
+        )
+        if binding.output_factor_source == "none":
+            continue
+        factored_bindings += 1
+        assert not {
+            descriptor.role for descriptor in catalog.by_id[binding.kernel_id].inputs
+        } & {"coupling-real", "coupling-imag"}
+
+    assert factored_bindings > 0
+    assert any(
+        "none" in sources and bool(sources & {"coupling-real", "coupling-imag"})
+        for sources in bindings_by_kernel.values()
+    )
+    assert all(
+        binding.output_factor_source == "coupling-real"
+        for binding in catalog.closure_bindings
+    )
 
 
 def test_catalog_exact_contracts_are_finite_namespaced_and_nonempty(
@@ -167,6 +230,64 @@ def test_catalog_exact_contracts_are_finite_namespaced_and_nonempty(
         )
 
 
+def test_every_certified_builtin_block_reconstructs_four_scalar_calls(
+    builtin_catalog,
+) -> None:
+    from symbolica import E, Replacement
+
+    _model, catalog = builtin_catalog
+    certified = tuple(
+        kernel
+        for kernel in catalog.kernels
+        if PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes
+    )
+    assert certified
+    for kernel in certified:
+        assert kernel.contract_kind == "vertex"
+        assert {item.role for item in kernel.inputs}.issubset(
+            {"left-current", "right-current"}
+        )
+        contract = _independent_block_contract(kernel)
+        assert len(contract.parameters) == 4 * kernel.input_arity
+        assert len(contract.outputs) == 4 * kernel.output_dimension
+        scalar_inputs = tuple(E(item.symbol) for item in kernel.inputs)
+        expected = tuple(
+            E(item).to_canonical_string() for item in kernel.exact_expressions
+        )
+        for lane in range(4):
+            lane_inputs = contract.parameters[
+                lane * kernel.input_arity : (lane + 1) * kernel.input_arity
+            ]
+            reverse = tuple(
+                Replacement(block_input, scalar_input)
+                for block_input, scalar_input in zip(
+                    lane_inputs, scalar_inputs, strict=True
+                )
+            )
+            lane_outputs = contract.outputs[
+                lane * kernel.output_dimension : (lane + 1) * kernel.output_dimension
+            ]
+            assert tuple(
+                output.replace_multiple(reverse).to_canonical_string()
+                for output in lane_outputs
+            ) == expected
+
+
+def test_independent_block_proof_excludes_non_current_vertex_contracts(
+    builtin_catalog,
+) -> None:
+    _model, catalog = builtin_catalog
+    for kernel in catalog.kernels:
+        if PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes:
+            continue
+        if kernel.contract_kind != "vertex":
+            continue
+        assert any(
+            item.role not in {"left-current", "right-current"}
+            for item in kernel.inputs
+        )
+
+
 def test_external_sm_active_oriented_kernels_and_parameters_are_catalogued(
     external_sm_catalog,
 ) -> None:
@@ -182,6 +303,11 @@ def test_external_sm_active_oriented_kernels_and_parameters_are_catalogued(
     )
     assert not catalog.closure_bindings
     assert not catalog.unsupported_variants
+    assert all(
+        PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF in kernel.proof_classes
+        for kernel in catalog.kernels
+        if kernel.contract_kind == "propagator"
+    )
 
 
 def test_external_sm_catalog_signatures_ignore_compiled_inventory_order(

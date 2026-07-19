@@ -23,6 +23,13 @@ _TEMPLATES: tuple[tuple[str, str, str, bool], ...] = (
         True,
     ),
     (
+        "c/check_standalone.c",
+        "text/x-csrc",
+        "api-source",
+        False,
+    ),
+    ("c/Makefile", "text/x-makefile", "api-build-file", False),
+    (
         "cpp/check_standalone.cpp",
         "text/x-c++src",
         "api-source",

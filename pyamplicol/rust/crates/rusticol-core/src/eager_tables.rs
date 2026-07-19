@@ -3,11 +3,14 @@
 use crate::{RusticolError, RusticolResult};
 use std::mem::size_of;
 
-pub const EAGER_PLAN_ABI: &str = "pyamplicol-eager-plan-v1";
+pub const EAGER_PLAN_ABI: &str = "pyamplicol-eager-plan-v2";
 pub const EAGER_KERNEL_ABI: &str = "pyamplicol-eager-kernel-v1";
 pub const EAGER_SELECTOR_DOMAINS_ABI: &str = "pyamplicol-eager-selector-domains-v1";
 pub const EAGER_RUNTIME_CAPABILITY: &str = "rusticol.eager-dag.complex-f64.v1";
 pub const MISSING_U32: u32 = u32::MAX;
+pub const EAGER_OUTPUT_FACTOR_NONE: u32 = 0;
+pub const EAGER_OUTPUT_FACTOR_COUPLING_REAL: u32 = 1;
+pub const EAGER_OUTPUT_FACTOR_COUPLING_IMAG: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EagerInvocationRow {
@@ -17,6 +20,7 @@ pub struct EagerInvocationRow {
     pub left_momentum_slot_id: u32,
     pub right_momentum_slot_id: u32,
     pub coupling_slot_id: u32,
+    pub output_factor_source: u32,
     pub attachment_start: u64,
     pub attachment_count: u64,
 }
@@ -66,6 +70,7 @@ pub struct EagerClosureRow {
     pub right_value_slot_id: u32,
     pub amplitude_index: u32,
     pub coupling_slot_id: u32,
+    pub output_factor_source: u32,
     pub factor_real: f64,
     pub factor_imag: f64,
 }
@@ -113,10 +118,10 @@ macro_rules! impl_table_api {
 
 impl FixedWidthRow for EagerInvocationRow {
     const NAME: &'static str = "invocation";
-    const WIDTH: usize = 6 * size_of::<u32>() + 2 * size_of::<u64>();
+    const WIDTH: usize = 7 * size_of::<u32>() + 2 * size_of::<u64>();
 
-    fn validate_for_encoding(&self, _row_index: usize) -> RusticolResult<()> {
-        Ok(())
+    fn validate_for_encoding(&self, row_index: usize) -> RusticolResult<()> {
+        validate_output_factor_source_for_encoding(Self::NAME, row_index, self.output_factor_source)
     }
 
     fn encode_into(&self, output: &mut Vec<u8>) {
@@ -126,6 +131,7 @@ impl FixedWidthRow for EagerInvocationRow {
         push_u32(output, self.left_momentum_slot_id);
         push_u32(output, self.right_momentum_slot_id);
         push_u32(output, self.coupling_slot_id);
+        push_u32(output, self.output_factor_source);
         push_u64(output, self.attachment_start);
         push_u64(output, self.attachment_count);
     }
@@ -139,10 +145,16 @@ impl FixedWidthRow for EagerInvocationRow {
             left_momentum_slot_id: reader.read_u32()?,
             right_momentum_slot_id: reader.read_u32()?,
             coupling_slot_id: reader.read_u32()?,
+            output_factor_source: reader.read_u32()?,
             attachment_start: reader.read_u64()?,
             attachment_count: reader.read_u64()?,
         };
         reader.finish()?;
+        validate_output_factor_source_from_payload(
+            Self::NAME,
+            row_index,
+            row.output_factor_source,
+        )?;
         Ok(row)
     }
 }
@@ -239,9 +251,14 @@ impl FixedWidthRow for EagerFinalizationRow {
 
 impl FixedWidthRow for EagerClosureRow {
     const NAME: &'static str = "closure";
-    const WIDTH: usize = 5 * size_of::<u32>() + 2 * size_of::<f64>();
+    const WIDTH: usize = 6 * size_of::<u32>() + 2 * size_of::<f64>();
 
     fn validate_for_encoding(&self, row_index: usize) -> RusticolResult<()> {
+        validate_output_factor_source_for_encoding(
+            Self::NAME,
+            row_index,
+            self.output_factor_source,
+        )?;
         validate_finite_for_encoding(Self::NAME, row_index, "factor_real", self.factor_real)?;
         validate_finite_for_encoding(Self::NAME, row_index, "factor_imag", self.factor_imag)
     }
@@ -252,6 +269,7 @@ impl FixedWidthRow for EagerClosureRow {
         push_u32(output, self.right_value_slot_id);
         push_u32(output, self.amplitude_index);
         push_u32(output, self.coupling_slot_id);
+        push_u32(output, self.output_factor_source);
         push_f64(output, self.factor_real);
         push_f64(output, self.factor_imag);
     }
@@ -264,10 +282,16 @@ impl FixedWidthRow for EagerClosureRow {
             right_value_slot_id: reader.read_u32()?,
             amplitude_index: reader.read_u32()?,
             coupling_slot_id: reader.read_u32()?,
+            output_factor_source: reader.read_u32()?,
             factor_real: reader.read_f64()?,
             factor_imag: reader.read_f64()?,
         };
         reader.finish()?;
+        validate_output_factor_source_from_payload(
+            Self::NAME,
+            row_index,
+            row.output_factor_source,
+        )?;
         validate_finite_from_payload(Self::NAME, row_index, "factor_real", row.factor_real)?;
         validate_finite_from_payload(Self::NAME, row_index, "factor_imag", row.factor_imag)?;
         Ok(row)
@@ -427,6 +451,41 @@ fn push_f64(output: &mut Vec<u8>, value: f64) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
+fn output_factor_source_is_valid(source: u32) -> bool {
+    matches!(
+        source,
+        EAGER_OUTPUT_FACTOR_NONE
+            | EAGER_OUTPUT_FACTOR_COUPLING_REAL
+            | EAGER_OUTPUT_FACTOR_COUPLING_IMAG
+    )
+}
+
+fn validate_output_factor_source_for_encoding(
+    table: &str,
+    row_index: usize,
+    source: u32,
+) -> RusticolResult<()> {
+    if !output_factor_source_is_valid(source) {
+        return Err(RusticolError::invalid_argument(format!(
+            "eager {table} row {row_index} has unsupported output factor source {source}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_output_factor_source_from_payload(
+    table: &str,
+    row_index: usize,
+    source: u32,
+) -> RusticolResult<()> {
+    if !output_factor_source_is_valid(source) {
+        return Err(RusticolError::artifact(format!(
+            "eager {table} row {row_index} has unsupported output factor source {source}"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_finite_for_encoding(
     table: &str,
     row_index: usize,
@@ -527,7 +586,7 @@ mod tests {
 
     #[test]
     fn constants_match_python_contract() {
-        assert_eq!(EAGER_PLAN_ABI, "pyamplicol-eager-plan-v1");
+        assert_eq!(EAGER_PLAN_ABI, "pyamplicol-eager-plan-v2");
         assert_eq!(EAGER_KERNEL_ABI, "pyamplicol-eager-kernel-v1");
         assert_eq!(
             EAGER_RUNTIME_CAPABILITY,
@@ -545,16 +604,18 @@ mod tests {
             left_momentum_slot_id: 0x3132_3334,
             right_momentum_slot_id: 0x4142_4344,
             coupling_slot_id: 0x5152_5354,
+            output_factor_source: EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
             attachment_start: 0x0102_0304_0506_0708,
             attachment_count: 0x1112_1314_1516_1718,
         };
         let expected = [
             0x04, 0x03, 0x02, 0x01, 0x14, 0x13, 0x12, 0x11, 0x24, 0x23, 0x22, 0x21, 0x34, 0x33,
-            0x32, 0x31, 0x44, 0x43, 0x42, 0x41, 0x54, 0x53, 0x52, 0x51, 0x08, 0x07, 0x06, 0x05,
-            0x04, 0x03, 0x02, 0x01, 0x18, 0x17, 0x16, 0x15, 0x14, 0x13, 0x12, 0x11,
+            0x32, 0x31, 0x44, 0x43, 0x42, 0x41, 0x54, 0x53, 0x52, 0x51, 0x02, 0x00, 0x00, 0x00,
+            0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x18, 0x17, 0x16, 0x15, 0x14, 0x13,
+            0x12, 0x11,
         ];
 
-        assert_eq!(EagerInvocationRow::ENCODED_LEN, 40);
+        assert_eq!(EagerInvocationRow::ENCODED_LEN, 44);
         assert_eq!(EagerInvocationRow::encode_table(&[row]).unwrap(), expected);
         assert_eq!(EagerInvocationRow::decode_table(&expected).unwrap(), [row]);
     }
@@ -630,16 +691,17 @@ mod tests {
             right_value_slot_id: 0x2122_2324,
             amplitude_index: 0x3132_3334,
             coupling_slot_id: 0x4142_4344,
+            output_factor_source: EAGER_OUTPUT_FACTOR_COUPLING_REAL,
             factor_real: 1.5,
             factor_imag: -2.25,
         };
         let expected = [
             0x04, 0x03, 0x02, 0x01, 0x14, 0x13, 0x12, 0x11, 0x24, 0x23, 0x22, 0x21, 0x34, 0x33,
-            0x32, 0x31, 0x44, 0x43, 0x42, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x3f,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xc0,
+            0x32, 0x31, 0x44, 0x43, 0x42, 0x41, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xf8, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xc0,
         ];
 
-        assert_eq!(EagerClosureRow::ENCODED_LEN, 36);
+        assert_eq!(EagerClosureRow::ENCODED_LEN, 40);
         assert_eq!(EagerClosureRow::encode_table(&[row]).unwrap(), expected);
         assert_eq!(EagerClosureRow::decode_table(&expected).unwrap(), [row]);
     }
@@ -654,6 +716,7 @@ mod tests {
                 left_momentum_slot_id: MISSING_U32,
                 right_momentum_slot_id: 0,
                 coupling_slot_id: MISSING_U32,
+                output_factor_source: EAGER_OUTPUT_FACTOR_NONE,
                 attachment_start: 0,
                 attachment_count: u64::MAX,
             },
@@ -664,6 +727,7 @@ mod tests {
                 left_momentum_slot_id: 0,
                 right_momentum_slot_id: MISSING_U32,
                 coupling_slot_id: 0,
+                output_factor_source: EAGER_OUTPUT_FACTOR_COUPLING_REAL,
                 attachment_start: u64::MAX,
                 attachment_count: 0,
             },
@@ -692,6 +756,7 @@ mod tests {
             right_value_slot_id: MISSING_U32,
             amplitude_index: MISSING_U32,
             coupling_slot_id: MISSING_U32,
+            output_factor_source: EAGER_OUTPUT_FACTOR_NONE,
             factor_real: f64::MIN_POSITIVE,
             factor_imag: -0.0,
         }];
@@ -739,15 +804,14 @@ mod tests {
     #[test]
     fn truncated_payloads_are_artifact_errors() {
         let cases = [
-            EagerInvocationRow::decode_table(&vec![0; EagerInvocationRow::ENCODED_LEN - 1])
+            EagerInvocationRow::decode_table(&[0; EagerInvocationRow::ENCODED_LEN - 1])
                 .unwrap_err(),
-            EagerAttachmentRow::decode_table(&vec![0; EagerAttachmentRow::ENCODED_LEN - 1])
+            EagerAttachmentRow::decode_table(&[0; EagerAttachmentRow::ENCODED_LEN - 1])
                 .unwrap_err(),
-            EagerCouplingRow::decode_table(&vec![0; EagerCouplingRow::ENCODED_LEN - 1])
+            EagerCouplingRow::decode_table(&[0; EagerCouplingRow::ENCODED_LEN - 1]).unwrap_err(),
+            EagerFinalizationRow::decode_table(&[0; EagerFinalizationRow::ENCODED_LEN - 1])
                 .unwrap_err(),
-            EagerFinalizationRow::decode_table(&vec![0; EagerFinalizationRow::ENCODED_LEN - 1])
-                .unwrap_err(),
-            EagerClosureRow::decode_table(&vec![0; EagerClosureRow::ENCODED_LEN - 1]).unwrap_err(),
+            EagerClosureRow::decode_table(&[0; EagerClosureRow::ENCODED_LEN - 1]).unwrap_err(),
         ];
 
         for error in cases {
@@ -775,6 +839,7 @@ mod tests {
             right_value_slot_id: 0,
             amplitude_index: 0,
             coupling_slot_id: 0,
+            output_factor_source: EAGER_OUTPUT_FACTOR_NONE,
             factor_real: f64::NEG_INFINITY,
             factor_imag: 0.0,
         };
@@ -796,7 +861,7 @@ mod tests {
         let mut coupling = vec![0; EagerCouplingRow::ENCODED_LEN];
         coupling[8..16].copy_from_slice(&f64::NAN.to_le_bytes());
         let mut closure = vec![0; EagerClosureRow::ENCODED_LEN];
-        closure[20..28].copy_from_slice(&f64::NEG_INFINITY.to_le_bytes());
+        closure[24..32].copy_from_slice(&f64::NEG_INFINITY.to_le_bytes());
 
         for error in [
             EagerAttachmentRow::decode_table(&attachment).unwrap_err(),

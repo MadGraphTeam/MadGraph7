@@ -7,7 +7,7 @@ import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock
@@ -51,13 +51,15 @@ from .artifact_writer import (
 from .contracts import RuntimeExpressionSchema, StageCompilationInput
 from .dag_algorithms import (
     infer_minimal_coupling_order_limits,
+    prune_dag_to_amplitude_roots,
     prune_global_helicity_flip_equivalent_roots,
 )
 from .dag_compiler import _restrict_color_plan, compile_generic_dag
 from .dag_types import GenericDAG
 from .eager_lowering import (
+    PreparedCatalogEagerKernelIndex,
     PreparedCatalogEagerKernelResolver,
-    lower_eager_execution_tables,
+    lower_fused_eager_execution,
 )
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .runtime_schema import build_runtime_expression_schema
@@ -126,14 +128,10 @@ def _prepared_pack_effective_values(
         "evaluator.optimization.collect_factors": required("collect_factors"),
     }
     if pack.backend == "jit":
-        values["evaluator.jit.optimization_level"] = required(
-            "jit_optimization_level"
-        )
+        values["evaluator.jit.optimization_level"] = required("jit_optimization_level")
         return values
     optimization_level = required("compiled_optimization_level")
-    if isinstance(optimization_level, bool) or not isinstance(
-        optimization_level, int
-    ):
+    if isinstance(optimization_level, bool) or not isinstance(optimization_level, int):
         raise GenerationError(
             "prepared native kernel pack has an invalid optimization level"
         )
@@ -154,6 +152,7 @@ class _ResolvedModel:
     model: Model | None
     compiled: _CompiledModelPayload | None = None
     use_compiled_process_catalog: bool = True
+    eager_kernel_index: PreparedCatalogEagerKernelIndex | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -400,6 +399,7 @@ class GenerationBackend:
                 resolved_model = self._resolve_model(source)
                 artifact_model = self._artifact_model(resolved_model)
                 self._require_eager_kernel_pack(resolved_model)
+                resolved_model = self._index_eager_kernel_pack(resolved_model)
                 self._apply_prepared_kernel_pack_policy(resolved_model)
                 phase.update(1, message=artifact_model.name)
             generation_model = resolved_model.model
@@ -558,9 +558,7 @@ class GenerationBackend:
                     )
                     phase.update(1, message=str(write_result.output))
 
-                concrete_requests = tuple(
-                    entry.expanded.request for entry in prepared
-                )
+                concrete_requests = tuple(entry.expanded.request for entry in prepared)
                 validation_points_by_process = {
                     process.expanded.request.name: process.validation_points
                     for process in prepared
@@ -715,12 +713,26 @@ class GenerationBackend:
         index: int,
         phase: PhaseHandle,
     ) -> _CompiledProcess:
-        reduced = prune_global_helicity_flip_equivalent_roots(process.dag, model)
+        parity_preweighted = any(
+            float(root.helicity_weight) > 1.0 for root in process.dag.amplitude_roots
+        )
+        reduced = (
+            prune_dag_to_amplitude_roots(process.dag)
+            if parity_preweighted
+            else prune_global_helicity_flip_equivalent_roots(process.dag, model)
+        )
+        before_amplitude_roots = (
+            round(
+                sum(float(root.helicity_weight) for root in process.dag.amplitude_roots)
+            )
+            if parity_preweighted
+            else len(process.dag.amplitude_roots)
+        )
         validation = self._generation_config.validation
         filters: dict[str, object] = {
             "structural_helicity_reduction": {
-                "applied": reduced is not process.dag,
-                "before_amplitude_roots": len(process.dag.amplitude_roots),
+                "applied": parity_preweighted or reduced is not process.dag,
+                "before_amplitude_roots": before_amplitude_roots,
                 "after_amplitude_roots": len(reduced.amplitude_roots),
                 "mode": "proven global-helicity-flip equivalence",
             },
@@ -787,28 +799,20 @@ class GenerationBackend:
         resolved_model: _ResolvedModel,
         phase: PhaseHandle,
     ) -> EagerProcessArtifact:
-        compiled_model = resolved_model.compiled
-        prepared_bundle = (
-            None if compiled_model is None else compiled_model.prepared_bundle
-        )
-        if prepared_bundle is None:
+        eager_kernel_index = resolved_model.eager_kernel_index
+        if eager_kernel_index is None:
             raise GenerationError(
-                "eager DAG lowering requires a loaded prepared model bundle"
+                "eager DAG lowering requires an indexed prepared model bundle"
             )
-        schema = build_runtime_expression_schema(
-            process.dag,
-            model,
-            process_id=process.expanded.request.name,
-        )
         resolver = PreparedCatalogEagerKernelResolver(
             process.dag,
-            prepared_bundle.kernel_pack.resolver_manifest,
+            eager_kernel_index,
         )
-        eager_tables = lower_eager_execution_tables(
-            process.dag,
-            model,
-            schema.to_mapping(),
-            resolver,
+        schema_mapping, eager_tables = lower_fused_eager_execution(
+            dag=process.dag,
+            model=model,
+            resolver=resolver,
+            process_id=process.expanded.request.name,
         )
         phase.advance(message=process.expanded.request.name)
         run = self._run_config
@@ -822,7 +826,7 @@ class GenerationBackend:
             color_accuracy=ir.color_accuracy,
             external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
             aliases=process.expanded.aliases,
-            runtime_schema=schema,
+            runtime_schema=schema_mapping,
             eager_tables=eager_tables,
             point_tile_size=run.evaluator.eager.point_tile_size,
             workspace_mib=run.evaluator.eager.workspace_mib,
@@ -1056,8 +1060,8 @@ class GenerationBackend:
                         abs_tol=validation.absolute_tolerance,
                     ):
                         raise GenerationError(
-                        "resolved Rusticol validation does not reduce to the "
-                        f"total for {process_id!r} sample {sample_index} "
+                            "resolved Rusticol validation does not reduce to the "
+                            f"total for {process_id!r} sample {sample_index} "
                             f"(absolute difference {difference:.3e})"
                         )
         actual_api_bundle_path = manifest.runtime.get("api_bundle_path")
@@ -1318,6 +1322,23 @@ class GenerationBackend:
                 f"--backend {backend}"
             )
 
+    def _index_eager_kernel_pack(self, resolved: _ResolvedModel) -> _ResolvedModel:
+        if not self._eager_execution_enabled:
+            return resolved
+        compiled = resolved.compiled
+        bundle = None if compiled is None else compiled.prepared_bundle
+        if bundle is None:  # pragma: no cover - guarded by _require_eager_kernel_pack
+            raise GenerationError("eager generation has no prepared kernel pack")
+        try:
+            index = PreparedCatalogEagerKernelIndex.from_manifest(
+                bundle.kernel_pack.resolver_manifest
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GenerationError(
+                f"prepared model has an invalid eager kernel resolver: {exc}"
+            ) from exc
+        return replace(resolved, eager_kernel_index=index)
+
     def _apply_prepared_kernel_pack_policy(self, resolved: _ResolvedModel) -> None:
         if not self._eager_execution_enabled:
             return
@@ -1503,7 +1524,7 @@ class GenerationBackend:
             raise GenerationError(
                 "process.selected_color_sector_ids is available only for LC generation"
             )
-        color_plan = build_color_plan(
+        complete_color_plan = build_color_plan(
             process,
             color_accuracy=self._color_accuracy,
             max_sectors=selection.max_color_sectors,
@@ -1513,7 +1534,7 @@ class GenerationBackend:
             ),
         )
         color_plan, missing_sector_ids = _restrict_color_plan(
-            color_plan,
+            complete_color_plan,
             selection.selected_color_sector_ids,
         )
         if missing_sector_ids:
@@ -1539,12 +1560,15 @@ class GenerationBackend:
         dag = compile_generic_dag(
             process,
             model=model,
+            color_plan=complete_color_plan,
             max_color_sectors=selection.max_color_sectors,
             reference_color_order=selection.reference_color_order,
             selected_color_sector_ids=selection.selected_color_sector_ids,
             max_coupling_orders=limits or None,
             max_quark_pairs=self._max_quark_pairs,
             selected_source_helicities=selection.selected_source_helicities,
+            online_evaluation_reuse=self._eager_execution_enabled,
+            backward_live_planning=self._eager_execution_enabled,
         )
         if dag.truncated:
             raise GenerationError(

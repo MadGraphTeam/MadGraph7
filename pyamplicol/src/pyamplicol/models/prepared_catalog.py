@@ -33,8 +33,19 @@ PreparedInputRole: TypeAlias = Literal[
     "coupling-imag",
     "model-parameter",
 ]
+PreparedOutputFactorSource: TypeAlias = Literal[
+    "none",
+    "coupling-real",
+    "coupling-imag",
+]
 
 _CATALOG_ABI = "pyamplicol-prepared-kernel-catalog-v1"
+PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF = (
+    "prepared-kernel-homogeneous-complex-linear-current-v1"
+)
+PREPARED_INDEPENDENT_BLOCK_PROOF = (
+    "prepared-kernel-independent-current-block-v1"
+)
 _CONTRACT_KINDS = frozenset(("vertex", "propagator", "closure", "model-parameter"))
 _INPUT_ROLES = frozenset(
     (
@@ -49,6 +60,7 @@ _INPUT_ROLES = frozenset(
         "model-parameter",
     )
 )
+_OUTPUT_FACTOR_SOURCES = frozenset(("none", "coupling-real", "coupling-imag"))
 
 
 class PreparedKernelCatalogError(ValueError):
@@ -169,6 +181,14 @@ class PreparedVertexBinding:
     left_state: PreparedParticleState
     right_state: PreparedParticleState
     result_state: PreparedParticleState
+    output_factor_source: PreparedOutputFactorSource = "none"
+
+    def __post_init__(self) -> None:
+        if self.output_factor_source not in _OUTPUT_FACTOR_SOURCES:
+            raise PreparedKernelCatalogError(
+                f"unsupported prepared output factor source "
+                f"{self.output_factor_source!r}"
+            )
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -195,6 +215,14 @@ class PreparedClosureBinding:
     right_state: PreparedParticleState
     result_state: PreparedParticleState
     projection: str
+    output_factor_source: PreparedOutputFactorSource = "none"
+
+    def __post_init__(self) -> None:
+        if self.output_factor_source not in _OUTPUT_FACTOR_SOURCES:
+            raise PreparedKernelCatalogError(
+                f"unsupported prepared output factor source "
+                f"{self.output_factor_source!r}"
+            )
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -244,6 +272,10 @@ class PreparedKernelSpec:
             )
         if len(set(self.inputs)) != len(self.inputs):
             raise PreparedKernelCatalogError("prepared kernel inputs must be unique")
+        if self.proof_classes != tuple(sorted(set(self.proof_classes))):
+            raise PreparedKernelCatalogError(
+                "prepared kernel proof classes must be sorted and unique"
+            )
 
     @property
     def input_arity(self) -> int:
@@ -367,6 +399,7 @@ class PreparedKernelCatalog:
                         if binding.input_exchange_factor is None
                         else list(binding.input_exchange_factor)
                     ),
+                    "output_factor_source": binding.output_factor_source,
                 }
                 for binding in self.vertex_bindings
             ],
@@ -400,6 +433,7 @@ class PreparedKernelCatalog:
                         else list(binding.input_exchange_factor)
                     ),
                     "projection": binding.projection,
+                    "output_factor_source": binding.output_factor_source,
                 }
                 for binding in self.closure_bindings
             ],
@@ -424,6 +458,8 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
 
 
 __all__ = [
+    "PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF",
+    "PREPARED_INDEPENDENT_BLOCK_PROOF",
     "ClosureKernelKey",
     "PreparedClosureBinding",
     "PreparedContractKind",
@@ -433,6 +469,7 @@ __all__ = [
     "PreparedKernelGap",
     "PreparedKernelInput",
     "PreparedKernelSpec",
+    "PreparedOutputFactorSource",
     "PreparedParticleState",
     "PreparedPropagatorBinding",
     "PreparedVertexBinding",

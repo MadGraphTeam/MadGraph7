@@ -703,5 +703,12 @@ fn validate_prepared_kernel_references(
             validate_evaluator_state_path(artifact, relative_root, path)?;
         }
     }
+    for variant in &pack.kernel_variants {
+        let evaluator = variant.runtime_evaluator_manifest()?;
+        validate_evaluator_reference(artifact, relative_root, &evaluator)?;
+        for path in variant.extra_evaluator_payload_paths()? {
+            validate_evaluator_state_path(artifact, relative_root, path)?;
+        }
+    }
     Ok(())
 }

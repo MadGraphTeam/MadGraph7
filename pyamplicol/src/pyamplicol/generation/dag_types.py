@@ -182,6 +182,68 @@ class CurrentIndex:
         object.__setattr__(self, "_key", key)
         object.__setattr__(self, "_hash", hash(key))
 
+    @classmethod
+    def _from_trusted_values(
+        cls,
+        *,
+        particle_id: int,
+        external_mask: int,
+        external_labels: tuple[int, ...],
+        helicity_ancestry: int,
+        chirality: int,
+        spin_state: int | tuple[int, ...],
+        flavour_flow: tuple[int, ...],
+        quantum_number_flow: QuantumNumberFlow,
+        color_state: ColorState,
+        momentum_mask: int,
+        coupling_orders: tuple[tuple[str, int], ...] = (),
+        auxiliary_kind: str | None = None,
+        ordered_external_labels: tuple[int, ...] = (),
+    ) -> CurrentIndex:
+        """Build an already canonical compiler-owned index.
+
+        Public construction and artifact decoding retain the normal validation
+        path. The eager compiler uses this only after its mask, ordering, and
+        coupling-order planners have produced canonical values.
+        """
+
+        row = object.__new__(cls)
+        object.__setattr__(row, "particle_id", particle_id)
+        object.__setattr__(row, "external_mask", external_mask)
+        object.__setattr__(row, "external_labels", external_labels)
+        object.__setattr__(row, "helicity_ancestry", helicity_ancestry)
+        object.__setattr__(row, "chirality", chirality)
+        object.__setattr__(row, "spin_state", spin_state)
+        object.__setattr__(row, "flavour_flow", flavour_flow)
+        object.__setattr__(row, "quantum_number_flow", quantum_number_flow)
+        object.__setattr__(row, "color_state", color_state)
+        object.__setattr__(row, "momentum_mask", momentum_mask)
+        object.__setattr__(row, "coupling_orders", coupling_orders)
+        object.__setattr__(row, "auxiliary_kind", auxiliary_kind)
+        object.__setattr__(
+            row,
+            "ordered_external_labels",
+            ordered_external_labels or external_labels,
+        )
+        key = (
+            row.particle_id,
+            row.external_mask,
+            row.external_labels,
+            row.helicity_ancestry,
+            row.chirality,
+            row.spin_state,
+            row.flavour_flow,
+            row.quantum_number_flow,
+            row.color_state,
+            row.momentum_mask,
+            row.coupling_orders,
+            row.auxiliary_kind,
+            row.ordered_external_labels,
+        )
+        object.__setattr__(row, "_key", key)
+        object.__setattr__(row, "_hash", hash(key))
+        return row
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CurrentIndex):
             return NotImplemented

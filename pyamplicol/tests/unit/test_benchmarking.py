@@ -133,10 +133,14 @@ class _RuntimeWithDetailedEagerProfile(_RuntimeWithEagerProfile):
         profile.update(
             {
                 "execution_mode": "eager",
+                "eager_initialize_time_s": 2.0e-6,
                 "eager_gather_time_s": 4.0e-6,
                 "eager_kernel_call_time_s": 24.0e-6,
-                "eager_scatter_finalization_time_s": 8.0e-6,
+                "eager_invocation_scatter_time_s": 12.0e-6,
+                "eager_finalization_time_s": 20.0e-6,
+                "eager_scatter_finalization_time_s": 32.0e-6,
                 "eager_closure_time_s": 4.0e-6,
+                "eager_copy_out_time_s": 6.0e-6,
             }
         )
         return profile
@@ -511,14 +515,29 @@ def test_eager_profile_preserves_detailed_native_phase_timings() -> None:
     breakdown = result.timing_breakdown
     assert breakdown is not None
     assert breakdown.execution_mode == "eager"
+    assert breakdown.eager_initialize_time is not None
+    assert breakdown.eager_initialize_time.mean_seconds_per_point == pytest.approx(
+        0.5e-6
+    )
     assert breakdown.eager_gather_time is not None
     assert breakdown.eager_gather_time.mean_seconds_per_point == pytest.approx(1.0e-6)
     assert breakdown.eager_kernel_call_time is not None
     assert breakdown.eager_kernel_call_time.mean_seconds_per_point == pytest.approx(
         6.0e-6
     )
+    assert breakdown.eager_invocation_scatter_time is not None
+    invocation_scatter = breakdown.eager_invocation_scatter_time
+    assert invocation_scatter.mean_seconds_per_point == pytest.approx(3.0e-6)
+    assert breakdown.eager_finalization_time is not None
+    assert breakdown.eager_finalization_time.mean_seconds_per_point == pytest.approx(
+        5.0e-6
+    )
     assert breakdown.eager_scatter_finalization_time is not None
     assert breakdown.eager_closure_time is not None
+    assert breakdown.eager_copy_out_time is not None
+    assert breakdown.eager_copy_out_time.mean_seconds_per_point == pytest.approx(
+        1.5e-6
+    )
 
 
 def test_empty_stage_vectors_do_not_relabel_compiled_amplitude_only_profile() -> None:

@@ -17,9 +17,9 @@ from .security import confined_path, normalize_relative_path
 
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
 _MISSING_U32 = (1 << 32) - 1
-_EAGER_INVOCATION = struct.Struct("<IIIIIIQQ")
+_EAGER_INVOCATION = struct.Struct("<IIIIIIIQQ")
 _EAGER_FINALIZATION = struct.Struct("<IIIII")
-_EAGER_CLOSURE = struct.Struct("<IIIIIdd")
+_EAGER_CLOSURE = struct.Struct("<IIIIIIdd")
 _EAGER_SELECTOR_DOMAINS_ABI = "pyamplicol-eager-selector-domains-v1"
 _EAGER_SELECTOR_DOMAIN = struct.Struct("<QQ")
 _EAGER_SELECTOR_GROUP = struct.Struct("<I")
@@ -519,7 +519,7 @@ def _selector_domain_inspection(
         for invocation, domain_id in zip(
             invocations, invocation_domains, strict=True
         ):
-            start, count = int(invocation[6]), int(invocation[7])
+            start, count = int(invocation[7]), int(invocation[8])
             stop = start + count
             if stop > len(attachment_domains):
                 raise ArtifactError(

@@ -14,6 +14,8 @@ from pyamplicol.artifacts import ArtifactBuilder
 from pyamplicol.generation.eager_lowering import EAGER_RUNTIME_KIND
 from pyamplicol.generation.eager_tables import (
     EAGER_KERNEL_ABI,
+    EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+    EAGER_OUTPUT_FACTOR_NONE,
     EAGER_PLAN_ABI,
     EAGER_RUNTIME_CAPABILITY,
     MISSING_U32,
@@ -344,6 +346,8 @@ def _build_artifact(
     parameter_kernel: PreparedKernelRecord | None = None,
     model_parameters: Sequence[dict[str, object]] = (),
     coupling_row: EagerCouplingRow | None = None,
+    invocation_output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE,
+    closure_output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE,
 ) -> None:
     payload_target = {"triple": "test-target", "cpu_features": []}
     kernels = (
@@ -399,8 +403,28 @@ def _build_artifact(
         coupling_row or EagerCouplingRow(MISSING_U32, MISSING_U32, 1.0, 0.0),
     )
     invocations = (
-        EagerInvocationRow(invocation_kernel_id, 0, 0, 0, 0, 0, 0, 1),
-        EagerInvocationRow(invocation_kernel_id, 0, 0, 0, 0, 0, 1, 1),
+        EagerInvocationRow(
+            invocation_kernel_id,
+            0,
+            0,
+            0,
+            0,
+            0,
+            invocation_output_factor_source,
+            0,
+            1,
+        ),
+        EagerInvocationRow(
+            invocation_kernel_id,
+            0,
+            0,
+            0,
+            0,
+            0,
+            invocation_output_factor_source,
+            1,
+            1,
+        ),
     )
     attachments = (
         EagerAttachmentRow(1, 1.0, 0.0),
@@ -413,6 +437,7 @@ def _build_artifact(
         0,
         0,
         MISSING_U32 if direct_closure else 0,
+        closure_output_factor_source,
         0.5 if direct_closure else 1.0,
         0.0,
     )
@@ -619,6 +644,54 @@ def test_eager_exact_accumulates_then_finalizes_once(tmp_path: Path) -> None:
     assert result.values == (((Decimal(9409),),),)
     assert result.helicity_ids == ("h:0",)
     assert result.color_ids == ("flow:1",)
+
+
+def test_eager_exact_applies_dynamic_output_factor_after_kernel(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _build_artifact(
+        artifact,
+        direct_closure=True,
+        vertex_contracts=(
+            _contract("left-current", 0),
+            _contract("right-current", 0),
+        ),
+        coupling_row=EagerCouplingRow(MISSING_U32, MISSING_U32, 2.0, 7.0),
+        invocation_output_factor_source=EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+    )
+    finalization_inputs: list[tuple[_ComplexDecimal, ...]] = []
+
+    def load(record: PreparedKernelRecord, _root: Path) -> _ExactCallable:
+        if record.kernel_id == 10:
+            return lambda values, _precision: (
+                (values[0][0] + values[1][0], Decimal(0)),
+            )
+        if record.kernel_id == 11:
+
+            def finalize(
+                values: Sequence[_ComplexDecimal], _precision: int
+            ) -> tuple[_ComplexDecimal, ...]:
+                finalization_inputs.append(tuple(values))
+                return (values[0],)
+
+            return finalize
+        raise AssertionError(f"unexpected kernel {record.kernel_id}")
+
+    executor = EagerExactExecutor(
+        artifact,
+        "synthetic",
+        _NativeRuntime(),
+        kernel_loader=load,
+    )
+    executor.evaluate_resolved(
+        [[(5, 0, 0, 0)]],
+        helicities=None,
+        color_flows=None,
+        precision=50,
+    )
+
+    assert finalization_inputs[0][0] == (Decimal(12), Decimal(0))
 
 
 def test_eager_exact_projects_sparse_complex_prepared_parameters() -> None:

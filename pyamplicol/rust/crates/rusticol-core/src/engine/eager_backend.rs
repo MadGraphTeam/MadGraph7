@@ -4,7 +4,7 @@ use super::*;
 use crate::{EagerKernelBackend, EagerKernelCall};
 
 pub(super) struct PreparedEvaluatorBackend {
-    kernels: BTreeMap<u32, PreparedEvaluatorKernel>,
+    kernels: BTreeMap<(u32, u32), PreparedEvaluatorKernel>,
 }
 
 struct PreparedEvaluatorKernel {
@@ -55,7 +55,7 @@ impl PreparedEvaluatorBackend {
             let evaluator = EvaluatorGroup::load(&evaluator_manifest, payload_root)?;
             if kernels
                 .insert(
-                    kernel.kernel_id,
+                    (kernel.kernel_id, 1),
                     PreparedEvaluatorKernel {
                         evaluator,
                         #[cfg(feature = "symbolica-runtime")]
@@ -71,18 +71,57 @@ impl PreparedEvaluatorBackend {
                 )));
             }
         }
+        for variant in &pack.kernel_variants {
+            let evaluator_manifest = variant.runtime_evaluator_manifest()?;
+            let actual = evaluator_runtime_capabilities(&evaluator_manifest)?;
+            if actual != BTreeSet::from([SYMJIT_APPLICATION_RUNTIME_CAPABILITY.to_string()]) {
+                return Err(RusticolError::integrity(format!(
+                    "prepared kernel {} block variant declares evaluator capabilities {actual:?}",
+                    variant.base_kernel_id
+                )));
+            }
+            ensure_evaluator_capabilities_supported(&evaluator_manifest)?;
+            let (input_len, output_len) = evaluator_manifest.io_len()?;
+            if input_len != variant.input_arity || output_len != variant.output_arity {
+                return Err(RusticolError::integrity(format!(
+                    "prepared kernel {} block evaluator I/O ({input_len}, {output_len}) does not match ({}, {})",
+                    variant.base_kernel_id, variant.input_arity, variant.output_arity
+                )));
+            }
+            let evaluator = EvaluatorGroup::load(&evaluator_manifest, payload_root)?;
+            if kernels
+                .insert(
+                    (variant.base_kernel_id, variant.block_size),
+                    PreparedEvaluatorKernel {
+                        evaluator,
+                        #[cfg(feature = "symbolica-runtime")]
+                        input_scratch: Vec::new(),
+                        output_scratch: Vec::new(),
+                    },
+                )
+                .is_some()
+            {
+                return Err(RusticolError::integrity(format!(
+                    "prepared evaluator backend repeats kernel {} block size {}",
+                    variant.base_kernel_id, variant.block_size
+                )));
+            }
+        }
         Ok(Self { kernels })
     }
 }
 
 impl EagerKernelBackend for PreparedEvaluatorBackend {
     fn evaluate_batch(&mut self, call: EagerKernelCall<'_>) -> RusticolResult<()> {
-        let kernel = self.kernels.get_mut(&call.kernel_id).ok_or_else(|| {
-            RusticolError::artifact(format!(
-                "eager plan references unloaded prepared kernel {}",
-                call.kernel_id
-            ))
-        })?;
+        let kernel = self
+            .kernels
+            .get_mut(&(call.kernel_id, call.independent_block_size))
+            .ok_or_else(|| {
+                RusticolError::artifact(format!(
+                    "eager plan references unloaded prepared kernel {} block size {}",
+                    call.kernel_id, call.independent_block_size
+                ))
+            })?;
         if call.input_component_count != kernel.evaluator.input_len
             || call.output_component_count != kernel.evaluator.output_len
         {
@@ -107,6 +146,23 @@ impl EagerKernelBackend for PreparedEvaluatorBackend {
             return Err(RusticolError::internal(
                 "eager scheduler passed an inconsistent kernel packet",
             ));
+        }
+
+        // Prepared eager kernels normally contain one evaluator with the exact
+        // kernel input order. Keep that hot path entirely borrowed: EagerComplex64
+        // is the same Complex<f64> representation consumed by every f64 backend.
+        // Chunked/mapped manifests remain supported through EvaluatorGroup's
+        // reusable fallback scratch.
+        #[cfg(not(feature = "symbolica-runtime"))]
+        if kernel.evaluator.evaluators.len() == 1
+            && kernel.evaluator.input_mappings[0].is_none()
+            && kernel.evaluator.evaluators[0].output_len == kernel.evaluator.output_len
+        {
+            return kernel.evaluator.evaluators[0].evaluate_f64_batch(
+                call.lane_count,
+                call.inputs,
+                call.outputs,
+            );
         }
 
         #[cfg(feature = "symbolica-runtime")]

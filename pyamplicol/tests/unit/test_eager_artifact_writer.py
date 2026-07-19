@@ -31,8 +31,14 @@ from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.loading import compile_model_source
 from pyamplicol.models.prepared import (
+    PREPARED_KERNEL_VARIANT_ABI,
     PreparedKernelPack,
     PreparedKernelRecord,
+    PreparedKernelVariantRecord,
+    prepared_expression_digest,
+    prepared_input_contract_digest,
+    prepared_optimization_settings_digest,
+    prepared_output_contract_digest,
     write_prepared_model_bundle,
 )
 
@@ -44,6 +50,7 @@ def _prepared_model(
     bundle_name: str = "builtin",
     canonical_signatures: Mapping[int, str] | None = None,
     payload_tag: str = "payload",
+    variant_kernel_ids: tuple[int, ...] = (),
 ) -> tuple[Path, object]:
     source_model = compile_model_source("built-in-sm", use_cache=False)
     kernels = tuple(
@@ -51,7 +58,10 @@ def _prepared_model(
             kernel_id=kernel_id,
             contract_kind="vertex" if kernel_id < 1000 else "propagator",
             canonical_signature=(
-                canonical_signatures[kernel_id]
+                canonical_signatures.get(
+                    kernel_id,
+                    f"test:eager-kernel:{kernel_id}",
+                )
                 if canonical_signatures is not None
                 else f"test:eager-kernel:{kernel_id}"
             ),
@@ -80,6 +90,57 @@ def _prepared_model(
         )
         for kernel_id in kernel_ids
     )
+    variants = tuple(
+        PreparedKernelVariantRecord(
+            variant_id="independent-block-4",
+            variant_abi=PREPARED_KERNEL_VARIANT_ABI,
+            kind="independent-block",
+            block_size=4,
+            lane_layout="lane-major",
+            base_kernel_id=kernel.kernel_id,
+            base_canonical_signature=kernel.canonical_signature,
+            base_expression_digest=prepared_expression_digest(kernel.exact_expressions),
+            base_input_contract_digest=prepared_input_contract_digest(
+                kernel.input_layout,
+                kernel.input_contracts,
+            ),
+            base_output_contract_digest=prepared_output_contract_digest(
+                kernel.output_layout
+            ),
+            backend="jit",
+            optimization_settings_digest=prepared_optimization_settings_digest(
+                {"optimization_level": 3}
+            ),
+            input_arity=4 * kernel.input_arity,
+            output_arity=4 * kernel.output_arity,
+            input_lane_stride=kernel.input_arity,
+            output_lane_stride=kernel.output_arity,
+            input_layout=tuple(
+                f"lane:{lane}:{item}"
+                for lane in range(4)
+                for item in kernel.input_layout
+            ),
+            output_layout=tuple(
+                f"lane:{lane}:{item}"
+                for lane in range(4)
+                for item in kernel.output_layout
+            ),
+            f64_evaluator_manifest={
+                "kind": "symjit-application-evaluator",
+                "input_len": 4 * kernel.input_arity,
+                "output_len": 4 * kernel.output_arity,
+                "application_path": (
+                    f"kernels/{kernel.kernel_id}/variants/"
+                    "independent-block-4/application.symjit"
+                ),
+                "evaluator_state_path": (
+                    f"kernels/{kernel.kernel_id}/variants/independent-block-4/exact.bin"
+                ),
+            },
+        )
+        for kernel in kernels
+        if kernel.kernel_id in variant_kernel_ids
+    )
     pack = PreparedKernelPack(
         backend="jit",
         optimization_settings={"optimization_level": 3},
@@ -98,11 +159,10 @@ def _prepared_model(
             "model_name": "built-in-sm",
         },
         kernels=kernels,
+        kernel_variants=variants,
     )
     payloads = {
-        path: f"{payload_tag}:{path}".encode()
-        for kernel in kernels
-        for path in kernel.referenced_payload_paths
+        path: f"{payload_tag}:{path}".encode() for path in pack.referenced_payload_paths
     }
     bundle_path = write_prepared_model_bundle(
         tmp_path / bundle_name,
@@ -193,6 +253,7 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         schema,
         appended_resolver,
     )
+    selected_variant_kernel_id = min(vertex_kernels.values())
     bundle_path, compiled_model = _prepared_model(
         tmp_path,
         kernel_ids=tuple(
@@ -206,6 +267,11 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
                 }
             )
         ),
+        canonical_signatures={
+            selected_variant_kernel_id: "a" * 64,
+            4242: "b" * 64,
+        },
+        variant_kernel_ids=(selected_variant_kernel_id, 4242),
     )
     process = EagerProcessArtifact(
         process_id="gg_gg",
@@ -266,7 +332,7 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         (output / "processes/gg_gg/execution.json").read_text(encoding="utf-8")
     )
     assert execution["kind"] == "pyamplicol-runtime-eager-execution"
-    assert execution["eager_plan_abi"] == "pyamplicol-eager-plan-v1"
+    assert execution["eager_plan_abi"] == "pyamplicol-eager-plan-v2"
     assert execution["runtime_options"] == {
         "point_tile_size": 2048,
         "workspace_mib": 384,
@@ -288,9 +354,7 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         tables.attachment_count - tables.invocation_count
     )
     assert inspected_process.maximum_fanout == max(
-        row.attachment_count
-        for stage in tables.stages
-        for row in stage.invocations
+        row.attachment_count for stage in tables.stages for row in stage.invocations
     )
     assert inspected_process.requested_point_tile_size == 2048
     assert inspected_process.effective_point_tile_size is None
@@ -327,10 +391,17 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     assert {kernel["kernel_id"] for kernel in emitted_pack["kernels"]} == set(
         tables.referenced_kernel_ids
     )
+    assert {
+        variant["base_kernel_id"] for variant in emitted_pack["kernel_variants"]
+    } == {selected_variant_kernel_id}
     for kernel in compiled_model.prepared_bundle.kernel_pack.kernels:
         for path in kernel.referenced_payload_paths:
             emitted = f"model/eager-kernels/{path}" in declared
             assert emitted is (kernel.kernel_id in tables.referenced_kernel_ids)
+    for variant in compiled_model.prepared_bundle.kernel_pack.kernel_variants:
+        for path in variant.referenced_payload_paths:
+            emitted = f"model/eager-kernels/{path}" in declared
+            assert emitted is (variant.base_kernel_id in tables.referenced_kernel_ids)
 
     execution_path = output / "processes/gg_gg/execution.json"
     closure_domains_path = output / "processes/gg_gg/eager/closure-domains.bin"

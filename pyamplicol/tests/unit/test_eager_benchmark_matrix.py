@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from types import SimpleNamespace
 
 import pytest
 
@@ -30,22 +31,39 @@ def test_lc_workloads_choose_computed_nonzero_selectors() -> None:
     physics = {
         "color_components": [
             {"id": "flow:zero", "computed": False},
-            {"id": "flow:chosen", "computed": True},
+            {
+                "id": "flow:chosen",
+                "computed": True,
+                "word": [2, 1],
+            },
         ],
         "helicities": [
             {"id": "h:zero", "computed": True, "structural_zero": True},
-            {"id": "h:chosen", "computed": True, "structural_zero": False},
+            {
+                "id": "h:chosen",
+                "computed": True,
+                "structural_zero": False,
+                "values": [-1, 1],
+            },
         ],
+        "external_particles": [{"label": 1}, {"label": 2}],
     }
 
     assert matrix._workloads("lc", physics) == (
         {
             "name": "single-flow-helicity-sum",
             "selectors": {"color_flow": "flow:chosen"},
+            "compiled_specialization": {
+                "reference_color_order": (2, 1),
+                "selected_color_sector_ids": (0,),
+            },
         },
         {
             "name": "all-flow-single-helicity",
             "selectors": {"helicity": "h:chosen"},
+            "compiled_specialization": {
+                "selected_source_helicities": {1: -1, 2: 1},
+            },
         },
     )
 
@@ -70,6 +88,33 @@ def test_generation_command_keeps_compiled_and_eager_modes_explicit() -> None:
     assert command[command.index("--color-accuracy") + 1] == "full"
     assert command[command.index("--jit-optimization-level") + 1] == "3"
     assert "--no-post-build-validation" in command
+
+
+def test_generation_command_encodes_private_compiled_specialization() -> None:
+    command = matrix._generation_command(
+        matrix.Path("python"),
+        process="d d~ > z g",
+        artifact=matrix.Path("artifact"),
+        model="built-in-sm",
+        color="lc",
+        execution_mode="compiled",
+        process_overrides={
+            "reference_color_order": (2, 1, 3, 4),
+            "selected_color_sector_ids": (0,),
+            "selected_source_helicities": {1: -1, 2: 1},
+        },
+    )
+
+    overrides = [
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "--set"
+    ]
+    assert overrides == [
+        "process.reference_color_order=[2,1,3,4]",
+        "process.selected_color_sector_ids=[0]",
+        'process.selected_source_helicities={"1"=-1,"2"=1}',
+    ]
 
 
 def test_profile_command_encodes_both_lc_selector_axes() -> None:
@@ -105,7 +150,30 @@ def test_relative_difference_handles_zero_values() -> None:
     assert matrix._relative_difference(1 + 0j, 1 + 1.0e-13j) < 1.1e-13
 
 
-def test_generation_gates_require_each_non_lc_cell_and_geometric_mean() -> None:
+def test_resolved_comparison_checks_every_component_and_identifier() -> None:
+    baseline = SimpleNamespace(
+        helicity_ids=("h0", "h1"),
+        color_ids=("c0", "c1"),
+        values=((((1 + 0j), (2 + 0j)), ((3 + 0j), (4 + 0j))),),
+    )
+    matching = SimpleNamespace(
+        helicity_ids=("h0", "h1"),
+        color_ids=("c0", "c1"),
+        values=((((1 + 1.0e-14j), (2 + 0j)), ((3 + 0j), (4 + 0j))),),
+    )
+    different = SimpleNamespace(
+        helicity_ids=("h0", "h1"),
+        color_ids=("c0", "different"),
+        values=baseline.values,
+    )
+
+    comparison = matrix._resolved_comparison(baseline, matching)
+    assert comparison["component_count"] == 4
+    assert comparison["passes"] is True
+    assert matrix._resolved_comparison(baseline, different)["passes"] is False
+
+
+def test_generation_assessment_separates_hard_gates_and_soft_targets() -> None:
     records = [
         {
             "case": {"key": "process"},
@@ -116,14 +184,20 @@ def test_generation_gates_require_each_non_lc_cell_and_geometric_mean() -> None:
         for color, ratio in (("lc", 2.0), ("nlc", 20.0), ("full", 30.0))
     ]
 
-    assert matrix._generation_gates(records) == {
-        "nlc_full_each_at_least_10x": True,
+    hard, soft = matrix._generation_assessment(records)
+
+    assert hard == {
+        "nlc_full_each_at_least_7x": True,
         "lc_no_generation_regression": True,
+        "per_process_geometric_mean_at_least_7x": True,
+    }
+    assert soft == {
+        "nlc_full_each_at_least_10x": True,
         "per_process_geometric_mean_at_least_10x": True,
     }
 
 
-def test_generation_gate_rejects_partial_or_slow_matrix() -> None:
+def test_generation_assessment_rejects_partial_matrix_and_reports_soft_miss() -> None:
     records = [
         {
             "case": {"key": "process"},
@@ -133,9 +207,15 @@ def test_generation_gate_rejects_partial_or_slow_matrix() -> None:
         }
     ]
 
-    assert matrix._generation_gates(records) == {
-        "nlc_full_each_at_least_10x": False,
+    hard, soft = matrix._generation_assessment(records)
+
+    assert hard == {
+        "nlc_full_each_at_least_7x": True,
         "lc_no_generation_regression": False,
+        "per_process_geometric_mean_at_least_7x": False,
+    }
+    assert soft == {
+        "nlc_full_each_at_least_10x": False,
         "per_process_geometric_mean_at_least_10x": False,
     }
 

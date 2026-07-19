@@ -11,7 +11,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -26,6 +26,9 @@ from pyamplicol.config import (
 )
 
 _PARAMETER_ID = "aS"
+_EAGER_PARAMETER_ID = "normalization.alpha_ew"
+_EAGER_PROCESS = "d d~ > z"
+_EAGER_NAME = "ddbar_z_eager"
 _MIXED_PROCESSES = (
     "d d~ > z g",
     "d d~ > z g g",
@@ -40,6 +43,8 @@ _METADATA_KEYS = (
     "colors",
     "shape",
 )
+_LANGUAGES = ("python", "c", "cpp", "fortran", "rust")
+_NATIVE_LANGUAGES = _LANGUAGES[1:]
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -58,6 +63,7 @@ def _source_environment() -> dict[str, str]:
 @dataclass(frozen=True, slots=True)
 class _NativeTools:
     make: str
+    cc: str
     cxx: str
     fortran: str
     rustc: str
@@ -69,6 +75,7 @@ class _BuiltBundle:
     artifact: Path
     process_ids: tuple[str, ...]
     python_driver: Path
+    c_driver: Path
     cpp_driver: Path
     fortran_driver: Path
     rust_driver: Path
@@ -118,6 +125,7 @@ def native_tools() -> _NativeTools:
         _unavailable("the Rusticol extension has not been built")
     discovered = {
         "make": shutil.which("make"),
+        "cc": _tool_from_environment("CC", "cc"),
         "cxx": _tool_from_environment("CXX", "c++"),
         "fortran": _tool_from_environment("FC", "gfortran"),
         "rustc": _tool_from_environment("RUSTC", "rustc"),
@@ -141,12 +149,16 @@ def native_tools() -> _NativeTools:
     return tools
 
 
-def _generation_config(accuracy: str) -> RunConfig:
+def _generation_config(
+    accuracy: str,
+    execution_mode: Literal["compiled", "eager"] = "compiled",
+) -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy=accuracy),
         generation=GenerationConfig(workers=1, emit_api_bundle=True),
         evaluator=EvaluatorConfig(
+            execution_mode=execution_mode,
             optimization=EvaluatorOptimizationConfig(cores=1),
             jit=JITConfig(optimization_level=1),
         ),
@@ -191,6 +203,12 @@ def _assert_one_root_bundle(artifact: Path, process_ids: tuple[str, ...]) -> Non
     }
     assert rows == set(process_ids)
 
+    c_source = (artifact / "API/c/check_standalone.c").read_text(encoding="utf-8")
+    assert "#include <rusticol.h>" in c_source
+    assert "rusticol_runtime_load" in c_source
+    assert "rusticol_runtime_evaluate_f64" in c_source
+    assert "rusticol_runtime_evaluate_resolved_f64" in c_source
+
     rust_source = (artifact / "API/rust/check_standalone.rs").read_text(
         encoding="utf-8"
     )
@@ -205,11 +223,12 @@ def _build_bundle(
     expressions: tuple[str, ...],
     names: tuple[str, ...],
     accuracy: str,
-    model: CompiledModel,
+    model: CompiledModel | None,
     tools: _NativeTools,
+    execution_mode: Literal["compiled", "eager"] = "compiled",
 ) -> _BuiltBundle:
     processes = ProcessSet.from_expressions(expressions, names=names)
-    Generator(_generation_config(accuracy)).generate(
+    Generator(_generation_config(accuracy, execution_mode)).generate(
         processes,
         artifact,
         model=model,
@@ -222,13 +241,14 @@ def _build_bundle(
     environment = _source_environment()
     environment.update(
         {
+            "CC": tools.cc,
             "CXX": tools.cxx,
             "FC": tools.fortran,
             "RUSTC": tools.rustc,
             "RUSTICOL_CONFIG": shlex.join(tools.rusticol_config),
         }
     )
-    for language in ("cpp", "fortran", "rust"):
+    for language in _NATIVE_LANGUAGES:
         make_arguments = [
             tools.make,
             "-C",
@@ -254,6 +274,12 @@ def _build_bundle(
         artifact=artifact,
         process_ids=process_ids,
         python_driver=artifact / "API/python/check_standalone.py",
+        c_driver=(
+            artifact.parent
+            / ".pyamplicol-api-build"
+            / artifact.name
+            / "c/check_standalone"
+        ),
         cpp_driver=(
             artifact.parent
             / ".pyamplicol-api-build"
@@ -421,9 +447,28 @@ def generated_bundles(
     }
 
 
+@pytest.fixture(scope="module")
+def generated_eager_bundle(
+    tmp_path_factory: pytest.TempPathFactory,
+    native_tools: _NativeTools,
+) -> _BuiltBundle:
+    root = tmp_path_factory.mktemp("multilanguage-eager-api")
+    return _build_bundle(
+        root / "single-eager-lc",
+        (_EAGER_PROCESS,),
+        (_EAGER_NAME,),
+        "lc",
+        None,
+        native_tools,
+        execution_mode="eager",
+    )
+
+
 def _driver_command(bundle: _BuiltBundle, language: str) -> list[str]:
     if language == "python":
         return [sys.executable, str(bundle.python_driver)]
+    if language == "c":
+        return [str(bundle.c_driver)]
     if language == "cpp":
         return [str(bundle.cpp_driver)]
     if language == "fortran":
@@ -440,6 +485,7 @@ def _run_driver(
     process: str | None,
     model_card: Path | None = None,
     override: float | None = None,
+    parameter_id: str = _PARAMETER_ID,
 ) -> dict[str, Any]:
     command = [*_driver_command(bundle, language), "--json"]
     if process is not None:
@@ -447,7 +493,7 @@ def _run_driver(
     if model_card is not None:
         command.extend(("--model-parameters", str(model_card)))
     if override is not None:
-        command.extend(("--set-parameter", _PARAMETER_ID, f"{override:.17g}", "0"))
+        command.extend(("--set-parameter", parameter_id, f"{override:.17g}", "0"))
     completed = subprocess.run(
         command,
         cwd=bundle.artifact,
@@ -503,6 +549,7 @@ def _all_languages(
     process: str | None,
     model_card: Path | None = None,
     override: float | None = None,
+    parameter_id: str = _PARAMETER_ID,
 ) -> dict[str, dict[str, Any]]:
     return {
         language: _run_driver(
@@ -511,9 +558,56 @@ def _all_languages(
             process=process,
             model_card=model_card,
             override=override,
+            parameter_id=parameter_id,
         )
-        for language in ("python", "cpp", "fortran", "rust")
+        for language in _LANGUAGES
     }
+
+
+def test_all_generated_clients_load_and_evaluate_the_same_eager_artifact(
+    generated_eager_bundle: _BuiltBundle,
+    tmp_path: Path,
+) -> None:
+    bundle = generated_eager_bundle
+    manifest = json.loads(
+        (bundle.artifact / "artifact.json").read_text(encoding="utf-8")
+    )
+    eager_capability = "rusticol.eager-dag.complex-f64.v1"
+    assert manifest["default_process_id"] == bundle.process_ids[0]
+    assert manifest["runtime"]["required_runtime_capabilities"] == [eager_capability]
+    for process_id in bundle.process_ids:
+        process = next(
+            item for item in manifest["processes"] if item["id"] == process_id
+        )
+        assert process["required_runtime_capabilities"] == [eager_capability]
+        execution = json.loads(
+            (bundle.artifact / "processes" / process_id / "execution.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert execution["kind"] == "pyamplicol-runtime-eager-execution"
+
+    process_id = bundle.process_ids[0]
+    model_card = tmp_path / "eager-model-parameters.json"
+    updated_parameter = 0.008
+    model_card.write_text(
+        json.dumps({_EAGER_PARAMETER_ID: [updated_parameter, 0.0]}) + "\n",
+        encoding="utf-8",
+    )
+    baseline = _all_languages(bundle, process=process_id)
+    card = _all_languages(bundle, process=process_id, model_card=model_card)
+    direct = _all_languages(
+        bundle,
+        process=process_id,
+        override=updated_parameter,
+        parameter_id=_EAGER_PARAMETER_ID,
+    )
+    for payloads in (baseline, card, direct):
+        _assert_language_payloads(payloads)
+    _assert_numeric_sequence(card["python"]["values"], direct["python"]["values"])
+    assert card["python"]["compatibility_total"] != pytest.approx(
+        baseline["python"]["compatibility_total"], rel=1.0e-10
+    )
 
 
 def test_mixed_lc_bundle_agrees_for_all_processes_and_parameter_updates(

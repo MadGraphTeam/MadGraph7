@@ -26,6 +26,8 @@ PREPARED_MODEL_BUNDLE_SCHEMA_VERSION = 1
 PREPARED_MODEL_BUNDLE_SUFFIX = ".pyamplicol-model"
 EAGER_KERNEL_ABI = "pyamplicol-eager-kernel-v1"
 EAGER_KERNEL_ABI_VERSION = 1
+PREPARED_KERNEL_VARIANT_ABI = "pyamplicol-prepared-kernel-variant-v1"
+PREPARED_INDEPENDENT_BLOCK_SIZE = 4
 
 PREPARED_MODEL_MANIFEST_PATH = "manifest.json"
 PREPARED_MODEL_COMPILED_MODEL_PATH = "model/model.pyAmplicol-model.json"
@@ -38,6 +40,8 @@ KernelContractKind: TypeAlias = Literal[
     "model-parameter",
 ]
 PayloadSource: TypeAlias = bytes | bytearray | memoryview | Path
+PreparedKernelVariantKind: TypeAlias = Literal["independent-block"]
+PreparedKernelLaneLayout: TypeAlias = Literal["lane-major"]
 
 _BACKENDS = frozenset(("jit", "asm", "cpp"))
 _CONTRACT_KINDS = frozenset(("vertex", "propagator", "closure", "model-parameter"))
@@ -197,6 +201,53 @@ def _valid_sha256(value: object, context: str) -> str:
     return digest
 
 
+def _mapping_digest(value: Mapping[str, object]) -> str:
+    return _sha256(_canonical_json(value))
+
+
+def prepared_expression_digest(expressions: Sequence[str]) -> str:
+    """Digest the ordered exact-expression contract of a scalar kernel."""
+
+    return _mapping_digest({"exact_expressions": list(expressions)})
+
+
+def prepared_input_contract_digest(
+    input_layout: Sequence[str],
+    input_contracts: Sequence[Mapping[str, object]],
+) -> str:
+    """Digest scalar input ordering, roles, symbols, and parameter metadata."""
+
+    return _mapping_digest(
+        {
+            "input_arity": len(input_layout),
+            "input_layout": list(input_layout),
+            "input_contracts": [
+                cast(dict[str, object], _thaw_json(contract))
+                for contract in input_contracts
+            ],
+        }
+    )
+
+
+def prepared_output_contract_digest(output_layout: Sequence[str]) -> str:
+    """Digest scalar output ordering and labels."""
+
+    return _mapping_digest(
+        {
+            "output_arity": len(output_layout),
+            "output_layout": list(output_layout),
+        }
+    )
+
+
+def prepared_optimization_settings_digest(
+    settings: Mapping[str, object],
+) -> str:
+    """Digest the backend optimization contract bound to a variant payload."""
+
+    return _mapping_digest(settings)
+
+
 def _collect_manifest_paths(value: object, *, context: str) -> tuple[str, ...]:
     paths: list[str] = []
 
@@ -231,6 +282,337 @@ def _collect_manifest_paths(value: object, *, context: str) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedKernelVariantRecord:
+    """One backend evaluator that packs independent scalar kernel calls."""
+
+    variant_id: str
+    variant_abi: str
+    kind: PreparedKernelVariantKind
+    block_size: int
+    lane_layout: PreparedKernelLaneLayout
+    base_kernel_id: int
+    base_canonical_signature: str
+    base_expression_digest: str
+    base_input_contract_digest: str
+    base_output_contract_digest: str
+    backend: PreparedBackend
+    optimization_settings_digest: str
+    input_arity: int
+    output_arity: int
+    input_lane_stride: int
+    output_lane_stride: int
+    input_layout: tuple[str, ...]
+    output_layout: tuple[str, ...]
+    f64_evaluator_manifest: Mapping[str, object]
+    _referenced_payload_paths: tuple[str, ...] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        _nonempty_string(self.variant_id, "kernel_variant.variant_id")
+        if self.variant_abi != PREPARED_KERNEL_VARIANT_ABI:
+            raise PreparedModelBundleError(
+                f"unsupported prepared kernel variant ABI {self.variant_abi!r}"
+            )
+        if self.kind != "independent-block":
+            raise PreparedModelBundleError(
+                f"unsupported prepared kernel variant kind {self.kind!r}"
+            )
+        block_size = _positive_integer(
+            self.block_size,
+            "kernel_variant.block_size",
+        )
+        if block_size != PREPARED_INDEPENDENT_BLOCK_SIZE:
+            raise PreparedModelBundleError(
+                "independent-block variants currently require block_size = 4"
+            )
+        if self.variant_id != f"independent-block-{block_size}":
+            raise PreparedModelBundleError(
+                "independent-block variant ID does not match its block size"
+            )
+        if self.lane_layout != "lane-major":
+            raise PreparedModelBundleError(
+                "independent-block variants require lane-major layout"
+            )
+        _nonnegative_integer(
+            self.base_kernel_id,
+            "kernel_variant.base_kernel_id",
+        )
+        _valid_sha256(
+            self.base_canonical_signature,
+            "kernel_variant.base_canonical_signature",
+        )
+        for name in (
+            "base_expression_digest",
+            "base_input_contract_digest",
+            "base_output_contract_digest",
+            "optimization_settings_digest",
+        ):
+            _valid_sha256(getattr(self, name), f"kernel_variant.{name}")
+        if self.backend not in _BACKENDS:
+            raise PreparedModelBundleError(
+                f"unsupported prepared variant backend {self.backend!r}"
+            )
+        input_arity = _positive_integer(
+            self.input_arity,
+            "kernel_variant.input_arity",
+        )
+        output_arity = _positive_integer(
+            self.output_arity,
+            "kernel_variant.output_arity",
+        )
+        input_lane_stride = _positive_integer(
+            self.input_lane_stride,
+            "kernel_variant.input_lane_stride",
+        )
+        output_lane_stride = _positive_integer(
+            self.output_lane_stride,
+            "kernel_variant.output_lane_stride",
+        )
+        if input_arity != block_size * input_lane_stride:
+            raise PreparedModelBundleError(
+                "kernel variant input arity must equal block_size * input_lane_stride"
+            )
+        if output_arity != block_size * output_lane_stride:
+            raise PreparedModelBundleError(
+                "kernel variant output arity must equal block_size * output_lane_stride"
+            )
+        input_layout = tuple(
+            _nonempty_string(item, f"kernel_variant.input_layout[{index}]")
+            for index, item in enumerate(self.input_layout)
+        )
+        output_layout = tuple(
+            _nonempty_string(item, f"kernel_variant.output_layout[{index}]")
+            for index, item in enumerate(self.output_layout)
+        )
+        if len(input_layout) != input_arity:
+            raise PreparedModelBundleError(
+                "kernel variant input layout length must equal input arity"
+            )
+        if len(output_layout) != output_arity:
+            raise PreparedModelBundleError(
+                "kernel variant output layout length must equal output arity"
+            )
+        object.__setattr__(self, "input_layout", input_layout)
+        object.__setattr__(self, "output_layout", output_layout)
+        if not self.f64_evaluator_manifest:
+            raise PreparedModelBundleError(
+                "kernel_variant.f64_evaluator_manifest must not be empty"
+            )
+        manifest = _freeze_mapping(
+            self.f64_evaluator_manifest,
+            "kernel_variant.f64_evaluator_manifest",
+        )
+        if manifest.get("input_len") != input_arity:
+            raise PreparedModelBundleError(
+                "kernel variant evaluator input_len does not match input arity"
+            )
+        if manifest.get("output_len") != output_arity:
+            raise PreparedModelBundleError(
+                "kernel variant evaluator output_len does not match output arity"
+            )
+        object.__setattr__(self, "f64_evaluator_manifest", manifest)
+        object.__setattr__(
+            self,
+            "_referenced_payload_paths",
+            _collect_manifest_paths(
+                manifest,
+                context="kernel_variant.f64_evaluator_manifest",
+            ),
+        )
+
+    @property
+    def referenced_payload_paths(self) -> tuple[str, ...]:
+        return self._referenced_payload_paths
+
+    def validate_base_kernel(self, kernel: PreparedKernelRecord) -> None:
+        """Validate every immutable binding back to the scalar kernel."""
+
+        if self.base_kernel_id != kernel.kernel_id:
+            raise PreparedModelBundleError(
+                "kernel variant base_kernel_id does not match its scalar kernel"
+            )
+        if self.base_canonical_signature != kernel.canonical_signature:
+            raise PreparedModelBundleError(
+                "kernel variant canonical signature does not match its scalar kernel"
+            )
+        expected = (
+            prepared_expression_digest(kernel.exact_expressions),
+            prepared_input_contract_digest(
+                kernel.input_layout,
+                kernel.input_contracts,
+            ),
+            prepared_output_contract_digest(kernel.output_layout),
+        )
+        actual = (
+            self.base_expression_digest,
+            self.base_input_contract_digest,
+            self.base_output_contract_digest,
+        )
+        if actual != expected:
+            raise PreparedModelBundleError(
+                "kernel variant scalar contract digest does not match its base kernel"
+            )
+        if self.input_lane_stride != kernel.input_arity:
+            raise PreparedModelBundleError(
+                "kernel variant input lane stride does not match its base kernel"
+            )
+        if self.output_lane_stride != kernel.output_arity:
+            raise PreparedModelBundleError(
+                "kernel variant output lane stride does not match its base kernel"
+            )
+        expected_inputs = tuple(
+            f"lane:{lane}:{item}"
+            for lane in range(self.block_size)
+            for item in kernel.input_layout
+        )
+        expected_outputs = tuple(
+            f"lane:{lane}:{item}"
+            for lane in range(self.block_size)
+            for item in kernel.output_layout
+        )
+        if (
+            self.input_layout != expected_inputs
+            or self.output_layout != expected_outputs
+        ):
+            raise PreparedModelBundleError(
+                "kernel variant lane-major layout does not match its base kernel"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "variant_id": self.variant_id,
+            "variant_abi": self.variant_abi,
+            "kind": self.kind,
+            "block_size": self.block_size,
+            "lane_layout": self.lane_layout,
+            "base_kernel_id": self.base_kernel_id,
+            "base_canonical_signature": self.base_canonical_signature,
+            "base_expression_digest": self.base_expression_digest,
+            "base_input_contract_digest": self.base_input_contract_digest,
+            "base_output_contract_digest": self.base_output_contract_digest,
+            "backend": self.backend,
+            "optimization_settings_digest": self.optimization_settings_digest,
+            "input_arity": self.input_arity,
+            "output_arity": self.output_arity,
+            "input_lane_stride": self.input_lane_stride,
+            "output_lane_stride": self.output_lane_stride,
+            "input_layout": list(self.input_layout),
+            "output_layout": list(self.output_layout),
+            "f64_evaluator_manifest": _thaw_json(self.f64_evaluator_manifest),
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> PreparedKernelVariantRecord:
+        expected = frozenset(
+            (
+                "variant_id",
+                "variant_abi",
+                "kind",
+                "block_size",
+                "lane_layout",
+                "base_kernel_id",
+                "base_canonical_signature",
+                "base_expression_digest",
+                "base_input_contract_digest",
+                "base_output_contract_digest",
+                "backend",
+                "optimization_settings_digest",
+                "input_arity",
+                "output_arity",
+                "input_lane_stride",
+                "output_lane_stride",
+                "input_layout",
+                "output_layout",
+                "f64_evaluator_manifest",
+            )
+        )
+        _require_exact_keys(value, "kernel_variant", expected)
+        return cls(
+            variant_id=_nonempty_string(
+                value.get("variant_id"), "kernel_variant.variant_id"
+            ),
+            variant_abi=_nonempty_string(
+                value.get("variant_abi"), "kernel_variant.variant_abi"
+            ),
+            kind=cast(
+                PreparedKernelVariantKind,
+                _nonempty_string(value.get("kind"), "kernel_variant.kind"),
+            ),
+            block_size=_positive_integer(
+                value.get("block_size"), "kernel_variant.block_size"
+            ),
+            lane_layout=cast(
+                PreparedKernelLaneLayout,
+                _nonempty_string(
+                    value.get("lane_layout"), "kernel_variant.lane_layout"
+                ),
+            ),
+            base_kernel_id=_nonnegative_integer(
+                value.get("base_kernel_id"), "kernel_variant.base_kernel_id"
+            ),
+            base_canonical_signature=_nonempty_string(
+                value.get("base_canonical_signature"),
+                "kernel_variant.base_canonical_signature",
+            ),
+            base_expression_digest=_nonempty_string(
+                value.get("base_expression_digest"),
+                "kernel_variant.base_expression_digest",
+            ),
+            base_input_contract_digest=_nonempty_string(
+                value.get("base_input_contract_digest"),
+                "kernel_variant.base_input_contract_digest",
+            ),
+            base_output_contract_digest=_nonempty_string(
+                value.get("base_output_contract_digest"),
+                "kernel_variant.base_output_contract_digest",
+            ),
+            backend=cast(
+                PreparedBackend,
+                _nonempty_string(value.get("backend"), "kernel_variant.backend"),
+            ),
+            optimization_settings_digest=_nonempty_string(
+                value.get("optimization_settings_digest"),
+                "kernel_variant.optimization_settings_digest",
+            ),
+            input_arity=_positive_integer(
+                value.get("input_arity"), "kernel_variant.input_arity"
+            ),
+            output_arity=_positive_integer(
+                value.get("output_arity"), "kernel_variant.output_arity"
+            ),
+            input_lane_stride=_positive_integer(
+                value.get("input_lane_stride"),
+                "kernel_variant.input_lane_stride",
+            ),
+            output_lane_stride=_positive_integer(
+                value.get("output_lane_stride"),
+                "kernel_variant.output_lane_stride",
+            ),
+            input_layout=tuple(
+                _nonempty_string(item, f"kernel_variant.input_layout[{index}]")
+                for index, item in enumerate(
+                    _sequence(value.get("input_layout"), "kernel_variant.input_layout")
+                )
+            ),
+            output_layout=tuple(
+                _nonempty_string(item, f"kernel_variant.output_layout[{index}]")
+                for index, item in enumerate(
+                    _sequence(
+                        value.get("output_layout"), "kernel_variant.output_layout"
+                    )
+                )
+            ),
+            f64_evaluator_manifest=_mapping(
+                value.get("f64_evaluator_manifest"),
+                "kernel_variant.f64_evaluator_manifest",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedKernelRecord:
     """One canonical eager kernel and its exact/f64 evaluator contracts."""
 
@@ -245,6 +627,7 @@ class PreparedKernelRecord:
     exact_expressions: tuple[str, ...]
     exact_evaluator_state_path: str
     f64_evaluator_manifest: Mapping[str, object]
+    proof_classes: tuple[str, ...] = ()
     _referenced_payload_paths: tuple[str, ...] = field(
         init=False,
         repr=False,
@@ -345,6 +728,15 @@ class PreparedKernelRecord:
                 "kernel.f64_evaluator_manifest",
             ),
         )
+        proof_classes = tuple(
+            _nonempty_string(item, f"kernel.proof_classes[{index}]")
+            for index, item in enumerate(self.proof_classes)
+        )
+        if proof_classes != tuple(sorted(set(proof_classes))):
+            raise PreparedModelBundleError(
+                "kernel proof classes must be sorted and unique"
+            )
+        object.__setattr__(self, "proof_classes", proof_classes)
         object.__setattr__(
             self,
             "_referenced_payload_paths",
@@ -378,12 +770,15 @@ class PreparedKernelRecord:
             ],
             "output_layout": list(self.output_layout),
             "exact_expressions": list(self.exact_expressions),
+            "proof_classes": list(self.proof_classes),
             "exact_evaluator_state_path": self.exact_evaluator_state_path,
             "f64_evaluator_manifest": _thaw_json(self.f64_evaluator_manifest),
         }
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> PreparedKernelRecord:
+        normalized = dict(value)
+        normalized.setdefault("proof_classes", ())
         expected = frozenset(
             (
                 "kernel_id",
@@ -395,63 +790,72 @@ class PreparedKernelRecord:
                 "input_contracts",
                 "output_layout",
                 "exact_expressions",
+                "proof_classes",
                 "exact_evaluator_state_path",
                 "f64_evaluator_manifest",
             )
         )
-        _require_exact_keys(value, "kernel", expected)
+        _require_exact_keys(normalized, "kernel", expected)
         contract_kind = _nonempty_string(
-            value.get("contract_kind"),
+            normalized.get("contract_kind"),
             "kernel.contract_kind",
         )
         return cls(
-            kernel_id=_nonnegative_integer(value.get("kernel_id"), "kernel.kernel_id"),
+            kernel_id=_nonnegative_integer(
+                normalized.get("kernel_id"), "kernel.kernel_id"
+            ),
             contract_kind=cast(KernelContractKind, contract_kind),
             canonical_signature=_nonempty_string(
-                value.get("canonical_signature"),
+                normalized.get("canonical_signature"),
                 "kernel.canonical_signature",
             ),
             input_arity=_nonnegative_integer(
-                value.get("input_arity"), "kernel.input_arity"
+                normalized.get("input_arity"), "kernel.input_arity"
             ),
             output_arity=_nonnegative_integer(
-                value.get("output_arity"), "kernel.output_arity"
+                normalized.get("output_arity"), "kernel.output_arity"
             ),
             input_layout=tuple(
                 _nonempty_string(item, f"kernel.input_layout[{index}]")
                 for index, item in enumerate(
-                    _sequence(value.get("input_layout"), "kernel.input_layout")
+                    _sequence(normalized.get("input_layout"), "kernel.input_layout")
                 )
             ),
             input_contracts=tuple(
                 _mapping(item, f"kernel.input_contracts[{index}]")
                 for index, item in enumerate(
                     _sequence(
-                        value.get("input_contracts"), "kernel.input_contracts"
+                        normalized.get("input_contracts"), "kernel.input_contracts"
                     )
                 )
             ),
             output_layout=tuple(
                 _nonempty_string(item, f"kernel.output_layout[{index}]")
                 for index, item in enumerate(
-                    _sequence(value.get("output_layout"), "kernel.output_layout")
+                    _sequence(normalized.get("output_layout"), "kernel.output_layout")
                 )
             ),
             exact_expressions=tuple(
                 _nonempty_string(item, f"kernel.exact_expressions[{index}]")
                 for index, item in enumerate(
                     _sequence(
-                        value.get("exact_expressions"),
+                        normalized.get("exact_expressions"),
                         "kernel.exact_expressions",
                     )
                 )
             ),
+            proof_classes=tuple(
+                _nonempty_string(item, f"kernel.proof_classes[{index}]")
+                for index, item in enumerate(
+                    _sequence(normalized.get("proof_classes"), "kernel.proof_classes")
+                )
+            ),
             exact_evaluator_state_path=_normalized_member_path(
-                value.get("exact_evaluator_state_path"),
+                normalized.get("exact_evaluator_state_path"),
                 "kernel.exact_evaluator_state_path",
             ),
             f64_evaluator_manifest=_mapping(
-                value.get("f64_evaluator_manifest"),
+                normalized.get("f64_evaluator_manifest"),
                 "kernel.f64_evaluator_manifest",
             ),
         )
@@ -469,6 +873,7 @@ class PreparedKernelPack:
     target: Mapping[str, object]
     resolver_manifest: Mapping[str, object]
     kernels: tuple[PreparedKernelRecord, ...]
+    kernel_variants: tuple[PreparedKernelVariantRecord, ...] = ()
     _referenced_payload_paths: tuple[str, ...] = field(
         init=False,
         repr=False,
@@ -537,6 +942,45 @@ class PreparedKernelPack:
         if len(set(signatures)) != len(signatures):
             raise PreparedModelBundleError("kernel canonical signatures must be unique")
         object.__setattr__(self, "kernels", kernels)
+        by_id = {kernel.kernel_id: kernel for kernel in kernels}
+        variants = tuple(
+            sorted(
+                self.kernel_variants,
+                key=lambda variant: (variant.base_kernel_id, variant.variant_id),
+            )
+        )
+        variant_keys = tuple(
+            (variant.base_kernel_id, variant.variant_id) for variant in variants
+        )
+        if len(set(variant_keys)) != len(variant_keys):
+            raise PreparedModelBundleError(
+                "prepared kernel variant identities must be unique"
+            )
+        optimization_digest = prepared_optimization_settings_digest(
+            self.optimization_settings
+        )
+        for variant in variants:
+            kernel = by_id.get(variant.base_kernel_id)
+            if kernel is None:
+                raise PreparedModelBundleError(
+                    "prepared kernel variant references an unknown base kernel"
+                )
+            variant.validate_base_kernel(kernel)
+            if variant.backend != self.backend:
+                raise PreparedModelBundleError(
+                    "prepared kernel variant backend does not match its pack"
+                )
+            if variant.optimization_settings_digest != optimization_digest:
+                raise PreparedModelBundleError(
+                    "prepared kernel variant optimization digest does not match "
+                    "its pack"
+                )
+            if variant.kind == "independent-block" and self.backend != "jit":
+                raise PreparedModelBundleError(
+                    "independent-block variants are currently supported only "
+                    "for JIT packs"
+                )
+        object.__setattr__(self, "kernel_variants", variants)
         object.__setattr__(
             self,
             "_referenced_payload_paths",
@@ -544,8 +988,8 @@ class PreparedKernelPack:
                 sorted(
                     {
                         path
-                        for kernel in kernels
-                        for path in kernel.referenced_payload_paths
+                        for record in (*kernels, *variants)
+                        for path in record.referenced_payload_paths
                     }
                 )
             ),
@@ -565,10 +1009,13 @@ class PreparedKernelPack:
             "target": _thaw_json(self.target),
             "resolver_manifest": _thaw_json(self.resolver_manifest),
             "kernels": [kernel.to_dict() for kernel in self.kernels],
+            "kernel_variants": [variant.to_dict() for variant in self.kernel_variants],
         }
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> PreparedKernelPack:
+        normalized = dict(value)
+        normalized.setdefault("kernel_variants", ())
         expected = frozenset(
             (
                 "backend",
@@ -579,36 +1026,51 @@ class PreparedKernelPack:
                 "target",
                 "resolver_manifest",
                 "kernels",
+                "kernel_variants",
             )
         )
-        _require_exact_keys(value, "kernel_pack", expected)
-        backend = _nonempty_string(value.get("backend"), "kernel_pack.backend")
+        _require_exact_keys(normalized, "kernel_pack", expected)
+        backend = _nonempty_string(normalized.get("backend"), "kernel_pack.backend")
         kernels = tuple(
             PreparedKernelRecord.from_dict(
                 _mapping(item, f"kernel_pack.kernels[{index}]")
             )
             for index, item in enumerate(
-                _sequence(value.get("kernels"), "kernel_pack.kernels")
+                _sequence(normalized.get("kernels"), "kernel_pack.kernels")
+            )
+        )
+        kernel_variants = tuple(
+            PreparedKernelVariantRecord.from_dict(
+                _mapping(item, f"kernel_pack.kernel_variants[{index}]")
+            )
+            for index, item in enumerate(
+                _sequence(
+                    normalized.get("kernel_variants"),
+                    "kernel_pack.kernel_variants",
+                )
             )
         )
         return cls(
             backend=cast(PreparedBackend, backend),
             optimization_settings=_mapping(
-                value.get("optimization_settings"),
+                normalized.get("optimization_settings"),
                 "kernel_pack.optimization_settings",
             ),
-            producer=_mapping(value.get("producer"), "kernel_pack.producer"),
+            producer=_mapping(normalized.get("producer"), "kernel_pack.producer"),
             dependency_abis=_mapping(
-                value.get("dependency_abis"),
+                normalized.get("dependency_abis"),
                 "kernel_pack.dependency_abis",
             ),
-            provenance=_mapping(value.get("provenance"), "kernel_pack.provenance"),
-            target=_mapping(value.get("target"), "kernel_pack.target"),
+            provenance=_mapping(
+                normalized.get("provenance"), "kernel_pack.provenance"
+            ),
+            target=_mapping(normalized.get("target"), "kernel_pack.target"),
             resolver_manifest=_mapping(
-                value.get("resolver_manifest"),
+                normalized.get("resolver_manifest"),
                 "kernel_pack.resolver_manifest",
             ),
             kernels=kernels,
+            kernel_variants=kernel_variants,
         )
 
 
@@ -1031,6 +1493,8 @@ def read_prepared_model_bundle(path: Path) -> PreparedModelBundle:
 __all__ = [
     "EAGER_KERNEL_ABI",
     "EAGER_KERNEL_ABI_VERSION",
+    "PREPARED_INDEPENDENT_BLOCK_SIZE",
+    "PREPARED_KERNEL_VARIANT_ABI",
     "PREPARED_MODEL_BUNDLE_KIND",
     "PREPARED_MODEL_BUNDLE_SCHEMA_VERSION",
     "PREPARED_MODEL_BUNDLE_SUFFIX",
@@ -1038,9 +1502,14 @@ __all__ = [
     "PREPARED_MODEL_MANIFEST_PATH",
     "PreparedKernelPack",
     "PreparedKernelRecord",
+    "PreparedKernelVariantRecord",
     "PreparedModelBundle",
     "PreparedModelBundleError",
     "load_prepared_model_bundle",
+    "prepared_expression_digest",
+    "prepared_input_contract_digest",
+    "prepared_optimization_settings_digest",
+    "prepared_output_contract_digest",
     "read_prepared_model_bundle",
     "write_prepared_model_bundle",
 ]

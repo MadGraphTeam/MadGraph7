@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -16,6 +16,9 @@ from ..models.prepared_catalog import (
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import CurrentNode, GenericDAG, InteractionNode
 from .eager_tables import (
+    EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
+    EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+    EAGER_OUTPUT_FACTOR_NONE,
     EAGER_PLAN_ABI,
     EAGER_RUNTIME_CAPABILITY,
     EAGER_SELECTOR_DOMAINS_ABI,
@@ -30,6 +33,7 @@ from .eager_tables import (
     EagerSelectorGroupRow,
     pack_rows,
 )
+from .runtime_schema import RuntimeSchemaLayout, build_runtime_schema_layout
 
 EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
 
@@ -57,6 +61,7 @@ class EagerResolvedKernel:
     kernel_id: int
     canonical_input_order: tuple[int, int] = (0, 1)
     normalization_factor: tuple[float, float] = (1.0, 0.0)
+    output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE
 
     def __post_init__(self) -> None:
         if self.kernel_id < 0:
@@ -65,6 +70,12 @@ class EagerResolvedKernel:
             raise ValueError("prepared binary input order must be a permutation")
         if complex(*self.normalization_factor) == 0j:
             raise ValueError("prepared kernel normalization factor must be nonzero")
+        if self.output_factor_source not in (
+            EAGER_OUTPUT_FACTOR_NONE,
+            EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+            EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
+        ):
+            raise ValueError("unsupported prepared output factor source")
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,9 +112,7 @@ class MappingEagerKernelResolver:
                 f"prepared model has no propagator kernel for particle/chirality {key}"
             ) from error
 
-    def closure_kernel(
-        self, root: Mapping[str, object]
-    ) -> EagerResolvedKernel | None:
+    def closure_kernel(self, root: Mapping[str, object]) -> EagerResolvedKernel | None:
         kind = str(root.get("kind"))
         vertex_kind = root.get("vertex_kind")
         key = (kind, None if vertex_kind is None else int(vertex_kind))
@@ -117,27 +126,29 @@ class MappingEagerKernelResolver:
             ) from error
 
 
-class PreparedCatalogEagerKernelResolver:
-    """Resolve typed model bindings retained in a prepared-model bundle."""
+@dataclass(frozen=True, slots=True)
+class PreparedCatalogEagerKernelIndex:
+    """Model-local resolver index parsed once while loading a prepared pack."""
 
-    def __init__(
-        self,
-        dag: GenericDAG,
+    vertices: Mapping[VertexKernelKey, EagerResolvedKernel]
+    propagators: Mapping[PropagatorKernelKey, int | None]
+    closures: Mapping[ClosureKernelKey, EagerResolvedKernel]
+
+    @classmethod
+    def from_manifest(
+        cls,
         manifest: Mapping[str, object],
-    ) -> None:
+    ) -> PreparedCatalogEagerKernelIndex:
         if manifest.get("abi") != "pyamplicol-prepared-kernel-catalog-v1":
             raise ValueError("prepared model has an incompatible resolver ABI")
-        self._dag = dag
-        self._vertices: dict[VertexKernelKey, EagerResolvedKernel] = {}
-        self._propagators: dict[PropagatorKernelKey, int | None] = {}
-        self._closures: dict[ClosureKernelKey, EagerResolvedKernel] = {}
+        vertices: dict[VertexKernelKey, EagerResolvedKernel] = {}
+        propagators: dict[PropagatorKernelKey, int | None] = {}
+        closures: dict[ClosureKernelKey, EagerResolvedKernel] = {}
         for raw in _mapping_sequence(
             manifest.get("vertex_bindings"), "resolver.vertex_bindings"
         ):
-            key = _vertex_kernel_key(
-                _mapping(raw.get("key"), "resolver.vertex.key")
-            )
-            self._vertices[key] = _resolved_kernel(raw, "resolver.vertex")
+            key = _vertex_kernel_key(_mapping(raw.get("key"), "resolver.vertex.key"))
+            vertices[key] = _resolved_kernel(raw, "resolver.vertex")
         for raw in _mapping_sequence(
             manifest.get("propagator_bindings"), "resolver.propagator_bindings"
         ):
@@ -146,14 +157,32 @@ class PreparedCatalogEagerKernelResolver:
                 int(key_data["particle_id"]), int(key_data["chirality"])
             )
             kernel_id = raw.get("kernel_id")
-            self._propagators[key] = None if kernel_id is None else int(kernel_id)
+            propagators[key] = None if kernel_id is None else int(kernel_id)
         for raw in _mapping_sequence(
             manifest.get("closure_bindings"), "resolver.closure_bindings"
         ):
-            key = _closure_kernel_key(
-                _mapping(raw.get("key"), "resolver.closure.key")
-            )
-            self._closures[key] = _resolved_kernel(raw, "resolver.closure")
+            key = _closure_kernel_key(_mapping(raw.get("key"), "resolver.closure.key"))
+            closures[key] = _resolved_kernel(raw, "resolver.closure")
+        return cls(vertices=vertices, propagators=propagators, closures=closures)
+
+
+class PreparedCatalogEagerKernelResolver:
+    """Bind one process DAG to a validated prepared-model resolver index."""
+
+    def __init__(
+        self,
+        dag: GenericDAG,
+        manifest: Mapping[str, object] | PreparedCatalogEagerKernelIndex,
+    ) -> None:
+        index = (
+            manifest
+            if isinstance(manifest, PreparedCatalogEagerKernelIndex)
+            else PreparedCatalogEagerKernelIndex.from_manifest(manifest)
+        )
+        self._dag = dag
+        self._vertices = index.vertices
+        self._propagators = index.propagators
+        self._closures = index.closures
 
     def vertex_kernel(self, interaction: InteractionNode) -> EagerResolvedKernel:
         left = self._dag.currents[interaction.left_id]
@@ -196,9 +225,7 @@ class PreparedCatalogEagerKernelResolver:
             )
         return kernel_id
 
-    def closure_kernel(
-        self, root: Mapping[str, object]
-    ) -> EagerResolvedKernel | None:
+    def closure_kernel(self, root: Mapping[str, object]) -> EagerResolvedKernel | None:
         if str(root.get("kind")) == "direct-contraction":
             return None
         kind = root.get("vertex_kind")
@@ -210,8 +237,7 @@ class PreparedCatalogEagerKernelResolver:
         key = ClosureKernelKey(
             kind=int(kind),
             particles=tuple(
-                int(value)
-                for value in _sequence(particles, "closure.vertex_particles")
+                int(value) for value in _sequence(particles, "closure.vertex_particles")
             ),
             left_chirality=int(left.index.chirality),
             right_chirality=int(right.index.chirality),
@@ -299,28 +325,21 @@ class EagerSelectorClosureTables:
                     f"eager selector domain ID {reference.domain_id} is out of range"
                 )
 
-    def _domain_references(self) -> tuple[EagerSelectorDomainIdRow, ...]:
-        return (
-            *self.closure_domains,
-            *(
-                reference
-                for stage in self.stages
-                for references in (
-                    stage.invocation_domains,
-                    stage.attachment_domains,
-                    stage.unpropagated_finalization_domains,
-                    stage.propagated_finalization_domains,
-                )
-                for reference in references
-            ),
-        )
+    def _domain_references(self) -> Iterator[EagerSelectorDomainIdRow]:
+        yield from self.closure_domains
+        for stage in self.stages:
+            for references in (
+                stage.invocation_domains,
+                stage.attachment_domains,
+                stage.unpropagated_finalization_domains,
+                stage.propagated_finalization_domains,
+            ):
+                yield from references
 
     def binary_payloads(self, *, prefix: str) -> dict[str, bytes]:
         payloads = {
             f"{prefix}/selector-domains.bin": pack_rows(self.domains),
-            f"{prefix}/selector-domain-group-ids.bin": pack_rows(
-                self.domain_group_ids
-            ),
+            f"{prefix}/selector-domain-group-ids.bin": pack_rows(self.domain_group_ids),
             f"{prefix}/closure-domains.bin": pack_rows(self.closure_domains),
         }
         for stage in self.stages:
@@ -444,11 +463,7 @@ class EagerExecutionTables:
     def referenced_kernel_ids(self) -> frozenset[int]:
         return frozenset(
             {
-                *(
-                    row.kernel_id
-                    for stage in self.stages
-                    for row in stage.invocations
-                ),
+                *(row.kernel_id for stage in self.stages for row in stage.invocations),
                 *(
                     row.kernel_id
                     for stage in self.stages
@@ -527,6 +542,10 @@ class _CouplingCatalog:
     def __init__(self, model_parameters: Sequence[Mapping[str, object]]) -> None:
         self.rows: list[EagerCouplingRow] = []
         self._row_ids: dict[EagerCouplingRow, int] = {}
+        self._input_ids: dict[
+            tuple[tuple[float, float], tuple[str | None, ...]],
+            int,
+        ] = {}
         self._direct = {
             str(record["name"]): int(record["parameter_index"])
             for record in model_parameters
@@ -549,7 +568,13 @@ class _CouplingCatalog:
         if len(coupling) != 2:
             raise ValueError("eager coupling metadata must contain two components")
         constants = (float(coupling[0]), float(coupling[1]))
-        names = tuple(parameter_names or ())
+        names = tuple(
+            name if isinstance(name, str) else None for name in (parameter_names or ())
+        )
+        input_key = (constants, names)
+        existing = self._input_ids.get(input_key)
+        if existing is not None:
+            return existing
         real_parameter = MISSING_U32
         imag_parameter = MISSING_U32
 
@@ -574,7 +599,7 @@ class _CouplingCatalog:
                 else:
                     imag_parameter = parameter_id
 
-        row = EagerCouplingRow(
+        row = EagerCouplingRow._from_trusted_values(
             real_parameter,
             imag_parameter,
             constants[0],
@@ -582,11 +607,55 @@ class _CouplingCatalog:
         )
         existing = self._row_ids.get(row)
         if existing is not None:
+            self._input_ids[input_key] = existing
             return existing
         row_id = len(self.rows)
         self.rows.append(row)
         self._row_ids[row] = row_id
+        self._input_ids[input_key] = row_id
         return row_id
+
+
+@dataclass(frozen=True, slots=True)
+class _EagerStageLoweringInput:
+    record: Mapping[str, object]
+    evaluation_groups: Sequence[Sequence[InteractionNode]]
+    input_value_slot_by_current: Mapping[int, int]
+    output_current_ids: Sequence[int]
+
+
+@dataclass(frozen=True, slots=True)
+class _EagerLoweringInput:
+    process_key: str
+    value_slots: Mapping[int, Mapping[str, object]] | Sequence[Mapping[str, object]]
+    value_slots_by_current_variant: Mapping[tuple[int, str], int]
+    momentum_slot_by_mask: Mapping[int, int]
+    model_parameters: Sequence[Mapping[str, object]]
+    stages: Sequence[_EagerStageLoweringInput]
+    amplitude_stage: Mapping[str, object]
+
+
+def lower_fused_eager_execution(
+    *,
+    dag: GenericDAG,
+    model: Model,
+    resolver: EagerKernelResolver,
+    process_id: str | None = None,
+) -> tuple[dict[str, object], EagerExecutionTables]:
+    """Assemble runtime metadata and eager tables from one owned layout."""
+
+    layout = build_runtime_schema_layout(
+        dag,
+        model,
+        process_id=process_id,
+    )
+    tables = _lower_eager_execution_tables(
+        dag,
+        model,
+        resolver,
+        _lowering_input_from_layout(layout),
+    )
+    return layout.runtime_schema, tables
 
 
 def lower_eager_execution_tables(
@@ -597,6 +666,18 @@ def lower_eager_execution_tables(
 ) -> EagerExecutionTables:
     """Lower a proven DAG without constructing any backend evaluator."""
 
+    return _lower_eager_execution_tables(
+        dag,
+        model,
+        resolver,
+        _lowering_input_from_schema(dag, runtime_schema),
+    )
+
+
+def _lowering_input_from_schema(
+    dag: GenericDAG,
+    runtime_schema: Mapping[str, object],
+) -> _EagerLoweringInput:
     value_slots = {
         int(slot["value_slot_id"]): slot
         for slot in _mapping_sequence(
@@ -621,19 +702,24 @@ def lower_eager_execution_tables(
         runtime_schema.get("model_parameters"),
         "model_parameters",
     )
-    coupling_catalog = _CouplingCatalog(model_parameters)
-    stages: list[EagerStageTables] = []
-
+    stages: list[_EagerStageLoweringInput] = []
     for stage_record in _mapping_sequence(runtime_schema.get("stages"), "stages"):
-        stage_index = int(stage_record["stage_index"])
-        subset_size = int(stage_record["subset_size"])
-        interaction_ids = tuple(
-            int(value)
+        interactions = tuple(
+            dag.interactions[int(value)]
             for value in _sequence(
-                stage_record.get("interaction_ids"), "interaction_ids"
+                stage_record.get("interaction_ids"),
+                "interaction_ids",
             )
         )
-        input_slot_by_current = {
+        groups: dict[tuple[str, int], list[InteractionNode]] = {}
+        for interaction in interactions:
+            group_key = (
+                ("group", int(interaction.evaluation_group_id))
+                if interaction.evaluation_group_id is not None
+                else ("interaction", interaction.id)
+            )
+            groups.setdefault(group_key, []).append(interaction)
+        input_value_slot_by_current = {
             int(value_slots[slot_id]["current_id"]): slot_id
             for slot_id in (
                 int(value)
@@ -643,50 +729,161 @@ def lower_eager_execution_tables(
                 )
             )
         }
-        grouped: dict[tuple[str, int], list[InteractionNode]] = {}
-        for interaction_id in interaction_ids:
-            interaction = dag.interactions[interaction_id]
-            group = (
-                ("group", int(interaction.evaluation_group_id))
-                if interaction.evaluation_group_id is not None
-                else ("interaction", interaction.id)
+        stages.append(
+            _EagerStageLoweringInput(
+                record=stage_record,
+                evaluation_groups=tuple(tuple(group) for group in groups.values()),
+                input_value_slot_by_current=input_value_slot_by_current,
+                output_current_ids=tuple(
+                    int(value)
+                    for value in _sequence(
+                        stage_record.get("output_current_ids"),
+                        "output_current_ids",
+                    )
+                ),
             )
-            grouped.setdefault(group, []).append(interaction)
+        )
+    return _EagerLoweringInput(
+        process_key=str(runtime_schema.get("process_key", dag.process.key)),
+        value_slots=value_slots,
+        value_slots_by_current_variant=value_slots_by_current_variant,
+        momentum_slot_by_mask=momentum_slot_by_mask,
+        model_parameters=model_parameters,
+        stages=tuple(stages),
+        amplitude_stage=_mapping(
+            runtime_schema.get("amplitude_stage"),
+            "amplitude_stage",
+        ),
+    )
+
+
+def _lowering_input_from_layout(
+    layout: RuntimeSchemaLayout,
+) -> _EagerLoweringInput:
+    stages = tuple(
+        _EagerStageLoweringInput(
+            record=stage.record,
+            evaluation_groups=stage.evaluation_groups,
+            input_value_slot_by_current=stage.input_value_slot_by_current,
+            output_current_ids=stage.output_current_ids,
+        )
+        for stage in layout.stages
+    )
+    return _EagerLoweringInput(
+        process_key=str(layout.runtime_schema["process_key"]),
+        value_slots=layout.value_slots_by_id,
+        value_slots_by_current_variant=layout.value_slot_ids_by_current_variant,
+        momentum_slot_by_mask=layout.momentum_slot_by_mask,
+        model_parameters=layout.model_parameters,
+        stages=stages,
+        amplitude_stage=layout.amplitude_stage,
+    )
+
+
+def _lower_eager_execution_tables(
+    dag: GenericDAG,
+    model: Model,
+    resolver: EagerKernelResolver,
+    lowering: _EagerLoweringInput,
+) -> EagerExecutionTables:
+    value_slots = lowering.value_slots
+    value_slots_by_current_variant = lowering.value_slots_by_current_variant
+    momentum_slot_by_mask = lowering.momentum_slot_by_mask
+    coupling_catalog = _CouplingCatalog(lowering.model_parameters)
+    coupling_parameter_names: dict[
+        tuple[int, tuple[int, ...], tuple[float, ...]],
+        tuple[str | None, ...],
+    ] = {}
+    resolved_vertex_kernels: dict[
+        tuple[
+            int,
+            tuple[int, int, int],
+            int,
+            int,
+            int,
+            tuple[float, float],
+        ],
+        EagerResolvedKernel,
+    ] = {}
+    propagator_kernel_ids: dict[tuple[int, int], int | None] = {}
+
+    def parameter_names_for(interaction: InteractionNode) -> tuple[str | None, ...]:
+        coupling_key = (
+            interaction.vertex_kind,
+            tuple(interaction.vertex_particles),
+            tuple(interaction.coupling),
+        )
+        parameter_names = coupling_parameter_names.get(coupling_key)
+        if parameter_names is None:
+            parameter_names = tuple(
+                runtime_coupling_parameter_names(
+                    interaction.vertex_kind,
+                    interaction.vertex_particles,
+                    interaction.coupling,
+                    model=model,
+                )
+            )
+            coupling_parameter_names[coupling_key] = parameter_names
+        return parameter_names
+
+    def kernel_for(interaction: InteractionNode) -> EagerResolvedKernel:
+        left = dag.currents[interaction.left_id]
+        right = dag.currents[interaction.right_id]
+        result = dag.currents[interaction.result_id]
+        key = (
+            int(interaction.vertex_kind),
+            interaction.vertex_particles,
+            int(left.index.chirality),
+            int(right.index.chirality),
+            int(result.index.chirality),
+            interaction.coupling,
+        )
+        resolved = resolved_vertex_kernels.get(key)
+        if resolved is None:
+            resolved = resolver.vertex_kernel(interaction)
+            resolved_vertex_kernels[key] = resolved
+        return resolved
+
+    stages: list[EagerStageTables] = []
+
+    for stage_input in lowering.stages:
+        stage_record = stage_input.record
+        stage_index = int(stage_record["stage_index"])
+        subset_size = int(stage_record["subset_size"])
+        input_slot_by_current = stage_input.input_value_slot_by_current
 
         invocations: list[EagerInvocationRow] = []
         attachments: list[EagerAttachmentRow] = []
-        for interactions in grouped.values():
+        for interactions in stage_input.evaluation_groups:
             representative = interactions[0]
-            resolved_kernel = resolver.vertex_kernel(representative)
+            resolved_kernel = kernel_for(representative)
             representative_factor = complex(*representative.evaluation_factor)
             if representative_factor == 0j:
                 raise ValueError(
                     "eager evaluation representative factor must be nonzero"
                 )
-            parameter_names = runtime_coupling_parameter_names(
-                representative.vertex_kind,
-                representative.vertex_particles,
-                representative.coupling,
-                model=model,
-            )
+            parameter_names = parameter_names_for(representative)
             coupling_slot_id = coupling_catalog.add(
                 representative.coupling,
                 parameter_names,
             )
             attachment_start = len(attachments)
+            group_factor = (
+                complex(*resolved_kernel.normalization_factor)
+                / representative_factor
+            )
             for interaction in interactions:
-                if interaction.coupling != representative.coupling:
-                    raise ValueError(
-                        "one eager evaluation group contains different couplings"
-                    )
+                # The compiler's evaluation-group key already proves identical
+                # kernel, coupling, and mutable-parameter provenance. Repeating
+                # those resolver lookups for every fan-out attachment is pure
+                # lowering overhead.
                 factor = (
                     complex(*interaction.color_weight)
                     * complex(*interaction.evaluation_factor)
-                    * complex(*resolved_kernel.normalization_factor)
-                    / representative_factor
+                    * group_factor
                 )
                 attachments.append(
-                    EagerAttachmentRow(
+                    EagerAttachmentRow._from_trusted_values(
                         interaction.result_id,
                         factor.real,
                         factor.imag,
@@ -696,17 +893,17 @@ def lower_eager_execution_tables(
             right = dag.currents[representative.right_id]
             input_currents = (left, right)
             ordered_currents = tuple(
-                input_currents[index]
-                for index in resolved_kernel.canonical_input_order
+                input_currents[index] for index in resolved_kernel.canonical_input_order
             )
             invocations.append(
-                EagerInvocationRow(
+                EagerInvocationRow._from_trusted_values(
                     resolved_kernel.kernel_id,
                     input_slot_by_current[ordered_currents[0].id],
                     input_slot_by_current[ordered_currents[1].id],
                     momentum_slot_by_mask[ordered_currents[0].index.momentum_mask],
                     momentum_slot_by_mask[ordered_currents[1].index.momentum_mask],
                     coupling_slot_id,
+                    resolved_kernel.output_factor_source,
                     attachment_start,
                     len(interactions),
                 )
@@ -719,11 +916,9 @@ def lower_eager_execution_tables(
                 value_slots_by_current_variant,
                 momentum_slot_by_mask,
                 resolver,
+                propagator_kernel_ids,
             )
-            for current_id in _sequence(
-                stage_record.get("output_current_ids"),
-                "output_current_ids",
-            )
+            for current_id in stage_input.output_current_ids
         )
         stages.append(
             EagerStageTables(
@@ -735,52 +930,50 @@ def lower_eager_execution_tables(
             )
         )
 
-    amplitude_stage = _mapping(
-        runtime_schema.get("amplitude_stage"),
-        "amplitude_stage",
-    )
+    amplitude_stage = lowering.amplitude_stage
     closures: list[EagerClosureRow] = []
     for root in _mapping_sequence(
         amplitude_stage.get("roots"), "amplitude_stage.roots"
     ):
-        resolved_kernel = resolver.closure_kernel(root)
+        closure_kernel = resolver.closure_kernel(root)
         coupling_slot_id = MISSING_U32
-        if resolved_kernel is not None:
+        if closure_kernel is not None:
             coupling_slot_id = coupling_catalog.add(
                 _sequence(root.get("coupling"), "root.coupling"),
                 _optional_sequence(root.get("coupling_parameter_names")),
             )
         color_weight = _complex_pair(root.get("color_weight"), "root.color_weight")
         left_slot_id = int(
-            _mapping(root.get("left_value_slot"), "left_value_slot")[
-                "value_slot_id"
-            ]
+            _mapping(root.get("left_value_slot"), "left_value_slot")["value_slot_id"]
         )
         right_slot_id = int(
-            _mapping(root.get("right_value_slot"), "right_value_slot")[
-                "value_slot_id"
-            ]
+            _mapping(root.get("right_value_slot"), "right_value_slot")["value_slot_id"]
         )
-        if resolved_kernel is not None:
+        if closure_kernel is not None:
             slots = (left_slot_id, right_slot_id)
             left_slot_id, right_slot_id = (
-                slots[index] for index in resolved_kernel.canonical_input_order
+                slots[index] for index in closure_kernel.canonical_input_order
             )
-            color_weight *= complex(*resolved_kernel.normalization_factor)
+            color_weight *= complex(*closure_kernel.normalization_factor)
         closures.append(
-            EagerClosureRow(
-                MISSING_U32 if resolved_kernel is None else resolved_kernel.kernel_id,
+            EagerClosureRow._from_trusted_values(
+                MISSING_U32 if closure_kernel is None else closure_kernel.kernel_id,
                 left_slot_id,
                 right_slot_id,
                 int(root["output_index"]),
                 coupling_slot_id,
+                (
+                    EAGER_OUTPUT_FACTOR_NONE
+                    if closure_kernel is None
+                    else closure_kernel.output_factor_source
+                ),
                 color_weight.real,
                 color_weight.imag,
             )
         )
 
     return EagerExecutionTables(
-        process_key=str(runtime_schema.get("process_key", dag.process.key)),
+        process_key=lowering.process_key,
         couplings=tuple(coupling_catalog.rows),
         stages=tuple(stages),
         closures=tuple(closures),
@@ -788,6 +981,8 @@ def lower_eager_execution_tables(
             tuple(stages),
             tuple(closures),
             amplitude_stage,
+            value_slot_count=len(value_slots),
+            current_count=len(dag.currents),
         ),
     )
 
@@ -796,6 +991,9 @@ def _build_selector_closure_tables(
     stages: tuple[EagerStageTables, ...],
     closures: tuple[EagerClosureRow, ...],
     amplitude_stage: Mapping[str, object],
+    *,
+    value_slot_count: int,
+    current_count: int,
 ) -> EagerSelectorClosureTables:
     """Propagate coherent-group dependencies backwards through eager rows."""
 
@@ -814,57 +1012,65 @@ def _build_selector_closure_tables(
         group_id < 0 or group_id > MISSING_U32 for group_id in declared_groups
     ):
         raise ValueError("runtime coherent-group IDs must be unique unsigned integers")
-    declared_group_set = set(declared_groups)
+    ordered_group_ids = tuple(sorted(declared_groups))
+    group_bits = {
+        group_id: 1 << bit_index for bit_index, group_id in enumerate(ordered_group_ids)
+    }
+    member_cache: dict[int, tuple[int, ...]] = {0: ()}
 
-    value_domains: dict[int, set[int]] = {}
-    closure_domains: list[frozenset[int]] = []
+    def members(domain: int) -> tuple[int, ...]:
+        cached = member_cache.get(domain)
+        if cached is not None:
+            return cached
+        result: list[int] = []
+        remaining = domain
+        while remaining:
+            lowest = remaining & -remaining
+            result.append(ordered_group_ids[lowest.bit_length() - 1])
+            remaining ^= lowest
+        resolved = tuple(result)
+        member_cache[domain] = resolved
+        return resolved
+
+    value_domains = [0] * value_slot_count
+    closure_domains: list[int] = []
     for closure, root in zip(closures, roots, strict=True):
         if closure.amplitude_index != int(root["output_index"]):
             raise ValueError(
                 "eager closure order does not match runtime amplitude roots"
             )
         group_id = int(root["coherent_group_id"])
-        if group_id not in declared_group_set:
+        domain = group_bits.get(group_id)
+        if domain is None:
             raise ValueError(
                 f"amplitude root references undeclared coherent group {group_id}"
             )
-        domain = frozenset((group_id,))
         closure_domains.append(domain)
-        value_domains.setdefault(closure.left_value_slot_id, set()).add(group_id)
-        value_domains.setdefault(closure.right_value_slot_id, set()).add(group_id)
+        value_domains[closure.left_value_slot_id] |= domain
+        value_domains[closure.right_value_slot_id] |= domain
 
-    stage_domain_sets: dict[
-        int,
+    stage_domain_sets_reversed: list[
         tuple[
-            tuple[frozenset[int], ...],
-            tuple[frozenset[int], ...],
-            tuple[frozenset[int], ...],
-            tuple[frozenset[int], ...],
+            tuple[int, ...],
+            tuple[int, ...],
+            tuple[int, ...],
+            tuple[int, ...],
         ],
-    ] = {}
-    empty_domain: frozenset[int] = frozenset()
+    ] = []
+    empty_domain = 0
+    current_domains = [empty_domain] * current_count
 
     for stage in reversed(stages):
-        unpropagated_domains: list[frozenset[int]] = []
-        propagated_domains: list[frozenset[int]] = []
-        current_domains: dict[int, frozenset[int]] = {}
+        unpropagated_domains: list[int] = []
+        propagated_domains: list[int] = []
         for finalization in stage.finalizations:
-            if finalization.current_id in current_domains:
-                raise ValueError(
-                    f"eager stage {stage.stage_index} finalizes current "
-                    f"{finalization.current_id} more than once"
-                )
             unpropagated = (
-                frozenset(
-                    value_domains.get(finalization.unpropagated_value_slot_id, ())
-                )
+                value_domains[finalization.unpropagated_value_slot_id]
                 if finalization.stores_unpropagated
                 else empty_domain
             )
             propagated = (
-                frozenset(
-                    value_domains.get(finalization.propagated_value_slot_id, ())
-                )
+                value_domains[finalization.propagated_value_slot_id]
                 if finalization.stores_propagated
                 else empty_domain
             )
@@ -872,78 +1078,88 @@ def _build_selector_closure_tables(
             propagated_domains.append(propagated)
             current_domains[finalization.current_id] = unpropagated | propagated
 
-        attachment_domains: list[frozenset[int]] = []
-        for attachment in stage.attachments:
-            try:
-                attachment_domains.append(current_domains[attachment.result_current_id])
-            except KeyError as error:
-                raise ValueError(
-                    f"eager attachment targets current {attachment.result_current_id} "
-                    f"without a stage-{stage.stage_index} finalization"
-                ) from error
+        attachment_domains = [
+            current_domains[attachment.result_current_id]
+            for attachment in stage.attachments
+        ]
 
-        invocation_domains: list[frozenset[int]] = []
+        invocation_domains: list[int] = []
         for invocation in stage.invocations:
             start = invocation.attachment_start
             stop = start + invocation.attachment_count
-            domain = frozenset(
-                group_id
-                for attachment_domain in attachment_domains[start:stop]
-                for group_id in attachment_domain
-            )
+            domain = 0
+            for attachment_index in range(start, stop):
+                domain |= attachment_domains[attachment_index]
             invocation_domains.append(domain)
-            value_domains.setdefault(invocation.left_value_slot_id, set()).update(
-                domain
-            )
-            value_domains.setdefault(invocation.right_value_slot_id, set()).update(
-                domain
-            )
+            value_domains[invocation.left_value_slot_id] |= domain
+            value_domains[invocation.right_value_slot_id] |= domain
 
-        stage_domain_sets[stage.stage_index] = (
-            tuple(invocation_domains),
-            tuple(attachment_domains),
-            tuple(unpropagated_domains),
-            tuple(propagated_domains),
+        stage_domain_sets_reversed.append(
+            (
+                tuple(invocation_domains),
+                tuple(attachment_domains),
+                tuple(unpropagated_domains),
+                tuple(propagated_domains),
+            )
         )
 
     unique_domains = {empty_domain, *closure_domains}
-    for domain_sets in stage_domain_sets.values():
+    for domain_sets in stage_domain_sets_reversed:
         for domains in domain_sets:
             unique_domains.update(domains)
+    # Domain IDs are internal to one eager plan. Integer-mask ordering is both
+    # deterministic and cheaper than materializing sparse members only to sort.
     ordered_domains = tuple(
-        sorted(unique_domains, key=lambda domain: (len(domain), tuple(sorted(domain))))
+        sorted(unique_domains, key=lambda domain: (domain.bit_count(), domain))
     )
     domain_ids = {domain: domain_id for domain_id, domain in enumerate(ordered_domains)}
 
     domain_rows: list[EagerSelectorDomainRow] = []
     group_rows: list[EagerSelectorGroupRow] = []
+    group_row_by_id = {
+        group_id: EagerSelectorGroupRow._from_trusted_values(group_id)
+        for group_id in ordered_group_ids
+    }
     for domain in ordered_domains:
-        members = tuple(sorted(domain))
-        domain_rows.append(EagerSelectorDomainRow(len(group_rows), len(members)))
-        group_rows.extend(EagerSelectorGroupRow(group_id) for group_id in members)
+        domain_members = members(domain)
+        domain_rows.append(
+            EagerSelectorDomainRow._from_trusted_values(
+                len(group_rows), len(domain_members)
+            )
+        )
+        group_rows.extend(group_row_by_id[group_id] for group_id in domain_members)
+
+    domain_reference_rows = tuple(
+        EagerSelectorDomainIdRow._from_trusted_values(domain_id)
+        for domain_id in range(len(ordered_domains))
+    )
 
     def references(
-        domains: Sequence[frozenset[int]],
+        domains: Sequence[int],
     ) -> tuple[EagerSelectorDomainIdRow, ...]:
-        return tuple(EagerSelectorDomainIdRow(domain_ids[domain]) for domain in domains)
+        return tuple(domain_reference_rows[domain_ids[domain]] for domain in domains)
 
     selector_stages = []
-    for stage in stages:
+    for stage, domain_sets in zip(
+        stages,
+        reversed(stage_domain_sets_reversed),
+        strict=True,
+    ):
         (
-            invocation_domains,
-            attachment_domains,
-            unpropagated_domains,
-            propagated_domains,
-        ) = stage_domain_sets[stage.stage_index]
+            stage_invocation_domains,
+            stage_attachment_domains,
+            stage_unpropagated_domains,
+            stage_propagated_domains,
+        ) = domain_sets
         selector_stages.append(
             EagerStageSelectorDomains(
                 stage_index=stage.stage_index,
-                invocation_domains=references(invocation_domains),
-                attachment_domains=references(attachment_domains),
+                invocation_domains=references(stage_invocation_domains),
+                attachment_domains=references(stage_attachment_domains),
                 unpropagated_finalization_domains=references(
-                    unpropagated_domains
+                    stage_unpropagated_domains
                 ),
-                propagated_finalization_domains=references(propagated_domains),
+                propagated_finalization_domains=references(stage_propagated_domains),
             )
         )
 
@@ -957,10 +1173,11 @@ def _build_selector_closure_tables(
 
 def _finalization_row(
     current: CurrentNode,
-    value_slots: Mapping[int, Mapping[str, object]],
+    value_slots: Mapping[int, Mapping[str, object]] | Sequence[Mapping[str, object]],
     value_slots_by_current_variant: Mapping[tuple[int, str], int],
     momentum_slot_by_mask: Mapping[int, int],
     resolver: EagerKernelResolver,
+    propagator_kernel_ids: dict[tuple[int, int], int | None],
 ) -> EagerFinalizationRow:
     unpropagated = value_slots_by_current_variant.get(
         (current.id, "unpropagated"),
@@ -978,16 +1195,19 @@ def _finalization_row(
         output_slot.get("propagator"),
         f"current {current.id} propagator",
     )
-    kernel_id = (
-        resolver.propagator_kernel_id(current, propagator)
-        if bool(output_slot.get("applies_propagator", False))
-        else None
-    )
+    propagator_key = (current.index.particle_id, current.index.chirality)
+    if not bool(output_slot.get("applies_propagator", False)):
+        kernel_id = None
+    elif propagator_key in propagator_kernel_ids:
+        kernel_id = propagator_kernel_ids[propagator_key]
+    else:
+        kernel_id = resolver.propagator_kernel_id(current, propagator)
+        propagator_kernel_ids[propagator_key] = kernel_id
     if propagated != MISSING_U32 and kernel_id is None:
         raise ValueError(
             f"eager propagated current {current.id} has no prepared propagator kernel"
         )
-    return EagerFinalizationRow(
+    return EagerFinalizationRow._from_trusted_values(
         MISSING_U32 if kernel_id is None else kernel_id,
         current.id,
         unpropagated,
@@ -1048,21 +1268,27 @@ def _resolved_kernel(
     )
     if len(order) != 2 or len(factor) != 2:
         raise ValueError(f"{context} has malformed input transformation metadata")
+    factor_source = {
+        "none": EAGER_OUTPUT_FACTOR_NONE,
+        "coupling-real": EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+        "coupling-imag": EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
+    }.get(str(record.get("output_factor_source", "none")))
+    if factor_source is None:
+        raise ValueError(f"{context} has an unsupported output factor source")
     return EagerResolvedKernel(
         kernel_id=int(record["kernel_id"]),
         canonical_input_order=(order[0], order[1]),
         normalization_factor=(factor[0], factor[1]),
+        output_factor_source=factor_source,
     )
 
 
 def _vertex_kernel_key(record: Mapping[str, object]) -> VertexKernelKey:
     particles = tuple(
-        int(value)
-        for value in _sequence(record.get("particles"), "vertex.particles")
+        int(value) for value in _sequence(record.get("particles"), "vertex.particles")
     )
     coupling = tuple(
-        float(value)
-        for value in _sequence(record.get("coupling"), "vertex.coupling")
+        float(value) for value in _sequence(record.get("coupling"), "vertex.coupling")
     )
     if len(particles) != 3 or len(coupling) != 2:
         raise ValueError("prepared vertex key has malformed particles or coupling")
@@ -1078,12 +1304,10 @@ def _vertex_kernel_key(record: Mapping[str, object]) -> VertexKernelKey:
 
 def _closure_kernel_key(record: Mapping[str, object]) -> ClosureKernelKey:
     particles = tuple(
-        int(value)
-        for value in _sequence(record.get("particles"), "closure.particles")
+        int(value) for value in _sequence(record.get("particles"), "closure.particles")
     )
     coupling = tuple(
-        float(value)
-        for value in _sequence(record.get("coupling"), "closure.coupling")
+        float(value) for value in _sequence(record.get("coupling"), "closure.coupling")
     )
     if len(particles) != 3 or len(coupling) != 2:
         raise ValueError("prepared closure key has malformed particles or coupling")
@@ -1105,6 +1329,8 @@ __all__ = [
     "EagerStageSelectorDomains",
     "EagerStageTables",
     "MappingEagerKernelResolver",
+    "PreparedCatalogEagerKernelIndex",
     "PreparedCatalogEagerKernelResolver",
     "lower_eager_execution_tables",
+    "lower_fused_eager_execution",
 ]

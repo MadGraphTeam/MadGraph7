@@ -8,7 +8,12 @@ from decimal import Decimal
 from typing import cast
 
 from pyamplicol.api.errors import ArtifactError
-from pyamplicol.generation.eager_tables import MISSING_U32
+from pyamplicol.generation.eager_tables import (
+    EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
+    EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+    EAGER_OUTPUT_FACTOR_NONE,
+    MISSING_U32,
+)
 from pyamplicol.models.prepared import PreparedKernelRecord
 from pyamplicol.runtime.eager_exact._contracts import (
     _ZERO,
@@ -72,14 +77,21 @@ def _evaluate_point(
                 prepared_parameters=prepared_parameters,
             )
             outputs = kernel.evaluate(inputs, precision)
+            output_factor = _resolved_output_factor(
+                invocation.output_factor_source,
+                couplings[invocation.coupling_slot_id],
+            )
             start = invocation.attachment_start
             stop = start + invocation.attachment_count
             for attachment in stage.attachments[start:stop]:
                 target = plan.current_slots[attachment.result_current_id]
-                factor = _complex_pair(
-                    attachment.factor_real,
-                    attachment.factor_imag,
-                    "eager attachment factor",
+                factor = _complex_mul(
+                    _complex_pair(
+                        attachment.factor_real,
+                        attachment.factor_imag,
+                        "eager attachment factor",
+                    ),
+                    output_factor,
                 )
                 accumulated = target.read(currents)
                 target.write(
@@ -156,11 +168,32 @@ def _evaluate_point(
             closure.factor_imag,
             "eager closure factor",
         )
+        if closure.kernel_id != MISSING_U32:
+            factor = _complex_mul(
+                factor,
+                _resolved_output_factor(
+                    closure.output_factor_source,
+                    couplings[closure.coupling_slot_id],
+                ),
+            )
         amplitude_id = closure.amplitude_index
         amplitudes[amplitude_id] = _complex_add(
             amplitudes[amplitude_id], _complex_mul(factor, output)
         )
     return tuple(amplitudes)
+
+
+def _resolved_output_factor(
+    source: int,
+    coupling: _ComplexDecimal,
+) -> _ComplexDecimal:
+    if source == EAGER_OUTPUT_FACTOR_NONE:
+        return Decimal(1), Decimal(0)
+    if source == EAGER_OUTPUT_FACTOR_COUPLING_REAL:
+        return coupling[0], Decimal(0)
+    if source == EAGER_OUTPUT_FACTOR_COUPLING_IMAG:
+        return coupling[1], Decimal(0)
+    raise ArtifactError(f"unsupported eager output factor source {source}")
 
 
 def _resolve_couplings(

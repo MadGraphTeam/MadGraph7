@@ -95,7 +95,7 @@ class EagerProcessArtifact:
     color_accuracy: str
     external_pdgs: tuple[int, ...]
     aliases: tuple[Mapping[str, object], ...]
-    runtime_schema: RuntimeExpressionSchema
+    runtime_schema: RuntimeExpressionSchema | Mapping[str, object]
     eager_tables: EagerExecutionTables
     point_tile_size: int
     workspace_mib: int
@@ -196,6 +196,7 @@ def write_schema_v3_artifact(
     target = _mapping(producer["target"])
     process_records = _existing_process_records(existing)
     evaluator_entries = _existing_evaluator_entries(existing)
+    execution_manifest_sha256_by_process: dict[str, str] = {}
     required_runtime_capabilities = set(
         _existing_required_runtime_capabilities(existing)
     )
@@ -234,13 +235,14 @@ def write_schema_v3_artifact(
                 target=target,
             )
         for process in processes:
-            record, evaluator_entry = _write_process_payloads(
+            record, evaluator_entry, execution_sha256 = _write_process_payloads(
                 builder,
                 process,
                 target=target,
             )
             process_records.append(record)
             evaluator_entries.append(evaluator_entry)
+            execution_manifest_sha256_by_process[process.process_id] = execution_sha256
         builder.add_json(
             _EVALUATOR_SET_PATH,
             {
@@ -260,6 +262,7 @@ def write_schema_v3_artifact(
             api_bundle_requested=bundle_requested,
             api_bundle_path=api_bundle_path,
             eager_pack_identity=eager_pack_identity,
+            execution_manifest_sha256_by_process=(execution_manifest_sha256_by_process),
         )
         builder.finalize(
             kind=(
@@ -360,11 +363,19 @@ def _write_eager_kernel_pack(
     if {kernel.kernel_id for kernel in selected} != set(kernel_ids):
         missing = sorted(set(kernel_ids) - {kernel.kernel_id for kernel in selected})
         raise ValueError(f"prepared model omits referenced eager kernels {missing}")
+    selected_variants = tuple(
+        variant
+        for variant in bundle.kernel_pack.kernel_variants
+        if variant.base_kernel_id in kernel_ids
+    )
     builder.discard_payloads(_EAGER_KERNEL_PACK_PATH)
     builder.discard_payloads(_EAGER_KERNEL_PAYLOAD_ROOT, recursive=True)
     pack_payload = bundle.kernel_pack.to_dict()
     pack_payload["eager_kernel_abi"] = EAGER_KERNEL_ABI
     pack_payload["kernels"] = [kernel.to_dict() for kernel in selected]
+    pack_payload["kernel_variants"] = [
+        variant.to_dict() for variant in selected_variants
+    ]
     pack_payload["resolver_manifest"] = _filtered_eager_resolver_manifest(
         bundle.kernel_pack.resolver_manifest,
         kernel_ids,
@@ -376,7 +387,9 @@ def _write_eager_kernel_pack(
         compact=True,
     )
     referenced_payloads = {
-        path for kernel in selected for path in kernel.referenced_payload_paths
+        path
+        for record in (*selected, *selected_variants)
+        for path in record.referenced_payload_paths
     }
     for member_path in sorted(referenced_payloads):
         builder.add_bytes(
@@ -499,12 +512,12 @@ def _write_process_payloads(
     process: ProcessArtifact,
     *,
     target: Mapping[str, object],
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> tuple[dict[str, object], dict[str, object], str]:
     prefix = f"processes/{process.process_id}"
     physics_path = f"{prefix}/physics.json"
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
-    schema = process.runtime_schema.to_mapping()
+    schema = _runtime_schema_mapping(process.runtime_schema)
     physics = _mapping(schema.get("physics"))
     if physics.get("process_id") != process.process_id:
         raise ValueError(
@@ -517,7 +530,7 @@ def _write_process_payloads(
         process_id=process.process_id,
         compact=True,
     )
-    builder.add_json(
+    execution_record = builder.add_json(
         execution_path,
         _execution_manifest(process, schema),
         role="evaluator-manifest",
@@ -567,7 +580,16 @@ def _write_process_payloads(
                 _process_runtime_capabilities(process)
             ),
         },
+        execution_record.sha256,
     )
+
+
+def _runtime_schema_mapping(
+    schema: RuntimeExpressionSchema | Mapping[str, object],
+) -> Mapping[str, object]:
+    if isinstance(schema, RuntimeExpressionSchema):
+        return schema.to_mapping()
+    return schema
 
 
 def _execution_manifest(
@@ -1538,24 +1560,29 @@ def _extensions(
     api_bundle_requested: bool,
     api_bundle_path: str | None,
     eager_pack_identity: Mapping[str, object] | None,
+    execution_manifest_sha256_by_process: Mapping[str, str],
 ) -> dict[str, object]:
     result = {} if existing is None else _plain_mapping(existing.extensions)
     previous = result.get("generation")
     generation = dict(previous) if isinstance(previous, Mapping) else {}
     concrete = generation.get("concrete_processes")
     process_records = list(concrete) if isinstance(concrete, list) else []
-    process_records.extend(
-        {
+    for process in processes:
+        record: dict[str, object] = {
             "id": process.process_id,
             "expression": process.expression,
-            "runtime_schema_sha256": process.runtime_schema.sha256,
             "validation_momenta_path": (
                 f"processes/{process.process_id}/validation-momenta.json"
             ),
             "filters": dict(process.generation_filters),
         }
-        for process in processes
-    )
+        if isinstance(process, EagerProcessArtifact):
+            record["execution_manifest_sha256"] = execution_manifest_sha256_by_process[
+                process.process_id
+            ]
+        else:
+            record["runtime_schema_sha256"] = process.runtime_schema.sha256
+        process_records.append(record)
     generation.update(
         {
             "schema_version": 1,

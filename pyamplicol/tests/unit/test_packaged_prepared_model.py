@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol.assets import prepared_models
+from pyamplicol.models.prepared_catalog import PREPARED_INDEPENDENT_BLOCK_PROOF
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSET_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "prepared_models"
@@ -56,7 +57,21 @@ def test_packaged_builtin_sm_jit_o3_is_discoverable_and_validated(
         assert compiled.prepared_backend == "jit"
     with prepared_models.open_packaged_prepared_model() as bundle:
         assert bundle.backend == "jit"
-        assert len(bundle.kernel_pack.kernels) == 111
+        assert len(bundle.kernel_pack.kernels) == metadata["kernel_count"] == 51
+        eligible_ids = {
+            kernel.kernel_id
+            for kernel in bundle.kernel_pack.kernels
+            if PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes
+        }
+        assert len(eligible_ids) == 33
+        assert {
+            variant.base_kernel_id
+            for variant in bundle.kernel_pack.kernel_variants
+        } == eligible_ids
+        assert all(
+            variant.variant_id == "independent-block-4"
+            for variant in bundle.kernel_pack.kernel_variants
+        )
         assert bundle.kernel_pack.target["portable"] is True
         assert bundle.kernel_pack.target["cpu_features"] == ()
 

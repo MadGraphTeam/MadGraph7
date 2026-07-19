@@ -123,10 +123,14 @@ def test_eager_benchmark_uses_eager_phase_labels() -> None:
         execution_mode="eager",
         stage_evaluator_call_time=None,
         eager_execution_time=component,
+        eager_initialize_time=component,
         eager_gather_time=component,
         eager_kernel_call_time=component,
+        eager_invocation_scatter_time=component,
+        eager_finalization_time=component,
         eager_scatter_finalization_time=component,
         eager_closure_time=component,
+        eager_copy_out_time=component,
         stages=(),
     )
 
@@ -136,10 +140,13 @@ def test_eager_benchmark_uses_eager_phase_labels() -> None:
 
     assert rendered is not None
     assert "Rusticol Eager Timing Breakdown" in rendered
+    assert "Initialize" in rendered
     assert "Gather" in rendered
     assert "Kernel calls" in rendered
-    assert "Scatter / finalization" in rendered
+    assert "Invocation scatter" in rendered
+    assert "Current finalization" in rendered
     assert "Amplitude closure" in rendered
+    assert "Amplitude copy-out" in rendered
     assert "Rusticol Stage Detail" not in rendered
 
 

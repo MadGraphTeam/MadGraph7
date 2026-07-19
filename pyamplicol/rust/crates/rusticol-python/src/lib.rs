@@ -885,6 +885,11 @@ fn runtime_profile_to_python<'py>(
     payload.set_item("eager_gather_time_s", profile.eager_gather_s)?;
     payload.set_item("eager_kernel_call_time_s", profile.eager_kernel_call_s)?;
     payload.set_item(
+        "eager_invocation_scatter_time_s",
+        profile.eager_invocation_scatter_s,
+    )?;
+    payload.set_item("eager_finalization_time_s", profile.eager_finalization_s)?;
+    payload.set_item(
         "eager_scatter_finalization_time_s",
         profile.eager_scatter_finalization_s,
     )?;

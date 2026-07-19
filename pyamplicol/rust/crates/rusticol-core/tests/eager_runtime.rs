@@ -150,6 +150,8 @@ fn definition() -> EagerPlanDefinition {
                     EagerKernelInput::ModelParameter(0),
                 ],
                 output_component_count: 1,
+                homogeneous_linear_first_current: false,
+                independent_block_size: 1,
             },
             EagerKernelSpec {
                 kernel_id: 1,
@@ -160,6 +162,8 @@ fn definition() -> EagerPlanDefinition {
                     EagerKernelInput::ModelParameter(0),
                 ],
                 output_component_count: 1,
+                homogeneous_linear_first_current: false,
+                independent_block_size: 1,
             },
             EagerKernelSpec {
                 kernel_id: 2,
@@ -172,6 +176,8 @@ fn definition() -> EagerPlanDefinition {
                     EagerKernelInput::ModelParameter(0),
                 ],
                 output_component_count: 1,
+                homogeneous_linear_first_current: false,
+                independent_block_size: 1,
             },
         ],
         direct_closures: vec![EagerDirectClosureSpec {
@@ -212,6 +218,7 @@ fn invocation_rows() -> Vec<EagerInvocationRow> {
             left_momentum_slot_id: 0,
             right_momentum_slot_id: 0,
             coupling_slot_id: 0,
+            output_factor_source: rusticol_core::EAGER_OUTPUT_FACTOR_NONE,
             attachment_start: 0,
             attachment_count: 1,
         },
@@ -222,6 +229,7 @@ fn invocation_rows() -> Vec<EagerInvocationRow> {
             left_momentum_slot_id: 0,
             right_momentum_slot_id: 0,
             coupling_slot_id: 0,
+            output_factor_source: rusticol_core::EAGER_OUTPUT_FACTOR_NONE,
             attachment_start: 1,
             attachment_count: 1,
         },
@@ -270,6 +278,7 @@ fn closure_rows() -> Vec<EagerClosureRow> {
             right_value_slot_id: 0,
             amplitude_index: 0,
             coupling_slot_id: 0,
+            output_factor_source: rusticol_core::EAGER_OUTPUT_FACTOR_NONE,
             factor_real: 1.0,
             factor_imag: 0.0,
         },
@@ -279,6 +288,7 @@ fn closure_rows() -> Vec<EagerClosureRow> {
             right_value_slot_id: 1,
             amplitude_index: 1,
             coupling_slot_id: MISSING_U32,
+            output_factor_source: rusticol_core::EAGER_OUTPUT_FACTOR_NONE,
             factor_real: 2.0,
             factor_imag: 0.0,
         },
@@ -329,6 +339,147 @@ fn build_runtime(options: EagerRuntimeOptions) -> EagerExecutionRuntime {
     )
     .unwrap();
     EagerExecutionRuntime::new(plan, options).unwrap()
+}
+
+#[derive(Default)]
+struct BlockBackend {
+    calls_by_block_size: [usize; 5],
+}
+
+impl EagerKernelBackend for BlockBackend {
+    fn evaluate_batch(&mut self, call: EagerKernelCall<'_>) -> RusticolResult<()> {
+        let block_size = call.independent_block_size as usize;
+        self.calls_by_block_size[block_size] += 1;
+        assert_eq!(call.input_component_count, 2 * block_size);
+        assert_eq!(call.output_component_count, block_size);
+        for row in 0..call.lane_count {
+            for lane in 0..block_size {
+                let input = row * call.input_component_count + lane * 2;
+                let output = row * call.output_component_count + lane;
+                call.outputs[output] = call.inputs[input] + call.inputs[input + 1];
+            }
+        }
+        Ok(())
+    }
+}
+
+fn build_block_runtime(point_count: usize) -> EagerExecutionRuntime {
+    const INVOCATION_COUNT: usize = 5;
+    let definition = EagerPlanDefinition {
+        dimensions: EagerPlanDimensions {
+            value_slot_component_counts: vec![1; 2 + INVOCATION_COUNT],
+            momentum_slot_component_counts: vec![1],
+            current_component_counts: vec![1; INVOCATION_COUNT],
+            parameter_count: 0,
+            amplitude_count: INVOCATION_COUNT as u32,
+        },
+        kernels: vec![EagerKernelSpec {
+            kernel_id: 0,
+            role: EagerKernelRole::Vertex,
+            inputs: vec![
+                EagerKernelInput::FirstCurrentComponent(0),
+                EagerKernelInput::SecondCurrentComponent(0),
+            ],
+            output_component_count: 1,
+            homogeneous_linear_first_current: false,
+            independent_block_size: 4,
+        }],
+        direct_closures: (0..INVOCATION_COUNT)
+            .map(|index| EagerDirectClosureSpec {
+                closure_index: index as u32,
+                coefficients: vec![c64(1.0)],
+            })
+            .collect(),
+        reduction_groups: (0..INVOCATION_COUNT)
+            .map(|index| EagerReductionGroup {
+                coherent_group_id: index as u32,
+                amplitude_indices: vec![index as u32],
+            })
+            .collect(),
+        reduction_entries: (0..INVOCATION_COUNT)
+            .map(|index| EagerReductionEntry {
+                left_group_index: index as u32,
+                right_group_index: index as u32,
+                coefficient: c64(1.0),
+            })
+            .collect(),
+    };
+    let invocations = (0..INVOCATION_COUNT)
+        .map(|index| EagerInvocationRow {
+            kernel_id: 0,
+            left_value_slot_id: 0,
+            right_value_slot_id: 1,
+            left_momentum_slot_id: 0,
+            right_momentum_slot_id: 0,
+            coupling_slot_id: 0,
+            output_factor_source: rusticol_core::EAGER_OUTPUT_FACTOR_NONE,
+            attachment_start: index as u64,
+            attachment_count: 1,
+        })
+        .collect::<Vec<_>>();
+    let attachments = (0..INVOCATION_COUNT)
+        .map(|index| EagerAttachmentRow {
+            result_current_id: index as u32,
+            factor_real: index as f64 + 1.0,
+            factor_imag: 0.0,
+        })
+        .collect::<Vec<_>>();
+    let finalizations = (0..INVOCATION_COUNT)
+        .map(|index| EagerFinalizationRow {
+            kernel_id: MISSING_U32,
+            current_id: index as u32,
+            unpropagated_value_slot_id: (2 + index) as u32,
+            propagated_value_slot_id: MISSING_U32,
+            momentum_slot_id: 0,
+        })
+        .collect::<Vec<_>>();
+    let closures = (0..INVOCATION_COUNT)
+        .map(|index| EagerClosureRow {
+            kernel_id: MISSING_U32,
+            left_value_slot_id: (2 + index) as u32,
+            right_value_slot_id: 0,
+            amplitude_index: index as u32,
+            coupling_slot_id: MISSING_U32,
+            output_factor_source: rusticol_core::EAGER_OUTPUT_FACTOR_NONE,
+            factor_real: 1.0,
+            factor_imag: 0.0,
+        })
+        .collect::<Vec<_>>();
+    let coupling_bytes = EagerCouplingRow::encode_table(&[EagerCouplingRow {
+        real_parameter_id: MISSING_U32,
+        imag_parameter_id: MISSING_U32,
+        constant_real: 1.0,
+        constant_imag: 0.0,
+    }])
+    .unwrap();
+    let invocation_bytes = EagerInvocationRow::encode_table(&invocations).unwrap();
+    let attachment_bytes = EagerAttachmentRow::encode_table(&attachments).unwrap();
+    let finalization_bytes = EagerFinalizationRow::encode_table(&finalizations).unwrap();
+    let closure_bytes = EagerClosureRow::encode_table(&closures).unwrap();
+    let stage = EagerStagePayload {
+        stage_index: 1,
+        invocations: &invocation_bytes,
+        attachments: &attachment_bytes,
+        finalizations: &finalization_bytes,
+    };
+    let plan = EagerExecutionPlan::from_payloads(
+        definition,
+        EagerPlanPayloads {
+            couplings: &coupling_bytes,
+            stages: &[stage],
+            closures: &closure_bytes,
+            selector_domains: None,
+        },
+    )
+    .unwrap();
+    EagerExecutionRuntime::new(
+        plan,
+        EagerRuntimeOptions {
+            point_tile_size: point_count,
+            workspace_bytes: 64 * 1024,
+        },
+    )
+    .unwrap()
 }
 
 fn selector_domain_id_bytes(values: &[u32]) -> Vec<u8> {
@@ -503,6 +654,60 @@ fn executes_packetized_stages_finalization_closures_and_reduction() {
 }
 
 #[test]
+fn independent_block_variant_preserves_scalar_tail_and_allocates_nothing() {
+    const POINT_COUNT: usize = 3;
+    const INVOCATION_COUNT: usize = 5;
+    let mut runtime = build_block_runtime(POINT_COUNT);
+    let mut values = vec![c64(0.0); (2 + INVOCATION_COUNT) * POINT_COUNT];
+    for point in 0..POINT_COUNT {
+        values[point] = c64(point as f64 + 1.0);
+        values[POINT_COUNT + point] = c64(10.0 + point as f64);
+    }
+    let momenta = vec![0.0; POINT_COUNT];
+    let mut amplitudes = vec![c64(0.0); INVOCATION_COUNT * POINT_COUNT];
+    let mut reduced = vec![0.0; POINT_COUNT];
+    let mut backend = BlockBackend::default();
+
+    runtime
+        .evaluate_into(
+            &mut backend,
+            POINT_COUNT,
+            &values,
+            &momenta,
+            &[],
+            &mut amplitudes,
+            &mut reduced,
+        )
+        .unwrap();
+    assert_eq!(backend.calls_by_block_size[4], 1);
+    assert_eq!(backend.calls_by_block_size[1], 1);
+    for point in 0..POINT_COUNT {
+        let left = point as f64 + 1.0;
+        let right = 10.0 + point as f64;
+        let mut expected_reduced = 0.0;
+        for invocation in 0..INVOCATION_COUNT {
+            let expected = (left + right) * (invocation as f64 + 1.0) * left;
+            assert_eq!(amplitudes[invocation * POINT_COUNT + point], c64(expected));
+            expected_reduced += expected * expected;
+        }
+        assert_eq!(reduced[point], expected_reduced);
+    }
+
+    let (_, allocation_count) = count_allocations(|| {
+        runtime.evaluate_into(
+            &mut backend,
+            POINT_COUNT,
+            &values,
+            &momenta,
+            &[],
+            &mut amplitudes,
+            &mut reduced,
+        )
+    });
+    assert_eq!(allocation_count, 0);
+}
+
+#[test]
 fn reduces_coherent_amplitudes_through_compact_groups() {
     let point_count = 3;
     let mut definition = definition();
@@ -546,9 +751,9 @@ fn reduces_coherent_amplitudes_through_compact_groups() {
         )
         .unwrap();
 
-    for point in 0..point_count {
+    for (point, actual) in reduced.iter().copied().enumerate() {
         let (left, right, _) = expected(point, &momenta);
-        assert_eq!(reduced[point], 0.25 * (left + right).norm_sqr());
+        assert_eq!(actual, 0.25 * (left + right).norm_sqr());
     }
 }
 
@@ -987,6 +1192,22 @@ fn duplicate_finalization_is_an_artifact_error() {
     .unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Artifact);
     assert!(error.to_string().contains("more than once"));
+}
+
+#[test]
+fn finalization_of_an_unwritten_current_is_an_artifact_error() {
+    let mut attachments = attachment_rows();
+    attachments[1].result_current_id = 0;
+    let error = build_plan_with(
+        definition(),
+        &invocation_rows(),
+        &attachments,
+        &finalization_rows(),
+        &closure_rows(),
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("finalizes unwritten current 1"));
 }
 
 #[test]

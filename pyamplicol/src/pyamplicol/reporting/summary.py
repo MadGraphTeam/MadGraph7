@@ -284,26 +284,47 @@ def _benchmark_summary(
         for timing in (
             breakdown.eager_gather_time,
             breakdown.eager_kernel_call_time,
+            breakdown.eager_invocation_scatter_time,
+            breakdown.eager_finalization_time,
             breakdown.eager_scatter_finalization_time,
             breakdown.eager_closure_time,
+            breakdown.eager_initialize_time,
+            breakdown.eager_copy_out_time,
         )
     )
     component_rows: tuple[
         tuple[str, BenchmarkComponentTiming | None], ...
     ]
     if detailed_eager_profile:
+        eager_phase_rows: tuple[
+            tuple[str, BenchmarkComponentTiming | None], ...
+        ]
+        if (
+            breakdown.eager_invocation_scatter_time is not None
+            or breakdown.eager_finalization_time is not None
+        ):
+            eager_phase_rows = (
+                ("Invocation scatter", breakdown.eager_invocation_scatter_time),
+                ("Current finalization", breakdown.eager_finalization_time),
+            )
+        else:
+            eager_phase_rows = (
+                (
+                    "Scatter / finalization",
+                    breakdown.eager_scatter_finalization_time,
+                ),
+            )
         component_rows = (
             ("Profile wall", breakdown.wall_time),
             ("Source fill", breakdown.source_fill_time),
             ("Momentum setup", breakdown.momentum_setup_time),
             ("Eager execution (aggregate)", breakdown.eager_execution_time),
+            ("Initialize", breakdown.eager_initialize_time),
             ("Gather", breakdown.eager_gather_time),
             ("Kernel calls", breakdown.eager_kernel_call_time),
-            (
-                "Scatter / finalization",
-                breakdown.eager_scatter_finalization_time,
-            ),
+            *eager_phase_rows,
             ("Amplitude closure", breakdown.eager_closure_time),
+            ("Amplitude copy-out", breakdown.eager_copy_out_time),
             ("Reduction", breakdown.reduction_time),
         )
     elif eager_profile:

@@ -25,6 +25,8 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert {payload.path for payload in payloads} == {
         "API/validation_points.dat",
         "API/python/check_standalone.py",
+        "API/c/check_standalone.c",
+        "API/c/Makefile",
         "API/cpp/check_standalone.cpp",
         "API/cpp/Makefile",
         "API/fortran/check_standalone.f90",
@@ -45,6 +47,7 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert all("/.pyamplicol-api-build/" in text for text in makefiles.values())
     assert all('cd "$(ARTIFACT_DIR)"' in text for text in makefiles.values())
     assert all("API/cpp/check_standalone" not in text for text in makefiles.values())
+    assert "CC ?= cc" in makefiles["API/c/Makefile"]
     assert "CXX ?= c++" in makefiles["API/cpp/Makefile"]
     assert "FC ?= gfortran" in makefiles["API/fortran/Makefile"]
     rust_makefile = makefiles["API/rust/Makefile"]
@@ -78,6 +81,16 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert "rusticol_runtime_" not in rust_source
     assert "extern crate" not in rust_source
     assert "serde" not in rust_source
+
+    c_source = next(
+        payload.content.decode("utf-8")
+        for payload in payloads
+        if payload.path == "API/c/check_standalone.c"
+    )
+    assert "#include <rusticol.h>" in c_source
+    assert "rusticol_runtime_load" in c_source
+    assert "rusticol_runtime_evaluate_f64" in c_source
+    assert "rusticol_runtime_evaluate_resolved_f64" in c_source
 
 
 def test_validation_points_are_sorted_and_require_four_vectors() -> None:

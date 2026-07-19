@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import cast
 
+from .._internal.physics.symbols import symbols
 from .._internal.versions import (
     SYMBOLICA_SERIALIZATION_ABI,
     SYMJIT_APPLICATION_ABI,
@@ -27,15 +28,23 @@ from ..evaluators.symbolica_settings import SymbolicaEvaluatorSettings
 from .base import Model
 from .loading import CompiledModel
 from .prepared import (
+    PREPARED_INDEPENDENT_BLOCK_SIZE,
+    PREPARED_KERNEL_VARIANT_ABI,
     PreparedBackend,
     PreparedKernelPack,
     PreparedKernelRecord,
+    PreparedKernelVariantRecord,
     PreparedModelBundle,
     PreparedModelBundleError,
     load_prepared_model_bundle,
+    prepared_expression_digest,
+    prepared_input_contract_digest,
+    prepared_optimization_settings_digest,
+    prepared_output_contract_digest,
     write_prepared_model_bundle,
 )
 from .prepared_catalog import (
+    PREPARED_INDEPENDENT_BLOCK_PROOF,
     PreparedKernelSpec,
     build_prepared_kernel_catalog,
 )
@@ -61,6 +70,14 @@ class PreparedModelBuildResult:
     phase_timings_seconds: Mapping[str, float]
 
 
+@dataclass(frozen=True, slots=True)
+class _IndependentBlockContract:
+    parameters: tuple[object, ...]
+    outputs: tuple[object, ...]
+    input_layout: tuple[str, ...]
+    output_layout: tuple[str, ...]
+
+
 def prepare_model_bundle(
     compiled_model: CompiledModel,
     output: Path,
@@ -77,8 +94,13 @@ def prepare_model_bundle(
     catalog_seconds = time.perf_counter() - catalog_started
     settings = prepared_symbolica_settings(evaluator)
     backend = cast(PreparedBackend, str(evaluator.backend))
+    optimization_metadata = _optimization_metadata(settings)
+    optimization_digest = prepared_optimization_settings_digest(
+        optimization_metadata
+    )
     payloads: dict[str, bytes | Path] = {}
     records: list[PreparedKernelRecord] = []
+    variants: list[PreparedKernelVariantRecord] = []
     compile_started = time.perf_counter()
 
     with tempfile.TemporaryDirectory(prefix="pyamplicol-prepared-model-") as raw:
@@ -90,12 +112,15 @@ def prepare_model_bundle(
                     index,
                     len(catalog.kernels),
                 )
-            record, kernel_payloads = _compile_kernel(
+            record, kernel_variants, kernel_payloads = _compile_kernel(
                 kernel,
                 settings=settings,
                 staging=staging / f"kernel-{kernel.kernel_id:06d}",
+                backend=backend,
+                optimization_settings_digest=optimization_digest,
             )
             records.append(record)
+            variants.extend(kernel_variants)
             overlap = payloads.keys() & kernel_payloads.keys()
             if overlap:
                 raise PreparedModelBundleError(
@@ -107,7 +132,7 @@ def prepare_model_bundle(
         compile_seconds = time.perf_counter() - compile_started
         pack = PreparedKernelPack(
             backend=backend,
-            optimization_settings=_optimization_metadata(settings),
+            optimization_settings=optimization_metadata,
             producer={
                 "distribution": "pyamplicol",
                 "version": package_version(),
@@ -131,6 +156,7 @@ def prepare_model_bundle(
             target=_prepared_target(backend, evaluator),
             resolver_manifest=catalog.resolver_manifest(),
             kernels=tuple(records),
+            kernel_variants=tuple(variants),
         )
         bundle_path = write_prepared_model_bundle(
             output,
@@ -211,10 +237,18 @@ def _compile_kernel(
     *,
     settings: SymbolicaEvaluatorSettings,
     staging: Path,
-) -> tuple[PreparedKernelRecord, dict[str, Path]]:
+    backend: PreparedBackend,
+    optimization_settings_digest: str,
+) -> tuple[
+    PreparedKernelRecord,
+    tuple[PreparedKernelVariantRecord, ...],
+    dict[str, Path],
+]:
     from symbolica import Expression
 
     staging.mkdir(parents=True, exist_ok=True)
+    scalar_staging = staging / "scalar"
+    scalar_staging.mkdir(parents=True, exist_ok=True)
     outputs = tuple(Expression.parse(value) for value in kernel.exact_expressions)
     parameters = [Expression.parse(item.symbol) for item in kernel.inputs]
     real_parameters = tuple(
@@ -239,10 +273,10 @@ def _compile_kernel(
         jit_compile=True,
         label=f"prepared_{kernel.contract_kind}_{kernel.kernel_id:06d}",
     )
-    raw_manifest = _symbolica_evaluator_artifact_manifest(adapter, staging)
+    raw_manifest = _symbolica_evaluator_artifact_manifest(adapter, scalar_staging)
     manifest, payloads = _relocate_manifest_payloads(
         raw_manifest,
-        staging=staging,
+        staging=scalar_staging,
         kernel_id=kernel.kernel_id,
     )
     _validate_backend_manifest(manifest, settings=settings)
@@ -263,10 +297,184 @@ def _compile_kernel(
         input_contracts=tuple(item.to_dict() for item in kernel.inputs),
         output_layout=kernel.output_layout,
         exact_expressions=kernel.exact_expressions,
+        proof_classes=kernel.proof_classes,
         exact_evaluator_state_path=exact_state,
         f64_evaluator_manifest=manifest,
     )
-    return record, payloads
+    variants: tuple[PreparedKernelVariantRecord, ...] = ()
+    if (
+        backend == "jit"
+        and PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes
+    ):
+        variant, variant_payloads = _compile_independent_block_variant(
+            kernel,
+            settings=settings,
+            staging=staging,
+            backend=backend,
+            optimization_settings_digest=optimization_settings_digest,
+        )
+        overlap = payloads.keys() & variant_payloads.keys()
+        if overlap:
+            raise PreparedModelBundleError(
+                "prepared scalar and block evaluator payload paths overlap: "
+                + ", ".join(sorted(overlap))
+            )
+        payloads.update(variant_payloads)
+        variants = (variant,)
+    return record, variants, payloads
+
+
+def _independent_block_contract(
+    kernel: PreparedKernelSpec,
+    *,
+    block_size: int = PREPARED_INDEPENDENT_BLOCK_SIZE,
+) -> _IndependentBlockContract:
+    """Construct lane-major expressions for independent scalar calls."""
+
+    from symbolica import Expression, Replacement
+
+    if PREPARED_INDEPENDENT_BLOCK_PROOF not in kernel.proof_classes:
+        raise PreparedModelBundleError(
+            f"prepared kernel {kernel.kernel_id} lacks the independent-block proof"
+        )
+    if block_size != PREPARED_INDEPENDENT_BLOCK_SIZE:
+        raise PreparedModelBundleError(
+            f"unsupported prepared independent block size {block_size}"
+        )
+    scalar_inputs = tuple(Expression.parse(item.symbol) for item in kernel.inputs)
+    scalar_outputs = tuple(
+        Expression.parse(value) for value in kernel.exact_expressions
+    )
+    parameters: list[object] = []
+    outputs: list[object] = []
+    input_layout: list[str] = []
+    output_layout: list[str] = []
+    for lane in range(block_size):
+        lane_inputs = tuple(
+            symbols.symbol(
+                "prepared_block::"
+                f"kernel_{kernel.canonical_signature}::lane_{lane}::input_{index}"
+            )
+            for index in range(kernel.input_arity)
+        )
+        forward = tuple(
+            Replacement(source, target)
+            for source, target in zip(scalar_inputs, lane_inputs, strict=True)
+        )
+        reverse = tuple(
+            Replacement(target, source)
+            for source, target in zip(scalar_inputs, lane_inputs, strict=True)
+        )
+        lane_outputs = tuple(
+            expression.replace_multiple(forward) for expression in scalar_outputs
+        )
+        reconstructed = tuple(
+            expression.replace_multiple(reverse).to_canonical_string()
+            for expression in lane_outputs
+        )
+        expected = tuple(
+            expression.to_canonical_string() for expression in scalar_outputs
+        )
+        if reconstructed != expected:
+            raise PreparedModelBundleError(
+                f"prepared kernel {kernel.kernel_id} block lane {lane} "
+                "does not reconstruct its scalar expressions"
+            )
+        lane_symbols = {value.to_canonical_string() for value in lane_inputs}
+        used_symbols = {
+            symbol.to_canonical_string()
+            for expression in lane_outputs
+            for symbol in expression.get_all_symbols(False)
+        }
+        if not used_symbols.issubset(lane_symbols):
+            raise PreparedModelBundleError(
+                f"prepared kernel {kernel.kernel_id} block lane {lane} "
+                "contains inputs from another lane"
+            )
+        parameters.extend(lane_inputs)
+        outputs.extend(lane_outputs)
+        input_layout.extend(
+            f"lane:{lane}:{item}" for item in _kernel_input_layout(kernel)
+        )
+        output_layout.extend(
+            f"lane:{lane}:{item}" for item in kernel.output_layout
+        )
+    return _IndependentBlockContract(
+        parameters=tuple(parameters),
+        outputs=tuple(outputs),
+        input_layout=tuple(input_layout),
+        output_layout=tuple(output_layout),
+    )
+
+
+def _compile_independent_block_variant(
+    kernel: PreparedKernelSpec,
+    *,
+    settings: SymbolicaEvaluatorSettings,
+    staging: Path,
+    backend: PreparedBackend,
+    optimization_settings_digest: str,
+) -> tuple[PreparedKernelVariantRecord, dict[str, Path]]:
+    contract = _independent_block_contract(kernel)
+    variant_id = f"independent-block-{PREPARED_INDEPENDENT_BLOCK_SIZE}"
+    variant_staging = staging / "variants" / variant_id
+    variant_staging.mkdir(parents=True, exist_ok=True)
+    adapter = _compile_symbolica_outputs(
+        contract.outputs,
+        list(contract.parameters),
+        merge_evaluators_strategy=False,
+        verbose_evaluator_build=False,
+        real_params=(),
+        symbolica_settings=replace(settings, compiled_output_chunk_size=None),
+        jit_compile=True,
+        label=(
+            f"prepared_{kernel.contract_kind}_{kernel.kernel_id:06d}_"
+            f"independent_block_{PREPARED_INDEPENDENT_BLOCK_SIZE}"
+        ),
+    )
+    raw_manifest = _symbolica_evaluator_artifact_manifest(adapter, variant_staging)
+    manifest, payloads = _relocate_manifest_payloads(
+        raw_manifest,
+        staging=variant_staging,
+        kernel_id=kernel.kernel_id,
+        variant_id=variant_id,
+    )
+    _validate_backend_manifest(manifest, settings=settings)
+    return (
+        PreparedKernelVariantRecord(
+            variant_id=variant_id,
+            variant_abi=PREPARED_KERNEL_VARIANT_ABI,
+            kind="independent-block",
+            block_size=PREPARED_INDEPENDENT_BLOCK_SIZE,
+            lane_layout="lane-major",
+            base_kernel_id=kernel.kernel_id,
+            base_canonical_signature=kernel.canonical_signature,
+            base_expression_digest=prepared_expression_digest(
+                kernel.exact_expressions
+            ),
+            base_input_contract_digest=prepared_input_contract_digest(
+                _kernel_input_layout(kernel),
+                tuple(item.to_dict() for item in kernel.inputs),
+            ),
+            base_output_contract_digest=prepared_output_contract_digest(
+                kernel.output_layout
+            ),
+            backend=backend,
+            optimization_settings_digest=optimization_settings_digest,
+            input_arity=len(contract.parameters),
+            output_arity=len(contract.outputs),
+            input_lane_stride=kernel.input_arity,
+            output_lane_stride=kernel.output_dimension,
+            input_layout=contract.input_layout,
+            output_layout=contract.output_layout,
+            f64_evaluator_manifest=manifest,
+        ),
+        payloads,
+    )
+
+
+def _kernel_input_layout(kernel: PreparedKernelSpec) -> tuple[str, ...]:
+    return tuple(f"{item.role}:{item.component}" for item in kernel.inputs)
 
 
 def _relocate_manifest_payloads(
@@ -274,6 +482,7 @@ def _relocate_manifest_payloads(
     *,
     staging: Path,
     kernel_id: int,
+    variant_id: str | None = None,
 ) -> tuple[dict[str, object], dict[str, Path]]:
     payloads: dict[str, Path] = {}
     relocated: dict[Path, str] = {}
@@ -299,11 +508,10 @@ def _relocate_manifest_payloads(
         counters[field] = count + 1
         stem = field.removesuffix("_path").replace("_", "-")
         suffix = "".join(source.suffixes)
-        member = (
-            PurePosixPath("kernels")
-            / f"{kernel_id:06d}"
-            / f"{stem}-{count}{suffix}"
-        ).as_posix()
+        root = PurePosixPath("kernels") / f"{kernel_id:06d}"
+        if variant_id is not None:
+            root = root / "variants" / variant_id
+        member = (root / f"{stem}-{count}{suffix}").as_posix()
         relocated[source] = member
         payloads[member] = source
         return member

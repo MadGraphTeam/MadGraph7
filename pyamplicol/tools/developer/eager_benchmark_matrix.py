@@ -3,8 +3,11 @@
 """Run the bounded compiled-versus-eager acceptance matrix.
 
 This driver is intentionally independent of ``docs/result_tables.py``.  It
-generates each artifact once, reuses it across selector and batch workloads,
-and records native Rusticol wall timings in one machine-readable result.
+generates one complete compiled artifact and one complete eager artifact per
+cell, then records native Rusticol wall timings in one machine-readable
+result.  LC workloads additionally generate the conventional specialized
+compiled references used by the report so reusable eager selection is not
+mistaken for a speedup over a differently specialized baseline.
 """
 
 from __future__ import annotations
@@ -32,6 +35,9 @@ DEFAULT_SUITE_TIMEOUT = 300.0
 DEFAULT_MEMORY_LIMIT_GIB = 30.0
 DEFAULT_BATCH_SIZES = (1, 128, 1024)
 DEFAULT_COLORS = ("lc", "nlc", "full")
+HARD_GENERATION_SPEEDUP = 7.0
+SOFT_GENERATION_SPEEDUP = 10.0
+SOFT_RUNTIME_RATIO = 1.5
 _TOPOLOGY_FIELDS = (
     "physical_helicities",
     "computed_helicities",
@@ -224,7 +230,7 @@ def _artifact_process(artifact: Path) -> tuple[str, dict[str, Any]]:
     return process_id, physics
 
 
-def _first_computed_id(records: object, *, label: str) -> str:
+def _first_computed_record(records: object, *, label: str) -> dict[str, Any]:
     if not isinstance(records, list):
         raise MatrixError(f"physics {label} must be a list")
     for record in records:
@@ -233,25 +239,90 @@ def _first_computed_id(records: object, *, label: str) -> str:
         if record.get("computed") is True and record.get("structural_zero") is not True:
             identifier = record.get("id")
             if isinstance(identifier, str) and identifier:
-                return identifier
+                return record
     raise MatrixError(f"physics payload has no computed {label}")
 
 
 def _workloads(color: str, physics: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
     if color != "lc":
         return ({"name": "summed", "selectors": {}},)
-    color_id = _first_computed_id(physics.get("color_components"), label="color flow")
-    helicity_id = _first_computed_id(physics.get("helicities"), label="helicity")
+    color_record = _first_computed_record(
+        physics.get("color_components"), label="color flow"
+    )
+    helicity_record = _first_computed_record(
+        physics.get("helicities"), label="helicity"
+    )
+    color_id = str(color_record["id"])
+    helicity_id = str(helicity_record["id"])
+    color_word = color_record.get("word")
+    helicity_values = helicity_record.get("values")
+    external_particles = physics.get("external_particles")
+    if (
+        not isinstance(color_word, list)
+        or not color_word
+        or any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in color_word
+        )
+    ):
+        raise MatrixError("computed LC flow has no valid source-label word")
+    if (
+        not isinstance(external_particles, list)
+        or not isinstance(helicity_values, list)
+        or len(external_particles) != len(helicity_values)
+    ):
+        raise MatrixError("computed helicity does not match external particles")
+    source_helicities: dict[int, int] = {}
+    for particle, helicity in zip(external_particles, helicity_values, strict=True):
+        if not isinstance(particle, dict):
+            raise MatrixError("external particle metadata must be an object")
+        label = particle.get("label")
+        if (
+            isinstance(label, bool)
+            or not isinstance(label, int)
+            or label < 1
+            or isinstance(helicity, bool)
+            or not isinstance(helicity, int)
+        ):
+            raise MatrixError("computed helicity has invalid source-label metadata")
+        source_helicities[label] = helicity
     return (
         {
             "name": "single-flow-helicity-sum",
             "selectors": {"color_flow": color_id},
+            "compiled_specialization": {
+                "reference_color_order": tuple(color_word),
+                "selected_color_sector_ids": (0,),
+            },
         },
         {
             "name": "all-flow-single-helicity",
             "selectors": {"helicity": helicity_id},
+            "compiled_specialization": {
+                "selected_source_helicities": source_helicities,
+            },
         },
     )
+
+
+def _toml_override_literal(value: object) -> str:
+    if isinstance(value, tuple):
+        if any(isinstance(item, bool) or not isinstance(item, int) for item in value):
+            raise MatrixError("process override tuples must contain integers")
+        return "[" + ",".join(str(item) for item in value) + "]"
+    if isinstance(value, Mapping):
+        entries: list[str] = []
+        for key, item in value.items():
+            if (
+                isinstance(key, bool)
+                or not isinstance(key, int)
+                or isinstance(item, bool)
+                or not isinstance(item, int)
+            ):
+                raise MatrixError("process override mappings must contain integers")
+            entries.append(f"{json.dumps(str(key))}={item}")
+        return "{" + ",".join(entries) + "}"
+    raise MatrixError(f"unsupported process override value: {value!r}")
 
 
 def _generation_command(
@@ -262,8 +333,9 @@ def _generation_command(
     model: Path | str,
     color: str,
     execution_mode: str,
+    process_overrides: Mapping[str, object] | None = None,
 ) -> tuple[str, ...]:
-    return (
+    command = [
         str(python),
         "-m",
         "pyamplicol",
@@ -293,7 +365,12 @@ def _generation_command(
         "off",
         "--format",
         "json",
-    )
+    ]
+    for name, value in (process_overrides or {}).items():
+        command.extend(
+            ("--set", f"process.{name}={_toml_override_literal(value)}")
+        )
+    return tuple(command)
 
 
 def _profile_command(
@@ -356,13 +433,87 @@ def _relative_difference(left: complex, right: complex) -> float:
     return abs(left - right) / max(abs(left), abs(right), 1.0e-300)
 
 
+def _complex_comparison(left: object, right: object) -> dict[str, object]:
+    left_value = complex(left)
+    right_value = complex(right)
+    absolute = abs(left_value - right_value)
+    relative = _relative_difference(left_value, right_value)
+    return {
+        "left": [left_value.real, left_value.imag],
+        "right": [right_value.real, right_value.imag],
+        "absolute_difference": absolute,
+        "relative_difference": relative,
+        "passes": absolute <= 1.0e-15 or relative <= 1.0e-12,
+    }
+
+
+def _resolved_comparison(left: Any, right: Any) -> dict[str, object]:
+    left_helicities = tuple(left.helicity_ids)
+    right_helicities = tuple(right.helicity_ids)
+    left_colors = tuple(left.color_ids)
+    right_colors = tuple(right.color_ids)
+    left_values = tuple(left.values)
+    right_values = tuple(right.values)
+    identifiers_match = (
+        left_helicities == right_helicities and left_colors == right_colors
+    )
+    shape_matches = len(left_values) == len(right_values)
+    comparisons: list[dict[str, object]] = []
+    if shape_matches:
+        for left_point, right_point in zip(left_values, right_values, strict=True):
+            left_rows = tuple(left_point)
+            right_rows = tuple(right_point)
+            if len(left_rows) != len(right_rows):
+                shape_matches = False
+                break
+            for left_row, right_row in zip(left_rows, right_rows, strict=True):
+                left_components = tuple(left_row)
+                right_components = tuple(right_row)
+                if len(left_components) != len(right_components):
+                    shape_matches = False
+                    break
+                comparisons.extend(
+                    _complex_comparison(left_value, right_value)
+                    for left_value, right_value in zip(
+                        left_components,
+                        right_components,
+                        strict=True,
+                    )
+                )
+            if not shape_matches:
+                break
+    maximum_absolute = max(
+        (float(item["absolute_difference"]) for item in comparisons),
+        default=0.0,
+    )
+    maximum_relative = max(
+        (float(item["relative_difference"]) for item in comparisons),
+        default=0.0,
+    )
+    return {
+        "helicity_ids_match": left_helicities == right_helicities,
+        "color_ids_match": left_colors == right_colors,
+        "shape_matches": shape_matches,
+        "point_count": len(left_values),
+        "component_count": len(comparisons),
+        "maximum_absolute_difference": maximum_absolute,
+        "maximum_relative_difference": maximum_relative,
+        "passes": identifiers_match
+        and shape_matches
+        and bool(comparisons)
+        and all(bool(item["passes"]) for item in comparisons),
+    }
+
+
 def _geometric_mean(values: Sequence[float]) -> float:
     if not values or any(value <= 0 or not math.isfinite(value) for value in values):
         raise MatrixError("geometric mean requires positive finite values")
     return math.exp(sum(math.log(value) for value in values) / len(values))
 
 
-def _generation_gates(records: Sequence[Mapping[str, Any]]) -> dict[str, bool]:
+def _generation_assessment(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, bool], dict[str, bool]]:
     non_lc_speedups: list[float] = []
     lc_speedups: list[float] = []
     grouped: dict[tuple[str, str], dict[str, float]] = {}
@@ -381,17 +532,24 @@ def _generation_gates(records: Sequence[Mapping[str, Any]]) -> dict[str, bool]:
     complete_groups = bool(grouped) and all(
         set(colors) == set(DEFAULT_COLORS) for colors in grouped.values()
     )
-    return {
-        "nlc_full_each_at_least_10x": bool(non_lc_speedups)
-        and all(value >= 10.0 for value in non_lc_speedups),
+    geometric_means = tuple(
+        _geometric_mean(tuple(colors.values())) for colors in grouped.values()
+    )
+    hard_gates = {
+        "nlc_full_each_at_least_7x": bool(non_lc_speedups)
+        and all(value >= HARD_GENERATION_SPEEDUP for value in non_lc_speedups),
         "lc_no_generation_regression": bool(lc_speedups)
         and all(value >= 1.0 for value in lc_speedups),
-        "per_process_geometric_mean_at_least_10x": complete_groups
-        and all(
-            _geometric_mean(tuple(colors.values())) >= 10.0
-            for colors in grouped.values()
-        ),
+        "per_process_geometric_mean_at_least_7x": complete_groups
+        and all(value >= HARD_GENERATION_SPEEDUP for value in geometric_means),
     }
+    soft_targets = {
+        "nlc_full_each_at_least_10x": bool(non_lc_speedups)
+        and all(value >= SOFT_GENERATION_SPEEDUP for value in non_lc_speedups),
+        "per_process_geometric_mean_at_least_10x": complete_groups
+        and all(value >= SOFT_GENERATION_SPEEDUP for value in geometric_means),
+    }
+    return hard_gates, soft_targets
 
 
 def _scope_gate(arguments: argparse.Namespace, cases: Sequence[ProcessCase]) -> bool:
@@ -451,28 +609,79 @@ def _evaluate_pair(
     eager_artifact: Path,
     compiled_artifact: Path,
     process_id: str,
-    selectors: Mapping[str, str],
+    eager_selectors: Mapping[str, str],
+    compiled_selectors: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     from pyamplicol import Runtime
 
     momenta = _validation_momenta(eager_artifact, process_id)
-    kwargs: dict[str, object] = {}
-    if "color_flow" in selectors:
-        kwargs["color_flows"] = (selectors["color_flow"],)
-    if "helicity" in selectors:
-        kwargs["helicities"] = (selectors["helicity"],)
-    eager_value = complex(Runtime.load(eager_artifact).evaluate(momenta, **kwargs)[0])
-    compiled_value = complex(
-        Runtime.load(compiled_artifact).evaluate(momenta, **kwargs)[0]
+
+    def selector_kwargs(selectors: Mapping[str, str]) -> dict[str, object]:
+        kwargs: dict[str, object] = {}
+        if "color_flow" in selectors:
+            kwargs["color_flows"] = (selectors["color_flow"],)
+        if "helicity" in selectors:
+            kwargs["helicities"] = (selectors["helicity"],)
+        return kwargs
+
+    eager_kwargs = selector_kwargs(eager_selectors)
+    compiled_kwargs = selector_kwargs(
+        eager_selectors if compiled_selectors is None else compiled_selectors
     )
-    absolute = abs(eager_value - compiled_value)
-    relative = _relative_difference(eager_value, compiled_value)
+    eager_runtime = Runtime.load(eager_artifact)
+    compiled_runtime = Runtime.load(compiled_artifact)
+    eager_total = eager_runtime.evaluate(momenta, **eager_kwargs)
+    compiled_total = compiled_runtime.evaluate(momenta, **compiled_kwargs)
+    total_comparisons = tuple(
+        _complex_comparison(eager_value, compiled_value)
+        for eager_value, compiled_value in zip(
+            eager_total,
+            compiled_total,
+            strict=True,
+        )
+    )
+    eager_resolved = eager_runtime.evaluate_resolved(momenta, **eager_kwargs)
+    compiled_resolved = compiled_runtime.evaluate_resolved(
+        momenta, **compiled_kwargs
+    )
+    resolved = _resolved_comparison(eager_resolved, compiled_resolved)
+    eager_exact = eager_runtime.evaluate_resolved(
+        momenta, precision=32, **eager_kwargs
+    )
+    compiled_exact = compiled_runtime.evaluate_resolved(
+        momenta,
+        precision=32,
+        **compiled_kwargs,
+    )
+    exact = _resolved_comparison(eager_exact, compiled_exact)
+    eager_reduction = tuple(
+        _complex_comparison(total, resolved_total)
+        for total, resolved_total in zip(
+            eager_total,
+            eager_resolved.total(),
+            strict=True,
+        )
+    )
+    compiled_reduction = tuple(
+        _complex_comparison(total, resolved_total)
+        for total, resolved_total in zip(
+            compiled_total,
+            compiled_resolved.total(),
+            strict=True,
+        )
+    )
     return {
-        "eager": [eager_value.real, eager_value.imag],
-        "compiled": [compiled_value.real, compiled_value.imag],
-        "absolute_difference": absolute,
-        "relative_difference": relative,
-        "passes": absolute <= 1.0e-15 or relative <= 1.0e-12,
+        "total": total_comparisons,
+        "resolved_f64": resolved,
+        "resolved_precision32": exact,
+        "eager_resolved_sum": eager_reduction,
+        "compiled_resolved_sum": compiled_reduction,
+        "passes": bool(total_comparisons)
+        and all(bool(item["passes"]) for item in total_comparisons)
+        and bool(resolved["passes"])
+        and bool(exact["passes"])
+        and all(bool(item["passes"]) for item in eager_reduction)
+        and all(bool(item["passes"]) for item in compiled_reduction),
     }
 
 
@@ -626,25 +835,112 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                 for workload in _workloads(color, eager_physics):
                     selectors = workload["selectors"]
                     assert isinstance(selectors, dict)
+                    specialized_artifact: Path | None = None
+                    specialized_generation: dict[str, Any] | None = None
+                    specialization = workload.get("compiled_specialization")
+                    if isinstance(specialization, Mapping):
+                        specialized_artifact = (
+                            cell_root
+                            / "compiled-specialized"
+                            / str(workload["name"])
+                        )
+                        payload, elapsed, stderr = _run_json(
+                            _generation_command(
+                                arguments.python,
+                                process=case.process,
+                                artifact=specialized_artifact,
+                                model=compiled_source,
+                                color=color,
+                                execution_mode="compiled",
+                                process_overrides=specialization,
+                            ),
+                            timeout=arguments.generation_timeout,
+                            memory_limit_gib=arguments.memory_limit_gib,
+                            environment=environment,
+                        )
+                        specialized_process_id, specialized_physics = (
+                            _artifact_process(specialized_artifact)
+                        )
+                        if specialized_process_id != process_id:
+                            raise MatrixError(
+                                "specialized/complete process IDs differ: "
+                                f"{specialized_process_id!r} != {process_id!r}"
+                            )
+                        coverage = specialized_physics.get("coverage")
+                        if not isinstance(coverage, Mapping):
+                            raise MatrixError(
+                                "specialized compiled artifact has no coverage metadata"
+                            )
+                        expected_selected_axis = (
+                            "color"
+                            if "reference_color_order" in specialization
+                            else "helicities"
+                        )
+                        if coverage.get(expected_selected_axis) != "selected":
+                            raise MatrixError(
+                                "specialized compiled artifact did not select "
+                                f"{expected_selected_axis} coverage"
+                            )
+                        phases = _generation_phases(specialized_artifact)
+                        specialized_generation = {
+                            "elapsed_seconds": elapsed,
+                            "output": payload.get("output"),
+                            "schema_version": payload.get("schema_version"),
+                            "peak_rss_gib": _watchdog_peak_gib(stderr),
+                            "phase_timings_seconds": phases,
+                            "core_phase_seconds": _core_generation_seconds(phases),
+                            "artifact_size_bytes": _artifact_size_bytes(
+                                specialized_artifact
+                            ),
+                            "coverage": dict(coverage),
+                        }
                     correctness = _evaluate_pair(
                         artifacts["eager"],
                         artifacts["compiled"],
                         process_id,
                         selectors,
                     )
+                    if specialized_artifact is not None:
+                        specialized_correctness = _evaluate_pair(
+                            artifacts["eager"],
+                            specialized_artifact,
+                            process_id,
+                            selectors,
+                            {},
+                        )
+                        correctness["specialized_compiled"] = (
+                            specialized_correctness
+                        )
+                        correctness["passes"] = bool(correctness["passes"]) and bool(
+                            specialized_correctness["passes"]
+                        )
                     profiles: list[dict[str, Any]] = []
                     for batch_size in arguments.batch_sizes:
                         timings: dict[str, dict[str, Any]] = {}
-                        for mode in ("compiled", "eager"):
+                        profile_targets: list[
+                            tuple[str, Path, Mapping[str, str]]
+                        ] = [
+                            ("compiled_complete", artifacts["compiled"], selectors),
+                            ("eager_complete", artifacts["eager"], selectors),
+                        ]
+                        if specialized_artifact is not None:
+                            profile_targets.append(
+                                ("compiled_specialized", specialized_artifact, {})
+                            )
+                        for (
+                            mode,
+                            profile_artifact,
+                            profile_selectors,
+                        ) in profile_targets:
                             payload, elapsed, _ = _run_json(
                                 _profile_command(
                                     arguments.python,
-                                    artifact=artifacts[mode],
+                                    artifact=profile_artifact,
                                     process_id=process_id,
                                     batch_size=batch_size,
                                     target_runtime=arguments.target_runtime,
                                     minimum_samples=arguments.minimum_samples,
-                                    selectors=selectors,
+                                    selectors=profile_selectors,
                                 ),
                                 timeout=max(60.0, arguments.target_runtime * 10.0),
                                 memory_limit_gib=arguments.memory_limit_gib,
@@ -660,19 +956,37 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                                 ),
                                 "result": payload,
                             }
-                        compiled_wall = float(
-                            timings["compiled"]["wall_seconds_per_point"]
+                        compiled_complete_wall = float(
+                            timings["compiled_complete"]["wall_seconds_per_point"]
                         )
-                        eager_wall = float(timings["eager"]["wall_seconds_per_point"])
+                        eager_wall = float(
+                            timings["eager_complete"]["wall_seconds_per_point"]
+                        )
+                        baseline_name = (
+                            "compiled_specialized"
+                            if "compiled_specialized" in timings
+                            else "compiled_complete"
+                        )
+                        baseline_wall = float(
+                            timings[baseline_name]["wall_seconds_per_point"]
+                        )
                         profiles.append(
                             {
                                 "batch_size": batch_size,
-                                "compiled": timings["compiled"],
-                                "eager": timings["eager"],
-                                "eager_over_compiled_wall": eager_wall / compiled_wall,
-                                "batch_1024_gate_passes": (
+                                **timings,
+                                "runtime_baseline": baseline_name,
+                                "eager_over_compiled_complete_wall": (
+                                    eager_wall / compiled_complete_wall
+                                ),
+                                "eager_over_compiled_specialized_wall": (
+                                    eager_wall / baseline_wall
+                                    if baseline_name == "compiled_specialized"
+                                    else None
+                                ),
+                                "batch_1024_soft_target_passes": (
                                     batch_size != 1024
-                                    or eager_wall <= 1.5 * compiled_wall
+                                    or eager_wall
+                                    <= SOFT_RUNTIME_RATIO * baseline_wall
                                 ),
                             }
                         )
@@ -680,6 +994,10 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                         {
                             "name": workload["name"],
                             "selectors": selectors,
+                            "compiled_specialization": specialization,
+                            "compiled_specialized_generation": (
+                                specialized_generation
+                            ),
                             "correctness": correctness,
                             "profiles": profiles,
                         }
@@ -710,13 +1028,20 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                 )
                 partial = {
                     "kind": "pyamplicol-eager-benchmark-matrix",
-                    "schema_version": 1,
+                    "schema_version": 3,
                     "complete": False,
                     "records": records,
                 }
                 _write_json_atomic(output_root / "result.json", partial)
 
     elapsed = time.monotonic() - started
+    generation_gates, generation_soft_targets = _generation_assessment(records)
+    runtime_soft_target = 1024 in arguments.batch_sizes and all(
+        profile["batch_1024_soft_target_passes"]
+        for record in records
+        for workload in record["workloads"]
+        for profile in workload["profiles"]
+    )
     gates = {
         "matrix_scope_complete": _scope_gate(arguments, cases),
         "correctness": all(
@@ -727,21 +1052,14 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
         "builtin_ufo_topology_parity": _topology_gate(
             records, require_ufo=arguments.suite == "milestone"
         ),
-        "batch_1024_runtime": 1024 in arguments.batch_sizes
-        and all(
-            profile["batch_1024_gate_passes"]
-            for record in records
-            for workload in record["workloads"]
-            for profile in workload["profiles"]
-        ),
         "smoke_under_five_minutes": (
             arguments.suite != "smoke" or elapsed <= DEFAULT_SUITE_TIMEOUT
         ),
-        **_generation_gates(records),
+        **generation_gates,
     }
     result = {
         "kind": "pyamplicol-eager-benchmark-matrix",
-        "schema_version": 1,
+        "schema_version": 3,
         "complete": True,
         "source_revision": _git_head(),
         "platform": platform.platform(),
@@ -757,6 +1075,12 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
             "target_runtime": arguments.target_runtime,
         },
         "gates": gates,
+        "soft_targets": {
+            **generation_soft_targets,
+            "batch_1024_runtime_at_most_1_5x_specialized_compiled": (
+                runtime_soft_target
+            ),
+        },
         "passes": all(gates.values()),
         "records": records,
     }

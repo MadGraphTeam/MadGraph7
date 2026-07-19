@@ -17,6 +17,8 @@ from .expressions import _as_expression
 from .external import CompiledUFOModel
 from .prepared_catalog import (
     _CATALOG_ABI,
+    PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF,
+    PREPARED_INDEPENDENT_BLOCK_PROOF,
     ClosureKernelKey,
     PreparedClosureBinding,
     PreparedContractKind,
@@ -24,6 +26,7 @@ from .prepared_catalog import (
     PreparedKernelCatalogError,
     PreparedKernelInput,
     PreparedKernelSpec,
+    PreparedOutputFactorSource,
     PreparedParticleState,
     PreparedPropagatorBinding,
     PreparedVertexBinding,
@@ -52,6 +55,12 @@ from .prepared_catalog_helpers import (
     model_parameter_descriptor as _model_parameter_descriptor,
 )
 from .prepared_catalog_helpers import (
+    proves_homogeneous_complex_linearity as _proves_homogeneous_complex_linearity,
+)
+from .prepared_catalog_helpers import (
+    proves_independent_current_block_eligibility as _proves_block_eligibility,
+)
+from .prepared_catalog_helpers import (
     used_input_descriptors as _used_input_descriptors,
 )
 
@@ -66,6 +75,13 @@ class _Candidate:
     proof_class: str | None
 
     def spec(self, kernel_id: int, proof_classes: Sequence[str]) -> PreparedKernelSpec:
+        certified = set(proof_classes)
+        if _proves_block_eligibility(
+            self.contract_kind,
+            self.exact_expressions,
+            self.inputs,
+        ):
+            certified.add(PREPARED_INDEPENDENT_BLOCK_PROOF)
         return PreparedKernelSpec(
             kernel_id=kernel_id,
             contract_kind=self.contract_kind,
@@ -73,7 +89,7 @@ class _Candidate:
             exact_expressions=self.exact_expressions,
             inputs=self.inputs,
             output_layout=self.output_layout,
-            proof_classes=tuple(sorted(set(proof_classes))),
+            proof_classes=tuple(sorted(certified)),
         )
 
 
@@ -85,6 +101,7 @@ class _VertexCandidateResult:
     left_state: PreparedParticleState
     right_state: PreparedParticleState
     result_state: PreparedParticleState
+    output_factor_source: PreparedOutputFactorSource = "none"
 
 
 class _RuntimeParameterizedModel:
@@ -255,6 +272,7 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
                     left_state=result.left_state,
                     right_state=result.right_state,
                     result_state=result.result_state,
+                    output_factor_source=result.output_factor_source,
                 )
                 for result in vertex_pending
             ),
@@ -303,6 +321,7 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
                     right_state=result.right_state,
                     result_state=result.result_state,
                     projection=projection,
+                    output_factor_source=result.output_factor_source,
                 )
                 for result, projection in closure_pending
             ),
@@ -493,33 +512,38 @@ def _vertex_candidate(
     normalized = tuple(
         _as_expression(expression) / factor for expression in expressions
     )
+    available_descriptors = (
+        *_component_descriptors(model, "left-current", canonical_left),
+        *_component_descriptors(model, "right-current", canonical_right),
+        *_component_descriptors(model, "left-momentum", canonical_left_momentum),
+        *_component_descriptors(model, "right-momentum", canonical_right_momentum),
+        *(
+            _coupling_descriptor(model, coupling_symbols[index], index)
+            for index in coupling_inputs
+        ),
+        *(
+            _model_parameter_descriptor(
+                model,
+                parameter_symbols[name],
+                name,
+                parameter_indices[name],
+            )
+            for name in sorted(parameter_symbols)
+        ),
+    )
+    descriptors = _used_input_descriptors(normalized, available_descriptors)
+    normalized, descriptors, output_factor_source = _factor_linear_coupling_output(
+        normalized,
+        descriptors,
+        available_descriptors=available_descriptors,
+        coupling_symbols=coupling_symbols,
+        context=f"vertex kind {vertex.kind}",
+    )
     exact = _canonical_expressions(normalized, context=f"vertex kind {vertex.kind}")
     if all(expression == "0" for expression in exact):
         raise PreparedKernelCatalogError(
             f"reachable prepared vertex kind {vertex.kind} lowered to zero"
         )
-    descriptors = _used_input_descriptors(
-        normalized,
-        (
-            *_component_descriptors(model, "left-current", canonical_left),
-            *_component_descriptors(model, "right-current", canonical_right),
-            *_component_descriptors(model, "left-momentum", canonical_left_momentum),
-            *_component_descriptors(model, "right-momentum", canonical_right_momentum),
-            *(
-                _coupling_descriptor(model, coupling_symbols[index], index)
-                for index in coupling_inputs
-            ),
-            *(
-                _model_parameter_descriptor(
-                    model,
-                    parameter_symbols[name],
-                    name,
-                    parameter_indices[name],
-                )
-                for name in sorted(parameter_symbols)
-            ),
-        ),
-    )
     output_state = _particle_state(
         model,
         vertex.particles[2],
@@ -558,6 +582,64 @@ def _vertex_candidate(
         left_state=concrete_states[0],
         right_state=concrete_states[1],
         result_state=output_state,
+        output_factor_source=output_factor_source,
+    )
+
+
+def _factor_linear_coupling_output(
+    expressions: tuple[Any, ...],
+    descriptors: tuple[PreparedKernelInput, ...],
+    *,
+    available_descriptors: tuple[PreparedKernelInput, ...],
+    coupling_symbols: tuple[Any, ...],
+    context: str,
+) -> tuple[
+    tuple[Any, ...],
+    tuple[PreparedKernelInput, ...],
+    PreparedOutputFactorSource,
+]:
+    """Factor one proof-certified real coupling component out of a callable."""
+
+    coupling_inputs = tuple(
+        descriptor
+        for descriptor in descriptors
+        if descriptor.role in ("coupling-real", "coupling-imag")
+    )
+    if len(coupling_inputs) != 1:
+        return expressions, descriptors, "none"
+    descriptor = coupling_inputs[0]
+    component = 0 if descriptor.role == "coupling-real" else 1
+    symbol = coupling_symbols[component]
+    symbol_name = symbol.to_canonical_string()
+    bases = tuple(
+        _as_expression(expression).replace(symbol, 1) for expression in expressions
+    )
+    if any(
+        symbol_name
+        in {
+            item.to_canonical_string()
+            for item in _as_expression(base).get_all_symbols(False)
+        }
+        for base in bases
+    ):
+        return expressions, descriptors, "none"
+    residuals = tuple(
+        (_as_expression(expression) - symbol * _as_expression(base)).expand()
+        for expression, base in zip(expressions, bases, strict=True)
+    )
+    if any(
+        residual != "0"
+        for residual in _canonical_expressions(
+            residuals,
+            context=f"{context} coupling-factor proof",
+        )
+    ):
+        return expressions, descriptors, "none"
+    factored_descriptors = _used_input_descriptors(bases, available_descriptors)
+    return (
+        bases,
+        factored_descriptors,
+        cast(PreparedOutputFactorSource, descriptor.role),
     )
 
 
@@ -719,6 +801,7 @@ def _closure_candidate(
         left_state=vertex.left_state,
         right_state=vertex.right_state,
         result_state=vertex.result_state,
+        output_factor_source=vertex.output_factor_source,
     )
 
 
@@ -797,7 +880,11 @@ def _propagator_candidate(
         exact,
         descriptors,
         tuple(payload["output_layout"]),
-        proof_class=None,
+        proof_class=(
+            PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF
+            if _proves_homogeneous_complex_linearity(expressions, current)
+            else None
+        ),
     )
 
 
@@ -921,7 +1008,14 @@ def _candidate_from_payload(
             f"prepared {contract_kind} contract has undeclared inputs: "
             f"{', '.join(unbound_symbols)}"
         )
-    canonical = _canonical_json(payload)
+    semantic_payload = {
+        "abi": payload.get("abi"),
+        "contract_kind": contract_kind,
+        "inputs": [descriptor.to_dict() for descriptor in inputs],
+        "outputs": list(exact_expressions),
+        "output_layout": list(output_layout),
+    }
+    canonical = _canonical_json(semantic_payload)
     return _Candidate(
         contract_kind=contract_kind,
         canonical_signature=hashlib.sha256(canonical).hexdigest(),

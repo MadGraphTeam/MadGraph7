@@ -6,6 +6,9 @@ import struct
 import pytest
 
 from pyamplicol.generation.eager_tables import (
+    EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
+    EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+    EAGER_OUTPUT_FACTOR_NONE,
     EAGER_SELECTOR_DOMAINS_ABI,
     MISSING_U32,
     EagerAttachmentRow,
@@ -25,8 +28,18 @@ from pyamplicol.generation.eager_tables import (
     "rows",
     (
         (
-            EagerInvocationRow(2, 3, 5, 7, 11, 13, 17, 19),
-            EagerInvocationRow(23, 29, 31, 37, 41, 43, 47, 53),
+            EagerInvocationRow(2, 3, 5, 7, 11, 13, EAGER_OUTPUT_FACTOR_NONE, 17, 19),
+            EagerInvocationRow(
+                23,
+                29,
+                31,
+                37,
+                41,
+                43,
+                EAGER_OUTPUT_FACTOR_COUPLING_REAL,
+                47,
+                53,
+            ),
         ),
         (
             EagerAttachmentRow(2, -0.5, 0.25),
@@ -41,8 +54,17 @@ from pyamplicol.generation.eager_tables import (
             EagerFinalizationRow(7, 11, MISSING_U32, 13, 17),
         ),
         (
-            EagerClosureRow(2, 3, 5, 7, 11, -1.0, 0.5),
-            EagerClosureRow(13, 17, 19, 23, 29, 1.0, 0.0),
+            EagerClosureRow(2, 3, 5, 7, 11, EAGER_OUTPUT_FACTOR_NONE, -1.0, 0.5),
+            EagerClosureRow(
+                13,
+                17,
+                19,
+                23,
+                29,
+                EAGER_OUTPUT_FACTOR_COUPLING_IMAG,
+                1.0,
+                0.0,
+            ),
         ),
         (
             EagerSelectorDomainRow(0, 0),
@@ -70,13 +92,15 @@ def test_eager_table_rejects_mixed_rows() -> None:
         pack_rows(
             (
                 EagerAttachmentRow(0, 1.0, 0.0),
-                EagerClosureRow(0, 0, 0, 0, 0, 1, 0),
+                EagerClosureRow(0, 0, 0, 0, 0, EAGER_OUTPUT_FACTOR_NONE, 1, 0),
             )
         )
 
 
 def test_eager_table_rejects_truncated_payload() -> None:
-    payload = pack_rows((EagerInvocationRow(0, 1, 2, 3, 4, 5, 6, 7),))
+    payload = pack_rows(
+        (EagerInvocationRow(0, 1, 2, 3, 4, 5, EAGER_OUTPUT_FACTOR_NONE, 6, 7),)
+    )
     with pytest.raises(ValueError, match="not a multiple"):
         unpack_rows(payload[:-1], EagerInvocationRow)
 
@@ -87,16 +111,14 @@ def test_selector_domain_rows_have_exact_little_endian_bytes() -> None:
         struct.pack("<QQ", 0x0102030405060708, 2)
     )
     assert pack_rows((EagerSelectorGroupRow(0x01020304),)) == b"\x04\x03\x02\x01"
-    assert pack_rows((EagerSelectorDomainIdRow(0x05060708),)) == (
-        b"\x08\x07\x06\x05"
-    )
+    assert pack_rows((EagerSelectorDomainIdRow(0x05060708),)) == (b"\x08\x07\x06\x05")
 
 
 def test_eager_table_identifiers_are_bounded() -> None:
     with pytest.raises(ValueError, match="unsigned 32-bit"):
         EagerAttachmentRow(1 << 32, 1.0, 0.0)
     with pytest.raises(ValueError, match="unsigned 64-bit"):
-        EagerInvocationRow(0, 0, 0, 0, 0, 0, -1, 0)
+        EagerInvocationRow(0, 0, 0, 0, 0, 0, EAGER_OUTPUT_FACTOR_NONE, -1, 0)
 
 
 @pytest.mark.parametrize(
@@ -114,4 +136,13 @@ def test_eager_table_floating_values_must_be_finite(row: type[object]) -> None:
         elif row is EagerCouplingRow:
             EagerCouplingRow(MISSING_U32, MISSING_U32, 0.0, float("inf"))
         else:
-            EagerClosureRow(0, 0, 0, 0, 0, float("-inf"), 0.0)
+            EagerClosureRow(
+                0,
+                0,
+                0,
+                0,
+                0,
+                EAGER_OUTPUT_FACTOR_NONE,
+                float("-inf"),
+                0.0,
+            )

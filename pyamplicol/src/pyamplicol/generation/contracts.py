@@ -117,6 +117,11 @@ def runtime_coupling_parameter_names(
     runtime_names = getattr(model, "runtime_parameter_names_for_vertex", None)
     if callable(runtime_names):
         return [str(name) for name in runtime_names(int(vertex_kind))]
+    lowering_rule = getattr(model, "vertex_lowering_rule", None)
+    if callable(lowering_rule):
+        rule = lowering_rule(int(vertex_kind))
+        if rule.coupling_mode in {"fixed", "none"}:
+            return [None for _value in coupling]
     particles = "_".join(str(int(pdg)) for pdg in vertex_particles)
     base = f"coupling.{int(vertex_kind)}.{particles}"
     names: list[str | None] = []

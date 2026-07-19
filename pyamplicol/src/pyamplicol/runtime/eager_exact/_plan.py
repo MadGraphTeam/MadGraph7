@@ -14,6 +14,7 @@ from pyamplicol.artifacts.manifest import ArtifactManifest
 from pyamplicol.artifacts.security import confined_path, normalize_relative_path
 from pyamplicol.generation.eager_tables import (
     EAGER_KERNEL_ABI,
+    EAGER_OUTPUT_FACTOR_NONE,
     MISSING_U32,
     EagerAttachmentRow,
     EagerClosureRow,
@@ -569,6 +570,10 @@ class _EagerExactPlan:
             if closure.kernel_id == MISSING_U32:
                 if closure.coupling_slot_id != MISSING_U32:
                     raise ArtifactError("direct eager closure references a coupling")
+                if closure.output_factor_source != EAGER_OUTPUT_FACTOR_NONE:
+                    raise ArtifactError(
+                        "direct eager closure has a dynamic output factor"
+                    )
                 if root.get("kind") != "direct-contraction":
                     raise ArtifactError(
                         "direct eager closure lacks contraction metadata"

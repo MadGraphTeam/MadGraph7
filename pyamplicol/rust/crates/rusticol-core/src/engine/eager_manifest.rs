@@ -2,14 +2,20 @@
 
 use super::*;
 use crate::{
-    EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_SELECTOR_DOMAINS_ABI, EagerDirectClosureSpec,
-    EagerKernelInput, EagerKernelRole, EagerKernelSpec, EagerPlanDefinition, EagerPlanDimensions,
+    EAGER_HOMOGENEOUS_LINEAR_CURRENT_PROOF, EAGER_INDEPENDENT_BLOCK_SIZE, EAGER_KERNEL_ABI,
+    EAGER_PLAN_ABI, EAGER_SELECTOR_DOMAINS_ABI, EagerDirectClosureSpec, EagerKernelInput,
+    EagerKernelRole, EagerKernelSpec, EagerPlanDefinition, EagerPlanDimensions,
     EagerReductionEntry, EagerReductionGroup,
 };
+use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 
 pub(super) const EAGER_EXECUTION_KIND: &str = "pyamplicol-runtime-eager-execution";
 pub(super) const MAX_EAGER_POINT_TILE_SIZE: usize = 1_048_576;
 pub(super) const MAX_EAGER_WORKSPACE_MIB: usize = 4096;
+const PREPARED_KERNEL_VARIANT_ABI: &str = "pyamplicol-prepared-kernel-variant-v1";
+const PREPARED_INDEPENDENT_BLOCK_VARIANT_ID: &str = "independent-block-4";
+const PREPARED_INDEPENDENT_BLOCK_PROOF: &str = "prepared-kernel-independent-current-block-v1";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -125,6 +131,8 @@ pub(super) struct PreparedKernelPackManifest {
     pub(super) target: PreparedKernelTargetManifest,
     pub(super) resolver_manifest: Value,
     pub(super) kernels: Vec<PreparedKernelManifest>,
+    #[serde(default)]
+    pub(super) kernel_variants: Vec<PreparedKernelVariantManifest>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -150,7 +158,33 @@ pub(super) struct PreparedKernelManifest {
     pub(super) input_contracts: Vec<PreparedKernelInputManifest>,
     pub(super) output_layout: Vec<String>,
     pub(super) exact_expressions: Vec<String>,
+    #[serde(default)]
+    pub(super) proof_classes: Vec<String>,
     pub(super) exact_evaluator_state_path: String,
+    pub(super) f64_evaluator_manifest: Value,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct PreparedKernelVariantManifest {
+    pub(super) variant_id: String,
+    pub(super) variant_abi: String,
+    pub(super) kind: String,
+    pub(super) block_size: u32,
+    pub(super) lane_layout: String,
+    pub(super) base_kernel_id: u32,
+    pub(super) base_canonical_signature: String,
+    pub(super) base_expression_digest: String,
+    pub(super) base_input_contract_digest: String,
+    pub(super) base_output_contract_digest: String,
+    pub(super) backend: String,
+    pub(super) optimization_settings_digest: String,
+    pub(super) input_arity: usize,
+    pub(super) output_arity: usize,
+    pub(super) input_lane_stride: usize,
+    pub(super) output_lane_stride: usize,
+    pub(super) input_layout: Vec<String>,
+    pub(super) output_layout: Vec<String>,
     pub(super) f64_evaluator_manifest: Value,
 }
 
@@ -512,12 +546,85 @@ impl PreparedKernelPackManifest {
                     kernel.kernel_id
                 )));
             }
+            if kernel
+                .proof_classes
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1])
+            {
+                return Err(RusticolError::integrity(format!(
+                    "prepared kernel {} proof classes must be sorted and unique",
+                    kernel.kernel_id
+                )));
+            }
+            if kernel
+                .proof_classes
+                .iter()
+                .any(|proof| proof == EAGER_HOMOGENEOUS_LINEAR_CURRENT_PROOF)
+                && kernel.contract_kind != "propagator"
+            {
+                return Err(RusticolError::integrity(format!(
+                    "prepared kernel {} applies a current-linearity proof to {:?}",
+                    kernel.kernel_id, kernel.contract_kind
+                )));
+            }
+            if kernel
+                .proof_classes
+                .iter()
+                .any(|proof| proof == PREPARED_INDEPENDENT_BLOCK_PROOF)
+                && (kernel.contract_kind != "vertex"
+                    || kernel.input_contracts.iter().any(|input| {
+                        !matches!(input.role.as_str(), "left-current" | "right-current")
+                    }))
+            {
+                return Err(RusticolError::integrity(format!(
+                    "prepared kernel {} applies an independent-block proof to a non-current vertex",
+                    kernel.kernel_id
+                )));
+            }
             kernel.validate_evaluator_metadata(self)?;
+        }
+        if self.backend != "jit" && !self.kernel_variants.is_empty() {
+            return Err(RusticolError::integrity(
+                "prepared C++/ASM packs cannot contain JIT block variants",
+            ));
+        }
+        let kernels_by_id = self
+            .kernels
+            .iter()
+            .map(|kernel| (kernel.kernel_id, kernel))
+            .collect::<BTreeMap<_, _>>();
+        let mut variant_keys = BTreeSet::new();
+        let mut variant_bases = BTreeSet::new();
+        for variant in &self.kernel_variants {
+            if !variant_keys.insert((variant.base_kernel_id, variant.variant_id.as_str())) {
+                return Err(RusticolError::integrity(format!(
+                    "prepared kernel pack repeats variant {:?} for kernel {}",
+                    variant.variant_id, variant.base_kernel_id
+                )));
+            }
+            if !variant_bases.insert(variant.base_kernel_id) {
+                return Err(RusticolError::integrity(format!(
+                    "prepared kernel {} has more than one block variant",
+                    variant.base_kernel_id
+                )));
+            }
+            let base = kernels_by_id.get(&variant.base_kernel_id).ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "prepared variant {:?} references missing kernel {}",
+                    variant.variant_id, variant.base_kernel_id
+                ))
+            })?;
+            variant.validate(self, base)?;
         }
         Ok(())
     }
 
     pub(super) fn kernel_specs(&self) -> RusticolResult<Vec<EagerKernelSpec>> {
+        let block_sizes = self
+            .kernel_variants
+            .iter()
+            .map(|variant| (variant.base_kernel_id, variant.block_size))
+            .collect::<BTreeMap<_, _>>();
         self.kernels
             .iter()
             .filter(|kernel| kernel.contract_kind != "model-parameter")
@@ -542,6 +649,14 @@ impl PreparedKernelPackManifest {
                     role,
                     inputs,
                     output_component_count: kernel.output_arity,
+                    homogeneous_linear_first_current: kernel
+                        .proof_classes
+                        .iter()
+                        .any(|proof| proof == EAGER_HOMOGENEOUS_LINEAR_CURRENT_PROOF),
+                    independent_block_size: block_sizes
+                        .get(&kernel.kernel_id)
+                        .copied()
+                        .unwrap_or(1),
                 })
             })
             .collect()
@@ -730,6 +845,304 @@ impl PreparedKernelManifest {
         }
         Ok(())
     }
+}
+
+impl PreparedKernelVariantManifest {
+    pub(super) fn runtime_evaluator_manifest(&self) -> RusticolResult<EvaluatorManifest> {
+        let object = self.f64_evaluator_manifest.as_object().ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "prepared kernel {} variant {:?} evaluator manifest must be an object",
+                self.base_kernel_id, self.variant_id
+            ))
+        })?;
+        let kind = object.get("kind").and_then(Value::as_str).ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "prepared kernel {} variant {:?} evaluator kind must be a nonempty string",
+                self.base_kernel_id, self.variant_id
+            ))
+        })?;
+        if kind != "symjit-application-evaluator" {
+            return Err(RusticolError::compatibility(format!(
+                "prepared kernel {} variant {:?} has unsupported evaluator kind {kind:?}",
+                self.base_kernel_id, self.variant_id
+            )));
+        }
+        validate_prepared_evaluator_keys(self.base_kernel_id, kind, object)?;
+        let mut runtime = object.clone();
+        for field in ["backend", "label", "settings", "build_timing"] {
+            runtime.remove(field);
+        }
+        serde_json::from_value(Value::Object(runtime)).map_err(|error| {
+            RusticolError::serialization(format!(
+                "prepared kernel {} variant {:?} has invalid runtime evaluator metadata: {error}",
+                self.base_kernel_id, self.variant_id
+            ))
+        })
+    }
+
+    pub(super) fn extra_evaluator_payload_paths(&self) -> RusticolResult<Vec<&str>> {
+        let object = self.f64_evaluator_manifest.as_object().ok_or_else(|| {
+            RusticolError::artifact("prepared block evaluator manifest must be an object")
+        })?;
+        if object.get("kind").and_then(Value::as_str) != Some("symjit-application-evaluator") {
+            return Err(RusticolError::compatibility(format!(
+                "prepared kernel {} variant {:?} has an unsupported evaluator kind",
+                self.base_kernel_id, self.variant_id
+            )));
+        }
+        Ok(Vec::new())
+    }
+
+    fn validate(
+        &self,
+        pack: &PreparedKernelPackManifest,
+        base: &PreparedKernelManifest,
+    ) -> RusticolResult<()> {
+        if self.variant_abi != PREPARED_KERNEL_VARIANT_ABI
+            || self.variant_id != PREPARED_INDEPENDENT_BLOCK_VARIANT_ID
+            || self.kind != "independent-block"
+            || self.block_size != EAGER_INDEPENDENT_BLOCK_SIZE
+            || self.lane_layout != "lane-major"
+        {
+            return Err(RusticolError::compatibility(format!(
+                "prepared kernel {} has unsupported block variant metadata",
+                self.base_kernel_id
+            )));
+        }
+        if pack.backend != "jit" || self.backend != pack.backend {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block variant backend does not match its JIT pack",
+                self.base_kernel_id
+            )));
+        }
+        if base.contract_kind != "vertex"
+            || !base
+                .proof_classes
+                .iter()
+                .any(|proof| proof == PREPARED_INDEPENDENT_BLOCK_PROOF)
+            || base
+                .input_contracts
+                .iter()
+                .any(|input| !matches!(input.role.as_str(), "left-current" | "right-current"))
+        {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block variant lacks its current-only vertex proof",
+                self.base_kernel_id
+            )));
+        }
+        if self.base_canonical_signature != base.canonical_signature
+            || self.input_lane_stride != base.input_arity
+            || self.output_lane_stride != usize::try_from(base.output_arity).unwrap_or(usize::MAX)
+            || self.input_arity != self.input_lane_stride * self.block_size as usize
+            || self.output_arity != self.output_lane_stride * self.block_size as usize
+        {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block variant does not match its scalar arities",
+                self.base_kernel_id
+            )));
+        }
+        let expected_input_layout = (0..self.block_size)
+            .flat_map(|lane| {
+                base.input_layout
+                    .iter()
+                    .map(move |item| format!("lane:{lane}:{item}"))
+            })
+            .collect::<Vec<_>>();
+        let expected_output_layout = (0..self.block_size)
+            .flat_map(|lane| {
+                base.output_layout
+                    .iter()
+                    .map(move |item| format!("lane:{lane}:{item}"))
+            })
+            .collect::<Vec<_>>();
+        if self.input_layout != expected_input_layout
+            || self.output_layout != expected_output_layout
+        {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block variant has an incompatible lane layout",
+                self.base_kernel_id
+            )));
+        }
+        let input_contracts = base
+            .input_contracts
+            .iter()
+            .map(|input| {
+                serde_json::json!({
+                    "role": input.role,
+                    "component": input.component,
+                    "symbol": input.symbol,
+                    "model_parameter_name": input.model_parameter_name,
+                    "model_parameter_index": input.model_parameter_index,
+                })
+            })
+            .collect::<Vec<_>>();
+        let expected_expression_digest = canonical_json_digest(&serde_json::json!({
+            "exact_expressions": base.exact_expressions,
+        }))?;
+        let expected_input_digest = canonical_json_digest(&serde_json::json!({
+            "input_arity": base.input_arity,
+            "input_layout": base.input_layout,
+            "input_contracts": input_contracts,
+        }))?;
+        let expected_output_digest = canonical_json_digest(&serde_json::json!({
+            "output_arity": base.output_arity,
+            "output_layout": base.output_layout,
+        }))?;
+        let expected_optimization_digest = canonical_json_digest(&pack.optimization_settings)?;
+        if self.base_expression_digest != expected_expression_digest
+            || self.base_input_contract_digest != expected_input_digest
+            || self.base_output_contract_digest != expected_output_digest
+            || self.optimization_settings_digest != expected_optimization_digest
+        {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block variant digest does not match its scalar contract",
+                self.base_kernel_id
+            )));
+        }
+
+        let object = self.f64_evaluator_manifest.as_object().ok_or_else(|| {
+            RusticolError::artifact("prepared block evaluator manifest must be an object")
+        })?;
+        if required_nonempty_string(object, "kind", self.base_kernel_id)?
+            != "symjit-application-evaluator"
+            || required_nonempty_string(object, "backend", self.base_kernel_id)? != "jit"
+            || object.get("settings") != Some(&pack.optimization_settings)
+        {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block evaluator does not match its JIT pack",
+                self.base_kernel_id
+            )));
+        }
+        let build_timing = object
+            .get("build_timing")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                RusticolError::artifact("prepared block build_timing must be an object")
+            })?;
+        if build_timing.values().any(|value| {
+            value
+                .as_f64()
+                .is_none_or(|seconds| !seconds.is_finite() || seconds < 0.0)
+        }) {
+            return Err(RusticolError::artifact(
+                "prepared block build timings must be finite nonnegative numbers",
+            ));
+        }
+        required_nonempty_string(object, "label", self.base_kernel_id)?;
+        required_nonempty_string(object, "evaluator_state_path", self.base_kernel_id)?;
+        let application_abi =
+            required_nonempty_string(object, "application_abi", self.base_kernel_id)?;
+        if pack
+            .dependency_abis
+            .get("symjit_application")
+            .and_then(Value::as_str)
+            != Some(application_abi)
+        {
+            return Err(RusticolError::compatibility(format!(
+                "prepared kernel {} block evaluator SymJIT ABI does not match its pack",
+                self.base_kernel_id
+            )));
+        }
+        let runtime = self.runtime_evaluator_manifest()?;
+        if evaluator_runtime_capabilities(&runtime)?
+            != BTreeSet::from([SYMJIT_APPLICATION_RUNTIME_CAPABILITY.to_string()])
+        {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block evaluator has incompatible capabilities",
+                self.base_kernel_id
+            )));
+        }
+        let (input_len, output_len) = runtime.io_len()?;
+        if input_len != self.input_arity || output_len != self.output_arity {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} block evaluator I/O ({input_len}, {output_len}) does not match ({}, {})",
+                self.base_kernel_id, self.input_arity, self.output_arity
+            )));
+        }
+        Ok(())
+    }
+}
+
+fn canonical_json_digest(value: &Value) -> RusticolResult<String> {
+    fn write(value: &Value, output: &mut String) -> RusticolResult<()> {
+        match value {
+            Value::Null => output.push_str("null"),
+            Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
+            Value::Number(value) => output.push_str(&python_json_number(value)),
+            Value::String(value) => write_ascii_json_string(value, output),
+            Value::Array(values) => {
+                output.push('[');
+                for (index, value) in values.iter().enumerate() {
+                    if index != 0 {
+                        output.push(',');
+                    }
+                    write(value, output)?;
+                }
+                output.push(']');
+            }
+            Value::Object(values) => {
+                output.push('{');
+                let mut keys = values.keys().collect::<Vec<_>>();
+                keys.sort_unstable();
+                for (index, key) in keys.iter().enumerate() {
+                    if index != 0 {
+                        output.push(',');
+                    }
+                    write_ascii_json_string(key, output);
+                    output.push(':');
+                    write(&values[*key], output)?;
+                }
+                output.push('}');
+            }
+        }
+        Ok(())
+    }
+
+    let mut canonical = String::new();
+    write(value, &mut canonical)?;
+    canonical.push('\n');
+    Ok(format!("{:x}", Sha256::digest(canonical.as_bytes())))
+}
+
+fn python_json_number(number: &serde_json::Number) -> String {
+    let rendered = number.to_string();
+    let Some((mantissa, exponent)) = rendered.split_once('e') else {
+        return rendered;
+    };
+    let (sign, digits) = if let Some(digits) = exponent.strip_prefix('-') {
+        ('-', digits)
+    } else if let Some(digits) = exponent.strip_prefix('+') {
+        ('+', digits)
+    } else {
+        ('+', exponent)
+    };
+    format!("{mantissa}e{sign}{digits:0>2}")
+}
+
+fn write_ascii_json_string(value: &str, output: &mut String) {
+    output.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            '\u{0008}' => output.push_str("\\b"),
+            '\u{000c}' => output.push_str("\\f"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            '\u{0020}'..='\u{007e}' => output.push(character),
+            character if u32::from(character) <= 0xffff => {
+                let _ = write!(output, "\\u{:04x}", u32::from(character));
+            }
+            character => {
+                let scalar = u32::from(character) - 0x1_0000;
+                let high = 0xd800 + (scalar >> 10);
+                let low = 0xdc00 + (scalar & 0x3ff);
+                let _ = write!(output, "\\u{high:04x}\\u{low:04x}");
+            }
+        }
+    }
+    output.push('"');
 }
 
 fn validate_prepared_evaluator_keys(
