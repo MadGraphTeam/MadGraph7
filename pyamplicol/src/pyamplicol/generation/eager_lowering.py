@@ -1013,43 +1013,62 @@ def _build_selector_closure_tables(
     ):
         raise ValueError("runtime coherent-group IDs must be unique unsigned integers")
     ordered_group_ids = tuple(sorted(declared_groups))
-    group_bits = {
-        group_id: 1 << bit_index for bit_index, group_id in enumerate(ordered_group_ids)
+    group_bit_indices = {
+        group_id: bit_index for bit_index, group_id in enumerate(ordered_group_ids)
     }
-    member_cache: dict[int, tuple[int, ...]] = {0: ()}
+
+    domain_members: list[tuple[int, ...]] = []
+    domain_ids_by_members: dict[tuple[int, ...], int] = {}
+
+    def intern_members(members: tuple[int, ...]) -> int:
+        existing = domain_ids_by_members.get(members)
+        if existing is not None:
+            return existing
+        domain_id = len(domain_members)
+        domain_members.append(members)
+        domain_ids_by_members[members] = domain_id
+        return domain_id
 
     def members(domain: int) -> tuple[int, ...]:
-        cached = member_cache.get(domain)
-        if cached is not None:
-            return cached
         result: list[int] = []
         remaining = domain
         while remaining:
             lowest = remaining & -remaining
             result.append(ordered_group_ids[lowest.bit_length() - 1])
             remaining ^= lowest
-        resolved = tuple(result)
-        member_cache[domain] = resolved
-        return resolved
+        return tuple(result)
+
+    def intern_stage_mask(
+        domain: int,
+        domain_ids_by_mask: dict[int, int],
+    ) -> int:
+        existing = domain_ids_by_mask.get(domain)
+        if existing is not None:
+            return existing
+        domain_id = intern_members(members(domain))
+        domain_ids_by_mask[domain] = domain_id
+        return domain_id
 
     value_domains = [0] * value_slot_count
-    closure_domains: list[int] = []
+    empty_domain_id = intern_members(())
+    closure_domain_ids: list[int] = []
     for closure, root in zip(closures, roots, strict=True):
         if closure.amplitude_index != int(root["output_index"]):
             raise ValueError(
                 "eager closure order does not match runtime amplitude roots"
             )
         group_id = int(root["coherent_group_id"])
-        domain = group_bits.get(group_id)
-        if domain is None:
+        bit_index = group_bit_indices.get(group_id)
+        if bit_index is None:
             raise ValueError(
                 f"amplitude root references undeclared coherent group {group_id}"
             )
-        closure_domains.append(domain)
+        domain = 1 << bit_index
+        closure_domain_ids.append(intern_members((group_id,)))
         value_domains[closure.left_value_slot_id] |= domain
         value_domains[closure.right_value_slot_id] |= domain
 
-    stage_domain_sets_reversed: list[
+    stage_domain_ids_reversed: list[
         tuple[
             tuple[int, ...],
             tuple[int, ...],
@@ -1057,62 +1076,99 @@ def _build_selector_closure_tables(
             tuple[int, ...],
         ],
     ] = []
-    empty_domain = 0
-    current_domains = [empty_domain] * current_count
+    current_domains = [0] * current_count
+    current_domain_ids = [empty_domain_id] * current_count
 
     for stage in reversed(stages):
-        unpropagated_domains: list[int] = []
-        propagated_domains: list[int] = []
+        stage_domain_ids_by_mask = {0: empty_domain_id}
+
+        unpropagated_domain_ids: list[int] = []
+        propagated_domain_ids: list[int] = []
         for finalization in stage.finalizations:
             unpropagated = (
                 value_domains[finalization.unpropagated_value_slot_id]
                 if finalization.stores_unpropagated
-                else empty_domain
+                else 0
             )
             propagated = (
                 value_domains[finalization.propagated_value_slot_id]
                 if finalization.stores_propagated
-                else empty_domain
+                else 0
             )
-            unpropagated_domains.append(unpropagated)
-            propagated_domains.append(propagated)
-            current_domains[finalization.current_id] = unpropagated | propagated
+            unpropagated_domain_ids.append(
+                intern_stage_mask(unpropagated, stage_domain_ids_by_mask)
+            )
+            propagated_domain_ids.append(
+                intern_stage_mask(propagated, stage_domain_ids_by_mask)
+            )
+            current_domain = unpropagated | propagated
+            current_domains[finalization.current_id] = current_domain
+            current_domain_ids[finalization.current_id] = intern_stage_mask(
+                current_domain,
+                stage_domain_ids_by_mask,
+            )
+            if finalization.stores_unpropagated:
+                value_domains[finalization.unpropagated_value_slot_id] = 0
+            if finalization.stores_propagated:
+                value_domains[finalization.propagated_value_slot_id] = 0
 
-        attachment_domains = [
-            current_domains[attachment.result_current_id]
+        attachment_domain_ids = [
+            current_domain_ids[attachment.result_current_id]
             for attachment in stage.attachments
         ]
 
-        invocation_domains: list[int] = []
+        invocation_domain_ids: list[int] = []
         for invocation in stage.invocations:
             start = invocation.attachment_start
             stop = start + invocation.attachment_count
             domain = 0
             for attachment_index in range(start, stop):
-                domain |= attachment_domains[attachment_index]
-            invocation_domains.append(domain)
+                result_current_id = stage.attachments[
+                    attachment_index
+                ].result_current_id
+                domain |= current_domains[result_current_id]
+            invocation_domain_ids.append(
+                intern_stage_mask(domain, stage_domain_ids_by_mask)
+            )
             value_domains[invocation.left_value_slot_id] |= domain
             value_domains[invocation.right_value_slot_id] |= domain
 
-        stage_domain_sets_reversed.append(
+        stage_domain_ids_reversed.append(
             (
-                tuple(invocation_domains),
-                tuple(attachment_domains),
-                tuple(unpropagated_domains),
-                tuple(propagated_domains),
+                tuple(invocation_domain_ids),
+                tuple(attachment_domain_ids),
+                tuple(unpropagated_domain_ids),
+                tuple(propagated_domain_ids),
             )
         )
+        for finalization in stage.finalizations:
+            current_domains[finalization.current_id] = 0
+            current_domain_ids[finalization.current_id] = empty_domain_id
+        stage_domain_ids_by_mask.clear()
 
-    unique_domains = {empty_domain, *closure_domains}
-    for domain_sets in stage_domain_sets_reversed:
-        for domains in domain_sets:
-            unique_domains.update(domains)
-    # Domain IDs are internal to one eager plan. Integer-mask ordering is both
-    # deterministic and cheaper than materializing sparse members only to sort.
-    ordered_domains = tuple(
-        sorted(unique_domains, key=lambda domain: (domain.bit_count(), domain))
+    # These retain the arbitrary-width construction masks and the duplicate
+    # interning index; neither participates in final ID assignment or emission.
+    value_domains.clear()
+    current_domains.clear()
+    current_domain_ids.clear()
+    group_bit_indices.clear()
+    domain_ids_by_members.clear()
+
+    # Match the prior dense-mask ordering exactly. For equal-cardinality masks,
+    # integer comparison examines the highest differing bit first, equivalent
+    # to lexicographically comparing the reversed, sorted member tuples.
+    ordered_provisional_ids = tuple(
+        sorted(
+            range(len(domain_members)),
+            key=lambda domain_id: (
+                len(domain_members[domain_id]),
+                tuple(reversed(domain_members[domain_id])),
+            ),
+        )
     )
-    domain_ids = {domain: domain_id for domain_id, domain in enumerate(ordered_domains)}
+    final_domain_ids = [0] * len(domain_members)
+    for final_domain_id, provisional_domain_id in enumerate(ordered_provisional_ids):
+        final_domain_ids[provisional_domain_id] = final_domain_id
 
     domain_rows: list[EagerSelectorDomainRow] = []
     group_rows: list[EagerSelectorGroupRow] = []
@@ -1120,46 +1176,52 @@ def _build_selector_closure_tables(
         group_id: EagerSelectorGroupRow._from_trusted_values(group_id)
         for group_id in ordered_group_ids
     }
-    for domain in ordered_domains:
-        domain_members = members(domain)
+    for provisional_domain_id in ordered_provisional_ids:
+        resolved_members = domain_members[provisional_domain_id]
         domain_rows.append(
             EagerSelectorDomainRow._from_trusted_values(
-                len(group_rows), len(domain_members)
+                len(group_rows), len(resolved_members)
             )
         )
-        group_rows.extend(group_row_by_id[group_id] for group_id in domain_members)
+        group_rows.extend(group_row_by_id[group_id] for group_id in resolved_members)
 
+    domain_count = len(domain_members)
+    domain_members.clear()
+    group_row_by_id.clear()
     domain_reference_rows = tuple(
         EagerSelectorDomainIdRow._from_trusted_values(domain_id)
-        for domain_id in range(len(ordered_domains))
+        for domain_id in range(domain_count)
     )
 
     def references(
-        domains: Sequence[int],
+        provisional_domain_ids: Sequence[int],
     ) -> tuple[EagerSelectorDomainIdRow, ...]:
-        return tuple(domain_reference_rows[domain_ids[domain]] for domain in domains)
+        return tuple(
+            domain_reference_rows[final_domain_ids[provisional_domain_id]]
+            for provisional_domain_id in provisional_domain_ids
+        )
 
     selector_stages = []
-    for stage, domain_sets in zip(
+    for stage, domain_ids in zip(
         stages,
-        reversed(stage_domain_sets_reversed),
+        reversed(stage_domain_ids_reversed),
         strict=True,
     ):
         (
-            stage_invocation_domains,
-            stage_attachment_domains,
-            stage_unpropagated_domains,
-            stage_propagated_domains,
-        ) = domain_sets
+            stage_invocation_domain_ids,
+            stage_attachment_domain_ids,
+            stage_unpropagated_domain_ids,
+            stage_propagated_domain_ids,
+        ) = domain_ids
         selector_stages.append(
             EagerStageSelectorDomains(
                 stage_index=stage.stage_index,
-                invocation_domains=references(stage_invocation_domains),
-                attachment_domains=references(stage_attachment_domains),
+                invocation_domains=references(stage_invocation_domain_ids),
+                attachment_domains=references(stage_attachment_domain_ids),
                 unpropagated_finalization_domains=references(
-                    stage_unpropagated_domains
+                    stage_unpropagated_domain_ids
                 ),
-                propagated_finalization_domains=references(stage_propagated_domains),
+                propagated_finalization_domains=references(stage_propagated_domain_ids),
             )
         )
 
@@ -1167,7 +1229,7 @@ def _build_selector_closure_tables(
         domains=tuple(domain_rows),
         domain_group_ids=tuple(group_rows),
         stages=tuple(selector_stages),
-        closure_domains=references(closure_domains),
+        closure_domains=references(closure_domain_ids),
     )
 
 

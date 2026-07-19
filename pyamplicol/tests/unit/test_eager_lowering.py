@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from dataclasses import replace
 
@@ -20,6 +21,42 @@ from pyamplicol.generation.runtime_schema import build_runtime_schema
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.prepared_catalog import build_prepared_kernel_catalog
+
+_DENSE_SELECTOR_REFERENCE_SHA256 = {
+    "eager/closure-domains.bin": (
+        "aeb63db345168a2b73755639d5ef055da5834cb4aab10e68c64ae64903a85a71"
+    ),
+    "eager/selector-domain-group-ids.bin": (
+        "c761c72ec6f32bfbb0242ab8c3684c05101f0cf249d0b5bc4e21dee9e3c90b50"
+    ),
+    "eager/selector-domains.bin": (
+        "87d7a7cb2993e150da210f03f026a179b04695e8e7787d4af352ac9141627d0c"
+    ),
+    "eager/stage-1-attachment-domains.bin": (
+        "39d36afc0e641c6905ac6beac1d90756f4ed104df673f1ea0008943f9c27bb60"
+    ),
+    "eager/stage-1-invocation-domains.bin": (
+        "39d36afc0e641c6905ac6beac1d90756f4ed104df673f1ea0008943f9c27bb60"
+    ),
+    "eager/stage-1-propagated-finalization-domains.bin": (
+        "78553a9c5708642fdb81c04dbe7f7a2a8a01866c11469449f8bfea63691e9abc"
+    ),
+    "eager/stage-1-unpropagated-finalization-domains.bin": (
+        "76fa30b3c21b8dff3bd594d5d6828d50d8ce9ef615023afe1a965bf536a304ad"
+    ),
+    "eager/stage-2-attachment-domains.bin": (
+        "c28307734b193e63c063eba022eb8543553de0bd6413cc4195f813049f835ca6"
+    ),
+    "eager/stage-2-invocation-domains.bin": (
+        "db265e919a58f5c211185a07050ec3040c978cf2164dd9c126ee6bac9a56ea1c"
+    ),
+    "eager/stage-2-propagated-finalization-domains.bin": (
+        "2ea9ab9198d1638007400cd2c3bef1cc745b864b76011a0e1bc52180ac6452d4"
+    ),
+    "eager/stage-2-unpropagated-finalization-domains.bin": (
+        "985053fc157f63a679b14d6ce5fda64734cfcebf9b7991354b1bae6df7f70577"
+    ),
+}
 
 
 def _gluon_scattering_tables():
@@ -169,6 +206,17 @@ def test_selector_domains_preserve_shared_invocation_partial_fanout() -> None:
     ):
         assert members[closure_domain.domain_id] == {int(root["coherent_group_id"])}
     assert found_partial_fanout
+
+
+def test_sparse_selector_interning_matches_dense_reference_bytes() -> None:
+    _model, _dag, _schema, tables = _gluon_scattering_tables()
+    payloads = tables.binary_payloads()
+
+    actual = {
+        path: hashlib.sha256(payloads[path]).hexdigest()
+        for path in _DENSE_SELECTOR_REFERENCE_SHA256
+    }
+    assert actual == _DENSE_SELECTOR_REFERENCE_SHA256
 
 
 def test_eager_lowering_emits_standalone_binary_table_metadata() -> None:

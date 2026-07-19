@@ -83,6 +83,8 @@ from pyamplicol.generation.eager_tables import (
 def test_eager_fixed_width_tables_round_trip(rows: tuple[object, ...]) -> None:
     row_type = type(rows[0])
     payload = pack_rows(rows)  # type: ignore[arg-type]
+    reference_payload = b"".join(row_type._STRUCT.pack(*row._values()) for row in rows)
+    assert payload == reference_payload
     assert len(payload) == len(rows) * row_type._STRUCT.size
     assert unpack_rows(payload, row_type) == rows
 

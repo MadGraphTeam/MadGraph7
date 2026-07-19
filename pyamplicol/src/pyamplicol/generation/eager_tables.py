@@ -471,7 +471,10 @@ def pack_rows(rows: Iterable[_FixedWidthRow]) -> bytes:
     if any(type(row) is not row_type for row in records):
         raise TypeError("eager binary tables must contain one row type")
     layout = records[0]._STRUCT
-    return b"".join(layout.pack(*row._values()) for row in records)
+    payload = bytearray(len(records) * layout.size)
+    for row_index, row in enumerate(records):
+        layout.pack_into(payload, row_index * layout.size, *row._values())
+    return bytes(payload)
 
 
 def unpack_rows(payload: bytes, row_type: type[_RowT]) -> tuple[_RowT, ...]:
