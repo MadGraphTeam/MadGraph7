@@ -1,0 +1,112 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+from pyamplicol.assets import prepared_models
+
+ROOT = Path(__file__).resolve().parents[2]
+ASSET_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "prepared_models"
+
+
+def _metadata() -> dict[str, object]:
+    return json.loads(
+        (ASSET_ROOT / "built-in-sm-jit-o3.metadata.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_packaged_builtin_sm_jit_o3_is_discoverable_and_validated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol._internal.versions as versions
+    import pyamplicol.models.loading as loading
+
+    metadata = _metadata()
+    producer = metadata["producer"]
+    assert isinstance(producer, dict)
+    monkeypatch.setattr(
+        versions,
+        "package_version",
+        lambda: producer["package_version"],
+    )
+    monkeypatch.setattr(
+        loading,
+        "package_version",
+        lambda: producer["package_version"],
+    )
+
+    assert prepared_models.available_prepared_models() == (
+        prepared_models.BUILTIN_SM_JIT_O3,
+    )
+    with prepared_models.packaged_prepared_model_path(
+        prepared_models.BUILTIN_SM_JIT_O3
+    ) as path:
+        from pyamplicol import ModelSource
+
+        assert path.name == "built-in-sm-jit-o3.pyamplicol-model"
+        assert path.is_file()
+        compiled = ModelSource.from_path(path).compile(use_cache=False)
+        assert compiled.name == "built-in-sm"
+        assert compiled.prepared_backend == "jit"
+    with prepared_models.open_packaged_prepared_model() as bundle:
+        assert bundle.backend == "jit"
+        assert len(bundle.kernel_pack.kernels) == 111
+        assert bundle.kernel_pack.target["portable"] is True
+        assert bundle.kernel_pack.target["cpu_features"] == ()
+
+
+def test_packaged_prepared_model_rejects_unknown_identity() -> None:
+    with (
+        pytest.raises(
+            prepared_models.PackagedPreparedModelError,
+            match="unknown packaged prepared model",
+        ),
+        prepared_models.packaged_prepared_model_path("not-a-model"),
+    ):
+        pass
+
+
+def test_packaged_prepared_model_rejects_resource_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    copied = tmp_path / "prepared_models"
+    shutil.copytree(ASSET_ROOT, copied)
+    bundle = copied / "built-in-sm-jit-o3.pyamplicol-model"
+    bundle.write_bytes(bundle.read_bytes() + b"tampered")
+    monkeypatch.setattr(prepared_models.resources, "files", lambda _package: copied)
+
+    with (
+        pytest.raises(
+            prepared_models.PackagedPreparedModelError,
+            match="size does not match",
+        ),
+        prepared_models.packaged_prepared_model_path(
+            prepared_models.BUILTIN_SM_JIT_O3
+        ),
+    ):
+        pass
+
+
+def test_packaged_prepared_model_rejects_package_version_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol._internal.versions as versions
+
+    monkeypatch.setattr(versions, "package_version", lambda: "999.0")
+    with (
+        pytest.raises(
+            prepared_models.PackagedPreparedModelError,
+            match="package_version is stale",
+        ),
+        prepared_models.packaged_prepared_model_path(
+            prepared_models.BUILTIN_SM_JIT_O3
+        ),
+    ):
+        pass

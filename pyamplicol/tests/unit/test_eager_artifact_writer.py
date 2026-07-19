@@ -10,7 +10,7 @@ import pytest
 
 import pyamplicol.generation.artifact_writer as artifact_writer
 from pyamplicol.api.requests import ModelSource
-from pyamplicol.artifacts import ArtifactBuilder, load_manifest
+from pyamplicol.artifacts import ArtifactBuilder, inspect_artifact, load_manifest
 from pyamplicol.config import Action, EvaluatorConfig, GenerationConfig, RunConfig
 from pyamplicol.generation.artifact_writer import (
     EagerProcessArtifact,
@@ -275,6 +275,25 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     assert manifest.runtime["required_runtime_capabilities"] == (
         "rusticol.eager-dag.complex-f64.v1",
     )
+    inspection = inspect_artifact(output)
+    inspected_process = inspection.processes[0]
+    assert inspected_process.execution_mode == "eager"
+    assert inspected_process.prepared_backend == "jit"
+    assert inspected_process.invocation_count == tables.invocation_count
+    assert inspected_process.attachment_count == tables.attachment_count
+    assert inspected_process.evaluation_alias_count == (
+        tables.attachment_count - tables.invocation_count
+    )
+    assert inspected_process.maximum_fanout == max(
+        row.attachment_count
+        for stage in tables.stages
+        for row in stage.invocations
+    )
+    assert inspected_process.requested_point_tile_size == 2048
+    assert inspected_process.effective_point_tile_size is None
+    assert inspected_process.workspace_limit_bytes == 384 * 1024 * 1024
+    assert inspected_process.workspace_bytes is None
+    assert not inspected_process.selector_closure_available
     pack_identity = manifest.extensions["eager_prepared_pack"]
     assert pack_identity["kind"] == "pyamplicol-prepared-kernel-pack-identity"
     assert pack_identity["schema_version"] == 1

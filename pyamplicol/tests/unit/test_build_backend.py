@@ -491,6 +491,7 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     gates: list[str] = []
     sdk_stages: list[Path] = []
     selftest_stages: list[tuple[Path, str]] = []
+    prepared_model_stages: list[tuple[Path, str]] = []
     injected_bins = (tmp_path / "injected-bin", tmp_path / "injected-tools")
     for directory in injected_bins:
         directory.mkdir()
@@ -561,6 +562,11 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda path: None)
     monkeypatch.setattr(
         backend,
+        "stage_packaged_prepared_models",
+        lambda path, mode: prepared_model_stages.append((path, mode)),
+    )
+    monkeypatch.setattr(
+        backend,
         "_stage_selftest_fixture",
         lambda path, target_name: selftest_stages.append((path, target_name)),
     )
@@ -572,6 +578,9 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     assert gates == ["release"]
     assert bool(sdk_stages) is with_sdk
     assert selftest_stages == ([(overlay, "aarch64-apple-darwin")] if with_sdk else [])
+    assert prepared_model_stages == (
+        [(overlay, "release")] if with_sdk else []
+    )
     for name, value in injected.items():
         assert os.environ[name] == value
 

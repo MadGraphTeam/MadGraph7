@@ -23,6 +23,7 @@ from package_version import (
     canonical_package_version,
     check_contributor_lock_consistency,
 )
+from prepared_models import stage_packaged_prepared_models
 from sdk import build_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -939,6 +940,7 @@ def _from_overlay(
                     _stage_packaged_examples(overlay)
                     _stage_python_stub(overlay)
                     _stage_runtime_resources(overlay)
+                    stage_packaged_prepared_models(overlay, mode)
                     sdk = build_sdk(overlay, target_dir)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")
