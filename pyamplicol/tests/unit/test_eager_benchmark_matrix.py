@@ -111,7 +111,7 @@ def test_generation_gates_require_each_non_lc_cell_and_geometric_mean() -> None:
             "case": {"key": "process"},
             "model": "built-in",
             "color": color,
-            "compiled_over_eager_generation": ratio,
+            "compiled_over_eager_core_generation": ratio,
         }
         for color, ratio in (("lc", 2.0), ("nlc", 20.0), ("full", 30.0))
     ]
@@ -129,7 +129,7 @@ def test_generation_gate_rejects_partial_or_slow_matrix() -> None:
             "case": {"key": "process"},
             "model": "built-in",
             "color": "nlc",
-            "compiled_over_eager_generation": 9.99,
+            "compiled_over_eager_core_generation": 9.99,
         }
     ]
 
@@ -138,3 +138,29 @@ def test_generation_gate_rejects_partial_or_slow_matrix() -> None:
         "lc_no_generation_regression": False,
         "per_process_geometric_mean_at_least_10x": False,
     }
+
+
+def test_core_generation_excludes_model_loading_and_process_expansion() -> None:
+    assert (
+        matrix._core_generation_seconds(
+            {
+                "model-loading": 100.0,
+                "process-expansion": 50.0,
+                "dag": 2.0,
+                "jit": 3.0,
+            }
+        )
+        == 5.0
+    )
+
+
+def test_watchdog_peak_parser_uses_last_guarded_command() -> None:
+    stderr = "\n".join(
+        (
+            "memory-watchdog: command finished exit=0 peak_rss=1.250 GiB",
+            "memory-watchdog: command finished exit=0 peak_rss=2.500 GiB",
+        )
+    )
+
+    assert matrix._watchdog_peak_gib(stderr) == 2.5
+    assert matrix._watchdog_peak_gib("no watchdog result") is None

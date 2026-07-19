@@ -14,6 +14,7 @@ import json
 import math
 import os
 import platform
+import re
 import signal
 import subprocess
 import sys
@@ -354,7 +355,7 @@ def _generation_gates(records: Sequence[Mapping[str, Any]]) -> dict[str, bool]:
     lc_speedups: list[float] = []
     grouped: dict[tuple[str, str], dict[str, float]] = {}
     for record in records:
-        ratio = float(record["compiled_over_eager_generation"])
+        ratio = float(record["compiled_over_eager_core_generation"])
         color = str(record["color"])
         case = record["case"]
         if not isinstance(case, Mapping):
@@ -436,6 +437,44 @@ def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _generation_phases(artifact: Path) -> dict[str, float]:
+    try:
+        outer = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+        raw = outer["extensions"]["generation"]["phase_timings_seconds"]
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise MatrixError(
+            f"artifact has no valid generation phases: {artifact}"
+        ) from error
+    if not isinstance(raw, dict):
+        raise MatrixError(f"artifact generation phases are not an object: {artifact}")
+    phases: dict[str, float] = {}
+    for name, value in raw.items():
+        if not isinstance(name, str) or isinstance(value, bool):
+            raise MatrixError(f"artifact has invalid generation phase: {artifact}")
+        seconds = float(value)
+        if not math.isfinite(seconds) or seconds < 0:
+            raise MatrixError(f"artifact has invalid generation phase time: {artifact}")
+        phases[name] = seconds
+    return phases
+
+
+def _core_generation_seconds(phases: Mapping[str, float]) -> float:
+    excluded = {"model-loading", "process-expansion"}
+    result = sum(value for name, value in phases.items() if name not in excluded)
+    if result <= 0 or not math.isfinite(result):
+        raise MatrixError("core generation phase total must be positive and finite")
+    return result
+
+
+def _artifact_size_bytes(artifact: Path) -> int:
+    return sum(path.stat().st_size for path in artifact.rglob("*") if path.is_file())
+
+
+def _watchdog_peak_gib(stderr: str) -> float | None:
+    matches = re.findall(r"peak_rss=([0-9]+(?:\.[0-9]+)?) GiB", stderr)
+    return float(matches[-1]) if matches else None
+
+
 def _git_head() -> str | None:
     completed = subprocess.run(
         ("git", "rev-parse", "HEAD"),
@@ -512,6 +551,7 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                         "elapsed_seconds": elapsed,
                         "output": payload.get("output"),
                         "schema_version": payload.get("schema_version"),
+                        "peak_rss_gib": _watchdog_peak_gib(stderr),
                         "watchdog": stderr.strip().splitlines()[-1]
                         if stderr.strip()
                         else None,
@@ -522,6 +562,15 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                     raise MatrixError(
                         "compiled/eager process IDs differ: "
                         f"{compiled_process_id!r} != {process_id!r}"
+                    )
+                for mode in ("compiled", "eager"):
+                    phases = _generation_phases(artifacts[mode])
+                    generation[mode]["phase_timings_seconds"] = phases
+                    generation[mode]["core_phase_seconds"] = _core_generation_seconds(
+                        phases
+                    )
+                    generation[mode]["artifact_size_bytes"] = _artifact_size_bytes(
+                        artifacts[mode]
                     )
 
                 workload_results: list[dict[str, Any]] = []
@@ -588,6 +637,8 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                     )
                 compiled_generation = generation["compiled"]["elapsed_seconds"]
                 eager_generation = generation["eager"]["elapsed_seconds"]
+                compiled_core = generation["compiled"]["core_phase_seconds"]
+                eager_core = generation["eager"]["core_phase_seconds"]
                 records.append(
                     {
                         "case": asdict(case),
@@ -595,8 +646,11 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                         "color": color,
                         "process_id": process_id,
                         "generation": generation,
-                        "compiled_over_eager_generation": (
+                        "compiled_over_eager_command_elapsed": (
                             compiled_generation / eager_generation
+                        ),
+                        "compiled_over_eager_core_generation": (
+                            compiled_core / eager_core
                         ),
                         "compiled_generation_under_hard_limit": (
                             compiled_generation <= arguments.generation_timeout

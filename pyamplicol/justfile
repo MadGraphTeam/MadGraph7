@@ -129,11 +129,11 @@ dev-test: _source-checkout
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just source-gate
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate
 
-# Bounded eager-mode developer gates. Each generation/profile subprocess and
-# the driver itself run under the repository's 30 GiB memory guard.
+# Bounded built-in-SM eager gate under the 30 GiB memory guard.
 eager-smoke: _source-checkout
     {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/eager_benchmark_matrix.py --suite smoke --models built-in --builtin-pack {{eager_builtin_pack}} --output-root .artifacts/eager-benchmark/smoke
 
+# Full built-in/UFO-SM eager milestone gate under the 30 GiB memory guard.
 eager-milestone: _source-checkout
     {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/eager_benchmark_matrix.py --suite milestone --models built-in,ufo-sm --builtin-pack {{eager_builtin_pack}} --ufo-source {{eager_ufo_source}} --ufo-pack {{eager_ufo_pack}} --output-root .artifacts/eager-benchmark/milestone
 
