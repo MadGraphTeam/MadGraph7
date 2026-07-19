@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.api.protocols import Momenta, RuntimeBackend
@@ -52,6 +52,7 @@ class _Calibration:
 
 @dataclass(frozen=True, slots=True)
 class _NativeProfileSample:
+    execution_mode: str | None
     wall_time: float | None
     source_fill_time: float | None
     momentum_setup_time: float | None
@@ -59,11 +60,15 @@ class _NativeProfileSample:
     stage_evaluator_call_time: float
     output_assign_time: float | None
     amplitude_input_pack_time: float | None
-    amplitude_evaluator_call_time: float
+    amplitude_evaluator_call_time: float | None
     reduction_time: float | None
     stage_input_pack_times: tuple[float, ...] | None
     stage_evaluator_call_times: tuple[float, ...] | None
     stage_output_assign_times: tuple[float, ...] | None
+    eager_gather_time: float | None
+    eager_kernel_call_time: float | None
+    eager_scatter_finalization_time: float | None
+    eager_closure_time: float | None
 
 
 class BenchmarkBackend:
@@ -109,14 +114,13 @@ class BenchmarkBackend:
         native_wall_timer = (
             _native_wall_timer(runtime) if self._config.precision == 16 else None
         )
-        evaluation_options = {
-            "helicities": helicities,
-            "color_flows": color_flows,
-            "precision": self._config.precision,
-        }
-
         def evaluate_once() -> object:
-            return runtime.evaluate(batch, **evaluation_options)
+            return runtime.evaluate(
+                batch,
+                helicities=helicities,
+                color_flows=color_flows,
+                precision=self._config.precision,
+            )
 
         def measure_repetitions(repetitions: int) -> float:
             if native_wall_timer is not None:
@@ -241,7 +245,7 @@ class BenchmarkBackend:
                         native_profile_samples.append(native_sample)
                         evaluator_samples.append(
                             native_sample.stage_evaluator_call_time
-                            + native_sample.amplitude_evaluator_call_time
+                            + (native_sample.amplitude_evaluator_call_time or 0.0)
                         )
                         evaluator_elapsed += profile_duration
                     if self._progress is not None:
@@ -546,7 +550,7 @@ def _native_profiler(
     for name in ("profile", "evaluate_profile"):
         profiler = getattr(runtime, name, None)
         if callable(profiler):
-            return profiler
+            return cast(Callable[..., Mapping[str, object]], profiler)
     return None
 
 
@@ -601,14 +605,45 @@ def _profile_float_sequence_or_none(
 ) -> tuple[float, ...] | None:
     if key not in profile:
         return None
-    return _profile_float_sequence(profile, key)
+    values = _profile_float_sequence(profile, key)
+    # Eager execution has no compiled-stage timing vector. Rusticol still
+    # supplies the aggregate evaluator timer, so an empty vector means
+    # "unavailable", not a measured zero.
+    return values or None
+
+
+def _profile_execution_mode(
+    profile: Mapping[str, object],
+    *,
+    stage_vectors_present_but_empty: bool,
+) -> str | None:
+    value = profile.get("execution_mode")
+    if value is not None:
+        if value not in {"compiled", "eager"}:
+            raise EvaluationError(
+                "native runtime profile execution_mode must be compiled or eager"
+            )
+        return str(value)
+    stage_aggregate = profile.get("stage_evaluator_call_time_s")
+    amplitude_aggregate = profile.get("amplitude_evaluator_call_time_s")
+    if (
+        stage_vectors_present_but_empty
+        and isinstance(stage_aggregate, (float, int))
+        and not isinstance(stage_aggregate, bool)
+        and float(stage_aggregate) > 0.0
+        and isinstance(amplitude_aggregate, (float, int))
+        and not isinstance(amplitude_aggregate, bool)
+        and float(amplitude_aggregate) == 0.0
+    ):
+        return "eager"
+    return None
 
 
 def _profile_point_count(profile: Mapping[str, object], fallback: int) -> int:
     value: Any = profile.get("points", fallback)
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise EvaluationError("native runtime profile point count is invalid")
-    return value
+    return int(value)
 
 
 def _native_profile_sample(
@@ -616,6 +651,18 @@ def _native_profile_sample(
 ) -> _NativeProfileSample:
     points = _profile_point_count(profile, fallback_points)
     per_point = 1.0 / points
+    stage_vector_keys = (
+        "stage_input_pack_by_stage_time_s",
+        "stage_evaluator_call_by_stage_time_s",
+        "stage_output_assign_by_stage_time_s",
+    )
+    stage_vectors_present_but_empty = all(
+        key in profile
+        and isinstance(profile[key], Sequence)
+        and not isinstance(profile[key], (str, bytes))
+        and len(profile[key]) == 0  # type: ignore[arg-type]
+        for key in stage_vector_keys
+    )
     stage_input_pack = _profile_float_sequence_or_none(
         profile, "stage_input_pack_by_stage_time_s"
     )
@@ -643,11 +690,19 @@ def _native_profile_sample(
         if stage_output_assign is not None
         else _profile_float_or_none(profile, "output_assign_time_s")
     )
-    amplitude_evaluator_call = _profile_float_or_none(
-        profile, "amplitude_evaluator_call_time_s"
+    execution_mode = _profile_execution_mode(
+        profile,
+        stage_vectors_present_but_empty=stage_vectors_present_but_empty,
     )
-    if amplitude_evaluator_call is None:
-        amplitude_evaluator_call = _profile_float(profile, "amplitude_evaluator_time_s")
+    amplitude_evaluator_call: float | None = None
+    if execution_mode != "eager":
+        amplitude_evaluator_call = _profile_float_or_none(
+            profile, "amplitude_evaluator_call_time_s"
+        )
+        if amplitude_evaluator_call is None:
+            amplitude_evaluator_call = _profile_float(
+                profile, "amplitude_evaluator_time_s"
+            )
 
     def normalized(key: str) -> float | None:
         value = _profile_float_or_none(profile, key)
@@ -661,24 +716,45 @@ def _native_profile_sample(
         return tuple(value * per_point for value in values)
 
     return _NativeProfileSample(
+        execution_mode=execution_mode,
         wall_time=normalized("wall_time_s"),
         source_fill_time=normalized("source_fill_time_s"),
         momentum_setup_time=normalized("momentum_setup_time_s"),
         stage_input_pack_time=(
             None
-            if stage_input_pack_total is None
+            if execution_mode == "eager" or stage_input_pack_total is None
             else stage_input_pack_total * per_point
         ),
         stage_evaluator_call_time=stage_evaluator_call_total * per_point,
         output_assign_time=(
-            None if output_assign_total is None else output_assign_total * per_point
+            None
+            if execution_mode == "eager" or output_assign_total is None
+            else output_assign_total * per_point
         ),
-        amplitude_input_pack_time=normalized("amplitude_input_pack_time_s"),
-        amplitude_evaluator_call_time=amplitude_evaluator_call * per_point,
-        reduction_time=normalized("reduction_time_s"),
+        amplitude_input_pack_time=(
+            None
+            if execution_mode == "eager"
+            else normalized("amplitude_input_pack_time_s")
+        ),
+        amplitude_evaluator_call_time=(
+            None
+            if amplitude_evaluator_call is None
+            else amplitude_evaluator_call * per_point
+        ),
+        reduction_time=(
+            normalized("eager_reduction_time_s")
+            if execution_mode == "eager"
+            else normalized("reduction_time_s")
+        ),
         stage_input_pack_times=normalized_sequence(stage_input_pack),
         stage_evaluator_call_times=normalized_sequence(stage_evaluator_call),
         stage_output_assign_times=normalized_sequence(stage_output_assign),
+        eager_gather_time=normalized("eager_gather_time_s"),
+        eager_kernel_call_time=normalized("eager_kernel_call_time_s"),
+        eager_scatter_finalization_time=normalized(
+            "eager_scatter_finalization_time_s"
+        ),
+        eager_closure_time=normalized("eager_closure_time_s"),
     )
 
 
@@ -752,8 +828,23 @@ def _timing_breakdown(
                 )
             )
 
+    execution_modes = {
+        sample.execution_mode
+        for sample in samples
+        if sample.execution_mode is not None
+    }
+    if len(execution_modes) > 1:
+        raise EvaluationError("native runtime profile changed execution mode")
+    execution_mode = cast(
+        Literal["compiled", "eager"],
+        next(iter(execution_modes), "compiled"),
+    )
+    evaluator_call_time = _component_timing(
+        [sample.stage_evaluator_call_time for sample in samples]
+    )
     return BenchmarkTimingBreakdown(
         sample_count=len(samples),
+        execution_mode=execution_mode,
         wall_time=_component_timing([sample.wall_time for sample in samples]),
         source_fill_time=_component_timing(
             [sample.source_fill_time for sample in samples]
@@ -764,8 +855,8 @@ def _timing_breakdown(
         stage_input_pack_time=_component_timing(
             [sample.stage_input_pack_time for sample in samples]
         ),
-        stage_evaluator_call_time=_component_timing(
-            [sample.stage_evaluator_call_time for sample in samples]
+        stage_evaluator_call_time=(
+            None if execution_mode == "eager" else evaluator_call_time
         ),
         output_assign_time=_component_timing(
             [sample.output_assign_time for sample in samples]
@@ -777,6 +868,21 @@ def _timing_breakdown(
             [sample.amplitude_evaluator_call_time for sample in samples]
         ),
         reduction_time=_component_timing([sample.reduction_time for sample in samples]),
+        eager_execution_time=(
+            evaluator_call_time if execution_mode == "eager" else None
+        ),
+        eager_gather_time=_component_timing(
+            [sample.eager_gather_time for sample in samples]
+        ),
+        eager_kernel_call_time=_component_timing(
+            [sample.eager_kernel_call_time for sample in samples]
+        ),
+        eager_scatter_finalization_time=_component_timing(
+            [sample.eager_scatter_finalization_time for sample in samples]
+        ),
+        eager_closure_time=_component_timing(
+            [sample.eager_closure_time for sample in samples]
+        ),
         stages=tuple(stages),
     )
 
