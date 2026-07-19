@@ -47,6 +47,7 @@ module rusticol
     procedure, public :: process => rusticol_process
     procedure, public :: process_key => rusticol_process_key
     procedure, public :: color_accuracy => rusticol_color_accuracy
+    procedure, public :: execution_mode => rusticol_execution_mode
     procedure, public :: metadata_json => rusticol_metadata_json
     procedure, public :: physics_json => rusticol_physics_json
     procedure, public :: external_particles => rusticol_external_particles
@@ -102,6 +103,15 @@ module rusticol
       integer(c_size_t) :: required
       integer(c_int) :: status
     end function c_rusticol_runtime_metadata_json
+
+    function c_rusticol_runtime_execution_mode(handle, buffer, capacity, required) &
+        bind(C, name="rusticol_runtime_execution_mode") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, buffer
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: required
+      integer(c_int) :: status
+    end function c_rusticol_runtime_execution_mode
 
     function c_rusticol_runtime_physics_json(handle, buffer, capacity, required) &
         bind(C, name="rusticol_runtime_physics_json") result(status)
@@ -527,6 +537,13 @@ contains
     character(len=:), allocatable :: value
     value = runtime_string(self, c_rusticol_runtime_color_accuracy, ierr)
   end function rusticol_color_accuracy
+
+  function rusticol_execution_mode(self, ierr) result(value)
+    class(rusticol_runtime), intent(in) :: self
+    integer(c_int), intent(out), optional :: ierr
+    character(len=:), allocatable :: value
+    value = runtime_string(self, c_rusticol_runtime_execution_mode, ierr)
+  end function rusticol_execution_mode
 
   function rusticol_metadata_json(self, ierr) result(value)
     class(rusticol_runtime), intent(in) :: self
