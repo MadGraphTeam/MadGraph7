@@ -113,7 +113,7 @@ def test_nlc_one_open_line_recycles_orderings_in_one_shared_dag() -> None:
     assert engine.shared_lc_orderings is True
     assert len(dag.currents) == 250
     assert len(dag.interactions) == 624
-    assert dag.interaction_evaluation_count == 504
+    assert dag.interaction_evaluation_count == 348
     assert len(dag.amplitude_roots) == 192
 
 

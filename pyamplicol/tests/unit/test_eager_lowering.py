@@ -129,6 +129,11 @@ def test_direct_contractions_remain_native_and_couplings_are_parameterized() -> 
 
     assert tables.closures
     assert all(row.kernel_id == MISSING_U32 for row in tables.closures)
+    assert all(
+        row.applies_kernel is row.stores_propagated
+        for stage in tables.stages
+        for row in stage.finalizations
+    )
     assert all(row.coupling_slot_id == MISSING_U32 for row in tables.closures)
     assert tables.couplings
     assert all(row.real_parameter_id != MISSING_U32 for row in tables.couplings)

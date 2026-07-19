@@ -25,8 +25,6 @@ from ..evaluators.symbolica_compile import _compile_symbolica_outputs
 from ..evaluators.symbolica_helpers import _symbolica_evaluator_artifact_manifest
 from ..evaluators.symbolica_settings import SymbolicaEvaluatorSettings
 from .base import Model
-from .builtin import BuiltinSMModel
-from .external import CompiledUFOModel
 from .loading import CompiledModel
 from .prepared import (
     PreparedBackend,
@@ -201,6 +199,8 @@ def prepared_symbolica_settings(
 
 
 def _runtime_model(compiled: CompiledModel) -> Model:
+    from . import BuiltinSMModel, CompiledUFOModel
+
     if compiled.source.get("kind") == "built-in-sm":
         return BuiltinSMModel()
     return CompiledUFOModel(compiled)

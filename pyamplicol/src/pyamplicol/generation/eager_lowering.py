@@ -615,11 +615,16 @@ def _finalization_row(
     if unpropagated == MISSING_U32 and propagated == MISSING_U32:
         raise ValueError(f"eager current {current.id} has no output value slot")
     propagator_slot_id = propagated if propagated != MISSING_U32 else unpropagated
+    output_slot = value_slots[propagator_slot_id]
     propagator = _mapping(
-        value_slots[propagator_slot_id].get("propagator"),
+        output_slot.get("propagator"),
         f"current {current.id} propagator",
     )
-    kernel_id = resolver.propagator_kernel_id(current, propagator)
+    kernel_id = (
+        resolver.propagator_kernel_id(current, propagator)
+        if bool(output_slot.get("applies_propagator", False))
+        else None
+    )
     if propagated != MISSING_U32 and kernel_id is None:
         raise ValueError(
             f"eager propagated current {current.id} has no prepared propagator kernel"
