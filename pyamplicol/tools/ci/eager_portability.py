@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Produce and consume a transferred prepared eager JIT model bundle.
+"""Produce and consume an architecture-scoped eager JIT model bundle.
 
 Heavy invocations of this script must be wrapped by::
 
@@ -9,6 +9,8 @@ Heavy invocations of this script must be wrapped by::
 
 The producer writes one built-in-SM JIT O3 bundle and a numerical transfer
 fixture.  Consumers use that exact archive; they never prepare a model pack.
+SymJIT application storage v3 may cross operating systems within one CPU
+architecture class, but x86-64 and AArch64 packs are deliberately distinct.
 """
 
 from __future__ import annotations
@@ -33,7 +35,8 @@ if __package__:
     from .eager_portability_contract import (
         PortabilityError,
         RuntimeContracts,
-        audit_portable_jit_bundle,
+        architecture_class,
+        audit_architecture_jit_bundle,
     )
     from .eager_portability_contract import (
         archive_manifest as _archive_manifest,
@@ -66,7 +69,8 @@ else:
     from eager_portability_contract import (
         PortabilityError,
         RuntimeContracts,
-        audit_portable_jit_bundle,
+        architecture_class,
+        audit_architecture_jit_bundle,
     )
     from eager_portability_contract import (
         archive_manifest as _archive_manifest,
@@ -94,9 +98,9 @@ else:
     )
 
 TRANSFER_KIND = "pyamplicol-eager-jit-portability-transfer"
-TRANSFER_SCHEMA_VERSION = 1
+TRANSFER_SCHEMA_VERSION = 2
 CONSUMER_REPORT_KIND = "pyamplicol-eager-jit-portability-consumer-report"
-CONSUMER_REPORT_SCHEMA_VERSION = 1
+CONSUMER_REPORT_SCHEMA_VERSION = 2
 
 DEFAULT_PROCESS = "d d~ > z"
 DEFAULT_PROCESS_ID = "d_dbar_to_z"
@@ -167,6 +171,29 @@ def _python_executable(path: Path) -> Path:
     if not os.access(absolute, os.X_OK):
         raise PortabilityError(f"Python executable is not executable: {absolute}")
     return absolute
+
+
+def _host_identity(
+    role: str,
+    *,
+    expected_system: str | None,
+    expected_machine: str | None,
+) -> tuple[str, str, str]:
+    actual_system = platform.system()
+    actual_machine = platform.machine()
+    actual_architecture = architecture_class(actual_machine)
+    if expected_system is not None and actual_system != expected_system:
+        raise PortabilityError(
+            f"{role} system is {actual_system!r}, expected {expected_system!r}"
+        )
+    if expected_machine is not None:
+        expected_architecture = architecture_class(expected_machine)
+        if actual_architecture != expected_architecture:
+            raise PortabilityError(
+                f"{role} architecture class is {actual_architecture!r}, "
+                f"expected {expected_architecture!r}"
+            )
+    return actual_system, actual_machine, actual_architecture
 
 
 def _run(
@@ -316,16 +343,11 @@ def produce_transfer(
     expected_system: str | None = None,
     expected_machine: str | None = None,
 ) -> dict[str, object]:
-    actual_system = platform.system()
-    actual_machine = platform.machine()
-    if expected_system is not None and actual_system != expected_system:
-        raise PortabilityError(
-            f"producer system is {actual_system!r}, expected {expected_system!r}"
-        )
-    if expected_machine is not None and actual_machine != expected_machine:
-        raise PortabilityError(
-            f"producer machine is {actual_machine!r}, expected {expected_machine!r}"
-        )
+    actual_system, actual_machine, actual_architecture = _host_identity(
+        "producer",
+        expected_system=expected_system,
+        expected_machine=expected_machine,
+    )
 
     output = output_directory.expanduser().resolve(strict=False)
     if output.exists():
@@ -339,7 +361,11 @@ def produce_transfer(
     environment = _command_environment()
 
     _run(_model_compile_command(python, bundle), environment=environment)
-    audit = audit_portable_jit_bundle(bundle, contracts=contracts)
+    audit = audit_architecture_jit_bundle(
+        bundle,
+        contracts=contracts,
+        expected_architecture_class=actual_architecture,
+    )
     if audit["producer_version"] != contracts.package_version:
         raise PortabilityError(
             "prepared bundle producer version differs from the installed package"
@@ -401,6 +427,7 @@ def produce_transfer(
             "momenta": momenta,
         },
         "producer": {
+            "architecture_class": actual_architecture,
             "git_commit": _git_commit(),
             "machine": actual_machine,
             "package_version": contracts.package_version,
@@ -417,6 +444,7 @@ def produce_transfer(
         "expected": {"real": expected_value.real, "imaginary": expected_value.imag},
         "fixture": str(fixture_path),
         "kernel_count": audit["kernel_count"],
+        "architecture_class": actual_architecture,
     }
 
 
@@ -583,7 +611,7 @@ def verify_consumer_artifact(
     if filtered_pack.get("backend") != "jit" or filtered_pack.get(
         "target"
     ) != bundle_pack.get("target"):
-        raise PortabilityError("consumer changed the portable JIT pack target")
+        raise PortabilityError("consumer changed the architecture-scoped JIT target")
     filtered_kernels = _array(filtered_pack.get("kernels"), "filtered pack kernels")
     if not filtered_kernels:
         raise PortabilityError("consumer artifact references no prepared kernels")
@@ -652,6 +680,11 @@ def consume_transfer(
     expected_system: str | None,
     expected_machine: str | None,
 ) -> dict[str, object]:
+    actual_system, actual_machine, actual_architecture = _host_identity(
+        "consumer",
+        expected_system=expected_system,
+        expected_machine=expected_machine,
+    )
     transfer = transfer_directory.expanduser().resolve(strict=True)
     fixture = _fixture(transfer / DEFAULT_FIXTURE_NAME)
     bundle_record = _object(fixture.get("bundle"), "transfer.bundle")
@@ -662,11 +695,16 @@ def consume_transfer(
         )
     bundle = transfer / filename
     contracts = _runtime_contracts()
-    audit = audit_portable_jit_bundle(
+    audit = audit_architecture_jit_bundle(
         bundle,
         contracts=contracts,
         expected_sha256=_string(bundle_record.get("bundle_sha256"), "bundle sha256"),
+        expected_architecture_class=actual_architecture,
     )
+    if bundle_record.get("architecture_class") != audit["architecture_class"]:
+        raise PortabilityError(
+            "transfer fixture architecture differs from the prepared bundle"
+        )
     if audit["producer_version"] != contracts.package_version:
         raise PortabilityError(
             "transferred bundle producer version differs from the consumer package"
@@ -674,19 +712,12 @@ def consume_transfer(
     if fixture.get("producer") is None:
         raise PortabilityError("transfer fixture omits producer provenance")
     producer = _object(fixture.get("producer"), "transfer.producer")
+    if producer.get("architecture_class") != audit["architecture_class"]:
+        raise PortabilityError(
+            "producer architecture differs from the prepared bundle target"
+        )
     if producer.get("git_commit") != _git_commit():
         raise PortabilityError("producer and consumer source commits differ")
-
-    actual_system = platform.system()
-    actual_machine = platform.machine()
-    if expected_system is not None and actual_system != expected_system:
-        raise PortabilityError(
-            f"consumer system is {actual_system!r}, expected {expected_system!r}"
-        )
-    if expected_machine is not None and actual_machine != expected_machine:
-        raise PortabilityError(
-            f"consumer machine is {actual_machine!r}, expected {expected_machine!r}"
-        )
 
     process = _object(fixture.get("process"), "transfer.process")
     if (
@@ -754,6 +785,7 @@ def consume_transfer(
         "artifact": artifact_summary,
         "bundle": audit,
         "consumer": {
+            "architecture_class": actual_architecture,
             "git_commit": _git_commit(),
             "machine": actual_machine,
             "package_version": contracts.package_version,
@@ -777,7 +809,9 @@ def consume_transfer(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Transfer-test a prepared built-in-SM JIT O3 model bundle.",
+        description=(
+            "Transfer-test an architecture-scoped built-in-SM JIT O3 model bundle."
+        ),
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
 
@@ -787,6 +821,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     audit.add_argument("bundle", type=Path)
     audit.add_argument("--expected-sha256")
+    audit.add_argument(
+        "--expected-machine",
+        help="Machine name whose storage-v3 architecture class must match the bundle.",
+    )
 
     produce = subparsers.add_parser(
         "produce",
@@ -813,10 +851,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
     try:
         if arguments.action == "audit":
-            result = audit_portable_jit_bundle(
+            expected_machine = arguments.expected_machine or platform.machine()
+            result = audit_architecture_jit_bundle(
                 arguments.bundle,
                 contracts=_runtime_contracts(),
                 expected_sha256=arguments.expected_sha256,
+                expected_architecture_class=architecture_class(expected_machine),
             )
         elif arguments.action == "produce":
             result = produce_transfer(

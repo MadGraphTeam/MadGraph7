@@ -39,7 +39,7 @@ def _overlay(tmp_path: Path) -> Path:
             / "pyamplicol"
             / "assets"
             / "prepared_models"
-            / "built-in-sm-jit-o3.metadata.json"
+            / "built-in-sm-jit-o3-aarch64.metadata.json"
         ).read_text(encoding="utf-8")
     )
     build_contract = metadata["build_contract"]
@@ -71,7 +71,7 @@ def test_candidate_wheel_staging_accepts_exact_packaged_model(
         / "pyamplicol"
         / "assets"
         / "prepared_models"
-        / "built-in-sm-jit-o3.pyamplicol-model"
+        / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
     )
     before = bundle.read_bytes()
     stage_packaged_prepared_models(overlay, "candidate")
@@ -97,10 +97,37 @@ def test_wheel_staging_rejects_bundle_hash_drift(tmp_path: Path) -> None:
         / "pyamplicol"
         / "assets"
         / "prepared_models"
-        / "built-in-sm-jit-o3.pyamplicol-model"
+        / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
     )
     bundle.write_bytes(bundle.read_bytes() + b"tampered")
     with pytest.raises(RuntimeError, match="size does not match"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_requires_both_architecture_assets(tmp_path: Path) -> None:
+    overlay = _overlay(tmp_path)
+    asset_root = overlay / "src" / "pyamplicol" / "assets" / "prepared_models"
+    (asset_root / "built-in-sm-jit-o3-x86_64.pyamplicol-model").unlink()
+
+    with pytest.raises(RuntimeError, match=r"missing:.*x86_64"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_rejects_architecture_target_drift(tmp_path: Path) -> None:
+    overlay = _overlay(tmp_path)
+    metadata_path = (
+        overlay
+        / "src"
+        / "pyamplicol"
+        / "assets"
+        / "prepared_models"
+        / "built-in-sm-jit-o3-x86_64.metadata.json"
+    )
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["target"]["target_triple"] = "symjit-storage-v3-aarch64"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="target does not match"):
         stage_packaged_prepared_models(overlay, "candidate")
 
 

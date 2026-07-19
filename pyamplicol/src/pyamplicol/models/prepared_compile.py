@@ -3,11 +3,8 @@
 
 from __future__ import annotations
 
-import importlib
 import importlib.metadata
 import os
-import struct
-import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -47,6 +44,11 @@ from .prepared_catalog import (
     PREPARED_INDEPENDENT_BLOCK_PROOF,
     PreparedKernelSpec,
     build_prepared_kernel_catalog,
+)
+from .prepared_target import (
+    PreparedTargetError,
+    native_prepared_target,
+    symjit_storage_v3_target,
 )
 
 PreparedModelProgress = Callable[[str, int, int], None]
@@ -589,37 +591,14 @@ def _prepared_target(
     backend: PreparedBackend,
     evaluator: EvaluatorConfig,
 ) -> dict[str, object]:
-    if backend == "jit":
-        if struct.calcsize("P") * 8 != 64 or sys.byteorder != "little":
-            raise PreparedModelBundleError(
-                "portable prepared JIT packs require a 64-bit little-endian host"
-            )
-        return {
-            "portable": True,
-            "word_bits": 64,
-            "endianness": "little",
-            "target_triple": "portable-symjit-mir",
-            "cpu_features": [],
-        }
     try:
-        rusticol = importlib.import_module("pyamplicol._rusticol")
-        info = rusticol.target_info()
-    except (AttributeError, ImportError, OSError) as error:
-        raise PreparedModelBundleError(
-            "native prepared packs require Rusticol target introspection"
-        ) from error
-    features = (
-        sorted(str(item) for item in info.cpu_features)
-        if evaluator.cpp.native_arch
-        else []
-    )
-    return {
-        "portable": False,
-        "word_bits": struct.calcsize("P") * 8,
-        "endianness": sys.byteorder,
-        "target_triple": str(info.triple),
-        "cpu_features": features,
-    }
+        if backend == "jit":
+            return symjit_storage_v3_target()
+        return native_prepared_target(
+            include_cpu_features=evaluator.cpp.native_arch
+        )
+    except PreparedTargetError as error:
+        raise PreparedModelBundleError(str(error)) from error
 
 
 def _distribution_version(name: str) -> str:

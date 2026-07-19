@@ -17,9 +17,14 @@ from pyamplicol.models.prepared import (
     PreparedKernelRecord,
     write_prepared_model_bundle,
 )
+from pyamplicol.models.prepared_target import (
+    SYMJIT_STORAGE_V3_ABI,
+    canonical_architecture,
+    symjit_storage_v3_target,
+)
 
 
-def _prepared_builtin_sm(tmp_path: Path) -> Path:
+def _prepared_builtin_sm(tmp_path: Path, *, machine: str | None = None) -> Path:
     compiled = compile_model_source("built-in-sm", use_cache=False)
     kernel = PreparedKernelRecord(
         kernel_id=0,
@@ -60,15 +65,9 @@ def _prepared_builtin_sm(tmp_path: Path) -> Path:
             "collect_factors": False,
         },
         producer={"distribution": "pyamplicol", "version": "test"},
-        dependency_abis={"symjit_application": "test-v1"},
+        dependency_abis={"symjit_application": SYMJIT_STORAGE_V3_ABI},
         provenance={"compiled_model": "test"},
-        target={
-            "portable": False,
-            "word_bits": 64,
-            "endianness": "little",
-            "target_triple": "test-target",
-            "cpu_features": [],
-        },
+        target=symjit_storage_v3_target(machine=machine),
         resolver_manifest={
             "abi": "pyamplicol-prepared-kernel-catalog-v1",
             "model_name": "built-in-sm",
@@ -158,6 +157,21 @@ def test_eager_compiled_handle_without_pack_fails_before_dag(
     with pytest.raises(
         GenerationError,
         match=r"pyamplicol model compile.*--backend jit",
+    ):
+        Generator(_eager_config()).plan("d d~ > z", model=model)
+
+
+def test_eager_rejects_incompatible_prepared_architecture_before_dag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    other = "x86_64" if canonical_architecture() == "aarch64" else "aarch64"
+    model = ModelSource.from_path(_prepared_builtin_sm(tmp_path, machine=other))
+
+    with pytest.raises(
+        GenerationError,
+        match=r"incompatible with this host.*model compile.*--backend jit",
     ):
         Generator(_eager_config()).plan("d d~ > z", model=model)
 

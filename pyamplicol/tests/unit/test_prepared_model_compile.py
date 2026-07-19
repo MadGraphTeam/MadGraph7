@@ -112,7 +112,7 @@ def _block_catalog() -> PreparedKernelCatalog:
     )
 
 
-def test_prepared_compiler_writes_structured_portable_kernel_pack(
+def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -143,7 +143,10 @@ def test_prepared_compiler_writes_structured_portable_kernel_pack(
     assert result.output.name.endswith(".pyamplicol-model")
     assert result.kernel_count == 1
     assert result.bundle.backend == "jit"
-    assert result.bundle.kernel_pack.target["portable"] is True
+    assert result.bundle.kernel_pack.target["portable"] is False
+    assert str(result.bundle.kernel_pack.target["target_triple"]).startswith(
+        "symjit-storage-v3-"
+    )
     assert result.bundle.kernel_pack.resolver_manifest["model_name"] == "built-in-sm"
     kernel = result.bundle.kernel_pack.kernels[0]
     assert kernel.input_contracts[0]["role"] == "current"

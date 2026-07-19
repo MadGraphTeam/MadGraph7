@@ -16,6 +16,7 @@ pub(super) const MAX_EAGER_WORKSPACE_MIB: usize = 4096;
 const PREPARED_KERNEL_VARIANT_ABI: &str = "pyamplicol-prepared-kernel-variant-v1";
 const PREPARED_INDEPENDENT_BLOCK_VARIANT_ID: &str = "independent-block-4";
 const PREPARED_INDEPENDENT_BLOCK_PROOF: &str = "prepared-kernel-independent-current-block-v1";
+const SYMJIT_APPLICATION_STORAGE_V3_ABI: &str = "symjit-application-storage-v3";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -489,13 +490,34 @@ impl PreparedKernelPackManifest {
             ));
         }
         if self.backend == "jit" {
-            if !self.target.portable
-                || self.target.target_triple != "portable-symjit-mir"
-                || !self.target.cpu_features.is_empty()
+            let architecture = match std::env::consts::ARCH {
+                "aarch64" => "aarch64",
+                "x86_64" => "x86_64",
+                other => {
+                    return Err(RusticolError::compatibility(format!(
+                        "prepared JIT kernels do not support host architecture {other:?}"
+                    )));
+                }
+            };
+            let expected_target = format!("symjit-storage-v3-{architecture}");
+            if self
+                .dependency_abis
+                .get("symjit_application")
+                .and_then(Value::as_str)
+                != Some(SYMJIT_APPLICATION_STORAGE_V3_ABI)
             {
                 return Err(RusticolError::compatibility(
-                    "prepared JIT kernels must use the portable SymJIT MIR target contract",
+                    "prepared JIT kernels declare an unsupported SymJIT application ABI",
                 ));
+            }
+            if self.target.portable
+                || self.target.target_triple != expected_target
+                || !self.target.cpu_features.is_empty()
+            {
+                return Err(RusticolError::compatibility(format!(
+                    "prepared JIT kernels target {:?}, incompatible with host {:?}",
+                    self.target.target_triple, expected_target,
+                )));
             }
         } else {
             let host = crate::runtime_target_info();

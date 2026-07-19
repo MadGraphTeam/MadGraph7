@@ -101,10 +101,10 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
         dependency_abis: json!({"symjit_application": TEST_SYMJIT_APPLICATION_ABI}),
         provenance: json!({"compiled_model_digest": "test"}),
         target: PreparedKernelTargetManifest {
-            portable: true,
+            portable: false,
             word_bits: 64,
             endianness: "little".to_string(),
-            target_triple: "portable-symjit-mir".to_string(),
+            target_triple: format!("symjit-storage-v3-{}", std::env::consts::ARCH),
             cpu_features: Vec::new(),
         },
         resolver_manifest: json!({
@@ -120,6 +120,27 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
         kernels,
         kernel_variants: Vec::new(),
     }
+}
+
+#[test]
+fn prepared_jit_pack_rejects_cross_architecture_before_loading_payloads() {
+    let mut pack = filtered_pack(vec![kernel(
+        50,
+        "closure",
+        vec![input("left-current", 0)],
+        "kernels/50/missing.symjit",
+    )]);
+    let other = if std::env::consts::ARCH == "aarch64" {
+        "x86_64"
+    } else {
+        "aarch64"
+    };
+    pack.target.target_triple = format!("symjit-storage-v3-{other}");
+
+    let error = pack
+        .validate()
+        .expect_err("cross-architecture pack must fail");
+    assert!(error.to_string().contains("incompatible with host"));
 }
 
 fn compiled_pack(backend: &str, runtime_capability: &str) -> PreparedKernelPackManifest {

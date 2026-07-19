@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Portable prepared-JIT archive contracts used by the CI transfer harness."""
+"""Architecture-scoped prepared-JIT contracts for the CI transfer harness.
+
+SymJIT application storage v3 serializes register-allocated MIR.  It may be
+reloaded on another operating system in the same architecture class, but it is
+not portable between x86-64 and AArch64.  These checks intentionally run before
+the consumer asks SymJIT to load an application.
+"""
 
 from __future__ import annotations
 
@@ -58,6 +64,16 @@ _COFF_MACHINE_IDS = frozenset(
         0xAA64,  # ARM64
     }
 )
+SYMJIT_STORAGE_V3_APPLICATION_ABI = "symjit-application-storage-v3"
+SYMJIT_STORAGE_V3_ARCHITECTURES = ("aarch64", "x86_64")
+_MACHINE_ARCHITECTURE_ALIASES = {
+    "aarch64": "aarch64",
+    "amd64": "x86_64",
+    "arm64": "aarch64",
+    "x64": "x86_64",
+    "x86-64": "x86_64",
+    "x86_64": "x86_64",
+}
 
 
 class PortabilityError(RuntimeError):
@@ -77,6 +93,53 @@ class RuntimeContracts:
     symjit_runtime_capability: str
     eager_runtime_capability: str
     package_version: str
+
+
+def architecture_class(machine: str) -> str:
+    """Normalize a host machine name to a supported storage-v3 class."""
+
+    normalized = machine.strip().lower()
+    architecture = _MACHINE_ARCHITECTURE_ALIASES.get(normalized)
+    if architecture is None:
+        supported = ", ".join(SYMJIT_STORAGE_V3_ARCHITECTURES)
+        raise PortabilityError(
+            f"unsupported SymJIT storage-v3 machine {machine!r}; "
+            f"supported architecture classes are {supported}"
+        )
+    return architecture
+
+
+def symjit_storage_v3_target(architecture: str) -> dict[str, object]:
+    """Return the canonical target record for one storage-v3 architecture."""
+
+    if architecture not in SYMJIT_STORAGE_V3_ARCHITECTURES:
+        supported = ", ".join(SYMJIT_STORAGE_V3_ARCHITECTURES)
+        raise PortabilityError(
+            f"unsupported SymJIT storage-v3 architecture class {architecture!r}; "
+            f"expected one of {supported}"
+        )
+    return {
+        "cpu_features": [],
+        "endianness": "little",
+        "portable": False,
+        "target_triple": f"symjit-storage-v3-{architecture}",
+        "word_bits": 64,
+    }
+
+
+def _target_architecture_class(target: dict[str, object]) -> str:
+    for architecture in SYMJIT_STORAGE_V3_ARCHITECTURES:
+        if target == symjit_storage_v3_target(architecture):
+            return architecture
+    if target.get("portable") is True:
+        raise PortabilityError(
+            "SymJIT application storage v3 must not be marked portable across "
+            "architecture classes"
+        )
+    raise PortabilityError(
+        "prepared JIT target must be canonical 64-bit little-endian "
+        "SymJIT storage-v3 for x86_64 or aarch64"
+    )
 
 
 def object_value(value: object, context: str) -> dict[str, object]:
@@ -201,13 +264,14 @@ def archive_manifest(path: Path) -> tuple[dict[str, object], dict[str, bytes]]:
     return object_value(manifest, "manifest"), payloads
 
 
-def audit_portable_jit_bundle(
+def audit_architecture_jit_bundle(
     path: Path,
     *,
     contracts: RuntimeContracts,
     expected_sha256: str | None = None,
+    expected_architecture_class: str | None = None,
 ) -> dict[str, object]:
-    """Validate archive integrity and the portable SymJIT storage contract."""
+    """Validate archive integrity and the storage-v3 architecture contract."""
 
     bundle_path = path.expanduser().resolve(strict=True)
     bundle_sha256 = sha256_file(bundle_path)
@@ -258,33 +322,38 @@ def audit_portable_jit_bundle(
             continue
         if PurePosixPath(member_path).suffix.lower() in FORBIDDEN_SUFFIXES:
             raise PortabilityError(
-                f"portable JIT bundle contains native/source payload {member_path!r}"
+                f"prepared JIT bundle contains native/source payload {member_path!r}"
             )
         native_kind = native_payload_kind(payload)
         if native_kind is not None:
             raise PortabilityError(
-                f"portable JIT bundle member {member_path!r} contains {native_kind}"
+                f"prepared JIT bundle member {member_path!r} contains {native_kind}"
             )
 
     kernel_pack = object_value(manifest.get("kernel_pack"), "manifest.kernel_pack")
     if kernel_pack.get("backend") != "jit":
-        raise PortabilityError("portable prepared pack backend must be jit")
+        raise PortabilityError("prepared pack backend must be jit")
     target = object_value(kernel_pack.get("target"), "kernel_pack.target")
-    expected_target = {
-        "cpu_features": [],
-        "endianness": "little",
-        "portable": True,
-        "target_triple": "portable-symjit-mir",
-        "word_bits": 64,
-    }
-    if target != expected_target:
+    bundle_architecture = _target_architecture_class(target)
+    if (
+        expected_architecture_class is not None
+        and bundle_architecture != expected_architecture_class
+    ):
         raise PortabilityError(
-            "prepared JIT target must be portable 64-bit little-endian SymJIT MIR"
+            "SymJIT storage-v3 architecture class mismatch: bundle is "
+            f"{bundle_architecture!r}, consumer is "
+            f"{expected_architecture_class!r}; refusing before SymJIT load"
         )
+    expected_target = symjit_storage_v3_target(bundle_architecture)
 
     dependency_abis = object_value(
         kernel_pack.get("dependency_abis"), "kernel_pack.dependency_abis"
     )
+    if contracts.symjit_application_abi != SYMJIT_STORAGE_V3_APPLICATION_ABI:
+        raise PortabilityError(
+            "this architecture-class transfer harness applies only to "
+            "SymJIT application storage v3"
+        )
     if (
         dependency_abis.get("symbolica_serialization")
         != contracts.symbolica_serialization_abi
@@ -303,14 +372,14 @@ def audit_portable_jit_bundle(
     ):
         raise PortabilityError("prepared JIT pack must use JIT O3")
     if optimization.get("compiled_native") is not False:
-        raise PortabilityError("portable JIT pack requests target-native compilation")
+        raise PortabilityError("prepared JIT pack requests final native compilation")
     if optimization.get("compiled_inline_asm") not in {None, "none"}:
-        raise PortabilityError("portable JIT pack requests inline assembly")
+        raise PortabilityError("prepared JIT pack requests inline assembly")
     if optimization.get("compiler_path") is not None:
-        raise PortabilityError("portable JIT pack records an external compiler")
+        raise PortabilityError("prepared JIT pack records an external compiler")
     effective_flags = optimization.get("effective_compiler_flags")
     if effective_flags is not None and effective_flags != []:
-        raise PortabilityError("portable JIT pack records target compiler flags")
+        raise PortabilityError("prepared JIT pack records target compiler flags")
 
     provenance = object_value(kernel_pack.get("provenance"), "kernel_pack.provenance")
     model_source = object_value(provenance.get("model_source"), "pack model source")
@@ -331,13 +400,27 @@ def audit_portable_jit_bundle(
     kernels = array_value(kernel_pack.get("kernels"), "kernel_pack.kernels")
     if not kernels:
         raise PortabilityError("prepared JIT pack contains no kernels")
+    variants = array_value(
+        kernel_pack.get("kernel_variants", []),
+        "kernel_pack.kernel_variants",
+    )
+    evaluator_records = [
+        (f"kernel {index}", object_value(raw, f"kernel_pack.kernels[{index}]"))
+        for index, raw in enumerate(kernels)
+    ]
+    evaluator_records.extend(
+        (
+            f"kernel variant {index}",
+            object_value(raw, f"kernel_pack.kernel_variants[{index}]"),
+        )
+        for index, raw in enumerate(variants)
+    )
     application_paths: set[str] = set()
     exact_state_paths: set[str] = set()
-    for index, raw_kernel in enumerate(kernels):
-        kernel = object_value(raw_kernel, f"kernel_pack.kernels[{index}]")
+    for context, kernel in evaluator_records:
         f64 = object_value(
             kernel.get("f64_evaluator_manifest"),
-            f"kernel_pack.kernels[{index}].f64_evaluator_manifest",
+            f"{context}.f64_evaluator_manifest",
         )
         required = {
             "application_abi": contracts.symjit_application_abi,
@@ -355,67 +438,65 @@ def audit_portable_jit_bundle(
         for key, expected in required.items():
             if f64.get(key) != expected:
                 raise PortabilityError(
-                    f"prepared kernel {index} has incompatible {key!r}"
+                    f"prepared {context} has incompatible {key!r}"
                 )
         if f64.get("required_defuns") != []:
-            raise PortabilityError(
-                f"prepared kernel {index} requires external functions"
-            )
+            raise PortabilityError(f"prepared {context} requires external functions")
         kernel_settings = object_value(
             f64.get("settings"),
-            f"kernel_pack.kernels[{index}].f64_evaluator_manifest.settings",
+            f"{context}.f64_evaluator_manifest.settings",
         )
         if kernel_settings.get("backend") != "jit":
             raise PortabilityError(
-                f"prepared kernel {index} settings select a non-JIT backend"
+                f"prepared {context} settings select a non-JIT backend"
             )
         if kernel_settings.get("jit_optimization_level") != 3:
             raise PortabilityError(
-                f"prepared kernel {index} settings do not select JIT O3"
+                f"prepared {context} settings do not select JIT O3"
             )
         if kernel_settings.get("compiled_native") is not False:
             raise PortabilityError(
-                f"prepared kernel {index} settings request native code"
+                f"prepared {context} settings request native code"
             )
         if kernel_settings.get("compiled_inline_asm") not in {None, "none"}:
             raise PortabilityError(
-                f"prepared kernel {index} settings request inline assembly"
+                f"prepared {context} settings request inline assembly"
             )
         if kernel_settings.get("compiler_path") is not None:
             raise PortabilityError(
-                f"prepared kernel {index} settings record an external compiler"
+                f"prepared {context} settings record an external compiler"
             )
         kernel_flags = kernel_settings.get("effective_compiler_flags")
         if kernel_flags is not None and kernel_flags != []:
             raise PortabilityError(
-                f"prepared kernel {index} settings record compiler flags"
+                f"prepared {context} settings record compiler flags"
             )
         for field in _FORBIDDEN_MANIFEST_PATH_FIELDS:
             if f64.get(field) not in {None, ""}:
                 raise PortabilityError(
-                    f"prepared kernel {index} records forbidden {field}"
+                    f"prepared {context} records forbidden {field}"
                 )
         application_path = canonical_member_path(
             f64.get("application_path"),
-            f"kernel {index} application_path",
+            f"{context} application_path",
         )
         if not application_path.endswith(".symjit"):
             raise PortabilityError(
-                f"prepared kernel {index} application is not SymJIT storage"
+                f"prepared {context} application is not SymJIT storage"
             )
         exact_state_path = canonical_member_path(
             f64.get("evaluator_state_path"),
-            f"kernel {index} evaluator_state_path",
+            f"{context} evaluator_state_path",
         )
         if not exact_state_path.endswith(".evaluator.bin"):
             raise PortabilityError(
-                f"prepared kernel {index} exact state has an unexpected format"
+                f"prepared {context} exact state has an unexpected format"
             )
         if (
             application_path not in recorded_members
             or exact_state_path not in recorded_members
         ):
-            raise PortabilityError(f"prepared kernel {index} omits referenced payloads")
+            raise PortabilityError(f"prepared {context} omits referenced payloads")
         application_paths.add(application_path)
         exact_state_paths.add(exact_state_path)
 
@@ -427,7 +508,8 @@ def audit_portable_jit_bundle(
         unexpected = sorted(set(recorded_members) - expected_payload_members)
         missing = sorted(expected_payload_members - set(recorded_members))
         raise PortabilityError(
-            "prepared JIT payload set differs from canonical MIR/state members "
+            "prepared JIT payload set differs from canonical application/state "
+            "members "
             f"(unexpected={unexpected}, missing={missing})"
         )
     try:
@@ -447,12 +529,14 @@ def audit_portable_jit_bundle(
 
     return {
         "backend": "jit",
+        "architecture_class": bundle_architecture,
         "bundle_sha256": bundle_sha256,
         "bundle_size": bundle_path.stat().st_size,
         "compiled_model_digest": provenance.get("compiled_model_digest"),
         "eager_kernel_abi": contracts.eager_kernel_abi,
         "exact_state_count": len(exact_state_paths),
         "kernel_count": len(kernels),
+        "kernel_variant_count": len(variants),
         "model_compiler_version": producer.get("model_compiler_version"),
         "producer_version": producer_version,
         "symjit_application_count": len(application_paths),
@@ -463,15 +547,19 @@ def audit_portable_jit_bundle(
 
 __all__ = [
     "FORBIDDEN_SUFFIXES",
+    "SYMJIT_STORAGE_V3_APPLICATION_ABI",
+    "SYMJIT_STORAGE_V3_ARCHITECTURES",
     "PortabilityError",
     "RuntimeContracts",
+    "architecture_class",
     "archive_manifest",
     "array_value",
-    "audit_portable_jit_bundle",
+    "audit_architecture_jit_bundle",
     "canonical_member_path",
     "integer_value",
     "native_payload_kind",
     "object_value",
     "sha256_file",
     "string_value",
+    "symjit_storage_v3_target",
 ]

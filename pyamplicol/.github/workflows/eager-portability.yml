@@ -1,6 +1,14 @@
-name: Eager JIT pack portability
+name: Eager JIT pack architecture transfer
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/eager-portability.yml
+      - build_backend/prepared_models.py
+      - rust/crates/rusticol-core/src/engine/eager_*.rs
+      - src/pyamplicol/assets/prepared_models/**
+      - src/pyamplicol/models/prepared*.py
+      - tools/ci/eager_portability*.py
   workflow_dispatch:
 
 permissions:
@@ -11,10 +19,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  produce-linux-x86-64:
-    name: Produce prepared JIT pack (Linux x86-64)
-    runs-on: ubuntu-24.04
+  produce-architecture-packs:
+    name: Produce prepared JIT pack (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x86-64
+            system: Linux
+            machine: x86_64
+            pack_architecture: x86_64
+          - runner: macos-15
+            target: macos-arm64
+            system: Darwin
+            machine: arm64
+            pack_architecture: aarch64
     env:
       PYAMPLICOL_BUILD_MODE: candidate
       PYTHONDONTWRITEBYTECODE: "1"
@@ -37,24 +59,24 @@ jobs:
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
-      - name: Produce one transferable built-in-SM JIT O3 pack
+      - name: Produce one architecture-scoped built-in-SM JIT O3 pack
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python tools/ci/eager_portability.py produce
-          .artifacts/eager-portability-transfer
+          .artifacts/eager-portability-transfer/${{ matrix.pack_architecture }}
           --python .venv/bin/python
-          --expected-system Linux
-          --expected-machine x86_64
+          --expected-system ${{ matrix.system }}
+          --expected-machine ${{ matrix.machine }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: pyamplicol-eager-jit-transfer
-          path: .artifacts/eager-portability-transfer/
+          name: pyamplicol-eager-jit-transfer-${{ matrix.pack_architecture }}
+          path: .artifacts/eager-portability-transfer/${{ matrix.pack_architecture }}/
           if-no-files-found: error
           retention-days: 14
 
-  consume-transferred-pack:
-    name: Consume transferred pack (${{ matrix.target }})
-    needs: produce-linux-x86-64
+  consume-matching-architecture-pack:
+    name: Consume matching pack (${{ matrix.target }})
+    needs: produce-architecture-packs
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -65,14 +87,17 @@ jobs:
             target: linux-x86-64
             system: Linux
             machine: x86_64
+            pack_architecture: x86_64
           - runner: macos-15-intel
             target: macos-x86-64
             system: Darwin
             machine: x86_64
+            pack_architecture: x86_64
           - runner: macos-15
             target: macos-arm64
             system: Darwin
             machine: arm64
+            pack_architecture: aarch64
     env:
       PYAMPLICOL_BUILD_MODE: candidate
       PYTHONDONTWRITEBYTECODE: "1"
@@ -92,14 +117,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: pyamplicol-eager-jit-transfer
+          name: pyamplicol-eager-jit-transfer-${{ matrix.pack_architecture }}
           path: .artifacts/eager-portability-transfer
       - name: Build the matching pinned non-publishable consumer environment
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
-      - name: Generate and evaluate from the transferred pack
+      - name: Generate and evaluate from the same-architecture pack
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python tools/ci/eager_portability.py consume

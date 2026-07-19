@@ -17,8 +17,7 @@ if TYPE_CHECKING:
     from pyamplicol.models.prepared import PreparedModelBundle
 
 BUILTIN_SM_JIT_O3 = "built-in-sm-jit-o3"
-_METADATA_NAME = f"{BUILTIN_SM_JIT_O3}.metadata.json"
-_BUNDLE_NAME = f"{BUILTIN_SM_JIT_O3}.pyamplicol-model"
+_PACKAGED_ARCHITECTURES = ("aarch64", "x86_64")
 _KNOWN_MODELS = (BUILTIN_SM_JIT_O3,)
 _METADATA_KEYS = frozenset(
     {
@@ -60,11 +59,28 @@ def packaged_prepared_model_path(identifier: str) -> Iterator[Path]:
         raise PackagedPreparedModelError(
             f"unknown packaged prepared model {identifier!r}; available: {choices}"
         )
-    root = resources.files(__package__)
-    metadata_resource = root.joinpath(_METADATA_NAME)
-    bundle_resource = root.joinpath(_BUNDLE_NAME)
+    from pyamplicol.models.prepared_target import (
+        PreparedTargetError,
+        canonical_architecture,
+    )
+
     try:
-        metadata = _metadata(json.loads(metadata_resource.read_text(encoding="utf-8")))
+        architecture = canonical_architecture()
+    except PreparedTargetError as error:
+        raise PackagedPreparedModelError(str(error)) from error
+    if architecture not in _PACKAGED_ARCHITECTURES:  # pragma: no cover
+        raise PackagedPreparedModelError(
+            f"no wheel-owned prepared model supports {architecture!r}"
+        )
+    metadata_name, bundle_name = _asset_names(identifier, architecture)
+    root = resources.files(__package__)
+    metadata_resource = root.joinpath(metadata_name)
+    bundle_resource = root.joinpath(bundle_name)
+    try:
+        metadata = _metadata(
+            json.loads(metadata_resource.read_text(encoding="utf-8")),
+            bundle_name=bundle_name,
+        )
     except (
         FileNotFoundError,
         OSError,
@@ -89,7 +105,11 @@ def packaged_prepared_model_path(identifier: str) -> Iterator[Path]:
             raise PackagedPreparedModelError(
                 "packaged prepared-model bundle SHA-256 does not match metadata"
             )
-        _validate_bundle(bundle_path, metadata)
+        _validate_bundle(
+            bundle_path,
+            metadata,
+            architecture=architecture,
+        )
         yield bundle_path
 
 
@@ -120,6 +140,7 @@ def materialize_packaged_prepared_model(
     """
 
     with packaged_prepared_model_path(identifier) as source:
+        bundle_name = source.name
         data = source.read_bytes()
     digest = hashlib.sha256(data).hexdigest()
     if cache_dir is None:
@@ -133,7 +154,7 @@ def materialize_packaged_prepared_model(
         raise PackagedPreparedModelError(
             "packaged prepared-model cache must be a regular directory"
         )
-    output = root / _BUNDLE_NAME
+    output = root / bundle_name
     if output.exists():
         if output.is_symlink() or not output.is_file():
             raise PackagedPreparedModelError(
@@ -143,7 +164,7 @@ def materialize_packaged_prepared_model(
             return output
 
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{_BUNDLE_NAME}.",
+        prefix=f".{bundle_name}.",
         suffix=".tmp",
         dir=root,
     )
@@ -163,7 +184,12 @@ def materialize_packaged_prepared_model(
     return output
 
 
-def _validate_bundle(path: Path, metadata: Mapping[str, object]) -> None:
+def _validate_bundle(
+    path: Path,
+    metadata: Mapping[str, object],
+    *,
+    architecture: str,
+) -> None:
     from pyamplicol._internal.versions import (
         COMPILED_MODEL_SCHEMA_VERSION,
         SYMBOLICA_SERIALIZATION_ABI,
@@ -177,6 +203,7 @@ def _validate_bundle(path: Path, metadata: Mapping[str, object]) -> None:
         PREPARED_MODEL_BUNDLE_SCHEMA_VERSION,
         load_prepared_model_bundle,
     )
+    from pyamplicol.models.prepared_target import symjit_storage_v3_target
 
     try:
         bundle = load_prepared_model_bundle(path)
@@ -269,19 +296,14 @@ def _validate_bundle(path: Path, metadata: Mapping[str, object]) -> None:
             "packaged prepared-model kernel count is invalid"
         )
     target = _plain_json(pack.target)
-    if target != metadata.get("target") or target != {
-        "portable": True,
-        "word_bits": 64,
-        "endianness": "little",
-        "target_triple": "portable-symjit-mir",
-        "cpu_features": [],
-    }:
+    expected_target = symjit_storage_v3_target(machine=architecture)
+    if target != metadata.get("target") or target != expected_target:
         raise PackagedPreparedModelError(
-            "packaged prepared model is not portable 64-bit little-endian MIR"
+            "packaged prepared model target does not match its architecture asset"
         )
 
 
-def _metadata(value: object) -> Mapping[str, object]:
+def _metadata(value: object, *, bundle_name: str) -> Mapping[str, object]:
     metadata = _mapping(value, "prepared-model metadata")
     missing = _METADATA_KEYS - metadata.keys()
     unknown = metadata.keys() - _METADATA_KEYS
@@ -295,9 +317,17 @@ def _metadata(value: object) -> Mapping[str, object]:
         )
     if metadata.get("id") != BUILTIN_SM_JIT_O3:
         raise PackagedPreparedModelError("packaged prepared-model identity is invalid")
-    if metadata.get("model") != "built-in-sm" or metadata.get("bundle") != _BUNDLE_NAME:
+    if (
+        metadata.get("model") != "built-in-sm"
+        or metadata.get("bundle") != bundle_name
+    ):
         raise PackagedPreparedModelError("packaged prepared-model resource is invalid")
     return metadata
+
+
+def _asset_names(identifier: str, architecture: str) -> tuple[str, str]:
+    stem = f"{identifier}-{architecture}"
+    return f"{stem}.metadata.json", f"{stem}.pyamplicol-model"
 
 
 def _compiled_source_digest(implementation_digest: str) -> str:

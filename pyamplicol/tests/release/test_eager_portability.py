@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from tools.ci import eager_portability as portability
+from tools.ci.eager_portability_contract import symjit_storage_v3_target
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "eager-portability.yml"
@@ -41,14 +42,15 @@ def _write_bundle(
     path: Path,
     contracts: portability.RuntimeContracts,
     *,
+    architecture: str = "x86_64",
     mutate: Callable[[dict[str, object], dict[str, bytes]], None] | None = None,
 ) -> Path:
     application_path = "kernels/000000/application-0.symjit"
     state_path = "kernels/000000/evaluator-state-0.evaluator.bin"
     model_path = "model/model.pyAmplicol-model.json"
     payloads = {
-        application_path: b"portable-symjit-mir-fixture\x00\x01",
-        state_path: b"portable-symbolica-state-fixture\x00\x02",
+        application_path: b"architecture-scoped-symjit-storage-v3-fixture\x00\x01",
+        state_path: b"architecture-neutral-symbolica-state-fixture\x00\x02",
         model_path: json.dumps(
             {
                 "schema_version": contracts.compiled_model_schema_version,
@@ -114,13 +116,7 @@ def _write_bundle(
                 "model_name": "built-in-sm",
                 "model_source": {"kind": "built-in-sm"},
             },
-            "target": {
-                "cpu_features": [],
-                "endianness": "little",
-                "portable": True,
-                "target_triple": "portable-symjit-mir",
-                "word_bits": 64,
-            },
+            "target": symjit_storage_v3_target(architecture),
         },
         "kind": contracts.bundle_kind,
         "schema_version": contracts.bundle_schema_version,
@@ -147,32 +143,79 @@ def _write_bundle(
     return path
 
 
-def test_portable_jit_bundle_audit_accepts_mir_storage(
+def _write_transfer_fixture(
+    directory: Path,
+    contracts: portability.RuntimeContracts,
+    *,
+    architecture: str,
+) -> Path:
+    directory.mkdir()
+    bundle = _write_bundle(
+        directory / portability.DEFAULT_BUNDLE_NAME,
+        contracts,
+        architecture=architecture,
+    )
+    fixture = {
+        "bundle": {
+            "architecture_class": architecture,
+            "bundle_sha256": portability._sha256_file(bundle),
+            "filename": bundle.name,
+        },
+        "expected": {
+            "atol": portability.DEFAULT_ATOL,
+            "imaginary": 0.0,
+            "real": 1.0,
+            "rtol": portability.DEFAULT_RTOL,
+        },
+        "kind": portability.TRANSFER_KIND,
+        "process": {
+            "expression": portability.DEFAULT_PROCESS,
+            "id": portability.DEFAULT_PROCESS_ID,
+            "momenta": [],
+        },
+        "producer": {
+            "architecture_class": architecture,
+            "git_commit": "fixture-commit",
+            "machine": "x86_64" if architecture == "x86_64" else "arm64",
+            "system": "Linux",
+        },
+        "schema_version": portability.TRANSFER_SCHEMA_VERSION,
+    }
+    (directory / portability.DEFAULT_FIXTURE_NAME).write_text(
+        json.dumps(fixture),
+        encoding="utf-8",
+    )
+    return directory
+
+
+@pytest.mark.parametrize("architecture", ("x86_64", "aarch64"))
+def test_architecture_jit_bundle_audit_accepts_matching_storage_v3_pack(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
+    architecture: str,
 ) -> None:
-    bundle = _write_bundle(tmp_path / "model.pyamplicol-model", contracts)
+    bundle = _write_bundle(
+        tmp_path / "model.pyamplicol-model",
+        contracts,
+        architecture=architecture,
+    )
 
-    result = portability.audit_portable_jit_bundle(
+    result = portability.audit_architecture_jit_bundle(
         bundle,
         contracts=contracts,
         expected_sha256=portability._sha256_file(bundle),
+        expected_architecture_class=architecture,
     )
 
     assert result["backend"] == "jit"
     assert result["kernel_count"] == 1
     assert result["symjit_application_count"] == 1
     assert result["exact_state_count"] == 1
-    assert result["target"] == {
-        "cpu_features": [],
-        "endianness": "little",
-        "portable": True,
-        "target_triple": "portable-symjit-mir",
-        "word_bits": 64,
-    }
+    assert result["architecture_class"] == architecture
+    assert result["target"] == symjit_storage_v3_target(architecture)
 
 
-def test_portable_jit_bundle_audit_rejects_wrong_storage_abi(
+def test_architecture_jit_bundle_audit_rejects_wrong_storage_abi(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
 ) -> None:
@@ -193,7 +236,7 @@ def test_portable_jit_bundle_audit_rejects_wrong_storage_abi(
         portability.PortabilityError,
         match="application storage ABI mismatch",
     ):
-        portability.audit_portable_jit_bundle(bundle, contracts=contracts)
+        portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
 
 
 @pytest.mark.parametrize(
@@ -204,7 +247,7 @@ def test_portable_jit_bundle_audit_rejects_wrong_storage_abi(
         (b"\xcf\xfa\xed\xfe" + b"\0" * 64, "contains Mach-O image"),
     ),
 )
-def test_portable_jit_bundle_audit_rejects_native_machine_code(
+def test_architecture_jit_bundle_audit_rejects_native_machine_code(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
     payload: bytes,
@@ -220,7 +263,7 @@ def test_portable_jit_bundle_audit_rejects_native_machine_code(
     )
 
     with pytest.raises(portability.PortabilityError, match=message):
-        portability.audit_portable_jit_bundle(bundle, contracts=contracts)
+        portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
 
 
 @pytest.mark.parametrize(
@@ -231,7 +274,7 @@ def test_portable_jit_bundle_audit_rejects_native_machine_code(
         ("kernels/000000/kernel.o", b"opaque native object fixture"),
     ),
 )
-def test_portable_jit_bundle_audit_rejects_native_source_or_object_payload(
+def test_architecture_jit_bundle_audit_rejects_native_source_or_object_payload(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
     member: str,
@@ -250,10 +293,10 @@ def test_portable_jit_bundle_audit_rejects_native_source_or_object_payload(
         portability.PortabilityError,
         match="native/source payload",
     ):
-        portability.audit_portable_jit_bundle(bundle, contracts=contracts)
+        portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
 
 
-def test_portable_jit_bundle_audit_rejects_cpu_specific_target(
+def test_architecture_jit_bundle_audit_rejects_legacy_portable_target(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
 ) -> None:
@@ -262,21 +305,55 @@ def test_portable_jit_bundle_audit_rejects_cpu_specific_target(
         assert isinstance(pack, dict)
         target = pack["target"]
         assert isinstance(target, dict)
-        target["portable"] = False
-        target["target_triple"] = "x86_64-unknown-linux-gnu"
-        target["cpu_features"] = ["avx2"]
+        target["portable"] = True
+        target["target_triple"] = "portable-symjit-mir"
 
     bundle = _write_bundle(
-        tmp_path / "cpu-specific.pyamplicol-model",
+        tmp_path / "falsely-portable.pyamplicol-model",
         contracts,
         mutate=mutate,
     )
 
     with pytest.raises(
         portability.PortabilityError,
-        match="portable 64-bit little-endian SymJIT MIR",
+        match="storage v3 must not be marked portable",
     ):
-        portability.audit_portable_jit_bundle(bundle, contracts=contracts)
+        portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
+
+
+def test_architecture_jit_bundle_audit_rejects_cross_architecture_before_load(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+) -> None:
+    bundle = _write_bundle(
+        tmp_path / "x86-pack.pyamplicol-model",
+        contracts,
+        architecture="x86_64",
+    )
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match=(
+            "architecture class mismatch: bundle is 'x86_64', consumer is "
+            "'aarch64'; refusing before SymJIT load"
+        ),
+    ):
+        portability.audit_architecture_jit_bundle(
+            bundle,
+            contracts=contracts,
+            expected_architecture_class="aarch64",
+        )
+
+
+@pytest.mark.parametrize(
+    ("machine", "expected"),
+    (("AMD64", "x86_64"), ("x86_64", "x86_64"), ("arm64", "aarch64")),
+)
+def test_machine_names_normalize_to_storage_v3_architecture_classes(
+    machine: str,
+    expected: str,
+) -> None:
+    assert portability.architecture_class(machine) == expected
 
 
 def test_consumer_generation_command_uses_eager_pack_without_model_compile(
@@ -320,7 +397,7 @@ def test_producer_rejects_an_unexpected_architecture_before_building(
 
     with pytest.raises(
         portability.PortabilityError,
-        match=r"producer machine.*expected 'x86_64'",
+        match=r"producer architecture class.*expected 'x86_64'",
     ):
         portability.produce_transfer(
             tmp_path / "transfer",
@@ -330,6 +407,78 @@ def test_producer_rejects_an_unexpected_architecture_before_building(
         )
 
     assert not (tmp_path / "transfer").exists()
+
+
+def test_consumer_rejects_cross_architecture_before_generation_or_symjit_load(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transfer = _write_transfer_fixture(
+        tmp_path / "transfer",
+        contracts,
+        architecture="x86_64",
+    )
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(portability.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(portability.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(portability, "_runtime_contracts", lambda: contracts)
+
+    def unexpected_run(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("cross-architecture preflight started consumer generation")
+
+    def unexpected_load(*_args: object, **_kwargs: object) -> complex:
+        pytest.fail("cross-architecture preflight attempted SymJIT-backed evaluation")
+
+    monkeypatch.setattr(portability, "_run", unexpected_run)
+    monkeypatch.setattr(portability, "_evaluate_artifact", unexpected_load)
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match="refusing before SymJIT load",
+    ):
+        portability.consume_transfer(
+            transfer,
+            python=Path(sys.executable),
+            report_path=report,
+            expected_system="Darwin",
+            expected_machine="arm64",
+        )
+
+    assert not report.exists()
+
+
+def test_consumer_accepts_same_architecture_pack_across_operating_systems(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transfer = _write_transfer_fixture(
+        tmp_path / "transfer",
+        contracts,
+        architecture="x86_64",
+    )
+    monkeypatch.setattr(portability.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(portability.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(portability, "_runtime_contracts", lambda: contracts)
+    monkeypatch.setattr(portability, "_git_commit", lambda: "fixture-commit")
+
+    class GenerationStarted(RuntimeError):
+        pass
+
+    def stop_at_generation(*_args: object, **_kwargs: object) -> None:
+        raise GenerationStarted
+
+    monkeypatch.setattr(portability, "_run", stop_at_generation)
+
+    with pytest.raises(GenerationStarted):
+        portability.consume_transfer(
+            transfer,
+            python=Path(sys.executable),
+            report_path=tmp_path / "report.json",
+            expected_system="Darwin",
+            expected_machine="AMD64",
+        )
 
 
 def test_compiler_guard_records_and_denies_external_tool_execution() -> None:
@@ -344,25 +493,41 @@ def test_compiler_guard_records_and_denies_external_tool_execution() -> None:
         assert marker.read_text(encoding="utf-8").strip().endswith("c++ --version")
 
 
-def test_portability_workflow_transfers_one_producer_pack_to_three_consumers() -> None:
+def test_portability_workflow_transfers_matching_architecture_packs() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     trigger = workflow.split("on:\n", maxsplit=1)[1].split(
         "\npermissions:\n", maxsplit=1
     )[0]
 
-    assert trigger.strip() == "workflow_dispatch:"
+    assert "pull_request:" in trigger
+    assert "workflow_dispatch:" in trigger
+    assert "src/pyamplicol/assets/prepared_models/**" in trigger
     assert workflow.count("eager_portability.py produce") == 1
     assert workflow.count("eager_portability.py consume") == 1
-    assert workflow.count("pyamplicol-eager-jit-transfer") == 2
-    assert "needs: produce-linux-x86-64" in workflow
+    assert workflow.count("pyamplicol-eager-jit-transfer-${{") == 2
+    assert "needs: produce-architecture-packs" in workflow
     assert "ubuntu-24.04" in workflow
     assert "macos-15-intel" in workflow
     assert "macos-15" in workflow
     assert "target: linux-x86-64" in workflow
     assert "target: macos-x86-64" in workflow
     assert "target: macos-arm64" in workflow
-    assert "--expected-system Linux" in workflow
-    assert "--expected-machine x86_64" in workflow
+    assert workflow.count("pack_architecture: x86_64") == 3
+    assert workflow.count("pack_architecture: aarch64") == 2
+    assert (
+        "target: macos-x86-64\n"
+        "            system: Darwin\n"
+        "            machine: x86_64\n"
+        "            pack_architecture: x86_64"
+    ) in workflow
+    assert (
+        "target: macos-arm64\n"
+        "            system: Darwin\n"
+        "            machine: arm64\n"
+        "            pack_architecture: aarch64"
+    ) in workflow
+    assert "--expected-system ${{ matrix.system }}" in workflow
+    assert "--expected-machine ${{ matrix.machine }}" in workflow
     assert workflow.count("tools/ci/memory_watchdog.py --limit-gib 30 --") == 4
     assert workflow.count("dependencies/install_dependencies.py") == 2
     assert workflow.count("--without-legacy-amplicol") == 2

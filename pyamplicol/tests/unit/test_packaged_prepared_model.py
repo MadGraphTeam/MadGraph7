@@ -9,14 +9,16 @@ import pytest
 
 from pyamplicol.assets import prepared_models
 from pyamplicol.models.prepared_catalog import PREPARED_INDEPENDENT_BLOCK_PROOF
+from pyamplicol.models.prepared_target import canonical_architecture
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSET_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "prepared_models"
+ASSET_STEM = f"built-in-sm-jit-o3-{canonical_architecture()}"
 
 
 def _metadata() -> dict[str, object]:
     return json.loads(
-        (ASSET_ROOT / "built-in-sm-jit-o3.metadata.json").read_text(
+        (ASSET_ROOT / f"{ASSET_STEM}.metadata.json").read_text(
             encoding="utf-8"
         )
     )
@@ -50,7 +52,7 @@ def test_packaged_builtin_sm_jit_o3_is_discoverable_and_validated(
     ) as path:
         from pyamplicol import ModelSource
 
-        assert path.name == "built-in-sm-jit-o3.pyamplicol-model"
+        assert path.name == f"{ASSET_STEM}.pyamplicol-model"
         assert path.is_file()
         compiled = ModelSource.from_path(path).compile(use_cache=False)
         assert compiled.name == "built-in-sm"
@@ -72,7 +74,7 @@ def test_packaged_builtin_sm_jit_o3_is_discoverable_and_validated(
             variant.variant_id == "independent-block-4"
             for variant in bundle.kernel_pack.kernel_variants
         )
-        assert bundle.kernel_pack.target["portable"] is True
+        assert bundle.kernel_pack.target["portable"] is False
         assert bundle.kernel_pack.target["cpu_features"] == ()
 
 
@@ -100,7 +102,7 @@ def test_packaged_prepared_model_materializes_stable_cached_copy(
     assert first.is_file()
     assert first.parent.name == _metadata()["bundle_sha256"]
     assert first.read_bytes() == (
-        ASSET_ROOT / "built-in-sm-jit-o3.pyamplicol-model"
+        ASSET_ROOT / f"{ASSET_STEM}.pyamplicol-model"
     ).read_bytes()
 
 
@@ -115,13 +117,32 @@ def test_packaged_prepared_model_rejects_unknown_identity() -> None:
         pass
 
 
+def test_packaged_prepared_model_rejects_unsupported_host_architecture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pyamplicol.models.prepared_target.platform.machine",
+        lambda: "sparc64",
+    )
+    with (
+        pytest.raises(
+            prepared_models.PackagedPreparedModelError,
+            match="host architecture",
+        ),
+        prepared_models.packaged_prepared_model_path(
+            prepared_models.BUILTIN_SM_JIT_O3
+        ),
+    ):
+        pass
+
+
 def test_packaged_prepared_model_rejects_resource_tampering(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     copied = tmp_path / "prepared_models"
     shutil.copytree(ASSET_ROOT, copied)
-    bundle = copied / "built-in-sm-jit-o3.pyamplicol-model"
+    bundle = copied / f"{ASSET_STEM}.pyamplicol-model"
     bundle.write_bytes(bundle.read_bytes() + b"tampered")
     monkeypatch.setattr(prepared_models.resources, "files", lambda _package: copied)
 

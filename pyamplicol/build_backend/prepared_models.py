@@ -15,14 +15,7 @@ from types import ModuleType
 from typing import Any, cast
 
 _ASSET_DIRECTORY = Path("src/pyamplicol/assets/prepared_models")
-_METADATA_NAME = "built-in-sm-jit-o3.metadata.json"
-_EXPECTED_FILES = frozenset(
-    {
-        "__init__.py",
-        "built-in-sm-jit-o3.pyamplicol-model",
-        _METADATA_NAME,
-    }
-)
+_EXPECTED_ARCHITECTURES = ("aarch64", "x86_64")
 _METADATA_KEYS = frozenset(
     {
         "backend",
@@ -43,13 +36,23 @@ _METADATA_KEYS = frozenset(
     }
 )
 _EXPECTED_ID = "built-in-sm-jit-o3"
-_EXPECTED_TARGET = {
-    "portable": True,
-    "word_bits": 64,
-    "endianness": "little",
-    "target_triple": "portable-symjit-mir",
-    "cpu_features": [],
-}
+
+
+def _asset_names(architecture: str) -> tuple[str, str]:
+    stem = f"{_EXPECTED_ID}-{architecture}"
+    return f"{stem}.metadata.json", f"{stem}.pyamplicol-model"
+
+
+_EXPECTED_FILES = frozenset(
+    (
+        "__init__.py",
+        *(
+            name
+            for architecture in _EXPECTED_ARCHITECTURES
+            for name in _asset_names(architecture)
+        ),
+    )
+)
 
 
 def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
@@ -82,48 +85,63 @@ def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
             + ")"
         )
 
-    metadata = _load_json(asset_root / _METADATA_NAME, "prepared-model metadata")
-    _require_exact_keys(metadata, _METADATA_KEYS, "prepared-model metadata")
-    if metadata.get("schema_version") != 1:
-        raise RuntimeError("unsupported packaged prepared-model metadata schema")
-    if metadata.get("id") != _EXPECTED_ID or metadata.get("model") != "built-in-sm":
-        raise RuntimeError("packaged prepared-model identity is invalid")
-    bundle_name = _required_string(metadata.get("bundle"), "metadata.bundle")
-    if bundle_name != f"{_EXPECTED_ID}.pyamplicol-model":
-        raise RuntimeError("packaged prepared-model bundle name is invalid")
-    bundle_path = asset_root / bundle_name
-    if not bundle_path.is_file() or bundle_path.is_symlink():
-        raise RuntimeError("packaged prepared-model bundle must be a regular file")
-    bundle_bytes = bundle_path.read_bytes()
-    if metadata.get("bundle_size") != len(bundle_bytes):
-        raise RuntimeError(
-            "packaged prepared-model bundle size does not match metadata"
-        )
-    if metadata.get("bundle_sha256") != hashlib.sha256(bundle_bytes).hexdigest():
-        raise RuntimeError(
-            "packaged prepared-model bundle SHA-256 does not match metadata"
-        )
-
     contract = _load_prepared_contract(package_root / "models" / "prepared.py")
-    try:
-        bundle = contract.load_prepared_model_bundle(bundle_path)
-    except Exception as error:
-        raise RuntimeError(
-            f"packaged prepared-model bundle is invalid: {error}"
-        ) from error
-    _validate_bundle(
-        bundle,
-        metadata=metadata,
-        package_root=package_root,
-        overlay=overlay,
-        mode=mode,
-    )
+    for architecture in _EXPECTED_ARCHITECTURES:
+        metadata_name, expected_bundle_name = _asset_names(architecture)
+        metadata = _load_json(
+            asset_root / metadata_name,
+            f"{architecture} prepared-model metadata",
+        )
+        _require_exact_keys(metadata, _METADATA_KEYS, "prepared-model metadata")
+        if metadata.get("schema_version") != 1:
+            raise RuntimeError("unsupported packaged prepared-model metadata schema")
+        if (
+            metadata.get("id") != _EXPECTED_ID
+            or metadata.get("model") != "built-in-sm"
+        ):
+            raise RuntimeError("packaged prepared-model identity is invalid")
+        bundle_name = _required_string(metadata.get("bundle"), "metadata.bundle")
+        if bundle_name != expected_bundle_name:
+            raise RuntimeError("packaged prepared-model bundle name is invalid")
+        bundle_path = asset_root / bundle_name
+        if not bundle_path.is_file() or bundle_path.is_symlink():
+            raise RuntimeError("packaged prepared-model bundle must be a regular file")
+        bundle_bytes = bundle_path.read_bytes()
+        if metadata.get("bundle_size") != len(bundle_bytes):
+            raise RuntimeError(
+                "packaged prepared-model bundle size does not match metadata"
+            )
+        if metadata.get("bundle_sha256") != hashlib.sha256(bundle_bytes).hexdigest():
+            raise RuntimeError(
+                "packaged prepared-model bundle SHA-256 does not match metadata"
+            )
+        try:
+            bundle = contract.load_prepared_model_bundle(bundle_path)
+        except Exception as error:
+            raise RuntimeError(
+                f"packaged prepared-model bundle is invalid: {error}"
+            ) from error
+        _validate_bundle(
+            bundle,
+            metadata=metadata,
+            expected_target={
+                "portable": False,
+                "word_bits": 64,
+                "endianness": "little",
+                "target_triple": f"symjit-storage-v3-{architecture}",
+                "cpu_features": [],
+            },
+            package_root=package_root,
+            overlay=overlay,
+            mode=mode,
+        )
 
 
 def _validate_bundle(
     bundle: Any,
     *,
     metadata: Mapping[str, object],
+    expected_target: Mapping[str, object],
     package_root: Path,
     overlay: Path,
     mode: str,
@@ -140,9 +158,9 @@ def _validate_bundle(
     ):
         raise RuntimeError("prepared kernel pack does not record JIT O3 settings")
     target = _plain_json(pack.target)
-    if target != _EXPECTED_TARGET or metadata.get("target") != _EXPECTED_TARGET:
+    if target != expected_target or metadata.get("target") != expected_target:
         raise RuntimeError(
-            "packaged prepared model is not portable 64-bit little-endian MIR"
+            "packaged prepared model target does not match its architecture asset"
         )
     kernel_count = len(pack.kernels)
     if metadata.get("kernel_count") != kernel_count or kernel_count == 0:

@@ -9,9 +9,9 @@
       "symjit": "1d9e7b104c29d612981b1d59cae0cfe8fbf9a4d1"
     }
   },
-  "bundle": "built-in-sm-jit-o3.pyamplicol-model",
-  "bundle_sha256": "bc1cff30d5964237fe899e6c4e6bee42dd6b7fe7fadeeaef38714b8608dd6672",
-  "bundle_size": 1070711,
+  "bundle": "built-in-sm-jit-o3-x86_64.pyamplicol-model",
+  "bundle_sha256": "26ec1502088fe5bc6f681d564038514cf246ea8c4ac49c1f0347283f9ebef28a",
+  "bundle_size": 1070437,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
     "symbolica_version": "2.1.0",
@@ -27,7 +27,7 @@
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
-    "model_compiler_sha256": "d96284ffa0f5557e034eccc8cd6d006e1debe2e5c0e5da90f5a05a72b98894a4",
+    "model_compiler_sha256": "4143ea30d3d7f78f02535b48a0cd56f975ec53b47cf032a613e420d56e56e7b4",
     "model_compiler_version": 13,
     "model_source_digest": "b5cb62daf99f6435e0487c1f7d4d8972020c8e24ece01c37f86cc82c68c69cf3",
     "package_version": "0.1.0.dev0+candidate.b96d3d88b08a"
@@ -36,8 +36,8 @@
   "target": {
     "cpu_features": [],
     "endianness": "little",
-    "portable": true,
-    "target_triple": "portable-symjit-mir",
+    "portable": false,
+    "target_triple": "symjit-storage-v3-x86_64",
     "word_bits": 64
   }
 }

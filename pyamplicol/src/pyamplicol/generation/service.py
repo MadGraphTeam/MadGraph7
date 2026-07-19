@@ -41,6 +41,7 @@ from ..color.plan import build_color_plan
 from ..models.base import Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
 from ..models.prepared import PreparedKernelPack
+from ..models.prepared_target import PreparedTargetError, validate_prepared_target
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .artifact_writer import (
     CompiledProcessArtifact,
@@ -1321,6 +1322,24 @@ class GenerationBackend:
                 f"pyamplicol model compile {source} MODEL.pyamplicol-model "
                 f"--backend {backend}"
             )
+        pack = compiled.prepared_bundle.kernel_pack
+        try:
+            validate_prepared_target(
+                pack.target,
+                backend=pack.backend,
+                symjit_application_abi=cast(
+                    str | None,
+                    pack.dependency_abis.get("symjit_application"),
+                ),
+            )
+        except PreparedTargetError as exc:
+            source = resolved.source.path or resolved.source.kind
+            raise GenerationError(
+                f"eager prepared model is incompatible with this host: {exc}; "
+                "prepare a matching bundle with: "
+                f"pyamplicol model compile {source} MODEL.pyamplicol-model "
+                f"--backend {pack.backend}"
+            ) from exc
 
     def _index_eager_kernel_pack(self, resolved: _ResolvedModel) -> _ResolvedModel:
         if not self._eager_execution_enabled:
