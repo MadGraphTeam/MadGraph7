@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tools.developer import eager_artifact_compare as artifact_compare
 from tools.developer import eager_benchmark_matrix as matrix
 
 
@@ -181,6 +182,26 @@ def test_profile_command_encodes_both_lc_selector_axes() -> None:
     assert command[command.index("--helicity") + 1] == "h:-1,+1"
 
 
+def test_comparison_command_isolates_exact_evaluation() -> None:
+    command = matrix._comparison_command(
+        matrix.Path("python"),
+        eager_artifact=matrix.Path("eager"),
+        compiled_artifact=matrix.Path("compiled"),
+        process_id="process",
+        selectors={"color_flow": "flow:1,2", "helicity": "h:-1,+1"},
+        compiled_selectors="none",
+    )
+
+    assert command[:3] == (
+        "python",
+        "-m",
+        "tools.developer.eager_artifact_compare",
+    )
+    assert command[command.index("--compiled-selectors") + 1] == "none"
+    assert command[command.index("--color-flow") + 1] == "flow:1,2"
+    assert command[command.index("--helicity") + 1] == "h:-1,+1"
+
+
 def test_ufo_model_requires_source_and_pack(tmp_path: matrix.Path) -> None:
     arguments = argparse.Namespace(
         models=("ufo-sm",),
@@ -194,8 +215,11 @@ def test_ufo_model_requires_source_and_pack(tmp_path: matrix.Path) -> None:
 
 
 def test_relative_difference_handles_zero_values() -> None:
-    assert matrix._relative_difference(0j, 0j) == 0.0
-    assert matrix._relative_difference(1 + 0j, 1 + 1.0e-13j) < 1.1e-13
+    assert artifact_compare._relative_difference(0j, 0j) == 0.0
+    assert (
+        artifact_compare._relative_difference(1 + 0j, 1 + 1.0e-13j)
+        < 1.1e-13
+    )
 
 
 def test_resolved_comparison_checks_every_component_and_identifier() -> None:
@@ -215,10 +239,10 @@ def test_resolved_comparison_checks_every_component_and_identifier() -> None:
         values=baseline.values,
     )
 
-    comparison = matrix._resolved_comparison(baseline, matching)
+    comparison = artifact_compare._resolved_comparison(baseline, matching)
     assert comparison["component_count"] == 4
     assert comparison["passes"] is True
-    assert matrix._resolved_comparison(baseline, different)["passes"] is False
+    assert artifact_compare._resolved_comparison(baseline, different)["passes"] is False
 
 
 def test_generation_assessment_separates_hard_gates_and_soft_targets() -> None:

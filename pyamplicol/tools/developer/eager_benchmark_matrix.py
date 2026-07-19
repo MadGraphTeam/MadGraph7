@@ -30,6 +30,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
+COMPARISON_MODULE = "tools.developer.eager_artifact_compare"
 DEFAULT_GENERATION_TIMEOUT = 300.0
 DEFAULT_SUITE_TIMEOUT = 300.0
 DEFAULT_MEMORY_LIMIT_GIB = 30.0
@@ -417,98 +418,33 @@ def _profile_command(
     return tuple(command)
 
 
-def _validation_momenta(
-    artifact: Path, process_id: str
-) -> tuple[tuple[tuple[float, ...], ...], ...]:
-    path = artifact / "processes" / process_id / "validation-momenta.json"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        points = payload["points"]
-        return tuple(
-            tuple(
-                tuple(float(component) for component in particle["momentum"])
-                for particle in point
-            )
-            for point in points
-        )
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-        raise MatrixError(f"invalid validation momenta at {path}") from error
-
-
-def _relative_difference(left: complex, right: complex) -> float:
-    return abs(left - right) / max(abs(left), abs(right), 1.0e-300)
-
-
-def _complex_comparison(left: object, right: object) -> dict[str, object]:
-    left_value = complex(left)
-    right_value = complex(right)
-    absolute = abs(left_value - right_value)
-    relative = _relative_difference(left_value, right_value)
-    return {
-        "left": [left_value.real, left_value.imag],
-        "right": [right_value.real, right_value.imag],
-        "absolute_difference": absolute,
-        "relative_difference": relative,
-        "passes": absolute <= 1.0e-15 or relative <= 1.0e-12,
-    }
-
-
-def _resolved_comparison(left: Any, right: Any) -> dict[str, object]:
-    left_helicities = tuple(left.helicity_ids)
-    right_helicities = tuple(right.helicity_ids)
-    left_colors = tuple(left.color_ids)
-    right_colors = tuple(right.color_ids)
-    left_values = tuple(left.values)
-    right_values = tuple(right.values)
-    identifiers_match = (
-        left_helicities == right_helicities and left_colors == right_colors
-    )
-    shape_matches = len(left_values) == len(right_values)
-    comparisons: list[dict[str, object]] = []
-    if shape_matches:
-        for left_point, right_point in zip(left_values, right_values, strict=True):
-            left_rows = tuple(left_point)
-            right_rows = tuple(right_point)
-            if len(left_rows) != len(right_rows):
-                shape_matches = False
-                break
-            for left_row, right_row in zip(left_rows, right_rows, strict=True):
-                left_components = tuple(left_row)
-                right_components = tuple(right_row)
-                if len(left_components) != len(right_components):
-                    shape_matches = False
-                    break
-                comparisons.extend(
-                    _complex_comparison(left_value, right_value)
-                    for left_value, right_value in zip(
-                        left_components,
-                        right_components,
-                        strict=True,
-                    )
-                )
-            if not shape_matches:
-                break
-    maximum_absolute = max(
-        (float(item["absolute_difference"]) for item in comparisons),
-        default=0.0,
-    )
-    maximum_relative = max(
-        (float(item["relative_difference"]) for item in comparisons),
-        default=0.0,
-    )
-    return {
-        "helicity_ids_match": left_helicities == right_helicities,
-        "color_ids_match": left_colors == right_colors,
-        "shape_matches": shape_matches,
-        "point_count": len(left_values),
-        "component_count": len(comparisons),
-        "maximum_absolute_difference": maximum_absolute,
-        "maximum_relative_difference": maximum_relative,
-        "passes": identifiers_match
-        and shape_matches
-        and bool(comparisons)
-        and all(bool(item["passes"]) for item in comparisons),
-    }
+def _comparison_command(
+    python: Path,
+    *,
+    eager_artifact: Path,
+    compiled_artifact: Path,
+    process_id: str,
+    selectors: Mapping[str, str],
+    compiled_selectors: str = "same",
+) -> tuple[str, ...]:
+    command = [
+        str(python),
+        "-m",
+        COMPARISON_MODULE,
+        "--eager-artifact",
+        str(eager_artifact),
+        "--compiled-artifact",
+        str(compiled_artifact),
+        "--process",
+        process_id,
+        "--compiled-selectors",
+        compiled_selectors,
+    ]
+    if "color_flow" in selectors:
+        command.extend(("--color-flow", selectors["color_flow"]))
+    if "helicity" in selectors:
+        command.extend(("--helicity", selectors["helicity"]))
+    return tuple(command)
 
 
 def _geometric_mean(values: Sequence[float]) -> float:
@@ -614,86 +550,6 @@ def _topology_gate(records: Sequence[Mapping[str, Any]], *, require_ufo: bool) -
         and dict(models["built-in"]) == dict(models["ufo-sm"])
         for models in grouped.values()
     )
-
-
-def _evaluate_pair(
-    eager_artifact: Path,
-    compiled_artifact: Path,
-    process_id: str,
-    eager_selectors: Mapping[str, str],
-    compiled_selectors: Mapping[str, str] | None = None,
-) -> dict[str, Any]:
-    from pyamplicol import Runtime
-
-    momenta = _validation_momenta(eager_artifact, process_id)
-
-    def selector_kwargs(selectors: Mapping[str, str]) -> dict[str, object]:
-        kwargs: dict[str, object] = {}
-        if "color_flow" in selectors:
-            kwargs["color_flows"] = (selectors["color_flow"],)
-        if "helicity" in selectors:
-            kwargs["helicities"] = (selectors["helicity"],)
-        return kwargs
-
-    eager_kwargs = selector_kwargs(eager_selectors)
-    compiled_kwargs = selector_kwargs(
-        eager_selectors if compiled_selectors is None else compiled_selectors
-    )
-    eager_runtime = Runtime.load(eager_artifact)
-    compiled_runtime = Runtime.load(compiled_artifact)
-    eager_total = eager_runtime.evaluate(momenta, **eager_kwargs)
-    compiled_total = compiled_runtime.evaluate(momenta, **compiled_kwargs)
-    total_comparisons = tuple(
-        _complex_comparison(eager_value, compiled_value)
-        for eager_value, compiled_value in zip(
-            eager_total,
-            compiled_total,
-            strict=True,
-        )
-    )
-    eager_resolved = eager_runtime.evaluate_resolved(momenta, **eager_kwargs)
-    compiled_resolved = compiled_runtime.evaluate_resolved(
-        momenta, **compiled_kwargs
-    )
-    resolved = _resolved_comparison(eager_resolved, compiled_resolved)
-    eager_exact = eager_runtime.evaluate_resolved(
-        momenta, precision=32, **eager_kwargs
-    )
-    compiled_exact = compiled_runtime.evaluate_resolved(
-        momenta,
-        precision=32,
-        **compiled_kwargs,
-    )
-    exact = _resolved_comparison(eager_exact, compiled_exact)
-    eager_reduction = tuple(
-        _complex_comparison(total, resolved_total)
-        for total, resolved_total in zip(
-            eager_total,
-            eager_resolved.total(),
-            strict=True,
-        )
-    )
-    compiled_reduction = tuple(
-        _complex_comparison(total, resolved_total)
-        for total, resolved_total in zip(
-            compiled_total,
-            compiled_resolved.total(),
-            strict=True,
-        )
-    )
-    return {
-        "total": total_comparisons,
-        "resolved_f64": resolved,
-        "resolved_precision32": exact,
-        "eager_resolved_sum": eager_reduction,
-        "compiled_resolved_sum": compiled_reduction,
-        "passes": bool(total_comparisons)
-        and all(bool(item["passes"]) for item in total_comparisons)
-        and bool(resolved["passes"])
-        and bool(exact["passes"])
-        and all(bool(item["passes"]) for item in eager_reduction)
-        and all(bool(item["passes"]) for item in compiled_reduction),
-    }
 
 
 def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
@@ -907,19 +763,31 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                             ),
                             "coverage": dict(coverage),
                         }
-                    correctness = _evaluate_pair(
-                        artifacts["eager"],
-                        artifacts["compiled"],
-                        process_id,
-                        selectors,
+                    correctness, _, _ = _run_json(
+                        _comparison_command(
+                            arguments.python,
+                            eager_artifact=artifacts["eager"],
+                            compiled_artifact=artifacts["compiled"],
+                            process_id=process_id,
+                            selectors=selectors,
+                        ),
+                        timeout=arguments.generation_timeout,
+                        memory_limit_gib=arguments.memory_limit_gib,
+                        environment=environment,
                     )
                     if specialized_artifact is not None:
-                        specialized_correctness = _evaluate_pair(
-                            artifacts["eager"],
-                            specialized_artifact,
-                            process_id,
-                            selectors,
-                            {},
+                        specialized_correctness, _, _ = _run_json(
+                            _comparison_command(
+                                arguments.python,
+                                eager_artifact=artifacts["eager"],
+                                compiled_artifact=specialized_artifact,
+                                process_id=process_id,
+                                selectors=selectors,
+                                compiled_selectors="none",
+                            ),
+                            timeout=arguments.generation_timeout,
+                            memory_limit_gib=arguments.memory_limit_gib,
+                            environment=environment,
                         )
                         correctness["specialized_compiled"] = (
                             specialized_correctness
