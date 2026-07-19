@@ -460,8 +460,37 @@ def test_candidate_digest_covers_only_contributor_dependency_inputs(
     lock_changed = backend._candidate_digest(*inputs)
     assert lock_changed != first
 
-    inputs[1].write_text("[patch.crates-io]\n# changed\n", encoding="utf-8")
-    assert backend._candidate_digest(*inputs) not in {first, lock_changed}
+    checkout = tmp_path / "dependencies" / "checkouts" / "symbolica"
+    inputs[1].write_text(
+        "[patch.crates-io]\n"
+        f'symbolica = {{ path = "{checkout}" }}\n',
+        encoding="utf-8",
+    )
+    config_changed = backend._candidate_digest(*inputs)
+    assert config_changed not in {first, lock_changed}
+
+    relocated = tmp_path / "other-root" / "dependencies" / "checkouts" / "symbolica"
+    inputs[1].write_text(
+        "# checkout location must not affect dependency identity\n"
+        "[patch.crates-io]\n"
+        f'symbolica = {{ path = "{relocated}" }}\n',
+        encoding="utf-8",
+    )
+    assert backend._candidate_digest(*inputs) == config_changed
+
+
+def test_candidate_digest_rejects_patch_paths_outside_dependency_checkouts(
+    tmp_path: Path,
+) -> None:
+    inputs = _candidate_inputs(tmp_path)
+    inputs[1].write_text(
+        "[patch.crates-io]\n"
+        f'symbolica = {{ path = "{tmp_path / "symbolica"}" }}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="below dependencies/checkouts"):
+        backend._candidate_digest(*inputs)
 
 
 @pytest.mark.parametrize(
