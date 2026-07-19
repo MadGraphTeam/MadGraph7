@@ -199,7 +199,12 @@ def _run_json(
         ) from error
     elapsed = time.monotonic() - started
     if process.returncode != 0:
-        detail = stderr.strip() or stdout.strip() or f"exit code {process.returncode}"
+        output_sections: list[str] = []
+        if stdout.strip():
+            output_sections.append(f"stdout (tail):\n{stdout.strip()[-8000:]}")
+        if stderr.strip():
+            output_sections.append(f"stderr (tail):\n{stderr.strip()[-8000:]}")
+        detail = "\n".join(output_sections) or f"exit code {process.returncode}"
         raise MatrixError(f"command failed: {' '.join(command)}\n{detail}")
     try:
         payload = json.loads(stdout)
@@ -780,6 +785,8 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
     output_root.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
     environment.setdefault("SYMBOLICA_HIDE_BANNER", "1")
+    environment.setdefault("PYTHONFAULTHANDLER", "1")
+    environment.setdefault("RUST_BACKTRACE", "full")
     started = time.monotonic()
     records: list[dict[str, Any]] = []
 

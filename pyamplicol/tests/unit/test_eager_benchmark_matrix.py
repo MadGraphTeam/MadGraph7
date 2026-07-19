@@ -2,11 +2,38 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from types import SimpleNamespace
 
 import pytest
 
 from tools.developer import eager_benchmark_matrix as matrix
+
+
+def test_failed_command_reports_stdout_and_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailedProcess:
+        returncode = 134
+        pid = 123
+
+        def communicate(self, *, timeout: float) -> tuple[str, str]:
+            assert timeout == 10.0
+            return "native stdout detail", "watchdog stderr detail"
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: FailedProcess())
+
+    with pytest.raises(matrix.MatrixError) as failure:
+        matrix._run_json(
+            ("python", "command.py"),
+            timeout=10.0,
+            memory_limit_gib=30.0,
+            environment={},
+        )
+
+    message = str(failure.value)
+    assert "stdout (tail):\nnative stdout detail" in message
+    assert "stderr (tail):\nwatchdog stderr detail" in message
 
 
 def test_smoke_suite_selects_the_two_bounded_cases() -> None:
