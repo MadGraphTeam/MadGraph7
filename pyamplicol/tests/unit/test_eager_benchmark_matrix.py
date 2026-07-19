@@ -164,3 +164,37 @@ def test_watchdog_peak_parser_uses_last_guarded_command() -> None:
 
     assert matrix._watchdog_peak_gib(stderr) == 2.5
     assert matrix._watchdog_peak_gib("no watchdog result") is None
+
+
+def test_topology_gate_compares_equivalent_models_per_process_and_color() -> None:
+    topology = {field: index for index, field in enumerate(matrix._TOPOLOGY_FIELDS)}
+    records = [
+        {
+            "case": {"key": "process"},
+            "color": "nlc",
+            "model": model,
+            "eager_topology": topology,
+        }
+        for model in ("built-in", "ufo-sm")
+    ]
+
+    assert matrix._topology_gate(records, require_ufo=True)
+    assert matrix._topology_gate(records[:1], require_ufo=False)
+
+
+def test_topology_gate_rejects_missing_or_different_ufo_plan() -> None:
+    topology = {field: index for index, field in enumerate(matrix._TOPOLOGY_FIELDS)}
+    built_in = {
+        "case": {"key": "process"},
+        "color": "full",
+        "model": "built-in",
+        "eager_topology": topology,
+    }
+    ufo = {
+        **built_in,
+        "model": "ufo-sm",
+        "eager_topology": {**topology, "invocation_count": 999},
+    }
+
+    assert not matrix._topology_gate((built_in,), require_ufo=True)
+    assert not matrix._topology_gate((built_in, ufo), require_ufo=True)

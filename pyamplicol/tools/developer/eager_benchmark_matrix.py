@@ -32,6 +32,18 @@ DEFAULT_SUITE_TIMEOUT = 300.0
 DEFAULT_MEMORY_LIMIT_GIB = 30.0
 DEFAULT_BATCH_SIZES = (1, 128, 1024)
 DEFAULT_COLORS = ("lc", "nlc", "full")
+_TOPOLOGY_FIELDS = (
+    "physical_helicities",
+    "computed_helicities",
+    "physical_color_components",
+    "computed_color_components",
+    "invocation_count",
+    "attachment_count",
+    "evaluation_alias_count",
+    "maximum_fanout",
+    "finalization_count",
+    "closure_count",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,6 +411,42 @@ def _scope_gate(arguments: argparse.Namespace, cases: Sequence[ProcessCase]) -> 
     )
 
 
+def _eager_topology(artifact: Path) -> dict[str, int]:
+    from pyamplicol.artifacts import inspect_artifact
+
+    inspection = inspect_artifact(artifact)
+    if len(inspection.processes) != 1:
+        raise MatrixError("benchmark artifacts must contain exactly one process")
+    process = inspection.processes[0]
+    if getattr(process, "execution_mode", None) != "eager":
+        raise MatrixError(f"artifact is not eager: {artifact}")
+    result: dict[str, int] = {}
+    for field in _TOPOLOGY_FIELDS:
+        value = getattr(process, field, None)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise MatrixError(f"eager inspection has invalid {field}: {artifact}")
+        result[field] = value
+    return result
+
+
+def _topology_gate(records: Sequence[Mapping[str, Any]], *, require_ufo: bool) -> bool:
+    if not require_ufo:
+        return True
+    grouped: dict[tuple[str, str], dict[str, Mapping[str, int]]] = {}
+    for record in records:
+        case = record.get("case")
+        topology = record.get("eager_topology")
+        if not isinstance(case, Mapping) or not isinstance(topology, Mapping):
+            return False
+        key = (str(case.get("key")), str(record.get("color")))
+        grouped.setdefault(key, {})[str(record.get("model"))] = topology
+    return bool(grouped) and all(
+        set(models) == {"built-in", "ufo-sm"}
+        and dict(models["built-in"]) == dict(models["ufo-sm"])
+        for models in grouped.values()
+    )
+
+
 def _evaluate_pair(
     eager_artifact: Path,
     compiled_artifact: Path,
@@ -572,6 +620,7 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                     generation[mode]["artifact_size_bytes"] = _artifact_size_bytes(
                         artifacts[mode]
                     )
+                eager_topology = _eager_topology(artifacts["eager"])
 
                 workload_results: list[dict[str, Any]] = []
                 for workload in _workloads(color, eager_physics):
@@ -645,6 +694,7 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                         "model": model_name,
                         "color": color,
                         "process_id": process_id,
+                        "eager_topology": eager_topology,
                         "generation": generation,
                         "compiled_over_eager_command_elapsed": (
                             compiled_generation / eager_generation
@@ -673,6 +723,9 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
             workload["correctness"]["passes"]
             for record in records
             for workload in record["workloads"]
+        ),
+        "builtin_ufo_topology_parity": _topology_gate(
+            records, require_ufo=arguments.suite == "milestone"
         ),
         "batch_1024_runtime": 1024 in arguments.batch_sizes
         and all(
