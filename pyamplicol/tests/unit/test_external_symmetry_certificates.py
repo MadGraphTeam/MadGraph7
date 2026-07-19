@@ -1100,6 +1100,7 @@ def test_reachable_non_yang_mills_kernel_disables_global_adjoint_theorems(
         vertex=extra_term.vertex,
         evaluation_class="",
         evaluation_equivalence_verified=False,
+        evaluation_input_exchange_factor=None,
     )
 
     certificates = derive_external_symmetry_certificates(
