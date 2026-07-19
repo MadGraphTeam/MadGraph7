@@ -46,6 +46,7 @@ pub(super) struct EagerWorkspace {
     pub(super) values: Vec<EagerComplex64>,
     pub(super) currents: Vec<EagerComplex64>,
     pub(super) amplitudes: Vec<EagerComplex64>,
+    pub(super) reduction_groups: Vec<EagerComplex64>,
     pub(super) couplings: Vec<EagerComplex64>,
     pub(super) reduced: Vec<f64>,
     pub(super) packet: Vec<EagerComplex64>,
@@ -77,6 +78,7 @@ impl EagerExecutionRuntime {
             .component_count
             .checked_add(plan.currents.component_count)
             .and_then(|value| value.checked_add(plan.amplitude_count))
+            .and_then(|value| value.checked_add(plan.reduction_groups.len()))
             .ok_or_else(|| {
                 RusticolError::invalid_argument("eager persistent workspace overflows")
             })?;
@@ -404,6 +406,11 @@ fn allocate_workspace(
             "currents",
         )?,
         amplitudes: zeroed_complex_workspace(plan.amplitude_count, tile_capacity, "amplitudes")?,
+        reduction_groups: zeroed_complex_workspace(
+            plan.reduction_groups.len(),
+            tile_capacity,
+            "reduction groups",
+        )?,
         couplings: zeroed_complex_values(plan.couplings.len(), "couplings")?,
         reduced: zeroed_real_values(tile_capacity, "reduction")?,
         packet: zeroed_complex_values(packet_buffer_len, "packet")?,

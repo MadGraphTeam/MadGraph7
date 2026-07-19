@@ -105,8 +105,16 @@ def test_builtin_chirality_dimensions_and_propagator_coverage(
     expected: set[PropagatorKernelKey] = set()
     for particle_id in sorted(
         {
-            *model.particles,
-            *(model.anti_particle(particle_id) for particle_id in model.particles),
+            *(
+                particle_id
+                for particle_id in model.particles
+                if model.source_wavefunction_kind(particle_id) != "ghost"
+            ),
+            *(
+                model.anti_particle(particle_id)
+                for particle_id in model.particles
+                if model.source_wavefunction_kind(particle_id) != "ghost"
+            ),
         }
     ):
         chiralities = (
@@ -173,7 +181,7 @@ def test_external_sm_active_oriented_kernels_and_parameters_are_catalogued(
         model.runtime_derived_parameter_definitions()
     )
     assert not catalog.closure_bindings
-    assert {gap.contract_kind for gap in catalog.unsupported_variants} <= {"propagator"}
+    assert not catalog.unsupported_variants
 
 
 def test_external_sm_catalog_signatures_ignore_compiled_inventory_order(
@@ -231,6 +239,20 @@ def test_catalog_fails_closed_when_a_vertex_kind_has_no_exact_lowering() -> None
 
     with pytest.raises(
         PreparedKernelCatalogError,
-        match=r"no constructive orientation.*\[0\]",
+        match=r"cannot lower admitted vertex orientation kind=0",
+    ):
+        build_prepared_kernel_catalog(BrokenBuiltin())
+
+
+def test_catalog_fails_closed_when_one_admitted_propagator_is_missing() -> None:
+    class BrokenBuiltin(BuiltinSMModel):
+        def _propagator_ir(self, particle_id, chirality=0):
+            if particle_id == 21:
+                raise ValueError("deliberately unavailable")
+            return super()._propagator_ir(particle_id, chirality)
+
+    with pytest.raises(
+        PreparedKernelCatalogError,
+        match=r"cannot lower admitted propagator particle=21, chirality=0",
     ):
         build_prepared_kernel_catalog(BrokenBuiltin())

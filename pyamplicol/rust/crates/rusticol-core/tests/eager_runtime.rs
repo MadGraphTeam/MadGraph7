@@ -4,9 +4,9 @@ use rusticol_core::{
     EagerAttachmentRow, EagerClosureRow, EagerComplex64, EagerCouplingRow, EagerDirectClosureSpec,
     EagerExecutionPlan, EagerExecutionRuntime, EagerFinalizationRow, EagerInvocationRow,
     EagerKernelBackend, EagerKernelCall, EagerKernelInput, EagerKernelRole, EagerKernelSpec,
-    EagerPlanDefinition, EagerPlanDimensions, EagerPlanPayloads, EagerReductionTerm,
-    EagerRuntimeOptions, EagerStagePayload, MISSING_U32, RusticolError, RusticolErrorKind,
-    RusticolResult,
+    EagerPlanDefinition, EagerPlanDimensions, EagerPlanPayloads, EagerReductionEntry,
+    EagerReductionGroup, EagerRuntimeOptions, EagerStagePayload, MISSING_U32, RusticolError,
+    RusticolErrorKind, RusticolResult,
 };
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -174,15 +174,23 @@ fn definition() -> EagerPlanDefinition {
             closure_index: 1,
             coefficients: vec![c64(3.0)],
         }],
-        reduction_terms: vec![
-            EagerReductionTerm {
-                left_amplitude_index: 0,
-                right_amplitude_index: 0,
+        reduction_groups: vec![
+            EagerReductionGroup {
+                amplitude_indices: vec![0],
+            },
+            EagerReductionGroup {
+                amplitude_indices: vec![1],
+            },
+        ],
+        reduction_entries: vec![
+            EagerReductionEntry {
+                left_group_index: 0,
+                right_group_index: 0,
                 coefficient: c64(1.0),
             },
-            EagerReductionTerm {
-                left_amplitude_index: 1,
-                right_amplitude_index: 1,
+            EagerReductionEntry {
+                left_group_index: 1,
+                right_group_index: 1,
                 coefficient: c64(0.5),
             },
         ],
@@ -375,7 +383,58 @@ fn executes_packetized_stages_finalization_closures_and_reduction() {
     assert_eq!(runtime.plan().invocation_count(), 2);
     assert_eq!(runtime.plan().attachment_count(), 2);
     assert_eq!(runtime.plan().closure_count(), 2);
+    assert_eq!(runtime.plan().reduction_group_count(), 2);
+    assert_eq!(runtime.plan().reduction_entry_count(), 2);
     assert_eq!(runtime.plan().stage_indices().collect::<Vec<_>>(), [1]);
+}
+
+#[test]
+fn reduces_coherent_amplitudes_through_compact_groups() {
+    let point_count = 3;
+    let mut definition = definition();
+    definition.reduction_groups = vec![EagerReductionGroup {
+        amplitude_indices: vec![0, 1],
+    }];
+    definition.reduction_entries = vec![EagerReductionEntry {
+        left_group_index: 0,
+        right_group_index: 0,
+        coefficient: c64(0.25),
+    }];
+    let plan = build_plan_with(
+        definition,
+        &invocation_rows(),
+        &attachment_rows(),
+        &finalization_rows(),
+        &closure_rows(),
+    )
+    .unwrap();
+    let mut runtime = EagerExecutionRuntime::new(
+        plan,
+        EagerRuntimeOptions {
+            point_tile_size: 2,
+            workspace_bytes: 4096,
+        },
+    )
+    .unwrap();
+    let (values, momenta) = inputs(point_count);
+    let mut amplitudes = vec![c64(0.0); 2 * point_count];
+    let mut reduced = vec![0.0; point_count];
+    runtime
+        .evaluate_into(
+            &mut MockBackend::default(),
+            point_count,
+            &values,
+            &momenta,
+            &[c64(2.0)],
+            &mut amplitudes,
+            &mut reduced,
+        )
+        .unwrap();
+
+    for point in 0..point_count {
+        let (left, right, _) = expected(point, &momenta);
+        assert_eq!(reduced[point], 0.25 * (left + right).norm_sqr());
+    }
 }
 
 #[test]

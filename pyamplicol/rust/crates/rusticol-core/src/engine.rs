@@ -51,12 +51,14 @@ pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
     "symbolica.legacy-jit-container.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-cpp.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
+pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
 #[cfg(feature = "f64-symjit")]
 pub const SYMJIT_APPLICATION_STORAGE_ABI: &str = "symjit-application-storage-v3";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {
+    EagerDagComplexF64V1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -66,6 +68,7 @@ pub enum RuntimeCapability {
 impl RuntimeCapability {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -78,6 +81,8 @@ impl RuntimeCapability {
 
 pub fn supported_runtime_capabilities() -> Vec<&'static str> {
     let mut capabilities = vec![
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        EAGER_DAG_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
         SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         #[cfg(feature = "symbolica-runtime")]
@@ -1323,6 +1328,10 @@ struct ResolvedValues<T> {
 pub struct NativeRuntimeMetadata {
     pub abi_version: u32,
     pub schema_version: u32,
+    pub execution_mode: String,
+    pub prepared_backend: Option<String>,
+    pub eager_effective_point_tile_size: Option<usize>,
+    pub eager_workspace_bytes: Option<usize>,
     pub process: String,
     pub process_key: String,
     pub representative_process: String,
@@ -1491,6 +1500,7 @@ impl NativeDecimalResolvedEvaluation {
 pub struct NativeRuntime {
     root: PathBuf,
     runtime: ExecutionRuntime,
+    execution_lane: NativeExecutionLane,
     process: String,
     process_key: String,
     input_crossing_map: Option<Vec<InputCrossingMapEntry>>,
@@ -1499,6 +1509,22 @@ pub struct NativeRuntime {
     warnings_muted: bool,
     warned_kinds: BTreeSet<String>,
     pending_warnings: Vec<String>,
+}
+
+enum NativeExecutionLane {
+    Compiled,
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    Eager(Box<EagerNativeRuntime>),
+}
+
+impl NativeExecutionLane {
+    fn is_eager(&self) -> bool {
+        match self {
+            Self::Compiled => false,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(_) => true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1557,6 +1583,26 @@ mod native_runtime;
 mod artifact_load;
 use artifact_load::*;
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_backend;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_backend::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_manifest;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_manifest::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_load;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_load::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_lane;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_lane::*;
+
 mod physics;
 
 #[path = "evaluator.rs"]
@@ -1582,3 +1628,7 @@ mod quantum_number_flow_tests;
 #[cfg(test)]
 #[path = "engine/contraction_metadata_tests.rs"]
 mod contraction_metadata_tests;
+
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+#[path = "engine/eager_integration_tests.rs"]
+mod eager_integration_tests;

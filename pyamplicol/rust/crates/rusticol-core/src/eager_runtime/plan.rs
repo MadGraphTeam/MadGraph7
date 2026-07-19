@@ -2,7 +2,8 @@
 
 use super::{
     EagerComplex64, EagerDirectClosureSpec, EagerKernelInput, EagerKernelRole, EagerKernelSpec,
-    EagerPlanDefinition, EagerPlanPayloads, EagerReductionTerm, EagerStagePayload,
+    EagerPlanDefinition, EagerPlanPayloads, EagerReductionEntry, EagerReductionGroup,
+    EagerStagePayload,
 };
 use crate::{
     EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerFinalizationRow,
@@ -132,7 +133,8 @@ pub struct EagerExecutionPlan {
     pub(super) stages: Vec<EagerStagePlan>,
     pub(super) closures: Vec<ScheduledClosure>,
     pub(super) direct_closures: Vec<ScheduledDirectClosure>,
-    pub(super) reduction_terms: Vec<EagerReductionTerm>,
+    pub(super) reduction_groups: Vec<EagerReductionGroup>,
+    pub(super) reduction_entries: Vec<EagerReductionEntry>,
 }
 
 impl EagerExecutionPlan {
@@ -201,7 +203,11 @@ impl EagerExecutionPlan {
             amplitude_count,
             parameter_count,
         )?;
-        validate_reduction_terms(&definition.reduction_terms, amplitude_count)?;
+        validate_reduction_plan(
+            &definition.reduction_groups,
+            &definition.reduction_entries,
+            amplitude_count,
+        )?;
 
         Ok(Self {
             values,
@@ -214,7 +220,8 @@ impl EagerExecutionPlan {
             stages,
             closures,
             direct_closures,
-            reduction_terms: definition.reduction_terms,
+            reduction_groups: definition.reduction_groups,
+            reduction_entries: definition.reduction_entries,
         })
     }
 
@@ -262,6 +269,14 @@ impl EagerExecutionPlan {
 
     pub fn closure_count(&self) -> usize {
         self.closures.len() + self.direct_closures.len()
+    }
+
+    pub fn reduction_group_count(&self) -> usize {
+        self.reduction_groups.len()
+    }
+
+    pub fn reduction_entry_count(&self) -> usize {
+        self.reduction_entries.len()
     }
 }
 
@@ -698,24 +713,56 @@ fn load_closures(
     Ok((closures, direct_closures))
 }
 
-fn validate_reduction_terms(
-    terms: &[EagerReductionTerm],
+fn validate_reduction_plan(
+    groups: &[EagerReductionGroup],
+    entries: &[EagerReductionEntry],
     amplitude_count: usize,
 ) -> RusticolResult<()> {
-    for (index, term) in terms.iter().enumerate() {
-        required_index(
-            term.left_amplitude_index,
-            amplitude_count,
-            "eager reduction left amplitude",
-        )?;
-        required_index(
-            term.right_amplitude_index,
-            amplitude_count,
-            "eager reduction right amplitude",
-        )?;
-        if !complex_is_finite(term.coefficient) {
+    if groups.is_empty() || entries.is_empty() {
+        return Err(RusticolError::artifact(
+            "eager reduction requires nonempty groups and entries",
+        ));
+    }
+    let mut covered = BTreeSet::new();
+    for (group_index, group) in groups.iter().enumerate() {
+        if group.amplitude_indices.is_empty() {
             return Err(RusticolError::artifact(format!(
-                "eager reduction term {index} has a non-finite coefficient"
+                "eager reduction group {group_index} is empty"
+            )));
+        }
+        for amplitude_index in &group.amplitude_indices {
+            required_index(
+                *amplitude_index,
+                amplitude_count,
+                "eager reduction amplitude",
+            )?;
+            if !covered.insert(*amplitude_index) {
+                return Err(RusticolError::artifact(format!(
+                    "eager amplitude {amplitude_index} belongs to more than one reduction group"
+                )));
+            }
+        }
+    }
+    if covered.len() != amplitude_count {
+        return Err(RusticolError::artifact(format!(
+            "eager reduction groups cover {} of {amplitude_count} amplitudes",
+            covered.len()
+        )));
+    }
+    for (index, entry) in entries.iter().enumerate() {
+        required_index(
+            entry.left_group_index,
+            groups.len(),
+            "eager reduction left group",
+        )?;
+        required_index(
+            entry.right_group_index,
+            groups.len(),
+            "eager reduction right group",
+        )?;
+        if !complex_is_finite(entry.coefficient) {
+            return Err(RusticolError::artifact(format!(
+                "eager reduction entry {index} has a non-finite coefficient"
             )));
         }
     }

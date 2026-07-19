@@ -22,6 +22,9 @@ pub(super) fn initialize_tile(
     workspace.values.fill(EagerComplex64::new(0.0, 0.0));
     workspace.currents.fill(EagerComplex64::new(0.0, 0.0));
     workspace.amplitudes.fill(EagerComplex64::new(0.0, 0.0));
+    workspace
+        .reduction_groups
+        .fill(EagerComplex64::new(0.0, 0.0));
     workspace.reduced.fill(0.0);
     for component in 0..plan.values.component_count {
         let source = component * point_count + tile_start;
@@ -527,13 +530,22 @@ pub(super) fn reduce_tile(
     workspace: &mut EagerWorkspace,
     tile_points: usize,
 ) {
-    for term in &plan.reduction_terms {
-        let left = term.left_amplitude_index as usize * workspace.tile_capacity;
-        let right = term.right_amplitude_index as usize * workspace.tile_capacity;
+    for (group_index, group) in plan.reduction_groups.iter().enumerate() {
+        let target = group_index * workspace.tile_capacity;
+        for amplitude_index in &group.amplitude_indices {
+            let source = *amplitude_index as usize * workspace.tile_capacity;
+            for point in 0..tile_points {
+                workspace.reduction_groups[target + point] += workspace.amplitudes[source + point];
+            }
+        }
+    }
+    for entry in &plan.reduction_entries {
+        let left = entry.left_group_index as usize * workspace.tile_capacity;
+        let right = entry.right_group_index as usize * workspace.tile_capacity;
         for point in 0..tile_points {
-            let product =
-                workspace.amplitudes[left + point] * workspace.amplitudes[right + point].conj();
-            workspace.reduced[point] += (term.coefficient * product).re;
+            let product = workspace.reduction_groups[left + point]
+                * workspace.reduction_groups[right + point].conj();
+            workspace.reduced[point] += (entry.coefficient * product).re;
         }
     }
 }

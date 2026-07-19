@@ -50,10 +50,15 @@ pub struct EagerDirectClosureSpec {
     pub coefficients: Vec<EagerComplex64>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EagerReductionGroup {
+    pub amplitude_indices: Vec<u32>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct EagerReductionTerm {
-    pub left_amplitude_index: u32,
-    pub right_amplitude_index: u32,
+pub struct EagerReductionEntry {
+    pub left_group_index: u32,
+    pub right_group_index: u32,
     pub coefficient: EagerComplex64,
 }
 
@@ -62,7 +67,8 @@ pub struct EagerPlanDefinition {
     pub dimensions: EagerPlanDimensions,
     pub kernels: Vec<EagerKernelSpec>,
     pub direct_closures: Vec<EagerDirectClosureSpec>,
-    pub reduction_terms: Vec<EagerReductionTerm>,
+    pub reduction_groups: Vec<EagerReductionGroup>,
+    pub reduction_entries: Vec<EagerReductionEntry>,
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -2,10 +2,58 @@
 
 use super::*;
 
+pub(super) enum LoadedExecutionManifest {
+    Compiled(Box<ExecutionManifest>),
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    Eager(Box<EagerExecutionManifest>),
+}
+
+impl LoadedExecutionManifest {
+    fn key(&self) -> &str {
+        match self {
+            Self::Compiled(value) => &value.key,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(value) => &value.key,
+        }
+    }
+
+    fn process(&self) -> &str {
+        match self {
+            Self::Compiled(value) => &value.process,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(value) => &value.process,
+        }
+    }
+
+    fn color_accuracy(&self) -> &str {
+        match self {
+            Self::Compiled(value) => &value.color_accuracy,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(value) => &value.color_accuracy,
+        }
+    }
+
+    fn external_pdg_order(&self) -> &[i32] {
+        match self {
+            Self::Compiled(value) => &value.external_pdg_order,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(value) => &value.external_pdg_order,
+        }
+    }
+
+    fn required_runtime_capabilities(&self) -> &[String] {
+        match self {
+            Self::Compiled(value) => &value.required_runtime_capabilities,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(value) => &value.required_runtime_capabilities,
+        }
+    }
+}
+
 pub(super) fn load_verified_evaluator(
     artifact: &VerifiedArtifact,
     selection: &crate::ArtifactSelection,
-) -> RusticolResult<(ExecutionManifest, PathBuf)> {
+) -> RusticolResult<(LoadedExecutionManifest, PathBuf)> {
     let root_manifest_path = &artifact.manifest().runtime.evaluator_manifest_path;
     if artifact.payload(root_manifest_path)?.role != PayloadRole::EvaluatorManifest {
         return Err(RusticolError::security(format!(
@@ -30,18 +78,20 @@ pub(super) fn load_verified_evaluator(
             header.schema_version, PROCESS_ARTIFACT_SCHEMA_VERSION
         )));
     }
-    if header.kind == "pyamplicol-runtime-execution" {
+    if header.kind == "pyamplicol-runtime-execution"
+        || header.kind == "pyamplicol-runtime-eager-execution"
+    {
         if artifact.manifest().processes.len() != 1 {
             return Err(RusticolError::integrity(
                 "a direct execution manifest cannot represent multiple outer processes",
             ));
         }
-        let manifest = parse_execution_payload(&bytes, root_manifest_path)?;
+        let manifest = parse_execution_payload_variant(&bytes, root_manifest_path)?;
         let outer = &artifact.manifest().processes[0];
-        if manifest.key != outer.id
-            || manifest.process != outer.expression
-            || manifest.color_accuracy != outer.color_accuracy
-            || manifest.external_pdg_order != outer.external_pdgs
+        if manifest.key() != outer.id
+            || manifest.process() != outer.expression
+            || manifest.color_accuracy() != outer.color_accuracy
+            || manifest.external_pdg_order() != outer.external_pdgs
         {
             return Err(RusticolError::integrity(format!(
                 "execution manifest {root_manifest_path:?} does not match outer process {:?}",
@@ -50,19 +100,19 @@ pub(super) fn load_verified_evaluator(
         }
         validate_capability_list_match(
             &artifact.manifest().runtime.required_runtime_capabilities,
-            &manifest.required_runtime_capabilities,
+            manifest.required_runtime_capabilities(),
             "outer runtime and direct execution manifest",
         )?;
         validate_capability_list_match(
             &outer.required_runtime_capabilities,
-            &manifest.required_runtime_capabilities,
+            manifest.required_runtime_capabilities(),
             "outer process and direct execution manifest",
         )?;
         let path = artifact.payload_path(root_manifest_path)?;
         let root = path.parent().ok_or_else(|| {
             RusticolError::artifact("evaluator manifest has no containing directory")
         })?;
-        validate_evaluator_payload_references(artifact, root, &manifest)?;
+        validate_loaded_execution_references(artifact, root, &manifest)?;
         return Ok((manifest, root.to_path_buf()));
     }
     if header.kind != "pyamplicol-runtime-execution-set" {
@@ -144,7 +194,7 @@ pub(super) fn load_verified_evaluator(
     for entry in &process_set.processes {
         let manifest_path = execution_manifest_path(root_manifest_path, &entry.manifest_path)?;
         let bytes = artifact.read_payload(&manifest_path)?;
-        let manifest = parse_execution_payload(&bytes, &manifest_path)?;
+        let manifest = parse_execution_payload_variant(&bytes, &manifest_path)?;
         let outer = artifact
             .manifest()
             .processes
@@ -159,10 +209,10 @@ pub(super) fn load_verified_evaluator(
                 entry.process_id
             ),
         )?;
-        if manifest.key != outer.id
-            || manifest.process != outer.expression
-            || manifest.color_accuracy != outer.color_accuracy
-            || manifest.external_pdg_order != outer.external_pdgs
+        if manifest.key() != outer.id
+            || manifest.process() != outer.expression
+            || manifest.color_accuracy() != outer.color_accuracy
+            || manifest.external_pdg_order() != outer.external_pdgs
         {
             return Err(RusticolError::integrity(format!(
                 "execution manifest {manifest_path:?} does not match outer process {:?}",
@@ -171,14 +221,14 @@ pub(super) fn load_verified_evaluator(
         }
         validate_capability_list_match(
             &entry.required_runtime_capabilities,
-            &manifest.required_runtime_capabilities,
+            manifest.required_runtime_capabilities(),
             &format!("execution-set entry {:?}", entry.process_id),
         )?;
         let path = artifact.payload_path(&manifest_path)?;
         let evaluator_root = path.parent().ok_or_else(|| {
             RusticolError::artifact("evaluator manifest has no containing directory")
         })?;
-        validate_evaluator_payload_references(artifact, evaluator_root, &manifest)?;
+        validate_loaded_execution_references(artifact, evaluator_root, &manifest)?;
         if entry.process_id == selection.process.id {
             selected = Some((manifest, evaluator_root.to_path_buf()));
         }
@@ -191,7 +241,7 @@ pub(super) fn load_verified_evaluator(
     })
 }
 
-fn validate_capability_list_match(
+pub(super) fn validate_capability_list_match(
     left: &[String],
     right: &[String],
     context: &str,
@@ -244,6 +294,49 @@ fn parse_execution_payload(bytes: &[u8], path: &str) -> RusticolResult<Execution
         )));
     }
     serde_json::from_slice(bytes).map_err(|error| execution_manifest_parse_error(path, error))
+}
+
+fn parse_execution_payload_variant(
+    bytes: &[u8],
+    path: &str,
+) -> RusticolResult<LoadedExecutionManifest> {
+    let header: ExecutionManifestHeader = serde_json::from_slice(bytes).map_err(|error| {
+        RusticolError::serialization(format!(
+            "could not parse evaluator manifest {path:?}: {error}"
+        ))
+    })?;
+    match header.kind.as_str() {
+        "pyamplicol-runtime-execution" => parse_execution_payload(bytes, path)
+            .map(Box::new)
+            .map(LoadedExecutionManifest::Compiled),
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        EAGER_EXECUTION_KIND => {
+            let manifest: EagerExecutionManifest = serde_json::from_slice(bytes)
+                .map_err(|error| execution_manifest_parse_error(path, error))?;
+            manifest.validate_header()?;
+            Ok(LoadedExecutionManifest::Eager(Box::new(manifest)))
+        }
+        _ => Err(RusticolError::compatibility(format!(
+            "unsupported internal evaluator manifest kind {:?}",
+            header.kind
+        ))),
+    }
+}
+
+fn validate_loaded_execution_references(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &LoadedExecutionManifest,
+) -> RusticolResult<()> {
+    match manifest {
+        LoadedExecutionManifest::Compiled(manifest) => {
+            validate_evaluator_payload_references(artifact, evaluator_root, manifest)
+        }
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        LoadedExecutionManifest::Eager(manifest) => {
+            validate_eager_payload_references(artifact, evaluator_root, manifest)
+        }
+    }
 }
 
 pub(super) fn execution_manifest_parse_error(

@@ -22,7 +22,6 @@ from .prepared_catalog import (
     PreparedContractKind,
     PreparedKernelCatalog,
     PreparedKernelCatalogError,
-    PreparedKernelGap,
     PreparedKernelInput,
     PreparedKernelSpec,
     PreparedParticleState,
@@ -146,7 +145,6 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
     proof_classes: dict[str, set[str]] = {}
     vertex_pending: list[_VertexCandidateResult] = []
     closure_pending: list[tuple[_VertexCandidateResult, str]] = []
-    unsupported: list[PreparedKernelGap] = []
     propagator_pending: list[
         tuple[
             PropagatorKernelKey, PreparedParticleState, PropagatorIR, _Candidate | None
@@ -174,18 +172,13 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
                             contract_kind="vertex",
                         )
                     except PreparedKernelCatalogError as error:
-                        unsupported.append(
-                            PreparedKernelGap(
-                                contract_kind="vertex",
-                                context=(
-                                    f"kind={vertex.kind},particles={vertex.particles},"
-                                    f"chiralities=({left_chirality},"
-                                    f"{right_chirality},{result_chirality})"
-                                ),
-                                reason=str(error),
-                            )
-                        )
-                        continue
+                        raise PreparedKernelCatalogError(
+                            "prepared catalog cannot lower admitted vertex orientation "
+                            f"kind={vertex.kind}, particles={vertex.particles}, "
+                            "chiralities="
+                            f"({left_chirality},{right_chirality},{result_chirality}): "
+                            f"{error}"
+                        ) from error
                     _register_candidate(candidates, proof_classes, result.candidate)
                     vertex_pending.append(result)
                     closure_ir = model.closure_contraction_ir(
@@ -206,14 +199,10 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
             try:
                 metadata = model._propagator_ir(particle_id, chirality)
             except (NotImplementedError, ValueError) as error:
-                unsupported.append(
-                    PreparedKernelGap(
-                        contract_kind="propagator",
-                        context=f"particle={particle_id},chirality={chirality}",
-                        reason=str(error),
-                    )
-                )
-                continue
+                raise PreparedKernelCatalogError(
+                    "prepared catalog cannot lower admitted propagator "
+                    f"particle={particle_id}, chirality={chirality}: {error}"
+                ) from error
             candidate = (
                 _propagator_candidate(
                     model,
@@ -340,7 +329,7 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
             if model_parameter_candidate is None
             else kernel_ids[model_parameter_candidate.canonical_signature]
         ),
-        unsupported_variants=tuple(sorted(unsupported)),
+        unsupported_variants=(),
     )
 
 
@@ -357,7 +346,11 @@ def _unique_vertices(model: Model) -> tuple[Vertex, ...]:
 
 
 def _oriented_particle_ids(model: Model) -> tuple[int, ...]:
-    particle_ids = set(int(particle_id) for particle_id in model.particles)
+    particle_ids = {
+        int(particle_id)
+        for particle_id in model.particles
+        if model.source_wavefunction_kind(int(particle_id)) != "ghost"
+    }
     particle_ids.update(
         model.anti_particle(particle_id) for particle_id in tuple(particle_ids)
     )

@@ -41,7 +41,7 @@ from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
 from .contracts import RuntimeExpressionSchema
 from .eager_lowering import EAGER_RUNTIME_KIND, EagerExecutionTables
-from .eager_tables import EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY
+from .eager_tables import EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY
 from .validation import ValidationPointRecord, validation_point_map
 
 if TYPE_CHECKING:
@@ -59,6 +59,9 @@ _MODEL_PARAMETERS_PATH = "model/parameters.json"
 _EVALUATOR_SET_PATH = "processes/evaluators.json"
 _EAGER_KERNEL_PACK_PATH = "model/eager-kernel-pack.json"
 _EAGER_KERNEL_PAYLOAD_ROOT = "model/eager-kernels"
+_EAGER_PACK_IDENTITY_EXTENSION = "eager_prepared_pack"
+_EAGER_PACK_IDENTITY_KIND = "pyamplicol-prepared-kernel-pack-identity"
+_EAGER_PACK_IDENTITY_SCHEMA_VERSION = 1
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -170,10 +173,16 @@ def write_schema_v3_artifact(
     producer = _producer_metadata(configuration.effective)
     model = _model_metadata(source, compiled_model)
     dependencies = _dependency_metadata(source)
+    eager_pack_identity = _eager_prepared_pack_identity(
+        existing,
+        compiled_model=compiled_model,
+        processes=processes,
+    )
     _validate_append_compatibility(
         existing,
         producer=producer,
         model=model,
+        eager_pack_identity=eager_pack_identity,
         requested_bytes=requested_bytes,
         effective_bytes=effective_bytes,
         adjustments=adjustments,
@@ -191,9 +200,7 @@ def write_schema_v3_artifact(
         _existing_required_runtime_capabilities(existing)
     )
     for process in processes:
-        required_runtime_capabilities.update(
-            _process_runtime_capabilities(process)
-        )
+        required_runtime_capabilities.update(_process_runtime_capabilities(process))
     canonical_runtime_capabilities = tuple(sorted(required_runtime_capabilities))
     validation_records = tuple(process.validation_point for process in processes)
     validations = validation_point_map(validation_records)
@@ -201,7 +208,11 @@ def write_schema_v3_artifact(
     bundle_points.update(build_api_validation_points(processes))
     api_bundle_path = existing_bundle
     write_mode = cast("ArtifactWriteMode", mode)
-    with ArtifactBuilder(output, mode=write_mode) as builder:
+    with ArtifactBuilder(
+        output,
+        mode=write_mode,
+        expected_artifact_id=(existing.artifact_id if existing is not None else None),
+    ) as builder:
         if existing is None:
             _write_global_payloads(
                 builder,
@@ -248,6 +259,7 @@ def write_schema_v3_artifact(
             timings=timings,
             api_bundle_requested=bundle_requested,
             api_bundle_path=api_bundle_path,
+            eager_pack_identity=eager_pack_identity,
         )
         builder.finalize(
             kind=(
@@ -328,6 +340,8 @@ def _write_global_payloads(
         },
         role="model-parameters",
     )
+
+
 def _write_eager_kernel_pack(
     builder: ArtifactBuilder,
     compiled_model: CompiledModel,
@@ -346,7 +360,10 @@ def _write_eager_kernel_pack(
     if {kernel.kernel_id for kernel in selected} != set(kernel_ids):
         missing = sorted(set(kernel_ids) - {kernel.kernel_id for kernel in selected})
         raise ValueError(f"prepared model omits referenced eager kernels {missing}")
+    builder.discard_payloads(_EAGER_KERNEL_PACK_PATH)
+    builder.discard_payloads(_EAGER_KERNEL_PAYLOAD_ROOT, recursive=True)
     pack_payload = bundle.kernel_pack.to_dict()
+    pack_payload["eager_kernel_abi"] = EAGER_KERNEL_ABI
     pack_payload["kernels"] = [kernel.to_dict() for kernel in selected]
     pack_payload["resolver_manifest"] = _filtered_eager_resolver_manifest(
         bundle.kernel_pack.resolver_manifest,
@@ -413,6 +430,44 @@ def _eager_kernel_ids(
         if parameter_kernel_id is not None:
             kernel_ids.add(int(parameter_kernel_id))
     return frozenset(kernel_ids)
+
+
+def _eager_prepared_pack_identity(
+    existing: ArtifactManifest | None,
+    *,
+    compiled_model: CompiledModel,
+    processes: Sequence[ProcessArtifact],
+) -> dict[str, object] | None:
+    existing_uses_eager = existing is not None and (
+        EAGER_RUNTIME_CAPABILITY in _required_runtime_capabilities(existing.runtime)
+        or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    )
+    incoming_uses_eager = any(
+        isinstance(process, EagerProcessArtifact) for process in processes
+    )
+    if not existing_uses_eager and not incoming_uses_eager:
+        return None
+    bundle = compiled_model.prepared_bundle
+    if bundle is None:
+        raise ValueError("eager artifact writing requires a prepared model bundle")
+    canonical_manifest = json.dumps(
+        _deep_plain(bundle.manifest),
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    digest = hashlib.sha256(
+        b"pyamplicol-prepared-kernel-pack-identity-v1\x00" + canonical_manifest
+    ).hexdigest()
+    return {
+        "kind": _EAGER_PACK_IDENTITY_KIND,
+        "schema_version": _EAGER_PACK_IDENTITY_SCHEMA_VERSION,
+        "eager_kernel_abi": EAGER_KERNEL_ABI,
+        "identity_sha256": digest,
+        "backend": bundle.kernel_pack.backend,
+        "kernel_count": len(bundle.kernel_pack.kernels),
+    }
 
 
 def _filtered_eager_resolver_manifest(
@@ -634,9 +689,7 @@ def _execution_plan(schema: Mapping[str, object]) -> dict[str, object]:
                 normalization.get("global_coupling_factor", 1.0)
             ),
             "average_factor": float(normalization.get("average_factor", 1.0)),
-            "identical_factor": float(
-                normalization.get("identical_factor", 1.0)
-            ),
+            "identical_factor": float(normalization.get("identical_factor", 1.0)),
             "qcd_coupling_power": int(normalization.get("qcd_coupling_power", 0)),
             "electroweak_coupling_power": int(
                 normalization.get("electroweak_coupling_power", 0)
@@ -1350,6 +1403,7 @@ def _validate_append_compatibility(
     *,
     producer: Mapping[str, object],
     model: Mapping[str, object],
+    eager_pack_identity: Mapping[str, object] | None,
     requested_bytes: bytes,
     effective_bytes: bytes,
     adjustments: Sequence[Mapping[str, str]],
@@ -1357,6 +1411,23 @@ def _validate_append_compatibility(
 ) -> None:
     if existing is None:
         return
+    existing_uses_eager = EAGER_RUNTIME_CAPABILITY in _required_runtime_capabilities(
+        existing.runtime
+    ) or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    existing_identity = existing.extensions.get(_EAGER_PACK_IDENTITY_EXTENSION)
+    if existing_uses_eager or existing_identity is not None:
+        if not isinstance(existing_identity, Mapping):
+            raise ValueError(
+                "append eager artifact has no canonical prepared-pack identity; "
+                "replace the artifact"
+            )
+        if eager_pack_identity is None or _plain_mapping(
+            existing_identity
+        ) != _plain_mapping(eager_pack_identity):
+            raise ValueError(
+                "append prepared kernel pack identity differs from the existing "
+                "artifact; replace the artifact"
+            )
     if _plain_mapping(existing.model) != dict(model):
         raise ValueError("append model provenance differs from the existing artifact")
     if _plain_mapping(existing.producer).get("target") != producer.get("target"):
@@ -1466,6 +1537,7 @@ def _extensions(
     timings: Mapping[str, float],
     api_bundle_requested: bool,
     api_bundle_path: str | None,
+    eager_pack_identity: Mapping[str, object] | None,
 ) -> dict[str, object]:
     result = {} if existing is None else _plain_mapping(existing.extensions)
     previous = result.get("generation")
@@ -1500,6 +1572,8 @@ def _extensions(
         }
     )
     result["generation"] = generation
+    if eager_pack_identity is not None:
+        result[_EAGER_PACK_IDENTITY_EXTENSION] = _plain_mapping(eager_pack_identity)
     return result
 
 
