@@ -52,6 +52,7 @@ pub struct EagerDirectClosureSpec {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EagerReductionGroup {
+    pub coherent_group_id: u32,
     pub amplitude_indices: Vec<u32>,
 }
 
@@ -80,10 +81,28 @@ pub struct EagerStagePayload<'a> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct EagerSelectorStagePayload<'a> {
+    pub stage_index: u32,
+    pub invocation_domains: &'a [u8],
+    pub attachment_domains: &'a [u8],
+    pub unpropagated_finalization_domains: &'a [u8],
+    pub propagated_finalization_domains: &'a [u8],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EagerSelectorPayloads<'a> {
+    pub domains: &'a [u8],
+    pub domain_group_ids: &'a [u8],
+    pub stages: &'a [EagerSelectorStagePayload<'a>],
+    pub closure_domains: &'a [u8],
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct EagerPlanPayloads<'a> {
     pub couplings: &'a [u8],
     pub stages: &'a [EagerStagePayload<'a>],
     pub closures: &'a [u8],
+    pub selector_domains: Option<EagerSelectorPayloads<'a>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

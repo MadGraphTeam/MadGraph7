@@ -5,8 +5,9 @@ use rusticol_core::{
     EagerExecutionPlan, EagerExecutionRuntime, EagerFinalizationRow, EagerInvocationRow,
     EagerKernelBackend, EagerKernelCall, EagerKernelInput, EagerKernelRole, EagerKernelSpec,
     EagerPlanDefinition, EagerPlanDimensions, EagerPlanPayloads, EagerReductionEntry,
-    EagerReductionGroup, EagerRuntimeOptions, EagerStagePayload, MISSING_U32, RusticolError,
-    RusticolErrorKind, RusticolResult,
+    EagerReductionGroup, EagerRuntimeOptions, EagerSelectorDomainIdRow, EagerSelectorDomainRow,
+    EagerSelectorGroupRow, EagerSelectorPayloads, EagerSelectorStagePayload, EagerStagePayload,
+    MISSING_U32, RusticolError, RusticolErrorKind, RusticolResult,
 };
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -179,9 +180,11 @@ fn definition() -> EagerPlanDefinition {
         }],
         reduction_groups: vec![
             EagerReductionGroup {
+                coherent_group_id: 10,
                 amplitude_indices: vec![0],
             },
             EagerReductionGroup {
+                coherent_group_id: 20,
                 amplitude_indices: vec![1],
             },
         ],
@@ -311,6 +314,7 @@ fn build_plan_with(
             couplings: &coupling_bytes,
             stages: &[stage],
             closures: &closure_bytes,
+            selector_domains: None,
         },
     )
 }
@@ -322,6 +326,113 @@ fn build_runtime(options: EagerRuntimeOptions) -> EagerExecutionRuntime {
         &attachment_rows(),
         &finalization_rows(),
         &closure_rows(),
+    )
+    .unwrap();
+    EagerExecutionRuntime::new(plan, options).unwrap()
+}
+
+fn selector_domain_id_bytes(values: &[u32]) -> Vec<u8> {
+    EagerSelectorDomainIdRow::encode_table(
+        &values
+            .iter()
+            .map(|domain_id| EagerSelectorDomainIdRow {
+                domain_id: *domain_id,
+            })
+            .collect::<Vec<_>>(),
+    )
+    .unwrap()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_selector_plan_with(
+    finalizations: &[EagerFinalizationRow],
+    domain_rows: &[EagerSelectorDomainRow],
+    group_rows: &[EagerSelectorGroupRow],
+    invocation_domain_ids: &[u32],
+    attachment_domain_ids: &[u32],
+    unpropagated_domain_ids: &[u32],
+    propagated_domain_ids: &[u32],
+    closure_domain_ids: &[u32],
+) -> RusticolResult<EagerExecutionPlan> {
+    let coupling_bytes = EagerCouplingRow::encode_table(&[EagerCouplingRow {
+        real_parameter_id: 0,
+        imag_parameter_id: MISSING_U32,
+        constant_real: 99.0,
+        constant_imag: 0.5,
+    }])?;
+    let invocation_bytes = EagerInvocationRow::encode_table(&invocation_rows())?;
+    let attachment_bytes = EagerAttachmentRow::encode_table(&attachment_rows())?;
+    let finalization_bytes = EagerFinalizationRow::encode_table(finalizations)?;
+    let closure_bytes = EagerClosureRow::encode_table(&closure_rows())?;
+    let stage = EagerStagePayload {
+        stage_index: 1,
+        invocations: &invocation_bytes,
+        attachments: &attachment_bytes,
+        finalizations: &finalization_bytes,
+    };
+    let domains = EagerSelectorDomainRow::encode_table(domain_rows)?;
+    let groups = EagerSelectorGroupRow::encode_table(group_rows)?;
+    let invocation_domains = selector_domain_id_bytes(invocation_domain_ids);
+    let attachment_domains = selector_domain_id_bytes(attachment_domain_ids);
+    let unpropagated_domains = selector_domain_id_bytes(unpropagated_domain_ids);
+    let propagated_domains = selector_domain_id_bytes(propagated_domain_ids);
+    let closure_domains = selector_domain_id_bytes(closure_domain_ids);
+    let selector_stage = EagerSelectorStagePayload {
+        stage_index: 1,
+        invocation_domains: &invocation_domains,
+        attachment_domains: &attachment_domains,
+        unpropagated_finalization_domains: &unpropagated_domains,
+        propagated_finalization_domains: &propagated_domains,
+    };
+    let selector = EagerSelectorPayloads {
+        domains: &domains,
+        domain_group_ids: &groups,
+        stages: &[selector_stage],
+        closure_domains: &closure_domains,
+    };
+    EagerExecutionPlan::from_payloads(
+        definition(),
+        EagerPlanPayloads {
+            couplings: &coupling_bytes,
+            stages: &[stage],
+            closures: &closure_bytes,
+            selector_domains: Some(selector),
+        },
+    )
+}
+
+fn build_selector_runtime(options: EagerRuntimeOptions) -> EagerExecutionRuntime {
+    let domains = [
+        EagerSelectorDomainRow {
+            member_start: 0,
+            member_count: 0,
+        },
+        EagerSelectorDomainRow {
+            member_start: 0,
+            member_count: 1,
+        },
+        EagerSelectorDomainRow {
+            member_start: 1,
+            member_count: 1,
+        },
+    ];
+    let groups = [
+        EagerSelectorGroupRow {
+            coherent_group_id: 10,
+        },
+        EagerSelectorGroupRow {
+            coherent_group_id: 20,
+        },
+    ];
+    let plan = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[1, 2],
+        &[1, 2],
+        &[0, 2],
+        &[1, 0],
+        &[1, 2],
     )
     .unwrap();
     EagerExecutionRuntime::new(plan, options).unwrap()
@@ -396,6 +507,7 @@ fn reduces_coherent_amplitudes_through_compact_groups() {
     let point_count = 3;
     let mut definition = definition();
     definition.reduction_groups = vec![EagerReductionGroup {
+        coherent_group_id: 10,
         amplitude_indices: vec![0, 1],
     }];
     definition.reduction_entries = vec![EagerReductionEntry {
@@ -506,6 +618,327 @@ fn warmed_evaluation_performs_no_allocations() {
     });
     result.unwrap();
     assert_eq!(allocation_count, 0);
+}
+
+#[test]
+fn selector_domains_skip_unrelated_kernels_and_structural_zeros() {
+    let point_count = 5;
+    let mut runtime = build_selector_runtime(EagerRuntimeOptions {
+        point_tile_size: 2,
+        workspace_bytes: 4096,
+    });
+    assert_eq!(runtime.selector_group_ids(), Some(vec![10, 20]));
+    let (values, momenta) = inputs(point_count);
+    let parameters = [c64(2.0)];
+    let mut amplitudes = vec![c64(99.0); 2 * point_count];
+
+    let mut first_backend = MockBackend::default();
+    runtime
+        .evaluate_selected_amplitudes_into(
+            &mut first_backend,
+            &[10],
+            point_count,
+            &values,
+            &momenta,
+            &parameters,
+            &mut amplitudes,
+        )
+        .unwrap();
+    for point in 0..point_count {
+        let (left, _right, _) = expected(point, &momenta);
+        assert_eq!(amplitudes[point], left);
+        assert_eq!(amplitudes[point_count + point], c64(0.0));
+    }
+    assert_eq!(first_backend.calls, [3, 3, 3]);
+
+    let mut second_backend = MockBackend::default();
+    runtime
+        .evaluate_selected_amplitudes_into(
+            &mut second_backend,
+            &[20],
+            point_count,
+            &values,
+            &momenta,
+            &parameters,
+            &mut amplitudes,
+        )
+        .unwrap();
+    for point in 0..point_count {
+        let (_left, right, _) = expected(point, &momenta);
+        assert_eq!(amplitudes[point], c64(0.0));
+        assert_eq!(amplitudes[point_count + point], right);
+    }
+    assert_eq!(second_backend.calls, [3, 0, 0]);
+
+    let mut zero_backend = MockBackend::default();
+    runtime
+        .evaluate_selected_amplitudes_into(
+            &mut zero_backend,
+            &[],
+            point_count,
+            &values,
+            &momenta,
+            &parameters,
+            &mut amplitudes,
+        )
+        .unwrap();
+    assert!(amplitudes.iter().all(|value| *value == c64(0.0)));
+    assert_eq!(zero_backend.calls, [0, 0, 0]);
+}
+
+#[test]
+fn unknown_selected_coherent_groups_are_invalid_arguments() {
+    let mut runtime = build_selector_runtime(EagerRuntimeOptions {
+        point_tile_size: 2,
+        workspace_bytes: 4096,
+    });
+    let (values, momenta) = inputs(1);
+    let mut amplitudes = vec![c64(0.0); 2];
+    let error = runtime
+        .evaluate_selected_amplitudes_into(
+            &mut MockBackend::default(),
+            &[99],
+            1,
+            &values,
+            &momenta,
+            &[c64(2.0)],
+            &mut amplitudes,
+        )
+        .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+    assert!(error.to_string().contains("unknown coherent group 99"));
+}
+
+#[test]
+fn warmed_selected_evaluation_performs_no_allocations() {
+    let point_count = 4;
+    let mut runtime = build_selector_runtime(EagerRuntimeOptions {
+        point_tile_size: point_count,
+        workspace_bytes: 4096,
+    });
+    let (values, momenta) = inputs(point_count);
+    let parameters = [c64(2.0)];
+    let mut amplitudes = vec![c64(0.0); 2 * point_count];
+    let mut backend = MockBackend::default();
+    runtime
+        .evaluate_selected_amplitudes_into(
+            &mut backend,
+            &[10],
+            point_count,
+            &values,
+            &momenta,
+            &parameters,
+            &mut amplitudes,
+        )
+        .unwrap();
+
+    let (result, allocation_count) = count_allocations(|| {
+        runtime.evaluate_selected_amplitudes_into(
+            &mut backend,
+            &[10],
+            point_count,
+            &values,
+            &momenta,
+            &parameters,
+            &mut amplitudes,
+        )
+    });
+    result.unwrap();
+    assert_eq!(allocation_count, 0);
+}
+
+fn selector_domain_fixture() -> ([EagerSelectorDomainRow; 3], [EagerSelectorGroupRow; 2]) {
+    (
+        [
+            EagerSelectorDomainRow {
+                member_start: 0,
+                member_count: 0,
+            },
+            EagerSelectorDomainRow {
+                member_start: 0,
+                member_count: 1,
+            },
+            EagerSelectorDomainRow {
+                member_start: 1,
+                member_count: 1,
+            },
+        ],
+        [
+            EagerSelectorGroupRow {
+                coherent_group_id: 10,
+            },
+            EagerSelectorGroupRow {
+                coherent_group_id: 20,
+            },
+        ],
+    )
+}
+
+#[test]
+fn unknown_selector_domain_ids_are_artifact_errors() {
+    let (domains, groups) = selector_domain_fixture();
+    let error = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[3, 2],
+        &[1, 2],
+        &[0, 2],
+        &[1, 0],
+        &[1, 2],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("unknown domain 3"));
+}
+
+#[test]
+fn invocation_selector_domains_must_equal_attachment_unions() {
+    let (domains, groups) = selector_domain_fixture();
+    let error = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[2, 2],
+        &[1, 2],
+        &[0, 2],
+        &[1, 0],
+        &[1, 2],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("attachment union"));
+}
+
+#[test]
+fn selector_domain_members_must_be_sorted_and_unique() {
+    let domains = [
+        EagerSelectorDomainRow {
+            member_start: 0,
+            member_count: 0,
+        },
+        EagerSelectorDomainRow {
+            member_start: 0,
+            member_count: 2,
+        },
+    ];
+    let groups = [
+        EagerSelectorGroupRow {
+            coherent_group_id: 20,
+        },
+        EagerSelectorGroupRow {
+            coherent_group_id: 10,
+        },
+    ];
+    let error = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[1, 1],
+        &[1, 1],
+        &[0, 1],
+        &[1, 0],
+        &[1, 1],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("sorted and unique"));
+}
+
+#[test]
+fn absent_finalization_outputs_require_empty_selector_domains() {
+    let (domains, groups) = selector_domain_fixture();
+    let mut finalizations = finalization_rows();
+    finalizations[0].unpropagated_value_slot_id = MISSING_U32;
+    let error = build_selector_plan_with(
+        &finalizations,
+        &domains,
+        &groups,
+        &[1, 2],
+        &[1, 2],
+        &[1, 2],
+        &[1, 0],
+        &[1, 2],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("nonempty selector domain"));
+}
+
+#[test]
+fn closure_selector_domains_must_match_amplitude_owners() {
+    let (domains, groups) = selector_domain_fixture();
+    let error = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[1, 2],
+        &[1, 2],
+        &[0, 2],
+        &[1, 0],
+        &[2, 1],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("eager closure 0"));
+    assert!(error.to_string().contains("proven dependency closure"));
+}
+
+#[test]
+fn attachment_domains_must_match_downstream_finalization_dependencies() {
+    let (domains, groups) = selector_domain_fixture();
+    let error = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[2, 2],
+        &[2, 2],
+        &[0, 2],
+        &[1, 0],
+        &[1, 2],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("attachment 0"));
+    assert!(error.to_string().contains("proven dependency closure"));
+}
+
+#[test]
+fn finalization_domains_must_follow_downstream_value_consumers() {
+    let (domains, groups) = selector_domain_fixture();
+    let error = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[1, 2],
+        &[1, 2],
+        &[0, 2],
+        &[0, 0],
+        &[1, 2],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("propagated finalization 0"));
+    assert!(error.to_string().contains("proven dependency closure"));
+}
+
+#[test]
+fn selector_domains_reject_unknown_coherent_groups() {
+    let (domains, mut groups) = selector_domain_fixture();
+    groups[0].coherent_group_id = 99;
+    let error = build_selector_plan_with(
+        &finalization_rows(),
+        &domains,
+        &groups,
+        &[1, 2],
+        &[1, 2],
+        &[0, 2],
+        &[1, 0],
+        &[1, 2],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("unknown coherent group 99"));
 }
 
 #[test]

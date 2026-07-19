@@ -28,6 +28,7 @@ pub(super) struct EagerNativeRuntime {
     amplitudes: Vec<crate::EagerComplex64>,
     color_group_scratch: Vec<crate::EagerComplex64>,
     reduced: Vec<f64>,
+    selected_groups: Vec<u32>,
 }
 
 impl EagerNativeRuntime {
@@ -52,6 +53,7 @@ impl EagerNativeRuntime {
             amplitudes: Vec::new(),
             color_group_scratch: Vec::new(),
             reduced: Vec::new(),
+            selected_groups: Vec::new(),
         }
     }
 
@@ -362,20 +364,46 @@ impl EagerNativeRuntime {
             .resize(amplitude_len, crate::EagerComplex64::new(0.0, 0.0));
         self.reduced.resize(point_count, 0.0);
 
-        let execute_start = Instant::now();
-        self.scheduler.evaluate_into(
-            &mut self.backend,
-            point_count,
-            &self.initial_values,
-            &self.momenta,
-            &self.model_parameters,
-            &mut self.amplitudes,
-            &mut self.reduced,
-        )?;
-        let execute_s = execute_start.elapsed().as_secs_f64();
         let physics = common.physics.as_ref().ok_or_else(|| {
             RusticolError::artifact("resolved eager evaluation requires physics metadata")
         })?;
+        let has_selected_groups = if self.scheduler.plan().has_selector_domains()
+            && (selected_helicity_ids.is_some() || selected_color_ids.is_some())
+        {
+            fill_selected_eager_group_ids(
+                &self.raw_sum_groups,
+                physics,
+                selected_helicity_ids,
+                selected_color_ids,
+                &mut self.selected_groups,
+            )?;
+            true
+        } else {
+            false
+        };
+        let execute_start = Instant::now();
+        if has_selected_groups {
+            self.scheduler.evaluate_selected_amplitudes_into(
+                &mut self.backend,
+                &self.selected_groups,
+                point_count,
+                &self.initial_values,
+                &self.momenta,
+                &self.model_parameters,
+                &mut self.amplitudes,
+            )?;
+        } else {
+            self.scheduler.evaluate_into(
+                &mut self.backend,
+                point_count,
+                &self.initial_values,
+                &self.momenta,
+                &self.model_parameters,
+                &mut self.amplitudes,
+                &mut self.reduced,
+            )?;
+        }
+        let execute_s = execute_start.elapsed().as_secs_f64();
         let reduction_start = Instant::now();
         let resolved = reduce_eager_amplitudes_resolved(
             &self.amplitudes,
@@ -482,18 +510,44 @@ impl EagerNativeRuntime {
             .resize(amplitude_len, crate::EagerComplex64::new(0.0, 0.0));
         self.reduced.resize(point_count, 0.0);
 
-        let eager = self.scheduler.evaluate_profile_into(
-            &mut self.backend,
-            point_count,
-            &self.initial_values,
-            &self.momenta,
-            &self.model_parameters,
-            &mut self.amplitudes,
-            &mut self.reduced,
-        )?;
         let physics = common.physics.as_ref().ok_or_else(|| {
             RusticolError::artifact("resolved eager evaluation requires physics metadata")
         })?;
+        let has_selected_groups = if self.scheduler.plan().has_selector_domains()
+            && (selected_helicity_ids.is_some() || selected_color_ids.is_some())
+        {
+            fill_selected_eager_group_ids(
+                &self.raw_sum_groups,
+                physics,
+                selected_helicity_ids,
+                selected_color_ids,
+                &mut self.selected_groups,
+            )?;
+            true
+        } else {
+            false
+        };
+        let eager = if has_selected_groups {
+            self.scheduler.evaluate_selected_amplitudes_profile_into(
+                &mut self.backend,
+                &self.selected_groups,
+                point_count,
+                &self.initial_values,
+                &self.momenta,
+                &self.model_parameters,
+                &mut self.amplitudes,
+            )?
+        } else {
+            self.scheduler.evaluate_profile_into(
+                &mut self.backend,
+                point_count,
+                &self.initial_values,
+                &self.momenta,
+                &self.model_parameters,
+                &mut self.amplitudes,
+                &mut self.reduced,
+            )?
+        };
         let reduction_start = Instant::now();
         let resolved = reduce_eager_amplitudes_resolved(
             &self.amplitudes,
@@ -528,6 +582,48 @@ impl EagerNativeRuntime {
             },
         ))
     }
+}
+
+fn fill_selected_eager_group_ids(
+    groups: &[RawSumGroup],
+    physics: &PhysicsRuntime,
+    selected_helicity_ids: Option<&BTreeSet<String>>,
+    selected_color_ids: Option<&BTreeSet<String>>,
+    active: &mut Vec<u32>,
+) -> RusticolResult<()> {
+    let intersects = |members: &[String], selected: Option<&BTreeSet<String>>| {
+        selected.is_none_or(|selected| members.iter().any(|id| selected.contains(id)))
+    };
+    active.clear();
+    active.try_reserve_exact(groups.len()).map_err(|error| {
+        RusticolError::invalid_argument(format!(
+            "could not reserve eager active selector groups: {error}"
+        ))
+    })?;
+    for group in groups {
+        let reduction = physics
+            .reduction_by_group_id
+            .get(&group.id)
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "resolved eager metadata is missing coherent group {}",
+                    group.id
+                ))
+            })?;
+        if intersects(&reduction.physical_helicity_ids, selected_helicity_ids)
+            && intersects(&reduction.physical_color_ids, selected_color_ids)
+        {
+            active.push(u32::try_from(group.id).map_err(|_| {
+                RusticolError::integrity(format!(
+                    "eager coherent group {} does not fit the selector-domain ABI",
+                    group.id
+                ))
+            })?);
+        }
+    }
+    active.sort_unstable();
+    active.dedup();
+    Ok(())
 }
 
 fn project_model_parameters(

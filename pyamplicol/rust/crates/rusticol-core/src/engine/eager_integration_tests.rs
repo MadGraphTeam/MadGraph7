@@ -348,6 +348,7 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
         }],
         direct_closures: Vec::new(),
         reduction_groups: vec![EagerReductionGroup {
+            coherent_group_id: 0,
             amplitude_indices: vec![0],
         }],
         reduction_entries: vec![EagerReductionEntry {
@@ -379,6 +380,7 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
             couplings: &coupling_bytes,
             stages: &[],
             closures: &closure_bytes,
+            selector_domains: None,
         },
     )
     .expect("build eager test plan");
@@ -762,6 +764,7 @@ fn generated_filtered_pack_and_binary_plan_execute_when_fixture_is_supplied() {
             couplings: &couplings,
             stages: &stages,
             closures: &closures,
+            selector_domains: None,
         },
     )
     .expect("load generated eager binary plan");

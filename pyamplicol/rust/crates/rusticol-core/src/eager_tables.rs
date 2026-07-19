@@ -5,6 +5,7 @@ use std::mem::size_of;
 
 pub const EAGER_PLAN_ABI: &str = "pyamplicol-eager-plan-v1";
 pub const EAGER_KERNEL_ABI: &str = "pyamplicol-eager-kernel-v1";
+pub const EAGER_SELECTOR_DOMAINS_ABI: &str = "pyamplicol-eager-selector-domains-v1";
 pub const EAGER_RUNTIME_CAPABILITY: &str = "rusticol.eager-dag.complex-f64.v1";
 pub const MISSING_U32: u32 = u32::MAX;
 
@@ -67,6 +68,22 @@ pub struct EagerClosureRow {
     pub coupling_slot_id: u32,
     pub factor_real: f64,
     pub factor_imag: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EagerSelectorDomainRow {
+    pub member_start: u64,
+    pub member_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EagerSelectorGroupRow {
+    pub coherent_group_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EagerSelectorDomainIdRow {
+    pub domain_id: u32,
 }
 
 trait FixedWidthRow: Sized {
@@ -257,11 +274,82 @@ impl FixedWidthRow for EagerClosureRow {
     }
 }
 
+impl FixedWidthRow for EagerSelectorDomainRow {
+    const NAME: &'static str = "selector-domain";
+    const WIDTH: usize = 2 * size_of::<u64>();
+
+    fn validate_for_encoding(&self, _row_index: usize) -> RusticolResult<()> {
+        Ok(())
+    }
+
+    fn encode_into(&self, output: &mut Vec<u8>) {
+        push_u64(output, self.member_start);
+        push_u64(output, self.member_count);
+    }
+
+    fn decode_from(bytes: &[u8], row_index: usize) -> RusticolResult<Self> {
+        let mut reader = RowReader::new(Self::NAME, row_index, bytes);
+        let row = Self {
+            member_start: reader.read_u64()?,
+            member_count: reader.read_u64()?,
+        };
+        reader.finish()?;
+        Ok(row)
+    }
+}
+
+impl FixedWidthRow for EagerSelectorGroupRow {
+    const NAME: &'static str = "selector-domain-group";
+    const WIDTH: usize = size_of::<u32>();
+
+    fn validate_for_encoding(&self, _row_index: usize) -> RusticolResult<()> {
+        Ok(())
+    }
+
+    fn encode_into(&self, output: &mut Vec<u8>) {
+        push_u32(output, self.coherent_group_id);
+    }
+
+    fn decode_from(bytes: &[u8], row_index: usize) -> RusticolResult<Self> {
+        let mut reader = RowReader::new(Self::NAME, row_index, bytes);
+        let row = Self {
+            coherent_group_id: reader.read_u32()?,
+        };
+        reader.finish()?;
+        Ok(row)
+    }
+}
+
+impl FixedWidthRow for EagerSelectorDomainIdRow {
+    const NAME: &'static str = "selector-domain-id";
+    const WIDTH: usize = size_of::<u32>();
+
+    fn validate_for_encoding(&self, _row_index: usize) -> RusticolResult<()> {
+        Ok(())
+    }
+
+    fn encode_into(&self, output: &mut Vec<u8>) {
+        push_u32(output, self.domain_id);
+    }
+
+    fn decode_from(bytes: &[u8], row_index: usize) -> RusticolResult<Self> {
+        let mut reader = RowReader::new(Self::NAME, row_index, bytes);
+        let row = Self {
+            domain_id: reader.read_u32()?,
+        };
+        reader.finish()?;
+        Ok(row)
+    }
+}
+
 impl_table_api!(EagerInvocationRow);
 impl_table_api!(EagerAttachmentRow);
 impl_table_api!(EagerCouplingRow);
 impl_table_api!(EagerFinalizationRow);
 impl_table_api!(EagerClosureRow);
+impl_table_api!(EagerSelectorDomainRow);
+impl_table_api!(EagerSelectorGroupRow);
+impl_table_api!(EagerSelectorDomainIdRow);
 
 fn encode_rows<Row: FixedWidthRow>(rows: &[Row]) -> RusticolResult<Vec<u8>> {
     let byte_count = rows.len().checked_mul(Row::WIDTH).ok_or_else(|| {

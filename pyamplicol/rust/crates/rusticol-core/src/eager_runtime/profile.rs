@@ -8,7 +8,7 @@
 //! users.
 
 use super::plan::{
-    ComponentRange, EagerExecutionPlan, EagerStagePlan, ScheduledAttachment, ScheduledClosure,
+    ClosureExecutionRows, ComponentRange, EagerStagePlan, ScheduledAttachment, ScheduledClosure,
     ScheduledDirectClosure, ScheduledFinalization, ScheduledInvocation,
 };
 use super::runtime::{EagerWorkspace, KernelPacket, PacketRole, StageSchedule};
@@ -196,9 +196,8 @@ pub(super) fn execute_stage_profiled<B: EagerKernelBackend>(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn execute_closures_profiled<B: EagerKernelBackend>(
-    plan: &EagerExecutionPlan,
+    rows: ClosureExecutionRows<'_>,
     packets: &[KernelPacket],
     workspace: &mut EagerWorkspace,
     backend: &mut B,
@@ -208,12 +207,12 @@ pub(super) fn execute_closures_profiled<B: EagerKernelBackend>(
 ) -> RusticolResult<()> {
     for packet in packets {
         debug_assert_eq!(packet.role, PacketRole::Closure);
-        let items = &plan.closures[packet.item_range.clone()];
+        let items = &rows.closures[packet.item_range.clone()];
         let lane_count = items.len() * tile_points;
         let input_len = packet.input_components * lane_count;
         let output_len = packet.output_components * lane_count;
         let (inputs, outputs) = packet_slices(&mut workspace.packet, input_len, output_len)?;
-        let kernel = plan.kernels.get(&packet.kernel_id).ok_or_else(|| {
+        let kernel = rows.kernels.get(&packet.kernel_id).ok_or_else(|| {
             RusticolError::internal(format!(
                 "eager schedule lost closure kernel {}",
                 packet.kernel_id
@@ -259,7 +258,7 @@ pub(super) fn execute_closures_profiled<B: EagerKernelBackend>(
 
     let direct_started = Instant::now();
     execute_direct_closures(
-        &plan.direct_closures,
+        rows.direct_closures,
         &workspace.values,
         workspace.tile_capacity,
         tile_points,

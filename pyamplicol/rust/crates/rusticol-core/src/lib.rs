@@ -27,11 +27,13 @@ pub use eager_runtime::{
     EagerDirectClosureSpec, EagerExecutionPlan, EagerExecutionRuntime, EagerKernelBackend,
     EagerKernelCall, EagerKernelInput, EagerKernelRole, EagerKernelSpec, EagerPlanDefinition,
     EagerPlanDimensions, EagerPlanPayloads, EagerReductionEntry, EagerReductionGroup,
-    EagerRuntimeOptions, EagerStagePayload,
+    EagerRuntimeOptions, EagerSelectorPayloads, EagerSelectorStagePayload, EagerStagePayload,
 };
 pub use eager_tables::{
-    EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY, EagerAttachmentRow,
-    EagerClosureRow, EagerCouplingRow, EagerFinalizationRow, EagerInvocationRow, MISSING_U32,
+    EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY, EAGER_SELECTOR_DOMAINS_ABI,
+    EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerFinalizationRow,
+    EagerInvocationRow, EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow,
+    MISSING_U32,
 };
 pub use engine::{
     NativeColorComponent, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,

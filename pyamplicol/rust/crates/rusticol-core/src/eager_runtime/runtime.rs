@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::execute::{
-    copy_tile_results, execute_closures, execute_stage, initialize_tile, reduce_tile,
+    copy_tile_amplitudes, copy_tile_results, execute_closures, execute_stage, initialize_tile,
+    reduce_tile,
 };
-use super::plan::{EagerExecutionPlan, complex_is_finite};
+use super::plan::{
+    ClosureExecutionRows, EagerExecutionPlan, EagerStagePlan, ScheduledClosure,
+    ScheduledDirectClosure, complex_is_finite,
+};
 use super::profile::{execute_closures_profiled, execute_stage_profiled};
 use super::{
     EagerComplex64, EagerExecutionProfile, EagerKernelBackend, EagerKernelSpec, EagerRuntimeOptions,
@@ -44,6 +48,15 @@ pub(super) struct ExecutionSchedule {
     packet_buffer_len: usize,
 }
 
+#[derive(Clone, Debug)]
+struct SelectedExecution {
+    active_groups: Vec<u32>,
+    stages: Vec<EagerStagePlan>,
+    closures: Vec<ScheduledClosure>,
+    direct_closures: Vec<ScheduledDirectClosure>,
+    schedule: ExecutionSchedule,
+}
+
 #[derive(Debug)]
 pub(super) struct EagerWorkspace {
     pub(super) tile_capacity: usize,
@@ -62,6 +75,8 @@ pub struct EagerExecutionRuntime {
     schedule: ExecutionSchedule,
     workspace: EagerWorkspace,
     workspace_bytes: usize,
+    packet_budget: usize,
+    selected: Option<SelectedExecution>,
 }
 
 impl EagerExecutionRuntime {
@@ -140,6 +155,8 @@ impl EagerExecutionRuntime {
             schedule,
             workspace,
             workspace_bytes,
+            packet_budget,
+            selected: None,
         })
     }
 
@@ -162,6 +179,225 @@ impl EagerExecutionRuntime {
             .map(|stage| stage.invocation_packets.len() + stage.finalization_packets.len())
             .sum::<usize>()
             + self.schedule.closure_packets.len()
+    }
+
+    pub fn selector_group_ids(&self) -> Option<Vec<u32>> {
+        let domains = self.plan.selector_domains.as_ref()?;
+        Some(domains.group_ids.clone())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_selected_amplitudes_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        active_groups: &[u32],
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        amplitudes: &mut [EagerComplex64],
+    ) -> RusticolResult<()> {
+        validate_selected_execution_buffers(
+            &self.plan,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            amplitudes,
+        )?;
+        validate_model_parameters(model_parameters)?;
+        self.prepare_selected_execution(active_groups)?;
+        let (plan, full_schedule, selected, workspace) = (
+            &self.plan,
+            &self.schedule,
+            &self.selected,
+            &mut self.workspace,
+        );
+        resolve_couplings(&plan.couplings, model_parameters, &mut workspace.couplings);
+        let (stages, closures, direct_closures, schedule) =
+            selected_execution_rows(plan, full_schedule, selected.as_ref());
+        let tile_capacity = workspace.tile_capacity;
+        let mut tile_start = 0usize;
+        while tile_start < point_count {
+            let tile_points = min(tile_capacity, point_count - tile_start);
+            initialize_tile(
+                plan,
+                workspace,
+                point_count,
+                tile_start,
+                tile_points,
+                initial_values,
+            );
+            for (stage, stage_schedule) in stages.iter().zip(&schedule.stages) {
+                execute_stage(
+                    stage,
+                    stage_schedule,
+                    &plan.kernels,
+                    workspace,
+                    backend,
+                    point_count,
+                    tile_start,
+                    tile_points,
+                    momenta,
+                    model_parameters,
+                )?;
+            }
+            execute_closures(
+                ClosureExecutionRows {
+                    closures,
+                    direct_closures,
+                    kernels: &plan.kernels,
+                },
+                &schedule.closure_packets,
+                workspace,
+                backend,
+                tile_points,
+                model_parameters,
+            )?;
+            copy_tile_amplitudes(
+                plan,
+                workspace,
+                point_count,
+                tile_start,
+                tile_points,
+                amplitudes,
+            );
+            tile_start += tile_points;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_selected_amplitudes_profile_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        active_groups: &[u32],
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        amplitudes: &mut [EagerComplex64],
+    ) -> RusticolResult<EagerExecutionProfile> {
+        validate_selected_execution_buffers(
+            &self.plan,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            amplitudes,
+        )?;
+        validate_model_parameters(model_parameters)?;
+        let total_started = Instant::now();
+        self.prepare_selected_execution(active_groups)?;
+        let (plan, full_schedule, selected, workspace) = (
+            &self.plan,
+            &self.schedule,
+            &self.selected,
+            &mut self.workspace,
+        );
+        let initialize_started = Instant::now();
+        resolve_couplings(&plan.couplings, model_parameters, &mut workspace.couplings);
+        let mut profile = EagerExecutionProfile {
+            initialize_s: initialize_started.elapsed().as_secs_f64(),
+            ..EagerExecutionProfile::default()
+        };
+        let (stages, closures, direct_closures, schedule) =
+            selected_execution_rows(plan, full_schedule, selected.as_ref());
+        let tile_capacity = workspace.tile_capacity;
+        let mut tile_start = 0usize;
+        while tile_start < point_count {
+            let tile_points = min(tile_capacity, point_count - tile_start);
+            let initialize_started = Instant::now();
+            initialize_tile(
+                plan,
+                workspace,
+                point_count,
+                tile_start,
+                tile_points,
+                initial_values,
+            );
+            profile.initialize_s += initialize_started.elapsed().as_secs_f64();
+            for (stage, stage_schedule) in stages.iter().zip(&schedule.stages) {
+                execute_stage_profiled(
+                    stage,
+                    stage_schedule,
+                    &plan.kernels,
+                    workspace,
+                    backend,
+                    point_count,
+                    tile_start,
+                    tile_points,
+                    momenta,
+                    model_parameters,
+                    &mut profile,
+                )?;
+            }
+            execute_closures_profiled(
+                ClosureExecutionRows {
+                    closures,
+                    direct_closures,
+                    kernels: &plan.kernels,
+                },
+                &schedule.closure_packets,
+                workspace,
+                backend,
+                tile_points,
+                model_parameters,
+                &mut profile,
+            )?;
+            let copy_started = Instant::now();
+            copy_tile_amplitudes(
+                plan,
+                workspace,
+                point_count,
+                tile_start,
+                tile_points,
+                amplitudes,
+            );
+            profile.copy_out_s += copy_started.elapsed().as_secs_f64();
+            tile_start += tile_points;
+        }
+        profile.total_s = total_started.elapsed().as_secs_f64();
+        Ok(profile)
+    }
+
+    fn prepare_selected_execution(&mut self, active_groups: &[u32]) -> RusticolResult<()> {
+        if active_groups.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(RusticolError::invalid_argument(
+                "eager active selector groups must be sorted and unique",
+            ));
+        }
+        if self.plan.selector_domains.is_none() {
+            self.selected = None;
+            return Ok(());
+        }
+        let selector_domains = self
+            .plan
+            .selector_domains
+            .as_ref()
+            .expect("selector domains were checked above");
+        if let Some(unknown) = active_groups
+            .iter()
+            .find(|group| selector_domains.group_ids.binary_search(group).is_err())
+        {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager selector references unknown coherent group {unknown}"
+            )));
+        }
+        if self
+            .selected
+            .as_ref()
+            .is_some_and(|selected| selected.active_groups == active_groups)
+        {
+            return Ok(());
+        }
+        self.selected = Some(build_selected_execution(
+            &self.plan,
+            active_groups,
+            self.workspace.tile_capacity,
+            self.packet_budget,
+        )?);
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -224,7 +460,11 @@ impl EagerExecutionRuntime {
                 )?;
             }
             execute_closures(
-                &self.plan,
+                ClosureExecutionRows {
+                    closures: &self.plan.closures,
+                    direct_closures: &self.plan.direct_closures,
+                    kernels: &self.plan.kernels,
+                },
                 &self.schedule.closure_packets,
                 &mut self.workspace,
                 backend,
@@ -318,7 +558,11 @@ impl EagerExecutionRuntime {
                 )?;
             }
             execute_closures_profiled(
-                &self.plan,
+                ClosureExecutionRows {
+                    closures: &self.plan.closures,
+                    direct_closures: &self.plan.direct_closures,
+                    kernels: &self.plan.kernels,
+                },
                 &self.schedule.closure_packets,
                 &mut self.workspace,
                 backend,
@@ -382,14 +626,30 @@ fn build_schedule(
     tile_capacity: usize,
     packet_budget: usize,
 ) -> RusticolResult<ExecutionSchedule> {
+    build_schedule_for_rows(
+        &plan.kernels,
+        &plan.stages,
+        &plan.closures,
+        tile_capacity,
+        packet_budget,
+    )
+}
+
+fn build_schedule_for_rows(
+    kernels: &BTreeMap<u32, EagerKernelSpec>,
+    stage_rows: &[EagerStagePlan],
+    closure_rows: &[ScheduledClosure],
+    tile_capacity: usize,
+    packet_budget: usize,
+) -> RusticolResult<ExecutionSchedule> {
     let mut stages = Vec::new();
     stages
-        .try_reserve_exact(plan.stages.len())
+        .try_reserve_exact(stage_rows.len())
         .map_err(|error| {
             RusticolError::invalid_argument(format!("could not reserve eager schedule: {error}"))
         })?;
     let mut packet_buffer_len = 0usize;
-    for stage in &plan.stages {
+    for stage in stage_rows {
         let invocation_packets = packetize(
             PacketRole::Invocation,
             &stage
@@ -397,7 +657,7 @@ fn build_schedule(
                 .iter()
                 .map(|item| item.row.kernel_id)
                 .collect::<Vec<_>>(),
-            &plan.kernels,
+            kernels,
             tile_capacity,
             packet_budget,
             &mut packet_buffer_len,
@@ -410,7 +670,7 @@ fn build_schedule(
         let finalization_packets = packetize(
             PacketRole::Finalization,
             &finalization_ids,
-            &plan.kernels,
+            kernels,
             tile_capacity,
             packet_budget,
             &mut packet_buffer_len,
@@ -420,15 +680,14 @@ fn build_schedule(
             finalization_packets,
         });
     }
-    let closure_ids = plan
-        .closures
+    let closure_ids = closure_rows
         .iter()
         .map(|item| item.row.kernel_id)
         .collect::<Vec<_>>();
     let closure_packets = packetize(
         PacketRole::Closure,
         &closure_ids,
-        &plan.kernels,
+        kernels,
         tile_capacity,
         packet_budget,
         &mut packet_buffer_len,
@@ -438,6 +697,132 @@ fn build_schedule(
         closure_packets,
         packet_buffer_len,
     })
+}
+
+fn build_selected_execution(
+    plan: &EagerExecutionPlan,
+    active_groups: &[u32],
+    tile_capacity: usize,
+    packet_budget: usize,
+) -> RusticolResult<SelectedExecution> {
+    let domains = plan.selector_domains.as_ref().ok_or_else(|| {
+        RusticolError::internal("cannot build a selected eager plan without selector domains")
+    })?;
+    let domain_active = domains
+        .memberships
+        .iter()
+        .map(|members| {
+            members
+                .iter()
+                .any(|group| active_groups.binary_search(group).is_ok())
+        })
+        .collect::<Vec<_>>();
+    let active = |domain_id: Option<u32>| -> RusticolResult<bool> {
+        let Some(domain_id) = domain_id else {
+            return Ok(true);
+        };
+        domain_active
+            .get(domain_id as usize)
+            .copied()
+            .ok_or_else(|| RusticolError::internal("eager selector domain id escaped validation"))
+    };
+
+    let mut stages = Vec::with_capacity(plan.stages.len());
+    for stage in &plan.stages {
+        let mut invocations = Vec::new();
+        let mut attachments = Vec::new();
+        for invocation in &stage.invocations {
+            if !active(invocation.selector_domain_id)? {
+                continue;
+            }
+            let attachment_start = attachments.len();
+            for attachment in &stage.attachments[invocation.attachment_range.clone()] {
+                if active(attachment.selector_domain_id)? {
+                    attachments.push(*attachment);
+                }
+            }
+            let attachment_count = attachments.len() - attachment_start;
+            if attachment_count == 0 {
+                return Err(RusticolError::internal(
+                    "active eager invocation has no active attachment",
+                ));
+            }
+            let mut invocation = invocation.clone();
+            invocation.attachment_range = attachment_start..attachment_start + attachment_count;
+            invocations.push(invocation);
+        }
+        let mut finalization_copies = Vec::new();
+        for item in &stage.finalization_copies {
+            if active(item.selector_domain_id)? {
+                finalization_copies.push(*item);
+            }
+        }
+        let mut finalizations = Vec::new();
+        for item in &stage.finalizations {
+            if active(item.selector_domain_id)? {
+                finalizations.push(item.clone());
+            }
+        }
+        stages.push(EagerStagePlan {
+            stage_index: stage.stage_index,
+            invocations,
+            attachments,
+            finalization_copies,
+            finalizations,
+        });
+    }
+    let mut closures = Vec::new();
+    for item in &plan.closures {
+        if active(item.selector_domain_id)? {
+            closures.push(item.clone());
+        }
+    }
+    let mut direct_closures = Vec::new();
+    for item in &plan.direct_closures {
+        if active(item.selector_domain_id)? {
+            direct_closures.push(item.clone());
+        }
+    }
+    let schedule = build_schedule_for_rows(
+        &plan.kernels,
+        &stages,
+        &closures,
+        tile_capacity,
+        packet_budget,
+    )?;
+    Ok(SelectedExecution {
+        active_groups: active_groups.to_vec(),
+        stages,
+        closures,
+        direct_closures,
+        schedule,
+    })
+}
+
+fn selected_execution_rows<'a>(
+    plan: &'a EagerExecutionPlan,
+    full_schedule: &'a ExecutionSchedule,
+    selected: Option<&'a SelectedExecution>,
+) -> (
+    &'a [EagerStagePlan],
+    &'a [ScheduledClosure],
+    &'a [ScheduledDirectClosure],
+    &'a ExecutionSchedule,
+) {
+    if let Some(selected) = selected {
+        return (
+            &selected.stages,
+            &selected.closures,
+            &selected.direct_closures,
+            &selected.schedule,
+        );
+    }
+    (
+        &plan.stages,
+        &plan.closures,
+        &plan.direct_closures,
+        full_schedule,
+    )
 }
 
 fn packetize(
@@ -597,6 +982,50 @@ fn validate_execution_buffers(
     Ok(())
 }
 
+fn validate_selected_execution_buffers(
+    plan: &EagerExecutionPlan,
+    point_count: usize,
+    initial_values: &[EagerComplex64],
+    momenta: &[f64],
+    model_parameters: &[EagerComplex64],
+    amplitudes: &[EagerComplex64],
+) -> RusticolResult<()> {
+    validate_buffer_len(
+        "initial value",
+        initial_values.len(),
+        plan.values.component_count,
+        point_count,
+    )?;
+    validate_buffer_len(
+        "momentum",
+        momenta.len(),
+        plan.momenta.component_count,
+        point_count,
+    )?;
+    if model_parameters.len() != plan.parameter_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "eager model parameter buffer has length {}, expected {}",
+            model_parameters.len(),
+            plan.parameter_count
+        )));
+    }
+    validate_buffer_len(
+        "amplitude output",
+        amplitudes.len(),
+        plan.amplitude_count,
+        point_count,
+    )
+}
+
+fn validate_model_parameters(parameters: &[EagerComplex64]) -> RusticolResult<()> {
+    if parameters.iter().any(|value| !complex_is_finite(*value)) {
+        return Err(RusticolError::invalid_argument(
+            "eager model parameters must be finite",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_buffer_len(
     name: &str,
     actual: usize,
@@ -687,6 +1116,7 @@ mod tests {
                 coefficients: vec![EagerComplex64::new(1.0, 0.0)],
             }],
             reduction_groups: vec![EagerReductionGroup {
+                coherent_group_id: 0,
                 amplitude_indices: vec![0],
             }],
             reduction_entries: vec![EagerReductionEntry {
@@ -749,6 +1179,7 @@ mod tests {
                 couplings: &couplings,
                 stages: &[stage],
                 closures: &closures,
+                selector_domains: None,
             },
         )
         .expect("profile plan");

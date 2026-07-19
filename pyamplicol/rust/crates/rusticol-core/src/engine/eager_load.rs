@@ -3,7 +3,9 @@
 use super::*;
 use crate::{
     EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerExecutionPlan,
-    EagerFinalizationRow, EagerInvocationRow, EagerPlanPayloads, EagerStagePayload,
+    EagerFinalizationRow, EagerInvocationRow, EagerPlanPayloads, EagerSelectorDomainIdRow,
+    EagerSelectorDomainRow, EagerSelectorGroupRow, EagerSelectorPayloads,
+    EagerSelectorStagePayload, EagerStagePayload,
 };
 
 pub(super) fn validate_eager_payload_references(
@@ -93,18 +95,73 @@ pub(super) fn load_eager_native_runtime(
             finalizations: &bytes.2,
         })
         .collect::<Vec<_>>();
+    let selector_bytes = manifest
+        .plan
+        .selector_closures
+        .as_ref()
+        .map(|selector| read_eager_selector_tables(artifact, evaluator_root, selector))
+        .transpose()?;
+    let selector_stage_payloads = selector_bytes
+        .as_ref()
+        .map(|bytes| {
+            manifest
+                .plan
+                .selector_closures
+                .as_ref()
+                .expect("selector manifest accompanies selector bytes")
+                .stages
+                .iter()
+                .zip(&bytes.stages)
+                .map(|(stage, payloads)| EagerSelectorStagePayload {
+                    stage_index: stage.stage_index,
+                    invocation_domains: &payloads.invocation_domains,
+                    attachment_domains: &payloads.attachment_domains,
+                    unpropagated_finalization_domains: &payloads.unpropagated_finalization_domains,
+                    propagated_finalization_domains: &payloads.propagated_finalization_domains,
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let selector_payloads = selector_bytes.as_ref().map(|bytes| EagerSelectorPayloads {
+        domains: &bytes.domains,
+        domain_group_ids: &bytes.domain_group_ids,
+        stages: &selector_stage_payloads,
+        closure_domains: &bytes.closure_domains,
+    });
     let plan = EagerExecutionPlan::from_payloads(
         definition,
         EagerPlanPayloads {
             couplings: &couplings,
             stages: &stages,
             closures: &closures,
+            selector_domains: selector_payloads,
         },
     )?;
     let options = manifest.runtime_options.validate()?;
     let scheduler = crate::EagerExecutionRuntime::new(plan, options)?;
     let backend = PreparedEvaluatorBackend::load(&pack, &payload_root)?;
     let (raw_sum_groups, color_contraction) = manifest.raw_reduction_runtime()?;
+    if let Some(selector_group_ids) = scheduler.selector_group_ids() {
+        let known_group_ids = raw_sum_groups
+            .iter()
+            .map(|group| {
+                u32::try_from(group.id).map_err(|_| {
+                    RusticolError::integrity(format!(
+                        "eager coherent group {} does not fit the selector-domain ABI",
+                        group.id
+                    ))
+                })
+            })
+            .collect::<RusticolResult<BTreeSet<_>>>()?;
+        if let Some(unknown) = selector_group_ids
+            .iter()
+            .find(|group_id| !known_group_ids.contains(group_id))
+        {
+            return Err(RusticolError::integrity(format!(
+                "eager selector domains reference unknown coherent group {unknown}"
+            )));
+        }
+    }
     Ok(EagerNativeRuntime::new(
         scheduler,
         backend,
@@ -422,8 +479,84 @@ fn validate_eager_stage_contract(manifest: &EagerExecutionManifest) -> RusticolR
     Ok(())
 }
 
+struct EagerSelectorTableBytes {
+    domains: Vec<u8>,
+    domain_group_ids: Vec<u8>,
+    stages: Vec<EagerSelectorStageTableBytes>,
+    closure_domains: Vec<u8>,
+}
+
+struct EagerSelectorStageTableBytes {
+    invocation_domains: Vec<u8>,
+    attachment_domains: Vec<u8>,
+    unpropagated_finalization_domains: Vec<u8>,
+    propagated_finalization_domains: Vec<u8>,
+}
+
+fn read_eager_selector_tables(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    selector: &EagerSelectorDomainsManifest,
+) -> RusticolResult<EagerSelectorTableBytes> {
+    let mut stages = Vec::with_capacity(selector.stages.len());
+    for stage in &selector.stages {
+        stages.push(EagerSelectorStageTableBytes {
+            invocation_domains: read_eager_table(
+                artifact,
+                evaluator_root,
+                &stage.invocation_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            )?,
+            attachment_domains: read_eager_table(
+                artifact,
+                evaluator_root,
+                &stage.attachment_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            )?,
+            unpropagated_finalization_domains: read_eager_table(
+                artifact,
+                evaluator_root,
+                &stage.unpropagated_finalization_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            )?,
+            propagated_finalization_domains: read_eager_table(
+                artifact,
+                evaluator_root,
+                &stage.propagated_finalization_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            )?,
+        });
+    }
+    Ok(EagerSelectorTableBytes {
+        domains: read_eager_table(
+            artifact,
+            evaluator_root,
+            &selector.domains,
+            EagerSelectorDomainRow::ENCODED_LEN,
+        )?,
+        domain_group_ids: read_eager_table(
+            artifact,
+            evaluator_root,
+            &selector.domain_group_ids,
+            EagerSelectorGroupRow::ENCODED_LEN,
+        )?,
+        stages,
+        closure_domains: read_eager_table(
+            artifact,
+            evaluator_root,
+            &selector.closure_domains,
+            EagerSelectorDomainIdRow::ENCODED_LEN,
+        )?,
+    })
+}
+
 fn eager_table_contracts(manifest: &EagerExecutionManifest) -> Vec<(&EagerTableManifest, usize)> {
-    let mut result = Vec::with_capacity(2 + manifest.plan.stages.len() * 3);
+    let selector_table_count = manifest
+        .plan
+        .selector_closures
+        .as_ref()
+        .map_or(0, |selector| 3 + selector.stages.len() * 4);
+    let mut result = Vec::with_capacity(2 + manifest.plan.stages.len() * 3 + selector_table_count);
     result.push((&manifest.plan.couplings, EagerCouplingRow::ENCODED_LEN));
     for stage in &manifest.plan.stages {
         result.push((&stage.invocations, EagerInvocationRow::ENCODED_LEN));
@@ -431,6 +564,35 @@ fn eager_table_contracts(manifest: &EagerExecutionManifest) -> Vec<(&EagerTableM
         result.push((&stage.finalizations, EagerFinalizationRow::ENCODED_LEN));
     }
     result.push((&manifest.plan.closures, EagerClosureRow::ENCODED_LEN));
+    if let Some(selector) = &manifest.plan.selector_closures {
+        result.push((&selector.domains, EagerSelectorDomainRow::ENCODED_LEN));
+        result.push((
+            &selector.domain_group_ids,
+            EagerSelectorGroupRow::ENCODED_LEN,
+        ));
+        for stage in &selector.stages {
+            result.push((
+                &stage.invocation_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            ));
+            result.push((
+                &stage.attachment_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            ));
+            result.push((
+                &stage.unpropagated_finalization_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            ));
+            result.push((
+                &stage.propagated_finalization_domains,
+                EagerSelectorDomainIdRow::ENCODED_LEN,
+            ));
+        }
+        result.push((
+            &selector.closure_domains,
+            EagerSelectorDomainIdRow::ENCODED_LEN,
+        ));
+    }
     result
 }
 

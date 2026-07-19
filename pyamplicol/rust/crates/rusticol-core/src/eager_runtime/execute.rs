@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::plan::{
-    ComponentRange, EagerExecutionPlan, EagerStagePlan, ScheduledAttachment, ScheduledClosure,
-    ScheduledDirectClosure, ScheduledFinalization, ScheduledInvocation,
+    ClosureExecutionRows, ComponentRange, EagerExecutionPlan, EagerStagePlan, ScheduledAttachment,
+    ScheduledClosure, ScheduledDirectClosure, ScheduledFinalization, ScheduledInvocation,
 };
 use super::runtime::{EagerWorkspace, KernelPacket, PacketRole, StageSchedule};
 use super::{
@@ -399,7 +399,7 @@ fn scatter_finalizations(
 }
 
 pub(super) fn execute_closures<B: EagerKernelBackend>(
-    plan: &EagerExecutionPlan,
+    rows: ClosureExecutionRows<'_>,
     packets: &[KernelPacket],
     workspace: &mut EagerWorkspace,
     backend: &mut B,
@@ -408,12 +408,12 @@ pub(super) fn execute_closures<B: EagerKernelBackend>(
 ) -> RusticolResult<()> {
     for packet in packets {
         debug_assert_eq!(packet.role, PacketRole::Closure);
-        let items = &plan.closures[packet.item_range.clone()];
+        let items = &rows.closures[packet.item_range.clone()];
         let lane_count = items.len() * tile_points;
         let input_len = packet.input_components * lane_count;
         let output_len = packet.output_components * lane_count;
         let (inputs, outputs) = packet_slices(&mut workspace.packet, input_len, output_len)?;
-        let kernel = plan.kernels.get(&packet.kernel_id).ok_or_else(|| {
+        let kernel = rows.kernels.get(&packet.kernel_id).ok_or_else(|| {
             RusticolError::internal(format!(
                 "eager schedule lost closure kernel {}",
                 packet.kernel_id
@@ -448,13 +448,29 @@ pub(super) fn execute_closures<B: EagerKernelBackend>(
         );
     }
     execute_direct_closures(
-        &plan.direct_closures,
+        rows.direct_closures,
         &workspace.values,
         workspace.tile_capacity,
         tile_points,
         &mut workspace.amplitudes,
     );
     Ok(())
+}
+
+pub(super) fn copy_tile_amplitudes(
+    plan: &EagerExecutionPlan,
+    workspace: &EagerWorkspace,
+    point_count: usize,
+    tile_start: usize,
+    tile_points: usize,
+    amplitudes: &mut [EagerComplex64],
+) {
+    for amplitude in 0..plan.amplitude_count {
+        let source = amplitude * workspace.tile_capacity;
+        let target = amplitude * point_count + tile_start;
+        amplitudes[target..target + tile_points]
+            .copy_from_slice(&workspace.amplitudes[source..source + tile_points]);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -607,12 +623,14 @@ pub(super) fn copy_tile_results(
     amplitudes: &mut [EagerComplex64],
     reduced: &mut [f64],
 ) {
-    for amplitude in 0..plan.amplitude_count {
-        let source = amplitude * workspace.tile_capacity;
-        let target = amplitude * point_count + tile_start;
-        amplitudes[target..target + tile_points]
-            .copy_from_slice(&workspace.amplitudes[source..source + tile_points]);
-    }
+    copy_tile_amplitudes(
+        plan,
+        workspace,
+        point_count,
+        tile_start,
+        tile_points,
+        amplitudes,
+    );
     reduced[tile_start..tile_start + tile_points]
         .copy_from_slice(&workspace.reduced[..tile_points]);
 }
@@ -795,6 +813,7 @@ mod tests {
             left_momenta: ComponentRange { start: 0, len: 1 },
             right_momenta: ComponentRange { start: 0, len: 1 },
             attachment_range: 0..4,
+            selector_domain_id: None,
         };
         let factors = [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)];
         let attachments = factors
@@ -810,6 +829,7 @@ mod tests {
                     start: index * 2,
                     len: 2,
                 },
+                selector_domain_id: None,
             })
             .collect::<Vec<_>>();
         let outputs = [c64(1.0, 2.0), c64(3.0, 4.0), c64(5.0, 6.0), c64(7.0, 8.0)];

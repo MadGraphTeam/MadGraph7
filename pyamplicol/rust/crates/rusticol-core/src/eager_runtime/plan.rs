@@ -3,11 +3,12 @@
 use super::{
     EagerComplex64, EagerDirectClosureSpec, EagerKernelInput, EagerKernelRole, EagerKernelSpec,
     EagerPlanDefinition, EagerPlanPayloads, EagerReductionEntry, EagerReductionGroup,
-    EagerStagePayload,
+    EagerSelectorPayloads, EagerStagePayload,
 };
 use crate::{
     EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerFinalizationRow,
-    EagerInvocationRow, MISSING_U32, RusticolError, RusticolResult,
+    EagerInvocationRow, EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow,
+    MISSING_U32, RusticolError, RusticolResult,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -75,18 +76,21 @@ pub(super) struct ScheduledInvocation {
     pub(super) left_momenta: ComponentRange,
     pub(super) right_momenta: ComponentRange,
     pub(super) attachment_range: Range<usize>,
+    pub(super) selector_domain_id: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ScheduledAttachment {
     pub(super) row: EagerAttachmentRow,
     pub(super) current: ComponentRange,
+    pub(super) selector_domain_id: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FinalizationCopy {
     pub(super) current: ComponentRange,
     pub(super) unpropagated: ComponentRange,
+    pub(super) selector_domain_id: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -95,6 +99,7 @@ pub(super) struct ScheduledFinalization {
     pub(super) current: ComponentRange,
     pub(super) propagated: Option<ComponentRange>,
     pub(super) momentum: ComponentRange,
+    pub(super) selector_domain_id: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -102,6 +107,7 @@ pub(super) struct ScheduledClosure {
     pub(super) row: EagerClosureRow,
     pub(super) left_values: ComponentRange,
     pub(super) right_values: ComponentRange,
+    pub(super) selector_domain_id: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -110,6 +116,36 @@ pub(super) struct ScheduledDirectClosure {
     pub(super) left_values: ComponentRange,
     pub(super) right_values: ComponentRange,
     pub(super) coefficients: Vec<EagerComplex64>,
+    pub(super) selector_domain_id: Option<u32>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ClosureExecutionRows<'a> {
+    pub(super) closures: &'a [ScheduledClosure],
+    pub(super) direct_closures: &'a [ScheduledDirectClosure],
+    pub(super) kernels: &'a BTreeMap<u32, EagerKernelSpec>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SelectorDomainPlan {
+    pub(super) memberships: Vec<Vec<u32>>,
+    pub(super) group_ids: Vec<u32>,
+}
+
+#[derive(Clone, Debug)]
+struct DecodedSelectorStage {
+    stage_index: u32,
+    invocation_domains: Vec<u32>,
+    attachment_domains: Vec<u32>,
+    unpropagated_finalization_domains: Vec<u32>,
+    propagated_finalization_domains: Vec<u32>,
+}
+
+#[derive(Clone, Debug)]
+struct DecodedSelectorPayload {
+    plan: SelectorDomainPlan,
+    stages: Vec<DecodedSelectorStage>,
+    closure_domains: Vec<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -135,6 +171,7 @@ pub struct EagerExecutionPlan {
     pub(super) direct_closures: Vec<ScheduledDirectClosure>,
     pub(super) reduction_groups: Vec<EagerReductionGroup>,
     pub(super) reduction_entries: Vec<EagerReductionEntry>,
+    pub(super) selector_domains: Option<SelectorDomainPlan>,
 }
 
 impl EagerExecutionPlan {
@@ -163,6 +200,8 @@ impl EagerExecutionPlan {
         let kernels = validate_kernel_specs(&definition.kernels, parameter_count)?;
         let couplings = EagerCouplingRow::decode_table(payloads.couplings)?;
         validate_couplings(&couplings, parameter_count)?;
+        let selector_payload =
+            decode_selector_payloads(payloads.selector_domains, payloads.stages)?;
 
         let mut stages = Vec::new();
         stages
@@ -173,7 +212,7 @@ impl EagerExecutionPlan {
         let mut previous_stage = None;
         let mut finalized_currents = BTreeSet::new();
         let mut stored_value_slots = BTreeSet::new();
-        for payload in payloads.stages {
+        for (stage_position, payload) in payloads.stages.iter().enumerate() {
             if previous_stage.is_some_and(|previous| payload.stage_index <= previous) {
                 return Err(RusticolError::artifact(
                     "eager stage indices must be strictly increasing",
@@ -182,6 +221,10 @@ impl EagerExecutionPlan {
             previous_stage = Some(payload.stage_index);
             stages.push(load_stage(
                 *payload,
+                selector_payload
+                    .as_ref()
+                    .map(|selector| &selector.stages[stage_position]),
+                selector_payload.as_ref().map(|selector| &selector.plan),
                 &values,
                 &momenta,
                 &currents,
@@ -194,8 +237,17 @@ impl EagerExecutionPlan {
         }
 
         let closure_rows = EagerClosureRow::decode_table(payloads.closures)?;
+        let closure_domains = selector_payload
+            .as_ref()
+            .map(|selector| selector.closure_domains.as_slice());
+        if closure_domains.is_some_and(|domains| domains.len() != closure_rows.len()) {
+            return Err(RusticolError::artifact(
+                "eager closure selector-domain count does not match the closure table",
+            ));
+        }
         let (closures, direct_closures) = load_closures(
             &closure_rows,
+            closure_domains,
             &definition.direct_closures,
             &values,
             &kernels,
@@ -208,6 +260,15 @@ impl EagerExecutionPlan {
             &definition.reduction_entries,
             amplitude_count,
         )?;
+        if let Some(selector) = selector_payload.as_ref() {
+            validate_selector_dependency_proof(
+                selector,
+                payloads.stages,
+                &closure_rows,
+                &definition.reduction_groups,
+                amplitude_count,
+            )?;
+        }
 
         Ok(Self {
             values,
@@ -222,6 +283,7 @@ impl EagerExecutionPlan {
             direct_closures,
             reduction_groups: definition.reduction_groups,
             reduction_entries: definition.reduction_entries,
+            selector_domains: selector_payload.map(|selector| selector.plan),
         })
     }
 
@@ -278,6 +340,348 @@ impl EagerExecutionPlan {
     pub fn reduction_entry_count(&self) -> usize {
         self.reduction_entries.len()
     }
+
+    pub fn has_selector_domains(&self) -> bool {
+        self.selector_domains.is_some()
+    }
+}
+
+fn decode_selector_payloads(
+    payloads: Option<EagerSelectorPayloads<'_>>,
+    execution_stages: &[EagerStagePayload<'_>],
+) -> RusticolResult<Option<DecodedSelectorPayload>> {
+    let Some(payloads) = payloads else {
+        return Ok(None);
+    };
+    if payloads.stages.len() != execution_stages.len() {
+        return Err(RusticolError::artifact(format!(
+            "eager selector domains cover {} stages, expected {}",
+            payloads.stages.len(),
+            execution_stages.len()
+        )));
+    }
+
+    let domain_rows = EagerSelectorDomainRow::decode_table(payloads.domains)?;
+    let group_rows = EagerSelectorGroupRow::decode_table(payloads.domain_group_ids)?;
+    if domain_rows.is_empty() {
+        return Err(RusticolError::artifact(
+            "eager selector-domain table is empty",
+        ));
+    }
+    let mut memberships = Vec::new();
+    memberships
+        .try_reserve_exact(domain_rows.len())
+        .map_err(|error| {
+            RusticolError::artifact(format!("could not reserve eager selector domains: {error}"))
+        })?;
+    let mut cursor = 0usize;
+    let mut unique_memberships = BTreeSet::new();
+    for (domain_id, row) in domain_rows.into_iter().enumerate() {
+        let start = usize::try_from(row.member_start).map_err(|_| {
+            RusticolError::artifact(format!(
+                "eager selector domain {domain_id} start does not fit usize"
+            ))
+        })?;
+        let count = usize::try_from(row.member_count).map_err(|_| {
+            RusticolError::artifact(format!(
+                "eager selector domain {domain_id} count does not fit usize"
+            ))
+        })?;
+        if start != cursor {
+            return Err(RusticolError::artifact(format!(
+                "eager selector domain {domain_id} starts at {start}, expected {cursor}"
+            )));
+        }
+        let stop = start.checked_add(count).ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "eager selector domain {domain_id} range overflows usize"
+            ))
+        })?;
+        if stop > group_rows.len() {
+            return Err(RusticolError::artifact(format!(
+                "eager selector domain {domain_id} exceeds its membership table"
+            )));
+        }
+        let members = group_rows[start..stop]
+            .iter()
+            .map(|row| row.coherent_group_id)
+            .collect::<Vec<_>>();
+        if members.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(RusticolError::artifact(format!(
+                "eager selector domain {domain_id} members are not sorted and unique"
+            )));
+        }
+        if !unique_memberships.insert(members.clone()) {
+            return Err(RusticolError::artifact(format!(
+                "eager selector domain {domain_id} duplicates an earlier membership"
+            )));
+        }
+        memberships.push(members);
+        cursor = stop;
+    }
+    if cursor != group_rows.len() {
+        return Err(RusticolError::artifact(
+            "eager selector domains do not cover their membership table",
+        ));
+    }
+    if !memberships.iter().any(Vec::is_empty) {
+        return Err(RusticolError::artifact(
+            "eager selector domains do not define the empty domain",
+        ));
+    }
+    let domain_count = memberships.len();
+    let mut group_ids = memberships
+        .iter()
+        .flat_map(|members| members.iter().copied())
+        .collect::<Vec<_>>();
+    group_ids.sort_unstable();
+    group_ids.dedup();
+
+    let mut stages = Vec::new();
+    stages
+        .try_reserve_exact(payloads.stages.len())
+        .map_err(|error| {
+            RusticolError::artifact(format!("could not reserve eager selector stages: {error}"))
+        })?;
+    for (position, (selector, execution)) in
+        payloads.stages.iter().zip(execution_stages).enumerate()
+    {
+        if selector.stage_index != execution.stage_index {
+            return Err(RusticolError::artifact(format!(
+                "eager selector stage {} at position {position} does not match execution stage {}",
+                selector.stage_index, execution.stage_index
+            )));
+        }
+        stages.push(DecodedSelectorStage {
+            stage_index: selector.stage_index,
+            invocation_domains: decode_domain_ids(
+                selector.invocation_domains,
+                domain_count,
+                "invocation",
+            )?,
+            attachment_domains: decode_domain_ids(
+                selector.attachment_domains,
+                domain_count,
+                "attachment",
+            )?,
+            unpropagated_finalization_domains: decode_domain_ids(
+                selector.unpropagated_finalization_domains,
+                domain_count,
+                "unpropagated finalization",
+            )?,
+            propagated_finalization_domains: decode_domain_ids(
+                selector.propagated_finalization_domains,
+                domain_count,
+                "propagated finalization",
+            )?,
+        });
+    }
+    let closure_domains = decode_domain_ids(payloads.closure_domains, domain_count, "closure")?;
+    Ok(Some(DecodedSelectorPayload {
+        plan: SelectorDomainPlan {
+            memberships,
+            group_ids,
+        },
+        stages,
+        closure_domains,
+    }))
+}
+
+fn decode_domain_ids(
+    payload: &[u8],
+    domain_count: usize,
+    context: &str,
+) -> RusticolResult<Vec<u32>> {
+    let rows = EagerSelectorDomainIdRow::decode_table(payload)?;
+    let mut result = Vec::with_capacity(rows.len());
+    for (index, row) in rows.into_iter().enumerate() {
+        if usize::try_from(row.domain_id)
+            .ok()
+            .is_none_or(|domain_id| domain_id >= domain_count)
+        {
+            return Err(RusticolError::artifact(format!(
+                "eager {context} selector row {index} references unknown domain {}",
+                row.domain_id
+            )));
+        }
+        result.push(row.domain_id);
+    }
+    Ok(result)
+}
+
+fn validate_selector_dependency_proof(
+    selector: &DecodedSelectorPayload,
+    stage_payloads: &[EagerStagePayload<'_>],
+    closures: &[EagerClosureRow],
+    reduction_groups: &[EagerReductionGroup],
+    amplitude_count: usize,
+) -> RusticolResult<()> {
+    let mut group_by_amplitude = vec![None; amplitude_count];
+    let known_groups = reduction_groups
+        .iter()
+        .map(|group| group.coherent_group_id)
+        .collect::<BTreeSet<_>>();
+    for group in reduction_groups {
+        for amplitude_index in &group.amplitude_indices {
+            let index = usize::try_from(*amplitude_index).map_err(|_| {
+                RusticolError::artifact("eager reduction amplitude index does not fit usize")
+            })?;
+            group_by_amplitude[index] = Some(group.coherent_group_id);
+        }
+    }
+    for members in &selector.plan.memberships {
+        if let Some(unknown) = members.iter().find(|group| !known_groups.contains(group)) {
+            return Err(RusticolError::artifact(format!(
+                "eager selector domain references unknown coherent group {unknown}"
+            )));
+        }
+    }
+
+    let mut value_domains = BTreeMap::<u32, BTreeSet<u32>>::new();
+    for (index, closure) in closures.iter().enumerate() {
+        let amplitude_index = required_index(
+            closure.amplitude_index,
+            amplitude_count,
+            "eager closure amplitude",
+        )?;
+        let group_id = group_by_amplitude[amplitude_index].ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "eager closure amplitude {amplitude_index} has no coherent group"
+            ))
+        })?;
+        let expected = BTreeSet::from([group_id]);
+        validate_selector_domain_members(
+            &selector.plan,
+            selector.closure_domains[index],
+            &expected,
+            &format!("eager closure {index}"),
+        )?;
+        value_domains
+            .entry(closure.left_value_slot_id)
+            .or_default()
+            .insert(group_id);
+        value_domains
+            .entry(closure.right_value_slot_id)
+            .or_default()
+            .insert(group_id);
+    }
+
+    for (payload, selector_stage) in stage_payloads.iter().zip(&selector.stages).rev() {
+        let invocations = EagerInvocationRow::decode_table(payload.invocations)?;
+        let attachments = EagerAttachmentRow::decode_table(payload.attachments)?;
+        let finalizations = EagerFinalizationRow::decode_table(payload.finalizations)?;
+        let mut current_domains = BTreeMap::<u32, BTreeSet<u32>>::new();
+
+        for (index, finalization) in finalizations.iter().enumerate() {
+            let unpropagated = if finalization.stores_unpropagated() {
+                value_domains
+                    .get(&finalization.unpropagated_value_slot_id)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                BTreeSet::new()
+            };
+            validate_selector_domain_members(
+                &selector.plan,
+                selector_stage.unpropagated_finalization_domains[index],
+                &unpropagated,
+                &format!(
+                    "eager stage {} unpropagated finalization {index}",
+                    payload.stage_index
+                ),
+            )?;
+            let propagated = if finalization.stores_propagated() {
+                value_domains
+                    .get(&finalization.propagated_value_slot_id)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                BTreeSet::new()
+            };
+            validate_selector_domain_members(
+                &selector.plan,
+                selector_stage.propagated_finalization_domains[index],
+                &propagated,
+                &format!(
+                    "eager stage {} propagated finalization {index}",
+                    payload.stage_index
+                ),
+            )?;
+            let mut current = unpropagated;
+            current.extend(propagated);
+            current_domains.insert(finalization.current_id, current);
+        }
+
+        let mut attachment_domains = Vec::with_capacity(attachments.len());
+        for (index, attachment) in attachments.iter().enumerate() {
+            let expected = current_domains
+                .get(&attachment.result_current_id)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "eager stage {} attachment {index} has no finalized current",
+                        payload.stage_index
+                    ))
+                })?;
+            validate_selector_domain_members(
+                &selector.plan,
+                selector_stage.attachment_domains[index],
+                expected,
+                &format!("eager stage {} attachment {index}", payload.stage_index),
+            )?;
+            attachment_domains.push(expected.clone());
+        }
+
+        for (index, invocation) in invocations.iter().enumerate() {
+            let start = usize::try_from(invocation.attachment_start).map_err(|_| {
+                RusticolError::artifact("eager invocation attachment start does not fit usize")
+            })?;
+            let count = usize::try_from(invocation.attachment_count).map_err(|_| {
+                RusticolError::artifact("eager invocation attachment count does not fit usize")
+            })?;
+            let stop = start.checked_add(count).ok_or_else(|| {
+                RusticolError::artifact("eager invocation attachment range overflows usize")
+            })?;
+            let mut expected = BTreeSet::new();
+            for domain in attachment_domains.get(start..stop).ok_or_else(|| {
+                RusticolError::artifact("eager invocation attachment range exceeds its table")
+            })? {
+                expected.extend(domain);
+            }
+            validate_selector_domain_members(
+                &selector.plan,
+                selector_stage.invocation_domains[index],
+                &expected,
+                &format!("eager stage {} invocation {index}", payload.stage_index),
+            )?;
+            value_domains
+                .entry(invocation.left_value_slot_id)
+                .or_default()
+                .extend(&expected);
+            value_domains
+                .entry(invocation.right_value_slot_id)
+                .or_default()
+                .extend(expected);
+        }
+    }
+    Ok(())
+}
+
+fn validate_selector_domain_members(
+    plan: &SelectorDomainPlan,
+    domain_id: u32,
+    expected: &BTreeSet<u32>,
+    context: &str,
+) -> RusticolResult<()> {
+    let actual = plan
+        .memberships
+        .get(domain_id as usize)
+        .ok_or_else(|| RusticolError::internal("selector domain escaped payload validation"))?;
+    if !actual.iter().copied().eq(expected.iter().copied()) {
+        return Err(RusticolError::artifact(format!(
+            "{context} selector domain does not match its proven dependency closure"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_kernel_specs(
@@ -342,6 +746,8 @@ fn validate_couplings(rows: &[EagerCouplingRow], parameter_count: usize) -> Rust
 #[allow(clippy::too_many_arguments)]
 fn load_stage(
     payload: EagerStagePayload<'_>,
+    selector_stage: Option<&DecodedSelectorStage>,
+    selector_plan: Option<&SelectorDomainPlan>,
     values: &ComponentLayout,
     momenta: &ComponentLayout,
     currents: &ComponentLayout,
@@ -354,6 +760,39 @@ fn load_stage(
     let rows = EagerInvocationRow::decode_table(payload.invocations)?;
     let attachments = EagerAttachmentRow::decode_table(payload.attachments)?;
     let finalization_rows = EagerFinalizationRow::decode_table(payload.finalizations)?;
+    if let Some(selector) = selector_stage {
+        if selector.stage_index != payload.stage_index {
+            return Err(RusticolError::artifact(format!(
+                "eager selector stage {} does not match execution stage {}",
+                selector.stage_index, payload.stage_index
+            )));
+        }
+        for (kind, actual, expected) in [
+            ("invocation", selector.invocation_domains.len(), rows.len()),
+            (
+                "attachment",
+                selector.attachment_domains.len(),
+                attachments.len(),
+            ),
+            (
+                "unpropagated finalization",
+                selector.unpropagated_finalization_domains.len(),
+                finalization_rows.len(),
+            ),
+            (
+                "propagated finalization",
+                selector.propagated_finalization_domains.len(),
+                finalization_rows.len(),
+            ),
+        ] {
+            if actual != expected {
+                return Err(RusticolError::artifact(format!(
+                    "eager stage {} {kind} selector-domain count is {actual}, expected {expected}",
+                    payload.stage_index
+                )));
+            }
+        }
+    }
     let mut invocations = Vec::new();
     invocations.try_reserve_exact(rows.len()).map_err(|error| {
         RusticolError::artifact(format!("could not reserve eager invocations: {error}"))
@@ -431,7 +870,27 @@ fn load_stage(
                 parameter_count,
             },
         )?;
-        for attachment in &attachments[attachment_start..attachment_end] {
+        if let (Some(selector), Some(domains)) = (selector_stage, selector_plan) {
+            let expected_members = selector.attachment_domains[attachment_start..attachment_end]
+                .iter()
+                .flat_map(|domain_id| domains.memberships[*domain_id as usize].iter().copied())
+                .collect::<BTreeSet<_>>();
+            let invocation_members = domains.memberships
+                [selector.invocation_domains[index] as usize]
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>();
+            if invocation_members != expected_members {
+                return Err(RusticolError::artifact(format!(
+                    "eager invocation {index} selector domain does not equal its attachment union"
+                )));
+            }
+        }
+        for (attachment_index, attachment) in attachments[attachment_start..attachment_end]
+            .iter()
+            .enumerate()
+        {
+            let attachment_index = attachment_start + attachment_index;
             let current = currents.get(
                 attachment.result_current_id,
                 "eager attachment result current",
@@ -450,6 +909,8 @@ fn load_stage(
             scheduled_attachments.push(ScheduledAttachment {
                 row: *attachment,
                 current,
+                selector_domain_id: selector_stage
+                    .map(|selector| selector.attachment_domains[attachment_index]),
             });
         }
         invocations.push(ScheduledInvocation {
@@ -459,6 +920,7 @@ fn load_stage(
             left_momenta,
             right_momenta,
             attachment_range: attachment_start..attachment_end,
+            selector_domain_id: selector_stage.map(|selector| selector.invocation_domains[index]),
         });
         attachment_cursor = attachment_end;
     }
@@ -528,10 +990,20 @@ fn load_stage(
         }
         let momentum = momenta.get(row.momentum_slot_id, "eager finalization momentum")?;
         if let Some(unpropagated) = unpropagated {
+            let selector_domain_id =
+                selector_stage.map(|selector| selector.unpropagated_finalization_domains[index]);
             finalization_copies.push(FinalizationCopy {
                 current,
                 unpropagated,
+                selector_domain_id,
             });
+        } else if let (Some(selector), Some(domains)) = (selector_stage, selector_plan)
+            && !domains.memberships[selector.unpropagated_finalization_domains[index] as usize]
+                .is_empty()
+        {
+            return Err(RusticolError::artifact(format!(
+                "missing eager unpropagated output {index} has a nonempty selector domain"
+            )));
         }
         if row.applies_kernel() {
             let kernel = require_kernel(
@@ -567,10 +1039,19 @@ fn load_stage(
                 current,
                 propagated,
                 momentum,
+                selector_domain_id: selector_stage
+                    .map(|selector| selector.propagated_finalization_domains[index]),
             });
         } else if propagated.is_some() {
             return Err(RusticolError::artifact(format!(
                 "eager finalization {index} has a propagated output but no kernel"
+            )));
+        } else if let (Some(selector), Some(domains)) = (selector_stage, selector_plan)
+            && !domains.memberships[selector.propagated_finalization_domains[index] as usize]
+                .is_empty()
+        {
+            return Err(RusticolError::artifact(format!(
+                "missing eager propagated output {index} has a nonempty selector domain"
             )));
         }
     }
@@ -602,6 +1083,7 @@ fn load_stage(
 #[allow(clippy::too_many_arguments)]
 fn load_closures(
     rows: &[EagerClosureRow],
+    selector_domain_ids: Option<&[u32]>,
     direct_specs: &[EagerDirectClosureSpec],
     values: &ComponentLayout,
     kernels: &BTreeMap<u32, EagerKernelSpec>,
@@ -666,6 +1148,7 @@ fn load_closures(
                 left_values,
                 right_values,
                 coefficients: spec.coefficients.clone(),
+                selector_domain_id: selector_domain_ids.map(|domains| domains[index]),
             });
             continue;
         }
@@ -701,6 +1184,7 @@ fn load_closures(
             row,
             left_values,
             right_values,
+            selector_domain_id: selector_domain_ids.map(|domains| domains[index]),
         });
     }
     if let Some(index) = direct_by_index.keys().next() {
@@ -724,7 +1208,14 @@ fn validate_reduction_plan(
         ));
     }
     let mut covered = BTreeSet::new();
+    let mut coherent_group_ids = BTreeSet::new();
     for (group_index, group) in groups.iter().enumerate() {
+        if !coherent_group_ids.insert(group.coherent_group_id) {
+            return Err(RusticolError::artifact(format!(
+                "eager coherent reduction-group ID {} is duplicated",
+                group.coherent_group_id
+            )));
+        }
         if group.amplitude_indices.is_empty() {
             return Err(RusticolError::artifact(format!(
                 "eager reduction group {group_index} is empty"

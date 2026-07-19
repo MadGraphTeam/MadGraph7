@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::{
-    EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EagerDirectClosureSpec, EagerKernelInput, EagerKernelRole,
-    EagerKernelSpec, EagerPlanDefinition, EagerPlanDimensions, EagerReductionEntry,
-    EagerReductionGroup,
+    EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_SELECTOR_DOMAINS_ABI, EagerDirectClosureSpec,
+    EagerKernelInput, EagerKernelRole, EagerKernelSpec, EagerPlanDefinition, EagerPlanDimensions,
+    EagerReductionEntry, EagerReductionGroup,
 };
 
 pub(super) const EAGER_EXECUTION_KIND: &str = "pyamplicol-runtime-eager-execution";
@@ -71,6 +71,8 @@ pub(super) struct EagerPlanManifest {
     pub(super) couplings: EagerTableManifest,
     pub(super) stages: Vec<EagerStageTablesManifest>,
     pub(super) closures: EagerTableManifest,
+    #[serde(default)]
+    pub(super) selector_closures: Option<EagerSelectorDomainsManifest>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -81,6 +83,26 @@ pub(super) struct EagerStageTablesManifest {
     pub(super) invocations: EagerTableManifest,
     pub(super) attachments: EagerTableManifest,
     pub(super) finalizations: EagerTableManifest,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct EagerSelectorDomainsManifest {
+    pub(super) abi: String,
+    pub(super) domains: EagerTableManifest,
+    pub(super) domain_group_ids: EagerTableManifest,
+    pub(super) stages: Vec<EagerSelectorStageManifest>,
+    pub(super) closure_domains: EagerTableManifest,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct EagerSelectorStageManifest {
+    pub(super) stage_index: u32,
+    pub(super) invocation_domains: EagerTableManifest,
+    pub(super) attachment_domains: EagerTableManifest,
+    pub(super) unpropagated_finalization_domains: EagerTableManifest,
+    pub(super) propagated_finalization_domains: EagerTableManifest,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -165,6 +187,26 @@ impl EagerExecutionManifest {
             return Err(RusticolError::integrity(
                 "eager plan process key does not match its execution manifest",
             ));
+        }
+        if let Some(selector) = &self.plan.selector_closures {
+            if selector.abi != EAGER_SELECTOR_DOMAINS_ABI {
+                return Err(RusticolError::compatibility(format!(
+                    "unsupported eager selector-domain ABI {:?}",
+                    selector.abi
+                )));
+            }
+            if selector.stages.len() != self.plan.stages.len() {
+                return Err(RusticolError::integrity(
+                    "eager selector domains do not cover every execution stage",
+                ));
+            }
+            for (selector_stage, execution_stage) in selector.stages.iter().zip(&self.plan.stages) {
+                if selector_stage.stage_index != execution_stage.stage_index {
+                    return Err(RusticolError::integrity(
+                        "eager selector-domain stage index mismatch",
+                    ));
+                }
+            }
         }
         validate_capability_list_match(
             &self.required_runtime_capabilities,
@@ -259,6 +301,9 @@ impl EagerExecutionManifest {
             .iter()
             .map(|group| {
                 Ok(EagerReductionGroup {
+                    coherent_group_id: u32::try_from(group.id).map_err(|_| {
+                        RusticolError::artifact("eager coherent reduction-group ID exceeds u32")
+                    })?,
                     amplitude_indices: group
                         .indices
                         .iter()
