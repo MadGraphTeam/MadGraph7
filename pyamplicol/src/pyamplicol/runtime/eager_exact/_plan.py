@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
@@ -52,6 +53,48 @@ class _ExactStage:
     finalizations: tuple[EagerFinalizationRow, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _RuntimeParameterSlots:
+    real: int
+    imaginary: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedParameterProjectionEntry:
+    prepared_index: int
+    runtime_real_index: int
+    runtime_imaginary_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedParameterProjection:
+    parameter_count: int
+    runtime_parameter_count: int
+    entries: tuple[_PreparedParameterProjectionEntry, ...]
+
+    def project(
+        self, runtime_parameters: Sequence[Decimal]
+    ) -> tuple[tuple[Decimal, Decimal], ...]:
+        if len(runtime_parameters) != self.runtime_parameter_count:
+            raise ArtifactError(
+                f"eager runtime has {len(runtime_parameters)} model parameters, "
+                f"expected {self.runtime_parameter_count}"
+            )
+        zero = Decimal(0)
+        result = [(zero, zero) for _ in range(self.parameter_count)]
+        for entry in self.entries:
+            imaginary = (
+                runtime_parameters[entry.runtime_imaginary_index]
+                if entry.runtime_imaginary_index is not None
+                else zero
+            )
+            result[entry.prepared_index] = (
+                runtime_parameters[entry.runtime_real_index],
+                imaginary,
+            )
+        return tuple(result)
+
+
 @dataclass(slots=True)
 class _EagerExactPlan:
     runtime_schema: Mapping[str, object]
@@ -63,6 +106,7 @@ class _EagerExactPlan:
     momentum_component_count: int
     current_component_count: int
     parameter_count: int
+    parameter_projection: _PreparedParameterProjection
     amplitude_count: int
     couplings: tuple[EagerCouplingRow, ...]
     stages: tuple[_ExactStage, ...]
@@ -168,6 +212,11 @@ class _EagerExactPlan:
             for kernel in pack.kernels
             if kernel.contract_kind != "model-parameter"
         }
+        parameter_projection = _prepared_parameter_projection(
+            pack.kernels,
+            runtime_schema,
+            parameter_count,
+        )
         plan_record = _mapping(execution.get("plan"), "plan")
         process_prefix = f"processes/{process_id}"
         couplings = _load_table(
@@ -255,6 +304,7 @@ class _EagerExactPlan:
             momentum_component_count=momentum_count,
             current_component_count=current_count,
             parameter_count=parameter_count,
+            parameter_projection=parameter_projection,
             amplitude_count=amplitude_count,
             couplings=couplings,
             stages=tuple(stages),
@@ -262,6 +312,11 @@ class _EagerExactPlan:
         )
         result._validate()
         return result
+
+    def project_model_parameters(
+        self, runtime_parameters: Sequence[Decimal]
+    ) -> tuple[tuple[Decimal, Decimal], ...]:
+        return self.parameter_projection.project(runtime_parameters)
 
     def _validate(self) -> None:
         for index, coupling in enumerate(self.couplings):
@@ -550,8 +605,8 @@ class _EagerExactPlan:
                         "an index"
                     )
                 allowed, bound, component, descriptor = (
-                    parameter_id < self.parameter_count,
-                    self.parameter_count,
+                    parameter_id < self.parameter_projection.parameter_count,
+                    self.parameter_projection.parameter_count,
                     parameter_id,
                     (role, parameter_id),
                 )
@@ -569,3 +624,120 @@ class _EagerExactPlan:
                     f"kernel {record.kernel_id} repeats eager input {descriptor!r}"
                 )
             seen.add(descriptor)
+
+
+def _prepared_parameter_projection(
+    kernels: Sequence[PreparedKernelRecord],
+    runtime_schema: Mapping[str, object],
+    runtime_parameter_count: int,
+) -> _PreparedParameterProjection:
+    runtime_slots = _runtime_parameter_slots(
+        runtime_schema,
+        runtime_parameter_count,
+    )
+    by_name: dict[str, int] = {}
+    by_index: dict[int, str] = {}
+    for kernel in kernels:
+        for contract in kernel.input_contracts:
+            if contract.get("role") != "model-parameter":
+                continue
+            name = contract.get("model_parameter_name")
+            if not isinstance(name, str) or not name:
+                raise ArtifactError(
+                    "prepared model-parameter input lacks its logical name"
+                )
+            index = contract.get("model_parameter_index")
+            if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+                raise ArtifactError(
+                    "prepared model-parameter input lacks its stable index"
+                )
+            previous_index = by_name.setdefault(name, index)
+            if previous_index != index:
+                raise ArtifactError(
+                    f"prepared parameter {name!r} has conflicting stable indices"
+                )
+            previous_name = by_index.setdefault(index, name)
+            if previous_name != name:
+                raise ArtifactError(
+                    f"prepared parameter index {index} names multiple parameters"
+                )
+
+    entries = []
+    for name, prepared_index in sorted(by_name.items(), key=lambda item: item[1]):
+        slots = runtime_slots.get(name)
+        if slots is None:
+            raise ArtifactError(
+                f"prepared parameter {name!r} is absent from the process runtime schema"
+            )
+        entries.append(
+            _PreparedParameterProjectionEntry(
+                prepared_index=prepared_index,
+                runtime_real_index=slots.real,
+                runtime_imaginary_index=slots.imaginary,
+            )
+        )
+    parameter_count = max(by_index, default=-1) + 1
+    return _PreparedParameterProjection(
+        parameter_count=parameter_count,
+        runtime_parameter_count=runtime_parameter_count,
+        entries=tuple(entries),
+    )
+
+
+def _runtime_parameter_slots(
+    runtime_schema: Mapping[str, object],
+    parameter_count: int,
+) -> Mapping[str, _RuntimeParameterSlots]:
+    direct: dict[str, _RuntimeParameterSlots] = {}
+    complex_components: dict[str, list[int | None]] = {}
+    seen_indices: set[int] = set()
+    records = _sequence(runtime_schema.get("model_parameters"), "model parameters")
+    for record_index, raw_record in enumerate(records):
+        record = _mapping(raw_record, f"model parameters[{record_index}]")
+        parameter_index = _integer(
+            record.get("parameter_index"),
+            f"model parameters[{record_index}].parameter_index",
+        )
+        if parameter_index >= parameter_count or parameter_index in seen_indices:
+            raise ArtifactError("runtime model-parameter indices are invalid")
+        seen_indices.add(parameter_index)
+        name = record.get("name")
+        if not isinstance(name, str) or not name:
+            raise ArtifactError("runtime model parameter has no name")
+        runtime_name = record.get("runtime_name")
+        if runtime_name is None:
+            if name in direct or name in complex_components:
+                raise ArtifactError(f"runtime model parameter {name!r} is duplicated")
+            direct[name] = _RuntimeParameterSlots(parameter_index, None)
+            continue
+        if not isinstance(runtime_name, str) or not runtime_name:
+            raise ArtifactError("complex runtime model parameter has no logical name")
+        component = record.get("complex_component")
+        if component not in {"real", "imag"}:
+            raise ArtifactError(
+                f"runtime model parameter {runtime_name!r} has invalid component "
+                f"{component!r}"
+            )
+        slots = complex_components.setdefault(runtime_name, [None, None])
+        component_index = 0 if component == "real" else 1
+        if slots[component_index] is not None:
+            raise ArtifactError(
+                f"runtime model parameter {runtime_name!r} repeats a complex component"
+            )
+        slots[component_index] = parameter_index
+
+    if seen_indices != set(range(parameter_count)):
+        raise ArtifactError(
+            "runtime model-parameter indices must be contiguous from zero"
+        )
+    for name, (real, imaginary) in complex_components.items():
+        if real is None:
+            raise ArtifactError(
+                f"complex runtime model parameter {name!r} lacks a real component"
+            )
+        if name in direct:
+            raise ArtifactError(
+                f"runtime model parameter {name!r} has scalar and complex records"
+            )
+        direct[name] = _RuntimeParameterSlots(real, imaginary)
+    return direct

@@ -1228,6 +1228,13 @@ struct RuntimeProfile {
     stage_input_pack_by_stage_s: Vec<f64>,
     stage_evaluator_call_by_stage_s: Vec<f64>,
     stage_output_assign_by_stage_s: Vec<f64>,
+    eager_initialize_s: f64,
+    eager_gather_s: f64,
+    eager_kernel_call_s: f64,
+    eager_scatter_finalization_s: f64,
+    eager_closure_s: f64,
+    eager_reduction_s: f64,
+    eager_copy_out_s: f64,
 }
 
 impl RuntimeProfile {
@@ -1242,6 +1249,13 @@ impl RuntimeProfile {
         self.amplitude_evaluator_call_s += sector.amplitude_evaluator_call_s;
         self.amplitude_evaluator_s += sector.amplitude_evaluator_s;
         self.reduction_s += sector.reduction_s;
+        self.eager_initialize_s += sector.eager_initialize_s;
+        self.eager_gather_s += sector.eager_gather_s;
+        self.eager_kernel_call_s += sector.eager_kernel_call_s;
+        self.eager_scatter_finalization_s += sector.eager_scatter_finalization_s;
+        self.eager_closure_s += sector.eager_closure_s;
+        self.eager_reduction_s += sector.eager_reduction_s;
+        self.eager_copy_out_s += sector.eager_copy_out_s;
         add_profile_vector(
             &mut self.stage_input_pack_by_stage_s,
             &sector.stage_input_pack_by_stage_s,
@@ -1363,6 +1377,13 @@ pub struct NativeRuntimeProfile {
     pub stage_input_pack_by_stage_s: Vec<f64>,
     pub stage_evaluator_call_by_stage_s: Vec<f64>,
     pub stage_output_assign_by_stage_s: Vec<f64>,
+    pub eager_initialize_s: f64,
+    pub eager_gather_s: f64,
+    pub eager_kernel_call_s: f64,
+    pub eager_scatter_finalization_s: f64,
+    pub eager_closure_s: f64,
+    pub eager_reduction_s: f64,
+    pub eager_copy_out_s: f64,
 }
 
 impl From<RuntimeProfile> for NativeRuntimeProfile {
@@ -1382,6 +1403,13 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             stage_input_pack_by_stage_s: profile.stage_input_pack_by_stage_s,
             stage_evaluator_call_by_stage_s: profile.stage_evaluator_call_by_stage_s,
             stage_output_assign_by_stage_s: profile.stage_output_assign_by_stage_s,
+            eager_initialize_s: profile.eager_initialize_s,
+            eager_gather_s: profile.eager_gather_s,
+            eager_kernel_call_s: profile.eager_kernel_call_s,
+            eager_scatter_finalization_s: profile.eager_scatter_finalization_s,
+            eager_closure_s: profile.eager_closure_s,
+            eager_reduction_s: profile.eager_reduction_s,
+            eager_copy_out_s: profile.eager_copy_out_s,
         }
     }
 }
@@ -1518,6 +1546,7 @@ enum NativeExecutionLane {
 }
 
 impl NativeExecutionLane {
+    #[cfg(feature = "symbolica-runtime")]
     fn is_eager(&self) -> bool {
         match self {
             Self::Compiled => false,

@@ -11,6 +11,45 @@ use super::{
 use crate::{RusticolError, RusticolResult};
 use std::collections::BTreeMap;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum AccumulationFactor {
+    One,
+    NegativeOne,
+    ImaginaryUnit,
+    NegativeImaginaryUnit,
+    Generic(EagerComplex64),
+}
+
+impl AccumulationFactor {
+    #[inline]
+    fn from_parts(real: f64, imag: f64) -> Self {
+        match (real, imag) {
+            (1.0, 0.0) => Self::One,
+            (-1.0, 0.0) => Self::NegativeOne,
+            (0.0, 1.0) => Self::ImaginaryUnit,
+            (0.0, -1.0) => Self::NegativeImaginaryUnit,
+            _ => Self::Generic(EagerComplex64::new(real, imag)),
+        }
+    }
+
+    #[inline(always)]
+    fn accumulate(self, target: &mut EagerComplex64, value: EagerComplex64) {
+        match self {
+            Self::One => *target += value,
+            Self::NegativeOne => *target -= value,
+            Self::ImaginaryUnit => {
+                target.re -= value.im;
+                target.im += value.re;
+            }
+            Self::NegativeImaginaryUnit => {
+                target.re += value.im;
+                target.im -= value.re;
+            }
+            Self::Generic(factor) => *target += factor * value,
+        }
+    }
+}
+
 pub(super) fn initialize_tile(
     plan: &EagerExecutionPlan,
     workspace: &mut EagerWorkspace,
@@ -64,7 +103,7 @@ pub(super) fn execute_stage<B: EagerKernelBackend>(
             items,
             &kernel.inputs,
             inputs,
-            lane_count,
+            packet.input_components,
             point_count,
             tile_start,
             tile_points,
@@ -120,7 +159,7 @@ pub(super) fn execute_stage<B: EagerKernelBackend>(
             items,
             &kernel.inputs,
             inputs,
-            lane_count,
+            packet.input_components,
             point_count,
             tile_start,
             tile_points,
@@ -154,7 +193,7 @@ fn gather_invocations(
     items: &[ScheduledInvocation],
     descriptors: &[EagerKernelInput],
     inputs: &mut [EagerComplex64],
-    lane_count: usize,
+    input_component_count: usize,
     point_count: usize,
     tile_start: usize,
     tile_points: usize,
@@ -177,7 +216,7 @@ fn gather_invocations(
                     0,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
@@ -189,7 +228,7 @@ fn gather_invocations(
                     0,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
@@ -201,7 +240,7 @@ fn gather_invocations(
                     tile_start,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
@@ -213,14 +252,14 @@ fn gather_invocations(
                     tile_start,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
                 EagerKernelInput::CouplingReal => fill_packet_component(
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                     EagerComplex64::new(coupling.re, 0.0),
@@ -228,7 +267,7 @@ fn gather_invocations(
                 EagerKernelInput::CouplingImag => fill_packet_component(
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                     EagerComplex64::new(coupling.im, 0.0),
@@ -236,7 +275,7 @@ fn gather_invocations(
                 EagerKernelInput::ModelParameter(parameter) => fill_packet_component(
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                     model_parameters[parameter as usize],
@@ -259,14 +298,16 @@ fn scatter_invocations(
     for (item_index, item) in items.iter().enumerate() {
         let lane_start = item_index * tile_points;
         for attachment in &attachments[item.attachment_range.clone()] {
-            let factor =
-                EagerComplex64::new(attachment.row.factor_real, attachment.row.factor_imag);
+            let factor = AccumulationFactor::from_parts(
+                attachment.row.factor_real,
+                attachment.row.factor_imag,
+            );
             debug_assert_eq!(attachment.current.len, output_components);
             for component in 0..output_components {
-                let source = component * lane_count + lane_start;
                 let target = (attachment.current.start + component) * tile_capacity;
                 for point in 0..tile_points {
-                    currents[target + point] += factor * outputs[source + point];
+                    let source = (lane_start + point) * output_components + component;
+                    factor.accumulate(&mut currents[target + point], outputs[source]);
                 }
             }
         }
@@ -278,7 +319,7 @@ fn gather_finalizations(
     items: &[ScheduledFinalization],
     descriptors: &[EagerKernelInput],
     inputs: &mut [EagerComplex64],
-    lane_count: usize,
+    input_component_count: usize,
     point_count: usize,
     tile_start: usize,
     tile_points: usize,
@@ -299,7 +340,7 @@ fn gather_finalizations(
                     0,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
@@ -311,14 +352,14 @@ fn gather_finalizations(
                     tile_start,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
                 EagerKernelInput::ModelParameter(parameter) => fill_packet_component(
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                     model_parameters[parameter as usize],
@@ -347,10 +388,11 @@ fn scatter_finalizations(
         };
         debug_assert_eq!(target.len, output_components);
         for component in 0..output_components {
-            let source = component * lane_count + lane_start;
             let target_start = (target.start + component) * tile_capacity;
-            values[target_start..target_start + tile_points]
-                .copy_from_slice(&outputs[source..source + tile_points]);
+            for point in 0..tile_points {
+                let source = (lane_start + point) * output_components + component;
+                values[target_start + point] = outputs[source];
+            }
         }
     }
     Ok(())
@@ -381,7 +423,7 @@ pub(super) fn execute_closures<B: EagerKernelBackend>(
             items,
             &kernel.inputs,
             inputs,
-            lane_count,
+            packet.input_components,
             tile_points,
             workspace.tile_capacity,
             &workspace.values,
@@ -399,6 +441,7 @@ pub(super) fn execute_closures<B: EagerKernelBackend>(
         scatter_closures(
             items,
             outputs,
+            lane_count,
             tile_points,
             workspace.tile_capacity,
             &mut workspace.amplitudes,
@@ -419,7 +462,7 @@ fn gather_closures(
     items: &[ScheduledClosure],
     descriptors: &[EagerKernelInput],
     inputs: &mut [EagerComplex64],
-    lane_count: usize,
+    input_component_count: usize,
     tile_points: usize,
     tile_capacity: usize,
     values: &[EagerComplex64],
@@ -439,7 +482,7 @@ fn gather_closures(
                     0,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
@@ -451,14 +494,14 @@ fn gather_closures(
                     0,
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                 ),
                 EagerKernelInput::CouplingReal => fill_packet_component(
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                     EagerComplex64::new(coupling.re, 0.0),
@@ -466,7 +509,7 @@ fn gather_closures(
                 EagerKernelInput::CouplingImag => fill_packet_component(
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                     EagerComplex64::new(coupling.im, 0.0),
@@ -474,7 +517,7 @@ fn gather_closures(
                 EagerKernelInput::ModelParameter(parameter) => fill_packet_component(
                     inputs,
                     target_component,
-                    lane_count,
+                    input_component_count,
                     lane_start,
                     tile_points,
                     model_parameters[parameter as usize],
@@ -488,16 +531,19 @@ fn gather_closures(
 fn scatter_closures(
     items: &[ScheduledClosure],
     outputs: &[EagerComplex64],
+    lane_count: usize,
     tile_points: usize,
     tile_capacity: usize,
     amplitudes: &mut [EagerComplex64],
 ) {
+    let output_components = outputs.len() / lane_count;
     for (item_index, item) in items.iter().enumerate() {
         let lane_start = item_index * tile_points;
-        let factor = EagerComplex64::new(item.row.factor_real, item.row.factor_imag);
+        let factor = AccumulationFactor::from_parts(item.row.factor_real, item.row.factor_imag);
         let target = item.row.amplitude_index as usize * tile_capacity;
         for point in 0..tile_points {
-            amplitudes[target + point] += factor * outputs[lane_start + point];
+            let source = (lane_start + point) * output_components;
+            factor.accumulate(&mut amplitudes[target + point], outputs[source]);
         }
     }
 }
@@ -510,7 +556,8 @@ fn execute_direct_closures(
     amplitudes: &mut [EagerComplex64],
 ) {
     for closure in closures {
-        let factor = EagerComplex64::new(closure.row.factor_real, closure.row.factor_imag);
+        let factor =
+            AccumulationFactor::from_parts(closure.row.factor_real, closure.row.factor_imag);
         let target = closure.row.amplitude_index as usize * tile_capacity;
         for point in 0..tile_points {
             let mut contraction = EagerComplex64::new(0.0, 0.0);
@@ -520,7 +567,7 @@ fn execute_direct_closures(
                     values[(closure.right_values.start + component) * tile_capacity + point];
                 contraction += *coefficient * left * right;
             }
-            amplitudes[target + point] += factor * contraction;
+            factor.accumulate(&mut amplitudes[target + point], contraction);
         }
     }
 }
@@ -597,16 +644,17 @@ fn gather_complex_component(
     source_point_start: usize,
     target: &mut [EagerComplex64],
     target_component: usize,
-    target_stride: usize,
-    target_point_start: usize,
+    target_component_count: usize,
+    target_lane_start: usize,
     point_count: usize,
 ) {
     let component = component as usize;
     debug_assert!(component < range.len);
     let source_start = (range.start + component) * source_stride + source_point_start;
-    let target_start = target_component * target_stride + target_point_start;
-    target[target_start..target_start + point_count]
-        .copy_from_slice(&source[source_start..source_start + point_count]);
+    for point in 0..point_count {
+        let target_index = (target_lane_start + point) * target_component_count + target_component;
+        target[target_index] = source[source_start + point];
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -618,29 +666,31 @@ fn gather_real_component(
     source_point_start: usize,
     target: &mut [EagerComplex64],
     target_component: usize,
-    target_stride: usize,
-    target_point_start: usize,
+    target_component_count: usize,
+    target_lane_start: usize,
     point_count: usize,
 ) {
     let component = component as usize;
     debug_assert!(component < range.len);
     let source_start = (range.start + component) * source_stride + source_point_start;
-    let target_start = target_component * target_stride + target_point_start;
     for point in 0..point_count {
-        target[target_start + point] = EagerComplex64::new(source[source_start + point], 0.0);
+        let target_index = (target_lane_start + point) * target_component_count + target_component;
+        target[target_index] = EagerComplex64::new(source[source_start + point], 0.0);
     }
 }
 
 fn fill_packet_component(
     target: &mut [EagerComplex64],
     target_component: usize,
-    target_stride: usize,
-    target_point_start: usize,
+    target_component_count: usize,
+    target_lane_start: usize,
     point_count: usize,
     value: EagerComplex64,
 ) {
-    let start = target_component * target_stride + target_point_start;
-    target[start..start + point_count].fill(value);
+    for point in 0..point_count {
+        let target_index = (target_lane_start + point) * target_component_count + target_component;
+        target[target_index] = value;
+    }
 }
 
 fn copy_component_range(
@@ -657,5 +707,150 @@ fn copy_component_range(
         let target_start = (target_range.start + component) * stride;
         target[target_start..target_start + point_count]
             .copy_from_slice(&source[source_start..source_start + point_count]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{EagerAttachmentRow, EagerInvocationRow};
+
+    fn c64(real: f64, imag: f64) -> EagerComplex64 {
+        EagerComplex64::new(real, imag)
+    }
+
+    #[test]
+    fn packet_gather_uses_lane_major_component_rows() {
+        let complex_source = [
+            c64(1.0, 10.0),
+            c64(2.0, 20.0),
+            c64(3.0, 30.0),
+            c64(4.0, 40.0),
+            c64(5.0, 50.0),
+            c64(6.0, 60.0),
+        ];
+        let real_source = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0];
+        let mut packet = vec![c64(0.0, 0.0); 4 * 3];
+
+        gather_complex_component(
+            &complex_source,
+            ComponentRange { start: 1, len: 1 },
+            0,
+            3,
+            0,
+            &mut packet,
+            1,
+            3,
+            1,
+            2,
+        );
+        gather_real_component(
+            &real_source,
+            ComponentRange { start: 0, len: 2 },
+            1,
+            3,
+            0,
+            &mut packet,
+            0,
+            3,
+            1,
+            2,
+        );
+        fill_packet_component(&mut packet, 2, 3, 1, 2, c64(-1.0, 2.0));
+
+        assert_eq!(
+            packet,
+            vec![
+                c64(0.0, 0.0),
+                c64(0.0, 0.0),
+                c64(0.0, 0.0),
+                c64(14.0, 0.0),
+                c64(4.0, 40.0),
+                c64(-1.0, 2.0),
+                c64(15.0, 0.0),
+                c64(5.0, 50.0),
+                c64(-1.0, 2.0),
+                c64(0.0, 0.0),
+                c64(0.0, 0.0),
+                c64(0.0, 0.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn row_major_scatter_specializes_exact_unit_factors() {
+        let invocation = ScheduledInvocation {
+            row: EagerInvocationRow {
+                kernel_id: 0,
+                left_value_slot_id: 0,
+                right_value_slot_id: 0,
+                left_momentum_slot_id: 0,
+                right_momentum_slot_id: 0,
+                coupling_slot_id: 0,
+                attachment_start: 0,
+                attachment_count: 4,
+            },
+            left_values: ComponentRange { start: 0, len: 1 },
+            right_values: ComponentRange { start: 0, len: 1 },
+            left_momenta: ComponentRange { start: 0, len: 1 },
+            right_momenta: ComponentRange { start: 0, len: 1 },
+            attachment_range: 0..4,
+        };
+        let factors = [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)];
+        let attachments = factors
+            .into_iter()
+            .enumerate()
+            .map(|(index, (factor_real, factor_imag))| ScheduledAttachment {
+                row: EagerAttachmentRow {
+                    result_current_id: index as u32,
+                    factor_real,
+                    factor_imag,
+                },
+                current: ComponentRange {
+                    start: index * 2,
+                    len: 2,
+                },
+            })
+            .collect::<Vec<_>>();
+        let outputs = [c64(1.0, 2.0), c64(3.0, 4.0), c64(5.0, 6.0), c64(7.0, 8.0)];
+        let mut currents = vec![c64(0.0, 0.0); 8 * 2];
+
+        scatter_invocations(
+            &[invocation],
+            &attachments,
+            &outputs,
+            2,
+            2,
+            2,
+            &mut currents,
+        );
+
+        for (factor_index, (real, imag)) in factors.into_iter().enumerate() {
+            let factor = c64(real, imag);
+            for component in 0..2 {
+                for point in 0..2 {
+                    let expected = factor * outputs[point * 2 + component];
+                    let actual = currents[(factor_index * 2 + component) * 2 + point];
+                    assert_eq!(actual, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn factor_specialization_keeps_generic_complex_fallback() {
+        let initial = c64(2.0, -3.0);
+        let value = c64(5.0, 7.0);
+        for (real, imag) in [
+            (1.0, 0.0),
+            (-1.0, 0.0),
+            (0.0, 1.0),
+            (0.0, -1.0),
+            (2.5, -0.75),
+        ] {
+            let mut actual = initial;
+            AccumulationFactor::from_parts(real, imag).accumulate(&mut actual, value);
+            assert_eq!(actual, initial + c64(real, imag) * value);
+        }
     }
 }

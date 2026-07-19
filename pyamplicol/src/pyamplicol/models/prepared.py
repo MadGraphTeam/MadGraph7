@@ -245,6 +245,11 @@ class PreparedKernelRecord:
     exact_expressions: tuple[str, ...]
     exact_evaluator_state_path: str
     f64_evaluator_manifest: Mapping[str, object]
+    _referenced_payload_paths: tuple[str, ...] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -340,17 +345,25 @@ class PreparedKernelRecord:
                 "kernel.f64_evaluator_manifest",
             ),
         )
+        object.__setattr__(
+            self,
+            "_referenced_payload_paths",
+            tuple(
+                sorted(
+                    {
+                        self.exact_evaluator_state_path,
+                        *_collect_manifest_paths(
+                            self.f64_evaluator_manifest,
+                            context="kernel.f64_evaluator_manifest",
+                        ),
+                    }
+                )
+            ),
+        )
 
     @property
     def referenced_payload_paths(self) -> tuple[str, ...]:
-        paths = {
-            self.exact_evaluator_state_path,
-            *_collect_manifest_paths(
-                self.f64_evaluator_manifest,
-                context="kernel.f64_evaluator_manifest",
-            ),
-        }
-        return tuple(sorted(paths))
+        return self._referenced_payload_paths
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -456,6 +469,11 @@ class PreparedKernelPack:
     target: Mapping[str, object]
     resolver_manifest: Mapping[str, object]
     kernels: tuple[PreparedKernelRecord, ...]
+    _referenced_payload_paths: tuple[str, ...] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.backend not in _BACKENDS:
@@ -519,18 +537,23 @@ class PreparedKernelPack:
         if len(set(signatures)) != len(signatures):
             raise PreparedModelBundleError("kernel canonical signatures must be unique")
         object.__setattr__(self, "kernels", kernels)
+        object.__setattr__(
+            self,
+            "_referenced_payload_paths",
+            tuple(
+                sorted(
+                    {
+                        path
+                        for kernel in kernels
+                        for path in kernel.referenced_payload_paths
+                    }
+                )
+            ),
+        )
 
     @property
     def referenced_payload_paths(self) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                {
-                    path
-                    for kernel in self.kernels
-                    for path in kernel.referenced_payload_paths
-                }
-            )
-        )
+        return self._referenced_payload_paths
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -598,6 +621,16 @@ class PreparedModelBundle:
     kernel_pack: PreparedKernelPack
     manifest: Mapping[str, object]
     _member_digests: Mapping[str, str] = field(repr=False)
+    _referenced_payload_paths: tuple[str, ...] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _referenced_payload_path_set: frozenset[str] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", self.path.resolve())
@@ -616,6 +649,17 @@ class PreparedModelBundle:
             "_member_digests",
             MappingProxyType(dict(self._member_digests)),
         )
+        referenced_payload_paths = self.kernel_pack.referenced_payload_paths
+        object.__setattr__(
+            self,
+            "_referenced_payload_paths",
+            referenced_payload_paths,
+        )
+        object.__setattr__(
+            self,
+            "_referenced_payload_path_set",
+            frozenset(referenced_payload_paths),
+        )
 
     @property
     def backend(self) -> PreparedBackend:
@@ -632,7 +676,7 @@ class PreparedModelBundle:
     def read_payload(self, member_path: str) -> bytes:
         """Read and revalidate one kernel payload from the archive."""
         normalized = _normalized_member_path(member_path, "member_path")
-        if normalized not in self.kernel_pack.referenced_payload_paths:
+        if normalized not in self._referenced_payload_path_set:
             raise PreparedModelBundleError(
                 f"{normalized!r} is not referenced by the prepared kernel pack"
             )
@@ -657,7 +701,7 @@ class PreparedModelBundle:
             raise PreparedModelBundleError("payload destination must not be a symlink")
         root = destination.resolve()
         outputs: list[Path] = []
-        for member_path in self.kernel_pack.referenced_payload_paths:
+        for member_path in self._referenced_payload_paths:
             output = root.joinpath(*PurePosixPath(member_path).parts)
             output.parent.mkdir(parents=True, exist_ok=True)
             try:

@@ -50,6 +50,7 @@ def _evaluate_point(
     momenta = flattened[plan.value_component_count :]
     currents = [_complex_zero() for _ in range(plan.current_component_count)]
     couplings = _resolve_couplings(plan, model_parameters)
+    prepared_parameters = plan.project_model_parameters(model_parameters)
 
     for stage in plan.stages:
         for invocation in stage.invocations:
@@ -69,7 +70,7 @@ def _evaluate_point(
                     invocation.right_momentum_slot_id
                 ].read(momenta),
                 coupling=couplings[invocation.coupling_slot_id],
-                model_parameters=model_parameters,
+                prepared_parameters=prepared_parameters,
             )
             outputs = kernel.evaluate(inputs, precision)
             start = invocation.attachment_start
@@ -110,7 +111,7 @@ def _evaluate_point(
                 ),
                 second_momentum=(),
                 coupling=None,
-                model_parameters=model_parameters,
+                prepared_parameters=prepared_parameters,
             )
             outputs = kernel.evaluate(inputs, precision)
             plan.value_slots[finalization.propagated_value_slot_id].write(
@@ -148,7 +149,7 @@ def _evaluate_point(
                 first_momentum=(),
                 second_momentum=(),
                 coupling=couplings[closure.coupling_slot_id],
-                model_parameters=model_parameters,
+                prepared_parameters=prepared_parameters,
             )
             output = kernel.evaluate(inputs, precision)[0]
         factor = _complex_pair(
@@ -191,7 +192,7 @@ def _gather_inputs(
     first_momentum: Sequence[_ComplexDecimal],
     second_momentum: Sequence[_ComplexDecimal],
     coupling: _ComplexDecimal | None,
-    model_parameters: Sequence[Decimal],
+    prepared_parameters: Sequence[_ComplexDecimal],
 ) -> tuple[_ComplexDecimal, ...]:
     inputs = []
     for contract in record.input_contracts:
@@ -219,6 +220,6 @@ def _gather_inputs(
             value = (coupling[1], _ZERO)
         else:
             parameter_id = cast(int, contract["model_parameter_index"])
-            value = (model_parameters[parameter_id], _ZERO)
+            value = prepared_parameters[parameter_id]
         inputs.append(value)
     return tuple(inputs)

@@ -4,12 +4,16 @@ use super::execute::{
     copy_tile_results, execute_closures, execute_stage, initialize_tile, reduce_tile,
 };
 use super::plan::{EagerExecutionPlan, complex_is_finite};
-use super::{EagerComplex64, EagerKernelBackend, EagerKernelSpec, EagerRuntimeOptions};
+use super::profile::{execute_closures_profiled, execute_stage_profiled};
+use super::{
+    EagerComplex64, EagerExecutionProfile, EagerKernelBackend, EagerKernelSpec, EagerRuntimeOptions,
+};
 use crate::{EagerCouplingRow, MISSING_U32, RusticolError, RusticolResult};
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::ops::Range;
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PacketRole {
@@ -34,9 +38,9 @@ pub(super) struct StageSchedule {
 }
 
 #[derive(Clone, Debug)]
-struct ExecutionSchedule {
-    stages: Vec<StageSchedule>,
-    closure_packets: Vec<KernelPacket>,
+pub(super) struct ExecutionSchedule {
+    pub(super) stages: Vec<StageSchedule>,
+    pub(super) closure_packets: Vec<KernelPacket>,
     packet_buffer_len: usize,
 }
 
@@ -240,6 +244,109 @@ impl EagerExecutionRuntime {
             tile_start += tile_points;
         }
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_profile_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        amplitudes: &mut [EagerComplex64],
+        reduced: &mut [f64],
+    ) -> RusticolResult<EagerExecutionProfile> {
+        validate_execution_buffers(
+            &self.plan,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            amplitudes,
+            reduced,
+        )?;
+        if model_parameters
+            .iter()
+            .any(|value| !complex_is_finite(*value))
+        {
+            return Err(RusticolError::invalid_argument(
+                "eager model parameters must be finite",
+            ));
+        }
+
+        let total_started = Instant::now();
+        let initialize_started = Instant::now();
+        resolve_couplings(
+            &self.plan.couplings,
+            model_parameters,
+            &mut self.workspace.couplings,
+        );
+        let mut profile = EagerExecutionProfile {
+            initialize_s: initialize_started.elapsed().as_secs_f64(),
+            ..EagerExecutionProfile::default()
+        };
+        let tile_capacity = self.workspace.tile_capacity;
+        let mut tile_start = 0usize;
+        while tile_start < point_count {
+            let tile_points = min(tile_capacity, point_count - tile_start);
+
+            let initialize_started = Instant::now();
+            initialize_tile(
+                &self.plan,
+                &mut self.workspace,
+                point_count,
+                tile_start,
+                tile_points,
+                initial_values,
+            );
+            profile.initialize_s += initialize_started.elapsed().as_secs_f64();
+
+            for (stage, schedule) in self.plan.stages.iter().zip(&self.schedule.stages) {
+                execute_stage_profiled(
+                    stage,
+                    schedule,
+                    &self.plan.kernels,
+                    &mut self.workspace,
+                    backend,
+                    point_count,
+                    tile_start,
+                    tile_points,
+                    momenta,
+                    model_parameters,
+                    &mut profile,
+                )?;
+            }
+            execute_closures_profiled(
+                &self.plan,
+                &self.schedule.closure_packets,
+                &mut self.workspace,
+                backend,
+                tile_points,
+                model_parameters,
+                &mut profile,
+            )?;
+
+            let reduction_started = Instant::now();
+            reduce_tile(&self.plan, &mut self.workspace, tile_points);
+            profile.reduction_s += reduction_started.elapsed().as_secs_f64();
+
+            let copy_started = Instant::now();
+            copy_tile_results(
+                &self.plan,
+                &self.workspace,
+                point_count,
+                tile_start,
+                tile_points,
+                amplitudes,
+                reduced,
+            );
+            profile.copy_out_s += copy_started.elapsed().as_secs_f64();
+            tile_start += tile_points;
+        }
+        profile.total_s = total_started.elapsed().as_secs_f64();
+        debug_assert!(profile.accounted_s() <= profile.total_s * 1.05 + f64::EPSILON);
+        Ok(profile)
     }
 }
 
@@ -524,5 +631,194 @@ fn resolve_couplings(
             parameters[row.imag_parameter_id as usize].re
         };
         *value = EagerComplex64::new(real, imag);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerDirectClosureSpec,
+        EagerFinalizationRow, EagerInvocationRow, EagerKernelInput, EagerKernelRole,
+        EagerPlanDefinition, EagerPlanDimensions, EagerPlanPayloads, EagerReductionEntry,
+        EagerReductionGroup, EagerStagePayload, MISSING_U32,
+    };
+
+    #[derive(Default)]
+    struct AddBackend;
+
+    impl EagerKernelBackend for AddBackend {
+        fn evaluate_batch(
+            &mut self,
+            call: super::super::EagerKernelCall<'_>,
+        ) -> RusticolResult<()> {
+            assert_eq!(call.kernel_id, 7);
+            assert_eq!(call.input_component_count, 3);
+            assert_eq!(call.output_component_count, 1);
+            for lane in 0..call.lane_count {
+                let row = lane * call.input_component_count;
+                call.outputs[lane] = call.inputs[row] + call.inputs[row + 1] + call.inputs[row + 2];
+            }
+            Ok(())
+        }
+    }
+
+    fn profiled_runtime() -> EagerExecutionRuntime {
+        let definition = EagerPlanDefinition {
+            dimensions: EagerPlanDimensions {
+                value_slot_component_counts: vec![1, 1, 1],
+                momentum_slot_component_counts: vec![1],
+                current_component_counts: vec![1],
+                parameter_count: 0,
+                amplitude_count: 1,
+            },
+            kernels: vec![EagerKernelSpec {
+                kernel_id: 7,
+                role: EagerKernelRole::Vertex,
+                inputs: vec![
+                    EagerKernelInput::FirstCurrentComponent(0),
+                    EagerKernelInput::SecondCurrentComponent(0),
+                    EagerKernelInput::FirstMomentumComponent(0),
+                ],
+                output_component_count: 1,
+            }],
+            direct_closures: vec![EagerDirectClosureSpec {
+                closure_index: 0,
+                coefficients: vec![EagerComplex64::new(1.0, 0.0)],
+            }],
+            reduction_groups: vec![EagerReductionGroup {
+                amplitude_indices: vec![0],
+            }],
+            reduction_entries: vec![EagerReductionEntry {
+                left_group_index: 0,
+                right_group_index: 0,
+                coefficient: EagerComplex64::new(1.0, 0.0),
+            }],
+        };
+        let couplings = EagerCouplingRow::encode_table(&[EagerCouplingRow {
+            real_parameter_id: MISSING_U32,
+            imag_parameter_id: MISSING_U32,
+            constant_real: 1.0,
+            constant_imag: 0.0,
+        }])
+        .expect("coupling table");
+        let invocations = EagerInvocationRow::encode_table(&[EagerInvocationRow {
+            kernel_id: 7,
+            left_value_slot_id: 0,
+            right_value_slot_id: 1,
+            left_momentum_slot_id: 0,
+            right_momentum_slot_id: 0,
+            coupling_slot_id: 0,
+            attachment_start: 0,
+            attachment_count: 1,
+        }])
+        .expect("invocation table");
+        let attachments = EagerAttachmentRow::encode_table(&[EagerAttachmentRow {
+            result_current_id: 0,
+            factor_real: 1.0,
+            factor_imag: 0.0,
+        }])
+        .expect("attachment table");
+        let finalizations = EagerFinalizationRow::encode_table(&[EagerFinalizationRow {
+            kernel_id: MISSING_U32,
+            current_id: 0,
+            unpropagated_value_slot_id: 2,
+            propagated_value_slot_id: MISSING_U32,
+            momentum_slot_id: 0,
+        }])
+        .expect("finalization table");
+        let closures = EagerClosureRow::encode_table(&[EagerClosureRow {
+            kernel_id: MISSING_U32,
+            left_value_slot_id: 2,
+            right_value_slot_id: 0,
+            amplitude_index: 0,
+            coupling_slot_id: MISSING_U32,
+            factor_real: 1.0,
+            factor_imag: 0.0,
+        }])
+        .expect("closure table");
+        let stage = EagerStagePayload {
+            stage_index: 1,
+            invocations: &invocations,
+            attachments: &attachments,
+            finalizations: &finalizations,
+        };
+        let plan = EagerExecutionPlan::from_payloads(
+            definition,
+            EagerPlanPayloads {
+                couplings: &couplings,
+                stages: &[stage],
+                closures: &closures,
+            },
+        )
+        .expect("profile plan");
+        EagerExecutionRuntime::new(
+            plan,
+            EagerRuntimeOptions {
+                point_tile_size: 2,
+                workspace_bytes: 4096,
+            },
+        )
+        .expect("profile runtime")
+    }
+
+    #[test]
+    fn profiled_execution_matches_hot_path_and_accounts_for_every_phase() {
+        let point_count = 4;
+        let initial_values = [
+            EagerComplex64::new(1.0, 0.0),
+            EagerComplex64::new(2.0, 0.0),
+            EagerComplex64::new(3.0, 0.0),
+            EagerComplex64::new(4.0, 0.0),
+            EagerComplex64::new(10.0, 0.0),
+            EagerComplex64::new(20.0, 0.0),
+            EagerComplex64::new(30.0, 0.0),
+            EagerComplex64::new(40.0, 0.0),
+            EagerComplex64::new(0.0, 0.0),
+            EagerComplex64::new(0.0, 0.0),
+            EagerComplex64::new(0.0, 0.0),
+            EagerComplex64::new(0.0, 0.0),
+        ];
+        let momenta = [0.5, 1.0, 1.5, 2.0];
+        let mut hot = profiled_runtime();
+        let mut profiled = profiled_runtime();
+        let mut hot_amplitudes = vec![EagerComplex64::new(0.0, 0.0); point_count];
+        let mut hot_reduced = vec![0.0; point_count];
+        let mut profiled_amplitudes = hot_amplitudes.clone();
+        let mut profiled_reduced = hot_reduced.clone();
+
+        hot.evaluate_into(
+            &mut AddBackend,
+            point_count,
+            &initial_values,
+            &momenta,
+            &[],
+            &mut hot_amplitudes,
+            &mut hot_reduced,
+        )
+        .expect("hot eager execution");
+        let profile = profiled
+            .evaluate_profile_into(
+                &mut AddBackend,
+                point_count,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut profiled_amplitudes,
+                &mut profiled_reduced,
+            )
+            .expect("profile eager execution");
+
+        assert_eq!(profiled_amplitudes, hot_amplitudes);
+        assert_eq!(profiled_reduced, hot_reduced);
+        assert!(profile.initialize_s > 0.0);
+        assert!(profile.gather_s > 0.0);
+        assert!(profile.kernel_call_s > 0.0);
+        assert!(profile.invocation_scatter_s > 0.0);
+        assert!(profile.finalization_s > 0.0);
+        assert!(profile.closure_s > 0.0);
+        assert!(profile.reduction_s > 0.0);
+        assert!(profile.copy_out_s > 0.0);
+        assert!(profile.accounted_s() <= profile.total_s);
     }
 }

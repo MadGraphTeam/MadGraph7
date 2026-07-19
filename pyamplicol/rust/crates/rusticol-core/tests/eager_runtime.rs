@@ -78,13 +78,14 @@ impl EagerKernelBackend for MockBackend {
                 assert_eq!(call.input_component_count, 7);
                 assert_eq!(call.output_component_count, 1);
                 for lane in 0..call.lane_count {
-                    let right = call.inputs[lane];
-                    let left = call.inputs[call.lane_count + lane];
-                    let left_momentum = call.inputs[2 * call.lane_count + lane];
-                    let right_momentum = call.inputs[3 * call.lane_count + lane];
-                    let coupling_real = call.inputs[4 * call.lane_count + lane];
-                    let coupling_imag = call.inputs[5 * call.lane_count + lane];
-                    let parameter = call.inputs[6 * call.lane_count + lane];
+                    let row = lane * call.input_component_count;
+                    let right = call.inputs[row];
+                    let left = call.inputs[row + 1];
+                    let left_momentum = call.inputs[row + 2];
+                    let right_momentum = call.inputs[row + 3];
+                    let coupling_real = call.inputs[row + 4];
+                    let coupling_imag = call.inputs[row + 5];
+                    let parameter = call.inputs[row + 6];
                     call.outputs[lane] = (left + right + left_momentum + right_momentum)
                         * coupling_real
                         + coupling_imag
@@ -95,9 +96,10 @@ impl EagerKernelBackend for MockBackend {
                 assert_eq!(call.input_component_count, 3);
                 assert_eq!(call.output_component_count, 1);
                 for lane in 0..call.lane_count {
-                    let momentum = call.inputs[lane];
-                    let current = call.inputs[call.lane_count + lane];
-                    let parameter = call.inputs[2 * call.lane_count + lane];
+                    let row = lane * call.input_component_count;
+                    let momentum = call.inputs[row];
+                    let current = call.inputs[row + 1];
+                    let parameter = call.inputs[row + 2];
                     call.outputs[lane] = current * momentum + parameter;
                 }
             }
@@ -105,11 +107,12 @@ impl EagerKernelBackend for MockBackend {
                 assert_eq!(call.input_component_count, 5);
                 assert_eq!(call.output_component_count, 1);
                 for lane in 0..call.lane_count {
-                    let coupling_imag = call.inputs[lane];
-                    let right = call.inputs[call.lane_count + lane];
-                    let coupling_real = call.inputs[2 * call.lane_count + lane];
-                    let left = call.inputs[3 * call.lane_count + lane];
-                    let parameter = call.inputs[4 * call.lane_count + lane];
+                    let row = lane * call.input_component_count;
+                    let coupling_imag = call.inputs[row];
+                    let right = call.inputs[row + 1];
+                    let coupling_real = call.inputs[row + 2];
+                    let left = call.inputs[row + 3];
+                    let parameter = call.inputs[row + 4];
                     call.outputs[lane] = left * right * coupling_real + coupling_imag + parameter;
                 }
             }

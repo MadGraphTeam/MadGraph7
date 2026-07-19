@@ -881,6 +881,16 @@ fn runtime_profile_to_python<'py>(
         "stage_output_assign_by_stage_time_s",
         profile.stage_output_assign_by_stage_s.clone(),
     )?;
+    payload.set_item("eager_initialize_time_s", profile.eager_initialize_s)?;
+    payload.set_item("eager_gather_time_s", profile.eager_gather_s)?;
+    payload.set_item("eager_kernel_call_time_s", profile.eager_kernel_call_s)?;
+    payload.set_item(
+        "eager_scatter_finalization_time_s",
+        profile.eager_scatter_finalization_s,
+    )?;
+    payload.set_item("eager_closure_time_s", profile.eager_closure_s)?;
+    payload.set_item("eager_reduction_time_s", profile.eager_reduction_s)?;
+    payload.set_item("eager_copy_out_time_s", profile.eager_copy_out_s)?;
     Ok(payload)
 }
 

@@ -25,6 +25,8 @@ from pyamplicol.generation.eager_tables import (
 )
 from pyamplicol.models.prepared import PreparedKernelPack, PreparedKernelRecord
 from pyamplicol.runtime.eager_exact import EagerExactExecutor
+from pyamplicol.runtime.eager_exact._execution import _gather_inputs
+from pyamplicol.runtime.eager_exact._plan import _prepared_parameter_projection
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _ExactCallable = Callable[[Sequence[_ComplexDecimal], int], Sequence[_ComplexDecimal]]
@@ -42,6 +44,16 @@ def _contract(role: str, component: int) -> dict[str, object]:
         "symbol": f"test::{role}::{component}",
         "model_parameter_name": None,
         "model_parameter_index": None,
+    }
+
+
+def _parameter_contract(name: str, index: int) -> dict[str, object]:
+    return {
+        "role": "model-parameter",
+        "component": 0,
+        "symbol": f"test::model-parameter::{index}",
+        "model_parameter_name": name,
+        "model_parameter_index": index,
     }
 
 
@@ -572,6 +584,59 @@ def test_eager_exact_accumulates_then_finalizes_once(tmp_path: Path) -> None:
     assert result.values == (((Decimal(9409),),),)
     assert result.helicity_ids == ("h:0",)
     assert result.color_ids == ("flow:1",)
+
+
+def test_eager_exact_projects_sparse_complex_prepared_parameters() -> None:
+    kernel = _kernel(
+        20,
+        "vertex",
+        (
+            _parameter_contract("alpha", 7),
+            _parameter_contract("derived", 157),
+        ),
+    )
+    runtime_schema = {
+        "model_parameters": [
+            {
+                "name": "alpha",
+                "kind": "external_parameter",
+                "parameter_index": 0,
+                "default": 2.0,
+            },
+            {
+                "name": "derived.real",
+                "kind": "derived_parameter_component",
+                "parameter_index": 1,
+                "runtime_name": "derived",
+                "complex_component": "real",
+                "default": 3.0,
+            },
+            {
+                "name": "derived.imag",
+                "kind": "derived_parameter_component",
+                "parameter_index": 2,
+                "runtime_name": "derived",
+                "complex_component": "imag",
+                "default": 4.0,
+            },
+        ]
+    }
+
+    projection = _prepared_parameter_projection((kernel,), runtime_schema, 3)
+    projected = projection.project((Decimal(2), Decimal(3), Decimal(4)))
+
+    assert projection.parameter_count == 158
+    assert projected[7] == (Decimal(2), Decimal(0))
+    assert projected[157] == (Decimal(3), Decimal(4))
+    assert _gather_inputs(
+        kernel,
+        first_current=(),
+        second_current=(),
+        first_momentum=(),
+        second_momentum=(),
+        coupling=None,
+        prepared_parameters=projected,
+    ) == (projected[7], projected[157])
 
 
 def test_eager_exact_executes_direct_contraction(tmp_path: Path) -> None:

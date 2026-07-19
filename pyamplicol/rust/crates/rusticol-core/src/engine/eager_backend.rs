@@ -9,6 +9,7 @@ pub(super) struct PreparedEvaluatorBackend {
 
 struct PreparedEvaluatorKernel {
     evaluator: EvaluatorGroup,
+    #[cfg(feature = "symbolica-runtime")]
     input_scratch: Vec<Complex<f64>>,
     output_scratch: Vec<Complex<f64>>,
 }
@@ -57,6 +58,7 @@ impl PreparedEvaluatorBackend {
                     kernel.kernel_id,
                     PreparedEvaluatorKernel {
                         evaluator,
+                        #[cfg(feature = "symbolica-runtime")]
                         input_scratch: Vec::new(),
                         output_scratch: Vec::new(),
                     },
@@ -107,18 +109,22 @@ impl EagerKernelBackend for PreparedEvaluatorBackend {
             ));
         }
 
-        kernel
-            .input_scratch
-            .resize(input_len, Complex::new(0.0, 0.0));
-        for lane in 0..call.lane_count {
-            for component in 0..call.input_component_count {
-                kernel.input_scratch[lane * call.input_component_count + component] =
-                    call.inputs[component * call.lane_count + lane];
+        #[cfg(feature = "symbolica-runtime")]
+        let evaluator_inputs = {
+            kernel
+                .input_scratch
+                .resize(input_len, Complex::new(0.0, 0.0));
+            for (target, source) in kernel.input_scratch.iter_mut().zip(call.inputs.iter()) {
+                *target = Complex::new(source.re, source.im);
             }
-        }
+            kernel.input_scratch.as_slice()
+        };
+        #[cfg(not(feature = "symbolica-runtime"))]
+        let evaluator_inputs = call.inputs;
+
         kernel.evaluator.evaluate_batch_into(
             call.lane_count,
-            &kernel.input_scratch,
+            evaluator_inputs,
             &mut kernel.output_scratch,
         )?;
         if kernel.output_scratch.len() != output_len {
@@ -126,12 +132,12 @@ impl EagerKernelBackend for PreparedEvaluatorBackend {
                 "prepared evaluator returned an inconsistent output packet",
             ));
         }
-        for component in 0..call.output_component_count {
-            for lane in 0..call.lane_count {
-                call.outputs[component * call.lane_count + lane] =
-                    kernel.output_scratch[lane * call.output_component_count + component];
-            }
+        #[cfg(feature = "symbolica-runtime")]
+        for (target, source) in call.outputs.iter_mut().zip(kernel.output_scratch.iter()) {
+            *target = crate::EagerComplex64::new(source.re, source.im);
         }
+        #[cfg(not(feature = "symbolica-runtime"))]
+        call.outputs.copy_from_slice(&kernel.output_scratch);
         Ok(())
     }
 }

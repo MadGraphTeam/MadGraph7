@@ -35,6 +35,23 @@ fn symjit_manifest(application_path: &str, exact_state_path: &str, input_len: us
     })
 }
 
+fn compiled_manifest(runtime_capability: &str, exact_state_path: &str, input_len: usize) -> Value {
+    json!({
+        "kind": "compiled-complex-evaluator",
+        "runtime_capability": runtime_capability,
+        "backend": "compiled-complex",
+        "function_name": "prepared_test_kernel",
+        "library_path": "kernels/7/library-0",
+        "source_path": "kernels/7/source-0.cpp",
+        "input_len": input_len,
+        "output_len": 1,
+        "number_type": "complex-f64",
+        "evaluator_state_path": exact_state_path,
+        "settings": {"optimization_level": "o3"},
+        "build_timing": {"compile_s": 0.0},
+    })
+}
+
 fn input(role: &str, component: u32) -> PreparedKernelInputManifest {
     PreparedKernelInputManifest {
         role: role.to_string(),
@@ -100,6 +117,52 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
             "closure_bindings": []
         }),
         kernels,
+    }
+}
+
+fn compiled_pack(backend: &str, runtime_capability: &str) -> PreparedKernelPackManifest {
+    let exact_evaluator_state_path = "kernels/7/exact.bin".to_string();
+    let kernel = PreparedKernelManifest {
+        kernel_id: 7,
+        contract_kind: "vertex".to_string(),
+        canonical_signature: format!("test-{backend}-kernel"),
+        input_arity: 1,
+        output_arity: 1,
+        input_layout: vec!["input-0".to_string()],
+        input_contracts: vec![input("left-current", 0)],
+        output_layout: vec!["output-0".to_string()],
+        exact_expressions: vec!["test-expression".to_string()],
+        f64_evaluator_manifest: compiled_manifest(
+            runtime_capability,
+            &exact_evaluator_state_path,
+            1,
+        ),
+        exact_evaluator_state_path,
+    };
+    let target = crate::runtime_target_info();
+    PreparedKernelPackManifest {
+        eager_kernel_abi: EAGER_KERNEL_ABI.to_string(),
+        backend: backend.to_string(),
+        optimization_settings: json!({"optimization_level": "o3"}),
+        producer: json!({"distribution": "pyamplicol", "version": "test"}),
+        dependency_abis: json!({"compiled_complex": "test"}),
+        provenance: json!({"compiled_model_digest": "test"}),
+        target: PreparedKernelTargetManifest {
+            portable: false,
+            word_bits: 64,
+            endianness: "little".to_string(),
+            target_triple: target.triple,
+            cpu_features: target.cpu_features,
+        },
+        resolver_manifest: json!({
+            "abi": "pyamplicol-prepared-kernel-catalog-v1",
+            "model_name": "test-model",
+            "model_parameter_kernel_id": null,
+            "propagator_bindings": [],
+            "vertex_bindings": [],
+            "closure_bindings": []
+        }),
+        kernels: vec![kernel],
     }
 }
 
@@ -202,6 +265,27 @@ fn prepared_pack_schema_requires_an_explicit_kernel_abi() {
     assert!(serde_json::from_value::<PreparedKernelPackManifest>(unknown).is_err());
 }
 
+#[test]
+fn compiled_prepared_backends_validate_runtime_identity_tuples() {
+    compiled_pack("asm", SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY)
+        .validate()
+        .expect("ASM prepared evaluator tuple");
+    compiled_pack("cpp", SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY)
+        .validate()
+        .expect("C++ prepared evaluator tuple");
+
+    let mut wrong_backend = compiled_pack("asm", SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY);
+    wrong_backend.kernels[0]
+        .f64_evaluator_manifest
+        .as_object_mut()
+        .expect("compiled evaluator object")
+        .insert("backend".to_string(), json!("asm"));
+    assert!(wrong_backend.validate().is_err());
+
+    let wrong_capability = compiled_pack("asm", SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY);
+    assert!(wrong_capability.validate().is_err());
+}
+
 #[cfg(feature = "f64-symjit")]
 #[test]
 fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
@@ -269,7 +353,7 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
         reduction_entries: vec![EagerReductionEntry {
             left_group_index: 0,
             right_group_index: 0,
-            coefficient: Complex::new(1.0, 0.0),
+            coefficient: crate::EagerComplex64::new(1.0, 0.0),
         }],
     };
     let coupling_bytes = EagerCouplingRow::encode_table(&[EagerCouplingRow {
@@ -307,14 +391,14 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
     )
     .expect("build eager test runtime");
     let values = [
-        Complex::new(1.0, 0.0),
-        Complex::new(2.0, 0.0),
-        Complex::new(3.0, 0.0),
-        Complex::new(10.0, 0.0),
-        Complex::new(20.0, 0.0),
-        Complex::new(30.0, 0.0),
+        crate::EagerComplex64::new(1.0, 0.0),
+        crate::EagerComplex64::new(2.0, 0.0),
+        crate::EagerComplex64::new(3.0, 0.0),
+        crate::EagerComplex64::new(10.0, 0.0),
+        crate::EagerComplex64::new(20.0, 0.0),
+        crate::EagerComplex64::new(30.0, 0.0),
     ];
-    let mut amplitudes = [Complex::new(0.0, 0.0); 3];
+    let mut amplitudes = [crate::EagerComplex64::new(0.0, 0.0); 3];
     let mut reduced = [0.0; 3];
     runtime
         .evaluate_into(
@@ -330,12 +414,42 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
     assert_eq!(
         amplitudes,
         [
-            Complex::new(11.0, 0.0),
-            Complex::new(22.0, 0.0),
-            Complex::new(33.0, 0.0),
+            crate::EagerComplex64::new(11.0, 0.0),
+            crate::EagerComplex64::new(22.0, 0.0),
+            crate::EagerComplex64::new(33.0, 0.0),
         ]
     );
     assert_eq!(reduced, [121.0, 484.0, 1089.0]);
+
+    amplitudes.fill(crate::EagerComplex64::new(0.0, 0.0));
+    reduced.fill(0.0);
+    let profile = runtime
+        .evaluate_profile_into(
+            &mut backend,
+            3,
+            &values,
+            &[],
+            &[],
+            &mut amplitudes,
+            &mut reduced,
+        )
+        .expect("profile prepared eager plan");
+    assert_eq!(
+        amplitudes,
+        [
+            crate::EagerComplex64::new(11.0, 0.0),
+            crate::EagerComplex64::new(22.0, 0.0),
+            crate::EagerComplex64::new(33.0, 0.0),
+        ]
+    );
+    assert_eq!(reduced, [121.0, 484.0, 1089.0]);
+    assert!(profile.total_s > 0.0);
+    assert!(profile.initialize_s > 0.0);
+    assert!(profile.kernel_call_s > 0.0);
+    assert!(profile.closure_s > 0.0);
+    assert!(profile.reduction_s > 0.0);
+    assert!(profile.copy_out_s > 0.0);
+    assert!(profile.accounted_s() <= profile.total_s);
 
     let _ = fs::remove_dir_all(root);
 }
@@ -349,15 +463,199 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
     let mut runtime = NativeRuntime::load(PathBuf::from(root), None, None)
         .expect("load generated eager artifact through NativeRuntime");
     assert_eq!(runtime.metadata().execution_mode, "eager");
-    assert_eq!(runtime.metadata().prepared_backend.as_deref(), Some("jit"));
-    let momenta = [
-        500.0, 0.0, 0.0, 500.0, 500.0, 0.0, 0.0, -500.0, 1000.0, 0.0, 0.0, 0.0,
-    ];
+    assert!(matches!(
+        runtime.metadata().prepared_backend.as_deref(),
+        Some("jit" | "asm" | "cpp")
+    ));
+    let validation_path = runtime
+        .root()
+        .join("processes")
+        .join(&runtime.metadata().representative_process_key)
+        .join("validation-momenta.json");
+    let validation: Value =
+        serde_json::from_slice(&fs::read(&validation_path).expect("read eager validation momenta"))
+            .expect("parse eager validation momenta");
+    let momenta = validation["points"][0]
+        .as_array()
+        .expect("one eager validation point")
+        .iter()
+        .flat_map(|leg| {
+            leg["momentum"]
+                .as_array()
+                .expect("four momentum components")
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .expect("decimal momentum string")
+                        .parse::<f64>()
+                        .expect("f64 validation momentum")
+                })
+        })
+        .collect::<Vec<_>>();
     let values = runtime
         .evaluate_f64(&momenta, 1)
         .expect("evaluate generated eager artifact");
     assert_eq!(values.len(), 1);
     assert!(values[0].is_finite());
+
+    let resolved = runtime
+        .evaluate_resolved_f64(&momenta, 1, None, None)
+        .expect("resolve generated eager artifact");
+    let resolved_total = resolved.totals()[0];
+    assert!((resolved_total - values[0]).abs() <= 1.0e-12 * values[0].abs().max(1.0));
+
+    let selected_helicity = runtime
+        .helicities()
+        .expect("eager helicity metadata")
+        .into_iter()
+        .find(|helicity| helicity.computed)
+        .expect("one computed helicity")
+        .id;
+    let selected_color = runtime
+        .color_ids()
+        .expect("eager color metadata")
+        .into_iter()
+        .next()
+        .expect("one color component");
+    let selected_colors =
+        (runtime.metadata().color_accuracy == "lc").then(|| std::slice::from_ref(&selected_color));
+    let selected = runtime
+        .evaluate_resolved_f64(
+            &momenta,
+            1,
+            Some(std::slice::from_ref(&selected_helicity)),
+            selected_colors,
+        )
+        .expect("select eager resolved component");
+    assert_eq!(selected.shape(), (1, 1, 1));
+    assert!(selected.values[0].is_finite());
+
+    if let Some(compiled_root) = std::env::var_os("RUSTICOL_COMPILED_ARTIFACT") {
+        let mut compiled = NativeRuntime::load(PathBuf::from(compiled_root), None, None)
+            .expect("load matching compiled artifact");
+        let compiled_values = compiled
+            .evaluate_f64(&momenta, 1)
+            .expect("evaluate matching compiled artifact");
+        assert_close_f64(values[0], compiled_values[0], "eager/compiled total");
+        let compiled_resolved = compiled
+            .evaluate_resolved_f64(&momenta, 1, None, None)
+            .expect("resolve matching compiled artifact");
+        assert_eq!(resolved.helicity_ids, compiled_resolved.helicity_ids);
+        assert_eq!(resolved.color_ids, compiled_resolved.color_ids);
+        assert_eq!(resolved.values.len(), compiled_resolved.values.len());
+        for (eager, compiled) in resolved.values.iter().zip(&compiled_resolved.values) {
+            assert_close_f64(*eager, *compiled, "eager/compiled resolved component");
+        }
+    }
+
+    let parameters = runtime.model_parameters().expect("eager model parameters");
+    let candidates = if let Some(parameter) = parameters
+        .iter()
+        .find(|parameter| parameter.name == "aEWM1")
+    {
+        vec![(
+            BTreeMap::from([(parameter.name.clone(), (parameter.default * 1.05, 0.0))]),
+            BTreeMap::from([(
+                parameter.name.clone(),
+                (parameter.default, parameter.default_imaginary),
+            )]),
+        )]
+    } else {
+        let mut groups = BTreeMap::<String, Vec<(String, f64, f64)>>::new();
+        for parameter in parameters
+            .iter()
+            .filter(|parameter| parameter.mutable && parameter.name.starts_with("coupling."))
+        {
+            let prefix = parameter
+                .name
+                .split_once(".component_")
+                .map(|(prefix, _)| prefix.to_string())
+                .expect("coupling component suffix");
+            groups.entry(prefix).or_default().push((
+                parameter.name.clone(),
+                parameter.default,
+                parameter.default_imaginary,
+            ));
+        }
+        groups
+            .into_values()
+            .map(|selected| {
+                let changed = selected
+                    .iter()
+                    .map(|(name, _, _)| (name.clone(), (0.0, 0.0)))
+                    .collect();
+                let restored = selected
+                    .iter()
+                    .map(|(name, real, imaginary)| (name.clone(), (*real, *imaginary)))
+                    .collect();
+                (changed, restored)
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(!candidates.is_empty(), "one mutable eager parameter group");
+    let mut observed_parameter_effect = false;
+    for (changed, restored) in candidates {
+        runtime
+            .set_model_parameters(&changed)
+            .expect("update eager model parameters atomically");
+        let changed_value = runtime
+            .evaluate_f64(&momenta, 1)
+            .expect("evaluate updated eager parameters")[0];
+        runtime
+            .set_model_parameters(&restored)
+            .expect("restore eager model parameters atomically");
+        let restored_value = runtime
+            .evaluate_f64(&momenta, 1)
+            .expect("evaluate restored eager parameters")[0];
+        assert_eq!(restored_value.to_bits(), values[0].to_bits());
+        if changed_value.to_bits() != values[0].to_bits() {
+            observed_parameter_effect = true;
+            break;
+        }
+    }
+    assert!(
+        observed_parameter_effect,
+        "one eager parameter affects output"
+    );
+
+    if parameters.iter().any(|parameter| parameter.name == "aEWM1")
+        && parameters.iter().any(|parameter| parameter.name == "MZ")
+    {
+        let before_failed_derivation = runtime
+            .exact_runtime_state_json()
+            .expect("eager state before failed derivation");
+        assert!(runtime.set_model_parameter("MZ", 0.0, 0.0).is_err());
+        assert_eq!(
+            runtime
+                .exact_runtime_state_json()
+                .expect("eager state after failed derivation"),
+            before_failed_derivation
+        );
+    }
+
+    let before_failed_update = runtime
+        .exact_runtime_state_json()
+        .expect("eager parameter state before failed update");
+    assert!(
+        runtime
+            .set_model_parameter("not-a-model-parameter", 1.0, 0.0)
+            .is_err()
+    );
+    assert_eq!(
+        runtime
+            .exact_runtime_state_json()
+            .expect("eager parameter state after failed update"),
+        before_failed_update
+    );
+}
+
+fn assert_close_f64(left: f64, right: f64, context: &str) {
+    let tolerance = 1.0e-15 + 1.0e-12 * left.abs().max(right.abs());
+    assert!(
+        (left - right).abs() <= tolerance,
+        "{context}: {left:.17e} != {right:.17e} (tolerance {tolerance:.3e})"
+    );
 }
 
 #[cfg(feature = "f64-symjit")]
@@ -387,15 +685,8 @@ fn generated_filtered_pack_and_binary_plan_execute_when_fixture_is_supplied() {
     .expect("parse filtered prepared-kernel fixture");
     pack.validate()
         .expect("validate filtered prepared-kernel fixture");
-    let definition = execution
-        .plan_definition(&pack)
-        .expect("derive eager plan definition from runtime schema and filtered pack");
-    let couplings = fs::read(process_root.join(&execution.plan.couplings.path))
+    let coupling_bytes = fs::read(process_root.join(&execution.plan.couplings.path))
         .expect("read eager coupling table");
-    assert_eq!(
-        couplings.len(),
-        execution.plan.couplings.count * EagerCouplingRow::ENCODED_LEN
-    );
     let closures = fs::read(process_root.join(&execution.plan.closures.path))
         .expect("read eager closure table");
     assert_eq!(
@@ -428,6 +719,31 @@ fn generated_filtered_pack_and_binary_plan_execute_when_fixture_is_supplied() {
             (invocations, attachments, finalizations)
         })
         .collect::<Vec<_>>();
+    assert_eq!(
+        coupling_bytes.len(),
+        execution.plan.couplings.count * EagerCouplingRow::ENCODED_LEN
+    );
+    let mut common = ExecutionRuntime::from_manifest(execution.compiled_metadata_manifest())
+        .expect("load shared source and physics execution metadata");
+    let (parameter_projection, couplings, model_parameter_evaluator) =
+        prepare_eager_parameter_state(
+            &pack,
+            &execution.runtime_schema.model_parameters,
+            &coupling_bytes,
+            &root.join("model/eager-kernels"),
+        )
+        .expect("prepare eager model-parameter projection");
+    common.model_parameter_evaluator = model_parameter_evaluator;
+    common
+        .refresh_derived_model_parameters()
+        .expect("refresh prepared derived parameters");
+    let definition = execution
+        .plan_definition(
+            &pack,
+            u32::try_from(parameter_projection.parameter_count)
+                .expect("prepared parameter count fits u32"),
+        )
+        .expect("derive eager plan definition from runtime schema and filtered pack");
     let stages = execution
         .plan
         .stages
@@ -459,14 +775,22 @@ fn generated_filtered_pack_and_binary_plan_execute_when_fixture_is_supplied() {
     .expect("construct generated eager scheduler");
     let backend = PreparedEvaluatorBackend::load(&pack, &root.join("model/eager-kernels"))
         .expect("load filtered prepared evaluator pack");
-    let mut common = ExecutionRuntime::from_manifest(execution.compiled_metadata_manifest())
-        .expect("load shared source and physics execution metadata");
     let point = vec![
         [500.0, 0.0, 0.0, 500.0],
         [500.0, 0.0, 0.0, -500.0],
         [1000.0, 0.0, 0.0, 0.0],
     ];
-    let mut eager = EagerNativeRuntime::new(scheduler, backend, "jit".to_string(), false);
+    let (raw_sum_groups, color_contraction) = execution
+        .raw_reduction_runtime()
+        .expect("load eager resolved reduction metadata");
+    let mut eager = EagerNativeRuntime::new(
+        scheduler,
+        backend,
+        "jit".to_string(),
+        parameter_projection,
+        raw_sum_groups,
+        color_contraction,
+    );
     let (values, _) = eager
         .run_f64(&mut common, &[point])
         .expect("execute generated filtered eager artifact");

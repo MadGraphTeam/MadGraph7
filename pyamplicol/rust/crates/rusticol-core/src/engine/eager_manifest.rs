@@ -205,12 +205,13 @@ impl EagerExecutionManifest {
     pub(super) fn plan_definition(
         &self,
         pack: &PreparedKernelPackManifest,
+        prepared_parameter_count: u32,
     ) -> RusticolResult<EagerPlanDefinition> {
         let dimensions = EagerPlanDimensions {
             value_slot_component_counts: contiguous_value_slot_widths(&self.runtime_schema)?,
             momentum_slot_component_counts: contiguous_momentum_slot_widths(&self.runtime_schema)?,
             current_component_counts: contiguous_current_slot_widths(&self.runtime_schema)?,
-            parameter_count: contiguous_model_parameter_count(&self.runtime_schema)?,
+            parameter_count: prepared_parameter_count,
             amplitude_count: u32::try_from(self.runtime_schema.amplitude_stage.output_count)
                 .map_err(|_| RusticolError::artifact("eager amplitude count exceeds u32"))?,
         };
@@ -238,7 +239,7 @@ impl EagerExecutionManifest {
                     .contraction_ir
                     .coefficients
                     .iter()
-                    .map(|value| Complex::new(value[0], value[1]))
+                    .map(|value| crate::EagerComplex64::new(value[0], value[1]))
                     .collect();
                 Ok(EagerDirectClosureSpec {
                     closure_index: u32::try_from(index).map_err(|_| {
@@ -253,6 +254,73 @@ impl EagerExecutionManifest {
     fn reduction_plan(
         &self,
     ) -> RusticolResult<(Vec<EagerReductionGroup>, Vec<EagerReductionEntry>)> {
+        let (groups, contraction) = self.raw_reduction_runtime()?;
+        let reduction_groups = groups
+            .iter()
+            .map(|group| {
+                Ok(EagerReductionGroup {
+                    amplitude_indices: group
+                        .indices
+                        .iter()
+                        .map(|index| {
+                            u32::try_from(*index).map_err(|_| {
+                                RusticolError::artifact(
+                                    "eager reduction amplitude index exceeds u32",
+                                )
+                            })
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()?,
+                })
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut entries = Vec::new();
+        if let Some(contraction) = contraction {
+            entries
+                .try_reserve_exact(contraction.entries.len())
+                .map_err(|error| {
+                    RusticolError::artifact(format!(
+                        "cannot reserve eager color-contraction entries: {error}"
+                    ))
+                })?;
+            for entry in contraction.entries {
+                let coefficient = crate::EagerComplex64::new(entry.weight_re, entry.weight_im)
+                    * entry.symmetry_factor;
+                entries.push(EagerReductionEntry {
+                    left_group_index: u32::try_from(entry.left_group_index).map_err(|_| {
+                        RusticolError::artifact(
+                            "eager color-contraction left group index exceeds u32",
+                        )
+                    })?,
+                    right_group_index: u32::try_from(entry.right_group_index).map_err(|_| {
+                        RusticolError::artifact(
+                            "eager color-contraction right group index exceeds u32",
+                        )
+                    })?,
+                    coefficient,
+                });
+            }
+        } else {
+            entries.try_reserve_exact(groups.len()).map_err(|error| {
+                RusticolError::artifact(format!(
+                    "cannot reserve eager diagonal reduction entries: {error}"
+                ))
+            })?;
+            for (group_index, group) in groups.iter().enumerate() {
+                let group_index = u32::try_from(group_index)
+                    .map_err(|_| RusticolError::artifact("eager reduction group exceeds u32"))?;
+                entries.push(EagerReductionEntry {
+                    left_group_index: group_index,
+                    right_group_index: group_index,
+                    coefficient: crate::EagerComplex64::new(group.all_sector_weight, 0.0),
+                });
+            }
+        }
+        Ok((reduction_groups, entries))
+    }
+
+    pub(super) fn raw_reduction_runtime(
+        &self,
+    ) -> RusticolResult<(Vec<RawSumGroup>, Option<ColorContractionRuntime>)> {
         let roots = &self.runtime_schema.amplitude_stage.roots;
         let output_count = self.runtime_schema.amplitude_stage.output_count;
         let weights = roots
@@ -285,67 +353,7 @@ impl EagerExecutionManifest {
                 .as_ref(),
             &groups,
         )?;
-        let reduction_groups = groups
-            .iter()
-            .map(|group| {
-                Ok(EagerReductionGroup {
-                    amplitude_indices: group
-                        .indices
-                        .iter()
-                        .map(|index| {
-                            u32::try_from(*index).map_err(|_| {
-                                RusticolError::artifact(
-                                    "eager reduction amplitude index exceeds u32",
-                                )
-                            })
-                        })
-                        .collect::<RusticolResult<Vec<_>>>()?,
-                })
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let mut entries = Vec::new();
-        if let Some(contraction) = contraction {
-            entries
-                .try_reserve_exact(contraction.entries.len())
-                .map_err(|error| {
-                    RusticolError::artifact(format!(
-                        "cannot reserve eager color-contraction entries: {error}"
-                    ))
-                })?;
-            for entry in contraction.entries {
-                let coefficient =
-                    Complex::new(entry.weight_re, entry.weight_im) * entry.symmetry_factor;
-                entries.push(EagerReductionEntry {
-                    left_group_index: u32::try_from(entry.left_group_index).map_err(|_| {
-                        RusticolError::artifact(
-                            "eager color-contraction left group index exceeds u32",
-                        )
-                    })?,
-                    right_group_index: u32::try_from(entry.right_group_index).map_err(|_| {
-                        RusticolError::artifact(
-                            "eager color-contraction right group index exceeds u32",
-                        )
-                    })?,
-                    coefficient,
-                });
-            }
-        } else {
-            entries.try_reserve_exact(groups.len()).map_err(|error| {
-                RusticolError::artifact(format!(
-                    "cannot reserve eager diagonal reduction entries: {error}"
-                ))
-            })?;
-            for (group_index, group) in groups.iter().enumerate() {
-                let group_index = u32::try_from(group_index)
-                    .map_err(|_| RusticolError::artifact("eager reduction group exceeds u32"))?;
-                entries.push(EagerReductionEntry {
-                    left_group_index: group_index,
-                    right_group_index: group_index,
-                    coefficient: Complex::new(group.all_sector_weight, 0.0),
-                });
-            }
-        }
-        Ok((reduction_groups, entries))
+        Ok((groups, contraction))
     }
 }
 
@@ -559,10 +567,28 @@ impl PreparedKernelManifest {
         })?;
         let kind = required_nonempty_string(object, "kind", self.kernel_id)?;
         let backend = required_nonempty_string(object, "backend", self.kernel_id)?;
-        if backend != pack.backend {
+        let (expected_kind, expected_backend, expected_capability) = match pack.backend.as_str() {
+            "jit" => (
+                "symjit-application-evaluator",
+                "jit",
+                SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
+            ),
+            "asm" => (
+                "compiled-complex-evaluator",
+                "compiled-complex",
+                SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY,
+            ),
+            "cpp" => (
+                "compiled-complex-evaluator",
+                "compiled-complex",
+                SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY,
+            ),
+            _ => unreachable!("prepared pack backend validated before its kernels"),
+        };
+        if kind != expected_kind || backend != expected_backend {
             return Err(RusticolError::integrity(format!(
-                "prepared kernel {} evaluator backend {backend:?} does not match pack backend {:?}",
-                self.kernel_id, pack.backend
+                "prepared kernel {} evaluator ({kind:?}, {backend:?}) does not match pack backend {:?}, expected ({expected_kind:?}, {expected_backend:?})",
+                self.kernel_id, pack.backend,
             )));
         }
         let settings = object.get("settings").ok_or_else(|| {
@@ -597,6 +623,13 @@ impl PreparedKernelManifest {
             )));
         }
         let runtime = self.runtime_evaluator_manifest()?;
+        let capabilities = evaluator_runtime_capabilities(&runtime)?;
+        if capabilities != BTreeSet::from([expected_capability.to_string()]) {
+            return Err(RusticolError::integrity(format!(
+                "prepared kernel {} pack backend {:?} declares evaluator capabilities {capabilities:?}, expected {expected_capability:?}",
+                self.kernel_id, pack.backend,
+            )));
+        }
         let (input_len, output_len) = runtime.io_len()?;
         if input_len != self.input_arity
             || output_len != usize::try_from(self.output_arity).unwrap_or(usize::MAX)
@@ -839,25 +872,4 @@ fn contiguous_widths(name: &str, mut pairs: Vec<(usize, usize)>) -> RusticolResu
                 .map_err(|_| RusticolError::artifact(format!("eager {name} width exceeds u32")))
         })
         .collect()
-}
-
-fn contiguous_model_parameter_count(plan: &ExecutionPlan) -> RusticolResult<u32> {
-    let mut indices = plan
-        .model_parameters
-        .iter()
-        .map(|parameter| parameter.parameter_index)
-        .collect::<Vec<_>>();
-    indices.sort_unstable();
-    if indices
-        .iter()
-        .enumerate()
-        .any(|(expected, id)| expected != *id)
-        || indices.len() != plan.parameter_layout.model_parameter_count
-    {
-        return Err(RusticolError::artifact(
-            "eager model-parameter indices do not match the runtime parameter layout",
-        ));
-    }
-    u32::try_from(indices.len())
-        .map_err(|_| RusticolError::artifact("eager model-parameter count exceeds u32"))
 }

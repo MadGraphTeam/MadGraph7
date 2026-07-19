@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from pyamplicol.models import prepared as prepared_module
 from pyamplicol.models.prepared import (
     EAGER_KERNEL_ABI,
     PREPARED_MODEL_BUNDLE_KIND,
@@ -200,6 +201,61 @@ def test_prepared_model_bundle_round_trip_and_payload_copy(tmp_path: Path) -> No
         "kernels/0/application.symjit",
         "kernels/0/exact.evaluator.bin",
     }
+
+
+def test_payload_reference_index_is_reused_after_bundle_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _valid_bundle(tmp_path)
+    bundle = load_prepared_model_bundle(path)
+    expected = (
+        "kernels/0/application.symjit",
+        "kernels/0/exact.evaluator.bin",
+    )
+
+    def fail_manifest_traversal(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        raise AssertionError("manifest payload paths were recomputed")
+
+    monkeypatch.setattr(
+        prepared_module,
+        "_collect_manifest_paths",
+        fail_manifest_traversal,
+    )
+    assert bundle.kernel_pack.kernels[0].referenced_payload_paths == expected
+    assert bundle.kernel_pack.kernels[0].referenced_payload_paths == expected
+
+    def fail_kernel_scan(_kernel: PreparedKernelRecord) -> tuple[str, ...]:
+        raise AssertionError("kernel payload paths were rescanned")
+
+    monkeypatch.setattr(
+        PreparedKernelRecord,
+        "referenced_payload_paths",
+        property(fail_kernel_scan),
+    )
+    assert bundle.kernel_pack.referenced_payload_paths == expected
+    assert bundle.kernel_pack.referenced_payload_paths == expected
+    assert bundle.read_payload("kernels/0/application.symjit") == b"jit:0"
+    assert bundle.read_payload("kernels/0/application.symjit") == b"jit:0"
+
+
+def test_cached_payload_index_keeps_path_and_checksum_validation(
+    tmp_path: Path,
+) -> None:
+    path = _valid_bundle(tmp_path)
+    bundle = load_prepared_model_bundle(path)
+
+    with pytest.raises(PreparedModelBundleError, match="normalized relative POSIX"):
+        bundle.read_payload("../kernels/0/application.symjit")
+
+    entries = [
+        (info, b"bad!!" if info.filename.endswith("application.symjit") else data)
+        for info, data in _entries(path)
+    ]
+    _rewrite(path, entries)
+
+    with pytest.raises(PreparedModelBundleError, match="SHA-256 mismatch"):
+        bundle.read_payload("kernels/0/application.symjit")
 
 
 def test_prepared_model_bundle_bytes_are_deterministic(tmp_path: Path) -> None:

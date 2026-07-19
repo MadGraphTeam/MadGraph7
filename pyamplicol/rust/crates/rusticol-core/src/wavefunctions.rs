@@ -918,9 +918,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{ext_massive_vector, negate};
+    use super::{Complex, ext_massive_vector, negate};
 
-    fn assert_complex_close(left: num_complex::Complex<f64>, right: num_complex::Complex<f64>) {
+    fn assert_complex_close(left: Complex<f64>, right: Complex<f64>) {
         assert!((left.re - right.re).abs() < 1.0e-13);
         assert!((left.im - right.im).abs() < 1.0e-13);
     }
@@ -945,11 +945,18 @@ mod tests {
                 [(momentum, helicity), (negate(momentum), -helicity)]
             {
                 let wave = ext_massive_vector(candidate, source_helicity, 5.0);
-                let contraction = candidate[0] * wave[0]
-                    - candidate[1] * wave[1]
-                    - candidate[2] * wave[2]
-                    - candidate[3] * wave[3];
-                assert!(contraction.norm() < 1.0e-12, "{contraction:?}");
+                let contraction_re = candidate[0] * wave[0].re
+                    - candidate[1] * wave[1].re
+                    - candidate[2] * wave[2].re
+                    - candidate[3] * wave[3].re;
+                let contraction_im = candidate[0] * wave[0].im
+                    - candidate[1] * wave[1].im
+                    - candidate[2] * wave[2].im
+                    - candidate[3] * wave[3].im;
+                assert!(
+                    contraction_re.hypot(contraction_im) < 1.0e-12,
+                    "({contraction_re}, {contraction_im})"
+                );
             }
         }
     }

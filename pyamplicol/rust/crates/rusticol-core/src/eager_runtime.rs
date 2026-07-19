@@ -122,18 +122,52 @@ pub struct EagerKernelCall<'a> {
     pub outputs: &'a mut [EagerComplex64],
 }
 
-/// Evaluates component-major packets whose lanes are ordered by invocation, then point.
+/// Evaluates row-major packets whose lanes are ordered by invocation, then point.
 ///
 /// The scheduler sorts invocations stably by kernel id while loading a plan. Each packet
 /// therefore contains one kernel only; within that packet, all points for the first
 /// invocation precede all points for the next invocation. Input components follow the
-/// exact order in [`EagerKernelSpec::inputs`].
+/// exact order in [`EagerKernelSpec::inputs`], so component `c` of lane `l` is stored at
+/// `l * input_component_count + c`. Outputs use the same lane-major row layout.
 pub trait EagerKernelBackend {
     fn evaluate_batch(&mut self, call: EagerKernelCall<'_>) -> RusticolResult<()>;
 }
 
+/// Opt-in wall-clock accounting for one eager scheduler evaluation.
+///
+/// Every field is an aggregate over all point tiles. The phases are mutually
+/// exclusive, so [`Self::accounted_s`] can be compared directly with
+/// [`Self::total_s`]. Timer bookkeeping and validation account for the small
+/// unclassified remainder.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct EagerExecutionProfile {
+    pub(crate) initialize_s: f64,
+    pub(crate) gather_s: f64,
+    pub(crate) kernel_call_s: f64,
+    pub(crate) invocation_scatter_s: f64,
+    pub(crate) finalization_s: f64,
+    pub(crate) closure_s: f64,
+    pub(crate) reduction_s: f64,
+    pub(crate) copy_out_s: f64,
+    pub(crate) total_s: f64,
+}
+
+impl EagerExecutionProfile {
+    pub(crate) fn accounted_s(self) -> f64 {
+        self.initialize_s
+            + self.gather_s
+            + self.kernel_call_s
+            + self.invocation_scatter_s
+            + self.finalization_s
+            + self.closure_s
+            + self.reduction_s
+            + self.copy_out_s
+    }
+}
+
 mod execute;
 mod plan;
+mod profile;
 mod runtime;
 
 pub use plan::EagerExecutionPlan;

@@ -56,9 +56,14 @@ impl NativeRuntime {
                 LoadedExecutionManifest::Eager(manifest) => {
                     let representative_process = manifest.process.clone();
                     let representative_key = manifest.key.clone();
-                    let eager = load_eager_native_runtime(&artifact, &evaluator_root, &manifest)?;
-                    let runtime =
+                    let mut runtime =
                         ExecutionRuntime::from_manifest(manifest.compiled_metadata_manifest())?;
+                    let eager = load_eager_native_runtime(
+                        &artifact,
+                        &evaluator_root,
+                        &manifest,
+                        &mut runtime,
+                    )?;
                     (
                         representative_process,
                         representative_key,
@@ -377,18 +382,24 @@ impl NativeRuntime {
         let total_start = Instant::now();
         let batch = self.prepare_f64_batch(momenta, point_count)?;
         let (values, profile) = if helicity_ids.is_some() || color_ids.is_some() {
-            if self.execution_lane.is_eager() {
-                return Err(eager_parity_pending("resolved f64 evaluation"));
-            }
             self.validate_selector_capabilities(helicity_ids, color_ids)?;
             self.record_resolved_warnings(helicity_ids, color_ids)?;
             let selected_helicities = selector_set(helicity_ids, "helicity")?;
             let selected_colors = selector_set(color_ids, "color component")?;
-            let (resolved, profile) = self.runtime.run_resolved_f64(
-                &batch,
-                selected_helicities.as_ref(),
-                selected_colors.as_ref(),
-            )?;
+            let (resolved, profile) = match &mut self.execution_lane {
+                NativeExecutionLane::Compiled => self.runtime.run_resolved_f64(
+                    &batch,
+                    selected_helicities.as_ref(),
+                    selected_colors.as_ref(),
+                )?,
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64_profile(
+                    &mut self.runtime,
+                    &batch,
+                    selected_helicities.as_ref(),
+                    selected_colors.as_ref(),
+                )?,
+            };
             let component_count = resolved
                 .helicity_indices
                 .len()
@@ -410,7 +421,7 @@ impl NativeRuntime {
                 NativeExecutionLane::Compiled => self.runtime.run_f64(&batch)?,
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::Eager(runtime) => {
-                    runtime.run_f64(&mut self.runtime, &batch)?
+                    runtime.run_f64_profile(&mut self.runtime, &batch)?
                 }
             }
         };
@@ -426,9 +437,6 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<NativeResolvedEvaluation, RusticolError> {
-        if self.execution_lane.is_eager() {
-            return Err(eager_parity_pending("resolved f64 evaluation"));
-        }
         self.validate_selector_capabilities(helicity_ids, color_ids)?;
         self.record_resolved_warnings(helicity_ids, color_ids)?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
@@ -439,11 +447,20 @@ impl NativeRuntime {
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
             )
         })?;
-        let (resolved, _profile) = self.runtime.run_resolved_f64(
-            &batch,
-            selected_helicities.as_ref(),
-            selected_colors.as_ref(),
-        )?;
+        let (resolved, _profile) = match &mut self.execution_lane {
+            NativeExecutionLane::Compiled => self.runtime.run_resolved_f64(
+                &batch,
+                selected_helicities.as_ref(),
+                selected_colors.as_ref(),
+            )?,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64(
+                &mut self.runtime,
+                &batch,
+                selected_helicities.as_ref(),
+                selected_colors.as_ref(),
+            )?,
+        };
         let helicity_ids = resolved
             .helicity_indices
             .iter()
@@ -584,12 +601,6 @@ impl NativeRuntime {
         &mut self,
         values: &BTreeMap<String, (f64, f64)>,
     ) -> Result<(), RusticolError> {
-        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        if let NativeExecutionLane::Eager(runtime) = &self.execution_lane
-            && !runtime.supports_parameter_updates()
-        {
-            return Err(eager_parity_pending("derived model-parameter updates"));
-        }
         for name in values.keys() {
             let parameter = self
                 .physics_v1
@@ -934,6 +945,7 @@ where
     })
 }
 
+#[cfg(feature = "symbolica-runtime")]
 fn eager_parity_pending(feature: &str) -> RusticolError {
     RusticolError::unsupported_runtime_capability(
         EAGER_DAG_RUNTIME_CAPABILITY,
