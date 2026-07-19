@@ -34,6 +34,7 @@ DEFAULT_GENERATION_TIMEOUT = 300.0
 DEFAULT_SUITE_TIMEOUT = 300.0
 DEFAULT_MEMORY_LIMIT_GIB = 30.0
 DEFAULT_BATCH_SIZES = (1, 128, 1024)
+SMOKE_BATCH_SIZES = (128, 1024)
 DEFAULT_COLORS = ("lc", "nlc", "full")
 HARD_GENERATION_SPEEDUP = 7.0
 SOFT_GENERATION_SPEEDUP = 10.0
@@ -561,11 +562,16 @@ def _scope_gate(arguments: argparse.Namespace, cases: Sequence[ProcessCase]) -> 
     expected_models = (
         {"built-in", "ufo-sm"} if arguments.suite == "milestone" else {"built-in"}
     )
+    expected_batch_sizes = (
+        DEFAULT_BATCH_SIZES
+        if arguments.suite == "milestone"
+        else SMOKE_BATCH_SIZES
+    )
     return (
         {case.key for case in cases} == expected_cases
         and set(arguments.models) == expected_models
         and set(arguments.colors) == set(DEFAULT_COLORS)
-        and set(arguments.batch_sizes) == set(DEFAULT_BATCH_SIZES)
+        and set(arguments.batch_sizes) == set(expected_batch_sizes)
     )
 
 
@@ -1101,7 +1107,15 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "--colors", type=_csv_values, default=DEFAULT_COLORS, help="lc,nlc,full"
     )
-    result.add_argument("--batch-sizes", type=_csv_ints, default=DEFAULT_BATCH_SIZES)
+    result.add_argument(
+        "--batch-sizes",
+        type=_csv_ints,
+        default=None,
+        help=(
+            "comma-separated batch sizes; defaults to 128,1024 for smoke and "
+            "1,128,1024 for milestone"
+        ),
+    )
     result.add_argument("--builtin-pack", type=Path, required=True)
     result.add_argument("--ufo-source", type=Path)
     result.add_argument("--ufo-pack", type=Path)
@@ -1120,6 +1134,12 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
+    if arguments.batch_sizes is None:
+        arguments.batch_sizes = (
+            DEFAULT_BATCH_SIZES
+            if arguments.suite == "milestone"
+            else SMOKE_BATCH_SIZES
+        )
     try:
         result = run_matrix(arguments)
     except (MatrixError, OSError, ValueError) as error:

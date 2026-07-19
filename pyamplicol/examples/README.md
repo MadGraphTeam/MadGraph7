@@ -39,6 +39,7 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `builtin_sm_lc.toml` | Built-in compatibility SM, `u u~ > g g`, LC |
 | `builtin_sm_nlc.toml` | Built-in compatibility SM, contracted NLC |
 | `builtin_sm_full.toml` | Built-in compatibility SM, contracted full color |
+| `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O3 pack |
 | `all_options.toml` | Every current schema field, active and commented |
 
 `examples copy` also materializes wheel-owned `sm`, `scalars`, and
@@ -90,7 +91,7 @@ python python/benchmark.py artifacts/pp_zjj \
 python python/external_models.py models/json/sm/sm.json models/ufo/sm
 ```
 
-## Generated Python, Rust, C++, And Fortran
+## Generated Python, C, Rust, C++, And Fortran
 
 Every generated artifact contains one `API/` bundle. All drivers select a
 process, accept JSON/direct model-parameter updates, evaluate resolved values,
@@ -99,6 +100,8 @@ sum them, and compare with the optimized total:
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \
   --process 'd d~ > z g g' --set-parameter aS 0.117 0 --json
+make -C artifacts/pp_zjj/API/c run \
+  ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/rust run \
   ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --precision 16 --json'
 make -C artifacts/pp_zjj/API/cpp run \
@@ -111,11 +114,11 @@ The generated Rust source includes the wheel-owned safe wrapper located by
 `rusticol-config --rust-source` and is compiled directly with `rustc` plus
 `rusticol-config --rustflags`; no Rust crate dependency is needed. The Makefile
 also has an optional `run-script` target for separately installed
-`rust-script`, using `rusticol-config --cargo-rustflags`. Rust, C++, and Fortran
-support f64 (`--precision 16`) only. At f64, direct SymJIT and target-compatible
-ASM/C++ artifacts run without a Symbolica runtime. The Python driver also
-exposes precision-controlled Symbolica evaluation when retained evaluator state
-is available.
+`rust-script`, using `rusticol-config --cargo-rustflags`. C, Rust, C++, and
+Fortran support f64 (`--precision 16`) only. At f64, direct SymJIT,
+target-compatible ASM/C++, and eager JIT artifacts run without a Symbolica
+runtime. The Python driver also exposes precision-controlled Symbolica
+evaluation when exact expressions are available.
 
 ## Hand-Written Native Examples
 

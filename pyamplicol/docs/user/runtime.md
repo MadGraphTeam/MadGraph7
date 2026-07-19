@@ -24,6 +24,12 @@ JSON:
 pyamplicol inspect artifacts/pp_zjj --format json
 ```
 
+For eager artifacts the inventory also reports the prepared backend, kernel
+and invocation counts, aliases, finalizations, closures, fanout, selector
+dependency domains, configured workspace, and effective point-tile capacity.
+These fields describe the executable plan without loading or running its
+kernels.
+
 To inspect the detailed resolved-physics metadata for one process, select it by
 expression or stable ID:
 
@@ -200,6 +206,11 @@ output assignment, amplitude input packing/evaluator calls, reduction, and
 per-stage packing/evaluator/output timings. `BenchmarkResult.timing_breakdown`
 preserves the same data as typed component and stage timing objects, including
 sample counts and uncertainty.
+
+For eager artifacts the corresponding breakdown separates initialization,
+gather, prepared-kernel calls, invocation scatter, current finalization,
+closure, amplitude copy-out, and reduction. All of these measurements begin
+inside Rusticol after caller-side NumPy or language-wrapper packing.
 
 The same operation is available through the typed Python API:
 

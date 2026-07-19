@@ -234,7 +234,7 @@ JIT O3 pack; pass an explicitly prepared path to select another backend.
 
 Rusticol tiles large point batches through a reusable workspace. Configure the
 upper bounds with `[evaluator.eager] point_tile_size = 1024` and
-`workspace_mib = 256`. The generated artifact supports the same Python,
+`workspace_mib = 256`. The generated artifact supports the same Python, C11,
 Rust, C++17, and Fortran 2008 total/resolved APIs and selectors as compiled
 mode. JIT f64 evaluation of saved SymJIT applications is Symbolica-free after
 generation. Eager generation and non-f64 evaluation retain the normal

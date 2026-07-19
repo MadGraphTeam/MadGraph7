@@ -16,6 +16,27 @@ def test_smoke_suite_selects_the_two_bounded_cases() -> None:
     assert all(case.smoke for case in selected)
 
 
+def test_suite_defaults_keep_scalar_batch_for_milestone_only() -> None:
+    smoke = matrix.parser().parse_args(
+        ["--builtin-pack", "pack", "--output-root", "output"]
+    )
+    milestone = matrix.parser().parse_args(
+        [
+            "--suite",
+            "milestone",
+            "--builtin-pack",
+            "pack",
+            "--output-root",
+            "output",
+        ]
+    )
+
+    assert smoke.batch_sizes is None
+    assert milestone.batch_sizes is None
+    assert matrix.SMOKE_BATCH_SIZES == (128, 1024)
+    assert matrix.DEFAULT_BATCH_SIZES == (1, 128, 1024)
+
+
 def test_explicit_case_selection_preserves_request_order() -> None:
     selected = matrix._selected_cases("milestone", ("dd_tt_3g", "dd_z_3g"))
 
