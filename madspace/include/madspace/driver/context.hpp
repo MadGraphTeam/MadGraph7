@@ -47,6 +47,38 @@ public:
     }
     std::size_t index() const { return _index; }
     const std::string& file_name() const { return _file_name; }
+    std::vector<bool> supported_inputs() const {
+        bool const* data; int count;
+        check_umami_status(_supported_inputs(&data, &count));
+        std::vector<bool> result(UMAMI_INPUT_KEY_COUNT, false);
+        for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i)
+            result[i] = data[i];
+        return result;
+    }
+    std::vector<bool> required_inputs() const {
+        bool const* data; int count;
+        check_umami_status(_required_inputs(&data, &count));
+        std::vector<bool> supported = supported_inputs();
+        for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i) {
+            if (data[i] && !supported[i]) {
+                throw_error(std::format(
+                    "input key {} is reported as required but not as supported", i
+                ));
+            }
+        }
+        std::vector<bool> result(UMAMI_INPUT_KEY_COUNT, false);
+        for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i)
+            result[i] = data[i];
+        return result;
+    }
+    std::vector<bool> supported_outputs() const {
+        bool const* data; int count;
+        check_umami_status(_supported_outputs(&data, &count));
+        std::vector<bool> result(UMAMI_OUTPUT_KEY_COUNT, false);
+        for (int i = 0; i < count && i < UMAMI_OUTPUT_KEY_COUNT; ++i)
+            result[i] = data[i];
+        return result;
+    }
 
     void call(
         UmamiHandle handle,
@@ -89,6 +121,9 @@ private:
     [[noreturn]] void throw_error(const std::string& message) const;
     std::unique_ptr<void, std::function<void(void*)>> _shared_lib;
     decltype(&umami_get_meta) _get_meta;
+    decltype(&umami_supported_inputs) _supported_inputs;
+    decltype(&umami_required_inputs) _required_inputs;
+    decltype(&umami_supported_outputs) _supported_outputs;
     decltype(&umami_initialize) _initialize;
     decltype(&umami_matrix_element) _matrix_element;
     decltype(&umami_free) _free;
