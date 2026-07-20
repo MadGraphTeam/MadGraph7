@@ -282,6 +282,77 @@ def test_matrix_renderer_shows_legacy_jit_o3_multipliers_only() -> None:
     assert "ASM" not in table
 
 
+def test_lc_matrix_renderer_shows_py_timings_when_reference_is_unavailable() -> None:
+    spec = report.MATRIX_SPECS[0]
+    payload = report.build_matrix_cache(spec)
+    entry = next(
+        candidate
+        for candidate in payload["entries"]
+        if candidate["process_key"] == "dd_4q_lines" and candidate["n_final"] == 6
+    )
+    legacy = report._empty_measurement()
+    legacy.update(
+        {
+            "status": report.ResultStatus.UNSUPPORTED.value,
+            "failure_message": (
+                f"{report.ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON}; "
+                "d d~ > u u~ s s~ c c~ has 4 open quark lines"
+            ),
+            "metadata": {
+                "old_matrix_format": {
+                    "status": report.ResultStatus.UNSUPPORTED.value,
+                    "all_flow_status": report.ResultStatus.UNSUPPORTED.value,
+                    "reference_unavailable_reason": (
+                        report.ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON
+                    ),
+                }
+            },
+        }
+    )
+    pyamplicol = report._empty_measurement()
+    pyamplicol.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 2.0,
+            "sample_count": 1,
+            "wall_seconds_per_point": 1.0e-6,
+            "evaluator_seconds_per_point": 0.5e-6,
+            "standard_deviation_seconds_per_point": 0.0,
+            "standard_error_seconds_per_point": 0.0,
+            "relative_standard_error": 0.0,
+            "matrix_element": 10.0,
+            "requested_config": {},
+            "effective_config": {},
+            "metadata": {
+                "old_matrix_format": {
+                    "status": report.ResultStatus.OK.value,
+                    "selected_generation_s": 2.0,
+                    "all_flow_generation_s": 3.0,
+                    "wall_us_per_point": 1.0,
+                    "runtime_us_per_point": 0.5,
+                    "all_flow_wall_us_per_point": 2.0,
+                    "all_flow_runtime_us_per_point": 1.0,
+                    "all_flow_status": report.ResultStatus.OK.value,
+                }
+            },
+        }
+    )
+    entry["legacy_amplicol"] = legacy
+    entry["pyamplicol_jit_o3"] = pyamplicol
+    report._refresh_matrix_derived_fields(entry)
+
+    assert report._matrix_reference_unavailable_by_design(entry)
+
+    table = report.render_matrix_table(spec, payload)
+
+    assert "UNSUPPORTED" not in table
+    assert r"\texttt{2 s}" in table
+    assert r"\texttt{3 s}" in table
+    assert r"\texttt{1 us}" in table
+    assert r"\texttt{0.5 us}" in table
+    assert r"\texttt{2 us}" in table
+
+
 def test_lc_matrix_reference_runtime_pair_uses_tight_spacing() -> None:
     macros = "\n".join(report._matrix_table_macros())
 

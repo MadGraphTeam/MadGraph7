@@ -392,6 +392,9 @@ LC ordering and sums all supported helicities. ``All flows, fixed helicity''
 evaluates every represented physical LC ordering for one supported helicity.
 NLC and full colour instead report one helicity-summed, fully
 colour-contracted workload; no per-flow scalar is defined for those contracts.
+Exception: for the four-open-quark-line LC family the \AC{} colour probe has no
+reference value, so \AC{} slots are \ReportNA{}, \PAC{} entries are absolute
+selected/all-flow times, and the row is omitted from multiplier summaries.
 
 At the foot of each multiplicity column, every summary cell has two lines. The
 first contains the \AC{} values as
@@ -438,8 +441,8 @@ because \AC{} has no corresponding evaluator-only timing split.
 
 The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
 with JIT level 1, JIT level 3, ASM O3, and C++ O3 evaluator configurations. They retain
-final-state multiplicities $n=1,\ldots,9$ for the built-in model and
-$n=1,\ldots,6$ for the UFO-SM campaign. Each row states its evaluator backend
+final-state multiplicities $n=1,\ldots,9$ for both the built-in model and
+the UFO-SM campaign. Each row states its evaluator backend
 and optimization level explicitly; all other workload settings follow the
 benchmark contract above.
 
@@ -477,6 +480,7 @@ artifact, executes \texttt{Runtime.evaluate()} inside the native core, and
 \texttt{BenchmarkRunner} records both the native repeated wall time and the sum
 of evaluator-call timings.
 
+\clearpage
 \input{result_z_builtin_sm_table.tex}
 \clearpage
 \input{result_z_external_sm_table.tex}
@@ -521,6 +525,8 @@ publication presentation.
 \input{section_zgg_example.tex}
 \clearpage
 \input{section_zgg_dag.tex}
+\clearpage
+\input{section_eager_execution.tex}
 \clearpage
 \input{section_ufo_support.tex}
 

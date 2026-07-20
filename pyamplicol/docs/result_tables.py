@@ -49,6 +49,7 @@ DEFAULT_DEV_PYTHON = Path(".venv/bin/python")
 REPORT_TEX_INPUTS = (
     "section_zgg_example.tex",
     "section_zgg_dag.tex",
+    "section_eager_execution.tex",
     "section_ufo_support.tex",
 )
 DEFAULT_LIMIT_GIB = 800.0
@@ -2481,6 +2482,20 @@ def _matrix_lc_generation_ratio(
     return _matrix_py_over_ref_ratio(_safe_divide(py_value, reference))
 
 
+def _matrix_lc_generation_value(
+    pyamplicol: Mapping[str, object],
+    *,
+    py_key: str,
+    py_fallback_key: str | None = None,
+) -> str:
+    if not _measurement_ok(pyamplicol):
+        return _matrix_failure_label(pyamplicol)
+    py_value = _matrix_old_value(pyamplicol, py_key, py_fallback_key)
+    if py_value is None:
+        return _matrix_na()
+    return _matrix_format_seconds(py_value)
+
+
 def _matrix_lc_runtime_ratio(
     legacy: Mapping[str, object],
     pyamplicol: Mapping[str, object],
@@ -2518,6 +2533,44 @@ def _matrix_lc_runtime_ratio(
     )
 
 
+def _matrix_lc_runtime_value(
+    pyamplicol: Mapping[str, object],
+    *,
+    py_wall_key: str,
+    py_eval_key: str,
+    py_scale: float = 1.0e-6,
+    py_wall_fallback_key: str | None = None,
+    py_eval_fallback_key: str | None = None,
+) -> str:
+    if not _measurement_ok(pyamplicol):
+        return _matrix_failure_label(pyamplicol)
+    py_wall = _matrix_scaled_old_value(
+        pyamplicol,
+        py_wall_key,
+        value_scale=py_scale,
+        fallback_key=py_wall_fallback_key,
+    )
+    py_eval = _matrix_scaled_old_value(
+        pyamplicol,
+        py_eval_key,
+        value_scale=py_scale,
+        fallback_key=py_eval_fallback_key,
+    )
+    wall_text = (
+        _matrix_na() if py_wall is None else _matrix_format_microseconds(py_wall)
+    )
+    eval_text = (
+        _matrix_na() if py_eval is None else _matrix_format_microseconds(py_eval)
+    )
+    return (
+        r"\begin{tabular}[t]{@{}l@{\hspace{0.006in}\matrixpunct{|}\hspace{0.006in}}l@{}}"
+        + wall_text
+        + "&"
+        + eval_text
+        + r"\end{tabular}"
+    )
+
+
 def _matrix_validation_marker(entry: Mapping[str, object]) -> str:
     validation = entry.get("pointwise_validation", {})
     if not isinstance(validation, Mapping):
@@ -2542,51 +2595,77 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
     ):
         return _matrix_na()
     if color_accuracy == "lc":
-        reference_generation = _matrix_reference_metric(
-            legacy,
-            "generation_seconds",
-            _matrix_plain_number,
-        )
-        generation_selected = _matrix_lc_generation_ratio(
-            legacy,
-            pyamplicol,
-            legacy_key="generation_s",
-            py_key="selected_generation_s",
-            legacy_fallback_key="generation_seconds",
-            py_fallback_key="generation_seconds",
-        )
-        generation_all_flow = _matrix_lc_generation_ratio(
-            legacy,
-            pyamplicol,
-            legacy_key="generation_s",
-            py_key="all_flow_generation_s",
-            legacy_fallback_key="generation_seconds",
-            py_fallback_key="generation_seconds",
-        )
-        reference_runtime = _matrix_reference_pair(
-            legacy,
-            "runtime_us_per_point",
-            "all_flow_runtime_us_per_point",
-            _matrix_plain_number,
-            selected_fallback_key="wall_seconds_per_point",
-            selected_fallback_scale=1.0e6,
-        )
-        runtime_selected = _matrix_lc_runtime_ratio(
-            legacy,
-            pyamplicol,
-            legacy_key="runtime_us_per_point",
-            py_wall_key="wall_us_per_point",
-            py_eval_key="runtime_us_per_point",
-            py_wall_fallback_key="wall_seconds_per_point",
-            py_eval_fallback_key="evaluator_seconds_per_point",
-        )
-        runtime_all_flow = _matrix_lc_runtime_ratio(
-            legacy,
-            pyamplicol,
-            legacy_key="all_flow_runtime_us_per_point",
-            py_wall_key="all_flow_wall_us_per_point",
-            py_eval_key="all_flow_runtime_us_per_point",
-        )
+        if _matrix_reference_unavailable_by_design(entry):
+            reference_generation = _matrix_na()
+            generation_selected = _matrix_lc_generation_value(
+                pyamplicol,
+                py_key="selected_generation_s",
+                py_fallback_key="generation_seconds",
+            )
+            generation_all_flow = _matrix_lc_generation_value(
+                pyamplicol,
+                py_key="all_flow_generation_s",
+                py_fallback_key="generation_seconds",
+            )
+            reference_runtime = rf"\matrixrefpair{{{_matrix_na()}}}{{{_matrix_na()}}}"
+            runtime_selected = _matrix_lc_runtime_value(
+                pyamplicol,
+                py_wall_key="wall_us_per_point",
+                py_eval_key="runtime_us_per_point",
+                py_wall_fallback_key="wall_seconds_per_point",
+                py_eval_fallback_key="evaluator_seconds_per_point",
+            )
+            runtime_all_flow = _matrix_lc_runtime_value(
+                pyamplicol,
+                py_wall_key="all_flow_wall_us_per_point",
+                py_eval_key="all_flow_runtime_us_per_point",
+            )
+        else:
+            reference_generation = _matrix_reference_metric(
+                legacy,
+                "generation_seconds",
+                _matrix_plain_number,
+            )
+            generation_selected = _matrix_lc_generation_ratio(
+                legacy,
+                pyamplicol,
+                legacy_key="generation_s",
+                py_key="selected_generation_s",
+                legacy_fallback_key="generation_seconds",
+                py_fallback_key="generation_seconds",
+            )
+            generation_all_flow = _matrix_lc_generation_ratio(
+                legacy,
+                pyamplicol,
+                legacy_key="generation_s",
+                py_key="all_flow_generation_s",
+                legacy_fallback_key="generation_seconds",
+                py_fallback_key="generation_seconds",
+            )
+            reference_runtime = _matrix_reference_pair(
+                legacy,
+                "runtime_us_per_point",
+                "all_flow_runtime_us_per_point",
+                _matrix_plain_number,
+                selected_fallback_key="wall_seconds_per_point",
+                selected_fallback_scale=1.0e6,
+            )
+            runtime_selected = _matrix_lc_runtime_ratio(
+                legacy,
+                pyamplicol,
+                legacy_key="runtime_us_per_point",
+                py_wall_key="wall_us_per_point",
+                py_eval_key="runtime_us_per_point",
+                py_wall_fallback_key="wall_seconds_per_point",
+                py_eval_fallback_key="evaluator_seconds_per_point",
+            )
+            runtime_all_flow = _matrix_lc_runtime_ratio(
+                legacy,
+                pyamplicol,
+                legacy_key="all_flow_runtime_us_per_point",
+                py_wall_key="all_flow_wall_us_per_point",
+                py_eval_key="all_flow_runtime_us_per_point",
+            )
         cell = (
             rf"\matrixcell{{{reference_generation}}}{{{generation_selected}}}"
             rf"{{{generation_all_flow}}}{{{reference_runtime}}}"
@@ -4408,7 +4487,11 @@ class ReportGenerationTimeout(TimeoutError):
 
 
 @contextmanager
-def _generation_timeout(seconds: float | None) -> Iterable[None]:
+def _report_timeout(
+    seconds: float | None,
+    *,
+    timeout_message: str,
+) -> Iterable[None]:
     if seconds is None or seconds <= 0:
         yield
         return
@@ -4417,9 +4500,7 @@ def _generation_timeout(seconds: float | None) -> Iterable[None]:
         return
 
     def _raise_timeout(_signum: int, _frame: object) -> None:
-        raise ReportGenerationTimeout(
-            f"generation exceeded {float(seconds):.0f} seconds"
-        )
+        raise ReportGenerationTimeout(timeout_message)
 
     previous = signal.signal(signal.SIGALRM, _raise_timeout)
     signal.setitimer(signal.ITIMER_REAL, float(seconds))
@@ -4428,6 +4509,15 @@ def _generation_timeout(seconds: float | None) -> Iterable[None]:
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0.0)
         signal.signal(signal.SIGALRM, previous)
+
+
+@contextmanager
+def _generation_timeout(seconds: float | None) -> Iterable[None]:
+    with _report_timeout(
+        seconds,
+        timeout_message=f"generation exceeded {float(seconds or 0.0):.0f} seconds",
+    ):
+        yield
 
 
 def _set_nested(mapping: dict[str, object], dotted_path: str, value: object) -> None:
@@ -6598,6 +6688,7 @@ def _measure_legacy_amplicol(
     artifact_root: Path,
     points: object | None,
     limit_gib: float,
+    reference_timeout_seconds: float,
     target_runtime: float,
     jobs: int = 1,
     fixed_helicity: Mapping[str, object] | None = None,
@@ -6618,27 +6709,36 @@ def _measure_legacy_amplicol(
         with log_path.open("a", encoding="utf-8") as log:
             log.write(f"# legacy AmpliCol cell {cell.cell_id} started {_utc_now()}\n")
             log.flush()
-            with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+            with (
+                contextlib.redirect_stdout(log),
+                contextlib.redirect_stderr(log),
+                _report_timeout(
+                    reference_timeout_seconds,
+                    timeout_message=(
+                        "legacy reference exceeded "
+                        f"{float(reference_timeout_seconds):.0f} seconds"
+                    ),
+                ),
+            ):
                 repository = legacy_amplicol.DEFAULT_REPOSITORY
                 if not repository.exists():
                     raise FileNotFoundError(
                         f"legacy AmpliCol checkout is missing: {repository}"
                     )
                 legacy_amplicol.validate_checkout(repository)
+                source_pdgs = legacy_amplicol.process_pdgs(cell.process)
+                open_quark_lines = _legacy_quark_line_count(source_pdgs)
+                if open_quark_lines > 3:
+                    raise legacy_amplicol.LegacyOracleError(
+                        f"{ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON}; "
+                        f"{cell.process} has {open_quark_lines} open quark lines"
+                    )
                 build_lock = (
                     Path(tempfile.gettempdir()) / "pyamplicol-legacy-build.lock"
                 )
                 with build_lock.open("a+b") as stream:
                     fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
                     try:
-                        source_pdgs = legacy_amplicol.process_pdgs(cell.process)
-                        open_quark_lines = _legacy_quark_line_count(source_pdgs)
-                        if open_quark_lines > 3:
-                            raise legacy_amplicol.LegacyOracleError(
-                                f"{ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON}; "
-                                f"{cell.process} has {open_quark_lines} open "
-                                "quark lines"
-                            )
                         legacy_amplicol.validate_selected_flow_quark_line_scope(
                             source_pdgs,
                             context=cell.process,
@@ -7307,6 +7407,11 @@ def _measure_legacy_amplicol(
             "log_path": os.fspath(log_path),
             "manifest_path": os.fspath(manifest_path),
             "limit_gib": limit_gib,
+            "timeout_seconds": (
+                None
+                if reference_timeout_seconds <= 0
+                else reference_timeout_seconds
+            ),
             "command": command,
             "metadata": {
                 "cell": cell.as_json(),
@@ -7351,14 +7456,13 @@ def _measure_legacy_amplicol(
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
         return measurement
     except Exception as exc:
-        status = (
-            ResultStatus.UNSUPPORTED
-            if (
-                type(exc).__name__ == "LegacyOracleError"
-                or _legacy_probe_scope_limited(exc)
-            )
-            else ResultStatus.ERROR
-        )
+        status = ResultStatus.ERROR
+        if isinstance(exc, ReportGenerationTimeout):
+            status = ResultStatus.TIMEOUT
+        elif type(exc).__name__ == "LegacyOracleError" or _legacy_probe_scope_limited(
+            exc
+        ):
+            status = ResultStatus.UNSUPPORTED
         return _failure_measurement(
             status,
             str(exc),
@@ -7367,6 +7471,11 @@ def _measure_legacy_amplicol(
             log_path=log_path,
             manifest_path=manifest_path,
             limit_gib=limit_gib,
+            timeout_seconds=(
+                None
+                if reference_timeout_seconds <= 0
+                else reference_timeout_seconds
+            ),
             command=command,
             metadata={
                 "cell": cell.as_json(),
@@ -7551,6 +7660,7 @@ def _measure_cell_payload(
     artifact_root: Path,
     generation_timeout_seconds: float,
     jit_o3_generation_timeout_seconds: float,
+    reference_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
     limit_gib: float,
@@ -7596,6 +7706,7 @@ def _measure_cell_payload(
             artifact_root=artifact_root,
             points=points,
             limit_gib=limit_gib,
+            reference_timeout_seconds=reference_timeout_seconds,
             target_runtime=target_runtime,
             jobs=cell_cores,
             fixed_helicity=fixed_helicity,
@@ -7654,6 +7765,7 @@ def _measure_cell_payload(
                 artifact_root=artifact_root,
                 points=points,
                 limit_gib=limit_gib,
+                reference_timeout_seconds=reference_timeout_seconds,
                 target_runtime=target_runtime,
                 jobs=cell_cores,
                 fixed_helicity=_fixed_source_helicity_choice(cell.process),
@@ -8817,6 +8929,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifact_root=args.artifact_root,
             generation_timeout_seconds=args.generation_timeout_seconds,
             jit_o3_generation_timeout_seconds=args.jit_o3_generation_timeout_seconds,
+            reference_timeout_seconds=args.reference_timeout_seconds,
             target_runtime=args.target_runtime,
             cell_cores=args.cell_cores,
             limit_gib=args.limit_gib,

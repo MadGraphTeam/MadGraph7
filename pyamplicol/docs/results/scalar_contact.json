@@ -15,7 +15,7 @@
       "evaluator.optimization.max_common_pair_cache_entries": 5000000,
       "evaluator.optimization.max_common_pair_distance": 1000,
       "evaluator.optimization.max_horner_variables": 1000,
-      "evaluator.output_chunk_size": 128
+      "evaluator.output_chunk_size": 512
     },
     "legacy_profile": {
       "legacy_profile_max_points": 100000,
@@ -35,221 +35,2076 @@
   "dataset_id": "scalar_contact",
   "entries": [
     {
-      "high_precision_matrix_element": null,
+      "high_precision_matrix_element": 0.49999999999999994,
       "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n2/pyamplicol-schema9-compiler13",
+        "command": [
+          ".venv/bin/python",
+          "docs/result_tables.py",
+          "measure-cell",
+          "--dataset-id",
+          "scalar_contact",
+          "--n-final",
+          "2"
+        ],
+        "effective_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "environment": {
+          "batch_size": 128,
+          "calibration_block_count": 2,
+          "calibration_elapsed_seconds": 0.240593439,
+          "calibration_evaluation_count": 9699,
+          "calibration_probe_seconds": 2.578e-05,
+          "completed_sample_count": 80,
+          "completion_fraction": 1.0,
+          "elapsed_seconds": 19.187264406999997,
+          "evaluator_elapsed_seconds": 0.0007755737751722336,
+          "evaluator_relative_standard_error": 0.0019989238718814213,
+          "evaluator_sample_count": 5,
+          "evaluator_standard_deviation_seconds_per_point": 2.415819041365686e-10,
+          "evaluator_standard_error_seconds_per_point": 1.0803871195664102e-10,
+          "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "interrupted": false,
+          "machine": "x86_64",
+          "measured_evaluation_count": 775840,
+          "measured_point_count": 99307520,
+          "native_profile_calls_per_block": 0.0625,
+          "native_profile_sample_count": 5,
+          "native_profile_sample_limit": 5,
+          "native_profile_total_call_count": 7,
+          "native_profile_warmup_call_count": 2,
+          "planned_sample_count": 80,
+          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
+          "precision": 16,
+          "python": "3.11.15",
+          "repetitions_per_sample": 9698,
+          "target": null,
+          "target_sample_seconds": 0.25,
+          "wall_time_source": "runtime_core_repeated_wall_time",
+          "warmup_elapsed_seconds": 0.0005943719297647476
+        },
+        "evaluator_seconds_per_point": 5.40484375e-08,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
+        "generation_seconds": 0.9281346835196018,
         "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n2/logs/pyamplicol.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n2/pyamplicol-schema9-compiler13/manifest.json",
+        "matrix_element": 0.5,
+        "metadata": {
+          "artifact_reused_for_timing": false,
+          "cell": {
+            "cache_name": "scalar_contact.json",
+            "cell_id": "scalar-contact-n2",
+            "dataset_id": "scalar_contact",
+            "kind": "model_ladder",
+            "n_final": 2,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "scalar_0 scalar_0 > scalar_0 scalar_0",
+            "process_key": null,
+            "variant": null
+          },
+          "generation_seconds_source": "fresh_generation",
+          "generation_slice": null,
+          "generation_timer_excludes_model_compile": true,
+          "high_precision_matrix_element": 0.49999999999999994,
+          "high_precision_relative_difference": 1.1102230246251568e-16,
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n2/inputs/pyamplicol-inputs.json",
+          "model_precompile_cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+          "model_precompile_policy": "precompiled_model_before_generation_v1",
+          "model_precompile_seconds": 2.750012317672372,
+          "model_precompile_source_kind": "json",
+          "model_precompile_used_cache": true,
+          "model_source": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "runtime_process": "scalar_0_scalar_0_to_scalar_0_scalar_0",
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "relative_standard_error": 0.0002584463154919346,
+        "requested_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "sample_count": 80,
+        "standard_deviation_seconds_per_point": 4.466283250797515e-10,
+        "standard_error_seconds_per_point": 4.9934564777759925e-11,
+        "status": "ok",
+        "timeout_seconds": 86400.0,
+        "wall_seconds_per_point": 1.932105887550107e-07
       },
       "n_final": 2,
       "process": "scalar_0 scalar_0 > scalar_0 scalar_0",
-      "relative_difference": null,
-      "status": "not_available"
+      "relative_difference": 1.1102230246251568e-16,
+      "status": "ok"
     },
     {
-      "high_precision_matrix_element": null,
+      "high_precision_matrix_element": 0.16666666666666663,
       "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n3/pyamplicol-schema9-compiler13",
+        "command": [
+          ".venv/bin/python",
+          "docs/result_tables.py",
+          "measure-cell",
+          "--dataset-id",
+          "scalar_contact",
+          "--n-final",
+          "3"
+        ],
+        "effective_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "environment": {
+          "batch_size": 128,
+          "calibration_block_count": 2,
+          "calibration_elapsed_seconds": 0.246428154,
+          "calibration_evaluation_count": 7473,
+          "calibration_probe_seconds": 3.346e-05,
+          "completed_sample_count": 80,
+          "completion_fraction": 1.0,
+          "elapsed_seconds": 19.666787558000006,
+          "evaluator_elapsed_seconds": 0.0011974908411502838,
+          "evaluator_relative_standard_error": 0.2419942657570923,
+          "evaluator_sample_count": 5,
+          "evaluator_standard_deviation_seconds_per_point": 5.433139106383749e-08,
+          "evaluator_standard_error_seconds_per_point": 2.4297736746173047e-08,
+          "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "interrupted": false,
+          "machine": "x86_64",
+          "measured_evaluation_count": 597760,
+          "measured_point_count": 76513280,
+          "native_profile_calls_per_block": 0.0625,
+          "native_profile_sample_count": 5,
+          "native_profile_sample_limit": 5,
+          "native_profile_total_call_count": 7,
+          "native_profile_warmup_call_count": 2,
+          "planned_sample_count": 80,
+          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
+          "precision": 16,
+          "python": "3.11.15",
+          "repetitions_per_sample": 7472,
+          "target": null,
+          "target_sample_seconds": 0.25,
+          "wall_time_source": "runtime_core_repeated_wall_time",
+          "warmup_elapsed_seconds": 0.0007869917899370193
+        },
+        "evaluator_seconds_per_point": 1.0040625e-07,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
+        "generation_seconds": 1.4294402990490198,
         "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n3/logs/pyamplicol.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n3/pyamplicol-schema9-compiler13/manifest.json",
+        "matrix_element": 0.16666666666666666,
+        "metadata": {
+          "artifact_reused_for_timing": false,
+          "cell": {
+            "cache_name": "scalar_contact.json",
+            "cell_id": "scalar-contact-n3",
+            "dataset_id": "scalar_contact",
+            "kind": "model_ladder",
+            "n_final": 3,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0",
+            "process_key": null,
+            "variant": null
+          },
+          "generation_seconds_source": "fresh_generation",
+          "generation_slice": null,
+          "generation_timer_excludes_model_compile": true,
+          "high_precision_matrix_element": 0.16666666666666663,
+          "high_precision_relative_difference": 1.6653345369377353e-16,
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n3/inputs/pyamplicol-inputs.json",
+          "model_precompile_cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+          "model_precompile_policy": "precompiled_model_before_generation_v1",
+          "model_precompile_seconds": 0.4796673823148012,
+          "model_precompile_source_kind": "json",
+          "model_precompile_used_cache": true,
+          "model_source": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "runtime_process": "scalar_0_scalar_0_to_scalar_0_scalar_0_scalar_0",
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "relative_standard_error": 0.00026764455605878104,
+        "requested_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "sample_count": 80,
+        "standard_deviation_seconds_per_point": 6.153185590471835e-10,
+        "standard_error_seconds_per_point": 6.879470629233602e-11,
+        "status": "ok",
+        "timeout_seconds": 86400.0,
+        "wall_seconds_per_point": 2.570375699225023e-07
       },
       "n_final": 3,
       "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0",
-      "relative_difference": null,
-      "status": "not_available"
+      "relative_difference": 1.6653345369377353e-16,
+      "status": "ok"
     },
     {
-      "high_precision_matrix_element": null,
+      "high_precision_matrix_element": 0.041666666666666664,
       "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n4/pyamplicol-schema9-compiler13",
+        "command": [
+          ".venv/bin/python",
+          "docs/result_tables.py",
+          "measure-cell",
+          "--dataset-id",
+          "scalar_contact",
+          "--n-final",
+          "4"
+        ],
+        "effective_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "environment": {
+          "batch_size": 128,
+          "calibration_block_count": 2,
+          "calibration_elapsed_seconds": 0.245607577,
+          "calibration_evaluation_count": 3088,
+          "calibration_probe_seconds": 8.1e-05,
+          "completed_sample_count": 80,
+          "completion_fraction": 1.0,
+          "elapsed_seconds": 19.675100951999994,
+          "evaluator_elapsed_seconds": 0.0014445539563894272,
+          "evaluator_relative_standard_error": 0.009129822097684193,
+          "evaluator_sample_count": 5,
+          "evaluator_standard_deviation_seconds_per_point": 4.650674356763362e-09,
+          "evaluator_standard_error_seconds_per_point": 2.0798448005875973e-09,
+          "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "interrupted": false,
+          "machine": "x86_64",
+          "measured_evaluation_count": 246960,
+          "measured_point_count": 31610880,
+          "native_profile_calls_per_block": 0.0625,
+          "native_profile_sample_count": 5,
+          "native_profile_sample_limit": 5,
+          "native_profile_total_call_count": 7,
+          "native_profile_warmup_call_count": 2,
+          "planned_sample_count": 80,
+          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
+          "precision": 16,
+          "python": "3.11.15",
+          "repetitions_per_sample": 3087,
+          "target": null,
+          "target_sample_seconds": 0.25,
+          "wall_time_source": "runtime_core_repeated_wall_time",
+          "warmup_elapsed_seconds": 0.0010196547955274582
+        },
+        "evaluator_seconds_per_point": 2.278078125e-07,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
+        "generation_seconds": 3.288662314414978,
         "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n4/logs/pyamplicol.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n4/pyamplicol-schema9-compiler13/manifest.json",
+        "matrix_element": 0.041666666666666664,
+        "metadata": {
+          "artifact_reused_for_timing": false,
+          "cell": {
+            "cache_name": "scalar_contact.json",
+            "cell_id": "scalar-contact-n4",
+            "dataset_id": "scalar_contact",
+            "kind": "model_ladder",
+            "n_final": 4,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0",
+            "process_key": null,
+            "variant": null
+          },
+          "generation_seconds_source": "fresh_generation",
+          "generation_slice": null,
+          "generation_timer_excludes_model_compile": true,
+          "high_precision_matrix_element": 0.041666666666666664,
+          "high_precision_relative_difference": 0.0,
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n4/inputs/pyamplicol-inputs.json",
+          "model_precompile_cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+          "model_precompile_policy": "precompiled_model_before_generation_v1",
+          "model_precompile_seconds": 0.48496970906853676,
+          "model_precompile_source_kind": "json",
+          "model_precompile_used_cache": true,
+          "model_source": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "runtime_process": "scalar_0_scalar_0_to_scalar_0_scalar_0_scalar_0_scalar_0",
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "relative_standard_error": 0.0011061446140676002,
+        "requested_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "sample_count": 80,
+        "standard_deviation_seconds_per_point": 6.157965987331451e-09,
+        "standard_error_seconds_per_point": 6.884815275402367e-10,
+        "status": "ok",
+        "timeout_seconds": 86400.0,
+        "wall_seconds_per_point": 6.224154769497085e-07
       },
       "n_final": 4,
       "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0",
-      "relative_difference": null,
-      "status": "not_available"
+      "relative_difference": 0.0,
+      "status": "ok"
     },
     {
-      "high_precision_matrix_element": null,
+      "high_precision_matrix_element": 0.008333333333333333,
       "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n5/pyamplicol-schema9-compiler13",
+        "command": [
+          ".venv/bin/python",
+          "docs/result_tables.py",
+          "measure-cell",
+          "--dataset-id",
+          "scalar_contact",
+          "--n-final",
+          "5"
+        ],
+        "effective_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "environment": {
+          "batch_size": 128,
+          "calibration_block_count": 2,
+          "calibration_elapsed_seconds": 0.223743815,
+          "calibration_evaluation_count": 1928,
+          "calibration_probe_seconds": 0.000129751,
+          "completed_sample_count": 80,
+          "completion_fraction": 1.0,
+          "elapsed_seconds": 17.932851077000013,
+          "evaluator_elapsed_seconds": 0.0016173142939805984,
+          "evaluator_relative_standard_error": 0.0021914995708807836,
+          "evaluator_sample_count": 5,
+          "evaluator_standard_deviation_seconds_per_point": 1.7988236716150042e-09,
+          "evaluator_standard_error_seconds_per_point": 8.044584018533816e-10,
+          "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "interrupted": false,
+          "machine": "x86_64",
+          "measured_evaluation_count": 154160,
+          "measured_point_count": 19732480,
+          "native_profile_calls_per_block": 0.0625,
+          "native_profile_sample_count": 5,
+          "native_profile_sample_limit": 5,
+          "native_profile_total_call_count": 7,
+          "native_profile_warmup_call_count": 2,
+          "planned_sample_count": 80,
+          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
+          "precision": 16,
+          "python": "3.11.15",
+          "repetitions_per_sample": 1927,
+          "target": null,
+          "target_sample_seconds": 0.25,
+          "wall_time_source": "runtime_core_repeated_wall_time",
+          "warmup_elapsed_seconds": 0.0013100653886795044
+        },
+        "evaluator_seconds_per_point": 3.6708125e-07,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
+        "generation_seconds": 10.857854533940554,
         "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n5/logs/pyamplicol.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n5/pyamplicol-schema9-compiler13/manifest.json",
+        "matrix_element": 0.008333333333333333,
+        "metadata": {
+          "artifact_reused_for_timing": false,
+          "cell": {
+            "cache_name": "scalar_contact.json",
+            "cell_id": "scalar-contact-n5",
+            "dataset_id": "scalar_contact",
+            "kind": "model_ladder",
+            "n_final": 5,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
+            "process_key": null,
+            "variant": null
+          },
+          "generation_seconds_source": "fresh_generation",
+          "generation_slice": null,
+          "generation_timer_excludes_model_compile": true,
+          "high_precision_matrix_element": 0.008333333333333333,
+          "high_precision_relative_difference": 0.0,
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n5/inputs/pyamplicol-inputs.json",
+          "model_precompile_cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+          "model_precompile_policy": "precompiled_model_before_generation_v1",
+          "model_precompile_seconds": 0.46511976048350334,
+          "model_precompile_source_kind": "json",
+          "model_precompile_used_cache": true,
+          "model_source": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "runtime_process": "scalar_0_scalar_0_to_scalar_0_scalar_0_scalar_0_scalar_0_scalar_0",
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "relative_standard_error": 0.0003527325702607736,
+        "requested_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "sample_count": 80,
+        "standard_deviation_seconds_per_point": 2.8672015784525037e-09,
+        "standard_error_seconds_per_point": 3.205628817307247e-10,
+        "status": "ok",
+        "timeout_seconds": 86400.0,
+        "wall_seconds_per_point": 9.087986445190872e-07
       },
       "n_final": 5,
       "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
-      "relative_difference": null,
-      "status": "not_available"
+      "relative_difference": 0.0,
+      "status": "ok"
     },
     {
-      "high_precision_matrix_element": null,
+      "high_precision_matrix_element": 0.001388888888888889,
       "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n6/pyamplicol-schema9-compiler13",
+        "command": [
+          ".venv/bin/python",
+          "docs/result_tables.py",
+          "measure-cell",
+          "--dataset-id",
+          "scalar_contact",
+          "--n-final",
+          "6"
+        ],
+        "effective_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "environment": {
+          "batch_size": 128,
+          "calibration_block_count": 2,
+          "calibration_elapsed_seconds": 0.25046988400000003,
+          "calibration_evaluation_count": 887,
+          "calibration_probe_seconds": 0.0002822,
+          "completed_sample_count": 80,
+          "completion_fraction": 1.0,
+          "elapsed_seconds": 20.065314982000004,
+          "evaluator_elapsed_seconds": 0.0025855284184217453,
+          "evaluator_relative_standard_error": 0.014147572853869693,
+          "evaluator_sample_count": 5,
+          "evaluator_standard_deviation_seconds_per_point": 2.8607520804537234e-08,
+          "evaluator_standard_error_seconds_per_point": 1.2793672237336946e-08,
+          "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "interrupted": false,
+          "machine": "x86_64",
+          "measured_evaluation_count": 70880,
+          "measured_point_count": 9072640,
+          "native_profile_calls_per_block": 0.0625,
+          "native_profile_sample_count": 5,
+          "native_profile_sample_limit": 5,
+          "native_profile_total_call_count": 7,
+          "native_profile_warmup_call_count": 2,
+          "planned_sample_count": 80,
+          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
+          "precision": 16,
+          "python": "3.11.15",
+          "repetitions_per_sample": 886,
+          "target": null,
+          "target_sample_seconds": 0.25,
+          "wall_time_source": "runtime_core_repeated_wall_time",
+          "warmup_elapsed_seconds": 0.0021326150745153427
+        },
+        "evaluator_seconds_per_point": 9.043015625e-07,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
+        "generation_seconds": 39.63220790028572,
         "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n6/logs/pyamplicol.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n6/pyamplicol-schema9-compiler13/manifest.json",
+        "matrix_element": 0.001388888888888889,
+        "metadata": {
+          "artifact_reused_for_timing": false,
+          "cell": {
+            "cache_name": "scalar_contact.json",
+            "cell_id": "scalar-contact-n6",
+            "dataset_id": "scalar_contact",
+            "kind": "model_ladder",
+            "n_final": 6,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
+            "process_key": null,
+            "variant": null
+          },
+          "generation_seconds_source": "fresh_generation",
+          "generation_slice": null,
+          "generation_timer_excludes_model_compile": true,
+          "high_precision_matrix_element": 0.001388888888888889,
+          "high_precision_relative_difference": 0.0,
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n6/inputs/pyamplicol-inputs.json",
+          "model_precompile_cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+          "model_precompile_policy": "precompiled_model_before_generation_v1",
+          "model_precompile_seconds": 0.5160176325589418,
+          "model_precompile_source_kind": "json",
+          "model_precompile_used_cache": true,
+          "model_source": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "runtime_process": "scalar_0_scalar_0_to_scalar_0_scalar_0_scalar_0_scalar_0_scal_8b3040d7d5",
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "relative_standard_error": 0.00031384867452178785,
+        "requested_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "sample_count": 80,
+        "standard_deviation_seconds_per_point": 6.20837005367755e-09,
+        "standard_error_seconds_per_point": 6.941168734748509e-10,
+        "status": "ok",
+        "timeout_seconds": 86400.0,
+        "wall_seconds_per_point": 2.211629137935595e-06
       },
       "n_final": 6,
       "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
-      "relative_difference": null,
-      "status": "not_available"
+      "relative_difference": 0.0,
+      "status": "ok"
     },
     {
-      "high_precision_matrix_element": null,
+      "high_precision_matrix_element": 0.0001984126984126984,
       "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n7/pyamplicol-schema9-compiler13",
+        "command": [
+          ".venv/bin/python",
+          "docs/result_tables.py",
+          "measure-cell",
+          "--dataset-id",
+          "scalar_contact",
+          "--n-final",
+          "7"
+        ],
+        "effective_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "environment": {
+          "batch_size": 128,
+          "calibration_block_count": 2,
+          "calibration_elapsed_seconds": 0.237109639,
+          "calibration_evaluation_count": 715,
+          "calibration_probe_seconds": 0.000350231,
+          "completed_sample_count": 80,
+          "completion_fraction": 1.0,
+          "elapsed_seconds": 18.860904595999997,
+          "evaluator_elapsed_seconds": 0.002993527799844742,
+          "evaluator_relative_standard_error": 0.013957475227989437,
+          "evaluator_sample_count": 5,
+          "evaluator_standard_deviation_seconds_per_point": 3.932793899874069e-08,
+          "evaluator_standard_error_seconds_per_point": 1.758798900322984e-08,
+          "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "interrupted": false,
+          "machine": "x86_64",
+          "measured_evaluation_count": 57120,
+          "measured_point_count": 7311360,
+          "native_profile_calls_per_block": 0.0625,
+          "native_profile_sample_count": 5,
+          "native_profile_sample_limit": 5,
+          "native_profile_total_call_count": 7,
+          "native_profile_warmup_call_count": 2,
+          "planned_sample_count": 80,
+          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
+          "precision": 16,
+          "python": "3.11.15",
+          "repetitions_per_sample": 714,
+          "target": null,
+          "target_sample_seconds": 0.25,
+          "wall_time_source": "runtime_core_repeated_wall_time",
+          "warmup_elapsed_seconds": 0.002695724368095398
+        },
+        "evaluator_seconds_per_point": 1.2601125e-06,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
+        "generation_seconds": 144.30898725800216,
         "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n7/logs/pyamplicol.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n7/pyamplicol-schema9-compiler13/manifest.json",
+        "matrix_element": 0.0001984126984126984,
+        "metadata": {
+          "artifact_reused_for_timing": false,
+          "cell": {
+            "cache_name": "scalar_contact.json",
+            "cell_id": "scalar-contact-n7",
+            "dataset_id": "scalar_contact",
+            "kind": "model_ladder",
+            "n_final": 7,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
+            "process_key": null,
+            "variant": null
+          },
+          "generation_seconds_source": "fresh_generation",
+          "generation_slice": null,
+          "generation_timer_excludes_model_compile": true,
+          "high_precision_matrix_element": 0.0001984126984126984,
+          "high_precision_relative_difference": 0.0,
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n7/inputs/pyamplicol-inputs.json",
+          "model_precompile_cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+          "model_precompile_policy": "precompiled_model_before_generation_v1",
+          "model_precompile_seconds": 0.504862867295742,
+          "model_precompile_source_kind": "json",
+          "model_precompile_used_cache": true,
+          "model_source": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "runtime_process": "scalar_0_scalar_0_to_scalar_0_scalar_0_scalar_0_scalar_0_scal_ece96894bb",
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "relative_standard_error": 0.0006256227348317499,
+        "requested_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "sample_count": 80,
+        "standard_deviation_seconds_per_point": 1.4435168767404105e-08,
+        "standard_error_seconds_per_point": 1.6139009315298714e-09,
+        "status": "ok",
+        "timeout_seconds": 86400.0,
+        "wall_seconds_per_point": 2.579671168701856e-06
       },
       "n_final": 7,
       "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
-      "relative_difference": null,
-      "status": "not_available"
+      "relative_difference": 0.0,
+      "status": "ok"
     },
     {
-      "high_precision_matrix_element": null,
+      "high_precision_matrix_element": 2.4801587301587305e-05,
       "measurement": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
-        "evaluator_seconds_per_point": null,
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n8/pyamplicol-schema9-compiler13",
+        "command": [
+          ".venv/bin/python",
+          "docs/result_tables.py",
+          "measure-cell",
+          "--dataset-id",
+          "scalar_contact",
+          "--n-final",
+          "8"
+        ],
+        "effective_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "environment": {
+          "batch_size": 128,
+          "calibration_block_count": 2,
+          "calibration_elapsed_seconds": 0.25824312,
+          "calibration_evaluation_count": 203,
+          "calibration_probe_seconds": 0.001243424,
+          "completed_sample_count": 80,
+          "completion_fraction": 1.0,
+          "elapsed_seconds": 21.16546655499999,
+          "evaluator_elapsed_seconds": 0.007620561867952347,
+          "evaluator_relative_standard_error": 0.008082258474007125,
+          "evaluator_sample_count": 5,
+          "evaluator_standard_deviation_seconds_per_point": 7.328167298152184e-08,
+          "evaluator_standard_error_seconds_per_point": 3.277256045831851e-08,
+          "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "interrupted": false,
+          "machine": "x86_64",
+          "measured_evaluation_count": 16160,
+          "measured_point_count": 2068480,
+          "native_profile_calls_per_block": 0.0625,
+          "native_profile_sample_count": 5,
+          "native_profile_sample_limit": 5,
+          "native_profile_total_call_count": 7,
+          "native_profile_warmup_call_count": 2,
+          "planned_sample_count": 80,
+          "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
+          "precision": 16,
+          "python": "3.11.15",
+          "repetitions_per_sample": 202,
+          "target": null,
+          "target_sample_seconds": 0.25,
+          "wall_time_source": "runtime_core_repeated_wall_time",
+          "warmup_elapsed_seconds": 0.006552120670676231
+        },
+        "evaluator_seconds_per_point": 4.0548765624999996e-06,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
+        "generation_seconds": 488.66369375400245,
         "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n8/logs/pyamplicol.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n8/pyamplicol-schema9-compiler13/manifest.json",
+        "matrix_element": 2.48015873015873e-05,
+        "metadata": {
+          "artifact_reused_for_timing": false,
+          "cell": {
+            "cache_name": "scalar_contact.json",
+            "cell_id": "scalar-contact-n8",
+            "dataset_id": "scalar_contact",
+            "kind": "model_ladder",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
+            "process_key": null,
+            "variant": null
+          },
+          "generation_seconds_source": "fresh_generation",
+          "generation_slice": null,
+          "generation_timer_excludes_model_compile": true,
+          "high_precision_matrix_element": 2.4801587301587305e-05,
+          "high_precision_relative_difference": 1.3660947373317353e-16,
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/scalar-contact-n8/inputs/pyamplicol-inputs.json",
+          "model_precompile_cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+          "model_precompile_policy": "precompiled_model_before_generation_v1",
+          "model_precompile_seconds": 0.4691553357988596,
+          "model_precompile_source_kind": "json",
+          "model_precompile_used_cache": true,
+          "model_source": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "runtime_process": "scalar_0_scalar_0_to_scalar_0_scalar_0_scalar_0_scalar_0_scal_6caa66e94b",
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
-        "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "relative_standard_error": 0.0071356792548798635,
+        "requested_config": {
+          "action": "generate",
+          "benchmark": {
+            "batch_size": 128,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "minimum_samples": 5,
+            "precision": 16,
+            "target_runtime": 20.0,
+            "warmup_runs": 2
+          },
+          "color": {
+            "accuracy": "lc"
+          },
+          "evaluation": {
+            "artifact": null,
+            "color_flow_ids": [],
+            "helicity_ids": [],
+            "model_parameters": null,
+            "momenta": null,
+            "precision": 16,
+            "process": null,
+            "resolved": false
+          },
+          "evaluator": {
+            "backend": "jit",
+            "batch_size": 128,
+            "cpp": {
+              "compiler": null,
+              "extra_flags": [],
+              "native_arch": false,
+              "optimization": "O3"
+            },
+            "jit": {
+              "optimization_level": 3
+            },
+            "optimization": {
+              "collect_factors": "auto",
+              "cores": 1,
+              "cpe_iterations": null,
+              "horner_iterations": 10,
+              "max_common_pair_cache_entries": 5000000,
+              "max_common_pair_distance": 1000,
+              "max_horner_variables": 1000
+            },
+            "output_chunk_size": 512
+          },
+          "generation": {
+            "emit_api_bundle": true,
+            "mode": "error",
+            "output": null,
+            "validation": {
+              "absolute_tolerance": 1e-300,
+              "enabled": true,
+              "post_build_validation": true,
+              "relative_tolerance": 1e-12,
+              "samples": 10,
+              "seed": 12345
+            },
+            "workers": 1
+          },
+          "model": {
+            "cache": true,
+            "cache_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/model-cache-schema9-compiler13",
+            "restriction": null,
+            "simplify": true,
+            "source": "/shared/vhirschi/pyamplicol/src/pyamplicol/assets/models/json/scalars/scalars.json"
+          },
+          "output": {
+            "color": "auto",
+            "format": "json",
+            "log_level": "info",
+            "progress": "off"
+          },
+          "process": {
+            "coupling_order_policy": "minimal",
+            "entries": [],
+            "flavor_scheme": 5,
+            "max_color_sectors": null,
+            "max_coupling_orders": {},
+            "max_quark_lines": null,
+            "multiparticles": {},
+            "reference_color_order": [],
+            "selected_color_sector_ids": [],
+            "selected_source_helicities": {}
+          },
+          "schema_version": 1,
+          "symbolica": {
+            "suggest_license": true
+          }
+        },
+        "sample_count": 80,
+        "standard_deviation_seconds_per_point": 6.530656391140787e-07,
+        "standard_error_seconds_per_point": 7.301495814142127e-08,
+        "status": "ok",
+        "timeout_seconds": 86400.0,
+        "wall_seconds_per_point": 1.023237669931544e-05
       },
       "n_final": 8,
       "process": "scalar_0 scalar_0 > scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0 scalar_0",
-      "relative_difference": null,
-      "status": "not_available"
+      "relative_difference": 1.3660947373317353e-16,
+      "status": "ok"
     }
   ],
   "kind": "model_ladder",
@@ -272,5 +2127,5 @@
   "report_version": "0.1.0",
   "schema_version": 2,
   "spdx_license_identifier": "0BSD",
-  "updated_at": null
+  "updated_at": "2026-07-19T08:05:12+00:00"
 }
