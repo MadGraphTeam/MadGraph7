@@ -32,6 +32,8 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
 | `benchmark.toml` | Short benchmark of the same selected subprocess |
+| `benchmark_z6g_single_flow_helicity_sum.toml` | Reproduce the compiled JIT O3 Z-ladder single-flow, helicity-sum workload for `u u~ > Z + 6g` |
+| `benchmark_z6g_all_flows_single_helicity.toml` | Reproduce the compiled JIT O3 Z-ladder all-flows, single-helicity workload for `u u~ > Z + 6g` |
 | `process_set_mixed_multiplicity.toml` | Named UFO-SM 2-to-2 and 2-to-3 requests |
 | `external_ufo_sm.toml` | Trusted UFO execution path |
 | `external_json_scalars.toml` | Scalar contact model and repeated particles |
@@ -41,6 +43,42 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `builtin_sm_full.toml` | Built-in compatibility SM, contracted full color |
 | `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O3 pack |
 | `all_options.toml` | Every current schema field, active and commented |
+
+## Reproduce The Z-Ladder Workloads
+
+The Z performance ladder uses two separately generated compiled-mode artifacts.
+The first retains one physical LC flow and sums all helicities; the second
+retains every physical LC flow at one fixed source-helicity assignment. Generate
+and profile them independently:
+
+```console
+pyamplicol generate --card benchmark_z6g_single_flow_helicity_sum.toml
+pyamplicol profile --card benchmark_z6g_single_flow_helicity_sum.toml
+
+pyamplicol generate --card benchmark_z6g_all_flows_single_helicity.toml
+pyamplicol profile --card benchmark_z6g_all_flows_single_helicity.toml
+```
+
+Both profiles use native Rusticol wall timing, JIT O3, 64-point batches, two
+warmups, at least five samples, and a twenty-second target. The cards use
+`u u~ > Z g g g g g g` as requested; the PDF's literal reference family uses
+`d d~ > Z + (n-1)g`, so replace `u u~` with `d d~` when reproducing that exact
+row rather than the equivalent up-quark topology.
+
+The execution mode can be overridden directly at invocation time. Use a
+different output so the eager artifact cannot collide with the compiled one:
+
+```console
+pyamplicol generate \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --execution-mode eager \
+  --set generation.output=artifacts/uubar_z6g_single_flow_helicity_sum_eager
+```
+
+This command preserves the selected-flow specialization encoded by that card.
+The eager-DAG row in the PDF uses a different contract: it generates one
+complete eager LC artifact and applies the flow and helicity selectors at
+runtime, allowing both workloads to share one generation.
 
 `examples copy` also materializes wheel-owned `sm`, `scalars`, and
 `scalar_gravity` resources into `models/`. The included

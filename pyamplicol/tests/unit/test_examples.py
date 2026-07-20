@@ -127,6 +127,48 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert resolve_config(EXAMPLES / "benchmark.toml").effective.action == "benchmark"
 
 
+def test_z6g_benchmark_examples_encode_the_report_specializations() -> None:
+    selected = resolve_config(
+        EXAMPLES / "benchmark_z6g_single_flow_helicity_sum.toml"
+    ).effective
+    all_flows = resolve_config(
+        EXAMPLES / "benchmark_z6g_all_flows_single_helicity.toml"
+    ).effective
+
+    expected_process = (ProcessEntry("u u~ > Z g g g g g g", "uubar_Z_6g"),)
+    for config in (selected, all_flows):
+        assert config.process.entries == expected_process
+        assert config.model.source == "built-in-sm"
+        assert config.color.accuracy.value == "lc"
+        assert config.evaluator.execution_mode.value == "compiled"
+        assert config.evaluator.backend.value == "jit"
+        assert config.evaluator.jit.optimization_level == 3
+        assert config.evaluator.batch_size == 64
+        assert config.evaluator.output_chunk_size == 512
+        assert config.benchmark.batch_size == 64
+        assert config.benchmark.target_runtime == 20.0
+        assert config.benchmark.warmup_runs == 2
+        assert config.benchmark.minimum_samples == 5
+
+    assert selected.process.reference_color_order == (2, 4, 5, 6, 7, 8, 9, 1, 3)
+    assert selected.process.selected_color_sector_ids == (0,)
+    assert selected.process.selected_source_helicities == {}
+
+    assert all_flows.process.reference_color_order == ()
+    assert all_flows.process.selected_color_sector_ids == ()
+    assert all_flows.process.selected_source_helicities == {
+        "1": -1,
+        "2": 1,
+        "3": -1,
+        "4": 1,
+        "5": -1,
+        "6": 1,
+        "7": -1,
+        "8": 1,
+        "9": -1,
+    }
+
+
 def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:
     momenta = json.loads(
         (EXAMPLES / "data/pp_zjj_momenta.json").read_text(encoding="utf-8")

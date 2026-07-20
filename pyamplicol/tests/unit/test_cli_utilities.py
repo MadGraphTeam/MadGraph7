@@ -24,6 +24,12 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     destination = tmp_path / "examples"
     assert run_cli(("examples", "copy", str(destination))) == 0
     assert (destination / "builtin_sm_lc.toml").is_file()
+    assert (
+        destination / "benchmark_z6g_single_flow_helicity_sum.toml"
+    ).is_file()
+    assert (
+        destination / "benchmark_z6g_all_flows_single_helicity.toml"
+    ).is_file()
     assert (destination / "models/json/sm/sm.json").is_file()
     assert (destination / "models/ufo/sm/vertices.py").is_file()
     stderr = io.StringIO()
