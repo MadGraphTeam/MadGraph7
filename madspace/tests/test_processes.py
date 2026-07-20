@@ -159,8 +159,14 @@ def test_process_propagators(mapping_with_propagators):
     r = rng.random((BATCH_SIZE, mapping.random_dim()))
     result = mapping.map_forward([r])
 
-    p_out = result.momenta[:, 2:]
-    n_out = p_out.shape[1]
+    p_ext = result.momenta
+    n_ext = p_ext.shape[1]
+    # momentum_mask bit i always selects p_ext[:, i]; incoming particles (bits
+    # 0 and 1) enter with a flipped sign, since a propagator's momentum is the
+    # incoming momentum minus whatever outgoing momenta have already branched
+    # off. Squaring removes the resulting overall sign ambiguity.
+    signs = np.where(np.arange(n_ext) < 2, -1.0, 1.0)
+
     # pid and momentum mask are diagram-level constants, broadcast over the batch
     pids_and_masks = result.propagator_pids_and_masks[0]
     invariants = result.propagator_invariants
@@ -170,8 +176,11 @@ def test_process_propagators(mapping_with_propagators):
         pid = int(pid_and_mask) >> 16
         momentum_mask = int(pid_and_mask) & 0xFFFF
 
-        bits = ((momentum_mask >> np.arange(n_out)) & 1).astype(bool)
-        p_sum = np.where(bits[None, :, None], p_out, 0.0).sum(axis=1)
+        bits = ((momentum_mask >> np.arange(n_ext)) & 1).astype(bool)
+        p_sum = np.where(bits[None, :, None], signs[None, :, None] * p_ext, 0.0).sum(
+            axis=1
+        )
+
         invariant_from_momenta = p_sum[:, 0] ** 2 - np.sum(p_sum[:, 1:] ** 2, axis=1)
         assert invariant_from_momenta == approx(invariants[:, i], rel=1e-5, abs=1e-5)
 

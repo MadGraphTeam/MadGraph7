@@ -69,7 +69,12 @@ Mapping::Result TwoBodyDecay::build_inverse_impl(
 }
 
 TwoToTwoParticleScattering::TwoToTwoParticleScattering(
-    bool com, double invariant_power, double mass, double width, bool has_cut
+    bool com,
+    double invariant_power,
+    double mass,
+    double width,
+    bool has_cut,
+    bool return_invariant
 ) :
     Mapping(
         "TwoToTwoParticleScattering",
@@ -77,7 +82,15 @@ TwoToTwoParticleScattering::TwoToTwoParticleScattering(
          {"random_inv", batch_float},
          {"mass1", batch_float},
          {"mass2", batch_float}},
-        {{"momentum1", batch_four_vec}, {"momentum2", batch_four_vec}},
+        [&] {
+            NamedVector<Type> out{
+                {"momentum1", batch_four_vec}, {"momentum2", batch_four_vec}
+            };
+            if (return_invariant) {
+                out.push_back("invariant", batch_float);
+            }
+            return out;
+        }(),
         [&] {
             NamedVector<Type> cond{
                 {"momentum_in1", batch_four_vec}, {"momentum_in2", batch_four_vec}
@@ -91,7 +104,8 @@ TwoToTwoParticleScattering::TwoToTwoParticleScattering(
     ),
     _com(com),
     _invariant(invariant_power, mass, width),
-    _has_cut(has_cut) {}
+    _has_cut(has_cut),
+    _return_invariant(return_invariant) {}
 
 Mapping::Result TwoToTwoParticleScattering::build_forward_impl(
     FunctionBuilder& fb,
@@ -112,9 +126,11 @@ Mapping::Result TwoToTwoParticleScattering::build_forward_impl(
         : fb.two_to_two_particle_scattering(
               r_phi, p_in1, p_in2, t_result["invariant"], m1, m2
           );
-    return {
-        {{"momentum1", p1}, {"momentum2", p2}}, fb.mul(t_result["det"], det_scatter)
-    };
+    NamedVector<Value> out{{"momentum1", p1}, {"momentum2", p2}};
+    if (_return_invariant) {
+        out.push_back("invariant", t_result["invariant"]);
+    }
+    return {out, fb.mul(t_result["det"], det_scatter)};
 }
 
 Mapping::Result TwoToTwoParticleScattering::build_inverse_impl(

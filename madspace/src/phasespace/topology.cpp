@@ -148,7 +148,7 @@ void build_decay_momentum_masks(
     const std::vector<std::size_t>& outgoing_indices,
     std::vector<Topology::Decay>& decays
 ) {
-    for (std::size_t ext_index = 0; std::size_t index : outgoing_indices) {
+    for (std::size_t ext_index = 2; std::size_t index : outgoing_indices) {
         decays.at(index).momentum_mask = 1 << ext_index;
         ++ext_index;
     }
@@ -170,11 +170,11 @@ void build_t_momentum_masks(
     std::size_t t_propagator_count
 ) {
     auto& child_indices = decays.at(0).child_indices;
-    int prefix_mask = 1;
+    int t_momentum_mask = 1;
     for (std::size_t child_index :
          child_indices | std::views::take(t_propagator_count)) {
-        prefix_mask |= decays.at(child_index).momentum_mask << 2;
-        t_momentum_masks.push_back(prefix_mask);
+        t_momentum_mask |= decays.at(child_index).momentum_mask;
+        t_momentum_masks.push_back(t_momentum_mask);
     }
 }
 

@@ -32,7 +32,8 @@ public:
         double invariant_power = 0,
         double mass = 0,
         double width = 0,
-        bool has_cut = false
+        bool has_cut = false,
+        bool return_invariant = false
     );
 
 private:
@@ -50,6 +51,7 @@ private:
     bool _com;
     Invariant _invariant;
     bool _has_cut;
+    bool _return_invariant;
 };
 
 class DoubleT : public Mapping {

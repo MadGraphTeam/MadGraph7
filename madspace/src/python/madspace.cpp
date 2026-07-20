@@ -686,6 +686,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             .def_property_readonly(
                 "t_propagator_widths", &Topology::t_propagator_widths
             )
+            .def_property_readonly("t_propagator_masks", &Topology::t_propagator_masks)
             .def_property_readonly("decays", &Topology::decays)
             .def_property_readonly(
                 "decay_integration_order", &Topology::decay_integration_order

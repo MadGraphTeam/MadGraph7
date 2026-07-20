@@ -50,6 +50,11 @@ KERNELSPEC void backward_kernel_sub(
 }
 
 template <typename T>
+KERNELSPEC void kernel_neg(FIn<T, 0> in, FOut<T, 0> out) {
+    out = -in;
+}
+
+template <typename T>
 KERNELSPEC void kernel_mul(FIn<T, 0> in1, FIn<T, 0> in2, FOut<T, 0> out) {
     out = in1 * in2;
 }

@@ -321,7 +321,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         } else if (t_channel_mode == PhaseSpaceMapping::propagator ||
                    topology.t_propagator_count() < 2) {
             _t_mapping = TPropagatorMapping(
-                _topology.t_integration_order(), invariant_power, pt_min
+                _topology.t_integration_order(),
+                invariant_power,
+                pt_min,
+                _return_propagators
             );
         } else if (t_channel_mode == PhaseSpaceMapping::rambo) {
             // TODO: add massless special case
@@ -439,7 +442,11 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             auto invariant =
                 _s_invariants.at(invariant_index++)
                     .build_forward(fb, {next_random()}, {s_min, s_max});
-            if (_return_propagators) {
+            // decay_index == 0 is a bookkeeping node (the overall partonic
+            // system), not a real propagator, whenever there is a t-channel
+            bool is_real_propagator =
+                decay_index != 0 || _topology.t_propagator_count() == 0;
+            if (_return_propagators && is_real_propagator) {
                 me_int_t pid = decay.mass == 0 ? 0 : decay.pdg_id;
                 propagator_pids_and_masks.push_back((pid << 16) + decay.momentum_mask);
                 propagator_invariants.push_back(invariant["invariant"]);
@@ -506,6 +513,21 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                     );
                     x1 = x1_new;
                     x2 = x2_new;
+                }
+                if constexpr (std::is_same_v<TMapping, TPropagatorMapping>) {
+                    if (_return_propagators) {
+                        // all t-propagators sampled by TPropagatorMapping are
+                        // massless, so the virtuality equals the invariant
+                        for (std::size_t j = 0; j < _topology.t_propagator_count();
+                             ++j) {
+                            Value t_invariant = t_result.at(result_index + j);
+                            propagator_pids_and_masks.push_back(
+                                _topology.t_propagator_masks().at(j)
+                            );
+                            propagator_invariants.push_back(t_invariant);
+                            propagator_virtualities.push_back(t_invariant);
+                        }
+                    }
                 }
             },
             [&](std::monostate) {

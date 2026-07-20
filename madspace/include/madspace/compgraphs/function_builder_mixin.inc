@@ -71,6 +71,10 @@ Value sub(Value in1, Value in2) {
     return instruction("sub", {in1, in2})[0];
 }
 
+Value neg(Value in) {
+    return instruction("neg", {in})[0];
+}
+
 Value mul(Value in1, Value in2) {
     return instruction("mul", {in1, in2})[0];
 }

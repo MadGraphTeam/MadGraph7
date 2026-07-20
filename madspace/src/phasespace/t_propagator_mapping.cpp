@@ -22,7 +22,8 @@ static bool has_pt_cut(const std::vector<double>& pt_min) {
 TPropagatorMapping::TPropagatorMapping(
     const std::vector<std::size_t>& integration_order,
     double invariant_power,
-    const std::vector<double>& pt_min
+    const std::vector<double>& pt_min,
+    bool return_propagators
 ) :
     Mapping(
         "TPropagatorMapping",
@@ -38,6 +39,11 @@ TPropagatorMapping::TPropagatorMapping(
             for (std::size_t i = 0; i < integration_order.size() + 3; ++i) {
                 output_types.push_back(std::format("momentum{}", i), batch_four_vec);
             }
+            if (return_propagators) {
+                for (std::size_t i = 0; i < integration_order.size(); ++i) {
+                    output_types.push_back(std::format("propagator{}", i), batch_float);
+                }
+            }
             return output_types;
         }(),
         [&] {
@@ -51,8 +57,13 @@ TPropagatorMapping::TPropagatorMapping(
     _integration_order(integration_order),
     _pt_min(pt_min),
     _has_cut(has_pt_cut(pt_min)),
-    _com_scattering(true, invariant_power, 0., 0., has_pt_cut(pt_min)),
-    _lab_scattering(false, invariant_power, 0., 0., has_pt_cut(pt_min)) {
+    _return_propagators(return_propagators),
+    _com_scattering(
+        true, invariant_power, 0., 0., has_pt_cut(pt_min), return_propagators
+    ),
+    _lab_scattering(
+        false, invariant_power, 0., 0., has_pt_cut(pt_min), return_propagators
+    ) {
     std::size_t next_index_low = 0;
     std::size_t next_index_high = integration_order.size() - 1;
     for (std::size_t index : integration_order) {
@@ -130,6 +141,10 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
     }
 
     // sample t-invariants and build momenta of t-channel part of the diagram
+    ValueVec propagators;
+    if (_return_propagators) {
+        propagators.resize(_integration_order.size());
+    }
     Value k_rest;
     bool first = true;
     for (auto [index, side, mass_sum] :
@@ -152,6 +167,9 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
         auto k = ks.at(1);
         p_ext.at(sampled_index + 2) = k;
         dets.push_back(ks["det"]);
+        if (_return_propagators) {
+            propagators.at(index) = fb.neg(ks["invariant"]);
+        }
         if (side) {
             p2_rest = fb.sub(p2_rest, k);
         } else {
@@ -159,7 +177,10 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
         }
     }
     p_ext.at(_integration_order.back() + 2) = k_rest;
-    return {{output_types().keys(), p_ext}, fb.product(dets)};
+
+    ValueVec outputs = p_ext;
+    outputs.insert(outputs.end(), propagators.begin(), propagators.end());
+    return {{output_types().keys(), outputs}, fb.product(dets)};
 }
 
 Mapping::Result TPropagatorMapping::build_inverse_impl(

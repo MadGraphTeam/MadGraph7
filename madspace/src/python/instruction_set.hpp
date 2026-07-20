@@ -30,6 +30,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("add", &FunctionBuilder::add, py::arg("in1"), py::arg("in2"));
     fb.def("add_int", &FunctionBuilder::add_int, py::arg("in1"), py::arg("in2"));
     fb.def("sub", &FunctionBuilder::sub, py::arg("in1"), py::arg("in2"));
+    fb.def("neg", &FunctionBuilder::neg, py::arg("in"));
     fb.def("mul", &FunctionBuilder::mul, py::arg("in1"), py::arg("in2"));
     fb.def("div", &FunctionBuilder::div, py::arg("in1"), py::arg("in2"));
     fb.def("reduce_sum", &FunctionBuilder::reduce_sum, py::arg("in1"));

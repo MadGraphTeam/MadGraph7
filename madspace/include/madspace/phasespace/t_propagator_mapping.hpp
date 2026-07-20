@@ -14,7 +14,8 @@ public:
     TPropagatorMapping(
         const std::vector<std::size_t>& integration_order,
         double invariant_power = 0.8,
-        const std::vector<double>& pt_min = {}
+        const std::vector<double>& pt_min = {},
+        bool return_propagators = false
     );
     std::size_t random_dim() const { return 3 * _integration_order.size() - 1; }
 
@@ -37,6 +38,7 @@ private:
     std::vector<bool> _sample_sides;
     std::vector<double> _pt_min;
     bool _has_cut;
+    bool _return_propagators;
     Invariant _uniform_invariant;
     TwoToTwoParticleScattering _com_scattering;
     TwoToTwoParticleScattering _lab_scattering;

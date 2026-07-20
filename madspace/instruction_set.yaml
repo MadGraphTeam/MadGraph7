@@ -199,6 +199,18 @@ sub:
   differentiable: True
   dims: 0
 
+neg:
+  inputs:
+    - name: in
+      type: [float, ...]
+      desc: input
+  outputs:
+    - name: out
+      type: [float, ...]
+      desc: negative of input
+  desc: Negates the input.
+  dims: 0
+
 mul:
   inputs:
     - name: in1
