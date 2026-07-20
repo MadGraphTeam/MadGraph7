@@ -40,6 +40,8 @@ from .._internal.versions import (
 from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
 from .contracts import RuntimeExpressionSchema
+from .eager_lowering import EAGER_RUNTIME_KIND, EagerExecutionTables
+from .eager_tables import EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY
 from .validation import ValidationPointRecord, validation_point_map
 
 if TYPE_CHECKING:
@@ -55,6 +57,11 @@ _CONFIG_EFFECTIVE_PATH = "config/effective.toml"
 _COMPILED_MODEL_PATH = "model/compiled-model.json"
 _MODEL_PARAMETERS_PATH = "model/parameters.json"
 _EVALUATOR_SET_PATH = "processes/evaluators.json"
+_EAGER_KERNEL_PACK_PATH = "model/eager-kernel-pack.json"
+_EAGER_KERNEL_PAYLOAD_ROOT = "model/eager-kernels"
+_EAGER_PACK_IDENTITY_EXTENSION = "eager_prepared_pack"
+_EAGER_PACK_IDENTITY_KIND = "pyamplicol-prepared-kernel-pack-identity"
+_EAGER_PACK_IDENTITY_SCHEMA_VERSION = 1
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -79,6 +86,25 @@ class CompiledProcessArtifact:
     evaluator_root: Path
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class EagerProcessArtifact:
+    process_id: str
+    expression: str
+    color_accuracy: str
+    external_pdgs: tuple[int, ...]
+    aliases: tuple[Mapping[str, object], ...]
+    runtime_schema: RuntimeExpressionSchema | Mapping[str, object]
+    eager_tables: EagerExecutionTables
+    point_tile_size: int
+    workspace_mib: int
+    dag_summary: Mapping[str, object]
+    validation_point: ValidationPointRecord
+    generation_filters: Mapping[str, object]
+
+
+ProcessArtifact = CompiledProcessArtifact | EagerProcessArtifact
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +139,7 @@ def write_schema_v3_artifact(
     source: ModelSource,
     compiled_model: CompiledModel,
     configuration: _GenerationConfigProvenance,
-    processes: Sequence[CompiledProcessArtifact],
+    processes: Sequence[ProcessArtifact],
     timings: Mapping[str, float],
     api_bundle_hook: ApiBundleHook | None = None,
 ) -> ArtifactWriteResult:
@@ -147,10 +173,16 @@ def write_schema_v3_artifact(
     producer = _producer_metadata(configuration.effective)
     model = _model_metadata(source, compiled_model)
     dependencies = _dependency_metadata(source)
+    eager_pack_identity = _eager_prepared_pack_identity(
+        existing,
+        compiled_model=compiled_model,
+        processes=processes,
+    )
     _validate_append_compatibility(
         existing,
         producer=producer,
         model=model,
+        eager_pack_identity=eager_pack_identity,
         requested_bytes=requested_bytes,
         effective_bytes=effective_bytes,
         adjustments=adjustments,
@@ -164,13 +196,12 @@ def write_schema_v3_artifact(
     target = _mapping(producer["target"])
     process_records = _existing_process_records(existing)
     evaluator_entries = _existing_evaluator_entries(existing)
+    execution_manifest_sha256_by_process: dict[str, str] = {}
     required_runtime_capabilities = set(
         _existing_required_runtime_capabilities(existing)
     )
     for process in processes:
-        required_runtime_capabilities.update(
-            _compiled_process_runtime_capabilities(process)
-        )
+        required_runtime_capabilities.update(_process_runtime_capabilities(process))
     canonical_runtime_capabilities = tuple(sorted(required_runtime_capabilities))
     validation_records = tuple(process.validation_point for process in processes)
     validations = validation_point_map(validation_records)
@@ -178,7 +209,11 @@ def write_schema_v3_artifact(
     bundle_points.update(build_api_validation_points(processes))
     api_bundle_path = existing_bundle
     write_mode = cast("ArtifactWriteMode", mode)
-    with ArtifactBuilder(output, mode=write_mode) as builder:
+    with ArtifactBuilder(
+        output,
+        mode=write_mode,
+        expected_artifact_id=(existing.artifact_id if existing is not None else None),
+    ) as builder:
         if existing is None:
             _write_global_payloads(
                 builder,
@@ -186,14 +221,28 @@ def write_schema_v3_artifact(
                 requested_bytes=requested_bytes,
                 effective_bytes=effective_bytes,
             )
+        eager_kernel_ids = _eager_kernel_ids(
+            output,
+            existing,
+            compiled_model=compiled_model,
+            processes=processes,
+        )
+        if eager_kernel_ids:
+            _write_eager_kernel_pack(
+                builder,
+                compiled_model,
+                kernel_ids=eager_kernel_ids,
+                target=target,
+            )
         for process in processes:
-            record, evaluator_entry = _write_process_payloads(
+            record, evaluator_entry, execution_sha256 = _write_process_payloads(
                 builder,
                 process,
                 target=target,
             )
             process_records.append(record)
             evaluator_entries.append(evaluator_entry)
+            execution_manifest_sha256_by_process[process.process_id] = execution_sha256
         builder.add_json(
             _EVALUATOR_SET_PATH,
             {
@@ -212,6 +261,8 @@ def write_schema_v3_artifact(
             timings=timings,
             api_bundle_requested=bundle_requested,
             api_bundle_path=api_bundle_path,
+            eager_pack_identity=eager_pack_identity,
+            execution_manifest_sha256_by_process=(execution_manifest_sha256_by_process),
         )
         builder.finalize(
             kind=(
@@ -294,17 +345,179 @@ def _write_global_payloads(
     )
 
 
+def _write_eager_kernel_pack(
+    builder: ArtifactBuilder,
+    compiled_model: CompiledModel,
+    *,
+    kernel_ids: frozenset[int],
+    target: Mapping[str, object],
+) -> None:
+    bundle = compiled_model.prepared_bundle
+    if bundle is None:
+        raise ValueError("eager artifact writing requires a prepared model bundle")
+    selected = tuple(
+        kernel
+        for kernel in bundle.kernel_pack.kernels
+        if kernel.kernel_id in kernel_ids
+    )
+    if {kernel.kernel_id for kernel in selected} != set(kernel_ids):
+        missing = sorted(set(kernel_ids) - {kernel.kernel_id for kernel in selected})
+        raise ValueError(f"prepared model omits referenced eager kernels {missing}")
+    selected_variants = tuple(
+        variant
+        for variant in bundle.kernel_pack.kernel_variants
+        if variant.base_kernel_id in kernel_ids
+    )
+    builder.discard_payloads(_EAGER_KERNEL_PACK_PATH)
+    builder.discard_payloads(_EAGER_KERNEL_PAYLOAD_ROOT, recursive=True)
+    pack_payload = bundle.kernel_pack.to_dict()
+    pack_payload["eager_kernel_abi"] = EAGER_KERNEL_ABI
+    pack_payload["kernels"] = [kernel.to_dict() for kernel in selected]
+    pack_payload["kernel_variants"] = [
+        variant.to_dict() for variant in selected_variants
+    ]
+    pack_payload["resolver_manifest"] = _filtered_eager_resolver_manifest(
+        bundle.kernel_pack.resolver_manifest,
+        kernel_ids,
+    )
+    builder.add_json(
+        _EAGER_KERNEL_PACK_PATH,
+        pack_payload,
+        role="evaluator-manifest",
+        compact=True,
+    )
+    referenced_payloads = {
+        path
+        for record in (*selected, *selected_variants)
+        for path in record.referenced_payload_paths
+    }
+    for member_path in sorted(referenced_payloads):
+        builder.add_bytes(
+            f"{_EAGER_KERNEL_PAYLOAD_ROOT}/{member_path}",
+            bundle.read_payload(member_path),
+            role="evaluator-state",
+            media_type=_media_type(Path(member_path)),
+            target=target,
+        )
+
+
+def _eager_kernel_ids(
+    output: Path,
+    existing: ArtifactManifest | None,
+    *,
+    compiled_model: CompiledModel,
+    processes: Sequence[ProcessArtifact],
+) -> frozenset[int]:
+    has_eager_process = any(
+        isinstance(process, EagerProcessArtifact) for process in processes
+    )
+    kernel_ids = {
+        kernel_id
+        for process in processes
+        if isinstance(process, EagerProcessArtifact)
+        for kernel_id in process.eager_tables.referenced_kernel_ids
+    }
+    has_existing_pack = (
+        existing is not None and (output / _EAGER_KERNEL_PACK_PATH).is_file()
+    )
+    if has_existing_pack:
+        try:
+            prior = json.loads(
+                (output / _EAGER_KERNEL_PACK_PATH).read_text(encoding="utf-8")
+            )
+            kernel_ids.update(
+                int(_mapping(item)["kernel_id"])
+                for item in _sequence(_mapping(prior)["kernels"])
+            )
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "existing eager kernel pack is malformed; replace the artifact"
+            ) from exc
+    if has_eager_process or has_existing_pack:
+        bundle = compiled_model.prepared_bundle
+        if bundle is None:
+            raise ValueError("eager artifact writing requires a prepared model bundle")
+        parameter_kernel_id = bundle.kernel_pack.resolver_manifest.get(
+            "model_parameter_kernel_id"
+        )
+        if parameter_kernel_id is not None:
+            kernel_ids.add(int(parameter_kernel_id))
+    return frozenset(kernel_ids)
+
+
+def _eager_prepared_pack_identity(
+    existing: ArtifactManifest | None,
+    *,
+    compiled_model: CompiledModel,
+    processes: Sequence[ProcessArtifact],
+) -> dict[str, object] | None:
+    existing_uses_eager = existing is not None and (
+        EAGER_RUNTIME_CAPABILITY in _required_runtime_capabilities(existing.runtime)
+        or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    )
+    incoming_uses_eager = any(
+        isinstance(process, EagerProcessArtifact) for process in processes
+    )
+    if not existing_uses_eager and not incoming_uses_eager:
+        return None
+    bundle = compiled_model.prepared_bundle
+    if bundle is None:
+        raise ValueError("eager artifact writing requires a prepared model bundle")
+    canonical_manifest = json.dumps(
+        _deep_plain(bundle.manifest),
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    digest = hashlib.sha256(
+        b"pyamplicol-prepared-kernel-pack-identity-v1\x00" + canonical_manifest
+    ).hexdigest()
+    return {
+        "kind": _EAGER_PACK_IDENTITY_KIND,
+        "schema_version": _EAGER_PACK_IDENTITY_SCHEMA_VERSION,
+        "eager_kernel_abi": EAGER_KERNEL_ABI,
+        "identity_sha256": digest,
+        "backend": bundle.kernel_pack.backend,
+        "kernel_count": len(bundle.kernel_pack.kernels),
+    }
+
+
+def _filtered_eager_resolver_manifest(
+    manifest: Mapping[str, object],
+    kernel_ids: frozenset[int],
+) -> dict[str, object]:
+    result = _plain_mapping(manifest)
+    for field in (
+        "vertex_bindings",
+        "propagator_bindings",
+        "closure_bindings",
+    ):
+        if field not in manifest:
+            continue
+        result[field] = [
+            _plain_mapping(record)
+            for item in _sequence(manifest[field])
+            if (record := _mapping(item)).get("kernel_id") is None
+            or int(record["kernel_id"]) in kernel_ids
+        ]
+    parameter_kernel_id = manifest.get("model_parameter_kernel_id")
+    if parameter_kernel_id is not None and int(parameter_kernel_id) not in kernel_ids:
+        result["model_parameter_kernel_id"] = None
+    return result
+
+
 def _write_process_payloads(
     builder: ArtifactBuilder,
-    process: CompiledProcessArtifact,
+    process: ProcessArtifact,
     *,
     target: Mapping[str, object],
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> tuple[dict[str, object], dict[str, object], str]:
     prefix = f"processes/{process.process_id}"
     physics_path = f"{prefix}/physics.json"
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
-    schema = process.runtime_schema.to_mapping()
+    schema = _runtime_schema_mapping(process.runtime_schema)
     physics = _mapping(schema.get("physics"))
     if physics.get("process_id") != process.process_id:
         raise ValueError(
@@ -317,7 +530,7 @@ def _write_process_payloads(
         process_id=process.process_id,
         compact=True,
     )
-    builder.add_json(
+    execution_record = builder.add_json(
         execution_path,
         _execution_manifest(process, schema),
         role="evaluator-manifest",
@@ -330,13 +543,24 @@ def _write_process_payloads(
         role="validation-momenta",
         process_id=process.process_id,
     )
-    _copy_evaluator_payloads(
-        builder,
-        process.evaluator_root,
-        prefix=prefix,
-        target=target,
-        process_id=process.process_id,
-    )
+    if isinstance(process, EagerProcessArtifact):
+        for relative, content in sorted(process.eager_tables.binary_payloads().items()):
+            builder.add_bytes(
+                f"{prefix}/{relative}",
+                content,
+                role="evaluator-state",
+                media_type="application/octet-stream",
+                target=target,
+                process_id=process.process_id,
+            )
+    else:
+        _copy_evaluator_payloads(
+            builder,
+            process.evaluator_root,
+            prefix=prefix,
+            target=target,
+            process_id=process.process_id,
+        )
     return (
         {
             "id": process.process_id,
@@ -345,7 +569,7 @@ def _write_process_payloads(
             "external_pdgs": list(process.external_pdgs),
             "physics_path": physics_path,
             "required_runtime_capabilities": list(
-                _compiled_process_runtime_capabilities(process)
+                _process_runtime_capabilities(process)
             ),
             "aliases": [dict(alias) for alias in process.aliases],
         },
@@ -353,16 +577,47 @@ def _write_process_payloads(
             "process_id": process.process_id,
             "manifest_path": f"{process.process_id}/execution.json",
             "required_runtime_capabilities": list(
-                _compiled_process_runtime_capabilities(process)
+                _process_runtime_capabilities(process)
             ),
         },
+        execution_record.sha256,
     )
 
 
+def _runtime_schema_mapping(
+    schema: RuntimeExpressionSchema | Mapping[str, object],
+) -> Mapping[str, object]:
+    if isinstance(schema, RuntimeExpressionSchema):
+        return schema.to_mapping()
+    return schema
+
+
 def _execution_manifest(
-    process: CompiledProcessArtifact,
+    process: ProcessArtifact,
     compiler_schema: Mapping[str, object],
 ) -> dict[str, object]:
+    if isinstance(process, EagerProcessArtifact):
+        return {
+            "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
+            "kind": EAGER_RUNTIME_KIND,
+            "required_runtime_capabilities": [EAGER_RUNTIME_CAPABILITY],
+            "process": process.expression,
+            "key": process.process_id,
+            "color_accuracy": process.color_accuracy,
+            "external_pdg_order": list(process.external_pdgs),
+            "eager_plan_abi": EAGER_PLAN_ABI,
+            "kernel_pack": {
+                "manifest_path": _EAGER_KERNEL_PACK_PATH,
+                "payload_root": _EAGER_KERNEL_PAYLOAD_ROOT,
+            },
+            "runtime_options": {
+                "point_tile_size": process.point_tile_size,
+                "workspace_mib": process.workspace_mib,
+            },
+            "plan": process.eager_tables.to_metadata(),
+            "dag_summary": _dag_summary(process.dag_summary),
+            "runtime_schema": _execution_plan(compiler_schema),
+        }
     model_parameter_evaluator = (
         None
         if process.model_parameter_evaluator is None
@@ -456,9 +711,7 @@ def _execution_plan(schema: Mapping[str, object]) -> dict[str, object]:
                 normalization.get("global_coupling_factor", 1.0)
             ),
             "average_factor": float(normalization.get("average_factor", 1.0)),
-            "identical_factor": float(
-                normalization.get("identical_factor", 1.0)
-            ),
+            "identical_factor": float(normalization.get("identical_factor", 1.0)),
             "qcd_coupling_power": int(normalization.get("qcd_coupling_power", 0)),
             "electroweak_coupling_power": int(
                 normalization.get("electroweak_coupling_power", 0)
@@ -940,7 +1193,7 @@ def _copy_evaluator_payloads(
 
 
 def build_api_validation_points(
-    processes: Sequence[CompiledProcessArtifact],
+    processes: Sequence[ProcessArtifact],
 ) -> dict[str, tuple[tuple[float, float, float, float], ...]]:
     """Return concrete and crossing-alias points in each public external order."""
 
@@ -1119,6 +1372,7 @@ def _model_metadata(
         "ufo": "ufo",
         "json": "ufo-json",
         "compiled": "compiled-model",
+        "prepared": "compiled-model",
     }[source.kind]
     digest = str(compiled.source.get("digest", ""))
     if source.kind == "compiled" and source.path is not None:
@@ -1171,13 +1425,31 @@ def _validate_append_compatibility(
     *,
     producer: Mapping[str, object],
     model: Mapping[str, object],
+    eager_pack_identity: Mapping[str, object] | None,
     requested_bytes: bytes,
     effective_bytes: bytes,
     adjustments: Sequence[Mapping[str, str]],
-    processes: Sequence[CompiledProcessArtifact],
+    processes: Sequence[ProcessArtifact],
 ) -> None:
     if existing is None:
         return
+    existing_uses_eager = EAGER_RUNTIME_CAPABILITY in _required_runtime_capabilities(
+        existing.runtime
+    ) or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    existing_identity = existing.extensions.get(_EAGER_PACK_IDENTITY_EXTENSION)
+    if existing_uses_eager or existing_identity is not None:
+        if not isinstance(existing_identity, Mapping):
+            raise ValueError(
+                "append eager artifact has no canonical prepared-pack identity; "
+                "replace the artifact"
+            )
+        if eager_pack_identity is None or _plain_mapping(
+            existing_identity
+        ) != _plain_mapping(eager_pack_identity):
+            raise ValueError(
+                "append prepared kernel pack identity differs from the existing "
+                "artifact; replace the artifact"
+            )
     if _plain_mapping(existing.model) != dict(model):
         raise ValueError("append model provenance differs from the existing artifact")
     if _plain_mapping(existing.producer).get("target") != producer.get("target"):
@@ -1255,6 +1527,14 @@ def _compiled_process_runtime_capabilities(
     return tuple(sorted(capabilities))
 
 
+def _process_runtime_capabilities(
+    process: ProcessArtifact,
+) -> tuple[str, ...]:
+    if isinstance(process, EagerProcessArtifact):
+        return (EAGER_RUNTIME_CAPABILITY,)
+    return _compiled_process_runtime_capabilities(process)
+
+
 def _required_runtime_capabilities(
     record: Mapping[str, object],
 ) -> tuple[str, ...]:
@@ -1275,28 +1555,34 @@ def _required_runtime_capabilities(
 def _extensions(
     existing: ArtifactManifest | None,
     *,
-    processes: Sequence[CompiledProcessArtifact],
+    processes: Sequence[ProcessArtifact],
     timings: Mapping[str, float],
     api_bundle_requested: bool,
     api_bundle_path: str | None,
+    eager_pack_identity: Mapping[str, object] | None,
+    execution_manifest_sha256_by_process: Mapping[str, str],
 ) -> dict[str, object]:
     result = {} if existing is None else _plain_mapping(existing.extensions)
     previous = result.get("generation")
     generation = dict(previous) if isinstance(previous, Mapping) else {}
     concrete = generation.get("concrete_processes")
     process_records = list(concrete) if isinstance(concrete, list) else []
-    process_records.extend(
-        {
+    for process in processes:
+        record: dict[str, object] = {
             "id": process.process_id,
             "expression": process.expression,
-            "runtime_schema_sha256": process.runtime_schema.sha256,
             "validation_momenta_path": (
                 f"processes/{process.process_id}/validation-momenta.json"
             ),
             "filters": dict(process.generation_filters),
         }
-        for process in processes
-    )
+        if isinstance(process, EagerProcessArtifact):
+            record["execution_manifest_sha256"] = execution_manifest_sha256_by_process[
+                process.process_id
+            ]
+        else:
+            record["runtime_schema_sha256"] = process.runtime_schema.sha256
+        process_records.append(record)
     generation.update(
         {
             "schema_version": 1,
@@ -1313,6 +1599,8 @@ def _extensions(
         }
     )
     result["generation"] = generation
+    if eager_pack_identity is not None:
+        result[_EAGER_PACK_IDENTITY_EXTENSION] = _plain_mapping(eager_pack_identity)
     return result
 
 
@@ -1508,6 +1796,8 @@ __all__ = [
     "ApiBundleHook",
     "ArtifactWriteResult",
     "CompiledProcessArtifact",
+    "EagerProcessArtifact",
+    "ProcessArtifact",
     "build_api_validation_points",
     "write_schema_v3_artifact",
 ]

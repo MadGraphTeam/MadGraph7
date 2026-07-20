@@ -51,12 +51,35 @@ pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
     "symbolica.legacy-jit-container.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-cpp.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
+pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
 #[cfg(feature = "f64-symjit")]
 pub const SYMJIT_APPLICATION_STORAGE_ABI: &str = "symjit-application-storage-v3";
+
+#[doc(hidden)]
+pub fn preflight_prepared_kernel_pack(
+    manifest_path: &Path,
+    payload_root: &Path,
+) -> RusticolResult<usize> {
+    let bytes = fs::read(manifest_path).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not read prepared kernel pack {}: {error}",
+            manifest_path.display()
+        ))
+    })?;
+    let pack: PreparedKernelPackManifest = serde_json::from_slice(&bytes).map_err(|error| {
+        RusticolError::serialization(format!(
+            "could not parse prepared kernel pack {}: {error}",
+            manifest_path.display()
+        ))
+    })?;
+    pack.validate()?;
+    PreparedEvaluatorBackend::preflight_all(&pack, payload_root)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {
+    EagerDagComplexF64V1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -66,6 +89,7 @@ pub enum RuntimeCapability {
 impl RuntimeCapability {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -78,6 +102,8 @@ impl RuntimeCapability {
 
 pub fn supported_runtime_capabilities() -> Vec<&'static str> {
     let mut capabilities = vec![
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        EAGER_DAG_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
         SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         #[cfg(feature = "symbolica-runtime")]
@@ -1223,6 +1249,15 @@ struct RuntimeProfile {
     stage_input_pack_by_stage_s: Vec<f64>,
     stage_evaluator_call_by_stage_s: Vec<f64>,
     stage_output_assign_by_stage_s: Vec<f64>,
+    eager_initialize_s: f64,
+    eager_gather_s: f64,
+    eager_kernel_call_s: f64,
+    eager_invocation_scatter_s: f64,
+    eager_finalization_s: f64,
+    eager_scatter_finalization_s: f64,
+    eager_closure_s: f64,
+    eager_reduction_s: f64,
+    eager_copy_out_s: f64,
 }
 
 impl RuntimeProfile {
@@ -1237,6 +1272,15 @@ impl RuntimeProfile {
         self.amplitude_evaluator_call_s += sector.amplitude_evaluator_call_s;
         self.amplitude_evaluator_s += sector.amplitude_evaluator_s;
         self.reduction_s += sector.reduction_s;
+        self.eager_initialize_s += sector.eager_initialize_s;
+        self.eager_gather_s += sector.eager_gather_s;
+        self.eager_kernel_call_s += sector.eager_kernel_call_s;
+        self.eager_invocation_scatter_s += sector.eager_invocation_scatter_s;
+        self.eager_finalization_s += sector.eager_finalization_s;
+        self.eager_scatter_finalization_s += sector.eager_scatter_finalization_s;
+        self.eager_closure_s += sector.eager_closure_s;
+        self.eager_reduction_s += sector.eager_reduction_s;
+        self.eager_copy_out_s += sector.eager_copy_out_s;
         add_profile_vector(
             &mut self.stage_input_pack_by_stage_s,
             &sector.stage_input_pack_by_stage_s,
@@ -1323,6 +1367,10 @@ struct ResolvedValues<T> {
 pub struct NativeRuntimeMetadata {
     pub abi_version: u32,
     pub schema_version: u32,
+    pub execution_mode: String,
+    pub prepared_backend: Option<String>,
+    pub eager_effective_point_tile_size: Option<usize>,
+    pub eager_workspace_bytes: Option<usize>,
     pub process: String,
     pub process_key: String,
     pub representative_process: String,
@@ -1354,6 +1402,15 @@ pub struct NativeRuntimeProfile {
     pub stage_input_pack_by_stage_s: Vec<f64>,
     pub stage_evaluator_call_by_stage_s: Vec<f64>,
     pub stage_output_assign_by_stage_s: Vec<f64>,
+    pub eager_initialize_s: f64,
+    pub eager_gather_s: f64,
+    pub eager_kernel_call_s: f64,
+    pub eager_invocation_scatter_s: f64,
+    pub eager_finalization_s: f64,
+    pub eager_scatter_finalization_s: f64,
+    pub eager_closure_s: f64,
+    pub eager_reduction_s: f64,
+    pub eager_copy_out_s: f64,
 }
 
 impl From<RuntimeProfile> for NativeRuntimeProfile {
@@ -1373,6 +1430,15 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             stage_input_pack_by_stage_s: profile.stage_input_pack_by_stage_s,
             stage_evaluator_call_by_stage_s: profile.stage_evaluator_call_by_stage_s,
             stage_output_assign_by_stage_s: profile.stage_output_assign_by_stage_s,
+            eager_initialize_s: profile.eager_initialize_s,
+            eager_gather_s: profile.eager_gather_s,
+            eager_kernel_call_s: profile.eager_kernel_call_s,
+            eager_invocation_scatter_s: profile.eager_invocation_scatter_s,
+            eager_finalization_s: profile.eager_finalization_s,
+            eager_scatter_finalization_s: profile.eager_scatter_finalization_s,
+            eager_closure_s: profile.eager_closure_s,
+            eager_reduction_s: profile.eager_reduction_s,
+            eager_copy_out_s: profile.eager_copy_out_s,
         }
     }
 }
@@ -1491,6 +1557,7 @@ impl NativeDecimalResolvedEvaluation {
 pub struct NativeRuntime {
     root: PathBuf,
     runtime: ExecutionRuntime,
+    execution_lane: NativeExecutionLane,
     process: String,
     process_key: String,
     input_crossing_map: Option<Vec<InputCrossingMapEntry>>,
@@ -1499,6 +1566,23 @@ pub struct NativeRuntime {
     warnings_muted: bool,
     warned_kinds: BTreeSet<String>,
     pending_warnings: Vec<String>,
+}
+
+enum NativeExecutionLane {
+    Compiled,
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    Eager(Box<EagerNativeRuntime>),
+}
+
+impl NativeExecutionLane {
+    #[cfg(feature = "symbolica-runtime")]
+    fn is_eager(&self) -> bool {
+        match self {
+            Self::Compiled => false,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(_) => true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1557,6 +1641,26 @@ mod native_runtime;
 mod artifact_load;
 use artifact_load::*;
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_backend;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_backend::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_manifest;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_manifest::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_load;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_load::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_lane;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use eager_lane::*;
+
 mod physics;
 
 #[path = "evaluator.rs"]
@@ -1582,3 +1686,7 @@ mod quantum_number_flow_tests;
 #[cfg(test)]
 #[path = "engine/contraction_metadata_tests.rs"]
 mod contraction_metadata_tests;
+
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+#[path = "engine/eager_integration_tests.rs"]
+mod eager_integration_tests;

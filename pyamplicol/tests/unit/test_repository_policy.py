@@ -170,3 +170,48 @@ def test_python_rust_and_release_lock_wire_versions_are_identical() -> None:
         == versions.SYMBOLICA_SERIALIZATION_ABI
         == release["symbolica_serialization"]
     )
+
+    from pyamplicol.generation.eager_tables import (
+        EAGER_PLAN_ABI,
+        EAGER_SELECTOR_DOMAINS_ABI,
+    )
+    from pyamplicol.models.prepared import (
+        EAGER_KERNEL_ABI,
+        PREPARED_KERNEL_VARIANT_ABI,
+        PREPARED_MODEL_BUNDLE_SCHEMA_VERSION,
+    )
+
+    string_contracts = {
+        "eager_kernel": EAGER_KERNEL_ABI,
+        "eager_plan": EAGER_PLAN_ABI,
+        "eager_selector_domains": EAGER_SELECTOR_DOMAINS_ABI,
+    }
+    rust_eager_tables = (
+        ROOT / "rust/crates/rusticol-core/src/eager_tables.rs"
+    ).read_text(encoding="utf-8")
+    for lock_name, python_value in string_contracts.items():
+        rust_name = lock_name.upper() + "_ABI"
+        match = re.search(
+            rf'pub const {rust_name}: &str = "([^"]+)";',
+            rust_eager_tables,
+        )
+        assert match is not None, rust_name
+        assert match.group(1) == python_value == release[lock_name]
+
+    eager_manifest = (
+        ROOT / "rust/crates/rusticol-core/src/engine/eager_manifest.rs"
+    ).read_text(encoding="utf-8")
+    match = re.search(
+        r'const SYMJIT_APPLICATION_STORAGE_V3_ABI: &str = "([^"]+)";',
+        eager_manifest,
+    )
+    assert match is not None
+    assert (
+        match.group(1)
+        == versions.SYMJIT_APPLICATION_ABI
+        == release["symjit_application"]
+    )
+    assert (
+        release["prepared_model_bundle"] == PREPARED_MODEL_BUNDLE_SCHEMA_VERSION
+    )
+    assert release["prepared_kernel_variant"] == PREPARED_KERNEL_VARIANT_ABI

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -111,6 +112,7 @@ class _NativeArtifactError(Exception):
 class _NativeRuntime:
     physics_value = _native_physics()
     load_arguments: tuple[object, ...] | None = None
+    execution_mode = "compiled"
 
     def __init__(self) -> None:
         self.parameter_updates: list[dict[str, complex | float | int]] = []
@@ -124,6 +126,9 @@ class _NativeRuntime:
     @property
     def physics(self) -> SimpleNamespace:
         return self.physics_value
+
+    def metadata_json(self) -> str:
+        return json.dumps({"execution_mode": self.execution_mode})
 
     def evaluate(self, _momenta: object, **kwargs: object) -> list[object]:
         return [Decimal("1.25")] if kwargs["precision"] == 32 else [2.0]
@@ -250,6 +255,24 @@ def test_adapter_maps_typed_metadata_totals_and_runtime_state(
     public = Runtime.load(tmp_path, process="uux_g")
     assert isinstance(public.physics, ProcessPhysics)
     assert public.evaluate([], precision=32) == (Decimal("1.25"),)
+
+
+def test_adapter_routes_eager_high_precision_to_eager_exact_executor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_native(monkeypatch)
+    monkeypatch.setattr(
+        "pyamplicol.runtime.eager_exact.EagerExactExecutor",
+        _ExactExecutor,
+    )
+    from pyamplicol.runtime import load_runtime_backend
+
+    _NativeRuntime.execution_mode = "eager"
+    try:
+        backend = load_runtime_backend(tmp_path, process="uux_g")
+        assert backend.evaluate([], precision=32) == (Decimal("1.25"),)
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
 
 
 def test_adapter_maps_contracted_color_and_native_errors(

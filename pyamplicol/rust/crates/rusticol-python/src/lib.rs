@@ -10,7 +10,7 @@ use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
     NativeResolvedEvaluation, NativeRuntime, NativeRuntimeProfile, ParameterKind, ParticleRole,
     ProcessPhysics as CoreProcessPhysics, ReductionKind, RusticolError as CoreError,
-    RusticolErrorKind, runtime_target_info,
+    RusticolErrorKind, preflight_prepared_kernel_pack, runtime_target_info,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -881,6 +881,21 @@ fn runtime_profile_to_python<'py>(
         "stage_output_assign_by_stage_time_s",
         profile.stage_output_assign_by_stage_s.clone(),
     )?;
+    payload.set_item("eager_initialize_time_s", profile.eager_initialize_s)?;
+    payload.set_item("eager_gather_time_s", profile.eager_gather_s)?;
+    payload.set_item("eager_kernel_call_time_s", profile.eager_kernel_call_s)?;
+    payload.set_item(
+        "eager_invocation_scatter_time_s",
+        profile.eager_invocation_scatter_s,
+    )?;
+    payload.set_item("eager_finalization_time_s", profile.eager_finalization_s)?;
+    payload.set_item(
+        "eager_scatter_finalization_time_s",
+        profile.eager_scatter_finalization_s,
+    )?;
+    payload.set_item("eager_closure_time_s", profile.eager_closure_s)?;
+    payload.set_item("eager_reduction_time_s", profile.eager_reduction_s)?;
+    payload.set_item("eager_copy_out_time_s", profile.eager_copy_out_s)?;
     Ok(payload)
 }
 
@@ -901,6 +916,11 @@ fn target_info() -> TargetInfo {
         triple: target.triple,
         cpu_features: target.cpu_features,
     }
+}
+
+#[pyfunction]
+fn _preflight_eager_kernel_pack(manifest_path: PathBuf, payload_root: PathBuf) -> PyResult<usize> {
+    preflight_prepared_kernel_pack(&manifest_path, &payload_root).map_err(python_error)
 }
 
 #[pymodule]
@@ -931,6 +951,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(abi_version, module)?)?;
     module.add_function(wrap_pyfunction!(package_version, module)?)?;
     module.add_function(wrap_pyfunction!(target_info, module)?)?;
+    module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
     Ok(())
 }
 

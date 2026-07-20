@@ -373,3 +373,92 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
         "shared affinity-aware CPU budget for concurrent process generation",
         "shared affinity-aware CPU budget for Symbolica evaluator work",
     ]
+
+
+def test_eager_generation_never_enters_compiled_evaluator_lane(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = service_module.GenerationBackend(
+        RunConfig(
+            action="generate",
+            generation=GenerationConfig(
+                workers=1,
+                validation=GenerationValidationConfig(
+                    enabled=False,
+                    post_build_validation=False,
+                ),
+            ),
+            evaluator=EvaluatorConfig(execution_mode="eager"),
+        ),
+        None,
+    )
+    monkeypatch.setattr(
+        backend,
+        "_detect_symbolica_license",
+        lambda: SymbolicaLicenseState(licensed=True, restricted=False),
+    )
+    monkeypatch.setattr(backend, "_require_eager_kernel_pack", lambda _model: None)
+    monkeypatch.setattr(
+        backend, "_apply_prepared_kernel_pack_policy", lambda _model: None
+    )
+    monkeypatch.setattr(
+        backend,
+        "_artifact_model",
+        lambda _resolved: SimpleNamespace(name="prepared-test-model"),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_compile_for_generation",
+        lambda entry, _model, _phase: SimpleNamespace(expanded=entry),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_prepare_warmup_process",
+        lambda process, _model, **_kwargs: SimpleNamespace(
+            expanded=process.expanded,
+            validation_points=(),
+        ),
+    )
+    eager_processes: list[str] = []
+
+    def construct_eager(process: object, *_args: object) -> SimpleNamespace:
+        process_id = process.expanded.request.name  # type: ignore[union-attr]
+        eager_processes.append(process_id)
+        return SimpleNamespace(process_id=process_id)
+
+    monkeypatch.setattr(backend, "_construct_eager_artifact", construct_eager)
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("eager generation entered the compiled evaluator lane")
+
+    monkeypatch.setattr(backend, "_construct_evaluator", forbidden)
+    monkeypatch.setattr(backend, "_materialize_evaluator", forbidden)
+    monkeypatch.setattr(
+        service_module,
+        "build_and_write_generic_stage_evaluator_artifacts",
+        forbidden,
+    )
+    captured: dict[str, object] = {}
+
+    def capture_artifact(destination: Path, **kwargs: object) -> SimpleNamespace:
+        captured.update(kwargs)
+        return SimpleNamespace(
+            output=Path(destination),
+            files=(),
+            api_bundle_path=None,
+        )
+
+    monkeypatch.setattr(service_module, "write_schema_v3_artifact", capture_artifact)
+    monkeypatch.setattr(backend, "_validate_generated_artifact", lambda *_a, **_k: None)
+
+    result = backend.generate(
+        ProcessSet.from_expressions(("d d~ > z",)),
+        tmp_path / "artifact",
+    )
+
+    assert eager_processes == ["d_dbar_to_z"]
+    assert [process.process_id for process in captured["processes"]] == [  # type: ignore[union-attr]
+        "d_dbar_to_z"
+    ]
+    assert result.output == tmp_path / "artifact"

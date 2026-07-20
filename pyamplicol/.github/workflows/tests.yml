@@ -155,6 +155,15 @@ jobs:
             tests/unit/test_sdk_config.py \
             tests/unit/test_selftest_fixture.py \
             -q
+      - name: Run eager prepared-model and runtime unit checks (30 GiB RSS limit)
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python -m pytest
+          tests/unit/test_eager_*.py
+          tests/unit/test_model_source_prepared_compile.py
+          tests/unit/test_packaged_prepared_model*.py
+          tests/unit/test_prepared_*.py
+          -q
       - name: Run focused generation and runtime integration (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
@@ -162,7 +171,11 @@ jobs:
           tests/integration/test_spenso_restricted_mode.py
           tests/integration/test_schema_v3_generation_runtime.py
           -q
-      - name: Build and exercise Python, C++, Fortran, and Rust APIs (30 GiB RSS limit)
+      - name: Run bounded eager generation and runtime performance smoke
+        env:
+          PYAMPLICOL_EAGER_BUILTIN_PACK: ${{ github.workspace }}/src/pyamplicol/assets/prepared_models/built-in-sm-jit-o3-x86_64.pyamplicol-model
+        run: just eager-smoke
+      - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python -m pytest

@@ -130,6 +130,7 @@ public:
     std::string process() const { return get_string(rusticol_runtime_process); }
     std::string process_key() const { return get_string(rusticol_runtime_process_key); }
     std::string color_accuracy() const { return get_string(rusticol_runtime_color_accuracy); }
+    std::string execution_mode() const { return get_string(rusticol_runtime_execution_mode); }
     std::string metadata_json() const { return get_string(rusticol_runtime_metadata_json); }
     std::string physics_json() const { return get_string(rusticol_runtime_physics_json); }
 

@@ -267,22 +267,85 @@ def _benchmark_summary(
         return sections[0]
 
     component_table = prettytable.PrettyTable(("component", "mean +/- SE", "rel. SE"))
-    component_table.title = _paint("Rusticol Timing Breakdown", "CYAN", enabled=color)
+    eager_profile = breakdown.execution_mode == "eager"
+    component_table.title = _paint(
+        "Rusticol Eager Timing Breakdown"
+        if eager_profile
+        else "Rusticol Timing Breakdown",
+        "CYAN",
+        enabled=color,
+    )
     component_table.align["component"] = "l"
     component_table.align["mean +/- SE"] = "r"
     component_table.align["rel. SE"] = "r"
     component_table.hrules = prettytable.HRuleStyle.HEADER
-    component_rows = (
-        ("Profile wall", breakdown.wall_time),
-        ("Source fill", breakdown.source_fill_time),
-        ("Momentum setup", breakdown.momentum_setup_time),
-        ("Stage input pack", breakdown.stage_input_pack_time),
-        ("Stage evaluator calls", breakdown.stage_evaluator_call_time),
-        ("Output assign", breakdown.output_assign_time),
-        ("Amplitude input pack", breakdown.amplitude_input_pack_time),
-        ("Amplitude evaluator call", breakdown.amplitude_evaluator_call_time),
-        ("Reduction", breakdown.reduction_time),
+    detailed_eager_profile = eager_profile and any(
+        timing is not None
+        for timing in (
+            breakdown.eager_gather_time,
+            breakdown.eager_kernel_call_time,
+            breakdown.eager_invocation_scatter_time,
+            breakdown.eager_finalization_time,
+            breakdown.eager_scatter_finalization_time,
+            breakdown.eager_closure_time,
+            breakdown.eager_initialize_time,
+            breakdown.eager_copy_out_time,
+        )
     )
+    component_rows: tuple[
+        tuple[str, BenchmarkComponentTiming | None], ...
+    ]
+    if detailed_eager_profile:
+        eager_phase_rows: tuple[
+            tuple[str, BenchmarkComponentTiming | None], ...
+        ]
+        if (
+            breakdown.eager_invocation_scatter_time is not None
+            or breakdown.eager_finalization_time is not None
+        ):
+            eager_phase_rows = (
+                ("Invocation scatter", breakdown.eager_invocation_scatter_time),
+                ("Current finalization", breakdown.eager_finalization_time),
+            )
+        else:
+            eager_phase_rows = (
+                (
+                    "Scatter / finalization",
+                    breakdown.eager_scatter_finalization_time,
+                ),
+            )
+        component_rows = (
+            ("Profile wall", breakdown.wall_time),
+            ("Source fill", breakdown.source_fill_time),
+            ("Momentum setup", breakdown.momentum_setup_time),
+            ("Eager execution (aggregate)", breakdown.eager_execution_time),
+            ("Initialize", breakdown.eager_initialize_time),
+            ("Gather", breakdown.eager_gather_time),
+            ("Kernel calls", breakdown.eager_kernel_call_time),
+            *eager_phase_rows,
+            ("Amplitude closure", breakdown.eager_closure_time),
+            ("Amplitude copy-out", breakdown.eager_copy_out_time),
+            ("Reduction", breakdown.reduction_time),
+        )
+    elif eager_profile:
+        component_rows = (
+            ("Profile wall", breakdown.wall_time),
+            ("Source fill", breakdown.source_fill_time),
+            ("Momentum setup", breakdown.momentum_setup_time),
+            ("Eager execution (aggregate)", breakdown.eager_execution_time),
+        )
+    else:
+        component_rows = (
+            ("Profile wall", breakdown.wall_time),
+            ("Source fill", breakdown.source_fill_time),
+            ("Momentum setup", breakdown.momentum_setup_time),
+            ("Stage input pack", breakdown.stage_input_pack_time),
+            ("Stage evaluator calls", breakdown.stage_evaluator_call_time),
+            ("Output assign", breakdown.output_assign_time),
+            ("Amplitude input pack", breakdown.amplitude_input_pack_time),
+            ("Amplitude evaluator call", breakdown.amplitude_evaluator_call_time),
+            ("Reduction", breakdown.reduction_time),
+        )
     for label, timing in component_rows:
         relative = (
             "N/A"
@@ -290,7 +353,12 @@ def _benchmark_summary(
             else f"{timing.uncertainty.relative_standard_error:.3%}"
         )
         value = _component_timing_text(timing)
-        if label in {"Stage evaluator calls", "Amplitude evaluator call"}:
+        if label in {
+            "Stage evaluator calls",
+            "Amplitude evaluator call",
+            "Eager execution (aggregate)",
+            "Kernel calls",
+        }:
             value = _paint(value, "CYAN", enabled=color)
         component_table.add_row((label, value, relative))
     sections.append(cast(str, component_table.get_string()))
@@ -439,6 +507,111 @@ def _artifact_inspection_summary(
         _paint("Processes", "CYAN", enabled=color),
         cast(str, process_table.get_string()),
     ]
+
+    execution_table = prettytable.PrettyTable(("process", "execution field", "value"))
+    execution_table.align = "l"
+    execution_table.max_width["process"] = 30
+    execution_table.max_width["execution field"] = 26
+    execution_table.max_width["value"] = 72
+    execution_table.hrules = prettytable.HRuleStyle.HEADER
+    for process in processes:
+        process_id = str(process["id"])
+        mode = str(process.get("execution_mode", "compiled"))
+        backend = process.get("prepared_backend")
+        mode_text = mode if backend is None else f"{mode} ({backend})"
+        execution_table.add_row((process_id, "mode / backend", mode_text))
+        phases = cast(Sequence[object], process.get("native_profile_phases", ()))
+        execution_table.add_row(
+            (
+                process_id,
+                "native profile phases",
+                ", ".join(str(phase) for phase in phases) or "unavailable",
+            )
+        )
+        if mode != "eager":
+            continue
+        pack_kernels = process.get("prepared_kernel_count")
+        referenced_kernels = process.get("referenced_kernel_count")
+        execution_table.add_row(
+            (
+                process_id,
+                "prepared kernels",
+                f"{pack_kernels} in pack; {referenced_kernels} referenced",
+            )
+        )
+        invocation_count = process.get("invocation_count")
+        attachment_count = process.get("attachment_count")
+        alias_count = process.get("evaluation_alias_count")
+        maximum_fanout = process.get("maximum_fanout")
+        execution_table.add_row(
+            (
+                process_id,
+                "invocations / reuse",
+                (
+                    f"{invocation_count} canonical; {attachment_count} attachments; "
+                    f"{alias_count} reused aliases; max fanout {maximum_fanout}"
+                ),
+            )
+        )
+        execution_table.add_row(
+            (
+                process_id,
+                "finalization / closure",
+                (
+                    f"{process.get('finalization_count')} currents; "
+                    f"{process.get('closure_count')} amplitudes"
+                ),
+            )
+        )
+        execution_table.add_row(
+            (
+                process_id,
+                "selector closures",
+                (
+                    "available"
+                    if bool(process.get("selector_closure_available"))
+                    else "not emitted"
+                ),
+            )
+        )
+        requested_tile = process.get("requested_point_tile_size")
+        effective_tile = process.get("effective_point_tile_size")
+        execution_table.add_row(
+            (
+                process_id,
+                "point tile requested / effective",
+                (
+                    f"{requested_tile} / "
+                    + (
+                        str(effective_tile)
+                        if effective_tile is not None
+                        else "available after runtime load"
+                    )
+                ),
+            )
+        )
+        workspace_limit = process.get("workspace_limit_bytes")
+        workspace_used = process.get("workspace_bytes")
+        execution_table.add_row(
+            (
+                process_id,
+                "workspace limit / allocated",
+                (
+                    f"{_byte_size(workspace_limit)} / "
+                    + (
+                        _byte_size(workspace_used)
+                        if workspace_used is not None
+                        else "available after runtime load"
+                    )
+                ),
+            )
+        )
+    sections.extend(
+        (
+            _paint("Execution", "CYAN", enabled=color),
+            cast(str, execution_table.get_string()),
+        )
+    )
 
     if aliases:
         alias_table = prettytable.PrettyTable(

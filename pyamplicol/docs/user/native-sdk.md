@@ -51,6 +51,7 @@ Every generated artifact has one API bundle at its root:
 artifacts/pp_zjj/API/
   validation_points.dat
   python/check_standalone.py
+  c/check_standalone.c
   rust/check_standalone.rs
   cpp/check_standalone.cpp
   fortran/check_standalone.f90
@@ -77,6 +78,8 @@ python artifacts/pp_zjj/API/python/check_standalone.py \
   --set-parameter aS 0.117 0 \
   --json
 
+make -C artifacts/pp_zjj/API/c run \
+  ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/rust run \
   ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --precision 16 --json'
 make -C artifacts/pp_zjj/API/cpp run \
@@ -88,6 +91,12 @@ make -C artifacts/pp_zjj/API/fortran run \
 Each Makefile writes binaries, objects, and Fortran modules to a sibling
 `.pyamplicol-api-build/` directory, leaving the integrity-checked process
 artifact unchanged.
+
+Compiled and eager artifacts use this same API surface. Eager artifacts carry
+their model-local kernel payloads and compact invocation tables inside the
+artifact, so native callers do not need the prepared model bundle used during
+generation. Flow and helicity selectors are resolved by Rusticol before it
+executes the eager dependency closure.
 
 ## Rust 2021 f64
 
@@ -238,6 +247,13 @@ identified by their compiled runtime capabilities. None of these f64 paths
 imports the Symbolica Python module or performs a Symbolica runtime-license
 check. Direct applications use the separate MIT-licensed SymJIT runtime;
 compiled artifacts dynamically load their evaluator library.
+
+Prepared eager artifacts additionally require
+`rusticol.eager-dag.complex-f64.v1`. Their JIT kernel applications use the same
+Symbolica-independent SymJIT loading path, while Rusticol owns gather,
+scatter/accumulation, current finalization, closure, and reduction. The C ABI,
+C11 driver, safe Rust wrapper, C++ wrapper, Fortran module, and Python extension
+all execute that same native eager plan.
 
 ASM/C++ libraries are target-specific. Rusticol requires an exact artifact and
 runtime target-triple match and verifies every recorded CPU feature before

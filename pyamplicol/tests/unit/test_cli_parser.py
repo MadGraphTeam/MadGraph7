@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from pyamplicol.cli import build_parser, parse_cli
-from pyamplicol.config import ConfigurationError, ProcessEntry
+from pyamplicol.config import (
+    ConfigurationError,
+    EvaluatorExecutionMode,
+    ProcessEntry,
+)
 
 
 def test_direct_command_flags_then_ordered_set_overrides(tmp_path: Path) -> None:
@@ -32,6 +36,11 @@ def test_direct_command_flags_then_ordered_set_overrides(tmp_path: Path) -> None
     assert config.generation.output == (tmp_path / "artifact").resolve()
     assert config.generation.workers == 1
     assert config.color.accuracy == "nlc"
+
+
+def test_generate_accepts_eager_execution_mode_override() -> None:
+    config = parse_cli(("generate", "--execution-mode", "eager")).resolve().effective
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.EAGER
 
 
 def test_card_can_be_invoked_as_the_first_argument(tmp_path: Path) -> None:

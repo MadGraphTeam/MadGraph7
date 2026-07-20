@@ -112,6 +112,69 @@ def test_benchmark_profile_table_color_is_optional() -> None:
     assert "\x1b[" in rendered
 
 
+def test_eager_benchmark_uses_eager_phase_labels() -> None:
+    result = _benchmark_result()
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    component = breakdown.stage_evaluator_call_time
+    assert component is not None
+    eager_breakdown = replace(
+        breakdown,
+        execution_mode="eager",
+        stage_evaluator_call_time=None,
+        eager_execution_time=component,
+        eager_initialize_time=component,
+        eager_gather_time=component,
+        eager_kernel_call_time=component,
+        eager_invocation_scatter_time=component,
+        eager_finalization_time=component,
+        eager_scatter_finalization_time=component,
+        eager_closure_time=component,
+        eager_copy_out_time=component,
+        stages=(),
+    )
+
+    rendered = render_summary(
+        replace(result, timing_breakdown=eager_breakdown), color=False
+    )
+
+    assert rendered is not None
+    assert "Rusticol Eager Timing Breakdown" in rendered
+    assert "Initialize" in rendered
+    assert "Gather" in rendered
+    assert "Kernel calls" in rendered
+    assert "Invocation scatter" in rendered
+    assert "Current finalization" in rendered
+    assert "Amplitude closure" in rendered
+    assert "Amplitude copy-out" in rendered
+    assert "Rusticol Stage Detail" not in rendered
+
+
+def test_eager_benchmark_labels_aggregate_until_native_phases_exist() -> None:
+    result = _benchmark_result()
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+
+    rendered = render_summary(
+        replace(
+            result,
+            timing_breakdown=replace(
+                breakdown,
+                execution_mode="eager",
+                stage_evaluator_call_time=None,
+                eager_execution_time=breakdown.stage_evaluator_call_time,
+                stages=(),
+            ),
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    assert "Eager execution (aggregate)" in rendered
+    assert "Stage input pack" not in rendered
+    assert "Output assign" not in rendered
+
+
 def test_interrupted_benchmark_renders_partial_status() -> None:
     rendered = render_summary(
         replace(_benchmark_result(), interrupted=True), color=False
@@ -181,9 +244,49 @@ def test_artifact_inspection_uses_process_and_alias_tables() -> None:
     assert "Processes" in rendered
     assert "Aliases" in rendered
     assert "Dependencies" in rendered
+    assert "Execution" in rendered
     assert "ddbar_zg" in rendered
     assert "d d~ > z g" in rendered
     assert "24 (12 eval.)" in rendered
+
+
+def test_eager_artifact_inspection_reports_execution_contract() -> None:
+    inspection = _artifact_inspection()
+    eager_process = replace(
+        inspection.processes[0],
+        execution_mode="eager",
+        prepared_backend="jit",
+        prepared_kernel_count=12,
+        referenced_kernel_count=9,
+        invocation_count=80,
+        attachment_count=100,
+        evaluation_alias_count=20,
+        maximum_fanout=4,
+        finalization_count=30,
+        closure_count=12,
+        selector_closure_available=False,
+        requested_point_tile_size=1024,
+        effective_point_tile_size=None,
+        workspace_limit_bytes=256 * 1024 * 1024,
+        workspace_bytes=None,
+        native_profile_phases=(
+            "source-fill",
+            "momentum-setup",
+            "eager-execution-aggregate",
+        ),
+    )
+
+    rendered = render_summary(
+        replace(inspection, processes=(eager_process,)), color=False
+    )
+
+    assert rendered is not None
+    assert "eager (jit)" in rendered
+    assert "12 in pack; 9 referenced" in rendered
+    assert "80 canonical; 100 attachments; 20 reused aliases; max fanout 4" in rendered
+    assert "not emitted" in rendered
+    assert "1024 / available after runtime load" in rendered
+    assert "256.00 MiB / available after runtime load" in rendered
 
 
 def test_artifact_inspection_color_is_optional() -> None:

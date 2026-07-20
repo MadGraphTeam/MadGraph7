@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from itertools import permutations
+
 import pytest
 
 import pyamplicol.color as color
@@ -9,6 +11,11 @@ from pyamplicol.color import (
     build_color_contraction_plan,
     build_color_plan,
     color_contraction_factors,
+)
+from pyamplicol.color.contraction_factors import (
+    _pure_adjoint_full_factor_by_relative_permutation,
+    _pure_adjoint_full_factor_uncached,
+    _relative_adjoint_permutation,
 )
 from pyamplicol.generation.dag_color import ColorEngine
 from pyamplicol.generation.dag_compiler import compile_generic_dag
@@ -24,6 +31,32 @@ def test_color_one_open_line_factors_match_reference_convention() -> None:
     )
     sector = plan.sectors[0]
     assert color_contraction_factors(plan, sector, sector) == (9.0, 8.0, 8.0)
+
+
+def test_pure_adjoint_full_factors_cache_relative_permutations_exactly() -> None:
+    words = tuple(permutations((11, 13, 17, 19)))
+    _pure_adjoint_full_factor_by_relative_permutation.cache_clear()
+
+    for left in words:
+        for right in words:
+            relative = _relative_adjoint_permutation(left, right)
+            assert relative is not None
+            cached = _pure_adjoint_full_factor_by_relative_permutation(
+                relative,
+                len(left),
+                20,
+            )
+            direct = _pure_adjoint_full_factor_uncached(
+                left,
+                right,
+                len(left),
+                20,
+            )
+            assert cached == direct
+
+    info = _pure_adjoint_full_factor_by_relative_permutation.cache_info()
+    assert info.misses == len(words)
+    assert info.hits == len(words) * (len(words) - 1)
 
 
 def test_color_plan_json_exposes_structural_open_line_roles() -> None:

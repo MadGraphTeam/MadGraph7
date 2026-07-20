@@ -206,7 +206,7 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     assert "ulimit -v" not in workflow
     assert "psutil" not in workflow
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
-    assert workflow.count(guarded) == 7
+    assert workflow.count(guarded) == 8
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",

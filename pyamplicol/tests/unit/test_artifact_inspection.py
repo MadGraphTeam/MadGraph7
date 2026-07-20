@@ -32,6 +32,19 @@ def test_artifact_inspection_lists_processes_without_loading_evaluators() -> Non
     assert process.computed_color_components == 1
     assert process.helicity_coverage == "complete"
     assert process.color_coverage == "complete"
+    assert process.execution_mode == "compiled"
+    assert process.prepared_backend is None
+    assert process.invocation_count is None
+    assert process.native_profile_phases == (
+        "source-fill",
+        "momentum-setup",
+        "stage-input-pack",
+        "stage-evaluator-call",
+        "output-assign",
+        "amplitude-input-pack",
+        "amplitude-evaluator-call",
+        "reduction",
+    )
 
 
 def test_contracted_color_is_definitionally_computed() -> None:

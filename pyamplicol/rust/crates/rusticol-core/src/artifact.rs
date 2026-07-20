@@ -1325,6 +1325,7 @@ fn validate_runtime_capabilities(
         )));
     }
     let known = [
+        RuntimeCapability::EagerDagComplexF64V1,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,

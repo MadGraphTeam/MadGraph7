@@ -124,6 +124,44 @@ def test_builtin_yang_mills_kernel_evaluation_relations_are_exact() -> None:
     assert model.vertex_evaluation_equivalence(3).factor == (-1.0, 0.0)
 
 
+@pytest.mark.parametrize("kind,result_particle_id", ((10, 6), (11, -6)))
+@pytest.mark.parametrize("chirality", (-1, 1))
+def test_builtin_charged_current_embeds_weyl_input_in_massive_dirac_output(
+    kind: int,
+    result_particle_id: int,
+    chirality: int,
+) -> None:
+    model = BuiltinSMModel()
+    fermion = (1.25 - 0.5j, -0.75 + 2.0j)
+    vector = (2.0, -1.0j, 0.5 + 0.25j, -3.0)
+    coupling = (0.7 - 0.1j, -0.4 + 0.2j)
+    padded = (
+        (0j, 0j, *fermion)
+        if chirality == -1
+        else (*fermion, 0j, 0j)
+    )
+
+    mixed = model.vertex_component_expression(
+        kind,
+        fermion,
+        vector,
+        result_particle_id=result_particle_id,
+        result_chirality=0,
+        left_chirality=chirality,
+        coupling=coupling,
+    )
+    dirac = model.vertex_component_expression(
+        kind,
+        padded,
+        vector,
+        result_particle_id=result_particle_id,
+        result_chirality=0,
+        coupling=coupling,
+    )
+
+    assert mixed == pytest.approx(dirac)
+
+
 def test_model_builtin_compiles_to_canonical_records_without_replacing_path() -> None:
     compiled = compile_model_source("built-in-sm", use_cache=False)
 

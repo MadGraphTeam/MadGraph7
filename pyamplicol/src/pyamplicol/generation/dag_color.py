@@ -76,6 +76,7 @@ class ColorEngine:
         model: Model,
         *,
         shared_lc_all_ordering_symmetry: bool = False,
+        cache_shared_lc_orderings: bool = False,
     ) -> None:
         self.color_plan = color_plan
         self.model = model
@@ -115,6 +116,9 @@ class ColorEngine:
             tuple[int, tuple[int, ...], tuple[int, ...], int, int, int, int],
             tuple[int, ...] | None,
         ] = {}
+        self._shared_lc_proposed_labels_cache: (
+            dict[tuple[tuple[int, ...], bool], tuple[int, ...] | None] | None
+        ) = {} if cache_shared_lc_orderings else None
         color_plan_matches_model = self._color_plan_matches_model_roles()
         all_external_massless_adjoint_vectors = (
             self._all_external_massless_adjoint_vectors()
@@ -1014,6 +1018,10 @@ class ColorEngine:
         *,
         allow_reversed: bool = False,
     ) -> tuple[int, ...] | None:
+        cache = self._shared_lc_proposed_labels_cache
+        cache_key = (proposed, allow_reversed)
+        if cache is not None and cache_key in cache:
+            return cache[cache_key]
         coloured_segment = tuple(
             label for label in proposed if label in self._shared_lc_coloured_labels
         )
@@ -1024,15 +1032,22 @@ class ColorEngine:
                 if label not in self._shared_lc_coloured_labels
             )
         )
+        result: tuple[int, ...] | None
         if extras and not set(extras).issubset(self._shared_lc_singlet_labels):
-            return None
-        if not coloured_segment:
-            return extras
-        if coloured_segment not in self._shared_lc_segments:
+            result = None
+        elif not coloured_segment:
+            result = extras
+        elif coloured_segment not in self._shared_lc_segments:
             reversed_segment = tuple(reversed(coloured_segment))
             if not (allow_reversed and reversed_segment in self._shared_lc_segments):
-                return None
-        return (*coloured_segment, *extras)
+                result = None
+            else:
+                result = (*coloured_segment, *extras)
+        else:
+            result = (*coloured_segment, *extras)
+        if cache is not None:
+            cache[cache_key] = result
+        return result
 
     def _shared_lc_closure_word(
         self,

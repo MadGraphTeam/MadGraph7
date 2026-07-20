@@ -26,3 +26,6 @@ pub(crate) use stage::*;
 
 #[path = "evaluator/amplitude.rs"]
 mod amplitude;
+pub(crate) use amplitude::{
+    build_color_contraction_runtime, build_raw_sum_groups, generic_root_group_id,
+};

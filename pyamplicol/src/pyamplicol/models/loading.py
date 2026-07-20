@@ -15,7 +15,10 @@ from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .prepared import PreparedModelBundle
 
 from .._internal.versions import (
     COMPILED_MODEL_SCHEMA_VERSION,
@@ -185,6 +188,11 @@ class CompiledModel:
     phase_timings: Mapping[str, float]
     conversion_seconds: float
     _serialized_path: Path | None = field(default=None, compare=False, repr=False)
+    _prepared_bundle: PreparedModelBundle | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def name(self) -> str:
@@ -201,6 +209,14 @@ class CompiledModel:
     @property
     def supported(self) -> bool:
         return not any(issue.severity == "error" for issue in self.issues)
+
+    @property
+    def prepared_bundle(self) -> PreparedModelBundle | None:
+        return self._prepared_bundle
+
+    @property
+    def prepared_backend(self) -> str | None:
+        return None if self._prepared_bundle is None else self._prepared_bundle.backend
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -333,6 +349,10 @@ def _detect_model_source_payload(
         return "ufo", path, None
     if not path.is_file():
         raise ValueError(f"model source does not exist: {path}")
+    from .prepared import PREPARED_MODEL_BUNDLE_SUFFIX
+
+    if path.name.lower().endswith(PREPARED_MODEL_BUNDLE_SUFFIX):
+        return "prepared", path, None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -353,12 +373,20 @@ def compile_model_source(
 ) -> CompiledModel:
     options = ModelCompileOptions(restriction=restriction, simplify=simplify)
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
-    if source_kind == "pyamplicol":
+    if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
             raise ValueError(
                 "restriction and simplification options cannot be applied to an "
                 "already compiled pyAmpliCol model"
             )
+        if source_kind == "prepared":
+            from .prepared import load_prepared_model_bundle
+
+            bundle = load_prepared_model_bundle(Path(resolved))
+            compiled = CompiledModel.from_dict(bundle.compiled_model_payload())
+            compiled = replace(compiled, _prepared_bundle=bundle)
+            _raise_for_unsupported(compiled, require_supported=require_supported)
+            return compiled
         if detected_payload is None:
             raise RuntimeError(
                 "compiled model detection did not retain its JSON payload"
@@ -501,12 +529,20 @@ def load_cached_model_source(
 
     options = ModelCompileOptions(restriction=restriction, simplify=simplify)
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
-    if source_kind == "pyamplicol":
+    if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
             raise ValueError(
                 "restriction and simplification options cannot be applied to an "
                 "already compiled pyAmpliCol model"
             )
+        if source_kind == "prepared":
+            from .prepared import load_prepared_model_bundle
+
+            bundle = load_prepared_model_bundle(Path(resolved))
+            compiled = CompiledModel.from_dict(bundle.compiled_model_payload())
+            compiled = replace(compiled, _prepared_bundle=bundle)
+            _raise_for_unsupported(compiled, require_supported=require_supported)
+            return compiled
         if detected_payload is None:
             raise RuntimeError(
                 "compiled model detection did not retain its JSON payload"
@@ -532,6 +568,14 @@ def load_cached_model_source(
 
 
 def load_compiled_model(path: Path) -> CompiledModel:
+    from .prepared import PREPARED_MODEL_BUNDLE_SUFFIX, load_prepared_model_bundle
+
+    if Path(path).name.lower().endswith(PREPARED_MODEL_BUNDLE_SUFFIX):
+        bundle = load_prepared_model_bundle(Path(path))
+        return replace(
+            CompiledModel.from_dict(bundle.compiled_model_payload()),
+            _prepared_bundle=bundle,
+        )
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:

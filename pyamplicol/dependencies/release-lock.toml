@@ -16,6 +16,12 @@ process_artifact = 3
 runtime_physics = 1
 c_abi = 1
 symbolica_serialization = "symbolica-bincode2-v1"
+symjit_application = "symjit-application-storage-v3"
+prepared_model_bundle = 1
+prepared_kernel_variant = "pyamplicol-prepared-kernel-variant-v1"
+eager_kernel = "pyamplicol-eager-kernel-v1"
+eager_plan = "pyamplicol-eager-plan-v2"
+eager_selector_domains = "pyamplicol-eager-selector-domains-v1"
 
 [toolchain]
 just = "1.46.0"

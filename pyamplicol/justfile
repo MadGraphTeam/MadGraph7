@@ -3,6 +3,9 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 python := env_var_or_default("PYTHON", "python3")
 dev_python := env_var_or_default("PYAMPLICOL_DEV_PYTHON", ".venv/bin/python")
 build_mode := env_var_or_default("PYAMPLICOL_BUILD_MODE", "release")
+eager_builtin_pack := env_var_or_default("PYAMPLICOL_EAGER_BUILTIN_PACK", ".artifacts/eager-models/builtin-sm-jit-o3.pyamplicol-model")
+eager_ufo_pack := env_var_or_default("PYAMPLICOL_EAGER_UFO_SM_PACK", ".artifacts/eager-models/ufo-sm-jit-o3.pyamplicol-model")
+eager_ufo_source := env_var_or_default("PYAMPLICOL_EAGER_UFO_SM_SOURCE", "src/pyamplicol/assets/models/json/sm/sm.json")
 
 default:
     @just --list
@@ -125,6 +128,14 @@ dev-build: _source-checkout
 dev-test: _source-checkout
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just source-gate
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate
+
+# Bounded built-in-SM eager gate under the 30 GiB memory guard.
+eager-smoke: _source-checkout
+    {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/eager_benchmark_matrix.py --suite smoke --models built-in --builtin-pack {{eager_builtin_pack}} --output-root .artifacts/eager-benchmark/smoke
+
+# Full built-in/UFO-SM eager milestone gate under the 30 GiB memory guard.
+eager-milestone: _source-checkout
+    {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/eager_benchmark_matrix.py --suite milestone --models built-in,ufo-sm --builtin-pack {{eager_builtin_pack}} --ufo-source {{eager_ufo_source}} --ufo-pack {{eager_ufo_pack}} --output-root .artifacts/eager-benchmark/milestone
 
 test-deployment-candidate: _source-checkout
     PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/release/test_deployment.py --candidate

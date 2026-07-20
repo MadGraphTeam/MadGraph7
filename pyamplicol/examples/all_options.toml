@@ -87,10 +87,21 @@ post_build_validation = true
 [evaluator]
 # evaluator.backend: "jit", "asm", or "cpp". Default jit.
 backend = "jit"
+# evaluator.execution_mode: "compiled" or "eager". Default compiled. Eager
+# built-in-sm uses the wheel-owned JIT O3 pack; other packs need an explicit
+# .pyamplicol-model source.
+execution_mode = "compiled"
 # evaluator.batch_size: Positive evaluation batch size. Default 128.
 batch_size = 128
 # evaluator.output_chunk_size: Positive size or null. Default 512.
 output_chunk_size = 512
+
+[evaluator.eager]
+# evaluator.eager.point_tile_size: Maximum points per eager workspace tile.
+# The runtime reduces this automatically when required. Default 1024.
+point_tile_size = 1024
+# evaluator.eager.workspace_mib: Maximum reusable eager workspace. Default 256.
+workspace_mib = 256
 
 [evaluator.optimization]
 # evaluator.optimization.horner_iterations: Non-negative count. Default 10.

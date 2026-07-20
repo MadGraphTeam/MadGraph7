@@ -30,7 +30,10 @@ from pyamplicol.api.results import (
 from pyamplicol.artifacts import load_manifest
 
 if TYPE_CHECKING:
+    from .eager_exact import EagerExactExecutor
     from .symbolica_exact import SymbolicaExactExecutor
+
+    _ExactExecutor = EagerExactExecutor | SymbolicaExactExecutor
 
 _Accuracy = Literal["lc", "nlc", "full"]
 _ParticleState = Literal["incoming", "outgoing"]
@@ -173,6 +176,22 @@ def _scalar_from_native(value: Any) -> complex | Decimal:
     return value if isinstance(value, Decimal) else complex(value)
 
 
+def _native_execution_mode(runtime: Any) -> Literal["compiled", "eager"]:
+    metadata_json = getattr(runtime, "metadata_json", None)
+    if not callable(metadata_json):
+        return "compiled"
+    try:
+        payload = json.loads(str(metadata_json()))
+    except (TypeError, ValueError) as exc:
+        raise ArtifactError(f"native runtime metadata is invalid: {exc}") from exc
+    if not isinstance(payload, Mapping):
+        raise ArtifactError("native runtime metadata must be an object")
+    mode = payload.get("execution_mode", "compiled")
+    if mode not in {"compiled", "eager"}:
+        raise CompatibilityError(f"unsupported runtime execution mode {mode!r}")
+    return cast(Literal["compiled", "eager"], mode)
+
+
 class RusticolRuntimeBackend:
     """Public-protocol adapter around ``pyamplicol._rusticol.Runtime``."""
 
@@ -180,7 +199,8 @@ class RusticolRuntimeBackend:
         self._runtime = runtime
         self._native_module = native_module
         self._artifact_path = artifact_path
-        self._exact_executor: SymbolicaExactExecutor | None = None
+        self._execution_mode = _native_execution_mode(runtime)
+        self._exact_executor: _ExactExecutor | None = None
 
     @property
     def physics(self) -> ProcessPhysics:
@@ -328,15 +348,20 @@ class RusticolRuntimeBackend:
             include_values=include_values,
         )
 
-    def _exact(self) -> SymbolicaExactExecutor:
+    def _exact(self) -> _ExactExecutor:
         if self._exact_executor is None:
-            from .symbolica_exact import SymbolicaExactExecutor
+            if self._execution_mode == "eager":
+                from .eager_exact import EagerExactExecutor
 
-            self._exact_executor = SymbolicaExactExecutor(
-                self._artifact_path,
-                self.physics.process_id,
-                self._runtime,
-            )
+                self._exact_executor = EagerExactExecutor(
+                    self._artifact_path, self.physics.process_id, self._runtime
+                )
+            else:
+                from .symbolica_exact import SymbolicaExactExecutor
+
+                self._exact_executor = SymbolicaExactExecutor(
+                    self._artifact_path, self.physics.process_id, self._runtime
+                )
         return self._exact_executor
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:

@@ -9,6 +9,7 @@ import pytest
 from pyamplicol.config import (
     ClampRequest,
     ConfigurationError,
+    EvaluatorExecutionMode,
     ProcessEntry,
     config_to_dict,
     config_to_toml,
@@ -96,6 +97,47 @@ def test_nullable_and_bare_enum_overrides() -> None:
     assert parse_override("color.accuracy=nlc").value == "nlc"
     with pytest.raises(ConfigurationError, match="must be true or false"):
         parse_override("model.cache=1")
+
+
+def test_eager_evaluator_card_and_dotted_overrides_round_trip() -> None:
+    pytest.importorskip("tomli_w")
+    config = resolve_config(
+        {
+            "action": "generate",
+            "evaluator": {
+                "execution_mode": "eager",
+                "eager": {"point_tile_size": 2048, "workspace_mib": 384},
+            },
+        },
+        overrides=("evaluator.eager.workspace_mib=512",),
+    ).effective
+
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.EAGER
+    assert config.evaluator.eager.point_tile_size == 2048
+    assert config.evaluator.eager.workspace_mib == 512
+    plain = config_to_dict(config)
+    assert plain["evaluator"]["eager"] == {  # type: ignore[index]
+        "point_tile_size": 2048,
+        "workspace_mib": 512,
+    }
+    assert resolve_config(plain).effective == config
+    serialized = config_to_toml(config)
+    assert 'execution_mode = "eager"' in serialized
+    assert "[evaluator.eager]" in serialized
+    assert resolve_config(tomllib.loads(serialized)).effective == config
+
+
+@pytest.mark.parametrize(
+    "override",
+    (
+        "evaluator.execution_mode=streaming",
+        "evaluator.eager.point_tile_size=0",
+        "evaluator.eager.workspace_mib=-1",
+    ),
+)
+def test_invalid_eager_evaluator_overrides_are_rejected(override: str) -> None:
+    with pytest.raises(ConfigurationError, match="evaluator"):
+        resolve_config({"action": "generate"}, overrides=(override,))
 
 
 def test_unknown_card_and_override_fields_are_errors(tmp_path: Path) -> None:

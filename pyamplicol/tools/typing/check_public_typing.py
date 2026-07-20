@@ -88,6 +88,7 @@ def _binding_exports(path: Path) -> set[str]:
     functions = set(
         re.findall(r"wrap_pyfunction!\(([A-Za-z_][A-Za-z0-9_]*),\s*module\)", source)
     )
+    functions = {name for name in functions if not name.startswith("_")}
     exceptions = set(re.findall(r'module\.add\(\s*"([A-Za-z_][A-Za-z0-9_]*)"', source))
     return classes | functions | exceptions
 
