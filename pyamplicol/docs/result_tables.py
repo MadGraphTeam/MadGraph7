@@ -7530,19 +7530,31 @@ def _legacy_run_command_profiled(
         warmup_seconds,
         target_runtime=target_runtime,
     )
-    measurement_record, measurement_output = _legacy_command_record(
-        command_for_points(measurement_points),
-        cwd=cwd,
-        env=env,
-    )
-    measurement_record = {
-        **measurement_record,
-        "profile_phase": "measurement",
-        "profile_warmup_points": warmup_points,
-        "profile_points": measurement_points,
-        "profile_target_runtime_seconds": float(target_runtime),
-    }
-    measurement_rows = _legacy_timing_rows(measurement_output)
+    if measurement_points <= warmup_points:
+        measurement_record = {
+            **warmup_record,
+            "profile_phase": "warmup_reused_as_measurement",
+            "profile_warmup_points": warmup_points,
+            "profile_points": warmup_points,
+            "profile_target_runtime_seconds": float(target_runtime),
+        }
+        measurement_output = warmup_output
+        measurement_rows = warmup_rows
+        measurement_points = warmup_points
+    else:
+        measurement_record, measurement_output = _legacy_command_record(
+            command_for_points(measurement_points),
+            cwd=cwd,
+            env=env,
+        )
+        measurement_record = {
+            **measurement_record,
+            "profile_phase": "measurement",
+            "profile_warmup_points": warmup_points,
+            "profile_points": measurement_points,
+            "profile_target_runtime_seconds": float(target_runtime),
+        }
+        measurement_rows = _legacy_timing_rows(measurement_output)
     measurement_seconds = _legacy_profile_elapsed_seconds(
         measurement_record,
         measurement_rows,
@@ -7735,26 +7747,38 @@ def _legacy_run_color_probe_profiled(
         warmup_seconds,
         target_runtime=target_runtime,
     )
-    record, rows, probe = _legacy_run_color_probe_timed(
-        repository,
-        process_file=process_file,
-        entry=entry,
-        source_pdgs=source_pdgs,
-        momenta=momenta,
-        color_accuracy=color_accuracy,
-        helicities=helicities,
-        points=measurement_points,
-        executable=executable,
-        cwd=cwd,
-        env=env,
-    )
-    record = {
-        **record,
-        "profile_phase": "measurement",
-        "profile_warmup_points": DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
-        "profile_points": measurement_points,
-        "profile_target_runtime_seconds": float(target_runtime),
-    }
+    if measurement_points <= DEFAULT_LEGACY_PROFILE_WARMUP_POINTS:
+        record = {
+            **warmup_record,
+            "profile_phase": "warmup_reused_as_measurement",
+            "profile_warmup_points": DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
+            "profile_points": DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
+            "profile_target_runtime_seconds": float(target_runtime),
+        }
+        rows = warmup_rows
+        probe = _warmup_probe
+        measurement_points = DEFAULT_LEGACY_PROFILE_WARMUP_POINTS
+    else:
+        record, rows, probe = _legacy_run_color_probe_timed(
+            repository,
+            process_file=process_file,
+            entry=entry,
+            source_pdgs=source_pdgs,
+            momenta=momenta,
+            color_accuracy=color_accuracy,
+            helicities=helicities,
+            points=measurement_points,
+            executable=executable,
+            cwd=cwd,
+            env=env,
+        )
+        record = {
+            **record,
+            "profile_phase": "measurement",
+            "profile_warmup_points": DEFAULT_LEGACY_PROFILE_WARMUP_POINTS,
+            "profile_points": measurement_points,
+            "profile_target_runtime_seconds": float(target_runtime),
+        }
     measurement_seconds = _legacy_profile_elapsed_seconds(record, rows, "total")
     profile = _legacy_profile_record(
         probe="amplicol_color_probe",
