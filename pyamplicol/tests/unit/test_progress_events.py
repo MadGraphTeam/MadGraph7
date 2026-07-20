@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import threading
 import time
 from dataclasses import FrozenInstanceError
 
@@ -17,6 +18,7 @@ from pyamplicol.reporting import (
     TtyProgressSink,
     progress_sink,
 )
+from pyamplicol.reporting import progress as progress_module
 from pyamplicol.reporting.progress import _dashboard_lines, _TaskState
 from pyamplicol.reporting.resources import ResourceUsage
 
@@ -80,6 +82,45 @@ def test_tty_progress_accepts_concurrent_phase_shape() -> None:
     sink.emit(ProgressUpdate("dag", 2, 2))
     sink.emit(ProgressEnd("dag"))
     assert "Building DAG" in stream.getvalue()
+
+
+def test_tty_progress_renders_without_holding_the_task_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TtyStream(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+        def fileno(self) -> int:
+            raise OSError
+
+    class SnapshotDashboard:
+        def __init__(self, *, snapshot: object, **_: object) -> None:
+            self.snapshot = snapshot
+
+        def start(self) -> None:
+            return None
+
+        def render_now(self) -> None:
+            completed = threading.Event()
+
+            def take_snapshot() -> None:
+                self.snapshot()  # type: ignore[operator]
+                completed.set()
+
+            thread = threading.Thread(target=take_snapshot, daemon=True)
+            thread.start()
+            thread.join(timeout=0.5)
+            assert completed.is_set(), "dashboard snapshot blocked on the sink lock"
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(progress_module, "_Dashboard", SnapshotDashboard)
+    sink = TtyProgressSink(TtyStream())
+    sink.emit(ProgressStart("build", "Building", 2))
+    sink.emit(ProgressUpdate("build", 1, 2))
+    sink.close()
 
 
 def test_forced_tty_on_non_tty_is_deterministic_and_ansi_free() -> None:

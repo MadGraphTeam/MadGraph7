@@ -207,6 +207,8 @@ class TtyProgressSink:
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     def emit(self, event: ProgressEvent) -> None:
+        dashboard: _Dashboard | None = None
+        start_dashboard = False
         with self._lock:
             if not self._interactive:
                 if self._line_sink is None:
@@ -237,7 +239,7 @@ class TtyProgressSink:
                         color=self._color_enabled,
                         snapshot=self._snapshot,
                     )
-                    self._dashboard.start()
+                    start_dashboard = True
             else:
                 task = self._tasks.get(event.task_id)
                 if task is None:
@@ -257,8 +259,16 @@ class TtyProgressSink:
                     task.updated_at = now
                     if event.elapsed_seconds is not None:
                         task.elapsed_seconds = event.elapsed_seconds
-            if self._dashboard is not None:
-                self._dashboard.render_now()
+            dashboard = self._dashboard
+
+        # Rendering snapshots task state and therefore acquires ``self._lock``.
+        # Keep it outside that lock so the heartbeat's render lock and event
+        # delivery can never form a lock-order cycle.
+        if dashboard is not None:
+            if start_dashboard:
+                dashboard.start()
+            else:
+                dashboard.render_now()
 
     def close(self) -> None:
         with self._lock:
