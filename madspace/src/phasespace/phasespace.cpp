@@ -126,7 +126,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     TChannelMode t_channel_mode,
     const std::optional<Cuts>& cuts,
     const std::vector<std::vector<std::size_t>>& permutations,
-    const std::optional<std::vector<std::size_t>>& color_order
+    const std::optional<std::vector<std::size_t>>& color_order,
+    bool return_propagators
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -148,9 +149,28 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             return in;
         }(),
-        {{"momenta", batch_four_vec_array(topology.outgoing_masses().size() + 2)},
-         {"x1", batch_float},
-         {"x2", batch_float}},
+        [&] {
+            NamedVector<Type> out{
+                {"momenta",
+                 batch_four_vec_array(topology.outgoing_masses().size() + 2)},
+                {"x1", batch_float},
+                {"x2", batch_float},
+            };
+            if (return_propagators) {
+                int max_prop_count =
+                    static_cast<int>(topology.outgoing_masses().size()) - 1;
+                out.push_back(
+                    "propagator_pids_and_masks", batch_int_array(max_prop_count)
+                );
+                out.push_back(
+                    "propagator_invariants", batch_float_array(max_prop_count)
+                );
+                out.push_back(
+                    "propagator_virtualities", batch_float_array(max_prop_count)
+                );
+            }
+            return out;
+        }(),
         permutations.size() > 1
             ? NamedVector<Type>{{"permutation_index", batch_int}}
             : NamedVector<Type>{}
@@ -167,7 +187,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         (_topology.t_propagator_count() == 0 ||
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
-    _t_mapping(std::monostate{}) {
+    _t_mapping(std::monostate{}),
+    _return_propagators(return_propagators) {
     bool has_t_channel = _topology.t_propagator_count() > 0;
     struct DecayInfo {
         double m_min, pt_min, eta_max;
@@ -212,7 +233,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!is_com_decay || _map_luminosity) {
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
-            info.invariant = Invariant(invariant_power, mass, width);
+            info.invariant =
+                Invariant(invariant_power, mass, width, _return_propagators);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {
@@ -322,7 +344,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double invariant_power,
     TChannelMode mode,
     const std::optional<Cuts>& cuts,
-    const std::optional<std::vector<std::size_t>>& color_order
+    const std::optional<std::vector<std::size_t>>& color_order,
+    bool return_propagators
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -361,7 +384,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         mode,
         cuts,
         {},
-        color_order
+        color_order,
+        return_propagators
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(
@@ -384,6 +408,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
 
     ValueVec dets{_pi_factors};
     Value x1 = 1.0, x2 = 1.0;
+    ValueVec propagator_pids_and_masks, propagator_invariants, propagator_virtualities;
 
     // initialize masses and square masses
     std::vector<DecayData> decay_data(
@@ -414,6 +439,12 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             auto invariant =
                 _s_invariants.at(invariant_index++)
                     .build_forward(fb, {next_random()}, {s_min, s_max});
+            if (_return_propagators) {
+                me_int_t pid = decay.mass == 0 ? 0 : decay.pdg_id;
+                propagator_pids_and_masks.push_back((pid << 16) + decay.momentum_mask);
+                propagator_invariants.push_back(invariant["invariant"]);
+                propagator_virtualities.push_back(invariant["virtuality"]);
+            }
             data.mass2 = invariant["invariant"];
             data.mass = fb.sqrt(data.mass2.value());
             dets.push_back(invariant["det"]);
@@ -522,12 +553,11 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     auto p_ext_stack = fb.stack(p_ext);
 
     // permute momenta if permutations are given
+    bool has_unsorted_perm = _permutations.size() == 1 &&
+        !std::is_sorted(_permutations.at(0).begin(), _permutations.at(0).end());
     if (_permutations.size() > 1) {
         p_ext_stack = fb.permute_momenta(p_ext_stack, _permutations, conditions.at(0));
-    } else if (_permutations.size() == 1 &&
-               !std::is_sorted(
-                   _permutations.at(0).begin(), _permutations.at(0).end()
-               )) {
+    } else if (has_unsorted_perm) {
         p_ext_stack =
             fb.permute_momenta(p_ext_stack, _permutations, static_cast<me_int_t>(0));
     }
@@ -536,7 +566,37 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     auto p_ext_lab = _map_luminosity ? fb.boost_beam(p_ext_stack, x1, x2) : p_ext_stack;
     dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
-    return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
+
+    if (_return_propagators) {
+        std::size_t max_prop_count = _topology.outgoing_indices().size() - 1;
+        propagator_pids_and_masks.resize(
+            max_prop_count, Value(static_cast<me_int_t>(0))
+        );
+        propagator_invariants.resize(max_prop_count, Value(0.));
+        propagator_virtualities.resize(max_prop_count, Value(0.));
+
+        Value pids_and_masks = fb.stack(propagator_pids_and_masks);
+        if (_permutations.size() > 1) {
+            pids_and_masks =
+                fb.permute_bits(pids_and_masks, _permutations, conditions.at(0));
+        } else if (has_unsorted_perm) {
+            pids_and_masks = fb.permute_bits(
+                pids_and_masks, _permutations, static_cast<me_int_t>(0)
+            );
+        }
+
+        return {
+            {{"momenta", p_ext_lab},
+             {"x1", x1},
+             {"x2", x2},
+             {"propagator_pids_and_masks", pids_and_masks},
+             {"propagator_invariants", fb.stack(propagator_invariants)},
+             {"propagator_virtualities", fb.stack(propagator_virtualities)}},
+            ps_weight
+        };
+    } else {
+        return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
+    }
 }
 
 Mapping::Result PhaseSpaceMapping::build_inverse_impl(

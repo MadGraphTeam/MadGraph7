@@ -716,7 +716,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                bool>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -724,7 +725,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = std::vector<Topology>{},
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            py::arg("return_propagators") = false
         )
         .def(
             py::init<
@@ -734,14 +736,16 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                bool>(),
             py::arg("masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            py::arg("return_propagators") = false
         )
         .def("random_dim", &PhaseSpaceMapping::random_dim)
         .def("discrete_dim", &PhaseSpaceMapping::discrete_dim)

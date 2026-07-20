@@ -35,9 +35,9 @@ Mapping::Result Invariant::build_forward_impl(
         std::tie(s, virt, det) = fb.stable_invariant_nu(r, _mass, _power, s_min, s_max);
     }
     if (_return_virtuality) {
-        return {{{"invariant", s}}, det};
-    } else {
         return {{{"invariant", s}, {"virtuality", virt}}, det};
+    } else {
+        return {{{"invariant", s}}, det};
     }
 }
 

@@ -77,10 +77,11 @@ KERNELSPEC void kernel_stable_invariant(
     auto m2 = mass * mass - 1e-2;
     auto q_max = s_max - m2;
     auto q_min = s_min - m2;
+    auto reg_virt = pow(q_max, r) * pow(q_min, 1 - r);
 
-    virt = pow(q_max, r) * pow(q_min, 1 - r);
-    s = virt + m2;
-    gs = virt * log(q_max / q_min);
+    virt = reg_virt - 1e-2;
+    s = reg_virt + m2;
+    gs = reg_virt * log(q_max / q_min);
 }
 
 template <typename T>
@@ -119,10 +120,11 @@ KERNELSPEC void kernel_stable_invariant_nu(
     auto power = 1.0 - nu;
     auto qmaxpow = pow(q_max, power);
     auto qminpow = pow(q_min, power);
+    auto reg_virt = pow(r * qmaxpow + (1 - r) * qminpow, 1 / power);
 
-    virt = pow(r * qmaxpow + (1 - r) * qminpow, 1 / power);
-    s = virt + m2;
-    gs = (qmaxpow - qminpow) * pow(virt, nu) / power;
+    virt = reg_virt - 1e-2;
+    s = reg_virt + m2;
+    gs = (qmaxpow - qminpow) * pow(reg_virt, nu) / power;
 }
 
 template <typename T>
