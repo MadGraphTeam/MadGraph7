@@ -1757,6 +1757,9 @@ breit_wigner_invariant:
     - name: s
       type: [float]
       desc:
+    - name: virt
+      type: [float]
+      desc:
     - name: gs
       type: [float]
       desc:
@@ -1804,6 +1807,9 @@ stable_invariant:
     - name: s
       type: [float]
       desc:
+    - name: virt
+      type: [float]
+      desc:
     - name: gs
       type: [float]
       desc:
@@ -1849,6 +1855,9 @@ stable_invariant_nu:
       desc:
   outputs:
     - name: s
+      type: [float]
+      desc:
+    - name: virt
       type: [float]
       desc:
     - name: gs
@@ -2534,6 +2543,22 @@ permute_momenta:
   outputs:
     - name: output
       type: [float, n, 4]
+      desc:
+
+permute_bits:
+  inputs:
+    - name: input
+      type: [int, k]
+      desc:
+    - name: permutations
+      type: [int, single, m, n]
+      desc:
+    - name: index
+      type: [int]
+      desc:
+  outputs:
+    - name: output
+      type: [int, k]
       desc:
 
 gather:

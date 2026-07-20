@@ -146,6 +146,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("sample_discrete_probs_inverse", &FunctionBuilder::sample_discrete_probs_inverse, py::arg("index"), py::arg("probs"));
     fb.def("discrete_histogram", &FunctionBuilder::discrete_histogram, py::arg("input"), py::arg("weights"), py::arg("option_count"));
     fb.def("permute_momenta", &FunctionBuilder::permute_momenta, py::arg("momenta"), py::arg("permutations"), py::arg("index"));
+    fb.def("permute_bits", &FunctionBuilder::permute_bits, py::arg("input"), py::arg("permutations"), py::arg("index"));
     fb.def("gather", &FunctionBuilder::gather, py::arg("index"), py::arg("choices"));
     fb.def("gather_int", &FunctionBuilder::gather_int, py::arg("index"), py::arg("choices"));
     fb.def("gather_vector", &FunctionBuilder::gather_vector, py::arg("index"), py::arg("choices"));

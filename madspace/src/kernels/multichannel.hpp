@@ -140,5 +140,22 @@ KERNELSPEC void kernel_permute_momenta(
     }
 }
 
+template <typename T>
+KERNELSPEC void kernel_permute_bits(
+    IIn<T, 1> input, IIn<T, 2> permutations, IIn<T, 0> index, IOut<T, 1> output
+) {
+    auto perm = permutations[single_index(index)];
+    for (std::size_t j = 0; j < input.size(); ++j) {
+        IVal<T> val_in = input[j];
+        IVal<T> val_out = val_in;
+        for (std::size_t i = 0; i < perm.size(); ++i) {
+            IVal<T> perm_i = perm[i];
+            IVal<T> bit_in = (val_in & (1 << perm_i)) >> perm_i;
+            val_out = (val_out & ~(1 << i)) | (bit_in << i);
+        }
+        output[j] = val_out;
+    }
+}
+
 } // namespace kernels
 } // namespace madspace

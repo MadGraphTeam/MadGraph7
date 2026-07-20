@@ -389,9 +389,9 @@ std::array<Value, 2> uniform_invariant_inverse(Value s, Value s_min, Value s_max
     return {output_vector[0], output_vector[1]};
 }
 
-std::array<Value, 2> breit_wigner_invariant(Value r, Value mass, Value width, Value s_min, Value s_max) {
+std::array<Value, 3> breit_wigner_invariant(Value r, Value mass, Value width, Value s_min, Value s_max) {
     auto output_vector = instruction("breit_wigner_invariant", {r, mass, width, s_min, s_max});
-    return {output_vector[0], output_vector[1]};
+    return {output_vector[0], output_vector[1], output_vector[2]};
 }
 
 std::array<Value, 2> breit_wigner_invariant_inverse(Value s, Value mass, Value width, Value s_min, Value s_max) {
@@ -399,9 +399,9 @@ std::array<Value, 2> breit_wigner_invariant_inverse(Value s, Value mass, Value w
     return {output_vector[0], output_vector[1]};
 }
 
-std::array<Value, 2> stable_invariant(Value r, Value mass, Value s_min, Value s_max) {
+std::array<Value, 3> stable_invariant(Value r, Value mass, Value s_min, Value s_max) {
     auto output_vector = instruction("stable_invariant", {r, mass, s_min, s_max});
-    return {output_vector[0], output_vector[1]};
+    return {output_vector[0], output_vector[1], output_vector[2]};
 }
 
 std::array<Value, 2> stable_invariant_inverse(Value s, Value mass, Value s_min, Value s_max) {
@@ -409,9 +409,9 @@ std::array<Value, 2> stable_invariant_inverse(Value s, Value mass, Value s_min, 
     return {output_vector[0], output_vector[1]};
 }
 
-std::array<Value, 2> stable_invariant_nu(Value r, Value mass, Value nu, Value s_min, Value s_max) {
+std::array<Value, 3> stable_invariant_nu(Value r, Value mass, Value nu, Value s_min, Value s_max) {
     auto output_vector = instruction("stable_invariant_nu", {r, mass, nu, s_min, s_max});
-    return {output_vector[0], output_vector[1]};
+    return {output_vector[0], output_vector[1], output_vector[2]};
 }
 
 std::array<Value, 2> stable_invariant_nu_inverse(Value s, Value mass, Value nu, Value s_min, Value s_max) {
@@ -589,6 +589,10 @@ std::array<Value, 2> discrete_histogram(Value input, Value weights, Value option
 
 Value permute_momenta(Value momenta, Value permutations, Value index) {
     return instruction("permute_momenta", {momenta, permutations, index})[0];
+}
+
+Value permute_bits(Value input, Value permutations, Value index) {
+    return instruction("permute_bits", {input, permutations, index})[0];
 }
 
 Value gather(Value index, Value choices) {

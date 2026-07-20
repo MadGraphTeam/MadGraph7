@@ -6,7 +6,12 @@ namespace madspace {
 
 class Invariant : public Mapping {
 public:
-    Invariant(double power = 0, double mass = 0, double width = 0);
+    Invariant(
+        double power = 0,
+        double mass = 0,
+        double width = 0,
+        bool return_virtuality = false
+    );
 
 private:
     Result build_forward_impl(
@@ -21,6 +26,7 @@ private:
     ) const override;
 
     double _power, _mass, _width;
+    bool _return_virtuality;
 };
 
 } // namespace madspace

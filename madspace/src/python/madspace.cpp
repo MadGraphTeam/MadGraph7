@@ -410,10 +410,11 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<Invariant, Mapping>(m, "Invariant")
         .def(
-            py::init<double, double, double>(),
+            py::init<double, double, double, bool>(),
             py::arg("power") = 0.,
             py::arg("mass") = 0.,
-            py::arg("width") = 0.
+            py::arg("width") = 0.,
+            py::arg("return_virtuality") = false
         );
 
     py::classh<Luminosity, Mapping>(m, "Luminosity")

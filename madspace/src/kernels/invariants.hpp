@@ -29,6 +29,7 @@ KERNELSPEC void kernel_breit_wigner_invariant(
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
+    FOut<T, 0> virt,
     FOut<T, 0> gs
 ) {
     auto m2 = mass * mass;
@@ -36,11 +37,10 @@ KERNELSPEC void kernel_breit_wigner_invariant(
     auto y1 = atan((s_min - m2) / gm);
     auto y2 = atan((s_max - m2) / gm);
     auto dy21 = y2 - y1;
-    auto _s = gm * tan(y1 + dy21 * r) + m2;
-    auto s_sub_m2 = _s - m2;
 
-    s = _s;
-    gs = dy21 * (s_sub_m2 * s_sub_m2 + gm * gm) / gm;
+    virt = gm * tan(y1 + dy21 * r);
+    s = virt + m2;
+    gs = dy21 * (virt * virt + gm * gm) / gm;
 }
 
 template <typename T>
@@ -71,14 +71,16 @@ KERNELSPEC void kernel_stable_invariant(
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
+    FOut<T, 0> virt,
     FOut<T, 0> gs
 ) {
     auto m2 = mass * mass - 1e-2;
     auto q_max = s_max - m2;
     auto q_min = s_min - m2;
 
-    s = pow(q_max, r) * pow(q_min, 1 - r) + m2;
-    gs = (s - m2) * log(q_max / q_min);
+    virt = pow(q_max, r) * pow(q_min, 1 - r);
+    s = virt + m2;
+    gs = virt * log(q_max / q_min);
 }
 
 template <typename T>
@@ -108,6 +110,7 @@ KERNELSPEC void kernel_stable_invariant_nu(
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
+    FOut<T, 0> virt,
     FOut<T, 0> gs
 ) {
     auto m2 = mass * mass - 1e-2;
@@ -116,10 +119,10 @@ KERNELSPEC void kernel_stable_invariant_nu(
     auto power = 1.0 - nu;
     auto qmaxpow = pow(q_max, power);
     auto qminpow = pow(q_min, power);
-    auto _s = pow(r * qmaxpow + (1 - r) * qminpow, 1 / power) + m2;
 
-    s = _s;
-    gs = (qmaxpow - qminpow) * pow(_s - m2, nu) / power;
+    virt = pow(r * qmaxpow + (1 - r) * qminpow, 1 / power);
+    s = virt + m2;
+    gs = (qmaxpow - qminpow) * pow(virt, nu) / power;
 }
 
 template <typename T>
