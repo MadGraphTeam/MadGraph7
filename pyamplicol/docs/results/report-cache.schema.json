@@ -202,6 +202,24 @@
       "if": {
         "properties": {
           "kind": {
+            "const": "eager_process_matrix"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "color_accuracy",
+          "process_families",
+          "benchmark_contract",
+          "reference",
+          "candidate"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
             "const": "performance_ladder"
           }
         }
@@ -239,6 +257,9 @@
     "benchmark_contract": {
       "type": "object"
     },
+    "candidate": {
+      "type": "object"
+    },
     "color_accuracy": {
       "enum": [
         "lc",
@@ -259,6 +280,7 @@
     "kind": {
       "enum": [
         "process_matrix",
+        "eager_process_matrix",
         "performance_ladder",
         "model_ladder"
       ]
@@ -305,6 +327,9 @@
     },
     "process_family": {
       "type": "string"
+    },
+    "reference": {
+      "type": "object"
     },
     "report_version": {
       "const": "0.1.0"

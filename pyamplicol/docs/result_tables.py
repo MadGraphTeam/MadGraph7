@@ -18,6 +18,7 @@ import itertools
 import json
 import math
 import os
+import platform
 import re
 import shutil
 import signal
@@ -30,7 +31,7 @@ import tomllib
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
 from pathlib import Path
@@ -113,6 +114,7 @@ REPORT_CONFIG_OVERRIDES: Mapping[str, object] = {
 
 class CacheKind(StrEnum):
     PROCESS_MATRIX = "process_matrix"
+    EAGER_PROCESS_MATRIX = "eager_process_matrix"
     PERFORMANCE_LADDER = "performance_ladder"
     MODEL_LADDER = "model_ladder"
 
@@ -268,6 +270,19 @@ class MatrixSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class EagerMatrixSpec:
+    dataset_id: str
+    cache_name: str
+    table_name: str
+    title: str
+    model: ModelSpec
+    color_accuracy: Literal["lc", "nlc", "full"]
+    multiplicities: tuple[int, ...]
+    reference_dataset_id: str
+    reference_cache_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class VariantSpec:
     key: str
     label: str
@@ -336,7 +351,9 @@ class ReportPaths:
 
 @dataclass(frozen=True, slots=True)
 class CampaignCell:
-    kind: Literal["matrix", "performance_ladder", "model_ladder"]
+    kind: Literal[
+        "matrix", "eager_matrix", "performance_ladder", "model_ladder"
+    ]
     cache_name: str
     dataset_id: str
     n_final: int
@@ -500,6 +517,37 @@ MATRIX_SPECS: tuple[MatrixSpec, ...] = tuple(
     for accuracy in ("lc", "nlc", "full")
 )
 
+
+def _eager_matrix_spec(
+    accuracy: Literal["lc", "nlc", "full"],
+) -> EagerMatrixSpec:
+    accuracy_label = {"lc": "LC", "nlc": "NLC", "full": "full-colour"}[accuracy]
+    reference = next(
+        spec
+        for spec in MATRIX_SPECS
+        if spec.model is EXTERNAL_SM and spec.color_accuracy == accuracy
+    )
+    stem = f"matrix_external_sm_eager_{accuracy}"
+    return EagerMatrixSpec(
+        dataset_id=stem,
+        cache_name=f"{stem}.json",
+        table_name=f"result_{stem}_table.tex",
+        title=(
+            f"UFO-SM eager-DAG JIT O3 versus compiled JIT O3 "
+            f"{accuracy_label} process matrix"
+        ),
+        model=EXTERNAL_SM,
+        color_accuracy=accuracy,
+        multiplicities=reference.multiplicities,
+        reference_dataset_id=reference.dataset_id,
+        reference_cache_name=reference.cache_name,
+    )
+
+
+EAGER_MATRIX_SPECS: tuple[EagerMatrixSpec, ...] = tuple(
+    _eager_matrix_spec(accuracy) for accuracy in ("lc", "nlc", "full")
+)
+
 Z_VARIANTS: tuple[VariantSpec, ...] = (
     VariantSpec("reference", "Independent reference", {}),
     VariantSpec(
@@ -518,9 +566,18 @@ Z_VARIANTS: tuple[VariantSpec, ...] = (
         "JIT level 3",
         {"evaluator.backend": "jit", "evaluator.jit.optimization_level": 3},
     ),
+    VariantSpec(
+        "eager_jit_o3",
+        "eager-DAG JIT O3",
+        {
+            "evaluator.execution_mode": "eager",
+            "evaluator.backend": "jit",
+            "evaluator.jit.optimization_level": 3,
+        },
+    ),
 )
 
-LONG_JIT_TIMEOUT_VARIANTS = frozenset({"jit_o1", "jit_o3"})
+LONG_JIT_TIMEOUT_VARIANTS = frozenset({"jit_o1", "jit_o3", "eager_jit_o3"})
 
 
 def _variant_uses_long_jit_timeout(variant_key: object) -> bool:
@@ -582,7 +639,8 @@ LADDER_SPECS: tuple[LadderSpec, ...] = (
 )
 
 TABLE_INPUTS: tuple[str, ...] = tuple(
-    spec.table_name for spec in (*MATRIX_SPECS, *LADDER_SPECS)
+    spec.table_name
+    for spec in (*MATRIX_SPECS, *EAGER_MATRIX_SPECS, *LADDER_SPECS)
 )
 
 
@@ -845,6 +903,67 @@ def build_matrix_cache(spec: MatrixSpec) -> dict[str, object]:
     return payload
 
 
+def _empty_eager_selector_contract() -> dict[str, object]:
+    return {
+        "status": NA_STATUS,
+        "reference_digest": None,
+        "selected_reference_color_order": [],
+        "selected_color_flow_ids": [],
+        "all_flow_source_helicities": {},
+        "all_flow_helicity_ids": [],
+        "message": None,
+    }
+
+
+def build_eager_matrix_cache(spec: EagerMatrixSpec) -> dict[str, object]:
+    payload = _common_payload(
+        kind=CacheKind.EAGER_PROCESS_MATRIX,
+        dataset_id=spec.dataset_id,
+        model=spec.model,
+    )
+    entries: list[dict[str, object]] = []
+    for family in PROCESS_FAMILIES:
+        maximum_n = family.maximum_n(spec.color_accuracy)
+        for n_final in spec.multiplicities:
+            applicable = family.minimum_n <= n_final <= maximum_n
+            entries.append(
+                {
+                    "process_key": family.key,
+                    "n_final": n_final,
+                    "process": family.process(n_final),
+                    "applicable": applicable,
+                    "status": NA_STATUS,
+                    "eager_jit_o3": _empty_measurement(),
+                    "pointwise_validation": _empty_validation(),
+                    "selector_contract": _empty_eager_selector_contract(),
+                    "relative_difference": None,
+                }
+            )
+    payload.update(
+        {
+            "color_accuracy": spec.color_accuracy,
+            "multiplicities": list(spec.multiplicities),
+            "process_families": [
+                family.as_json(spec.color_accuracy) for family in PROCESS_FAMILIES
+            ],
+            "benchmark_contract": _benchmark_contract(),
+            "reference": {
+                "dataset_id": spec.reference_dataset_id,
+                "cache_name": spec.reference_cache_name,
+                "measurement_field": "pyamplicol_jit_o3",
+                "setup": "compiled JIT O3",
+            },
+            "candidate": {
+                "measurement_field": "eager_jit_o3",
+                "setup": "eager-DAG JIT O3",
+            },
+            "entries": entries,
+        }
+    )
+    validate_cache(payload)
+    return payload
+
+
 def build_ladder_cache(spec: LadderSpec) -> dict[str, object]:
     payload = _common_payload(
         kind=CacheKind(spec.kind),
@@ -893,6 +1012,12 @@ def build_ladder_cache(spec: LadderSpec) -> dict[str, object]:
 
 def build_reset_caches() -> dict[str, dict[str, object]]:
     caches = {spec.cache_name: build_matrix_cache(spec) for spec in MATRIX_SPECS}
+    caches.update(
+        {
+            spec.cache_name: build_eager_matrix_cache(spec)
+            for spec in EAGER_MATRIX_SPECS
+        }
+    )
     caches.update({spec.cache_name: build_ladder_cache(spec) for spec in LADDER_SPECS})
     return caches
 
@@ -977,6 +1102,51 @@ def _refresh_matrix_derived_fields(entry: dict[str, object]) -> None:
         entry["status"] = str(entry.get("status", NA_STATUS))
 
 
+def _normalize_eager_selector_contract(value: object) -> dict[str, object]:
+    payload = _empty_eager_selector_contract()
+    if isinstance(value, Mapping):
+        payload.update(
+            {str(key): _json_compatible(entry) for key, entry in value.items()}
+        )
+    return payload
+
+
+def _refresh_eager_matrix_derived_fields(entry: dict[str, object]) -> None:
+    measurement = _normalize_measurement(entry.get("eager_jit_o3"))
+    validation = _normalize_validation(entry.get("pointwise_validation"))
+    selector_contract = _normalize_eager_selector_contract(
+        entry.get("selector_contract")
+    )
+    entry["eager_jit_o3"] = measurement
+    entry["pointwise_validation"] = validation
+    entry["selector_contract"] = selector_contract
+    entry["relative_difference"] = validation.get("relative_difference")
+    if not bool(entry.get("applicable", False)):
+        entry["status"] = NA_STATUS
+        return
+    statuses = {
+        _measurement_status(measurement),
+        str(validation.get("status", NA_STATUS)),
+        str(selector_contract.get("status", NA_STATUS)),
+    }
+    if ResultStatus.VALIDATION_FAILED.value in statuses:
+        entry["status"] = ResultStatus.VALIDATION_FAILED.value
+    elif ResultStatus.MEMORY_LIMIT.value in statuses:
+        entry["status"] = ResultStatus.MEMORY_LIMIT.value
+    elif ResultStatus.TIMEOUT.value in statuses:
+        entry["status"] = ResultStatus.TIMEOUT.value
+    elif ResultStatus.ERROR.value in statuses or ResultStatus.FAILED.value in statuses:
+        entry["status"] = ResultStatus.ERROR.value
+    elif ResultStatus.UNSUPPORTED.value in statuses:
+        entry["status"] = ResultStatus.UNSUPPORTED.value
+    elif statuses == {ResultStatus.OK.value}:
+        entry["status"] = ResultStatus.OK.value
+    elif statuses == {NA_STATUS}:
+        entry["status"] = NA_STATUS
+    else:
+        entry["status"] = str(entry.get("status", NA_STATUS))
+
+
 def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
     """Return a schema-current cache payload, migrating old checked-in caches."""
 
@@ -1002,6 +1172,11 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
             if not isinstance(raw_entry, dict):
                 continue
             _refresh_matrix_derived_fields(raw_entry)
+    elif normalized.get("kind") == CacheKind.EAGER_PROCESS_MATRIX.value:
+        for raw_entry in entries:
+            if not isinstance(raw_entry, dict):
+                continue
+            _refresh_eager_matrix_derived_fields(raw_entry)
     else:
         matched_ladder_spec: LadderSpec | None = None
         if normalized.get("kind") == CacheKind.PERFORMANCE_LADDER.value:
@@ -1203,6 +1378,8 @@ def validate_cache(payload: Mapping[str, object]) -> None:
         raise TypeError("cache entries must be a list")
     if kind == CacheKind.PROCESS_MATRIX:
         _validate_matrix_cache(payload, entries)
+    elif kind == CacheKind.EAGER_PROCESS_MATRIX:
+        _validate_eager_matrix_cache(payload, entries)
     else:
         _validate_ladder_cache(payload, entries, kind)
 
@@ -1439,6 +1616,136 @@ def _validate_matrix_cache(
         )
 
 
+def _validate_eager_selector_contract(value: object, context: str) -> None:
+    payload = _require_object(value, context)
+    _require_exact_keys(
+        payload,
+        (
+            "status",
+            "reference_digest",
+            "selected_reference_color_order",
+            "selected_color_flow_ids",
+            "all_flow_source_helicities",
+            "all_flow_helicity_ids",
+            "message",
+        ),
+        context,
+    )
+    if payload["status"] not in {member.value for member in ResultStatus}:
+        raise ValueError(f"{context}.status is invalid")
+    digest = payload["reference_digest"]
+    if digest is not None and (not isinstance(digest, str) or not digest):
+        raise TypeError(f"{context}.reference_digest must be a string or null")
+    for field_name in (
+        "selected_reference_color_order",
+        "selected_color_flow_ids",
+        "all_flow_helicity_ids",
+    ):
+        field_value = payload[field_name]
+        if not isinstance(field_value, list):
+            raise TypeError(f"{context}.{field_name} must be a list")
+    if any(
+        isinstance(label, bool) or not isinstance(label, int)
+        for label in payload["selected_reference_color_order"]
+    ):
+        raise TypeError(
+            f"{context}.selected_reference_color_order must contain integers"
+        )
+    for field_name in ("selected_color_flow_ids", "all_flow_helicity_ids"):
+        if any(
+            not isinstance(identifier, str) or not identifier
+            for identifier in payload[field_name]
+        ):
+            raise TypeError(f"{context}.{field_name} must contain strings")
+    helicities = payload["all_flow_source_helicities"]
+    if not isinstance(helicities, Mapping) or any(
+        not isinstance(label, str)
+        or not label
+        or isinstance(helicity, bool)
+        or not isinstance(helicity, int)
+        for label, helicity in helicities.items()
+    ):
+        raise TypeError(
+            f"{context}.all_flow_source_helicities must map labels to integers"
+        )
+    message = payload["message"]
+    if message is not None and not isinstance(message, str):
+        raise TypeError(f"{context}.message must be a string or null")
+
+
+def _validate_eager_matrix_cache(
+    payload: Mapping[str, object], entries: list[object]
+) -> None:
+    _require_exact_keys(
+        payload,
+        (
+            "color_accuracy",
+            "process_families",
+            "benchmark_contract",
+            "reference",
+            "candidate",
+        ),
+        "eager process matrix",
+    )
+    reference = _require_object(payload["reference"], "eager process matrix reference")
+    _require_exact_keys(
+        reference,
+        ("dataset_id", "cache_name", "measurement_field", "setup"),
+        "eager process matrix reference",
+    )
+    candidate = _require_object(payload["candidate"], "eager process matrix candidate")
+    _require_exact_keys(
+        candidate,
+        ("measurement_field", "setup"),
+        "eager process matrix candidate",
+    )
+    if reference["measurement_field"] != "pyamplicol_jit_o3":
+        raise ValueError("eager process matrix must reference compiled JIT O3")
+    if candidate["measurement_field"] != "eager_jit_o3":
+        raise ValueError("eager process matrix candidate must be eager JIT O3")
+
+    synthetic_entries: list[dict[str, object]] = []
+    for index, raw_entry in enumerate(entries):
+        entry = _require_object(raw_entry, f"entries[{index}]")
+        _require_exact_keys(
+            entry,
+            (
+                "process_key",
+                "n_final",
+                "process",
+                "applicable",
+                "status",
+                "eager_jit_o3",
+                "pointwise_validation",
+                "selector_contract",
+                "relative_difference",
+            ),
+            f"entries[{index}]",
+        )
+        measurement = entry["eager_jit_o3"]
+        _validate_measurement(measurement, f"entries[{index}].eager_jit_o3")
+        _validate_pointwise_validation(
+            entry["pointwise_validation"],
+            f"entries[{index}].pointwise_validation",
+        )
+        _validate_eager_selector_contract(
+            entry["selector_contract"], f"entries[{index}].selector_contract"
+        )
+        synthetic_entries.append(
+            {
+                **dict(entry),
+                "legacy_amplicol": _empty_measurement(),
+                "pyamplicol_jit_o3": measurement,
+                "reference": _empty_measurement(),
+                "pyamplicol": measurement,
+                "generation_multiplier": None,
+                "runtime_multiplier": None,
+                "parameter_alignment": _empty_parameter_alignment(),
+            }
+        )
+    _validate_matrix_cache(payload, list(synthetic_entries))
+
+
 def _validate_ladder_cache(
     payload: Mapping[str, object], entries: list[object], kind: CacheKind
 ) -> None:
@@ -1613,6 +1920,8 @@ def schema_document() -> dict[str, object]:
             "process_family": {"type": "string"},
             "benchmark_contract": {"type": "object"},
             "variants": {"type": "array"},
+            "reference": {"type": "object"},
+            "candidate": {"type": "object"},
         },
         "$defs": {"measurement": measurement},
         "allOf": [
@@ -1623,6 +1932,20 @@ def schema_document() -> dict[str, object]:
                         "color_accuracy",
                         "process_families",
                         "benchmark_contract",
+                    ]
+                },
+            },
+            {
+                "if": {
+                    "properties": {"kind": {"const": "eager_process_matrix"}}
+                },
+                "then": {
+                    "required": [
+                        "color_accuracy",
+                        "process_families",
+                        "benchmark_contract",
+                        "reference",
+                        "candidate",
                     ]
                 },
             },
@@ -1792,6 +2115,7 @@ def _z_variant_setup(variant: VariantSpec) -> str:
         "reference": r"\AC",
         "jit_o1": r"\PAC\ JIT \(\mathrm{O}1\)",
         "jit_o3": r"\PAC\ JIT \(\mathrm{O}3\)",
+        "eager_jit_o3": r"eager-DAG JIT \(\mathrm{O}3\)",
         "asm_o3": r"\PAC\ ASM \(\mathrm{O}3\)",
         "cpp_o3": r"\PAC\ C++ \(\mathrm{O}3\)",
     }
@@ -1812,6 +2136,7 @@ def _z_variant_notes(
         "reference": r"Fortran \AC; legacy oracle",
         "jit_o1": "JIT; O1",
         "jit_o3": "JIT; O3",
+        "eager_jit_o3": "eager-DAG JIT; O3",
         "asm_o3": "ASM; O3",
         "cpp_o3": "C++; O3",
     }.get(variant.key, _tex_escape(variant.label))
@@ -1884,7 +2209,7 @@ def _z_table_rows(
                     + " "
                     + _z_ratio(_safe_divide(evaluator_value, reference_runtime))
                 )
-                if variant.key == "jit_o3":
+                if variant.key in {"jit_o3", "eager_jit_o3"}:
                     lines.append(r"\rowcolor{ReportGreen!12}")
             else:
                 generation = _measurement_label(measurement)
@@ -2190,6 +2515,22 @@ def _z_old_rows_by_variant(
                 row["status"] = ResultStatus.VALIDATION_FAILED.value
             if (
                 validation.get("all_flow_status")
+                == ResultStatus.VALIDATION_FAILED.value
+            ):
+                row["all_flow_status"] = ResultStatus.VALIDATION_FAILED.value
+        compiled_validation = (
+            metadata.get("compiled_pointwise_validation")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        if isinstance(compiled_validation, Mapping):
+            if (
+                compiled_validation.get("status")
+                == ResultStatus.VALIDATION_FAILED.value
+            ):
+                row["status"] = ResultStatus.VALIDATION_FAILED.value
+            if (
+                compiled_validation.get("all_flow_status")
                 == ResultStatus.VALIDATION_FAILED.value
             ):
                 row["all_flow_status"] = ResultStatus.VALIDATION_FAILED.value
@@ -2581,7 +2922,12 @@ def _matrix_validation_marker(entry: Mapping[str, object]) -> str:
     return ""
 
 
-def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
+def _matrix_cell(
+    entry: Mapping[str, object],
+    *,
+    color_accuracy: str,
+    reference_is_compiled: bool = False,
+) -> str:
     if not bool(entry.get("applicable", False)):
         return _matrix_na()
     legacy = entry["legacy_amplicol"]
@@ -2621,15 +2967,29 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
                 py_eval_key="all_flow_runtime_us_per_point",
             )
         else:
-            reference_generation = _matrix_reference_metric(
-                legacy,
-                "generation_seconds",
-                _matrix_plain_number,
+            reference_generation = (
+                _matrix_reference_pair(
+                    legacy,
+                    "selected_generation_s",
+                    "all_flow_generation_s",
+                    _matrix_plain_number,
+                    selected_fallback_key="generation_seconds",
+                )
+                if reference_is_compiled
+                else _matrix_reference_metric(
+                    legacy,
+                    "generation_seconds",
+                    _matrix_plain_number,
+                )
             )
             generation_selected = _matrix_lc_generation_ratio(
                 legacy,
                 pyamplicol,
-                legacy_key="generation_s",
+                legacy_key=(
+                    "selected_generation_s"
+                    if reference_is_compiled
+                    else "generation_s"
+                ),
                 py_key="selected_generation_s",
                 legacy_fallback_key="generation_seconds",
                 py_fallback_key="generation_seconds",
@@ -2637,15 +2997,27 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
             generation_all_flow = _matrix_lc_generation_ratio(
                 legacy,
                 pyamplicol,
-                legacy_key="generation_s",
+                legacy_key=(
+                    "all_flow_generation_s"
+                    if reference_is_compiled
+                    else "generation_s"
+                ),
                 py_key="all_flow_generation_s",
                 legacy_fallback_key="generation_seconds",
                 py_fallback_key="generation_seconds",
             )
             reference_runtime = _matrix_reference_pair(
                 legacy,
-                "runtime_us_per_point",
-                "all_flow_runtime_us_per_point",
+                (
+                    "wall_us_per_point"
+                    if reference_is_compiled
+                    else "runtime_us_per_point"
+                ),
+                (
+                    "all_flow_wall_us_per_point"
+                    if reference_is_compiled
+                    else "all_flow_runtime_us_per_point"
+                ),
                 _matrix_plain_number,
                 selected_fallback_key="wall_seconds_per_point",
                 selected_fallback_scale=1.0e6,
@@ -2653,7 +3025,11 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
             runtime_selected = _matrix_lc_runtime_ratio(
                 legacy,
                 pyamplicol,
-                legacy_key="runtime_us_per_point",
+                legacy_key=(
+                    "wall_us_per_point"
+                    if reference_is_compiled
+                    else "runtime_us_per_point"
+                ),
                 py_wall_key="wall_us_per_point",
                 py_eval_key="runtime_us_per_point",
                 py_wall_fallback_key="wall_seconds_per_point",
@@ -2662,7 +3038,11 @@ def _matrix_cell(entry: Mapping[str, object], *, color_accuracy: str) -> str:
             runtime_all_flow = _matrix_lc_runtime_ratio(
                 legacy,
                 pyamplicol,
-                legacy_key="all_flow_runtime_us_per_point",
+                legacy_key=(
+                    "all_flow_wall_us_per_point"
+                    if reference_is_compiled
+                    else "all_flow_runtime_us_per_point"
+                ),
                 py_wall_key="all_flow_wall_us_per_point",
                 py_eval_key="all_flow_runtime_us_per_point",
             )
@@ -2838,9 +3218,14 @@ def _matrix_column_summary(
     n_final: int,
     *,
     color_accuracy: str,
+    reference_is_compiled: bool = False,
 ) -> dict[str, list[float]]:
     if color_accuracy == "lc":
-        return _matrix_lc_column_summary(entries, n_final)
+        return _matrix_lc_column_summary(
+            entries,
+            n_final,
+            reference_is_compiled=reference_is_compiled,
+        )
     summary: dict[str, list[float]] = {
         "reference_generation": [],
         "jit_generation_multiplier": [],
@@ -2918,6 +3303,8 @@ def _matrix_column_summary(
 def _matrix_lc_column_summary(
     entries: Mapping[tuple[str, int], Mapping[str, object]],
     n_final: int,
+    *,
+    reference_is_compiled: bool = False,
 ) -> dict[str, list[float]]:
     summary: dict[str, list[float]] = {
         "amplicol_generation_one_flow": [],
@@ -2949,11 +3336,17 @@ def _matrix_lc_column_summary(
             continue
         if not _measurement_ok(legacy):
             continue
-        ref_generation = _optional_positive_float(
-            _matrix_old_value(legacy, "generation_s", "generation_seconds")
+        ref_generation_one_flow = _optional_positive_float(
+            _matrix_old_value(
+                legacy,
+                "selected_generation_s" if reference_is_compiled else "generation_s",
+                "generation_seconds",
+            )
         )
-        if ref_generation is not None:
-            summary["amplicol_generation_one_flow"].append(ref_generation)
+        if ref_generation_one_flow is not None:
+            summary["amplicol_generation_one_flow"].append(
+                ref_generation_one_flow
+            )
             py_generation = _optional_positive_float(
                 _matrix_old_value(
                     pyamplicol,
@@ -2963,11 +3356,20 @@ def _matrix_lc_column_summary(
             )
             if _measurement_ok(pyamplicol) and py_generation is not None:
                 summary["jit_generation_one_flow_ratio"].append(
-                    py_generation / ref_generation
+                    py_generation / ref_generation_one_flow
                 )
                 summary["jit_generation_one_flow_paired"].append(py_generation)
-                summary["jit_generation_one_flow_ref_paired"].append(ref_generation)
-        if ref_generation is not None:
+                summary["jit_generation_one_flow_ref_paired"].append(
+                    ref_generation_one_flow
+                )
+        ref_generation_all_flow = _optional_positive_float(
+            _matrix_old_value(
+                legacy,
+                "all_flow_generation_s" if reference_is_compiled else "generation_s",
+                "generation_seconds",
+            )
+        )
+        if ref_generation_all_flow is not None:
             py_all_generation = _optional_positive_float(
                 _matrix_old_value(
                     pyamplicol,
@@ -2976,14 +3378,25 @@ def _matrix_lc_column_summary(
                 )
             )
             if _measurement_ok(pyamplicol) and py_all_generation is not None:
-                summary["amplicol_generation_all_flow"].append(ref_generation)
+                summary["amplicol_generation_all_flow"].append(
+                    ref_generation_all_flow
+                )
                 summary["jit_generation_all_flow_ratio"].append(
-                    py_all_generation / ref_generation
+                    py_all_generation / ref_generation_all_flow
                 )
                 summary["jit_generation_all_flow_paired"].append(py_all_generation)
-                summary["jit_generation_all_flow_ref_paired"].append(ref_generation)
+                summary["jit_generation_all_flow_ref_paired"].append(
+                    ref_generation_all_flow
+                )
         ref_runtime = _optional_positive_float(
-            _matrix_old_value(legacy, "runtime_us_per_point")
+            _matrix_old_value(
+                legacy,
+                (
+                    "wall_us_per_point"
+                    if reference_is_compiled
+                    else "runtime_us_per_point"
+                ),
+            )
         )
         if ref_runtime is not None:
             summary["amplicol_runtime_one_flow"].append(ref_runtime)
@@ -3000,7 +3413,14 @@ def _matrix_lc_column_summary(
                 summary["jit_runtime_one_flow_paired"].append(py_runtime)
                 summary["jit_runtime_one_flow_ref_paired"].append(ref_runtime)
         ref_all_runtime = _optional_positive_float(
-            _matrix_old_value(legacy, "all_flow_runtime_us_per_point")
+            _matrix_old_value(
+                legacy,
+                (
+                    "all_flow_wall_us_per_point"
+                    if reference_is_compiled
+                    else "all_flow_runtime_us_per_point"
+                ),
+            )
         )
         if ref_all_runtime is not None:
             summary["amplicol_runtime_all_flow"].append(ref_all_runtime)
@@ -3025,9 +3445,14 @@ def _matrix_summary_rows(
     chunk: Sequence[int],
     *,
     color_accuracy: str,
+    reference_is_compiled: bool = False,
 ) -> list[str]:
     if color_accuracy == "lc":
-        return _matrix_lc_summary_rows(entries, chunk)
+        return _matrix_lc_summary_rows(
+            entries,
+            chunk,
+            reference_is_compiled=reference_is_compiled,
+        )
     generation_cells = [
         r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{\textbf{summary: gen}}"
     ]
@@ -3042,6 +3467,7 @@ def _matrix_summary_rows(
             entries,
             n_final,
             color_accuracy=color_accuracy,
+            reference_is_compiled=reference_is_compiled,
         )
         generation_cells.append(
             _matrix_summary_cell(
@@ -3138,6 +3564,8 @@ def _matrix_py_over_ref_inner(value: object) -> tuple[str, str]:
 def _matrix_lc_summary_rows(
     entries: Mapping[tuple[str, int], Mapping[str, object]],
     chunk: Sequence[int],
+    *,
+    reference_is_compiled: bool = False,
 ) -> list[str]:
     generation_one_flow_cells = [
         r"\multicolumn{2}{@{}L{1.74in}@{\hspace{0.075in}}}{"
@@ -3160,6 +3588,7 @@ def _matrix_lc_summary_rows(
             entries,
             n_final,
             color_accuracy="lc",
+            reference_is_compiled=reference_is_compiled,
         )
         generation_one_flow_cells.append(
             _matrix_summary_cell(
@@ -3222,15 +3651,79 @@ def _matrix_lc_summary_rows(
     ]
 
 
-def render_matrix_table(spec: MatrixSpec, payload: Mapping[str, object]) -> str:
+def _joined_eager_matrix_entries(
+    payload: Mapping[str, object],
+    reference_payload: Mapping[str, object],
+) -> dict[tuple[str, int], dict[str, object]]:
     validate_cache(payload)
-    raw_entries = payload["entries"]
-    assert isinstance(raw_entries, list)
-    entries = {
+    validate_cache(reference_payload)
+    raw_reference_entries = reference_payload["entries"]
+    raw_eager_entries = payload["entries"]
+    assert isinstance(raw_reference_entries, list)
+    assert isinstance(raw_eager_entries, list)
+    reference_entries = {
         (str(entry["process_key"]), int(entry["n_final"])): entry
-        for entry in raw_entries
+        for entry in raw_reference_entries
         if isinstance(entry, Mapping)
     }
+    joined: dict[tuple[str, int], dict[str, object]] = {}
+    for eager_entry in raw_eager_entries:
+        if not isinstance(eager_entry, Mapping):
+            continue
+        key = (str(eager_entry["process_key"]), int(eager_entry["n_final"]))
+        reference_entry = reference_entries.get(key)
+        compiled = (
+            reference_entry.get("pyamplicol_jit_o3")
+            if isinstance(reference_entry, Mapping)
+            else None
+        )
+        eager = eager_entry.get("eager_jit_o3")
+        synthetic = {
+            "process_key": key[0],
+            "n_final": key[1],
+            "process": eager_entry.get("process"),
+            "applicable": bool(eager_entry.get("applicable", False)),
+            "status": eager_entry.get("status", NA_STATUS),
+            "legacy_amplicol": _normalize_measurement(compiled),
+            "pyamplicol_jit_o3": _normalize_measurement(eager),
+            "reference": _normalize_measurement(compiled),
+            "pyamplicol": _normalize_measurement(eager),
+            "generation_multiplier": None,
+            "runtime_multiplier": None,
+            "pointwise_validation": _normalize_validation(
+                eager_entry.get("pointwise_validation")
+            ),
+            "parameter_alignment": _empty_parameter_alignment(),
+            "relative_difference": eager_entry.get("relative_difference"),
+        }
+        _refresh_matrix_derived_fields(synthetic)
+        joined[key] = synthetic
+    return joined
+
+
+def render_matrix_table(
+    spec: MatrixSpec | EagerMatrixSpec,
+    payload: Mapping[str, object],
+    *,
+    reference_payload: Mapping[str, object] | None = None,
+) -> str:
+    validate_cache(payload)
+    reference_is_compiled = isinstance(spec, EagerMatrixSpec)
+    if reference_is_compiled:
+        if reference_payload is None:
+            raise ValueError(
+                f"{spec.dataset_id} requires reference cache "
+                f"{spec.reference_cache_name}"
+            )
+        entries = _joined_eager_matrix_entries(payload, reference_payload)
+    else:
+        raw_entries = payload["entries"]
+        assert isinstance(raw_entries, list)
+        entries = {
+            (str(entry["process_key"]), int(entry["n_final"])): entry
+            for entry in raw_entries
+            if isinstance(entry, Mapping)
+        }
     chunks = _chunks(spec.multiplicities, 3)
     lines = [
         "% SPDX-License-Identifier: 0BSD",
@@ -3278,7 +3771,13 @@ def render_matrix_table(spec: MatrixSpec, payload: Mapping[str, object]) -> str:
             cells = [rf"\texttt{{{family.identifier}}}", family.label_tex]
             for n_final in chunk:
                 entry = entries[(family.key, n_final)]
-                cells.append(_matrix_cell(entry, color_accuracy=spec.color_accuracy))
+                cells.append(
+                    _matrix_cell(
+                        entry,
+                        color_accuracy=spec.color_accuracy,
+                        reference_is_compiled=reference_is_compiled,
+                    )
+                )
             if row_index % 2 == 0:
                 lines.append(r"\rowcolor{refblue}")
             lines.append(" & ".join(cells) + r" \\")
@@ -3288,6 +3787,7 @@ def render_matrix_table(spec: MatrixSpec, payload: Mapping[str, object]) -> str:
                 entries,
                 chunk,
                 color_accuracy=spec.color_accuracy,
+                reference_is_compiled=reference_is_compiled,
             )
         )
         lines.extend(
@@ -3431,7 +3931,7 @@ def render_performance_ladder(
             mode_key = _z_old_mode_key(variant.key)
             row = rows.get(variant.key, {})
             row_color = "refblue" if variant.key == "reference" else None
-            if variant.key == "jit_o3":
+            if variant.key in {"jit_o3", "eager_jit_o3"}:
                 row_color = "bestgreen"
             if row_color is not None:
                 lines.append(rf"\rowcolor{{{row_color}}}")
@@ -3640,6 +4140,12 @@ def render_tables(
     tables: dict[str, str] = {}
     for spec in MATRIX_SPECS:
         tables[spec.table_name] = render_matrix_table(spec, caches[spec.cache_name])
+    for spec in EAGER_MATRIX_SPECS:
+        tables[spec.table_name] = render_matrix_table(
+            spec,
+            caches[spec.cache_name],
+            reference_payload=caches[spec.reference_cache_name],
+        )
     for spec in LADDER_SPECS:
         payload = caches[spec.cache_name]
         if spec.kind == CacheKind.PERFORMANCE_LADDER:
@@ -3735,9 +4241,9 @@ def _model_source_path(model: ModelSpec) -> Path | None:
     return None
 
 
-def _spec_by_dataset() -> dict[str, MatrixSpec | LadderSpec]:
-    result: dict[str, MatrixSpec | LadderSpec] = {}
-    for spec in (*MATRIX_SPECS, *LADDER_SPECS):
+def _spec_by_dataset() -> dict[str, MatrixSpec | EagerMatrixSpec | LadderSpec]:
+    result: dict[str, MatrixSpec | EagerMatrixSpec | LadderSpec] = {}
+    for spec in (*MATRIX_SPECS, *EAGER_MATRIX_SPECS, *LADDER_SPECS):
         result[spec.dataset_id] = spec
     return result
 
@@ -3766,6 +4272,29 @@ def _campaign_cells() -> tuple[CampaignCell, ...]:
                             0,
                             model_order.get(spec.model.profile, 9),
                             f"{accuracy_order[spec.color_accuracy]}-{family.identifier:02d}",
+                        ),
+                    )
+                )
+    for spec in EAGER_MATRIX_SPECS:
+        for family in PROCESS_FAMILIES:
+            for n_final in spec.multiplicities:
+                process = family.process(n_final)
+                if process is None or n_final > family.maximum_n(spec.color_accuracy):
+                    continue
+                cells.append(
+                    CampaignCell(
+                        kind="eager_matrix",
+                        cache_name=spec.cache_name,
+                        dataset_id=spec.dataset_id,
+                        n_final=n_final,
+                        process=process,
+                        process_key=family.key,
+                        priority=(
+                            n_final,
+                            1,
+                            model_order.get(spec.model.profile, 9),
+                            f"eager-{accuracy_order[spec.color_accuracy]}-"
+                            f"{family.identifier:02d}",
                         ),
                     )
                 )
@@ -3865,6 +4394,136 @@ def _known_process_expressions() -> set[str]:
     return {_normalized_process_expression(cell.process) for cell in _campaign_cells()}
 
 
+def _cache_entry_for_cell(
+    cell: CampaignCell,
+    caches: Mapping[str, Mapping[str, object]],
+) -> Mapping[str, object] | None:
+    payload = caches.get(cell.cache_name)
+    if payload is None:
+        return None
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        if cell.kind in {"matrix", "eager_matrix"}:
+            if (
+                entry.get("process_key") == cell.process_key
+                and entry.get("n_final") == cell.n_final
+            ):
+                return entry
+        elif cell.kind == "performance_ladder":
+            if (
+                entry.get("n_final") == cell.n_final
+                and entry.get("variant") == cell.variant
+            ):
+                return entry
+        elif entry.get("n_final") == cell.n_final:
+            return entry
+    return None
+
+
+def _eager_reference_measurement(
+    cell: CampaignCell,
+    caches: Mapping[str, Mapping[str, object]],
+) -> Mapping[str, object] | None:
+    spec = _spec_by_dataset().get(cell.dataset_id)
+    if not isinstance(spec, EagerMatrixSpec):
+        return None
+    reference_payload = caches.get(spec.reference_cache_name)
+    if reference_payload is None:
+        return None
+    entries = reference_payload.get("entries")
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if (
+            isinstance(entry, Mapping)
+            and entry.get("process_key") == cell.process_key
+            and entry.get("n_final") == cell.n_final
+        ):
+            measurement = entry.get("pyamplicol_jit_o3")
+            if not isinstance(measurement, Mapping):
+                return None
+            if spec.color_accuracy != "lc":
+                return measurement
+            old = _measurement_old_matrix_fields(measurement)
+            if isinstance(_selected_flow_reference_color_order(old, cell), list):
+                return measurement
+            legacy = entry.get("legacy_amplicol")
+            if not isinstance(legacy, Mapping):
+                return measurement
+            legacy_order = _selected_flow_reference_color_order(
+                _measurement_old_matrix_fields(legacy),
+                cell,
+            )
+            if not isinstance(legacy_order, list):
+                return measurement
+
+            # Older compiled LC measurements did not duplicate the source-mapped
+            # order already stored beside them in the cached reference. Enrich a
+            # private copy so eager steering can reuse it without rewriting history.
+            enriched = dict(measurement)
+            raw_metadata = measurement.get("metadata")
+            metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+            raw_old = metadata.get("old_matrix_format")
+            old_matrix = dict(raw_old) if isinstance(raw_old, Mapping) else {}
+            old_matrix["reference_color_order"] = list(legacy_order)
+            metadata["old_matrix_format"] = old_matrix
+            enriched["metadata"] = metadata
+            return enriched
+    return None
+
+
+def _eager_reference_contract_payload(
+    cell: CampaignCell,
+    measurement: Mapping[str, object],
+) -> dict[str, object]:
+    old = _measurement_old_matrix_fields(measurement)
+    return {
+        "dataset_id": cell.dataset_id,
+        "process_key": cell.process_key,
+        "n_final": cell.n_final,
+        "process": cell.process,
+        "selected_reference_color_order": _selected_flow_reference_color_order(
+            old,
+            cell,
+        ),
+        "all_flow_source_helicities": old.get("all_flow_source_helicities", {}),
+        "selected_matrix_element": measurement.get("matrix_element"),
+        "all_flow_matrix_element": old.get("all_flow_matrix_element"),
+    }
+
+
+def _eager_reference_digest(
+    cell: CampaignCell,
+    measurement: Mapping[str, object],
+) -> str:
+    encoded = json.dumps(
+        _eager_reference_contract_payload(cell, measurement),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _eager_measurement_current(measurement: Mapping[str, object]) -> bool:
+    if not (
+        _measurement_ok(measurement)
+        and _pyamplicol_timing_profile_current(measurement)
+        and _pyamplicol_generation_profile_current(measurement)
+        and _pyamplicol_artifacts_current(
+            measurement,
+            require_current_compiled_model_contract=True,
+        )
+    ):
+        return False
+    effective = measurement.get("effective_config")
+    evaluator = effective.get("evaluator") if isinstance(effective, Mapping) else None
+    return isinstance(evaluator, Mapping) and evaluator.get("execution_mode") == "eager"
+
+
 def _campaign_cell_needs_measurement(
     cell: CampaignCell,
     caches: Mapping[str, Mapping[str, object]],
@@ -3878,7 +4537,34 @@ def _campaign_cell_needs_measurement(
     for entry in entries:
         if not isinstance(entry, Mapping):
             continue
-        if cell.kind == "matrix":
+        if cell.kind == "eager_matrix":
+            if (
+                entry.get("process_key") != cell.process_key
+                or entry.get("n_final") != cell.n_final
+            ):
+                continue
+            if not bool(entry.get("applicable", False)):
+                return False
+            status = str(entry.get("status", NA_STATUS))
+            if status != ResultStatus.OK.value:
+                return True
+            measurement = entry.get("eager_jit_o3")
+            selector_contract = entry.get("selector_contract")
+            reference = _eager_reference_measurement(cell, caches)
+            if not (
+                isinstance(measurement, Mapping)
+                and isinstance(selector_contract, Mapping)
+                and selector_contract.get("status") == ResultStatus.OK.value
+                and isinstance(reference, Mapping)
+                and _measurement_ok(reference)
+            ):
+                return True
+            return not (
+                _eager_measurement_current(measurement)
+                and selector_contract.get("reference_digest")
+                == _eager_reference_digest(cell, reference)
+            )
+        if cell.kind in {"matrix", "eager_matrix"}:
             if (
                 entry.get("process_key") != cell.process_key
                 or entry.get("n_final") != cell.n_final
@@ -3987,6 +4673,21 @@ def _campaign_cell_needs_measurement(
                     _legacy_measurement_revision_current(measurement)
                     and _legacy_lc_measurement_contract_current(measurement)
                 )
+            if cell.variant == "eager_jit_o3" and status == ResultStatus.OK.value:
+                compiled = _z_variant_measurement(
+                    payload,
+                    n_final=cell.n_final,
+                    variant="jit_o3",
+                )
+                metadata = measurement.get("metadata")
+                return not (
+                    isinstance(compiled, Mapping)
+                    and _measurement_ok(compiled)
+                    and isinstance(metadata, Mapping)
+                    and metadata.get("compiled_reference_digest")
+                    == _eager_reference_digest(cell, compiled)
+                    and _eager_measurement_current(measurement)
+                )
             if cell.variant != "reference" and status == ResultStatus.OK.value:
                 return not (
                     _pyamplicol_timing_profile_current(measurement)
@@ -4076,6 +4777,176 @@ def _current_pyamplicol_version() -> str:
     import pyamplicol
 
     return str(pyamplicol.__version__)
+
+
+def _report_prepared_pack_identity() -> dict[str, object]:
+    _ensure_repo_root_on_path()
+    from pyamplicol._internal.versions import SYMJIT_APPLICATION_ABI
+    from pyamplicol.models.prepared import EAGER_KERNEL_ABI
+    from pyamplicol.models.prepared_target import canonical_architecture
+
+    schema_version, compiler_version = _current_compiled_model_contract()
+    source = _model_source_path(EXTERNAL_SM)
+    if source is None:
+        raise RuntimeError("UFO-SM report model source is unavailable")
+    return {
+        "compiled_model_schema": schema_version,
+        "model_compiler_version": compiler_version,
+        "producer_version": _current_pyamplicol_version(),
+        "eager_kernel_abi": EAGER_KERNEL_ABI,
+        "symjit_storage_abi": SYMJIT_APPLICATION_ABI,
+        "system": platform.system(),
+        "target_architecture": canonical_architecture(platform.machine()),
+        "model_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "backend": "jit",
+        "jit_optimization_level": 3,
+        "optimization": {
+            "horner_iterations": REPORT_CONFIG_OVERRIDES[
+                "evaluator.optimization.horner_iterations"
+            ],
+            "cpe_iterations": REPORT_CONFIG_OVERRIDES[
+                "evaluator.optimization.cpe_iterations"
+            ],
+            "max_horner_variables": REPORT_CONFIG_OVERRIDES[
+                "evaluator.optimization.max_horner_variables"
+            ],
+            "max_common_pair_cache_entries": REPORT_CONFIG_OVERRIDES[
+                "evaluator.optimization.max_common_pair_cache_entries"
+            ],
+            "max_common_pair_distance": REPORT_CONFIG_OVERRIDES[
+                "evaluator.optimization.max_common_pair_distance"
+            ],
+        },
+    }
+
+
+def _report_prepared_pack_paths(artifact_root: Path) -> tuple[Path, Path, Path]:
+    identity = _report_prepared_pack_identity()
+    digest = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:24]
+    root = artifact_root / "prepared-models" / f"ufo-sm-jit-o3-{digest}"
+    return (
+        root / "ufo-sm-jit-o3.pyamplicol-model",
+        root / "metadata.json",
+        artifact_root / "locks" / "prepared-models" / f"{digest}.lock",
+    )
+
+
+def _validate_report_prepared_pack(path: Path) -> None:
+    _ensure_repo_root_on_path()
+    from pyamplicol.models.prepared import load_prepared_model_bundle
+
+    bundle = load_prepared_model_bundle(path)
+    if bundle.backend != "jit":
+        raise RuntimeError(f"report prepared bundle has backend {bundle.backend!r}")
+
+
+def _ensure_report_ufo_sm_prepared_pack(
+    artifact_root: Path,
+    *,
+    python: Path,
+    limit_gib: float,
+    timeout_seconds: float,
+) -> tuple[Path, Mapping[str, object]]:
+    bundle_path, metadata_path, lock_path = _report_prepared_pack_paths(artifact_root)
+    identity = _report_prepared_pack_identity()
+    with _file_lock(lock_path):
+        if bundle_path.is_file() and metadata_path.is_file():
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if isinstance(metadata, Mapping) and metadata.get("identity") == identity:
+                _validate_report_prepared_pack(bundle_path)
+                return bundle_path, metadata
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        run_id = uuid.uuid4().hex
+        temporary_bundle = bundle_path.with_name(
+            f".{bundle_path.stem}-{run_id}.pyamplicol-model"
+        )
+        log_path = bundle_path.parent / f"prepare-{run_id}.log"
+        source = _model_source_path(EXTERNAL_SM)
+        if source is None:
+            raise RuntimeError("UFO-SM report model source is unavailable")
+        selected_python = (
+            python
+            if python.is_absolute()
+            else _repo_root() / python
+        )
+        command = [
+            os.fspath(selected_python),
+            "tools/ci/memory_watchdog.py",
+            "--limit-gib",
+            f"{limit_gib:g}",
+            "--",
+            os.fspath(selected_python),
+            "-m",
+            "pyamplicol",
+            "model",
+            "compile",
+            os.fspath(source),
+            os.fspath(temporary_bundle),
+            "--backend",
+            "jit",
+            "--jit-optimization-level",
+            "3",
+            "--cores",
+            "1",
+            "--horner-iterations",
+            str(REPORT_CONFIG_OVERRIDES["evaluator.optimization.horner_iterations"]),
+            "--max-horner-variables",
+            str(
+                REPORT_CONFIG_OVERRIDES[
+                    "evaluator.optimization.max_horner_variables"
+                ]
+            ),
+            "--max-common-pair-cache-entries",
+            str(
+                REPORT_CONFIG_OVERRIDES[
+                    "evaluator.optimization.max_common_pair_cache_entries"
+                ]
+            ),
+            "--max-common-pair-distance",
+            str(
+                REPORT_CONFIG_OVERRIDES[
+                    "evaluator.optimization.max_common_pair_distance"
+                ]
+            ),
+            "--progress",
+            "off",
+            "--format",
+            "json",
+        ]
+        started = time.perf_counter()
+        code = _run_worker_command(
+            command,
+            cwd=_repo_root(),
+            log_path=log_path,
+            timeout_seconds=None if timeout_seconds <= 0 else timeout_seconds,
+        )
+        preparation_seconds = time.perf_counter() - started
+        if code != 0 or not temporary_bundle.is_file():
+            with contextlib.suppress(FileNotFoundError):
+                temporary_bundle.unlink()
+            raise RuntimeError(
+                "UFO-SM eager prepared-model creation failed; "
+                f"see {log_path} (exit {code})"
+            )
+        _validate_report_prepared_pack(temporary_bundle)
+        os.replace(temporary_bundle, bundle_path)
+        metadata = {
+            "kind": "pyamplicol-report-prepared-model",
+            "identity": identity,
+            "bundle_path": os.fspath(bundle_path),
+            "preparation_seconds": preparation_seconds,
+            "log_path": os.fspath(log_path),
+            "source_provenance": _report_source_provenance(),
+            "prepared_at": _utc_now(),
+        }
+        temporary_metadata = metadata_path.with_name(
+            f".{metadata_path.name}.{run_id}.tmp"
+        )
+        temporary_metadata.write_text(_json_text(metadata), encoding="utf-8")
+        os.replace(temporary_metadata, metadata_path)
+        return bundle_path, metadata
 
 
 def _compiled_model_cache_dir(artifact_root: Path) -> Path:
@@ -4470,7 +5341,10 @@ def _json_text(value: Mapping[str, object]) -> str:
 def load_caches(paths: ReportPaths | None = None) -> dict[str, dict[str, object]]:
     selected_paths = paths or ReportPaths.default()
     caches: dict[str, dict[str, object]] = {}
-    names = [spec.cache_name for spec in (*MATRIX_SPECS, *LADDER_SPECS)]
+    names = [
+        spec.cache_name
+        for spec in (*MATRIX_SPECS, *EAGER_MATRIX_SPECS, *LADDER_SPECS)
+    ]
     for name in names:
         path = selected_paths.results_dir / name
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -4539,13 +5413,19 @@ def _run_config_values(
     variant_overrides: Mapping[str, object],
     process_overrides: Mapping[str, object] | None = None,
     benchmark_overrides: Mapping[str, object] | None = None,
+    model_source_override: str | Path | None = None,
     artifact_root: Path | None = None,
     target_runtime: float,
     cell_cores: int,
 ) -> dict[str, object]:
     model_path = _model_source_path(model)
+    configured_source = (
+        ("built-in-sm" if model_path is None else os.fspath(model_path))
+        if model_source_override is None
+        else os.fspath(model_source_override)
+    )
     model_config: dict[str, object] = {
-        "source": "built-in-sm" if model_path is None else os.fspath(model_path),
+        "source": configured_source,
         "cache": True,
     }
     if model_path is not None and artifact_root is not None:
@@ -4641,9 +5521,15 @@ def _real_nonnegative_scalar(value: object) -> float:
     return abs(number)
 
 
-def _model_source_for_api(model: ModelSpec) -> object:
+def _model_source_for_api(
+    model: ModelSpec,
+    *,
+    source_override: str | Path | None = None,
+) -> object:
     from pyamplicol.api import ModelSource
 
+    if source_override is not None:
+        return ModelSource.from_path(Path(source_override))
     model_path = _model_source_path(model)
     if model_path is None:
         return ModelSource.built_in_sm()
@@ -4653,8 +5539,10 @@ def _model_source_for_api(model: ModelSpec) -> object:
 def _precompile_model_for_generation(
     model: ModelSpec,
     config_values: Mapping[str, object],
+    *,
+    source_override: str | Path | None = None,
 ) -> tuple[object, dict[str, object]]:
-    source = _model_source_for_api(model)
+    source = _model_source_for_api(model, source_override=source_override)
     model_config = config_values.get("model")
     cache_dir: Path | None = None
     use_cache = True
@@ -5207,6 +6095,523 @@ def _measurement_old_matrix_fields(
             failure_message=normalized_fields.get("all_flow_error"),
         )
     return normalized_fields
+
+
+def _prepared_model_source_for_eager(
+    spec: MatrixSpec | EagerMatrixSpec | LadderSpec,
+    artifact_root: Path,
+) -> tuple[Path, Mapping[str, object]]:
+    if spec.model.source_kind == "built-in-sm":
+        _ensure_repo_root_on_path()
+        from pyamplicol.assets.prepared_models import (
+            materialize_packaged_prepared_model,
+        )
+
+        path = materialize_packaged_prepared_model()
+        return path, {
+            "kind": "wheel-owned-built-in-sm",
+            "bundle_path": os.fspath(path),
+            "preparation_seconds": None,
+            "preparation_excluded_from_generation": True,
+        }
+    bundle_path, metadata_path, _lock_path = _report_prepared_pack_paths(artifact_root)
+    if not bundle_path.is_file() or not metadata_path.is_file():
+        raise RuntimeError(
+            "UFO-SM eager prepared model is missing; rerun populate so its "
+            "prepared-pack preflight can create it"
+        )
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if not isinstance(metadata, Mapping):
+        raise TypeError(f"{metadata_path} must contain an object")
+    _validate_report_prepared_pack(bundle_path)
+    return bundle_path, metadata
+
+
+def _eager_lc_reference_spec(
+    spec: EagerMatrixSpec | LadderSpec,
+) -> MatrixSpec | LadderSpec:
+    if isinstance(spec, EagerMatrixSpec):
+        reference = _spec_by_dataset()[spec.reference_dataset_id]
+        if not isinstance(reference, MatrixSpec):
+            raise TypeError("eager matrix reference must be a process matrix")
+        return reference
+    return spec
+
+
+def _eager_lc_selector_contract(
+    *,
+    cell: CampaignCell,
+    spec: EagerMatrixSpec | LadderSpec,
+    reference_measurement: Mapping[str, object],
+    physics: object,
+    artifact_root: Path,
+) -> dict[str, object]:
+    old = _measurement_old_matrix_fields(reference_measurement)
+    raw_reference_order = _selected_flow_reference_color_order(old, cell)
+    if not isinstance(raw_reference_order, list) or not raw_reference_order:
+        raise ValueError("compiled LC reference has no source-label color order")
+    reference_order = tuple(int(label) for label in raw_reference_order)
+    reference_spec = _eager_lc_reference_spec(spec)
+    partition_words = _selected_lc_reference_partition_words(
+        cell.process,
+        spec=reference_spec,
+        reference_order=reference_order,
+        artifact_root=artifact_root,
+    )
+    color_flows = getattr(physics, "color_flows", ())
+    color_ids = tuple(
+        str(flow.id)
+        for flow in color_flows
+        if tuple(int(label) for label in flow.word) in partition_words
+    )
+    if not color_ids:
+        raise ValueError(
+            "compiled LC reference color order does not resolve to an eager "
+            f"physical flow: {list(reference_order)}"
+        )
+
+    raw_source_helicities = old.get("all_flow_source_helicities")
+    if not isinstance(raw_source_helicities, Mapping):
+        raise ValueError("compiled LC reference has no fixed source helicities")
+    source_helicities = {
+        int(label): int(helicity)
+        for label, helicity in raw_source_helicities.items()
+    }
+    particles = tuple(getattr(physics, "external_particles", ()))
+    particle_labels = tuple(int(particle.label) for particle in particles)
+    helicity_ids = tuple(
+        str(helicity.id)
+        for helicity in getattr(physics, "helicities", ())
+        if tuple(int(value) for value in helicity.values)
+        == tuple(source_helicities[label] for label in particle_labels)
+    )
+    if not helicity_ids:
+        raise ValueError(
+            "compiled LC fixed-helicity contract does not resolve to an eager "
+            f"physical helicity: {source_helicities}"
+        )
+    return {
+        **_empty_eager_selector_contract(),
+        "status": ResultStatus.OK.value,
+        "reference_digest": _eager_reference_digest(cell, reference_measurement),
+        "selected_reference_color_order": list(reference_order),
+        "selected_color_flow_ids": list(color_ids),
+        "all_flow_source_helicities": {
+            str(label): helicity for label, helicity in source_helicities.items()
+        },
+        "all_flow_helicity_ids": list(helicity_ids),
+        "message": None,
+    }
+
+
+def _eager_resolved_sum_check(
+    runtime: object,
+    points: object,
+    *,
+    helicities: Sequence[str] = (),
+    color_flows: Sequence[str] = (),
+) -> dict[str, object]:
+    optimized = runtime.evaluate(  # type: ignore[attr-defined]
+        points,
+        helicities=tuple(helicities) or None,
+        color_flows=tuple(color_flows) or None,
+    )
+    resolved = runtime.evaluate_resolved(  # type: ignore[attr-defined]
+        points,
+        helicities=tuple(helicities) or None,
+        color_flows=tuple(color_flows) or None,
+    )
+    resolved_total = resolved.total()
+    maximum_absolute = 0.0
+    maximum_relative = 0.0
+    for optimized_value, resolved_value in zip(
+        optimized,
+        resolved_total,
+        strict=True,
+    ):
+        absolute = abs(complex(optimized_value) - complex(resolved_value))
+        relative = absolute / max(abs(complex(optimized_value)), 1.0e-300)
+        maximum_absolute = max(maximum_absolute, absolute)
+        maximum_relative = max(maximum_relative, relative)
+    passed = (
+        maximum_absolute <= 1.0e-15 or maximum_relative <= 1.0e-12
+    )
+    return {
+        "status": (
+            ResultStatus.OK.value
+            if passed
+            else ResultStatus.VALIDATION_FAILED.value
+        ),
+        "maximum_absolute_difference": maximum_absolute,
+        "maximum_relative_difference": maximum_relative,
+        "relative_tolerance": 1.0e-12,
+        "absolute_tolerance": 1.0e-15,
+    }
+
+
+def _profile_eager_runtime(
+    runtime: object,
+    *,
+    benchmark_config: object,
+    points: object,
+    helicity_ids: Sequence[str] = (),
+    color_flow_ids: Sequence[str] = (),
+) -> dict[str, object]:
+    from pyamplicol.api import BenchmarkRunner
+
+    selected_benchmark = replace(
+        benchmark_config,
+        helicity_ids=tuple(helicity_ids),
+        color_flow_ids=tuple(color_flow_ids),
+    )
+    values = runtime.evaluate(  # type: ignore[attr-defined]
+        points,
+        helicities=tuple(helicity_ids) or None,
+        color_flows=tuple(color_flow_ids) or None,
+    )
+    benchmark = BenchmarkRunner(selected_benchmark).run(runtime, points=points)
+    result = {
+        **_empty_measurement(),
+        **BenchmarkObservation.from_result(benchmark).as_cache_fields(),
+        "status": ResultStatus.OK.value,
+        "matrix_element": _real_nonnegative_scalar(values[0]) if values else None,
+        "metadata": {
+            "helicity_ids": list(helicity_ids),
+            "color_flow_ids": list(color_flow_ids),
+            "resolved_sum_validation": _eager_resolved_sum_check(
+                runtime,
+                points,
+                helicities=helicity_ids,
+                color_flows=color_flow_ids,
+            ),
+        },
+    }
+    resolved_validation = result["metadata"]["resolved_sum_validation"]  # type: ignore[index]
+    if (
+        isinstance(resolved_validation, Mapping)
+        and resolved_validation.get("status")
+        == ResultStatus.VALIDATION_FAILED.value
+    ):
+        result["status"] = ResultStatus.VALIDATION_FAILED.value
+    return result
+
+
+def _measure_pyamplicol_eager_complete(
+    *,
+    cell: CampaignCell,
+    spec: EagerMatrixSpec | LadderSpec,
+    reference_measurement: Mapping[str, object],
+    artifact_root: Path,
+    generation_timeout_seconds: float,
+    target_runtime: float,
+    cell_cores: int,
+    points: object,
+    previous_measurement: Mapping[str, object] | None = None,
+) -> tuple[dict[str, object], object, dict[str, object]]:
+    from pyamplicol.api import CompatibilityError, Generator, Runtime
+    from pyamplicol.config import Action
+    from pyamplicol.config.resolver import config_to_dict, resolve_config
+
+    color_accuracy = spec.color_accuracy if isinstance(spec, EagerMatrixSpec) else "lc"
+    cell_root = artifact_root / "cells" / cell.cell_id
+    artifact_dir = cell_root / _pyamplicol_artifact_subdir(
+        "pyamplicol/eager-complete"
+    )
+    log_path = cell_root / "logs" / "pyamplicol-eager.log"
+    manifest_path = artifact_dir / "manifest.json"
+    snapshot_path = cell_root / "inputs" / "pyamplicol-eager-inputs.json"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    prepared_source, preparation = _prepared_model_source_for_eager(
+        spec,
+        artifact_root,
+    )
+    variant = {
+        "evaluator.execution_mode": "eager",
+        "evaluator.backend": "jit",
+        "evaluator.jit.optimization_level": 3,
+    }
+    config_values = _run_config_values(
+        model=spec.model,
+        color_accuracy=color_accuracy,
+        variant_overrides=variant,
+        process_overrides=_pyamplicol_process_overrides_for_process(cell.process),
+        model_source_override=prepared_source,
+        artifact_root=artifact_root,
+        target_runtime=target_runtime,
+        cell_cores=cell_cores,
+    )
+    resolution = resolve_config(
+        config_values,
+        action=Action.GENERATE,
+        base_dir=_repo_root(),
+    )
+    reusable_generation_seconds = _reusable_pyamplicol_generation_seconds(
+        cell,
+        artifact_dir,
+        previous_measurement,
+    )
+    artifact_reusable = reusable_generation_seconds is not None
+    snapshot = {
+        "cell": cell.as_json(),
+        "model": spec.model.as_json(),
+        "prepared_model": dict(preparation),
+        "color_accuracy": color_accuracy,
+        "execution_mode": "eager",
+        "target_runtime": target_runtime,
+        "cell_cores": cell_cores,
+        "artifact_reused_for_timing": artifact_reusable,
+        "source_provenance": _report_source_provenance(),
+        "captured_at": _utc_now(),
+    }
+    snapshot_path.write_text(_json_text(snapshot), encoding="utf-8")
+    command = [
+        os.fspath(DEFAULT_DEV_PYTHON),
+        "docs/result_tables.py",
+        "measure-cell",
+        "--dataset-id",
+        cell.dataset_id,
+        "--n-final",
+        str(cell.n_final),
+        "--execution-mode",
+        "eager",
+    ]
+    try:
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(f"# pyAmpliCol eager cell {cell.cell_id} started {_utc_now()}\n")
+            log.flush()
+            with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                model_for_generation: object | None = None
+                model_precompile_metadata: dict[str, object] = {
+                    "model_precompile_policy": PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                    "model_precompile_seconds": None,
+                    "model_precompile_cache_dir": None,
+                    "model_precompile_used_cache": None,
+                    "model_precompile_source_kind": "prepared",
+                    "generation_timer_excludes_model_compile": True,
+                    "model_precompile_skipped": "artifact_reused_for_timing",
+                }
+                if artifact_reusable:
+                    generation_seconds = float(reusable_generation_seconds)
+                else:
+                    model_for_generation, model_precompile_metadata = (
+                        _precompile_model_for_generation(
+                            spec.model,
+                            config_values,
+                            source_override=prepared_source,
+                        )
+                    )
+                    started = time.perf_counter()
+                    with _generation_timeout(generation_timeout_seconds):
+                        Generator(resolution).generate(
+                            cell.process,
+                            artifact_dir,
+                            model=model_for_generation,
+                            mode="replace",
+                        )
+                    generation_seconds = time.perf_counter() - started
+                runtime_process = _single_artifact_process_id(
+                    artifact_dir,
+                    fallback=cell.process,
+                )
+                runtime = Runtime.load(artifact_dir, process=runtime_process)
+                selector_contract = _empty_eager_selector_contract()
+                if color_accuracy == "lc":
+                    selector_contract = _eager_lc_selector_contract(
+                        cell=cell,
+                        spec=spec,
+                        reference_measurement=reference_measurement,
+                        physics=runtime.physics,
+                        artifact_root=artifact_root,
+                    )
+                    selected = _profile_eager_runtime(
+                        runtime,
+                        benchmark_config=resolution.effective.benchmark,
+                        points=points,
+                        color_flow_ids=selector_contract[
+                            "selected_color_flow_ids"
+                        ],  # type: ignore[arg-type]
+                    )
+                    all_flow = _profile_eager_runtime(
+                        runtime,
+                        benchmark_config=resolution.effective.benchmark,
+                        points=points,
+                        helicity_ids=selector_contract[
+                            "all_flow_helicity_ids"
+                        ],  # type: ignore[arg-type]
+                    )
+                else:
+                    selector_contract = {
+                        **_empty_eager_selector_contract(),
+                        "status": ResultStatus.OK.value,
+                        "reference_digest": _eager_reference_digest(
+                            cell,
+                            reference_measurement,
+                        ),
+                    }
+                    selected = _profile_eager_runtime(
+                        runtime,
+                        benchmark_config=resolution.effective.benchmark,
+                        points=points,
+                    )
+                    all_flow = None
+        selected.update(
+            {
+                "generation_seconds": generation_seconds,
+                "requested_config": config_to_dict(resolution.requested),
+                "effective_config": config_to_dict(resolution.effective),
+                "artifact_path": os.fspath(artifact_dir),
+                "log_path": os.fspath(log_path),
+                "manifest_path": os.fspath(manifest_path),
+                "timeout_seconds": generation_timeout_seconds,
+                "command": command,
+            }
+        )
+        metadata = dict(
+            selected.get("metadata")
+            if isinstance(selected.get("metadata"), Mapping)
+            else {}
+        )
+        metadata.update(
+            {
+                "cell": cell.as_json(),
+                "runtime_process": runtime_process,
+                "input_snapshot_path": os.fspath(snapshot_path),
+                "source_provenance": _report_source_provenance(),
+                "artifact_reused_for_timing": artifact_reusable,
+                "generation_seconds_source": (
+                    "previous_measurement"
+                    if artifact_reusable
+                    else "fresh_generation"
+                ),
+                "prepared_model": dict(preparation),
+                "prepared_model_creation_excluded_from_generation": True,
+                **model_precompile_metadata,
+            }
+        )
+        if color_accuracy == "lc":
+            assert isinstance(all_flow, Mapping)
+            all_flow_measurement = {
+                **dict(all_flow),
+                "generation_seconds": generation_seconds,
+                "requested_config": config_to_dict(resolution.requested),
+                "effective_config": config_to_dict(resolution.effective),
+                "artifact_path": os.fspath(artifact_dir),
+                "log_path": os.fspath(log_path),
+                "manifest_path": os.fspath(manifest_path),
+                "timeout_seconds": generation_timeout_seconds,
+                "command": command,
+            }
+            old_fields = {
+                "status": _measurement_status(selected),
+                "generation_s": generation_seconds,
+                "selected_generation_s": generation_seconds,
+                "runtime_us_per_point": (
+                    None
+                    if selected.get("evaluator_seconds_per_point") is None
+                    else 1.0e6 * float(selected["evaluator_seconds_per_point"])
+                ),
+                "wall_us_per_point": (
+                    None
+                    if selected.get("wall_seconds_per_point") is None
+                    else 1.0e6 * float(selected["wall_seconds_per_point"])
+                ),
+                "selected_backend": "jit",
+                "selected_jit_optimization_level": 3,
+                "selected_output_dir": os.fspath(artifact_dir),
+                "reference_color_order": selector_contract[
+                    "selected_reference_color_order"
+                ],
+                "selected_color_flow_ids": selector_contract[
+                    "selected_color_flow_ids"
+                ],
+                "all_flow_status": _measurement_status(all_flow_measurement),
+                "all_flow_generation_s": generation_seconds,
+                "all_flow_runtime_us_per_point": (
+                    None
+                    if all_flow_measurement.get("evaluator_seconds_per_point") is None
+                    else 1.0e6
+                    * float(all_flow_measurement["evaluator_seconds_per_point"])
+                ),
+                "all_flow_matrix_element": all_flow_measurement.get(
+                    "matrix_element"
+                ),
+                "all_flow_wall_us_per_point": (
+                    None
+                    if all_flow_measurement.get("wall_seconds_per_point") is None
+                    else 1.0e6
+                    * float(all_flow_measurement["wall_seconds_per_point"])
+                ),
+                "all_flow_backend": "jit",
+                "all_flow_jit_optimization_level": 3,
+                "all_flow_output_dir": os.fspath(artifact_dir),
+                "all_flow_source_helicities": selector_contract[
+                    "all_flow_source_helicities"
+                ],
+                "all_flow_helicity_ids": selector_contract[
+                    "all_flow_helicity_ids"
+                ],
+            }
+            metadata["old_matrix_format"] = old_fields
+            metadata["selected_flow_measurement"] = dict(selected)
+            metadata["all_flow_measurement"] = all_flow_measurement
+        selected["metadata"] = metadata
+        manifest = {
+            "cell": cell.as_json(),
+            "measurement": selected,
+            "selector_contract": selector_contract,
+            "source_provenance": _report_source_provenance(),
+            "captured_at": _utc_now(),
+        }
+        manifest_path.write_text(_json_text(manifest), encoding="utf-8")
+        return selected, points, selector_contract
+    except ReportGenerationTimeout as exc:
+        failure = _failure_measurement(
+            ResultStatus.TIMEOUT,
+            str(exc),
+            failure_kind="generation_timeout",
+            artifact_path=artifact_dir,
+            log_path=log_path,
+            manifest_path=manifest_path,
+            timeout_seconds=generation_timeout_seconds,
+            command=command,
+            metadata={
+                "cell": cell.as_json(),
+                "source_provenance": _report_source_provenance(),
+            },
+        )
+        contract = {
+            **_empty_eager_selector_contract(),
+            "status": ResultStatus.TIMEOUT.value,
+            "message": str(exc),
+        }
+        return failure, points, contract
+    except Exception as exc:
+        status = (
+            ResultStatus.UNSUPPORTED
+            if isinstance(exc, CompatibilityError)
+            else ResultStatus.ERROR
+        )
+        failure = _failure_measurement(
+            status,
+            str(exc),
+            failure_kind=type(exc).__name__,
+            artifact_path=artifact_dir,
+            log_path=log_path,
+            manifest_path=manifest_path,
+            timeout_seconds=generation_timeout_seconds,
+            command=command,
+            metadata={
+                "cell": cell.as_json(),
+                "source_provenance": _report_source_provenance(),
+            },
+        )
+        contract = {
+            **_empty_eager_selector_contract(),
+            "status": status.value,
+            "message": str(exc),
+        }
+        return failure, points, contract
 
 
 def _measure_pyamplicol_lc_two_workloads(
@@ -7578,17 +8983,130 @@ def _pointwise_validation(
     return payload
 
 
+def _eager_pointwise_validation(
+    compiled: Mapping[str, object],
+    eager: Mapping[str, object],
+    *,
+    require_all_flow: bool,
+) -> dict[str, object]:
+    payload = _empty_validation()
+    payload.update(
+        {
+            "relative_tolerance": 1.0e-12,
+            "absolute_tolerance": 1.0e-15,
+            "point_source": "shared validation point",
+        }
+    )
+    if not _measurement_ok(compiled):
+        payload.update(
+            {
+                "status": ResultStatus.ERROR.value,
+                "message": "compiled JIT O3 reference is unavailable",
+            }
+        )
+        return payload
+    if _measurement_status(eager) == ResultStatus.VALIDATION_FAILED.value:
+        payload.update(
+            {
+                "status": ResultStatus.VALIDATION_FAILED.value,
+                "message": "eager resolved sum does not reproduce its optimized total",
+            }
+        )
+        return payload
+    if not _measurement_ok(eager):
+        payload.update(
+            {
+                "status": ResultStatus.ERROR.value,
+                "message": "eager JIT O3 measurement is unavailable",
+            }
+        )
+        return payload
+    reference = compiled.get("matrix_element")
+    observed = eager.get("matrix_element")
+    if reference is None or observed is None:
+        payload.update(
+            {
+                "status": ResultStatus.ERROR.value,
+                "message": "missing matrix element for eager/compiled validation",
+            }
+        )
+        return payload
+    absolute, relative, status = _matrix_element_difference(
+        reference,
+        observed,
+        relative_tolerance=1.0e-12,
+        absolute_tolerance=1.0e-15,
+    )
+    payload.update(
+        {
+            "status": status,
+            "reference_matrix_element": float(reference),
+            "pyamplicol_matrix_element": float(observed),
+            "absolute_difference": absolute,
+            "relative_difference": relative,
+            "message": (
+                None
+                if status == ResultStatus.OK.value
+                else "eager/compiled pointwise mismatch"
+            ),
+        }
+    )
+    if not require_all_flow:
+        return payload
+    compiled_fields = _measurement_old_matrix_fields(compiled)
+    eager_fields = _measurement_old_matrix_fields(eager)
+    reference_all_flow = compiled_fields.get("all_flow_matrix_element")
+    eager_all_flow = eager_fields.get("all_flow_matrix_element")
+    if reference_all_flow is None or eager_all_flow is None:
+        payload.update(
+            {
+                "status": ResultStatus.ERROR.value,
+                "all_flow_status": ResultStatus.ERROR.value,
+                "message": (
+                    "missing all-flow matrix element for eager/compiled validation"
+                ),
+            }
+        )
+        return payload
+    all_absolute, all_relative, all_status = _matrix_element_difference(
+        reference_all_flow,
+        eager_all_flow,
+        relative_tolerance=1.0e-12,
+        absolute_tolerance=1.0e-15,
+    )
+    payload.update(
+        {
+            "all_flow_status": all_status,
+            "all_flow_reference_matrix_element": float(reference_all_flow),
+            "all_flow_pyamplicol_matrix_element": float(eager_all_flow),
+            "all_flow_absolute_difference": all_absolute,
+            "all_flow_relative_difference": all_relative,
+        }
+    )
+    if all_status != ResultStatus.OK.value:
+        payload.update(
+            {
+                "status": all_status,
+                "message": "eager/compiled all-flow pointwise mismatch",
+            }
+        )
+    return payload
+
+
 def _matrix_element_difference(
     reference: object,
     observed: object,
+    *,
+    relative_tolerance: float = VALIDATION_RELATIVE_TOLERANCE,
+    absolute_tolerance: float = VALIDATION_ABSOLUTE_TOLERANCE,
 ) -> tuple[float, float, str]:
     absolute = abs(float(reference) - float(observed))
     relative = absolute / max(abs(float(reference)), 1.0e-300)
     status = (
         ResultStatus.OK.value
         if (
-            absolute <= VALIDATION_ABSOLUTE_TOLERANCE
-            or relative <= VALIDATION_RELATIVE_TOLERANCE
+            absolute <= absolute_tolerance
+            or relative <= relative_tolerance
         )
         else ResultStatus.VALIDATION_FAILED.value
     )
@@ -7666,6 +9184,61 @@ def _measure_cell_payload(
     limit_gib: float,
 ) -> dict[str, object]:
     spec = _spec_by_dataset()[cell.dataset_id]
+    if isinstance(spec, EagerMatrixSpec):
+        caches = load_caches(ReportPaths.default())
+        reference = _eager_reference_measurement(cell, caches)
+        if not isinstance(reference, Mapping) or not _measurement_ok(reference):
+            raise ValueError(
+                "eager matrix worker has no compiled JIT O3 reference: "
+                f"dataset={spec.reference_dataset_id!r}, "
+                f"process_key={cell.process_key!r}, n_final={cell.n_final}"
+            )
+        previous_entry = _previous_cache_entry_for_cell(cell)
+        previous_measurement = (
+            previous_entry.get("eager_jit_o3")
+            if isinstance(previous_entry, Mapping)
+            else None
+        )
+        points = _pyamplicol_points_from_particles(
+            _shared_validation_particles(cell.process)
+        )
+        eager, _points, selector_contract = _measure_pyamplicol_eager_complete(
+            cell=cell,
+            spec=spec,
+            reference_measurement=reference,
+            artifact_root=artifact_root,
+            generation_timeout_seconds=jit_o3_generation_timeout_seconds,
+            target_runtime=target_runtime,
+            cell_cores=cell_cores,
+            points=points,
+            previous_measurement=(
+                previous_measurement
+                if isinstance(previous_measurement, Mapping)
+                else None
+            ),
+        )
+        validation = _eager_pointwise_validation(
+            reference,
+            eager,
+            require_all_flow=spec.color_accuracy == "lc",
+        )
+        entry = {
+            "process_key": cell.process_key,
+            "n_final": cell.n_final,
+            "process": cell.process,
+            "applicable": True,
+            "status": NA_STATUS,
+            "eager_jit_o3": eager,
+            "pointwise_validation": validation,
+            "selector_contract": selector_contract,
+            "relative_difference": validation.get("relative_difference"),
+        }
+        _refresh_eager_matrix_derived_fields(entry)
+        return {
+            "cell": cell.as_json(),
+            "cache_name": cell.cache_name,
+            "entry": entry,
+        }
     if isinstance(spec, MatrixSpec):
         previous_entry = _previous_cache_entry_for_cell(cell)
         previous_pyamplicol = (
@@ -7770,6 +9343,60 @@ def _measure_cell_payload(
                 jobs=cell_cores,
                 fixed_helicity=_fixed_source_helicity_choice(cell.process),
             )
+        elif variant.key == "eager_jit_o3":
+            caches = load_caches(ReportPaths.default())
+            payload = caches.get(cell.cache_name)
+            compiled = (
+                _z_variant_measurement(
+                    payload,
+                    n_final=cell.n_final,
+                    variant="jit_o3",
+                )
+                if isinstance(payload, Mapping)
+                else None
+            )
+            if not isinstance(compiled, Mapping) or not _measurement_ok(compiled):
+                raise ValueError(
+                    "eager Z worker has no compiled JIT O3 reference: "
+                    f"dataset={cell.dataset_id!r}, n_final={cell.n_final}"
+                )
+            measurement, _points, selector_contract = (
+                _measure_pyamplicol_eager_complete(
+                    cell=cell,
+                    spec=spec,
+                    reference_measurement=compiled,
+                    artifact_root=artifact_root,
+                    generation_timeout_seconds=jit_o3_generation_timeout_seconds,
+                    target_runtime=target_runtime,
+                    cell_cores=cell_cores,
+                    points=points,
+                    previous_measurement=(
+                        previous_measurement
+                        if isinstance(previous_measurement, Mapping)
+                        else None
+                    ),
+                )
+            )
+            compiled_validation = _eager_pointwise_validation(
+                compiled,
+                measurement,
+                require_all_flow=True,
+            )
+            metadata_value = measurement.get("metadata")
+            metadata = (
+                dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+            )
+            metadata.update(
+                {
+                    "compiled_pointwise_validation": compiled_validation,
+                    "selector_contract": selector_contract,
+                    "compiled_reference_digest": _eager_reference_digest(
+                        cell,
+                        compiled,
+                    ),
+                }
+            )
+            measurement["metadata"] = metadata
         else:
             py_generation_timeout_seconds = (
                 jit_o3_generation_timeout_seconds
@@ -7792,6 +9419,24 @@ def _measure_cell_payload(
                     else None
                 ),
             )
+        entry_status = measurement["status"]
+        if variant.key == "eager_jit_o3":
+            metadata = measurement.get("metadata")
+            compiled_validation = (
+                metadata.get("compiled_pointwise_validation")
+                if isinstance(metadata, Mapping)
+                else None
+            )
+            if (
+                isinstance(compiled_validation, Mapping)
+                and (
+                    compiled_validation.get("status")
+                    == ResultStatus.VALIDATION_FAILED.value
+                    or compiled_validation.get("all_flow_status")
+                    == ResultStatus.VALIDATION_FAILED.value
+                )
+            ):
+                entry_status = ResultStatus.VALIDATION_FAILED.value
         return {
             "cell": cell.as_json(),
             "cache_name": cell.cache_name,
@@ -7799,7 +9444,7 @@ def _measure_cell_payload(
                 "n_final": cell.n_final,
                 "process": cell.process,
                 "variant": cell.variant,
-                "status": measurement["status"],
+                "status": entry_status,
                 "measurement": measurement,
             },
         }
@@ -7847,7 +9492,12 @@ def _measure_cell_payload(
 
 def _cell_from_json(payload: Mapping[str, object]) -> CampaignCell:
     kind = str(payload["kind"])
-    if kind not in {"matrix", "performance_ladder", "model_ladder"}:
+    if kind not in {
+        "matrix",
+        "eager_matrix",
+        "performance_ladder",
+        "model_ladder",
+    }:
         raise ValueError(f"invalid campaign cell kind {kind!r}")
     return CampaignCell(
         kind=kind,  # type: ignore[arg-type]
@@ -7870,12 +9520,17 @@ def _failure_entry_for_cell(
     artifact_root: Path,
     limit_gib: float,
     timeout_seconds: float,
+    log_path: Path | None = None,
 ) -> dict[str, object]:
     measurement = _failure_measurement(
         status,
         message,
         artifact_path=artifact_root / "cells" / cell.cell_id,
-        log_path=artifact_root / "cells" / cell.cell_id / "logs" / "worker.log",
+        log_path=(
+            artifact_root / "cells" / cell.cell_id / "logs" / "worker.log"
+            if log_path is None
+            else log_path
+        ),
         limit_gib=limit_gib,
         timeout_seconds=timeout_seconds,
         metadata={
@@ -7884,6 +9539,22 @@ def _failure_entry_for_cell(
         },
     )
     spec = _spec_by_dataset()[cell.dataset_id]
+    if isinstance(spec, EagerMatrixSpec):
+        return {
+            "process_key": cell.process_key,
+            "n_final": cell.n_final,
+            "process": cell.process,
+            "applicable": True,
+            "status": status.value,
+            "eager_jit_o3": measurement,
+            "pointwise_validation": _empty_validation(),
+            "selector_contract": {
+                **_empty_eager_selector_contract(),
+                "status": status.value,
+                "message": message,
+            },
+            "relative_difference": None,
+        }
     if isinstance(spec, MatrixSpec):
         base_entry = {
             "process_key": cell.process_key,
@@ -7934,7 +9605,7 @@ def _merge_cell_entry(
     for index, existing in enumerate(entries):
         if not isinstance(existing, Mapping):
             continue
-        if cell.kind == "matrix":
+        if cell.kind in {"matrix", "eager_matrix"}:
             if (
                 existing.get("process_key") == cell.process_key
                 and existing.get("n_final") == cell.n_final
@@ -8004,10 +9675,18 @@ def _refresh_performance_ladder_validation(
         measurement["metadata"] = metadata
         updated = dict(candidate)
         updated["measurement"] = measurement
+        compiled_validation = metadata.get("compiled_pointwise_validation")
+        compiled_validation_failed = isinstance(compiled_validation, Mapping) and (
+            compiled_validation.get("status")
+            == ResultStatus.VALIDATION_FAILED.value
+            or compiled_validation.get("all_flow_status")
+            == ResultStatus.VALIDATION_FAILED.value
+        )
         if (
             validation.get("status") == ResultStatus.VALIDATION_FAILED.value
             or validation.get("all_flow_status")
             == ResultStatus.VALIDATION_FAILED.value
+            or compiled_validation_failed
         ):
             updated["status"] = ResultStatus.VALIDATION_FAILED.value
         else:
@@ -8128,7 +9807,9 @@ def _campaign_worker_timeout_seconds(
     def normalized(seconds: float) -> float | None:
         return None if seconds <= 0 else float(seconds)
 
-    if cell.kind == "matrix":
+    if cell.kind == "eager_matrix":
+        workload_timeouts = [jit_o3_generation_timeout_seconds]
+    elif cell.kind == "matrix":
         spec = _spec_by_dataset()[cell.dataset_id]
         assert isinstance(spec, MatrixSpec)
         workload_timeouts = (
@@ -8179,74 +9860,154 @@ def _execute_campaign_cell(
     reference_timeout_seconds: float,
     target_runtime: float,
     cell_cores: int,
+    report_paths: ReportPaths | None = None,
 ) -> dict[str, object]:
+    selected_report_paths = report_paths or ReportPaths.default()
     cell_root = artifact_root / "cells" / cell.cell_id
-    result_json = cell_root / "result.json"
-    worker_log = cell_root / "logs" / "worker.log"
-    with contextlib.suppress(FileNotFoundError):
-        result_json.unlink()
-    command = _worker_command(
-        python=python,
-        cell=cell,
-        result_json=result_json,
-        artifact_root=artifact_root,
-        limit_gib=limit_gib,
-        generation_timeout_seconds=generation_timeout_seconds,
-        jit_o3_generation_timeout_seconds=jit_o3_generation_timeout_seconds,
-        reference_timeout_seconds=reference_timeout_seconds,
-        target_runtime=target_runtime,
-        cell_cores=cell_cores,
+    run_id = uuid.uuid4().hex
+    result_json = cell_root / "runs" / run_id / "result.json"
+    worker_log = cell_root / "logs" / f"worker-{run_id}.log"
+    lock_path = (
+        artifact_root
+        / "locks"
+        / "cells"
+        / f"{hashlib.sha256(cell.cell_id.encode('utf-8')).hexdigest()}.lock"
     )
-    worker_timeout_seconds = _campaign_worker_timeout_seconds(
-        cell,
-        generation_timeout_seconds,
-        jit_o3_generation_timeout_seconds,
-        reference_timeout_seconds,
-    )
-    code = _run_worker_command(
-        command,
-        cwd=_repo_root(),
-        log_path=worker_log,
-        timeout_seconds=worker_timeout_seconds,
-    )
-    if code == 0 and result_json.is_file():
-        payload = json.loads(result_json.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise TypeError(f"{result_json} must contain an object")
-        return payload
-    if code == 137 and _worker_log_reports_memory_limit(worker_log):
-        status = ResultStatus.MEMORY_LIMIT
-        message = f"memory watchdog exceeded {limit_gib:g} GiB"
-    elif code == 124:
-        status = ResultStatus.TIMEOUT
-        message = (
-            "worker exceeded its aggregate supervision budget"
-            if worker_timeout_seconds is None
-            else f"worker exceeded {worker_timeout_seconds:g} second aggregate budget"
+    try:
+        with _report_lock(selected_report_paths):
+            initial_caches = load_caches(selected_report_paths)
+            initial_entry = _cache_entry_for_cell(cell, initial_caches)
+            initial_digest = _mapping_digest(initial_entry)
+    except (OSError, ValueError, TypeError, KeyError):
+        initial_digest = None
+    with _file_lock(lock_path):
+        try:
+            with _report_lock(selected_report_paths):
+                latest_caches = load_caches(selected_report_paths)
+                latest_entry = _cache_entry_for_cell(cell, latest_caches)
+                latest_digest = _mapping_digest(latest_entry)
+                if (
+                    initial_digest is not None
+                    and latest_digest != initial_digest
+                    and latest_entry is not None
+                    and not _campaign_cell_needs_measurement(cell, latest_caches)
+                ):
+                    return {
+                        "cell": cell.as_json(),
+                        "cache_name": cell.cache_name,
+                        "entry": dict(latest_entry),
+                        "skipped_after_lock": True,
+                    }
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+        source_head = str(_report_source_provenance().get("head") or "unknown")
+        completion_identity = hashlib.sha256(
+            (
+                f"{source_head}\0{cell.cell_id}\0"
+                f"{initial_digest or 'missing'}"
+            ).encode()
+        ).hexdigest()
+        completion_path = (
+            artifact_root
+            / "coordination"
+            / "cell-completions"
+            / f"{completion_identity}.json"
         )
-    else:
-        status = ResultStatus.ERROR
-        message = (
-            "worker exited with code 137 without a memory-watchdog limit marker"
-            if code == 137
-            else f"worker exited with code {code}"
-        )
-    return {
-        "cell": cell.as_json(),
-        "cache_name": cell.cache_name,
-        "entry": _failure_entry_for_cell(
-            cell,
-            status=status,
-            message=message,
+        if completion_path.is_file():
+            try:
+                completed_payload = json.loads(
+                    completion_path.read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError, TypeError):
+                completed_payload = None
+            if isinstance(completed_payload, Mapping):
+                result = completed_payload.get("result")
+                if isinstance(result, Mapping):
+                    return {
+                        **dict(result),
+                        "skipped_after_cell_completion": True,
+                    }
+        command = _worker_command(
+            python=python,
+            cell=cell,
+            result_json=result_json,
             artifact_root=artifact_root,
             limit_gib=limit_gib,
-            timeout_seconds=(
-                reference_timeout_seconds
-                if worker_timeout_seconds is None
-                else worker_timeout_seconds
-            ),
-        ),
-    }
+            generation_timeout_seconds=generation_timeout_seconds,
+            jit_o3_generation_timeout_seconds=jit_o3_generation_timeout_seconds,
+            reference_timeout_seconds=reference_timeout_seconds,
+            target_runtime=target_runtime,
+            cell_cores=cell_cores,
+        )
+        worker_timeout_seconds = _campaign_worker_timeout_seconds(
+            cell,
+            generation_timeout_seconds,
+            jit_o3_generation_timeout_seconds,
+            reference_timeout_seconds,
+        )
+        code = _run_worker_command(
+            command,
+            cwd=_repo_root(),
+            log_path=worker_log,
+            timeout_seconds=worker_timeout_seconds,
+        )
+        if code == 0 and result_json.is_file():
+            payload = json.loads(result_json.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise TypeError(f"{result_json} must contain an object")
+        else:
+            if code == 137 and _worker_log_reports_memory_limit(worker_log):
+                status = ResultStatus.MEMORY_LIMIT
+                message = f"memory watchdog exceeded {limit_gib:g} GiB"
+            elif code == 124:
+                status = ResultStatus.TIMEOUT
+                message = (
+                    "worker exceeded its aggregate supervision budget"
+                    if worker_timeout_seconds is None
+                    else (
+                        f"worker exceeded {worker_timeout_seconds:g} second "
+                        "aggregate budget"
+                    )
+                )
+            else:
+                status = ResultStatus.ERROR
+                message = (
+                    "worker exited with code 137 without a memory-watchdog limit marker"
+                    if code == 137
+                    else f"worker exited with code {code}"
+                )
+            payload = {
+                "cell": cell.as_json(),
+                "cache_name": cell.cache_name,
+                "entry": _failure_entry_for_cell(
+                    cell,
+                    status=status,
+                    message=message,
+                    artifact_root=artifact_root,
+                    limit_gib=limit_gib,
+                    timeout_seconds=(
+                        reference_timeout_seconds
+                        if worker_timeout_seconds is None
+                        else worker_timeout_seconds
+                    ),
+                    log_path=worker_log,
+                ),
+            }
+        completion = {
+            "kind": "pyamplicol-report-cell-completion",
+            "source_head": source_head,
+            "cell_id": cell.cell_id,
+            "initial_entry_digest": initial_digest,
+            "result": payload,
+            "completed_at": _utc_now(),
+        }
+        completion_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_completion = completion_path.with_name(
+            f".{completion_path.name}.{uuid.uuid4().hex}.tmp"
+        )
+        _write_staged(temporary_completion, _json_text(completion))
+        os.replace(temporary_completion, completion_path)
+        return payload
 
 
 def _truthy_environment_flag(name: str) -> bool:
@@ -8277,19 +10038,108 @@ def _campaign_worker_selection(
     return requested, scheduled_cap, 1, reason
 
 
+def _cell_is_eager_workload(cell: CampaignCell) -> bool:
+    return cell.kind == "eager_matrix" or (
+        cell.kind == "performance_ladder" and cell.variant == "eager_jit_o3"
+    )
+
+
+def _z_variant_measurement(
+    payload: Mapping[str, object],
+    *,
+    n_final: int,
+    variant: str,
+) -> Mapping[str, object] | None:
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if (
+            isinstance(entry, Mapping)
+            and entry.get("n_final") == n_final
+            and entry.get("variant") == variant
+        ):
+            measurement = entry.get("measurement")
+            return measurement if isinstance(measurement, Mapping) else None
+    return None
+
+
+def _preflight_eager_campaign_references(
+    cells: Sequence[CampaignCell],
+    caches: Mapping[str, Mapping[str, object]],
+) -> None:
+    for cell in cells:
+        if cell.kind == "eager_matrix":
+            reference = _eager_reference_measurement(cell, caches)
+            if not isinstance(reference, Mapping) or not _measurement_ok(reference):
+                spec = _spec_by_dataset()[cell.dataset_id]
+                assert isinstance(spec, EagerMatrixSpec)
+                raise ValueError(
+                    "eager campaign requires an existing compiled JIT O3 "
+                    f"reference: dataset={spec.reference_dataset_id!r}, "
+                    f"process_key={cell.process_key!r}, n_final={cell.n_final}"
+                )
+            if cell.dataset_id.endswith("_lc"):
+                old = _measurement_old_matrix_fields(reference)
+                if not (
+                    isinstance(
+                        _selected_flow_reference_color_order(old, cell), list
+                    )
+                    and isinstance(old.get("all_flow_source_helicities"), Mapping)
+                    and old.get("all_flow_matrix_element") is not None
+                ):
+                    raise ValueError(
+                        "compiled LC reference lacks eager selector metadata: "
+                        f"dataset={cell.dataset_id!r}, "
+                        f"process_key={cell.process_key!r}, n_final={cell.n_final}"
+                    )
+        elif cell.kind == "performance_ladder" and cell.variant == "eager_jit_o3":
+            payload = caches.get(cell.cache_name)
+            compiled = (
+                _z_variant_measurement(
+                    payload,
+                    n_final=cell.n_final,
+                    variant="jit_o3",
+                )
+                if isinstance(payload, Mapping)
+                else None
+            )
+            if not isinstance(compiled, Mapping) or not _measurement_ok(compiled):
+                raise ValueError(
+                    "eager Z row requires an existing compiled JIT O3 reference: "
+                    f"dataset={cell.dataset_id!r}, n_final={cell.n_final}"
+                )
+
+
+def _mapping_digest(value: Mapping[str, object] | None) -> str | None:
+    if value is None:
+        return None
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 @contextmanager
-def _report_lock(paths: ReportPaths) -> Iterable[None]:
-    digest = hashlib.sha256(os.fspath(paths.docs_dir).encode("utf-8")).hexdigest()[:16]
-    lock_path = Path(tempfile.gettempdir()) / f"pyamplicol-report-{digest}.lock"
+def _file_lock(path: Path) -> Iterable[None]:
+    path.parent.mkdir(parents=True, exist_ok=True)
     stream: BinaryIO | None = None
     try:
-        stream = lock_path.open("a+b")
+        stream = path.open("a+b")
         fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
         yield
     finally:
         if stream is not None:
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
             stream.close()
+
+
+@contextmanager
+def _report_lock(paths: ReportPaths) -> Iterable[None]:
+    digest = hashlib.sha256(os.fspath(paths.docs_dir).encode("utf-8")).hexdigest()[:16]
+    legacy_lock = Path(tempfile.gettempdir()) / f"pyamplicol-report-{digest}.lock"
+    shared_lock = paths.results_dir / ".report-cache.lock"
+    with _file_lock(legacy_lock), _file_lock(shared_lock):
+        yield
 
 
 def _write_staged(path: Path, content: str | bytes) -> None:
@@ -8434,7 +10284,24 @@ class ReportService:
     ) -> None:
         artifact_root = artifact_root.expanduser().resolve(strict=False)
         artifact_root.mkdir(parents=True, exist_ok=True)
-        run_log = artifact_root / "runs" / f"{_utc_now().replace(':', '')}.jsonl"
+        with _report_lock(self.paths):
+            current_caches = load_caches(self.paths)
+            _preflight_eager_campaign_references(cells, current_caches)
+        if any(
+            _cell_is_eager_workload(cell) and _cell_uses_external_model(cell)
+            for cell in cells
+        ):
+            _ensure_report_ufo_sm_prepared_pack(
+                artifact_root,
+                python=python,
+                limit_gib=limit_gib,
+                timeout_seconds=jit_o3_generation_timeout_seconds,
+            )
+        run_log = (
+            artifact_root
+            / "runs"
+            / f"{_utc_now().replace(':', '')}-{uuid.uuid4().hex}.jsonl"
+        )
         run_log.parent.mkdir(parents=True, exist_ok=True)
         requested_workers, scheduled_worker_cap, effective_workers, limit_reason = (
             _campaign_worker_selection(

@@ -58,6 +58,7 @@
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
 \newcommand{\ReportMatrixLegend}{\ReportTableNote{Cell ordering and units follow the reading guide at the start of this section. A slash separates the two AmpliCol LC runtime workloads; a vertical bar separates the pyAmpliCol Rusticol-core wall and evaluator-only multipliers. Every multiplier is pyAmpliCol divided by AmpliCol.}}
+\newcommand{\ReportEagerMatrixLegend}{\ReportTableNote{Cell ordering and units match the preceding process matrices, but compiled UFO-SM JIT O3 is the reference and eager-DAG JIT O3 is the candidate. A slash separates the compiled LC selected-flow and all-flow workloads; a vertical bar separates eager Rusticol-core wall and evaluator-only multipliers. Every multiplier is eager divided by compiled.}}
 \newcommand{\ReportLadderLegend}{\ReportTableNote{Each workload block reports generation in seconds and Rusticol-core wall and evaluator-only runtime in microseconds per point. Parenthesized multipliers compare pyAmpliCol with AmpliCol; the UFO-SM ``vs blt-in'' columns compare the same UFO-SM and built-in-SM setup.}}
 \newcommand{\ReportLandscapeFooter}{}
 
@@ -409,6 +410,46 @@ two workloads. NLC and full colour provide generation, core-wall runtime, and
 evaluator-only runtime rows; the last two share the same \AC{} reference runtime
 because \AC{} has no corresponding evaluator-only timing split.
 
+\subsection*{Compiled-versus-eager UFO-SM matrices}
+
+The three additional UFO-SM matrices retain exactly the same process grid,
+colour contracts, typography, pagination, and cell geometry, but change the
+comparison pair.  The reference is the existing compiled JIT O3 measurement;
+the candidate is eager-DAG JIT O3.  No \AC{} measurement is repeated or used
+in these pages.  For a timing quantity $T$, their displayed multiplier is
+therefore
+\begin{equation}
+  r_{\mathrm{eager/compiled}}
+  = \frac{T_{\mathrm{eager\mbox{-}DAG\ JIT\ O3}}}
+         {T_{\mathrm{compiled\ JIT\ O3}}}.
+  \label{eq:eager-matrix-time-ratio}
+\end{equation}
+The same green, orange, and red thresholds apply, so green now means that
+eager-DAG execution or generation is faster than compiled execution or
+generation.
+
+In an LC eager cell, the upper-left reference slot contains the two compiled
+generation times as \texttt{selected/all-flow}.  Compiled mode specializes and
+generates these two artifacts independently.  Eager mode instead generates
+one complete process DAG whose invocation tables support both runtime
+selectors.  Its one process-generation time is consequently compared once
+with each compiled generation time and is displayed in both candidate
+generation slots.  The lower-left slot retains the two absolute compiled
+Rusticol-core wall times.  Each candidate \texttt{(xwall$\mid$eval)} pair is
+the eager core-wall and eager evaluator-only time divided by the matching
+compiled core-wall time.  NLC and full colour use the same four-field layout
+as before, with one compiled generation/runtime reference and one eager
+generation plus wall/evaluator ratio pair.
+
+The eager process-generation timer starts from an already prepared UFO-SM
+model bundle.  Preparing its reusable JIT O3 canonical-kernel pack is an
+architecture-specific, model-level operation: the report records that setup
+cost and its ABI provenance separately, and excludes it from every process
+cell.  Pointwise validation uses the same deterministic phase-space point,
+parameters, colour contract, and selectors as the joined compiled entry.
+For LC, both the selected-flow/helicity-sum and all-flows/fixed-helicity
+observables must agree; NLC and full colour compare the contracted total.
+
 \clearpage
 \input{result_matrix_builtin_sm_lc_table.tex}
 \ReportMatrixLegend
@@ -433,6 +474,18 @@ because \AC{} has no corresponding evaluator-only timing split.
 \input{result_matrix_external_sm_full_table.tex}
 \ReportMatrixLegend
 \ReportLandscapeFooter
+\clearpage
+\input{result_matrix_external_sm_eager_lc_table.tex}
+\ReportEagerMatrixLegend
+\ReportLandscapeFooter
+\clearpage
+\input{result_matrix_external_sm_eager_nlc_table.tex}
+\ReportEagerMatrixLegend
+\ReportLandscapeFooter
+\clearpage
+\input{result_matrix_external_sm_eager_full_table.tex}
+\ReportEagerMatrixLegend
+\ReportLandscapeFooter
 \end{landscape}
 \clearpage
 \pagestyle{empty}
@@ -440,11 +493,22 @@ because \AC{} has no corresponding evaluator-only timing split.
 \section{Z-plus-Jets Evaluator Ladders}
 
 The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
-with JIT level 1, JIT level 3, ASM O3, and C++ O3 evaluator configurations. They retain
+with compiled JIT level 1, compiled JIT level 3, eager-DAG JIT O3, ASM O3, and
+C++ O3 evaluator configurations. They retain
 final-state multiplicities $n=1,\ldots,9$ for both the built-in model and
 the UFO-SM campaign. Each row states its evaluator backend
 and optimization level explicitly; all other workload settings follow the
 benchmark contract above.
+
+The eager row starts from the corresponding prepared model bundle and creates
+one complete process artifact.  Its single generation time is repeated in the
+selected-flow/helicity-sum and all-flows/fixed-helicity workload blocks, while
+the two runtime measurements apply their selectors independently to that same
+artifact.  The displayed Z-ladder ratios continue to use original \AC{} as the
+reference.  In addition, each eager row is checked pointwise against compiled
+JIT O3 at the same selectors with the stricter eager-comparison tolerance.
+Prepared-model creation is excluded from the process-generation entry and
+retained as separate provenance.
 
 Runtime comparisons between these backends also include their present
 vectorization strategy. The SymJIT application evaluates a batch with SIMD

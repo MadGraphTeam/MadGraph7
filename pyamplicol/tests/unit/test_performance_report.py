@@ -63,7 +63,7 @@ def test_generation_slice_import_guard_restores_repo_root() -> None:
 
 def test_checked_in_caches_match_schema_and_are_reset_to_na() -> None:
     caches = report.load_caches(report.ReportPaths(DOCS))
-    assert len(caches) == 10
+    assert len(caches) == 13
     assert (
         json.loads(
             (DOCS / "results" / "report-cache.schema.json").read_text(encoding="utf-8")
@@ -82,6 +82,12 @@ def test_checked_in_caches_match_schema_and_are_reset_to_na() -> None:
                 assert "runtime_multiplier" in entry
                 assert "pointwise_validation" in entry
                 assert "parameter_alignment" in entry
+            elif payload["kind"] == report.CacheKind.EAGER_PROCESS_MATRIX:
+                assert "eager_jit_o3" in entry
+                assert "pointwise_validation" in entry
+                assert "selector_contract" in entry
+                assert "legacy_amplicol" not in entry
+                assert "pyamplicol_jit_o3" not in entry
             else:
                 assert "measurement" in entry
                 if payload["kind"] == report.CacheKind.MODEL_LADDER:
@@ -102,6 +108,14 @@ def test_reset_caches_are_canonical_na() -> None:
                 assert _measurement_is_na(entry["pyamplicol"])
                 assert entry["generation_multiplier"] is None
                 assert entry["runtime_multiplier"] is None
+                assert entry["relative_difference"] is None
+            elif payload["kind"] == report.CacheKind.EAGER_PROCESS_MATRIX:
+                assert _measurement_is_na(entry["eager_jit_o3"])
+                assert entry["pointwise_validation"] == report._empty_validation()
+                assert (
+                    entry["selector_contract"]
+                    == report._empty_eager_selector_contract()
+                )
                 assert entry["relative_difference"] is None
             else:
                 assert _measurement_is_na(entry["measurement"])

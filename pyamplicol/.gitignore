@@ -48,6 +48,7 @@ src/pyamplicol/assets/selftest/*/
 # Generated process and benchmark output
 outputs/
 docs/.result_outputs/
+docs/results/*.lock
 docs/*.aux
 docs/*.bbl
 docs/*.bcf
