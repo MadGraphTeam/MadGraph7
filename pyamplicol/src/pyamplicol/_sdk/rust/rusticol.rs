@@ -281,6 +281,10 @@ impl Runtime {
         self.get_string(ffi::runtime_metadata_json)
     }
 
+    pub fn execution_mode(&self) -> Result<String> {
+        self.get_string(ffi::runtime_execution_mode)
+    }
+
     pub fn physics_json(&self) -> Result<String> {
         self.get_string(ffi::runtime_physics_json)
     }
@@ -843,6 +847,12 @@ mod ffi {
             capacity: usize,
             required: *mut usize,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_execution_mode(
+            handle: *const RuntimeHandle,
+            buffer: *mut c_char,
+            capacity: usize,
+            required: *mut usize,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_physics_json(
             handle: *const RuntimeHandle,
             buffer: *mut c_char,
@@ -999,6 +1009,7 @@ mod ffi {
     pub(super) use rusticol_runtime_color_word as runtime_color_word;
     pub(super) use rusticol_runtime_evaluate_f64 as runtime_evaluate_f64;
     pub(super) use rusticol_runtime_evaluate_resolved_f64 as runtime_evaluate_resolved_f64;
+    pub(super) use rusticol_runtime_execution_mode as runtime_execution_mode;
     pub(super) use rusticol_runtime_external_count as runtime_external_count;
     pub(super) use rusticol_runtime_external_pdg as runtime_external_pdg;
     pub(super) use rusticol_runtime_free as runtime_free;

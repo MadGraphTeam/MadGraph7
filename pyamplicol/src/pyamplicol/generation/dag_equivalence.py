@@ -10,11 +10,13 @@ recursive computation instead of guessing them from particle names or PDGs.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from math import fsum
 from typing import TypeAlias
 
 from ..models.base import Model, VertexEvaluationEquivalence
+from .contracts import runtime_coupling_parameter_names
 from .dag_types import CurrentNode, GenericDAG, InteractionNode
 
 _ComplexWeight: TypeAlias = tuple[float, float]
@@ -29,6 +31,173 @@ class _CurrentValueEquivalence:
 
     representative_id: int
     factor: _ComplexWeight
+
+
+class RecursiveEvaluationReuseTracker:
+    """Certify recursive-current reuse as external subsets are completed."""
+
+    def __init__(self, model: Model) -> None:
+        self._model = model
+        self._kernel_equivalences: dict[int, VertexEvaluationEquivalence] = {}
+        self._runtime_coupling_identities: dict[
+            tuple[int, tuple[int, int, int], tuple[float, float]],
+            tuple[tuple[float, float], tuple[tuple[int, str], ...]],
+        ] = {}
+        self._current_equivalences: list[_CurrentValueEquivalence] = []
+        self._source_representative_by_key: dict[tuple[object, ...], int] = {}
+        self._representative_by_expression: dict[
+            tuple[_CurrentContract, _CurrentTermVector], int
+        ] = {}
+        self._evaluation_group_by_key: dict[_EvaluationKey, int] = {}
+        self._coefficients_by_result: list[
+            dict[int, _ComplexWeight | list[_ComplexWeight]] | None
+        ] = []
+
+    def register_source(self, current: CurrentNode) -> None:
+        if not current.is_source:
+            raise ValueError("recursive-reuse source registration requires a source")
+        if current.source_leg_label is None or current.source_helicity is None:
+            raise ValueError(
+                f"source current {current.id} lacks physical source metadata"
+            )
+        contract = _current_evaluation_contract(current)
+        source_key = (
+            contract,
+            int(current.source_leg_label),
+            int(current.source_helicity),
+        )
+        representative_id = self._source_representative_by_key.setdefault(
+            source_key,
+            current.id,
+        )
+        self._append_current_equivalence(
+            current,
+            _CurrentValueEquivalence(representative_id, (1.0, 0.0)),
+        )
+
+    def interaction_evaluation(
+        self,
+        *,
+        vertex_kind: int,
+        vertex_particles: tuple[int, int, int],
+        left_id: int,
+        right_id: int,
+        result: CurrentNode,
+        coupling: tuple[float, float],
+        color_weight: _ComplexWeight,
+    ) -> tuple[int, _ComplexWeight]:
+        kernel_equivalence = _kernel_equivalence(
+            self._model,
+            vertex_kind,
+            self._kernel_equivalences,
+        )
+        try:
+            left = self._current_equivalences[left_id]
+            right = self._current_equivalences[right_id]
+        except IndexError as error:
+            raise ValueError(
+                "online recursive reuse requires completed parent subsets"
+            ) from error
+        canonical_inputs, kernel_factor = _canonical_kernel_evaluation(
+            kernel_equivalence,
+            left.representative_id,
+            right.representative_id,
+        )
+        coupling_key = (vertex_kind, vertex_particles, coupling)
+        coupling_identity = self._runtime_coupling_identities.get(coupling_key)
+        if coupling_identity is None:
+            coupling_identity = _runtime_coupling_identity(
+                self._model,
+                vertex_kind=vertex_kind,
+                vertex_particles=vertex_particles,
+                coupling=coupling,
+            )
+            self._runtime_coupling_identities[coupling_key] = coupling_identity
+        evaluation_key = (
+            kernel_equivalence.class_id,
+            canonical_inputs,
+            int(result.index.particle_id),
+            int(result.index.chirality),
+            coupling_identity,
+        )
+        evaluation_group_id = self._evaluation_group_by_key.setdefault(
+            evaluation_key,
+            len(self._evaluation_group_by_key),
+        )
+        evaluation_factor = _complex_weight_mul(
+            kernel_factor,
+            _complex_weight_mul(left.factor, right.factor),
+        )
+        if result.id >= len(self._coefficients_by_result):
+            self._coefficients_by_result.extend(
+                [None] * (result.id + 1 - len(self._coefficients_by_result))
+            )
+        coefficients_by_group = self._coefficients_by_result[result.id]
+        if coefficients_by_group is None:
+            coefficients_by_group = {}
+            self._coefficients_by_result[result.id] = coefficients_by_group
+        coefficient = _complex_weight_mul(color_weight, evaluation_factor)
+        coefficients = coefficients_by_group.get(evaluation_group_id)
+        if coefficients is None:
+            coefficients_by_group[evaluation_group_id] = coefficient
+        elif isinstance(coefficients, list):
+            coefficients.append(coefficient)
+        else:
+            coefficients_by_group[evaluation_group_id] = [coefficients, coefficient]
+        return evaluation_group_id, evaluation_factor
+
+    def finalize_currents(
+        self,
+        currents: Iterable[CurrentNode],
+    ) -> None:
+        for current in currents:
+            if current.is_source:
+                raise ValueError("generated-current finalization received a source")
+            coefficients_by_group = self._coefficients_by_result[current.id]
+            self._coefficients_by_result[current.id] = None
+            terms: list[tuple[_EvaluationKey, _ComplexWeight]] = []
+            for group_id in sorted(coefficients_by_group or ()):
+                assert coefficients_by_group is not None
+                coefficients = coefficients_by_group[group_id]
+                if isinstance(coefficients, list):
+                    coefficient = (
+                        _canonical_zero(fsum(value[0] for value in coefficients)),
+                        _canonical_zero(fsum(value[1] for value in coefficients)),
+                    )
+                else:
+                    coefficient = coefficients
+                if coefficient != (0.0, 0.0):
+                    terms.append(((group_id,), coefficient))
+            term_vector = tuple(terms)
+            contract = _current_evaluation_contract(current)
+            expression_key = (contract, term_vector)
+            representative_id = self._representative_by_expression.get(expression_key)
+            factor: _ComplexWeight = (1.0, 0.0)
+            if representative_id is None:
+                opposite_key = (contract, _negate_term_vector(term_vector))
+                representative_id = self._representative_by_expression.get(opposite_key)
+                if representative_id is not None:
+                    factor = (-1.0, 0.0)
+            if representative_id is None:
+                representative_id = current.id
+                self._representative_by_expression[expression_key] = representative_id
+            self._append_current_equivalence(
+                current,
+                _CurrentValueEquivalence(representative_id, factor),
+            )
+
+    def _append_current_equivalence(
+        self,
+        current: CurrentNode,
+        equivalence: _CurrentValueEquivalence,
+    ) -> None:
+        if current.id != len(self._current_equivalences):
+            raise ValueError(
+                "online recursive reuse requires currents in contiguous ID order"
+            )
+        self._current_equivalences.append(equivalence)
+        if current.id >= len(self._coefficients_by_result):
+            self._coefficients_by_result.append(None)
 
 
 def _canonical_kernel_evaluation(
@@ -104,7 +273,12 @@ def assign_recursive_current_evaluation_reuse(
             canonical_inputs,
             int(result.index.particle_id),
             int(result.index.chirality),
-            interaction.coupling,
+            _runtime_coupling_identity(
+                model,
+                vertex_kind=interaction.vertex_kind,
+                vertex_particles=interaction.vertex_particles,
+                coupling=interaction.coupling,
+            ),
         )
         evaluation_group_id = evaluation_group_by_key.setdefault(
             evaluation_key,
@@ -137,16 +311,14 @@ def _derive_current_value_equivalences(
 ) -> tuple[_CurrentValueEquivalence, ...]:
     """Derive current classes in increasing external-subset order."""
 
-    kernel_equivalences = (
-        {} if equivalence_by_kind is None else equivalence_by_kind
-    )
+    kernel_equivalences = {} if equivalence_by_kind is None else equivalence_by_kind
     interactions_by_result: dict[int, list[InteractionNode]] = defaultdict(list)
     for interaction in dag.interactions:
         interactions_by_result[interaction.result_id].append(interaction)
 
-    current_equivalences: list[_CurrentValueEquivalence | None] = [
-        None
-    ] * len(dag.currents)
+    current_equivalences: list[_CurrentValueEquivalence | None] = [None] * len(
+        dag.currents
+    )
     source_representative_by_key: dict[tuple[object, ...], int] = {}
     representative_by_expression: dict[
         tuple[_CurrentContract, _CurrentTermVector], int
@@ -187,18 +359,18 @@ def _derive_current_value_equivalences(
             equivalence_by_kind=kernel_equivalences,
         )
         expression_key = (contract, term_vector)
-        representative_id = representative_by_expression.get(expression_key)
+        current_representative_id = representative_by_expression.get(expression_key)
         factor: _ComplexWeight = (1.0, 0.0)
-        if representative_id is None:
+        if current_representative_id is None:
             opposite_key = (contract, _negate_term_vector(term_vector))
-            representative_id = representative_by_expression.get(opposite_key)
-            if representative_id is not None:
+            current_representative_id = representative_by_expression.get(opposite_key)
+            if current_representative_id is not None:
                 factor = (-1.0, 0.0)
-        if representative_id is None:
-            representative_id = current.id
-            representative_by_expression[expression_key] = representative_id
+        if current_representative_id is None:
+            current_representative_id = current.id
+            representative_by_expression[expression_key] = current_representative_id
         current_equivalences[current.id] = _CurrentValueEquivalence(
-            representative_id=representative_id,
+            representative_id=current_representative_id,
             factor=factor,
         )
 
@@ -261,7 +433,12 @@ def _current_term_vector(
             canonical_inputs,
             int(current.index.particle_id),
             int(current.index.chirality),
-            interaction.coupling,
+            _runtime_coupling_identity(
+                model,
+                vertex_kind=interaction.vertex_kind,
+                vertex_particles=interaction.vertex_particles,
+                coupling=interaction.coupling,
+            ),
         )
         input_factor = _complex_weight_mul(left.factor, right.factor)
         coefficient = _complex_weight_mul(
@@ -271,14 +448,14 @@ def _current_term_vector(
         coefficients_by_key[term_key].append(coefficient)
 
     terms: list[tuple[_EvaluationKey, _ComplexWeight]] = []
-    for term_key in sorted(coefficients_by_key):
-        coefficients = coefficients_by_key[term_key]
+    for grouped_term_key in sorted(coefficients_by_key):
+        coefficients = coefficients_by_key[grouped_term_key]
         coefficient = (
             _canonical_zero(fsum(value[0] for value in coefficients)),
             _canonical_zero(fsum(value[1] for value in coefficients)),
         )
         if coefficient != (0.0, 0.0):
-            terms.append((term_key, coefficient))
+            terms.append((grouped_term_key, coefficient))
     return tuple(terms)
 
 
@@ -293,11 +470,28 @@ def _kernel_equivalence(
     equivalence = model.vertex_evaluation_equivalence(kind)
     if not equivalence.verified:
         model_type = f"{type(model).__module__}.{type(model).__qualname__}"
-        equivalence = VertexEvaluationEquivalence(
-            class_id=f"{model_type}:{int(kind)}"
-        )
+        equivalence = VertexEvaluationEquivalence(class_id=f"{model_type}:{int(kind)}")
     cache[kind] = equivalence
     return equivalence
+
+
+def _runtime_coupling_identity(
+    model: Model,
+    *,
+    vertex_kind: int,
+    vertex_particles: tuple[int, int, int],
+    coupling: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[tuple[int, str], ...]]:
+    """Return defaults plus stable mutable-parameter provenance for reuse."""
+
+    names = runtime_coupling_parameter_names(
+        vertex_kind,
+        vertex_particles,
+        coupling,
+        model=model,
+    )
+    provenance = tuple((0, "") if name is None else (1, str(name)) for name in names)
+    return coupling, provenance
 
 
 def _negate_term_vector(vector: _CurrentTermVector) -> _CurrentTermVector:
@@ -318,4 +512,7 @@ def _canonical_zero(value: float) -> float:
     return 0.0 if value == 0.0 else value
 
 
-__all__ = ["assign_recursive_current_evaluation_reuse"]
+__all__ = [
+    "RecursiveEvaluationReuseTracker",
+    "assign_recursive_current_evaluation_reuse",
+]

@@ -557,6 +557,7 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
     let runtime = NativeRuntime {
         root: PathBuf::new(),
         runtime: execution,
+        execution_lane: NativeExecutionLane::Compiled,
         process: alias.expression,
         process_key: alias.id,
         input_crossing_map: Some(crossing_map),
@@ -725,6 +726,7 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
         let mut runtime = NativeRuntime {
             root: PathBuf::new(),
             runtime: execution,
+            execution_lane: NativeExecutionLane::Compiled,
             process: "x x > y".to_string(),
             process_key: "x_x_to_y".to_string(),
             input_crossing_map: None,

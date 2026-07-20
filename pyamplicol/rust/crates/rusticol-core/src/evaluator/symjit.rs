@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::super::*;
+use std::any::Any;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use symjit::{Applet, Application, Config, Defuns, Storage};
 
 pub(crate) struct SymjitApplicationEvaluator {
     applet: Applet,
+    application_path: PathBuf,
     input_len: usize,
     output_len: usize,
 }
@@ -13,6 +16,7 @@ impl std::fmt::Debug for SymjitApplicationEvaluator {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("SymjitApplicationEvaluator")
+            .field("application_path", &self.application_path)
             .field("input_len", &self.input_len)
             .field("output_len", &self.output_len)
             .finish_non_exhaustive()
@@ -52,16 +56,34 @@ impl SymjitApplicationEvaluator {
         // JITCompiledEvaluator::load.
         let mut loader_config = Config::default();
         loader_config.set_defuns(Defuns::new());
-        let application =
-            Application::load(&mut bytes.as_slice(), &loader_config).map_err(|error| {
+        let application = guard_symjit_panic(
+            || Application::load(&mut bytes.as_slice(), &loader_config),
+            |detail| {
                 RusticolError::compatibility(format!(
-                    "could not load SymJIT application {} with ABI {}: {error}",
+                    "SymJIT panicked while loading application {} with ABI {}: {detail}",
                     path.display(),
                     SYMJIT_APPLICATION_STORAGE_ABI
                 ))
-            })?;
+            },
+        )?
+        .map_err(|error| {
+            RusticolError::compatibility(format!(
+                "could not load SymJIT application {} with ABI {}: {error}",
+                path.display(),
+                SYMJIT_APPLICATION_STORAGE_ABI
+            ))
+        })?;
         validate_loaded_application(path, &application, &metadata)?;
-        let applet = application.seal().map_err(|error| {
+        let applet = guard_symjit_panic(
+            || application.seal(),
+            |detail| {
+                RusticolError::compatibility(format!(
+                    "SymJIT panicked while sealing application {}: {detail}",
+                    path.display()
+                ))
+            },
+        )?
+        .map_err(|error| {
             RusticolError::evaluation(format!(
                 "could not seal SymJIT application {}: {error}",
                 path.display()
@@ -69,6 +91,7 @@ impl SymjitApplicationEvaluator {
         })?;
         Ok(Self {
             applet,
+            application_path: path.to_path_buf(),
             input_len: metadata.input_len,
             output_len: metadata.output_len,
         })
@@ -89,8 +112,33 @@ impl SymjitApplicationEvaluator {
         )?;
         let params = complex_slice_as_scalars(params);
         let out = complex_slice_as_scalars_mut(out);
-        self.applet.evaluate_matrix(params, out, batch_size);
+        guard_symjit_panic(
+            || self.applet.evaluate_matrix(params, out, batch_size),
+            |detail| {
+                RusticolError::evaluation(format!(
+                    "SymJIT panicked while evaluating application {}: {detail}",
+                    self.application_path.display()
+                ))
+            },
+        )?;
         Ok(())
+    }
+}
+
+fn guard_symjit_panic<T>(
+    operation: impl FnOnce() -> T,
+    error: impl FnOnce(String) -> RusticolError,
+) -> RusticolResult<T> {
+    catch_unwind(AssertUnwindSafe(operation)).map_err(|payload| error(panic_detail(payload)))
+}
+
+fn panic_detail(payload: Box<dyn Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_string()
     }
 }
 
@@ -601,6 +649,16 @@ mod tests {
         let error = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap_err();
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn symjit_panic_payloads_retain_dependency_context() {
+        assert_eq!(
+            panic_detail(Box::new(String::from(
+                "architecture-specific register allocation"
+            ))),
+            "architecture-specific register allocation"
+        );
     }
 
     #[test]

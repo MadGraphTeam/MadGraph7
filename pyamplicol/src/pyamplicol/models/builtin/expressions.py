@@ -265,6 +265,22 @@ def _expr_fermion_vector_weyl(
     raise ValueError("fermion-vector Weyl kernel needs nonzero chirality")
 
 
+def _embed_weyl_current_in_dirac(
+    current: tuple[Any, ...],
+    chirality: int,
+) -> tuple[Any, ...]:
+    """Embed a massless chiral current in the built-in Dirac basis."""
+
+    if len(current) != 2:
+        raise ValueError("Weyl-to-Dirac embedding expects two components")
+    zero = current[0] * 0
+    if chirality == -1:
+        return (*current, zero, zero)
+    if chirality == 1:
+        return (zero, zero, *current)
+    raise ValueError("Weyl-to-Dirac embedding needs nonzero chirality")
+
+
 def _expr_fermion_vector_dirac(
     fermion: tuple[Any, ...],
     vector: tuple[Any, ...],

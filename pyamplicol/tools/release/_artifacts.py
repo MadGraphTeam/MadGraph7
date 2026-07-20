@@ -49,7 +49,12 @@ from _common import (
     safe_extract_sdist,
     sha256,
 )
-from audit_sdist import REQUIRED_SDIST_MEMBERS
+from audit_sdist import (
+    PREPARED_MODEL_ARCHITECTURES,
+    PREPARED_MODEL_ASSET_BASENAME,
+    REQUIRED_SDIST_MEMBERS,
+    prepared_model_asset_members,
+)
 
 MAX_WHEEL_BYTES = 95_000_000
 EXPECTED_DISTRIBUTION = "pyamplicol"
@@ -158,9 +163,21 @@ _REQUIRED_PACKAGED_EXAMPLE_MEMBERS = {
     "pyamplicol/_examples/data/pp_zjj_momenta.json",
 }
 _REQUIRED_API_TEMPLATE_MEMBERS = {
+    "pyamplicol/assets/api_templates/c/Makefile",
+    "pyamplicol/assets/api_templates/c/check_standalone.c",
+    "pyamplicol/assets/api_templates/cpp/Makefile",
+    "pyamplicol/assets/api_templates/cpp/check_standalone.cpp",
+    "pyamplicol/assets/api_templates/fortran/Makefile",
+    "pyamplicol/assets/api_templates/fortran/check_standalone.f90",
+    "pyamplicol/assets/api_templates/python/check_standalone.py",
     "pyamplicol/assets/api_templates/rust/Makefile",
     "pyamplicol/assets/api_templates/rust/check_standalone.rs",
 }
+_PREPARED_MODEL_WHEEL_PREFIX = "pyamplicol/assets/prepared_models"
+_PREPARED_MODEL_SDIST_PREFIX = "src/pyamplicol/assets/prepared_models"
+_REQUIRED_PREPARED_MODEL_WHEEL_MEMBERS = prepared_model_asset_members(
+    _PREPARED_MODEL_WHEEL_PREFIX
+)
 _REQUIRED_WHEEL_PACKAGE_MEMBERS = {
     "pyamplicol/__init__.py",
     "pyamplicol/_rusticol.pyi",
@@ -168,11 +185,14 @@ _REQUIRED_WHEEL_PACKAGE_MEMBERS = {
     *_REQUIRED_API_TEMPLATE_MEMBERS,
     *_REQUIRED_PACKAGED_EXAMPLE_MEMBERS,
     *_REQUIRED_PACKAGE_RESOURCES,
+    *_REQUIRED_PREPARED_MODEL_WHEEL_MEMBERS,
     *_REQUIRED_SDK_PATHS,
 }
 _REQUIRED_SELFTEST_API_PAYLOADS = {
     "API/validation_points.dat",
     "API/python/check_standalone.py",
+    "API/c/Makefile",
+    "API/c/check_standalone.c",
     "API/cpp/Makefile",
     "API/cpp/check_standalone.cpp",
     "API/fortran/Makefile",
@@ -589,6 +609,156 @@ def _json_object(entries: dict[str, bytes], name: str) -> dict[str, Any]:
     return payload
 
 
+def _validate_prepared_model_assets(
+    entries: dict[str, bytes],
+    *,
+    prefix: str,
+    mode: str,
+) -> None:
+    abis = _dependency_lock().get("abis")
+    if not isinstance(abis, dict):
+        raise ArtifactError("dependency lock has no ABI inventory")
+    expected = prepared_model_asset_members(prefix)
+    prepared_prefix = f"{prefix.rstrip('/')}/"
+    actual = {name for name in entries if name.startswith(prepared_prefix)}
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise ArtifactError(
+            "prepared-model asset inventory mismatch; "
+            f"missing={missing}, extra={extra}"
+        )
+
+    for architecture in PREPARED_MODEL_ARCHITECTURES:
+        stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
+        metadata_name = f"{prepared_prefix}{stem}.metadata.json"
+        bundle_name = f"{prepared_prefix}{stem}.pyamplicol-model"
+        metadata = _json_object(entries, metadata_name)
+        if (
+            metadata.get("schema_version") != 1
+            or metadata.get("prepared_model_bundle_schema")
+            != abis.get("prepared_model_bundle")
+            or metadata.get("eager_kernel_abi") != abis.get("eager_kernel")
+            or metadata.get("id") != PREPARED_MODEL_ASSET_BASENAME
+            or metadata.get("model") != "built-in-sm"
+            or metadata.get("backend") != "jit"
+            or metadata.get("jit_optimization_level") != 3
+            or metadata.get("bundle") != PurePosixPath(bundle_name).name
+        ):
+            raise ArtifactError(
+                f"prepared-model metadata identity is invalid: {metadata_name}"
+            )
+
+        dependencies = metadata.get("dependencies")
+        if (
+            not isinstance(dependencies, dict)
+            or dependencies.get("symjit_application_abi")
+            != abis.get("symjit_application")
+            or dependencies.get("symbolica_serialization_abi")
+            != abis.get("symbolica_serialization")
+        ):
+            raise ArtifactError(
+                f"prepared-model SymJIT storage ABI is invalid: {metadata_name}"
+            )
+
+        build_contract = metadata.get("build_contract")
+        if (
+            not isinstance(build_contract, dict)
+            or build_contract.get("mode") != mode
+        ):
+            raise ArtifactError(
+                f"prepared-model build mode is invalid: {metadata_name}"
+            )
+        producer = metadata.get("producer")
+        package_root = PurePosixPath(prefix).parents[1]
+        if (
+            not isinstance(producer, dict)
+            or producer.get("prepared_pack_compiler_sha256")
+            != _prepared_pack_compiler_digest(entries, package_root=package_root)
+        ):
+            raise ArtifactError(
+                f"prepared-model payload compiler digest is stale: {metadata_name}"
+            )
+
+        expected_target = {
+            "portable": False,
+            "word_bits": 64,
+            "endianness": "little",
+            "target_triple": f"symjit-storage-v3-{architecture}",
+            "cpu_features": [],
+        }
+        if metadata.get("target") != expected_target:
+            raise ArtifactError(
+                f"prepared-model target class is invalid: {metadata_name}"
+            )
+
+        bundle = entries[bundle_name]
+        claimed_size = metadata.get("bundle_size")
+        claimed_digest = metadata.get("bundle_sha256")
+        if (
+            not bundle
+            or type(claimed_size) is not int
+            or claimed_size != len(bundle)
+            or not isinstance(claimed_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", claimed_digest)
+            or claimed_digest != hashlib.sha256(bundle).hexdigest()
+        ):
+            raise ArtifactError(
+                f"prepared-model bundle hash/size is invalid: {bundle_name}"
+            )
+
+
+def _prepared_pack_compiler_digest(
+    entries: dict[str, bytes],
+    *,
+    package_root: PurePosixPath,
+) -> str:
+    model_root = package_root / "models"
+    evaluator_root = package_root / "evaluators"
+    config_root = package_root / "config"
+    exact = {
+        package_root / "_internal" / "physics" / "symbols.py",
+        package_root / "_internal" / "versions.py",
+    }
+    required = {
+        model_root / "prepared.py",
+        model_root / "prepared_compile.py",
+        evaluator_root / "symbolica_compile.py",
+        config_root / "models.py",
+        *exact,
+    }
+    source_names = []
+    for name in entries:
+        path = PurePosixPath(name)
+        if path in exact or (
+            path.suffix == ".py"
+            and (
+                (path.parent == model_root and path.name.startswith("prepared"))
+                or (
+                    path.parent == evaluator_root
+                    and path.name.startswith("symbolica")
+                )
+                or path.parent == config_root
+            )
+        ):
+            source_names.append(name)
+    missing = sorted(
+        path.as_posix() for path in required if path.as_posix() not in entries
+    )
+    if missing:
+        raise ArtifactError(
+            "artifact is missing prepared-pack compiler fingerprint sources: "
+            + ", ".join(missing)
+        )
+    digest = hashlib.sha256()
+    for name in sorted(source_names):
+        relative = PurePosixPath(name).relative_to(package_root).as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(entries[name])
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def _wheel_model_compiler_digest(entries: dict[str, bytes]) -> str:
     package_root = PurePosixPath("pyamplicol")
     model_root = package_root / "models"
@@ -978,7 +1148,7 @@ def _validate_selftest_fixture(
     missing_api_payloads = sorted(_REQUIRED_SELFTEST_API_PAYLOADS - declared)
     if missing_api_payloads:
         raise ArtifactError(
-            "wheel self-test artifact is missing four-language API payloads: "
+            "wheel self-test artifact is missing five-language API payloads: "
             + ", ".join(missing_api_payloads)
         )
     if direct_symjit == 0:
@@ -995,6 +1165,11 @@ def _validate_wheel_inventory(
     rust_target: str,
     mode: str,
 ) -> None:
+    _validate_prepared_model_assets(
+        entries,
+        prefix=_PREPARED_MODEL_WHEEL_PREFIX,
+        mode=mode,
+    )
     expected = set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
     expected.add(extension_name)
     if mode == "candidate":
@@ -1468,6 +1643,11 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
             if item.is_file()
         }
         _validate_sdist_inventory(set(relative_files))
+        _validate_prepared_model_assets(
+            {name: item.read_bytes() for name, item in relative_files.items()},
+            prefix=_PREPARED_MODEL_SDIST_PREFIX,
+            mode="release",
+        )
         cargo = relative_files["Cargo.toml"].read_text(encoding="utf-8")
         match = re.search(r'(?m)^version = "([^"]+)"$', cargo)
         if match is None:

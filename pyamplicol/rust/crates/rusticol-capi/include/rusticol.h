@@ -56,6 +56,12 @@ int rusticol_runtime_metadata_json(
     size_t capacity,
     size_t *required
 );
+int rusticol_runtime_execution_mode(
+    const RusticolRuntimeHandle *handle,
+    char *buffer,
+    size_t capacity,
+    size_t *required
+);
 int rusticol_runtime_physics_json(
     const RusticolRuntimeHandle *handle,
     char *buffer,

@@ -28,7 +28,6 @@ def build_runtime_amplitude_stage(
     multiple_lc_sectors = _has_multiple_lc_root_sectors(dag)
     roots: list[dict[str, object]] = []
     group_weights: dict[int, tuple[float, float]] = {}
-
     for output_index, root in enumerate(dag.amplitude_roots):
         group_id = group_ids[root.id]
         all_sector_weight = _root_all_sector_weight(

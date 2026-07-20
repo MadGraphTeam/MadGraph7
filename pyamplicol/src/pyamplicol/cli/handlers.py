@@ -7,8 +7,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from pyamplicol.api.errors import ConfigurationError
-from pyamplicol.config import ConfigResolution, RunConfig
-from pyamplicol.reporting import ProgressSink
+from pyamplicol.config import ConfigResolution, EvaluatorConfig, RunConfig
+from pyamplicol.reporting import (
+    ProgressEnd,
+    ProgressSink,
+    ProgressStart,
+    ProgressUpdate,
+)
 
 if TYPE_CHECKING:
     from pyamplicol.api import ModelSource, ProcessSet
@@ -258,20 +263,91 @@ class DefaultCliServices:
         )
 
     def model_compile(self, config: RunConfig, progress: ProgressSink) -> object:
-        del progress
         if config.generation.output is None:
             raise ConfigurationError("model compile requires generation.output")
+        requested_output = config.generation.output
+        prepared_output = requested_output.name.lower().endswith(
+            ".pyamplicol-model"
+        )
+        if not prepared_output and config.evaluator != EvaluatorConfig():
+            raise ConfigurationError(
+                "model compile evaluator settings require an output ending "
+                "with '.pyamplicol-model'; IR-only outputs do not compile kernels"
+            )
         compiled = _compile_configured_model(config, require_supported=True)
-        output = compiled.write(config.generation.output)
-        return {
+        result: dict[str, object] = {
             "model": compiled.name,
             "supported": compiled.supported,
-            "output": str(output),
             "conversion_seconds": compiled.conversion_seconds,
             "phase_timings": dict(compiled.phase_timings),
             "source": dict(compiled.source),
             "capabilities": dict(compiled.capabilities),
         }
+        if not prepared_output:
+            output = compiled.write(requested_output)
+            result["output"] = str(output)
+            return result
+
+        from pyamplicol.models.prepared_compile import prepare_model_bundle
+
+        task_id = "model-prepare"
+        started = False
+
+        def report_preparation(label: str, completed: int, total: int) -> None:
+            nonlocal started
+            if not started:
+                progress.emit(
+                    ProgressStart(
+                        task_id=task_id,
+                        description="Prepare model evaluator kernels",
+                        total=total,
+                    )
+                )
+                started = True
+            progress.emit(
+                ProgressUpdate(
+                    task_id=task_id,
+                    completed=completed,
+                    total=total,
+                    message=label,
+                )
+            )
+
+        try:
+            prepared = prepare_model_bundle(
+                compiled,
+                requested_output,
+                evaluator=config.evaluator,
+                progress=report_preparation,
+            )
+        except BaseException:
+            if started:
+                progress.emit(
+                    ProgressEnd(
+                        task_id=task_id,
+                        success=False,
+                        message="Prepared model compilation failed",
+                    )
+                )
+            raise
+        if started:
+            progress.emit(
+                ProgressEnd(
+                    task_id=task_id,
+                    message="Prepared model compilation complete",
+                )
+            )
+        result.update(
+            {
+                "output": str(prepared.output),
+                "prepared_backend": prepared.bundle.backend,
+                "kernel_count": prepared.kernel_count,
+                "preparation_phase_timings": dict(
+                    prepared.phase_timings_seconds
+                ),
+            }
+        )
+        return result
 
     def model_processes(self, config: RunConfig, progress: ProgressSink) -> object:
         del progress

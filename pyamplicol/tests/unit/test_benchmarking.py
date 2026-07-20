@@ -116,6 +116,46 @@ class _RuntimeWithPerStageProfile(_RuntimeWithProfile):
         return profile
 
 
+class _RuntimeWithEagerProfile(_RuntimeWithProfile):
+    def profile(self, momenta: object, **kwargs: object) -> dict[str, object]:
+        profile = super().profile(momenta, **kwargs)
+        profile["stage_input_pack_by_stage_time_s"] = []
+        profile["stage_evaluator_call_by_stage_time_s"] = []
+        profile["stage_output_assign_by_stage_time_s"] = []
+        profile["stage_evaluator_call_time_s"] = 40.0e-6
+        profile["amplitude_evaluator_call_time_s"] = 0.0
+        return profile
+
+
+class _RuntimeWithDetailedEagerProfile(_RuntimeWithEagerProfile):
+    def profile(self, momenta: object, **kwargs: object) -> dict[str, object]:
+        profile = super().profile(momenta, **kwargs)
+        profile.update(
+            {
+                "execution_mode": "eager",
+                "eager_initialize_time_s": 2.0e-6,
+                "eager_gather_time_s": 4.0e-6,
+                "eager_kernel_call_time_s": 24.0e-6,
+                "eager_invocation_scatter_time_s": 12.0e-6,
+                "eager_finalization_time_s": 20.0e-6,
+                "eager_scatter_finalization_time_s": 32.0e-6,
+                "eager_closure_time_s": 4.0e-6,
+                "eager_copy_out_time_s": 6.0e-6,
+            }
+        )
+        return profile
+
+
+class _RuntimeWithAmplitudeOnlyCompiledProfile(_RuntimeWithProfile):
+    def profile(self, momenta: object, **kwargs: object) -> dict[str, object]:
+        profile = super().profile(momenta, **kwargs)
+        profile["stage_input_pack_by_stage_time_s"] = []
+        profile["stage_evaluator_call_by_stage_time_s"] = []
+        profile["stage_output_assign_by_stage_time_s"] = []
+        profile["stage_evaluator_call_time_s"] = 0.0
+        return profile
+
+
 class _Clock:
     def __init__(self) -> None:
         self.value = 0.0
@@ -425,6 +465,99 @@ def test_benchmark_falls_back_to_valid_per_stage_native_timings() -> None:
     )
 
     assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
+
+
+def test_eager_profile_uses_nonzero_aggregate_when_stage_vectors_are_empty() -> None:
+    runtime = _RuntimeWithEagerProfile()
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=4,
+        warmup_runs=1,
+        minimum_samples=3,
+        helicity_ids=("h0",),
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.evaluator_time_per_point == pytest.approx(10.0e-6)
+    assert result.timing_breakdown is not None
+    assert result.timing_breakdown.execution_mode == "eager"
+    assert result.timing_breakdown.stage_evaluator_call_time is None
+    aggregate = result.timing_breakdown.eager_execution_time
+    assert aggregate is not None
+    assert aggregate.mean_seconds_per_point == pytest.approx(10.0e-6)
+    assert result.timing_breakdown.stage_input_pack_time is None
+    assert result.timing_breakdown.output_assign_time is None
+    assert result.timing_breakdown.amplitude_input_pack_time is None
+    assert result.timing_breakdown.amplitude_evaluator_call_time is None
+    assert result.timing_breakdown.reduction_time is None
+    assert result.timing_breakdown.stages == ()
+
+
+def test_eager_profile_preserves_detailed_native_phase_timings() -> None:
+    runtime = _RuntimeWithDetailedEagerProfile()
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=4,
+        warmup_runs=1,
+        minimum_samples=3,
+        helicity_ids=("h0",),
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    assert breakdown.execution_mode == "eager"
+    assert breakdown.eager_initialize_time is not None
+    assert breakdown.eager_initialize_time.mean_seconds_per_point == pytest.approx(
+        0.5e-6
+    )
+    assert breakdown.eager_gather_time is not None
+    assert breakdown.eager_gather_time.mean_seconds_per_point == pytest.approx(1.0e-6)
+    assert breakdown.eager_kernel_call_time is not None
+    assert breakdown.eager_kernel_call_time.mean_seconds_per_point == pytest.approx(
+        6.0e-6
+    )
+    assert breakdown.eager_invocation_scatter_time is not None
+    invocation_scatter = breakdown.eager_invocation_scatter_time
+    assert invocation_scatter.mean_seconds_per_point == pytest.approx(3.0e-6)
+    assert breakdown.eager_finalization_time is not None
+    assert breakdown.eager_finalization_time.mean_seconds_per_point == pytest.approx(
+        5.0e-6
+    )
+    assert breakdown.eager_scatter_finalization_time is not None
+    assert breakdown.eager_closure_time is not None
+    assert breakdown.eager_copy_out_time is not None
+    assert breakdown.eager_copy_out_time.mean_seconds_per_point == pytest.approx(
+        1.5e-6
+    )
+
+
+def test_empty_stage_vectors_do_not_relabel_compiled_amplitude_only_profile() -> None:
+    runtime = _RuntimeWithAmplitudeOnlyCompiledProfile()
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=4,
+        warmup_runs=1,
+        minimum_samples=3,
+        helicity_ids=("h0",),
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.timing_breakdown is not None
+    assert result.timing_breakdown.execution_mode == "compiled"
+    assert result.evaluator_time_per_point == pytest.approx(1.5e-6)
 
 
 def test_non_f64_benchmark_forwards_precision_without_native_profile() -> None:

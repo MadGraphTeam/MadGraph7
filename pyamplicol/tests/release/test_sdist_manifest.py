@@ -1,10 +1,17 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import sys
 import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "release"))
+
+from audit_sdist import (  # noqa: E402
+    PREPARED_MODEL_SDIST_MEMBERS,
+    REQUIRED_SDIST_MEMBERS,
+)
 
 
 def test_maturin_recursively_includes_every_sdist_source_tree() -> None:
@@ -70,3 +77,16 @@ def test_maturin_generated_sboms_are_disabled() -> None:
         "rust": False,
         "auditwheel": False,
     }
+
+
+def test_sdist_inventory_requires_both_architecture_prepared_packs() -> None:
+    root = "src/pyamplicol/assets/prepared_models"
+    expected = {
+        f"{root}/__init__.py",
+        f"{root}/built-in-sm-jit-o3-aarch64.metadata.json",
+        f"{root}/built-in-sm-jit-o3-aarch64.pyamplicol-model",
+        f"{root}/built-in-sm-jit-o3-x86_64.metadata.json",
+        f"{root}/built-in-sm-jit-o3-x86_64.pyamplicol-model",
+    }
+    assert expected == PREPARED_MODEL_SDIST_MEMBERS
+    assert PREPARED_MODEL_SDIST_MEMBERS <= REQUIRED_SDIST_MEMBERS

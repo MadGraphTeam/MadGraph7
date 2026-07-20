@@ -10,7 +10,7 @@ published on PyPI.
 - Schema-v1 TOML, direct CLI, ordered overrides, typed Python configuration,
   and recorded license/resource adjustments.
 - External UFO/JSON model loading, canonical compiled-model schema 9, and
-  model-compiler policy version 11, including packaged `sm`, `scalars`, and
+  model-compiler policy version 13, including packaged `sm`, `scalars`, and
   `scalar_gravity` assets plus an immutable public compiled-model handle that
   keeps compiler IR private.
 - Multiprocess planning and transactional schema-v3 generation with append,
@@ -19,13 +19,16 @@ published on PyPI.
   names such as `p_p_to_z_j_j_4`.
 - Total/resolved runtime evaluation, selectors, f64 and Python precision
   control, atomic UFO parameter updates, warnings, and typed physics metadata.
-- One generated root API bundle with Python, dependency-free Rust 2021, C++17,
-  and Fortran 2008 drivers.
+- One generated root API bundle with Python, C11, dependency-free Rust 2021,
+  C++17, and Fortran 2008 drivers.
 - Rusticol core, Python extension, C ABI v1, safe Rust source wrapper, C++
   wrapper, Fortran module source, and target-specific static SDK discovery
   through `rusticol-config`.
 - Symbolica-independent f64 execution for direct SymJIT applications and
   target-compatible ASM/C++ compiled evaluators.
+- Opt-in prepared-model eager execution with wheel-owned built-in-SM JIT O3
+  kernels, compact process invocation tables, runtime flow/helicity selectors,
+  fixed reusable workspaces, and the unchanged default compiled lane.
 - `examples list|copy|run`, `config template|resolve`, `doctor`, and installed
   `self-test` utilities.
 - Artifact `inspect` with stable-ID or exact-expression process selection, and

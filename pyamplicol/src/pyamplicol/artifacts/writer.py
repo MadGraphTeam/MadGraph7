@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -35,22 +36,39 @@ class ArtifactBuilder:
         destination: str | Path,
         *,
         mode: ArtifactWriteMode = "error",
+        expected_artifact_id: str | None = None,
     ) -> None:
+        if expected_artifact_id is not None and mode != "append":
+            raise ValueError("expected_artifact_id is valid only for append mode")
         self._transaction = ArtifactTransaction(destination, mode=mode)
+        self._expected_artifact_id = expected_artifact_id
         self.root: Path | None = None
         self._payloads: dict[str, PayloadRecord] = {}
 
     def __enter__(self) -> ArtifactBuilder:
         self.root = self._transaction.__enter__()
-        if self._transaction.mode == "append":
-            existing = self.root / MANIFEST_NAME
-            if existing.is_file():
-                manifest = load_manifest(self.root)
-                self._payloads.update(
-                    (record.path, record) for record in manifest.payloads
-                )
-                existing.unlink()
-        return self
+        try:
+            if self._transaction.mode == "append":
+                existing = self.root / MANIFEST_NAME
+                if existing.is_file():
+                    manifest = load_manifest(self.root)
+                    if (
+                        self._expected_artifact_id is not None
+                        and manifest.artifact_id != self._expected_artifact_id
+                    ):
+                        raise ValueError(
+                            "append artifact changed before the transaction lock was "
+                            "acquired; retry the append"
+                        )
+                    self._payloads.update(
+                        (record.path, record) for record in manifest.payloads
+                    )
+                    existing.unlink()
+            return self
+        except BaseException as error:
+            self._transaction.__exit__(type(error), error, error.__traceback__)
+            self.root = None
+            raise
 
     def _root(self) -> Path:
         if self.root is None:
@@ -145,6 +163,43 @@ class ArtifactBuilder:
             target=target,
             process_id=process_id,
         )
+
+    def discard_payloads(self, relative: str, *, recursive: bool = False) -> None:
+        """Remove an owned payload or payload subtree from the staging snapshot."""
+
+        path_value = normalize_relative_path(relative)
+        if path_value == MANIFEST_NAME:
+            raise ValueError(f"{MANIFEST_NAME} is reserved for the artifact manifest")
+        prefix = path_value.rstrip("/") + "/"
+        owned = tuple(
+            path
+            for path in self._payloads
+            if path == path_value or (recursive and path.startswith(prefix))
+        )
+        for owned_path in owned:
+            path = confined_path(self._root(), owned_path, must_exist=False)
+            if path.is_symlink() or path.is_dir():
+                raise ValueError(
+                    f"artifact payload must be a regular file: {owned_path}"
+                )
+            if path.exists():
+                path.unlink()
+            self._payloads.pop(owned_path, None)
+        if recursive:
+            root = confined_path(self._root(), path_value, must_exist=False)
+            if root.is_symlink():
+                raise ValueError(
+                    f"artifact payload path must not be a symlink: {path_value}"
+                )
+            if root.is_dir():
+                directories = sorted(
+                    (path for path in root.rglob("*") if path.is_dir()),
+                    key=lambda path: len(path.parts),
+                    reverse=True,
+                )
+                for directory in (*directories, root):
+                    with suppress(OSError):
+                        directory.rmdir()
 
     def finalize(
         self,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from fractions import Fraction
+from functools import lru_cache
 
 from .contraction_trace import (
     _check_nlc,
@@ -69,6 +70,60 @@ def _pure_adjoint_color_factor(
         return float(_check_nlc(tuple(jper), tuple(iper)) * NC ** (n_ord - 2))
     if accuracy != "full":
         return 0.0
+    relative = _relative_adjoint_permutation(iper, jper)
+    if relative is not None:
+        return _pure_adjoint_full_factor_by_relative_permutation(
+            relative,
+            n_ord,
+            full_col_acc,
+        )
+    return _pure_adjoint_full_factor_uncached(
+        tuple(iper),
+        tuple(jper),
+        n_ord,
+        full_col_acc,
+    )
+
+
+def _relative_adjoint_permutation(
+    left: tuple[int, ...],
+    right: tuple[int, ...],
+) -> tuple[int, ...] | None:
+    """Canonicalize a trace pair under simultaneous adjoint relabelling."""
+
+    if len(left) != len(right) or len(set(left)) != len(left):
+        return None
+    position = {label: index for index, label in enumerate(left)}
+    try:
+        relative = tuple(position[label] for label in right)
+    except KeyError:
+        return None
+    if len(set(relative)) != len(relative):
+        return None
+    return relative
+
+
+@lru_cache(maxsize=65536)
+def _pure_adjoint_full_factor_by_relative_permutation(
+    relative: tuple[int, ...],
+    n_ord: int,
+    full_col_acc: int,
+) -> float:
+    canonical = tuple(range(len(relative)))
+    return _pure_adjoint_full_factor_uncached(
+        canonical,
+        relative,
+        n_ord,
+        full_col_acc,
+    )
+
+
+def _pure_adjoint_full_factor_uncached(
+    iper: tuple[int, ...],
+    jper: tuple[int, ...],
+    n_ord: int,
+    full_col_acc: int,
+) -> float:
     full_terms = _simplify_trace_terms(
         ((Fraction(1), (tuple(iper), tuple(reversed(jper)))),)
     )

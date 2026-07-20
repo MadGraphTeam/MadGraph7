@@ -460,8 +460,37 @@ def test_candidate_digest_covers_only_contributor_dependency_inputs(
     lock_changed = backend._candidate_digest(*inputs)
     assert lock_changed != first
 
-    inputs[1].write_text("[patch.crates-io]\n# changed\n", encoding="utf-8")
-    assert backend._candidate_digest(*inputs) not in {first, lock_changed}
+    checkout = tmp_path / "dependencies" / "checkouts" / "symbolica"
+    inputs[1].write_text(
+        "[patch.crates-io]\n"
+        f'symbolica = {{ path = "{checkout}" }}\n',
+        encoding="utf-8",
+    )
+    config_changed = backend._candidate_digest(*inputs)
+    assert config_changed not in {first, lock_changed}
+
+    relocated = tmp_path / "other-root" / "dependencies" / "checkouts" / "symbolica"
+    inputs[1].write_text(
+        "# checkout location must not affect dependency identity\n"
+        "[patch.crates-io]\n"
+        f'symbolica = {{ path = "{relocated}" }}\n',
+        encoding="utf-8",
+    )
+    assert backend._candidate_digest(*inputs) == config_changed
+
+
+def test_candidate_digest_rejects_patch_paths_outside_dependency_checkouts(
+    tmp_path: Path,
+) -> None:
+    inputs = _candidate_inputs(tmp_path)
+    inputs[1].write_text(
+        "[patch.crates-io]\n"
+        f'symbolica = {{ path = "{tmp_path / "symbolica"}" }}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="below dependencies/checkouts"):
+        backend._candidate_digest(*inputs)
 
 
 @pytest.mark.parametrize(
@@ -491,6 +520,7 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     gates: list[str] = []
     sdk_stages: list[Path] = []
     selftest_stages: list[tuple[Path, str]] = []
+    prepared_model_stages: list[tuple[Path, str]] = []
     injected_bins = (tmp_path / "injected-bin", tmp_path / "injected-tools")
     for directory in injected_bins:
         directory.mkdir()
@@ -561,6 +591,11 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda path: None)
     monkeypatch.setattr(
         backend,
+        "stage_packaged_prepared_models",
+        lambda path, mode: prepared_model_stages.append((path, mode)),
+    )
+    monkeypatch.setattr(
+        backend,
         "_stage_selftest_fixture",
         lambda path, target_name: selftest_stages.append((path, target_name)),
     )
@@ -572,6 +607,11 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     assert gates == ["release"]
     assert bool(sdk_stages) is with_sdk
     assert selftest_stages == ([(overlay, "aarch64-apple-darwin")] if with_sdk else [])
+    assert prepared_model_stages == (
+        [(overlay, "release")]
+        if with_sdk or hook == "build_sdist"
+        else []
+    )
     for name, value in injected.items():
         assert os.environ[name] == value
 
@@ -740,6 +780,11 @@ def test_pep517_backend_rejects_recursive_delegation(
 
     monkeypatch.setattr(backend, "_overlay", fake_overlay)
     monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
+    monkeypatch.setattr(
+        backend,
+        "stage_packaged_prepared_models",
+        lambda _path, _mode: None,
+    )
     monkeypatch.setattr(
         backend.maturin,
         "build_sdist",

@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from pyamplicol.cli import DefaultCliServices, parse_cli
+from pyamplicol.config import ConfigurationError, EvaluatorBackend, EvaluatorConfig
 from pyamplicol.models.contracts import CompiledModelIR, CompiledParticleRecord
 from pyamplicol.reporting import NullProgressSink
 
@@ -89,7 +92,7 @@ def test_default_model_compile_calls_existing_compiler_service(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from pyamplicol.models import loading
+    from pyamplicol.models import loading, prepared_compile
 
     calls: list[dict[str, object]] = []
 
@@ -98,6 +101,13 @@ def test_default_model_compile_calls_existing_compiler_service(
         return _CompiledModel()
 
     monkeypatch.setattr(loading, "compile_model_source", compile_model_source)
+    monkeypatch.setattr(
+        prepared_compile,
+        "prepare_model_bundle",
+        lambda *_args, **_kwargs: pytest.fail(
+            "IR-only model compilation must not prepare evaluator kernels"
+        ),
+    )
     output = tmp_path / "toy"
     invocation = parse_cli(("model", "compile", "built-in-sm", str(output)))
     result = DefaultCliServices().model_compile(
@@ -124,6 +134,143 @@ def test_default_model_compile_calls_existing_compiler_service(
         "source": {"kind": "built-in-sm"},
         "capabilities": {"particle_count": 3},
     }
+
+
+def test_default_model_compile_prepares_one_requested_backend_pack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyamplicol.models import loading, prepared_compile
+
+    compiled = _CompiledModel()
+    monkeypatch.setattr(
+        loading,
+        "compile_model_source",
+        lambda *args, **kwargs: compiled,
+    )
+    captured: dict[str, object] = {}
+
+    def prepare_model_bundle(
+        model: object,
+        output: Path,
+        *,
+        evaluator: object,
+        progress: object,
+    ) -> object:
+        captured.update(
+            model=model,
+            output=output,
+            evaluator=evaluator,
+            progress=progress,
+        )
+        assert callable(progress)
+        progress("prepare kernel 0", 0, 1)
+        progress("prepared model complete", 1, 1)
+        return SimpleNamespace(
+            output=output,
+            bundle=SimpleNamespace(backend="jit"),
+            kernel_count=1,
+            phase_timings_seconds={"catalog": 0.1, "total": 0.3},
+        )
+
+    monkeypatch.setattr(
+        prepared_compile,
+        "prepare_model_bundle",
+        prepare_model_bundle,
+    )
+    output = tmp_path / "toy.pyamplicol-model"
+    invocation = parse_cli(
+        (
+            "model",
+            "compile",
+            "built-in-sm",
+            str(output),
+            "--backend",
+            "jit",
+            "--horner-iterations",
+            "7",
+            "--cpe-iterations",
+            "3",
+            "--cores",
+            "2",
+            "--max-horner-variables",
+            "321",
+            "--max-common-pair-cache-entries",
+            "456",
+            "--max-common-pair-distance",
+            "78",
+            "--collect-factors",
+        )
+    )
+    config = invocation.resolve().effective
+
+    assert config.evaluator.backend is EvaluatorBackend.JIT
+    assert config.evaluator.jit.optimization_level == 3
+    assert config.evaluator.optimization.horner_iterations == 7
+    assert config.evaluator.optimization.cpe_iterations == 3
+    assert config.evaluator.optimization.cores == 2
+    assert config.evaluator.optimization.max_horner_variables == 321
+    assert config.evaluator.optimization.max_common_pair_cache_entries == 456
+    assert config.evaluator.optimization.max_common_pair_distance == 78
+    assert config.evaluator.optimization.collect_factors is True
+
+    result = DefaultCliServices().model_compile(config, NullProgressSink())
+
+    assert captured["model"] is compiled
+    assert captured["output"] == output.resolve()
+    assert captured["evaluator"] is config.evaluator
+    assert result["output"] == str(output.resolve())
+    assert result["prepared_backend"] == "jit"
+    assert result["kernel_count"] == 1
+    assert result["preparation_phase_timings"] == {
+        "catalog": 0.1,
+        "total": 0.3,
+    }
+
+
+def test_model_compile_rejects_evaluator_options_for_ir_output(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match=r"evaluator options require.*\.pyamplicol-model",
+    ):
+        parse_cli(
+            (
+                "model",
+                "compile",
+                "built-in-sm",
+                str(tmp_path / "toy.json"),
+                "--backend",
+                "jit",
+            )
+        )
+
+
+def test_model_compile_service_rejects_nondefault_card_evaluator_for_ir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyamplicol.models import loading
+
+    monkeypatch.setattr(
+        loading,
+        "compile_model_source",
+        lambda *args, **kwargs: _CompiledModel(),
+    )
+    invocation = parse_cli(
+        ("model", "compile", "built-in-sm", str(tmp_path / "toy.json"))
+    )
+    config = replace(
+        invocation.resolve().effective,
+        evaluator=EvaluatorConfig(backend=EvaluatorBackend.ASM),
+    )
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"evaluator settings require.*\.pyamplicol-model",
+    ):
+        DefaultCliServices().model_compile(config, NullProgressSink())
 
 
 def test_default_model_processes_uses_compiled_model_catalog(

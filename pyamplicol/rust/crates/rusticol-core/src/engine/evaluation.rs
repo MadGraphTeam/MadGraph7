@@ -358,6 +358,7 @@ impl ExecutionRuntime {
                 stage_input_pack_by_stage_s,
                 stage_evaluator_call_by_stage_s,
                 stage_output_assign_by_stage_s,
+                ..RuntimeProfile::default()
             },
         ))
     }
@@ -524,6 +525,7 @@ impl ExecutionRuntime {
                 stage_input_pack_by_stage_s,
                 stage_evaluator_call_by_stage_s,
                 stage_output_assign_by_stage_s,
+                ..RuntimeProfile::default()
             },
         ))
     }
@@ -749,6 +751,7 @@ impl ExecutionRuntime {
                 stage_input_pack_by_stage_s,
                 stage_evaluator_call_by_stage_s,
                 stage_output_assign_by_stage_s,
+                ..RuntimeProfile::default()
             },
         ))
     }

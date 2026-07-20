@@ -516,6 +516,29 @@ pub unsafe extern "C" fn rusticol_runtime_external_count(
     })
 }
 
+/// Copies the runtime execution mode (`compiled` or `eager`).
+///
+/// # Safety
+///
+/// `handle` must be a live handle returned by [`rusticol_runtime_load`]. If non-null,
+/// `required` must be writable for one `size_t`. If non-null, `buffer` must be writable for
+/// `capacity` bytes. A null `buffer` is valid only for a zero-capacity query.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_execution_mode(
+    handle: *const RusticolRuntimeHandle,
+    buffer: *mut c_char,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: The ABI requires a live handle for this call.
+        let handle = unsafe { required_handle(handle) }?;
+        let execution_mode = handle.runtime.metadata().execution_mode;
+        // SAFETY: Pointer validation and copying are performed by write_string.
+        unsafe { write_string(&execution_mode, buffer, capacity, required) }
+    })
+}
+
 /// Writes the PDG identifier for one external particle.
 ///
 /// # Safety
@@ -1165,6 +1188,7 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Vec<String>>(json).unwrap(),
             vec![
+                "rusticol.eager-dag.complex-f64.v1".to_string(),
                 "symbolica.compiled-asm.complex-f64.v1".to_string(),
                 "symbolica.compiled-cpp.complex-f64.v1".to_string(),
                 "symjit.application.complex-f64.v1".to_string(),

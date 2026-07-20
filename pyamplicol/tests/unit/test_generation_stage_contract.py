@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import json
+import pickle
+
 import pytest
 
 from pyamplicol.generation.contracts import RuntimeExpressionSchema
@@ -37,6 +40,105 @@ def test_generation_runtime_expression_schema_is_canonical_and_frozen() -> None:
     assert left == right
     assert left.sha256 == right.sha256
     assert left.to_mapping()["stages"] == []
+    assert left.canonical_json == json.dumps(
+        _minimal_schema(),
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    assert left.canonical_json == json.dumps(
+        left.to_mapping(),
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+    detached = left.to_mapping()
+    detached["stages"] = ["changed"]
+    detached["current_storage"]["current_slots"] = ["changed"]
+    assert left.to_mapping()["stages"] == []
+    assert left.to_mapping()["current_storage"] == {"current_slots": []}
+
+
+def test_generation_runtime_expression_schema_typed_construction_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = RuntimeExpressionSchema.from_mapping(_minimal_schema())
+
+    def fail_json_dump(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("typed construction must not canonicalize again")
+
+    monkeypatch.setattr(json, "dumps", fail_json_dump)
+    assert RuntimeExpressionSchema.from_mapping(schema) is schema
+
+
+def test_generation_runtime_expression_schema_reuses_decoded_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = RuntimeExpressionSchema.from_mapping(_minimal_schema())
+
+    def fail_json_load(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("mapping access must not decode canonical JSON again")
+
+    monkeypatch.setattr(json, "loads", fail_json_load)
+    assert schema.to_mapping() == _minimal_schema()
+
+
+@pytest.mark.parametrize(
+    ("construct", "message"),
+    (
+        (
+            lambda: RuntimeExpressionSchema(canonical_json="not-json"),
+            "not valid JSON",
+        ),
+        (
+            lambda: RuntimeExpressionSchema(canonical_json="[]"),
+            "root must be an object",
+        ),
+        (
+            lambda: RuntimeExpressionSchema(
+                canonical_json=json.dumps(_minimal_schema()),
+                contract_version=1,
+            ),
+            "unsupported runtime expression-schema contract version",
+        ),
+        (
+            lambda: RuntimeExpressionSchema.from_mapping({"stages": []}),
+            "runtime expression schema is missing",
+        ),
+        (
+            lambda: RuntimeExpressionSchema.from_mapping(
+                {**_minimal_schema(), "invalid": object()}
+            ),
+            "must contain canonical JSON values",
+        ),
+    ),
+)
+def test_generation_runtime_expression_schema_validation_is_preserved(
+    construct: object,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        construct()
+
+
+def test_generation_runtime_expression_schema_normalizes_json_inputs() -> None:
+    payload = _minimal_schema()
+    payload["tuple_value"] = (1, 2)
+    payload["mapping_value"] = {2: "two", 1: "one"}
+    schema = RuntimeExpressionSchema.from_mapping(payload)
+
+    expected = json.loads(schema.canonical_json)
+    assert schema.to_mapping() == expected
+    assert list(schema.to_mapping()["mapping_value"]) == ["1", "2"]
+
+
+def test_generation_runtime_expression_schema_remains_pickleable() -> None:
+    schema = RuntimeExpressionSchema.from_mapping(_minimal_schema())
+    restored = pickle.loads(pickle.dumps(schema))
+
+    assert restored == schema
+    assert restored.to_mapping() == schema.to_mapping()
 
 
 def test_generation_stage_compiler_requires_schema_and_local_parameters() -> None:

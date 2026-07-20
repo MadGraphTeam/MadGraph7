@@ -6,6 +6,30 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
+PREPARED_MODEL_ARCHITECTURES = ("aarch64", "x86_64")
+PREPARED_MODEL_ASSET_BASENAME = "built-in-sm-jit-o3"
+
+
+def prepared_model_asset_members(prefix: str) -> frozenset[str]:
+    """Return the exact prepared-model inventory rooted at *prefix*."""
+
+    root = prefix.rstrip("/")
+    members = {f"{root}/__init__.py"}
+    for architecture in PREPARED_MODEL_ARCHITECTURES:
+        stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
+        members.update(
+            {
+                f"{root}/{stem}.metadata.json",
+                f"{root}/{stem}.pyamplicol-model",
+            }
+        )
+    return frozenset(members)
+
+
+PREPARED_MODEL_SDIST_MEMBERS = prepared_model_asset_members(
+    "src/pyamplicol/assets/prepared_models"
+)
+
 REQUIRED_SDIST_MEMBERS = frozenset(
     {
         "Cargo.lock",
@@ -37,6 +61,7 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "schemas/runtime-physics-v1.schema.json",
         "src/pyamplicol/assets/api_templates/rust/Makefile",
         "src/pyamplicol/assets/api_templates/rust/check_standalone.rs",
+        *PREPARED_MODEL_SDIST_MEMBERS,
         "src/pyamplicol/assets/selftest/portable-64le/expected.json",
         "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json",
         "tests/integration/test_examples.py",
@@ -95,4 +120,11 @@ def missing_required_sdist_members(members: Collection[str]) -> tuple[str, ...]:
     return tuple(sorted(REQUIRED_SDIST_MEMBERS.difference(members)))
 
 
-__all__ = ["REQUIRED_SDIST_MEMBERS", "missing_required_sdist_members"]
+__all__ = [
+    "PREPARED_MODEL_ARCHITECTURES",
+    "PREPARED_MODEL_ASSET_BASENAME",
+    "PREPARED_MODEL_SDIST_MEMBERS",
+    "REQUIRED_SDIST_MEMBERS",
+    "missing_required_sdist_members",
+    "prepared_model_asset_members",
+]

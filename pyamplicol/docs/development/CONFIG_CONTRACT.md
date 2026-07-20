@@ -60,9 +60,30 @@ runtime-mutable.
 ## Evaluator
 
 - `backend: jit | asm | cpp = jit`
+- `execution_mode: compiled | eager = compiled`
 - `batch_size: int = 128`
 - `output_chunk_size: int | null = 512`
 - Stage-local parameter layout is mandatory and is not a public toggle.
+
+### Eager Execution
+
+- `point_tile_size: int = 1024`
+- `workspace_mib: int = 256`
+
+Eager mode requires a prepared model bundle before DAG construction. A
+`built-in-sm` source resolves automatically to the wheel-owned JIT O3 pack for
+the host's `x86_64` or `aarch64` architecture class; other models and built-in
+C++/ASM execution require an explicit prepared path. The prepared pack is
+authoritative for backend and code-shaping optimization settings. The runtime
+may reduce `point_tile_size` to honor the workspace limit, but never increases
+it.
+
+`.pyAmplicol-model.json` IR is architecture-independent. SymJIT application
+storage-v3 prepared packs are architecture-class-specific, although
+same-architecture transfer across supported operating systems is tested. Pack
+target validation precedes DAG construction and SymJIT loading, so a cross-
+architecture mismatch cannot reach dependency code. A future SymJIT storage ABI
+may relax this restriction without changing the prepared-bundle interface.
 
 ### Evaluator Optimization
 

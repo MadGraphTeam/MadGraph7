@@ -23,6 +23,7 @@ from package_version import (
     canonical_package_version,
     check_contributor_lock_consistency,
 )
+from prepared_models import stage_packaged_prepared_models
 from sdk import build_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -595,7 +596,11 @@ def _candidate_digest(
         (ROOT / _CONTRIBUTOR_LOCK).read_bytes(),
     )
     _digest_item(digest, "candidate-Cargo.lock", candidate_lock.read_bytes())
-    _digest_item(digest, "candidate-cargo-config.toml", candidate_config.read_bytes())
+    _digest_item(
+        digest,
+        "candidate-cargo-config.toml",
+        _canonical_candidate_config(candidate_config),
+    )
     sources = state["sources"]
     for name in sorted(_CANDIDATE_SOURCES):
         entry = sources[name]
@@ -605,6 +610,56 @@ def _candidate_digest(
             str(entry["revision"]).encode(),
         )
     return digest.hexdigest()[:12]
+
+
+def _canonical_candidate_config(candidate_config: Path) -> bytes:
+    """Return a semantic Cargo patch identity independent of checkout paths."""
+
+    try:
+        with candidate_config.open("rb") as stream:
+            payload = tomllib.load(stream)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError(f"invalid candidate Cargo config: {error}") from error
+
+    def canonicalize(value: Any, *, key: str | None = None) -> Any:
+        if isinstance(value, Mapping):
+            return {
+                str(item_key): canonicalize(item_value, key=str(item_key))
+                for item_key, item_value in sorted(value.items())
+            }
+        if isinstance(value, list):
+            return [canonicalize(item) for item in value]
+        if key == "path":
+            if not isinstance(value, str):
+                raise RuntimeError("candidate Cargo patch paths must be strings")
+            return _canonical_checkout_path(value)
+        return value
+
+    canonical = canonicalize(payload)
+    return (
+        json.dumps(
+            canonical,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _canonical_checkout_path(raw: str) -> str:
+    normalized = raw.replace("\\", "/").rstrip("/")
+    marker = "/dependencies/checkouts/"
+    if marker in normalized:
+        suffix = normalized.rsplit(marker, maxsplit=1)[1]
+        if suffix:
+            return f"dependencies/checkouts/{suffix}"
+    prefix = "dependencies/checkouts/"
+    if normalized.startswith(prefix) and len(normalized) > len(prefix):
+        return normalized
+    raise RuntimeError(
+        "candidate Cargo patch paths must resolve below dependencies/checkouts"
+    )
 
 
 def _mark_candidate(overlay: Path, base_version: str) -> None:
@@ -920,6 +975,7 @@ def _from_overlay(
     operation: Callable[..., _Result],
     *args: Any,
     with_sdk: bool,
+    validate_prepared_models: bool = False,
     **kwargs: Any,
 ) -> _Result:
     with _delegating():
@@ -935,10 +991,13 @@ def _from_overlay(
             if sys.platform == "darwin":
                 environment["MACOSX_DEPLOYMENT_TARGET"] = "11.0"
             with _environment(environment), _working_directory(overlay):
+                if validate_prepared_models and not with_sdk:
+                    stage_packaged_prepared_models(overlay, mode)
                 if with_sdk:
                     _stage_packaged_examples(overlay)
                     _stage_python_stub(overlay)
                     _stage_runtime_resources(overlay)
+                    stage_packaged_prepared_models(overlay, mode)
                     sdk = build_sdk(overlay, target_dir)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")
@@ -976,6 +1035,7 @@ def build_sdist(
         sdist_directory,
         config_settings,
         with_sdk=False,
+        validate_prepared_models=True,
     )
 
 

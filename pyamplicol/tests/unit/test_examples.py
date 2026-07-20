@@ -82,6 +82,12 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
         assert payload["color"]["accuracy"] == accuracy  # type: ignore[index]
         assert payload["process"]["entries"][0]["expression"] == "u u~ > g g"  # type: ignore[index]
 
+    eager = resolve_config(EXAMPLES / "builtin_sm_eager.toml").effective
+    assert eager.model.source == "built-in-sm"
+    assert eager.evaluator.execution_mode.value == "eager"
+    assert eager.evaluator.backend.value == "jit"
+    assert eager.evaluator.jit.optimization_level == 3
+
     process_set = resolve_config(EXAMPLES / "process_set_mixed_multiplicity.toml")
     assert process_set.effective.process.entries == (
         ProcessEntry("u u~ > Z g", "uubar_Zg"),
