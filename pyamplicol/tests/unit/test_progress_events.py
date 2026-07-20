@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import time
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -16,14 +17,28 @@ from pyamplicol.reporting import (
     TtyProgressSink,
     progress_sink,
 )
+from pyamplicol.reporting.progress import _dashboard_lines, _TaskState
+from pyamplicol.reporting.resources import ResourceUsage
 
 
 def test_progress_events_are_frozen_and_validated() -> None:
-    event = ProgressStart("build", "Building", total=3)
+    event = ProgressStart(
+        "build",
+        "Building",
+        total=3,
+        parent_task_id="root",
+        unit="chunks",
+        details={"chunk_index": 1},
+    )
+    assert event.parent_task_id == "root"
+    assert event.unit == "chunks"
+    assert event.details == {"chunk_index": 1}
     with pytest.raises(FrozenInstanceError):
         event.total = 4  # type: ignore[misc]
     with pytest.raises(ValueError, match="exceed"):
         ProgressUpdate("build", completed=4, total=3)
+    with pytest.raises(ValueError, match="finite"):
+        ProgressUpdate("build", 1, details={"waiting_seconds": float("inf")})
 
 
 def test_callback_and_stream_sinks_receive_typed_events() -> None:
@@ -67,7 +82,7 @@ def test_tty_progress_accepts_concurrent_phase_shape() -> None:
     assert "Building DAG" in stream.getvalue()
 
 
-def test_tty_progress_is_colored_when_requested() -> None:
+def test_forced_tty_on_non_tty_is_deterministic_and_ansi_free() -> None:
     stream = io.StringIO()
     sink = TtyProgressSink(stream, color=True)
     sink.emit(ProgressStart("profile", "Profiling runtime", 1))
@@ -76,4 +91,113 @@ def test_tty_progress_is_colored_when_requested() -> None:
 
     assert "Profiling runtime" in stream.getvalue()
     assert "measured" in stream.getvalue()
-    assert "\x1b[" in stream.getvalue()
+    assert "\x1b[" not in stream.getvalue()
+
+
+def test_dashboard_renders_elapsed_peak_rss_and_granular_status() -> None:
+    started = time.monotonic() - 68.0
+    root = _TaskState(
+        "generation",
+        "Generating processes",
+        8,
+        None,
+        "phases",
+        {"execution_mode": "compiled", "backend": "JIT", "optimization": "O3"},
+        started,
+        started + 60.0,
+        completed=3,
+    )
+    phase = _TaskState(
+        "generation:dag",
+        "DAG construction",
+        4,
+        "generation",
+        "processes",
+        {},
+        started + 40.0,
+        started + 65.0,
+        completed=3,
+    )
+    detail = _TaskState(
+        "generation:dag:uubar_Z_5g",
+        "uubar_Z_5g DAG",
+        62,
+        "generation:dag",
+        "masks",
+        {
+            "process": "uubar_Z_5g",
+            "step": "recursion",
+            "stage_index": 5,
+            "stage_total": 6,
+            "subset_size": 6,
+            "mask_index": 47,
+            "mask_total": 62,
+            "current_count": 18_304,
+            "interaction_count": 96_112,
+        },
+        started + 45.0,
+        started + 67.0,
+        completed=47,
+    )
+
+    lines = _dashboard_lines(
+        (root, phase, detail),
+        now=started + 68.0,
+        usage=ResourceUsage(
+            current_rss_bytes=3 * 1024**3,
+            peak_rss_bytes=4 * 1024**3,
+            process_count=3,
+        ),
+        width=180,
+        color=True,
+    )
+
+    assert "elapsed 1m08s" in lines[0]
+    assert "RSS 3.00/4.00 GiB current/peak" in lines[0]
+    assert "children 2" in lines[0]
+    assert "DAG construction" in lines[1]
+    assert "ETA" in lines[1]
+    assert "uubar_Z_5g" in lines[2]
+    assert "stage 5/6 subset 6" in lines[2]
+    assert "masks 47/62" in lines[2]
+    assert "currents 18,304" in lines[2]
+    assert "interactions 96,112" in lines[2]
+    assert any("\x1b[" in line for line in lines)
+
+    narrow = _dashboard_lines(
+        (root, phase, detail),
+        now=started + 68.0,
+        usage=ResourceUsage(),
+        width=48,
+        color=False,
+    )
+    assert all(len(line) <= 48 for line in narrow)
+    assert "RSS N/A" in narrow[0]
+
+
+def test_dashboard_enriches_legacy_evaluator_callback_messages() -> None:
+    now = time.monotonic()
+    task = _TaskState(
+        "generation:evaluators:process",
+        "Compile process evaluators",
+        1,
+        None,
+        "stages",
+        {"process": "uubar_Z_5g", "backend": "jit", "stage": "jit compile"},
+        now - 20.0,
+        now,
+        message="stage_4 chunk 12/43 p=1525/8000 waiting 18s",
+    )
+
+    detail = _dashboard_lines(
+        (task,),
+        now=now,
+        usage=ResourceUsage(),
+        width=180,
+        color=False,
+    )[2]
+
+    assert "chunk compilation" in detail
+    assert "chunks 12/43" in detail
+    assert "inputs 1,525" in detail
+    assert "waiting 18s" in detail

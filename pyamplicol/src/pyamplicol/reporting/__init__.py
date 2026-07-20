@@ -19,6 +19,7 @@ from .progress import (
     ProgressUpdate,
     StreamProgressSink,
     TtyProgressSink,
+    close_progress_sink,
     progress_sink,
 )
 from .summary import render_summary
@@ -36,6 +37,7 @@ __all__ = [
     "ProgressUpdate",
     "StreamProgressSink",
     "TtyProgressSink",
+    "close_progress_sink",
     "configure_cli_logging",
     "get_logger",
     "progress_sink",

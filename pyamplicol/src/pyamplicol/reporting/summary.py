@@ -190,6 +190,13 @@ def _benchmark_summary(
     rows: list[tuple[str, str, str | None]] = [
         ("process", process, None),
         ("artifact", _value_text(environment.get("target")), None),
+        ("execution mode", _value_text(environment.get("execution_mode")), "CYAN"),
+        ("color workload", _value_text(environment.get("color_workload")), None),
+        (
+            "helicity workload",
+            _value_text(environment.get("helicity_workload")),
+            None,
+        ),
         ("status", status, "YELLOW" if result.interrupted else "GREEN"),
         (
             "wall time",
@@ -206,7 +213,7 @@ def _benchmark_summary(
             (
                 (
                     f"SD {_seconds_text(result.uncertainty.standard_deviation)}/point; "
-                    f"relative SE {relative_error:.3%}"
+                    f"relative standard error {relative_error:.3%}"
                 )
                 if result.sample_count > 1
                 else "not estimable from one complete block"
@@ -266,7 +273,9 @@ def _benchmark_summary(
     if breakdown is None:
         return sections[0]
 
-    component_table = prettytable.PrettyTable(("component", "mean +/- SE", "rel. SE"))
+    component_table = prettytable.PrettyTable(
+        ("component", "mean +/- standard error", "relative standard error")
+    )
     eager_profile = breakdown.execution_mode == "eager"
     component_table.title = _paint(
         "Rusticol Eager Timing Breakdown"
@@ -276,8 +285,8 @@ def _benchmark_summary(
         enabled=color,
     )
     component_table.align["component"] = "l"
-    component_table.align["mean +/- SE"] = "r"
-    component_table.align["rel. SE"] = "r"
+    component_table.align["mean +/- standard error"] = "r"
+    component_table.align["relative standard error"] = "r"
     component_table.hrules = prettytable.HRuleStyle.HEADER
     detailed_eager_profile = eager_profile and any(
         timing is not None
@@ -326,6 +335,7 @@ def _benchmark_summary(
             ("Amplitude closure", breakdown.eager_closure_time),
             ("Amplitude copy-out", breakdown.eager_copy_out_time),
             ("Reduction", breakdown.reduction_time),
+            ("Other Rusticol core", breakdown.other_core_time),
         )
     elif eager_profile:
         component_rows = (
@@ -333,6 +343,7 @@ def _benchmark_summary(
             ("Source fill", breakdown.source_fill_time),
             ("Momentum setup", breakdown.momentum_setup_time),
             ("Eager execution (aggregate)", breakdown.eager_execution_time),
+            ("Other Rusticol core", breakdown.other_core_time),
         )
     else:
         component_rows = (
@@ -345,6 +356,7 @@ def _benchmark_summary(
             ("Amplitude input pack", breakdown.amplitude_input_pack_time),
             ("Amplitude evaluator call", breakdown.amplitude_evaluator_call_time),
             ("Reduction", breakdown.reduction_time),
+            ("Other Rusticol core", breakdown.other_core_time),
         )
     for label, timing in component_rows:
         relative = (
@@ -387,6 +399,50 @@ def _benchmark_summary(
             )
         sections.append(cast(str, stage_table.get_string()))
     return "\n\n".join(sections)
+
+
+def _generation_summary(
+    result: object,
+    *,
+    prettytable: Any,
+) -> str:
+    from pyamplicol.api.results import GenerationResult
+
+    if not isinstance(result, GenerationResult):
+        raise TypeError("generation summary requires a GenerationResult")
+    file_count = len(result.files)
+    total_size: int | None = None
+    try:
+        from pyamplicol.artifacts import load_manifest
+
+        manifest = load_manifest(result.output, verify_payloads=False)
+        manifest_path = result.output / "artifact.json"
+        file_count = len(manifest.payloads) + 1
+        total_size = sum(payload.size_bytes for payload in manifest.payloads)
+        total_size += manifest_path.stat().st_size
+    except (OSError, RuntimeError, ValueError):
+        existing = tuple(path for path in result.files if path.is_file())
+        if existing:
+            total_size = sum(path.stat().st_size for path in existing)
+    files = f"{file_count} files"
+    if total_size is not None:
+        files += f"; {_byte_size(total_size)} total"
+    rows = (
+        ("output", str(result.output)),
+        ("processes", _value_text(_plain(result.processes))),
+        ("existing-output policy", result.mode),
+        ("schema version", str(result.schema_version)),
+        ("files", files),
+    )
+    table = prettytable.PrettyTable(("field", "value"))
+    table.align["field"] = "l"
+    table.align["value"] = "l"
+    table.max_width["field"] = 30
+    table.max_width["value"] = 88
+    table.hrules = prettytable.HRuleStyle.HEADER
+    for row in rows:
+        table.add_row(row)
+    return cast(str, table.get_string())
 
 
 def _artifact_inspection_summary(
@@ -654,15 +710,17 @@ def _artifact_inspection_summary(
 def render_summary(value: object, *, color: bool = False) -> str | None:
     """Return a two-column table for structured results, if applicable."""
 
-    plain = _plain(value)
-    if not isinstance(plain, Mapping):
-        return None
     try:
         prettytable: Any = importlib.import_module("prettytable")
     except ImportError:
         return None
-    from pyamplicol.api.results import BenchmarkResult
+    from pyamplicol.api.results import BenchmarkResult, GenerationResult
 
+    if isinstance(value, GenerationResult):
+        return _generation_summary(value, prettytable=prettytable)
+    plain = _plain(value)
+    if not isinstance(plain, Mapping):
+        return None
     if isinstance(value, BenchmarkResult):
         return _benchmark_summary(value, prettytable=prettytable, color=color)
     if plain.get("kind") == "pyamplicol-artifact-inspection":
@@ -679,7 +737,9 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
     table.hrules = prettytable.HRuleStyle.HEADER
     for key, entry in plain.items():
         text = _value_text(entry)
-        table.add_row((key.replace("_", " "), _colored(text, key=key, enabled=color)))
+        label = key.replace("_", " ")
+        rendered = _colored(text, key=key, enabled=color)
+        table.add_row((label, rendered))
     return cast(str, table.get_string())
 
 

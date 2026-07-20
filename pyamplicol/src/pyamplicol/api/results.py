@@ -562,6 +562,7 @@ class BenchmarkTimingBreakdown:
     amplitude_input_pack_time: BenchmarkComponentTiming | None = None
     amplitude_evaluator_call_time: BenchmarkComponentTiming | None = None
     reduction_time: BenchmarkComponentTiming | None = None
+    other_core_time: BenchmarkComponentTiming | None = None
     eager_execution_time: BenchmarkComponentTiming | None = None
     eager_initialize_time: BenchmarkComponentTiming | None = None
     eager_gather_time: BenchmarkComponentTiming | None = None
@@ -594,6 +595,7 @@ class BenchmarkTimingBreakdown:
             "amplitude_input_pack_time",
             "amplitude_evaluator_call_time",
             "reduction_time",
+            "other_core_time",
             "eager_execution_time",
             "eager_initialize_time",
             "eager_gather_time",

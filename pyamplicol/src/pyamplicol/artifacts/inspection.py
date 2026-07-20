@@ -16,6 +16,7 @@ from .manifest import ArtifactManifest, load_manifest
 from .security import confined_path, normalize_relative_path
 
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
+_EAGER_RUNTIME_CAPABILITY = "rusticol.eager-dag.complex-f64.v1"
 _MISSING_U32 = (1 << 32) - 1
 _EAGER_INVOCATION = struct.Struct("<IIIIIIIQQ")
 _EAGER_FINALIZATION = struct.Struct("<IIIII")
@@ -741,16 +742,30 @@ def _eager_execution_inspection(
 def _execution_inspection(
     manifest: ArtifactManifest,
     execution_path: Path,
+    required_runtime_capabilities: Sequence[object] | None = None,
 ) -> _ExecutionInspection:
-    execution = _json_mapping(execution_path, "process execution manifest")
-    kind = _string(execution.get("kind"), "process execution manifest.kind")
-    if kind == _EAGER_RUNTIME_KIND:
-        return _eager_execution_inspection(manifest, execution, execution_path)
-    if kind == "pyamplicol-runtime-execution":
+    capabilities = (
+        required_runtime_capabilities
+        if required_runtime_capabilities is not None
+        else _sequence(
+            manifest.runtime.get("required_runtime_capabilities"),
+            "runtime.required_runtime_capabilities",
+        )
+    )
+    if _EAGER_RUNTIME_CAPABILITY not in {
+        str(value) for value in capabilities
+    }:
+        # Compiled execution manifests can be several GiB at high multiplicity.
+        # Their capability contract already identifies the execution lane, and
+        # the manifest hash validation above has verified the payload bytes.
         return _ExecutionInspection(
             execution_mode="compiled",
             native_profile_phases=_COMPILED_PROFILE_PHASES,
         )
+    execution = _json_mapping(execution_path, "process execution manifest")
+    kind = _string(execution.get("kind"), "process execution manifest.kind")
+    if kind == _EAGER_RUNTIME_KIND:
+        return _eager_execution_inspection(manifest, execution, execution_path)
     raise ArtifactError(f"unsupported process execution kind {kind!r}")
 
 
@@ -878,7 +893,14 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
         _process_inspection(
             manifest,
             process,
-            _execution_inspection(manifest, execution_paths[str(process["id"])]),
+            _execution_inspection(
+                manifest,
+                execution_paths[str(process["id"])],
+                _sequence(
+                    process.get("required_runtime_capabilities"),
+                    f"process {process['id']} required runtime capabilities",
+                ),
+            ),
         )
         for process in manifest.processes
     )

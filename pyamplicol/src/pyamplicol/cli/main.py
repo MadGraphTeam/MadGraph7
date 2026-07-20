@@ -12,6 +12,7 @@ from typing import TextIO
 from pyamplicol.config import PyAmpliColError
 from pyamplicol.licensing import detect_symbolica_license
 from pyamplicol.reporting import (
+    close_progress_sink,
     configure_cli_logging,
     get_logger,
     progress_sink,
@@ -82,6 +83,7 @@ def run_cli(
     diagnostic_stream = sys.stderr if stderr is None else stderr
     input_stream = sys.stdin if stdin is None else stdin
     logging_configured = False
+    sink = None
     try:
         invocation = parse_cli(argv)
         if isinstance(invocation, LicenseRequestInvocation):
@@ -133,6 +135,8 @@ def run_cli(
             DefaultCliServices(resolution=resolution) if services is None else services
         )
         result = dispatch(config, selected_services, sink, dry_run=invocation.dry_run)
+        close_progress_sink(sink)
+        sink = None
         color = config.output.color == "always" or (
             config.output.color == "auto"
             and bool(getattr(output_stream, "isatty", lambda: False)())
@@ -145,6 +149,8 @@ def run_cli(
         )
         return 130 if bool(getattr(result, "interrupted", False)) else 0
     except (PyAmpliColError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        close_progress_sink(sink)
+        sink = None
         if logging_configured:
             get_logger("cli").error("%s", exc)
         else:
@@ -152,6 +158,8 @@ def run_cli(
             diagnostic_stream.flush()
         return 2
     except KeyboardInterrupt:
+        close_progress_sink(sink)
+        sink = None
         message = "interrupted before a complete result was available"
         if logging_configured:
             get_logger("cli").warning("%s", message)
@@ -160,6 +168,7 @@ def run_cli(
             diagnostic_stream.flush()
         return 130
     finally:
+        close_progress_sink(sink)
         if logging_configured:
             reset_cli_logging()
 

@@ -21,6 +21,7 @@ from pyamplicol.api.results import (
     BenchmarkStageTiming,
     BenchmarkStatistics,
     BenchmarkTimingBreakdown,
+    ProcessPhysics,
 )
 from pyamplicol.config import BenchmarkConfig, RunConfig
 from pyamplicol.reporting import (
@@ -62,6 +63,7 @@ class _NativeProfileSample:
     amplitude_input_pack_time: float | None
     amplitude_evaluator_call_time: float | None
     reduction_time: float | None
+    other_core_time: float | None
     stage_input_pack_times: tuple[float, ...] | None
     stage_evaluator_call_times: tuple[float, ...] | None
     stage_output_assign_times: tuple[float, ...] | None
@@ -103,6 +105,7 @@ class BenchmarkBackend:
             else Path(os.fspath(target)).expanduser().resolve(strict=False)
         )
         runtime = self._runtime(target)
+        physics = runtime.physics
         if points is None:
             loader = getattr(runtime, "validation_momenta", None)
             points = loader() if callable(loader) else None
@@ -113,7 +116,9 @@ class BenchmarkBackend:
             )
         batch = _benchmark_batch(points, self._config.batch_size)
         helicities = self._config.helicity_ids or None
-        color_flows = self._config.color_flow_ids or None
+        color_flows = (
+            _resolve_color_flow_ordinals(physics, self._config.color_flow_ids) or None
+        )
         profiler = _native_profiler(runtime) if self._config.precision == 16 else None
         native_wall_timer = (
             _native_wall_timer(runtime) if self._config.precision == 16 else None
@@ -366,7 +371,13 @@ class BenchmarkBackend:
                 "evaluator_standard_error_seconds_per_point": evaluator_error,
                 "evaluator_relative_standard_error": evaluator_relative,
             }
-        physics = runtime.physics
+        execution_mode = (
+            timing_breakdown.execution_mode
+            if timing_breakdown is not None
+            else str(getattr(runtime, "execution_mode", "unavailable"))
+        )
+        selected_helicity_ids = tuple(helicities or ())
+        selected_color_ids = tuple(color_flows or ())
         measured_evaluations = len(samples) * calibration.repetitions_per_sample
         return BenchmarkResult(
             requested_config=self._config,
@@ -382,6 +393,18 @@ class BenchmarkBackend:
                 "target": None if target_path is None else str(target_path),
                 "batch_size": len(batch),
                 "precision": self._config.precision,
+                "execution_mode": execution_mode,
+                "color_accuracy": physics.color_accuracy,
+                "color_workload": _color_workload_text(
+                    physics,
+                    selected_color_ids,
+                ),
+                "helicity_workload": _helicity_workload_text(
+                    physics,
+                    selected_helicity_ids,
+                ),
+                "selected_color_ids": selected_color_ids,
+                "selected_helicity_ids": selected_helicity_ids,
                 "elapsed_seconds": elapsed,
                 "interrupted": interrupted,
                 "completed_sample_count": len(samples),
@@ -415,17 +438,97 @@ class BenchmarkBackend:
 
         run = self._run_config
         process = None if run is None else run.evaluation.process
-        return load_runtime_backend(
-            Path(os.fspath(target)).expanduser().resolve(strict=False),
-            process=process,
-            model_parameters=None,
-            mute_warnings=False,
-        )
+        path = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        task_id = "process-output-load"
+        started = time.perf_counter()
+        if self._progress is not None:
+            self._progress.emit(
+                ProgressStart(
+                    task_id,
+                    f"Loading process output {path}",
+                    details={"step": "loading process output", "path": str(path)},
+                )
+            )
+        try:
+            runtime = load_runtime_backend(
+                path,
+                process=process,
+                model_parameters=None,
+                mute_warnings=False,
+            )
+        except Exception as exc:
+            if self._progress is not None:
+                self._progress.emit(
+                    ProgressEnd(
+                        task_id,
+                        success=False,
+                        message=str(exc),
+                        elapsed_seconds=time.perf_counter() - started,
+                    )
+                )
+            raise
+        if self._progress is not None:
+            self._progress.emit(
+                ProgressEnd(
+                    task_id,
+                    elapsed_seconds=time.perf_counter() - started,
+                )
+            )
+        return runtime
 
 
 def _benchmark_batch(points: Momenta, batch_size: int) -> Momenta:
     source = tuple(points)
     return tuple(source[index % len(source)] for index in range(batch_size))
+
+
+def _resolve_color_flow_ordinals(
+    physics: ProcessPhysics,
+    requested: Sequence[str],
+) -> tuple[str, ...]:
+    available = physics.color_ids
+    resolved: list[str] = []
+    for value in requested:
+        if value in available:
+            resolved.append(value)
+            continue
+        try:
+            ordinal = int(value, 10)
+        except ValueError:
+            resolved.append(value)
+            continue
+        if str(ordinal) != value.strip() or ordinal < 1 or ordinal > len(available):
+            maximum = len(available)
+            raise EvaluationError(
+                f"color-flow ordinal {value!r} is out of range; choose 1..{maximum} "
+                "or a stable color component ID"
+            )
+        resolved.append(available[ordinal - 1])
+    return tuple(resolved)
+
+
+def _color_workload_text(
+    physics: ProcessPhysics,
+    selected: Sequence[str],
+) -> str:
+    if physics.color_accuracy != "lc":
+        return f"contracted {physics.color_accuracy.upper()} color total"
+    count = len(physics.color_ids)
+    if not selected:
+        return f"all {count} generated physical LC flows"
+    return f"selected {len(selected)}/{count} physical LC flows: {', '.join(selected)}"
+
+
+def _helicity_workload_text(
+    physics: ProcessPhysics,
+    selected: Sequence[str],
+) -> str:
+    count = len(physics.helicity_ids)
+    if not selected:
+        structural = physics.structural_zero_helicity_count
+        suffix = f"; {structural} structural zeros" if structural else ""
+        return f"all {count} generated helicity configurations{suffix}"
+    return f"selected {len(selected)}/{count} helicities: {', '.join(selected)}"
 
 
 def _sample_progress_message(
@@ -448,7 +551,10 @@ def _sample_progress_message(
     uncertainty = (
         "SE pending"
         if len(samples) < 2
-        else f"+/- {error * scale:.2g} {unit} ({relative_error:.2%} rel. SE)"
+        else (
+            f"+/- {error * scale:.2g} {unit} "
+            f"(relative standard error {relative_error:.2%})"
+        )
     )
     return (
         f"{elapsed_seconds:.3g}/{target_seconds:.3g}s; "
@@ -719,37 +825,66 @@ def _native_profile_sample(
             return None
         return tuple(value * per_point for value in values)
 
+    wall_time = normalized("wall_time_s")
+    source_fill_time = normalized("source_fill_time_s")
+    momentum_setup_time = normalized("momentum_setup_time_s")
+    stage_input_pack_time = (
+        None
+        if execution_mode == "eager" or stage_input_pack_total is None
+        else stage_input_pack_total * per_point
+    )
+    stage_evaluator_call_time = stage_evaluator_call_total * per_point
+    output_assign_time = (
+        None
+        if execution_mode == "eager" or output_assign_total is None
+        else output_assign_total * per_point
+    )
+    amplitude_input_pack_time = (
+        None
+        if execution_mode == "eager"
+        else normalized("amplitude_input_pack_time_s")
+    )
+    amplitude_evaluator_call_time = (
+        None
+        if amplitude_evaluator_call is None
+        else amplitude_evaluator_call * per_point
+    )
+    reduction_time = (
+        normalized("eager_reduction_time_s")
+        if execution_mode == "eager"
+        else normalized("reduction_time_s")
+    )
+    eager_execution_time = (
+        stage_evaluator_call_time if execution_mode == "eager" else None
+    )
+    accounted = (
+        source_fill_time,
+        momentum_setup_time,
+        eager_execution_time if execution_mode == "eager" else stage_input_pack_time,
+        None if execution_mode == "eager" else stage_evaluator_call_time,
+        None if execution_mode == "eager" else output_assign_time,
+        None if execution_mode == "eager" else amplitude_input_pack_time,
+        None if execution_mode == "eager" else amplitude_evaluator_call_time,
+        None if execution_mode == "eager" else reduction_time,
+    )
+    other_core_time = (
+        None
+        if wall_time is None
+        else max(wall_time - sum(value or 0.0 for value in accounted), 0.0)
+    )
+
     return _NativeProfileSample(
         execution_mode=execution_mode,
-        wall_time=normalized("wall_time_s"),
-        source_fill_time=normalized("source_fill_time_s"),
-        momentum_setup_time=normalized("momentum_setup_time_s"),
-        stage_input_pack_time=(
-            None
-            if execution_mode == "eager" or stage_input_pack_total is None
-            else stage_input_pack_total * per_point
-        ),
-        stage_evaluator_call_time=stage_evaluator_call_total * per_point,
-        output_assign_time=(
-            None
-            if execution_mode == "eager" or output_assign_total is None
-            else output_assign_total * per_point
-        ),
-        amplitude_input_pack_time=(
-            None
-            if execution_mode == "eager"
-            else normalized("amplitude_input_pack_time_s")
-        ),
-        amplitude_evaluator_call_time=(
-            None
-            if amplitude_evaluator_call is None
-            else amplitude_evaluator_call * per_point
-        ),
-        reduction_time=(
-            normalized("eager_reduction_time_s")
-            if execution_mode == "eager"
-            else normalized("reduction_time_s")
-        ),
+        wall_time=wall_time,
+        source_fill_time=source_fill_time,
+        momentum_setup_time=momentum_setup_time,
+        stage_input_pack_time=stage_input_pack_time,
+        stage_evaluator_call_time=stage_evaluator_call_time,
+        output_assign_time=output_assign_time,
+        amplitude_input_pack_time=amplitude_input_pack_time,
+        amplitude_evaluator_call_time=amplitude_evaluator_call_time,
+        reduction_time=reduction_time,
+        other_core_time=other_core_time,
         stage_input_pack_times=normalized_sequence(stage_input_pack),
         stage_evaluator_call_times=normalized_sequence(stage_evaluator_call),
         stage_output_assign_times=normalized_sequence(stage_output_assign),
@@ -878,6 +1013,9 @@ def _timing_breakdown(
             [sample.amplitude_evaluator_call_time for sample in samples]
         ),
         reduction_time=_component_timing([sample.reduction_time for sample in samples]),
+        other_core_time=_component_timing(
+            [sample.other_core_time for sample in samples]
+        ),
         eager_execution_time=(
             evaluator_call_time if execution_mode == "eager" else None
         ),

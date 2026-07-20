@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from pyamplicol.api.errors import ConfigurationError
 from pyamplicol.config import ConfigResolution, EvaluatorConfig, RunConfig
@@ -18,6 +19,8 @@ from pyamplicol.reporting import (
 if TYPE_CHECKING:
     from pyamplicol.api import ModelSource, ProcessSet
     from pyamplicol.models.loading import CompiledModel as _CompiledModelPayload
+
+_T = TypeVar("_T")
 
 
 class CliServices(Protocol):
@@ -101,6 +104,42 @@ def _read_json(path: Path) -> object:
         raise ConfigurationError(f"cannot read {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise ConfigurationError(f"invalid JSON in {path}: {exc}") from exc
+
+
+def _load_process_output(
+    path: Path,
+    progress: ProgressSink,
+    callback: Callable[[], _T],
+) -> _T:
+    resolved = path.expanduser().resolve(strict=False)
+    task_id = "process-output-load"
+    started = time.perf_counter()
+    progress.emit(
+        ProgressStart(
+            task_id,
+            f"Loading process output {resolved}",
+            details={"step": "loading process output", "path": str(resolved)},
+        )
+    )
+    try:
+        result = callback()
+    except Exception as exc:
+        progress.emit(
+            ProgressEnd(
+                task_id,
+                success=False,
+                message=str(exc),
+                elapsed_seconds=time.perf_counter() - started,
+            )
+        )
+        raise
+    progress.emit(
+        ProgressEnd(
+            task_id,
+            elapsed_seconds=time.perf_counter() - started,
+        )
+    )
+    return result
 
 
 def _compile_configured_model(
@@ -187,7 +226,6 @@ class DefaultCliServices:
         )
 
     def evaluate(self, config: RunConfig, progress: ProgressSink) -> object:
-        del progress
         from pyamplicol.api import Runtime
 
         if config.evaluation.artifact is None:
@@ -203,10 +241,14 @@ class DefaultCliServices:
         momenta = _read_json(config.evaluation.momenta)
         if not isinstance(momenta, list):
             raise ConfigurationError("momenta JSON must be a point list")
-        runtime = Runtime.load(
+        runtime = _load_process_output(
             config.evaluation.artifact,
-            process=config.evaluation.process,
-            model_parameters=parameters,
+            progress,
+            lambda: Runtime.load(
+                config.evaluation.artifact,
+                process=config.evaluation.process,
+                model_parameters=parameters,
+            ),
         )
         selectors = {
             "helicities": config.evaluation.helicity_ids or None,
@@ -241,20 +283,27 @@ class DefaultCliServices:
         )
 
     def inspect(self, config: RunConfig, progress: ProgressSink) -> object:
-        del progress
         if config.evaluation.artifact is None:
             raise ConfigurationError("inspect requires evaluation.artifact")
         if config.evaluation.process is None:
             from pyamplicol.artifacts import inspect_artifact
 
-            return inspect_artifact(config.evaluation.artifact)
+            return _load_process_output(
+                config.evaluation.artifact,
+                progress,
+                lambda: inspect_artifact(config.evaluation.artifact),
+            )
 
         from pyamplicol.api import Runtime
 
-        return Runtime.load(
+        return _load_process_output(
             config.evaluation.artifact,
-            process=config.evaluation.process,
-        ).physics
+            progress,
+            lambda: Runtime.load(
+                config.evaluation.artifact,
+                process=config.evaluation.process,
+            ).physics,
+        )
 
     def model_inspect(self, config: RunConfig, progress: ProgressSink) -> object:
         del progress
@@ -292,6 +341,8 @@ class DefaultCliServices:
 
         task_id = "model-prepare"
         started = False
+        task_started_at = time.perf_counter()
+        backend = str(config.evaluator.backend).upper()
 
         def report_preparation(label: str, completed: int, total: int) -> None:
             nonlocal started
@@ -301,6 +352,12 @@ class DefaultCliServices:
                         task_id=task_id,
                         description="Prepare model evaluator kernels",
                         total=total,
+                        unit="kernels",
+                        details={
+                            "step": "prepared kernel compilation",
+                            "backend": backend,
+                            "kernel_total": total,
+                        },
                     )
                 )
                 started = True
@@ -310,6 +367,12 @@ class DefaultCliServices:
                     completed=completed,
                     total=total,
                     message=label,
+                    details={
+                        "step": label,
+                        "backend": backend,
+                        "kernel_index": min(completed + 1, total),
+                        "kernel_total": total,
+                    },
                 )
             )
 
@@ -327,6 +390,7 @@ class DefaultCliServices:
                         task_id=task_id,
                         success=False,
                         message="Prepared model compilation failed",
+                        elapsed_seconds=time.perf_counter() - task_started_at,
                     )
                 )
             raise
@@ -335,6 +399,7 @@ class DefaultCliServices:
                 ProgressEnd(
                     task_id=task_id,
                     message="Prepared model compilation complete",
+                    elapsed_seconds=time.perf_counter() - task_started_at,
                 )
             )
         result.update(

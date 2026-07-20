@@ -437,6 +437,11 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
     )
     assert result.environment["evaluator_sample_count"] == 3
     assert result.environment["precision"] == 16
+    assert result.environment["execution_mode"] == "compiled"
+    assert result.environment["color_workload"] == (
+        "all 1 generated physical LC flows"
+    )
+    assert result.environment["helicity_workload"] == "selected 1/1 helicities: h0"
     assert result.evaluator_uncertainty is not None
     assert result.process_id == "test"
     assert result.process_expression == "d d~ > z"
@@ -447,6 +452,25 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
         pytest.approx(0.25e-6)
     )
     assert len(result.timing_breakdown.stages) == 2
+
+
+def test_native_profile_reports_unaccounted_rusticol_core_time() -> None:
+    profile = {
+        "points": 2,
+        "wall_time_s": 20.0e-6,
+        "source_fill_time_s": 1.0e-6,
+        "momentum_setup_time_s": 1.0e-6,
+        "stage_input_pack_time_s": 2.0e-6,
+        "stage_evaluator_call_time_s": 4.0e-6,
+        "output_assign_time_s": 2.0e-6,
+        "amplitude_input_pack_time_s": 1.0e-6,
+        "amplitude_evaluator_call_time_s": 3.0e-6,
+        "reduction_time_s": 2.0e-6,
+    }
+
+    sample = benchmark_module._native_profile_sample(profile, fallback_points=2)
+
+    assert sample.other_core_time == pytest.approx(2.0e-6)
 
 
 def test_benchmark_falls_back_to_valid_per_stage_native_timings() -> None:

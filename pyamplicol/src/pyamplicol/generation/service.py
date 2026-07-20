@@ -387,6 +387,27 @@ class GenerationBackend:
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
         write_mode = cast(Literal["error", "append", "replace"], mode)
         reporter = GenerationPhaseReporter(self._progress)
+        run_config = self._run_config
+        execution_mode = (
+            "compiled"
+            if run_config is None
+            else str(run_config.evaluator.execution_mode)
+        )
+        backend = "jit" if run_config is None else str(run_config.evaluator.backend)
+        if run_config is None:
+            optimization = "O3"
+        elif backend == "jit":
+            optimization = f"O{run_config.evaluator.jit.optimization_level}"
+        else:
+            optimization = str(run_config.evaluator.cpp.optimization)
+        reporter.start_generation(
+            total=7 if execution_mode == "eager" else 8,
+            details={
+                "execution_mode": execution_mode,
+                "backend": backend.upper(),
+                "optimization": optimization.upper(),
+            },
+        )
         generation_started = time.perf_counter()
         try:
             license_state = self._detect_symbolica_license()
@@ -547,6 +568,24 @@ class GenerationBackend:
                     "Writing schema-v3 artifact",
                     total=1,
                 ) as phase:
+
+                    def artifact_progress(event: dict[str, object]) -> None:
+                        details = {
+                            str(key): value
+                            for key, value in event.items()
+                            if isinstance(value, (str, int, float, bool, type(None)))
+                        }
+                        phase.update(
+                            int(event.get("completed", phase.completed)),
+                            total=(
+                                None
+                                if event.get("total") is None
+                                else int(event["total"])
+                            ),
+                            message=str(event.get("step", "writing artifact")),
+                            details=details,
+                        )
+
                     write_result = write_schema_v3_artifact(
                         Path(output),
                         mode=write_mode,
@@ -556,8 +595,18 @@ class GenerationBackend:
                         processes=artifact_processes,
                         timings=reporter.timings,
                         api_bundle_hook=self._api_bundle_hook,
+                        progress_callback=(
+                            artifact_progress if phase.sink is not None else None
+                        ),
                     )
-                    phase.update(1, message=str(write_result.output))
+                    phase.update(
+                        phase.total or phase.completed,
+                        message=str(write_result.output),
+                        details={
+                            "step": "artifact ready",
+                            "file_count": len(write_result.files),
+                        },
+                    )
 
                 concrete_requests = tuple(entry.expanded.request for entry in prepared)
                 validation_points_by_process = {
@@ -585,6 +634,7 @@ class GenerationBackend:
                         expected_process_ids,
                         validation_points=validation_points_by_process,
                         expected_api_bundle_path=write_result.api_bundle_path,
+                        progress=phase,
                     )
                     message = (
                         f"schema and {validation.samples} numerical samples"
@@ -596,23 +646,16 @@ class GenerationBackend:
                 phase.update(1, message=message)
 
             reporter.timings["total"] = time.perf_counter() - generation_started
-            with reporter.phase(
-                "timing",
-                "Finalizing generation timing",
-                total=1,
-            ) as phase:
-                phase.update(
-                    1,
-                    message=(
-                        f"total={reporter.timings['total']:.6f}s; "
-                        f"phases={len(reporter.timings) - 1}"
-                    ),
-                )
+        except KeyboardInterrupt:
+            reporter.finish_generation(success=False, message="interrupted")
+            raise
         except Exception as exc:
+            reporter.finish_generation(success=False, message=str(exc))
             if isinstance(exc, PyAmpliColError):
                 raise
             raise GenerationError(str(exc)) from exc
 
+        reporter.finish_generation()
         return GenerationResult(
             output=write_result.output,
             processes=ProcessSet(
@@ -702,8 +745,50 @@ class GenerationBackend:
         model: Model,
         phase: PhaseHandle,
     ) -> _DagProcess:
-        dag, coverage = self._compile_concrete_process(expanded.process_ir, model)
-        phase.advance(message=expanded.request.name)
+        process_name = expanded.request.name
+        with phase.child(
+            process_name,
+            f"{process_name}: DAG construction",
+            details={
+                "process": process_name,
+                "step": "colour-plan",
+            },
+        ) as task:
+
+            def report(details: Mapping[str, str | int]) -> None:
+                payload = {"process": process_name, **details}
+                completed = task.completed
+                total: int | None = None
+                if "mask_index" in details and "mask_total" in details:
+                    completed = int(details["mask_index"])
+                    total = int(details["mask_total"])
+                task.update(
+                    completed,
+                    total=total,
+                    message=str(details.get("step", "DAG construction")),
+                    details=payload,
+                )
+
+            dag, coverage = self._compile_concrete_process(
+                expanded.process_ir,
+                model,
+                progress_callback=report if task.sink is not None else None,
+            )
+            task.update(
+                task.completed,
+                message="DAG complete",
+                details={
+                    "process": process_name,
+                    "step": "DAG complete",
+                    "current_count": len(dag.currents),
+                    "interaction_count": len(dag.interactions),
+                    "amplitude_count": len(dag.amplitude_roots),
+                },
+            )
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "DAG complete"},
+        )
         return _DagProcess(expanded=expanded, dag=dag, coverage=coverage)
 
     def _prepare_warmup_process(
@@ -714,6 +799,45 @@ class GenerationBackend:
         index: int,
         phase: PhaseHandle,
     ) -> _CompiledProcess:
+        process_name = process.expanded.request.name
+        with phase.child(
+            process_name,
+            f"{process_name}: structural reduction",
+            total=2,
+            details={"process": process_name, "step": "structural reduction"},
+        ) as task:
+            result = self._prepare_warmup_process_inner(
+                process,
+                model,
+                index=index,
+                progress=task,
+            )
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "validation points ready"},
+        )
+        return result
+
+    def _prepare_warmup_process_inner(
+        self,
+        process: _DagProcess,
+        model: Model,
+        *,
+        index: int,
+        progress: PhaseHandle,
+    ) -> _CompiledProcess:
+        process_name = process.expanded.request.name
+        progress.update(
+            0,
+            message="structural reduction",
+            details={
+                "process": process_name,
+                "step": "structural reduction",
+                "current_count": len(process.dag.currents),
+                "interaction_count": len(process.dag.interactions),
+                "amplitude_count": len(process.dag.amplitude_roots),
+            },
+        )
         parity_preweighted = any(
             float(root.helicity_weight) > 1.0 for root in process.dag.amplitude_roots
         )
@@ -738,6 +862,17 @@ class GenerationBackend:
                 "mode": "proven global-helicity-flip equivalence",
             },
         }
+        progress.update(
+            1,
+            message="validation-point preparation",
+            details={
+                "process": process_name,
+                "step": "validation-point preparation",
+                "current_count": len(reduced.currents),
+                "interaction_count": len(reduced.interactions),
+                "amplitude_count": len(reduced.amplitude_roots),
+            },
+        )
         sample_count = (
             validation.samples
             if validation.enabled and validation.post_build_validation
@@ -753,12 +888,18 @@ class GenerationBackend:
             for sample_index in range(sample_count)
         )
         point = points[0]
-        phase.advance(
+        progress.update(
+            2,
             message=(
-                process.expanded.request.name
+                process_name
                 if point.available
-                else f"{process.expanded.request.name}: metadata-only validation"
-            )
+                else f"{process_name}: metadata-only validation"
+            ),
+            details={
+                "process": process_name,
+                "step": "validation points ready",
+                "samples": len(points),
+            },
         )
         coverage = {
             **dict(process.coverage),
@@ -781,12 +922,36 @@ class GenerationBackend:
         model: Model,
         phase: PhaseHandle,
     ) -> _EvaluatorProcess:
-        schema = build_runtime_expression_schema(
-            process.dag,
-            model,
-            process_id=process.expanded.request.name,
+        process_name = process.expanded.request.name
+        with phase.child(
+            process_name,
+            f"{process_name}: runtime schema",
+            details={"process": process_name, "step": "runtime layout"},
+        ) as task:
+            schema = build_runtime_expression_schema(
+                process.dag,
+                model,
+                process_id=process_name,
+            )
+            stage_count = _runtime_stage_count(schema)
+            task.update(
+                stage_count,
+                total=stage_count,
+                message="runtime schema ready",
+                details={
+                    "process": process_name,
+                    "step": "runtime schema ready",
+                    "stage_index": stage_count,
+                    "stage_total": stage_count,
+                    "current_count": len(process.dag.currents),
+                    "interaction_count": len(process.dag.interactions),
+                    "output_count": len(process.dag.amplitude_roots),
+                },
+            )
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "runtime schema ready"},
         )
-        phase.advance(message=process.expanded.request.name)
         return _EvaluatorProcess(
             compiled=process,
             runtime_schema=schema,
@@ -800,6 +965,7 @@ class GenerationBackend:
         resolved_model: _ResolvedModel,
         phase: PhaseHandle,
     ) -> EagerProcessArtifact:
+        process_name = process.expanded.request.name
         eager_kernel_index = resolved_model.eager_kernel_index
         if eager_kernel_index is None:
             raise GenerationError(
@@ -809,20 +975,41 @@ class GenerationBackend:
             process.dag,
             eager_kernel_index,
         )
-        schema_mapping, eager_tables = lower_fused_eager_execution(
-            dag=process.dag,
-            model=model,
-            resolver=resolver,
-            process_id=process.expanded.request.name,
+        with phase.child(
+            process_name,
+            f"{process_name}: eager DAG lowering",
+            details={"process": process_name, "step": "runtime layout"},
+        ) as task:
+
+            def report(details: Mapping[str, str | int]) -> None:
+                completed = int(details.get("stage_index", task.completed))
+                total_value = details.get("stage_total")
+                total = None if total_value is None else int(total_value)
+                task.update(
+                    completed,
+                    total=total,
+                    message=str(details.get("step", "eager lowering")),
+                    details={"process": process_name, **details},
+                )
+
+            schema_mapping, eager_tables = lower_fused_eager_execution(
+                dag=process.dag,
+                model=model,
+                resolver=resolver,
+                process_id=process_name,
+                progress_callback=report if task.sink is not None else None,
+            )
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "eager plan ready"},
         )
-        phase.advance(message=process.expanded.request.name)
         run = self._run_config
         if run is None:  # pragma: no cover - eager mode requires RunConfig
             raise GenerationError("eager generation has no evaluator configuration")
         ir = process.expanded.process_ir
         dag = process.dag
         return EagerProcessArtifact(
-            process_id=process.expanded.request.name,
+            process_id=process_name,
             expression=ir.process,
             color_accuracy=ir.color_accuracy,
             external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
@@ -849,13 +1036,36 @@ class GenerationBackend:
         temporary_root: Path,
         phase: PhaseHandle,
     ) -> CompiledProcessArtifact:
-        with _SYMBOLICA_MATERIALIZATION_LOCK:
-            return self._materialize_evaluator_unlocked(
-                process,
-                model,
-                temporary_root,
-                phase,
+        process_id = process.compiled.expanded.request.name
+        run = self._run_config
+        backend = "JIT" if run is None else str(run.evaluator.backend).upper()
+        with phase.child(
+            process_id,
+            f"{process_id}: evaluator compilation",
+            details={
+                "process": process_id,
+                "step": "waiting for compiler",
+                "backend": backend,
+            },
+        ) as task:
+            task.update(
+                0,
+                message="waiting for compiler",
+                details={
+                    "process": process_id,
+                    "step": "waiting for compiler",
+                    "backend": backend,
+                },
             )
+            with _SYMBOLICA_MATERIALIZATION_LOCK:
+                return self._materialize_evaluator_unlocked(
+                    process,
+                    model,
+                    temporary_root,
+                    phase,
+                    task,
+                    backend=backend,
+                )
 
     def _materialize_evaluator_unlocked(
         self,
@@ -863,13 +1073,41 @@ class GenerationBackend:
         model: Model,
         temporary_root: Path,
         phase: PhaseHandle,
+        progress: PhaseHandle,
+        *,
+        backend: str,
     ) -> CompiledProcessArtifact:
         process_id = process.compiled.expanded.request.name
         evaluator_root = temporary_root / process_id
 
         def evaluator_progress(event: dict[str, object]) -> None:
+            details = {
+                str(key): value
+                for key, value in event.items()
+                if isinstance(value, (str, int, float, bool, type(None)))
+            }
+            details.update({"process": process_id, "backend": backend})
+            total_value = event.get("total")
+            total = None if total_value is None else int(total_value)
             if event.get("stage") == "stage complete":
-                phase.advance(message=str(event.get("item", process_id)))
+                completed = progress.completed + int(event.get("increment", 1))
+                progress.update(
+                    completed,
+                    total=total,
+                    message=str(event.get("item", "stage complete")),
+                    details=details,
+                )
+                phase.advance(
+                    message=str(event.get("item", process_id)),
+                    details=details,
+                )
+                return
+            progress.update(
+                progress.completed,
+                total=total,
+                message=str(event.get("item", event.get("stage", "compiling"))),
+                details=details,
+            )
 
         _blueprint, stage_manifest = build_and_write_generic_stage_evaluator_artifacts(
             process.stage_input,
@@ -879,7 +1117,9 @@ class GenerationBackend:
             stage_local_parameter_layout=True,
             symbolica_settings=self._symbolica_settings(),
             jit_compile=True,
-            evaluator_progress_callback=evaluator_progress,
+            evaluator_progress_callback=(
+                evaluator_progress if progress.sink is not None else None
+            ),
         )
         if not bool(stage_manifest.get("runtime_available")):
             raise GenerationError(
@@ -891,8 +1131,27 @@ class GenerationBackend:
             evaluator_root,
             symbolica_settings=self._symbolica_settings(),
             jit_compile=True,
+            progress_callback=(
+                evaluator_progress if progress.sink is not None else None
+            ),
         )
-        phase.advance(message=f"{process_id}: model parameters")
+        progress.update(
+            progress.completed,
+            message="model parameters ready",
+            details={
+                "process": process_id,
+                "step": "model parameters ready",
+                "backend": backend,
+            },
+        )
+        phase.advance(
+            message=f"{process_id}: model parameters",
+            details={
+                "process": process_id,
+                "step": "model parameters ready",
+                "backend": backend,
+            },
+        )
         ir = process.compiled.expanded.process_ir
         dag = process.compiled.dag
         return CompiledProcessArtifact(
@@ -1007,6 +1266,7 @@ class GenerationBackend:
         *,
         validation_points: Mapping[str, Sequence[ValidationPointRecord]],
         expected_api_bundle_path: str | None,
+        progress: PhaseHandle | None = None,
     ) -> None:
         import cmath
 
@@ -1019,7 +1279,19 @@ class GenerationBackend:
         if not expected_ids.issubset(actual_ids):
             raise GenerationError("generated artifact omitted concrete processes")
         by_path = {record.path: record for record in manifest.payloads}
-        for process_id in process_ids:
+        process_total = len(process_ids)
+        for process_index, process_id in enumerate(process_ids, start=1):
+            if progress is not None:
+                progress.update(
+                    process_index - 1,
+                    total=process_total,
+                    message=f"loading {process_id}",
+                    details={
+                        "process": process_id,
+                        "step": "runtime validation",
+                        "sample_index": 0,
+                    },
+                )
             prefix = f"processes/{process_id}"
             required = {
                 f"{prefix}/physics.json",
@@ -1053,6 +1325,18 @@ class GenerationBackend:
                     zip(total, resolved_total, strict=True),
                     start=1,
                 ):
+                    if progress is not None:
+                        progress.update(
+                            process_index - 1,
+                            total=process_total,
+                            message=f"{process_id}: sample {sample_index}",
+                            details={
+                                "process": process_id,
+                                "step": "numerical validation",
+                                "sample_index": sample_index,
+                                "sample_total": len(samples),
+                            },
+                        )
                     difference = abs(complex(summed) - complex(resolved))
                     if not cmath.isclose(
                         complex(summed),
@@ -1065,6 +1349,17 @@ class GenerationBackend:
                             f"total for {process_id!r} sample {sample_index} "
                             f"(absolute difference {difference:.3e})"
                         )
+            if progress is not None:
+                progress.update(
+                    process_index,
+                    total=process_total,
+                    message=process_id,
+                    details={
+                        "process": process_id,
+                        "step": "validated",
+                        "samples": len(samples),
+                    },
+                )
         actual_api_bundle_path = manifest.runtime.get("api_bundle_path")
         if actual_api_bundle_path != expected_api_bundle_path:
             raise GenerationError("artifact API bundle outcome is inconsistent")
@@ -1534,6 +1829,8 @@ class GenerationBackend:
         self,
         process: CanonicalProcessIR,
         model: Model,
+        *,
+        progress_callback: Callable[[Mapping[str, str | int]], None] | None = None,
     ) -> tuple[GenericDAG, dict[str, object]]:
         selection = self._process_selection
         if (
@@ -1588,6 +1885,7 @@ class GenerationBackend:
             selected_source_helicities=selection.selected_source_helicities,
             online_evaluation_reuse=self._eager_execution_enabled,
             backward_live_planning=self._eager_execution_enabled,
+            progress_callback=progress_callback,
         )
         if dag.truncated:
             raise GenerationError(

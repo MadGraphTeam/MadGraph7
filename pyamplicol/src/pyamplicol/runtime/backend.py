@@ -207,6 +207,12 @@ class RusticolRuntimeBackend:
         return _physics_from_native(self._runtime.physics)
 
     @property
+    def execution_mode(self) -> Literal["compiled", "eager"]:
+        """Return the native execution lane selected by the artifact."""
+
+        return self._execution_mode
+
+    @property
     def supports_profiling(self) -> bool:
         """Whether this installed native runtime exposes the optional profiler."""
 
@@ -220,6 +226,7 @@ class RusticolRuntimeBackend:
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
     ) -> tuple[complex | Decimal, ...]:
+        color_flows = self._resolve_color_flows(color_flows)
         if precision != 16:
             return (
                 self._exact()
@@ -250,6 +257,7 @@ class RusticolRuntimeBackend:
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
     ) -> float:
+        color_flows = self._resolve_color_flows(color_flows)
         timer = getattr(self._runtime, "_benchmark_f64_wall_time", None)
         if not callable(timer):
             raise EvaluationError("native Rusticol wall timer is unavailable")
@@ -273,6 +281,7 @@ class RusticolRuntimeBackend:
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
     ) -> ResolvedEvaluation:
+        color_flows = self._resolve_color_flows(color_flows)
         if precision != 16:
             return self._exact().evaluate_resolved(
                 momenta,
@@ -311,6 +320,7 @@ class RusticolRuntimeBackend:
         precision: int = 16,
         include_values: bool = False,
     ) -> Mapping[str, object]:
+        color_flows = self._resolve_color_flows(color_flows)
         if precision != 16:
             raise EvaluationError(
                 "runtime profiling is available only for native f64 precision"
@@ -347,6 +357,35 @@ class RusticolRuntimeBackend:
             precision=precision,
             include_values=include_values,
         )
+
+    def _resolve_color_flows(
+        self,
+        color_flows: Sequence[str] | None,
+    ) -> tuple[str, ...] | None:
+        if color_flows is None:
+            return None
+        available = self.physics.color_ids
+        resolved: list[str] = []
+        for requested in color_flows:
+            if requested in available:
+                resolved.append(requested)
+                continue
+            try:
+                ordinal = int(requested, 10)
+            except ValueError:
+                resolved.append(requested)
+                continue
+            if (
+                str(ordinal) != requested.strip()
+                or ordinal < 1
+                or ordinal > len(available)
+            ):
+                raise EvaluationError(
+                    f"color-flow ordinal {requested!r} is out of range; choose "
+                    f"1..{len(available)} or a stable color component ID"
+                )
+            resolved.append(available[ordinal - 1])
+        return tuple(resolved)
 
     def _exact(self) -> _ExactExecutor:
         if self._exact_executor is None:

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pyamplicol.api import BenchmarkResult, BenchmarkStatistics
 from pyamplicol.cli import run_cli
-from pyamplicol.cli.handlers import _process_set
+from pyamplicol.cli.handlers import _load_process_output, _process_set
 from pyamplicol.config import (
     BenchmarkConfig,
     ConfigurationError,
@@ -18,6 +18,7 @@ from pyamplicol.config import (
     RunConfig,
 )
 from pyamplicol.reporting import (
+    CallbackProgressSink,
     ProgressEnd,
     ProgressSink,
     ProgressStart,
@@ -118,6 +119,20 @@ def test_typed_config_entries_preserve_complete_process_set_behavior() -> None:
     )
     assert processes.requests[0].name == "ddbar_zg"
     assert processes.requests[1].name == "u_ubar_to_z_g"
+
+
+def test_process_output_loading_emits_visible_timed_progress(tmp_path: Path) -> None:
+    events: list[object] = []
+    progress = CallbackProgressSink(events.append)
+
+    result = _load_process_output(tmp_path / "artifact", progress, lambda: "loaded")
+
+    assert result == "loaded"
+    assert isinstance(events[0], ProgressStart)
+    assert str((tmp_path / "artifact").resolve()) in events[0].description
+    assert isinstance(events[-1], ProgressEnd)
+    assert events[-1].success is True
+    assert events[-1].elapsed_seconds is not None
 
 
 def test_cli_dispatches_protocol_and_keeps_json_on_stdout(tmp_path: Path) -> None:

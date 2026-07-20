@@ -130,7 +130,9 @@ selected = runtime.evaluate(
 ```
 
 Color-flow selection is available only for LC artifacts. NLC/full accept
-helicity selectors and reject color-flow selectors.
+helicity selectors and reject color-flow selectors. CLI users may pass either
+the stable ID or its one-based advertised position; for example,
+`--color-flow 1` selects the first physical LC flow.
 
 ## Precision And Capabilities
 
@@ -192,8 +194,9 @@ C++, and Fortran APIs.
 
 The human result is a colorized PrettyTable showing the selected process, wall
 and evaluator means with standard errors, wall standard deviation and relative
-standard error, calibrated sampling geometry, target versus measured time, and
-timing provenance. TTY progress uses a colored thread-safe progress bar with
+standard error (the standard error divided by the mean), execution mode,
+explicit color/helicity workload, calibrated sampling geometry, target versus
+measured time, and timing provenance. TTY progress uses a colored thread-safe progress bar with
 live wall-time, uncertainty, repetition, and batch metadata. `Ctrl-C` during
 sampling aborts further blocks and still prints the usual result tables using
 only fully completed blocks, with the result explicitly marked as partial.
@@ -203,7 +206,14 @@ Non-TTY progress uses typed, rate-limited log messages on stderr. With
 When native profiling is available, additional Rusticol tables report profile
 wall time, source fill, momentum setup, stage input packing/evaluator calls and
 output assignment, amplitude input packing/evaluator calls, reduction, and
-per-stage packing/evaluator/output timings. `BenchmarkResult.timing_breakdown`
+per-stage packing/evaluator/output timings. An `Other Rusticol core` row closes
+the component sum against profile wall time; it covers native input-batch
+materialization, workspace preparation, final-value copying, selector result
+assembly, and timer bookkeeping not yet split into narrower scopes. Except for
+amortized capacity growth, these are native per-call costs paid by the current
+Rust, C, C++, and Fortran interfaces; they are distinct from Python/NumPy input
+packing and therefore remain part of Rusticol wall time.
+`BenchmarkResult.timing_breakdown`
 preserves the same data as typed component and stage timing objects, including
 sample counts and uncertainty.
 

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -36,6 +36,7 @@ from .eager_tables import (
 from .runtime_schema import RuntimeSchemaLayout, build_runtime_schema_layout
 
 EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
+EagerProgressCallback = Callable[[Mapping[str, str | int]], None]
 
 
 class EagerKernelResolver(Protocol):
@@ -641,9 +642,12 @@ def lower_fused_eager_execution(
     model: Model,
     resolver: EagerKernelResolver,
     process_id: str | None = None,
+    progress_callback: EagerProgressCallback | None = None,
 ) -> tuple[dict[str, object], EagerExecutionTables]:
     """Assemble runtime metadata and eager tables from one owned layout."""
 
+    if progress_callback is not None:
+        progress_callback({"step": "runtime-layout"})
     layout = build_runtime_schema_layout(
         dag,
         model,
@@ -654,6 +658,7 @@ def lower_fused_eager_execution(
         model,
         resolver,
         _lowering_input_from_layout(layout),
+        progress_callback=progress_callback,
     )
     return layout.runtime_schema, tables
 
@@ -663,6 +668,7 @@ def lower_eager_execution_tables(
     model: Model,
     runtime_schema: Mapping[str, object],
     resolver: EagerKernelResolver,
+    progress_callback: EagerProgressCallback | None = None,
 ) -> EagerExecutionTables:
     """Lower a proven DAG without constructing any backend evaluator."""
 
@@ -671,6 +677,7 @@ def lower_eager_execution_tables(
         model,
         resolver,
         _lowering_input_from_schema(dag, runtime_schema),
+        progress_callback=progress_callback,
     )
 
 
@@ -785,6 +792,8 @@ def _lower_eager_execution_tables(
     model: Model,
     resolver: EagerKernelResolver,
     lowering: _EagerLoweringInput,
+    *,
+    progress_callback: EagerProgressCallback | None = None,
 ) -> EagerExecutionTables:
     value_slots = lowering.value_slots
     value_slots_by_current_variant = lowering.value_slots_by_current_variant
@@ -846,7 +855,8 @@ def _lower_eager_execution_tables(
 
     stages: list[EagerStageTables] = []
 
-    for stage_input in lowering.stages:
+    stage_total = len(lowering.stages)
+    for stage_position, stage_input in enumerate(lowering.stages, start=1):
         stage_record = stage_input.record
         stage_index = int(stage_record["stage_index"])
         subset_size = int(stage_record["subset_size"])
@@ -929,8 +939,28 @@ def _lower_eager_execution_tables(
                 finalizations=finalizations,
             )
         )
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "step": "invocation lowering",
+                    "stage_index": stage_position,
+                    "stage_total": stage_total,
+                    "subset_size": subset_size,
+                    "invocation_count": len(invocations),
+                    "attachment_count": len(attachments),
+                    "finalization_count": len(finalizations),
+                }
+            )
 
     amplitude_stage = lowering.amplitude_stage
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "step": "amplitude closures",
+                "stage_index": stage_total,
+                "stage_total": stage_total,
+            }
+        )
     closures: list[EagerClosureRow] = []
     for root in _mapping_sequence(
         amplitude_stage.get("roots"), "amplitude_stage.roots"
@@ -972,18 +1002,39 @@ def _lower_eager_execution_tables(
             )
         )
 
+    stage_tables = tuple(stages)
+    closure_rows = tuple(closures)
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "step": "selector closures",
+                "stage_index": stage_total,
+                "stage_total": stage_total,
+                "closure_count": len(closure_rows),
+            }
+        )
+    selector_closures = _build_selector_closure_tables(
+        stage_tables,
+        closure_rows,
+        amplitude_stage,
+        value_slot_count=len(value_slots),
+        current_count=len(dag.currents),
+    )
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "step": "eager plan ready",
+                "stage_index": stage_total,
+                "stage_total": stage_total,
+                "closure_count": len(closure_rows),
+            }
+        )
     return EagerExecutionTables(
         process_key=lowering.process_key,
         couplings=tuple(coupling_catalog.rows),
-        stages=tuple(stages),
-        closures=tuple(closures),
-        selector_closures=_build_selector_closure_tables(
-            tuple(stages),
-            tuple(closures),
-            amplitude_stage,
-            value_slot_count=len(value_slots),
-            current_count=len(dag.currents),
-        ),
+        stages=stage_tables,
+        closures=closure_rows,
+        selector_closures=selector_closures,
     )
 
 

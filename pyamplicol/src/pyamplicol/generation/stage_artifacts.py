@@ -157,6 +157,7 @@ def write_model_parameter_evaluator_artifact(
     *,
     symbolica_settings: Any | None = None,
     jit_compile: bool = True,
+    progress_callback: Any | None = None,
 ) -> dict[str, object] | None:
     schema = _dict(runtime_schema)
     records = tuple(
@@ -290,7 +291,7 @@ def write_model_parameter_evaluator_artifact(
         merge_evaluators_strategy=False,
         verbose_evaluator_build=False,
         jit_compile=jit_compile,
-        progress_callback=None,
+        progress_callback=progress_callback,
     )
     return {
         "kind": "generic-model-parameter-evaluator",
@@ -485,6 +486,8 @@ def build_and_write_generic_stage_evaluator_artifacts(
                 "stage": "stage compile",
                 "item": "start",
                 "total": stage_count,
+                "step": "evaluator compilation",
+                "stage_total": stage_count,
             }
         )
 
@@ -543,6 +546,13 @@ def build_and_write_generic_stage_evaluator_artifacts(
                     "increment": 1,
                     "total": stage_count,
                     "duration_s": timing["stage_evaluator_build_s"],
+                    "step": "stage complete",
+                    "stage_index": position + 1,
+                    "stage_total": stage_count,
+                    "subset_size": prepared_stage.subset_size,
+                    "interaction_count": len(prepared_stage.interaction_ids),
+                    "input_count": prepared_stage.parameter_count,
+                    "output_count": prepared_stage.output_length,
                 }
             )
 

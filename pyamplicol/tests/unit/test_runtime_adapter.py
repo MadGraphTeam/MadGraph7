@@ -23,6 +23,7 @@ from pyamplicol.api import (
     Runtime,
     RuntimeBackend,
 )
+from pyamplicol.api.errors import EvaluationError
 
 
 def _native_physics(accuracy: str = "lc") -> SimpleNamespace:
@@ -113,6 +114,7 @@ class _NativeRuntime:
     physics_value = _native_physics()
     load_arguments: tuple[object, ...] | None = None
     execution_mode = "compiled"
+    last_evaluate_options: dict[str, object] | None = None
 
     def __init__(self) -> None:
         self.parameter_updates: list[dict[str, complex | float | int]] = []
@@ -131,6 +133,7 @@ class _NativeRuntime:
         return json.dumps({"execution_mode": self.execution_mode})
 
     def evaluate(self, _momenta: object, **kwargs: object) -> list[object]:
+        type(self).last_evaluate_options = dict(kwargs)
         return [Decimal("1.25")] if kwargs["precision"] == 32 else [2.0]
 
     def evaluate_resolved(self, _momenta: object, **kwargs: object) -> SimpleNamespace:
@@ -273,6 +276,24 @@ def test_adapter_routes_eager_high_precision_to_eager_exact_executor(
         assert backend.evaluate([], precision=32) == (Decimal("1.25"),)
     finally:
         _NativeRuntime.execution_mode = "compiled"
+
+
+def test_adapter_accepts_one_based_color_flow_ordinals(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_native(monkeypatch)
+    from pyamplicol.runtime import load_runtime_backend
+
+    _NativeRuntime.physics_value = _native_physics("lc")
+    _NativeRuntime.last_evaluate_options = None
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+
+    backend.evaluate([], color_flows=("1",))
+
+    assert _NativeRuntime.last_evaluate_options is not None
+    assert _NativeRuntime.last_evaluate_options["color_flows"] == ("c0",)
+    with pytest.raises(EvaluationError, match=r"choose 1\.\.1"):
+        backend.evaluate([], color_flows=("2",))
 
 
 def test_adapter_maps_contracted_color_and_native_errors(

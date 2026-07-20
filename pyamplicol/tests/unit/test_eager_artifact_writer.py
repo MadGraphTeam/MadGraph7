@@ -304,6 +304,7 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         evaluator=EvaluatorConfig(execution_mode="eager"),
     )
     output = tmp_path / "artifact"
+    progress_events: list[dict[str, object]] = []
 
     write_schema_v3_artifact(
         output,
@@ -314,7 +315,12 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         processes=(process,),
         timings={"total": 0.1},
         api_bundle_hook=None,
+        progress_callback=progress_events.append,
     )
+
+    assert progress_events[0]["step"] == "global payloads"
+    assert any(event["step"] == "process payloads" for event in progress_events)
+    assert progress_events[-1]["step"] == "publishing artifact"
 
     with (
         pytest.raises(ValueError, match="changed before the transaction lock"),

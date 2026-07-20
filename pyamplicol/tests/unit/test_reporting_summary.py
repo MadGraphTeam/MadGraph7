@@ -5,6 +5,7 @@ import io
 import json
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from pyamplicol.api import (
     BenchmarkComponentTiming,
@@ -12,6 +13,9 @@ from pyamplicol.api import (
     BenchmarkStageTiming,
     BenchmarkStatistics,
     BenchmarkTimingBreakdown,
+    GenerationResult,
+    ProcessRequest,
+    ProcessSet,
 )
 from pyamplicol.artifacts import (
     ArtifactAliasInspection,
@@ -37,6 +41,52 @@ def test_human_structured_results_use_aligned_prettytable() -> None:
     assert "field" in rendered
     assert "generated processes" in rendered
     assert "complete" in rendered
+
+
+def test_generation_mode_is_labelled_as_existing_output_policy() -> None:
+    rendered = render_summary(
+        GenerationResult(
+            output=Path("artifact"),
+            processes=ProcessSet((ProcessRequest.parse("d d~ > z"),)),
+            mode="error",
+        ),
+        color=True,
+    )
+
+    assert rendered is not None
+    assert "existing-output policy" in rendered
+    assert "error" in rendered
+    assert "\x1b[31merror" not in rendered
+
+
+def test_generation_summary_compacts_file_inventory(
+    monkeypatch, tmp_path: Path
+) -> None:
+    artifact = tmp_path / "artifact"
+    artifact.mkdir()
+    (artifact / "artifact.json").write_bytes(b"x" * 24)
+    manifest = SimpleNamespace(
+        payloads=(
+            SimpleNamespace(size_bytes=1000),
+            SimpleNamespace(size_bytes=500),
+        )
+    )
+    monkeypatch.setattr(
+        "pyamplicol.artifacts.load_manifest",
+        lambda *_args, **_kwargs: manifest,
+    )
+    result = GenerationResult(
+        output=artifact,
+        processes=ProcessSet((ProcessRequest.parse("d d~ > z"),)),
+        mode="error",
+        files=(artifact / "one", artifact / "two", artifact / "artifact.json"),
+    )
+
+    rendered = render_summary(result, color=False)
+
+    assert rendered is not None
+    assert "3 files; 1.49 KiB total" in rendered
+    assert str(result.files) not in rendered
 
 
 def test_json_result_never_contains_table_or_color_sequences() -> None:
@@ -66,6 +116,7 @@ def _benchmark_result() -> BenchmarkResult:
         amplitude_input_pack_time=component,
         amplitude_evaluator_call_time=component,
         reduction_time=component,
+        other_core_time=component,
         stages=(BenchmarkStageTiming(1, component, component, component),),
     )
     return BenchmarkResult(
@@ -81,6 +132,9 @@ def _benchmark_result() -> BenchmarkResult:
             "platform": "test-platform",
             "wall_time_source": "runtime_evaluate_wall_time",
             "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            "execution_mode": "compiled",
+            "color_workload": "all 1 generated physical LC flows",
+            "helicity_workload": "all 24 generated helicity configurations",
         },
         repetitions_per_sample=50,
         evaluator_uncertainty=evaluator_uncertainty,
@@ -96,11 +150,16 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert rendered is not None
     assert "Runtime Profile" in rendered
     assert "ddbar_zg (d d~ > z g)" in rendered
+    assert "execution mode" in rendered
+    assert "compiled" in rendered
+    assert "all 1 generated physical LC flows" in rendered
+    assert "all 24 generated helicity configurations" in rendered
     assert "2.5 +/- 0.05 us/point (standard error)" in rendered
     assert "8 blocks x 50 repetitions x 32 points" in rendered
     assert "timed points" in rendered
     assert "Rusticol Timing Breakdown" in rendered
     assert "Source fill" in rendered
+    assert "Other Rusticol core" in rendered
     assert "Rusticol Stage Detail" in rendered
     assert "evaluator call" in rendered
 

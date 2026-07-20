@@ -78,8 +78,10 @@ pyamplicol profile artifacts/pp_zjj \
 expression, such as `d d~ > z g g`. The profiler warms the selected runtime,
 calibrates independent timed blocks and repetitions per block toward the target
 duration, and reports the mean time per point with standard deviation, standard
-error, and relative standard error. In a terminal it uses a colored progress
-bar with live elapsed-time, sampling, and uncertainty metadata, followed by
+error, and relative standard error (standard error divided by the mean). The
+result identifies the compiled/eager mode and whether color and helicity axes
+are complete or selected. In a terminal it uses a colored progress bar with
+live elapsed-time, sampling, and uncertainty metadata, followed by
 colorized PrettyTables. Pressing `Ctrl-C` stops sampling and reports a clearly
 marked partial result from every fully completed block. Native Rusticol
 profiling is bounded to one
@@ -326,7 +328,8 @@ for summed, explicit in zip(total, resolved.total(), strict=True):
 At leading color, resolved values have shape `(point, helicity, color flow)`.
 At NLC/full, color is contracted and the final dimension has length one.
 Selectors use stable IDs from `runtime.physics`; color-flow selection is valid
-only for leading-color artifacts.
+only for leading-color artifacts. CLI `--color-flow` also accepts a one-based
+ordinal, so `--color-flow 1` selects the first flow advertised by the artifact.
 
 At f64 precision, Rusticol executes either the default direct SymJIT
 application or a target-compatible ASM/C++ compiled evaluator without importing

@@ -224,6 +224,33 @@ def test_backward_live_planning_is_keyword_only_and_opt_in() -> None:
     assert parameter.default is False
 
 
+@pytest.mark.parametrize("backward_live_planning", (False, True))
+def test_dag_progress_reports_stage_boundaries_for_both_planners(
+    backward_live_planning: bool,
+) -> None:
+    events: list[Mapping[str, str | int]] = []
+    compile_generic_dag(
+        build_process_ir("d d~ > z g", color_accuracy="nlc"),
+        model=BuiltinSMModel(),
+        online_evaluation_reuse=True,
+        backward_live_planning=backward_live_planning,
+        progress_callback=events.append,
+    )
+
+    steps = [event["step"] for event in events]
+    assert "colour-plan" in steps
+    assert "reachability" in steps
+    assert "source-currents" in steps
+    assert "recursion" in steps
+    assert "amplitude-closure" in steps
+    assert steps[-1] == "symmetry-reuse"
+    recursion = [event for event in events if event["step"] == "recursion"]
+    assert recursion
+    assert all("mask_index" in event and "mask_total" in event for event in recursion)
+    assert all("current_count" in event for event in recursion)
+    assert all("interaction_count" in event for event in recursion)
+
+
 @pytest.mark.parametrize(
     ("process", "color_accuracy", "coupling_limits"),
     _PARITY_CASES,

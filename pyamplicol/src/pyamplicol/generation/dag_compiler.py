@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 
 from ..color.plan import GenericColorPlan, build_color_plan
@@ -64,6 +64,8 @@ from .dag_types import (
     GenericDAG,
     InteractionNode,
 )
+
+DAGProgressCallback = Callable[[Mapping[str, str | int]], None]
 
 
 def _restrict_color_plan(
@@ -131,6 +133,7 @@ class GenericDAGCompiler:
         lc_all_ordering_symmetry: bool = True,
         online_evaluation_reuse: bool = False,
         backward_live_planning: bool = False,
+        progress_callback: DAGProgressCallback | None = None,
     ) -> None:
         self.model = model
         self.color_plan = color_plan
@@ -173,6 +176,12 @@ class GenericDAGCompiler:
         self.lc_all_ordering_symmetry = bool(lc_all_ordering_symmetry)
         self.online_evaluation_reuse = bool(online_evaluation_reuse)
         self.backward_live_planning = bool(backward_live_planning)
+        self.progress_callback = progress_callback
+
+    def _report_progress(self, step: str, **details: str | int) -> None:
+        if self.progress_callback is None:
+            return
+        self.progress_callback({"step": step, **details})
 
     def compile(self, process: CanonicalProcessIR) -> GenericDAG:
         if not isinstance(process, CanonicalProcessIR):
@@ -180,6 +189,7 @@ class GenericDAGCompiler:
                 "generic DAG compilation requires a model-resolved CanonicalProcessIR"
             )
         process_ir = process
+        self._report_progress("colour planning")
         lc_trace_reflection_proven = bool(
             self.lc_all_ordering_symmetry
             and self.model.lc_trace_reflection_equivalence_is_proven(process_ir)
@@ -199,6 +209,10 @@ class GenericDAGCompiler:
             raise ValueError(
                 "prebuilt color plan accuracy does not match the compiled process"
             )
+        self._report_progress(
+            "colour-plan",
+            color_sector_count=len(color_plan.sectors),
+        )
         helicity_coverage = (
             "selected" if self.selected_source_helicities else "complete"
         )
@@ -296,6 +310,10 @@ class GenericDAGCompiler:
             color_engine,
             reference_color_order=self.reference_color_order,
         )
+        self._report_progress(
+            "reachability",
+            closure_splits=len(closure_candidate_splits),
+        )
         closure_reachable_masks = (
             _closure_side_reachable_masks(
                 full_mask,
@@ -391,6 +409,11 @@ class GenericDAGCompiler:
             table,
             global_flip_anchor=global_flip_anchor,
             live_state_plan=live_state_plan,
+        )
+        self._report_progress(
+            "source-currents",
+            current_count=len(table.currents),
+            source_count=len(sources),
         )
         reuse_tracker = (
             RecursiveEvaluationReuseTracker(self.model)
@@ -620,11 +643,24 @@ class GenericDAGCompiler:
                 color_flow_cache[key] = cached
             return cached
 
-        for mask in _masks_by_size(full_mask):
-            if mask & (mask - 1) == 0:
-                continue
-            if mask == full_mask:
-                continue
+        recursive_masks = tuple(
+            mask
+            for mask in _masks_by_size(full_mask)
+            if mask & (mask - 1) and mask != full_mask
+        )
+        recursion_stage_total = max(len(process_ir.legs) - 2, 1)
+        for mask_index, mask in enumerate(recursive_masks, start=1):
+            labels = _mask_labels(mask)
+            self._report_progress(
+                "recursion",
+                stage_index=max(len(labels) - 1, 1),
+                stage_total=recursion_stage_total,
+                subset_size=len(labels),
+                mask_index=mask_index,
+                mask_total=len(recursive_masks),
+                current_count=len(table.currents),
+                interaction_count=len(interactions),
+            )
             if not _mask_allowed_by_reachability(
                 mask,
                 closure_reachable_masks,
@@ -633,7 +669,6 @@ class GenericDAGCompiler:
                 continue
             if useful_states_by_mask is not None and mask not in useful_states_by_mask:
                 continue
-            labels = _mask_labels(mask)
             mask_current_start = len(table.currents)
             for left_mask, right_mask in _ordered_splits(mask):
                 if not (
@@ -1094,6 +1129,11 @@ class GenericDAGCompiler:
                     table.currents[mask_current_start:],
                 )
 
+        self._report_progress(
+            "amplitude-closure",
+            current_count=len(table.currents),
+            interaction_count=len(interactions),
+        )
         amplitude_roots = tuple(
             self._build_amplitude_roots(
                 process_ir,
@@ -1125,8 +1165,21 @@ class GenericDAGCompiler:
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)
         if reuse_tracker is not None:
+            self._report_progress(
+                "symmetry-reuse",
+                current_count=len(dag.currents),
+                interaction_count=len(dag.interactions),
+                amplitude_count=len(dag.amplitude_roots),
+            )
             return dag
-        return assign_recursive_current_evaluation_reuse(dag, self.model)
+        dag = assign_recursive_current_evaluation_reuse(dag, self.model)
+        self._report_progress(
+            "symmetry-reuse",
+            current_count=len(dag.currents),
+            interaction_count=len(dag.interactions),
+            amplitude_count=len(dag.amplitude_roots),
+        )
+        return dag
 
     def _compile_backward_live_plan(
         self,
@@ -1273,10 +1326,23 @@ class GenericDAGCompiler:
             ):
                 truncated = True
 
-        for mask in _masks_by_size(full_mask):
-            stage_transitions = transitions_by_mask.get(mask)
-            if not stage_transitions:
-                continue
+        recursive_masks = tuple(
+            mask for mask in _masks_by_size(full_mask) if mask in transitions_by_mask
+        )
+        recursion_stage_total = max(len(process_ir.legs) - 2, 1)
+        for mask_index, mask in enumerate(recursive_masks, start=1):
+            stage_transitions = transitions_by_mask[mask]
+            labels = _mask_labels(mask)
+            self._report_progress(
+                "recursion",
+                stage_index=max(len(labels) - 1, 1),
+                stage_total=recursion_stage_total,
+                subset_size=len(labels),
+                mask_index=mask_index,
+                mask_total=len(recursive_masks),
+                current_count=len(table.currents),
+                interaction_count=len(interactions),
+            )
             mask_current_start = len(table.currents)
             transitions_by_split: dict[
                 tuple[int, int],
@@ -1329,6 +1395,11 @@ class GenericDAGCompiler:
             if truncated:
                 break
 
+        self._report_progress(
+            "amplitude-closure",
+            current_count=len(table.currents),
+            interaction_count=len(interactions),
+        )
         amplitude_roots_list: list[AmplitudeRoot] = []
         seen_roots: set[tuple[object, ...]] = set()
         for closure in plan.closures:
@@ -1389,8 +1460,21 @@ class GenericDAGCompiler:
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)
         if reuse_tracker is not None:
+            self._report_progress(
+                "symmetry-reuse",
+                current_count=len(dag.currents),
+                interaction_count=len(dag.interactions),
+                amplitude_count=len(dag.amplitude_roots),
+            )
             return dag
-        return assign_recursive_current_evaluation_reuse(dag, self.model)
+        dag = assign_recursive_current_evaluation_reuse(dag, self.model)
+        self._report_progress(
+            "symmetry-reuse",
+            current_count=len(dag.currents),
+            interaction_count=len(dag.interactions),
+            amplitude_count=len(dag.amplitude_roots),
+        )
+        return dag
 
     def _build_sources(
         self,
@@ -2029,6 +2113,7 @@ def compile_generic_dag(
     lc_all_ordering_symmetry: bool = True,
     online_evaluation_reuse: bool = False,
     backward_live_planning: bool = False,
+    progress_callback: DAGProgressCallback | None = None,
 ) -> GenericDAG:
     return GenericDAGCompiler(
         model=model,
@@ -2049,4 +2134,5 @@ def compile_generic_dag(
         lc_all_ordering_symmetry=lc_all_ordering_symmetry,
         online_evaluation_reuse=online_evaluation_reuse,
         backward_live_planning=backward_live_planning,
+        progress_callback=progress_callback,
     ).compile(process)

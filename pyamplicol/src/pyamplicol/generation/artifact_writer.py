@@ -142,6 +142,7 @@ def write_schema_v3_artifact(
     processes: Sequence[ProcessArtifact],
     timings: Mapping[str, float],
     api_bundle_hook: ApiBundleHook | None = None,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> ArtifactWriteResult:
     if not processes:
         raise ValueError("schema-v3 generation requires at least one concrete process")
@@ -215,6 +216,14 @@ def write_schema_v3_artifact(
         expected_artifact_id=(existing.artifact_id if existing is not None else None),
     ) as builder:
         if existing is None:
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "step": "global payloads",
+                        "completed": 0,
+                        "total": len(processes) + 2,
+                    }
+                )
             _write_global_payloads(
                 builder,
                 compiled_model=compiled_model,
@@ -228,13 +237,31 @@ def write_schema_v3_artifact(
             processes=processes,
         )
         if eager_kernel_ids:
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "step": "prepared kernel pack",
+                        "completed": 1,
+                        "total": len(processes) + 2,
+                        "kernel_count": len(eager_kernel_ids),
+                    }
+                )
             _write_eager_kernel_pack(
                 builder,
                 compiled_model,
                 kernel_ids=eager_kernel_ids,
                 target=target,
             )
-        for process in processes:
+        for process_index, process in enumerate(processes, start=1):
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "step": "process payloads",
+                        "completed": process_index,
+                        "total": len(processes) + 2,
+                        "process": process.process_id,
+                    }
+                )
             record, evaluator_entry, execution_sha256 = _write_process_payloads(
                 builder,
                 process,
@@ -292,6 +319,15 @@ def write_schema_v3_artifact(
         )
         staged = load_manifest(builder.root)
         _validate_artifact_references(staged)
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "step": "publishing artifact",
+                    "completed": len(processes) + 2,
+                    "total": len(processes) + 2,
+                    "file_count": len(staged.payloads) + 1,
+                }
+            )
 
     manifest = load_manifest(output)
     _validate_artifact_references(manifest)

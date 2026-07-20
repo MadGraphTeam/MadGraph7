@@ -444,6 +444,8 @@ def _add_evaluation_options(
         dest="evaluation.color_flow_ids",
         action="append",
         default=argparse.SUPPRESS,
+        metavar="ID_OR_NUMBER",
+        help="stable color-flow ID or one-based ordinal shown by inspect",
     )
     parser.add_argument(
         "--model-parameters",
@@ -522,7 +524,8 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         dest="benchmark.color_flow_ids",
         action="append",
         default=argparse.SUPPRESS,
-        metavar="ID",
+        metavar="ID_OR_NUMBER",
+        help="stable color-flow ID or one-based ordinal shown by inspect",
     )
     parser.add_argument(
         "--momenta",

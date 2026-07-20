@@ -114,6 +114,42 @@ def test_eager_lowering_preserves_compiled_evaluation_groups_and_fanout() -> Non
     assert eager_fanout[1] == sum(size == 1 for size in dag_fanout.values())
 
 
+def test_eager_lowering_reports_stage_and_selector_progress() -> None:
+    model = BuiltinSMModel()
+    dag = compile_generic_dag(build_process_ir("g g > g g"), model=model)
+    schema = build_runtime_schema(dag, model, process_id="gg_gg")
+    propagated = {
+        (int(slot["particle_id"]), int(slot["chirality"]))
+        for slot in schema["value_storage"]["value_slots"]
+        if slot["variant"] == "propagated"
+    }
+    resolver = MappingEagerKernelResolver(
+        vertex_kernels={kind: 100 + kind for kind in dag.required_vertex_kinds},
+        propagator_kernels={
+            key: 1000 + index for index, key in enumerate(propagated)
+        },
+        closure_kernels={},
+    )
+    events: list[dict[str, str | int]] = []
+
+    lower_eager_execution_tables(
+        dag,
+        model,
+        schema,
+        resolver,
+        progress_callback=events.append,
+    )
+
+    assert any(event["step"] == "invocation lowering" for event in events)
+    assert any(event["step"] == "amplitude closures" for event in events)
+    assert events[-1]["step"] == "eager plan ready"
+    assert all(
+        "invocation_count" in event
+        for event in events
+        if event["step"] == "invocation lowering"
+    )
+
+
 def test_eager_attachment_factors_use_the_compiled_representative_ratio() -> None:
     _model, dag, schema, tables = _gluon_scattering_tables()
     interaction_by_stage = {
