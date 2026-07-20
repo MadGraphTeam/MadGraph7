@@ -90,28 +90,29 @@ void build_decays(
     std::size_t decay_index = decays.size();
     switch (line_ref.type()) {
     case Diagram::outgoing:
-        decays.push_back(
-            {decay_index,
-             parent_decay_index,
-             {},
-             diagram.outgoing_masses().at(line_ref.index()),
-             0.,
-             0.,
-             0.}
-        );
+        decays.push_back({
+            .index = decay_index,
+            .parent_index = parent_decay_index,
+            .child_indices = {},
+            .mass = diagram.outgoing_masses().at(line_ref.index()),
+            .width = 0.,
+            .e_min = 0.,
+            .e_max = 0.,
+            .pdg_id = 0,
+        });
         outgoing_indices.at(line_ref.index()) = decay_index;
         break;
     case Diagram::propagator: {
         auto& propagator = diagram.propagators().at(line_ref.index());
         decays.push_back({
-            decay_index,
-            parent_decay_index,
-            {},
-            propagator.mass,
-            propagator.width,
-            propagator.e_min,
-            propagator.e_max,
-            propagator.pdg_id,
+            .index = decay_index,
+            .parent_index = parent_decay_index,
+            .child_indices = {},
+            .mass = propagator.mass,
+            .width = propagator.width,
+            .e_min = propagator.e_min,
+            .e_max = propagator.e_max,
+            .pdg_id = propagator.pdg_id,
         });
         decay_indices.push_back(decay_index);
         integration_order.push_back(propagator.integration_order);
@@ -140,6 +141,40 @@ void build_decays(
     }
     default:
         throw std::logic_error("unreachable");
+    }
+}
+
+void build_decay_momentum_masks(
+    const std::vector<std::size_t>& outgoing_indices,
+    std::vector<Topology::Decay>& decays
+) {
+    for (std::size_t ext_index = 0; std::size_t index : outgoing_indices) {
+        decays.at(index).momentum_mask = 1 << ext_index;
+        ++ext_index;
+    }
+    for (auto& decay : std::views::reverse(decays)) {
+        if (decay.child_indices.empty()) {
+            continue;
+        }
+        int momentum_mask = 0;
+        for (std::size_t child_index : decay.child_indices) {
+            momentum_mask |= decays.at(child_index).momentum_mask;
+        }
+        decay.momentum_mask = momentum_mask;
+    }
+}
+
+void build_t_momentum_masks(
+    std::vector<int>& t_momentum_masks,
+    const std::vector<Topology::Decay>& decays,
+    std::size_t t_propagator_count
+) {
+    auto& child_indices = decays.at(0).child_indices;
+    int prefix_mask = 1;
+    for (std::size_t child_index :
+         child_indices | std::views::take(t_propagator_count)) {
+        prefix_mask |= decays.at(child_index).momentum_mask << 2;
+        t_momentum_masks.push_back(prefix_mask);
     }
 }
 
@@ -358,6 +393,11 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
             );
         }
     }
+
+    build_decay_momentum_masks(topo._outgoing_indices, topo._decays);
+    build_t_momentum_masks(
+        topo._t_propagator_masks, topo._decays, topo._t_propagator_masses.size()
+    );
 
     std::size_t massive_decays = 0;
     for (std::size_t index : decay_indices) {
