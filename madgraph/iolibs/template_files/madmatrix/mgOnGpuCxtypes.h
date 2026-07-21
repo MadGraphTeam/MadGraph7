@@ -307,16 +307,22 @@ namespace mg5amcCpu
 #ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
 #if defined MGONGPU_CUCXTYPE_THRUST
   typedef thrust::complex<fptype> cxtype;
+  typedef thrust::complex<fptype_invmass> cxtype_invmass;
 #elif defined MGONGPU_CUCXTYPE_CUCOMPLEX
   typedef cucomplex cxtype;
+  // cucomplex is precision-fixed (cuDoubleComplex/cuFloatComplex)
+  typedef cucomplex cxtype_invmass;
 #else
   typedef cxsmpl<fptype> cxtype;
+  typedef cxsmpl<fptype_invmass> cxtype_invmass;
 #endif
 #else // c++
 #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype> cxtype;
+  typedef std::complex<fptype_invmass> cxtype_invmass;
 #else
   typedef cxsmpl<fptype> cxtype;
+  typedef cxsmpl<fptype_invmass> cxtype_invmass;
 #endif
 #endif
 

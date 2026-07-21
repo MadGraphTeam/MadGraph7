@@ -178,6 +178,14 @@ namespace mgOnGpu
   typedef float fptype2; // single precision (4 bytes, fp32)
 #endif
 
+#if defined MGONGPU_FPTYPE_INVMASS_DOUBLE
+  typedef double fptype_invmass;
+#elif defined MGONGPU_FPTYPE_INVMASS_FLOAT
+  typedef float fptype_invmass;
+#else
+  typedef fptype fptype_invmass;
+#endif
+
   // --- Platform-specific software implementation details
 
   // Maximum number of blocks per grid
@@ -201,6 +209,7 @@ namespace mgOnGpu
 // Expose typedefs and operators outside the namespace
 using mgOnGpu::fptype;
 using mgOnGpu::fptype2;
+using mgOnGpu::fptype_invmass;
 
 // Undefine ARM_NEON (hack for cppnone on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
@@ -242,6 +251,19 @@ using mgOnGpu::fptype2;
 #endif
 #else // C++ "none" i.e. no SIMD
 #undef MGONGPU_CPPSIMD
+#endif
+
+// if fptype=FP32 and fptype_invmass=FP64 it would need 2x lane size
+// reject for now
+#ifdef MGONGPU_CPPSIMD
+static_assert( sizeof( fptype_invmass ) == sizeof( fptype ),
+               "fptype_invmass must equal fptype in SIMD builds: use BACKEND=cppnone (or CUDA), or define MGONGPU_FPTYPE_INVMASS_FLOAT" );
+#endif
+
+// Cucomplex is precision fixed
+#if defined MGONGPU_CUCXTYPE_CUCOMPLEX
+static_assert( sizeof( fptype_invmass ) == sizeof( fptype ),
+               "fptype_invmass must equal fptype with the cucomplex backend: use MGONGPU_CUCXTYPE_THRUST/CXSMPL or BACKEND=cppnone" );
 #endif
 
 /* clang-format off */

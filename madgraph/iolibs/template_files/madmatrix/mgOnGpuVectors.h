@@ -891,6 +891,8 @@ namespace mg5amcCpu
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
+  typedef fptype_invmass fptype_invmass_sv;
+  typedef cxtype_invmass cxtype_invmass_sv;
 #elif defined MGONGPU_CPPSIMD
   typedef bool_v bool_sv;
   typedef fptype_v fptype_sv;
@@ -898,6 +900,10 @@ namespace mg5amcCpu
   typedef uint_v uint_sv;
   typedef cxtype_v cxtype_sv;
   typedef cxtype_v_ref cxtype_sv_ref;
+  // fptype_invmass equals fptype in SIMD (enforced in mgOnGpuConfig.h), so its _sv
+  // aliases the normal fptype_sv / cxtype_sv vectors.
+  typedef fptype_sv fptype_invmass_sv;
+  typedef cxtype_sv cxtype_invmass_sv;
 #else
   typedef bool bool_sv;
   typedef fptype fptype_sv;
@@ -905,6 +911,8 @@ namespace mg5amcCpu
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
+  typedef fptype_invmass fptype_invmass_sv;
+  typedef cxtype_invmass cxtype_invmass_sv;
 #endif
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
