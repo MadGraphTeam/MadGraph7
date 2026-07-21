@@ -79,6 +79,14 @@ PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
             "e2149bbdfe9c508e922750b9e22f191edba05b9a",
             "dda014aa7b3541143b3377705b810cd064720c24",
         ),
+        (
+            "e307d218c169e246e6ce8f8e1392799c36108785",
+            "ff6690f892f210e401f0639aa33059f5c009574f",
+        ),
+        (
+            "0144af352a216ce8511b76b5271a5fce90d15e08",
+            "ff6690f892f210e401f0639aa33059f5c009574f",
+        ),
     }
 )
 ALLOW_PARALLEL_SYMBOLICA_ENV = "PYAMPLICOL_REPORT_ALLOW_PARALLEL_SYMBOLICA"

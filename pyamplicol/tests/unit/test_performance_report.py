@@ -1255,6 +1255,32 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
     )
 
 
+def test_runtime_only_revision_hops_allow_generation_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = {
+        "head": "ff6690f892f210e401f0639aa33059f5c009574f",
+        "report_version": report.REPORT_VERSION,
+        "cache_schema_version": report.CACHE_SCHEMA_VERSION,
+        "compiled_model_schema_version": 9,
+        "model_compiler_version": 13,
+    }
+    monkeypatch.setattr(report, "_report_source_provenance", lambda: current)
+
+    for previous_head in (
+        "e307d218c169e246e6ce8f8e1392799c36108785",
+        "0144af352a216ce8511b76b5271a5fce90d15e08",
+    ):
+        previous = dict(current)
+        previous["head"] = previous_head
+        assert report._source_provenance_generation_reusable(previous)
+
+    stale_contract = dict(current)
+    stale_contract["head"] = "e307d218c169e246e6ce8f8e1392799c36108785"
+    stale_contract["model_compiler_version"] = 12
+    assert not report._source_provenance_generation_reusable(stale_contract)
+
+
 def test_legacy_revision_check_accepts_non_numerical_followup_pin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
