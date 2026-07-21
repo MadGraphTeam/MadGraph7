@@ -187,6 +187,12 @@ class ProcessExporterFortran(VirtualExporter):
     jamp_optim = False
     run_card_class = None
     use_flavor_mask = True
+    # Whether this exporter can honor the --use_crossing of the generate/add
+    # command, i.e. emit a matrix element whose FLAV_IDX carries a crossing.
+    # Only the fortran standalone implements the machinery, so every other
+    # exporter must refuse the request rather than silently write code that
+    # cannot answer a crossed FLAV_IDX (see _check_crossing_support).
+    supports_crossing = False
 
     def __init__(self,  dir_path = "", opt=None):
         """Initiate the ProcessExporterFortran with directory information"""
@@ -194,12 +200,13 @@ class ProcessExporterFortran(VirtualExporter):
         self.dir_path = dir_path
         self.model = None
         self.beam_polarization = [True,True]
-        
+
         self.opt = dict(self.default_opt)
         if opt:
             self.opt.update(opt)
         self.cmd_options = self.opt['output_options']
         self._configure_flavor_mask_from_cmd_options()
+        self._check_crossing_support()
         
         #place holder to pass information to the run_interface
         self.proc_characteristic = banner_mod.ProcCharacteristic()
@@ -398,6 +405,83 @@ class ProcessExporterFortran(VirtualExporter):
                     p, pdg_to_group_pos, max_group_size))
         return (n_flavors, flav_table_flat)
 
+    def _build_flav_pdg_tables(self, matrix_element):
+        """Return (n_flavors, pdg_flat, antipdg_flat) for this matrix element.
+
+        The FLAVOR array threaded through matrix.f holds unsigned group
+        *positions* (see _build_flav_table_flat), which is all the matrix
+        element needs: every member of a flavor group shares the couplings, so
+        the position alone selects the mask. A caller working in PDG codes --
+        the f2py layer -- cannot use that: a position means nothing without
+        knowing which group and which leg it belongs to, and nothing in the
+        generated code maps one back to a PDG. These tables are that missing
+        map, and they are the only thing standing between an f2py caller and
+        being able to ask for a process by its PDG codes.
+
+        Two tables are emitted rather than one, both column-major
+        (leg-fastest, matching FLAV_TABLE):
+
+        - pdg_flat:     the signed PDG of each leg for each flavor.
+        - antipdg_flat: the PDG of the *antiparticle* of that same leg.
+
+        The antiparticle table exists because a crossing conjugates every leg
+        that swaps between the initial and the final state, and conjugation is
+        NOT "negate the PDG": a self-conjugate particle (the gluon, 21) must
+        stay itself. Tabulating both here lets the generated fortran pick one
+        or the other by the sign of SGN(k) -- which GET_CROSS_PERM already
+        computes -- instead of trying to re-derive the model's conjugation rule
+        at runtime. It is the same get_anti_pdg_code() that
+        get_iden_cross_lines uses to build BASEPID_CROSS_TABLE, so the two stay
+        consistent by construction.
+
+        The per-leg sign comes from the process's own leg id (e.g. -81 for an
+        incoming anti-quark), while the magnitude comes from the group member
+        sitting at that position; a leg that is not part of a merged group
+        (a gluon) keeps its own PDG whatever the flavor.
+        """
+
+        allowed_flavors = matrix_element.compute_flavor_masks()
+        process = matrix_element.get('processes')[0]
+        model = process.get('model')
+        leg_ids = [leg.get('id') for leg in process.get('legs')]
+        nexternal = len(leg_ids)
+
+        if not allowed_flavors:
+            allowed_flavors = [tuple([1] * nexternal)]
+
+        merged_particles = (model.get('merged_particles') or {}) if model else {}
+
+        def leg_pdg(leg_id, pos):
+            """The signed PDG of a leg whose flavor sits at group position pos."""
+            members = merged_particles.get(abs(leg_id))
+            if not members:
+                # Not a merged leg: its PDG does not depend on the flavor.
+                return int(leg_id)
+            try:
+                magnitude = int(members[int(pos) - 1])
+            except (IndexError, ValueError, TypeError):
+                return int(leg_id)
+            # The group id carries the particle/antiparticle sign of the leg.
+            return magnitude if leg_id > 0 else -magnitude
+
+        pdg_flat = []
+        antipdg_flat = []
+        for flavor in allowed_flavors:
+            for leg, pos in enumerate(flavor):
+                pdg = leg_pdg(leg_ids[leg], pos)
+                pdg_flat.append(pdg)
+                try:
+                    antipdg_flat.append(
+                        model.get('particle_dict')[pdg].get_anti_pdg_code())
+                except KeyError:
+                    # No such particle in the model (should not happen): fall
+                    # back to the naive conjugation rather than crash the
+                    # export. A wrong entry here can only mis-*match* a PDG
+                    # request, never corrupt a matrix element.
+                    antipdg_flat.append(-pdg)
+
+        return (len(allowed_flavors), pdg_flat, antipdg_flat)
+
     def _build_flav_index_lookup(self, matrix_element, n_flavors, flav_table_flat):
         """Build the expanded GET_FLAVOR_INDEX lookup for decay-chain MEs.
 
@@ -538,6 +622,46 @@ class ProcessExporterFortran(VirtualExporter):
             'nexternal_decl': nexternal_lines,
             'nflav': n_flavors,
             'flav_table_data': ', '.join(str(v) for v in flav_table_flat),
+        }
+
+    def _make_flavor_pdg_fortran_function(self, func_name, n_flavors, pdg_flat,
+                                          antipdg_flat, cross_snippets,
+                                          nexternal_decl='include'):
+        """Return the complete Fortran GET_PDG_FOR_FLAVOR routine as a string.
+
+        Emitted via the %(flavor_pdg_function)s placeholder. It is the inverse
+        of the GET_FLAVOR/GET_FLAVOR_INDEX pair in the PDG vocabulary: those two
+        only ever speak group positions, so without this an f2py caller has no
+        way to learn which physical process a FLAV_IDX denotes -- let alone
+        which one a *crossed* FLAV_IDX denotes.
+
+        *cross_snippets* is the (decl, decode, apply) triple filled by
+        fill_crossing_replace_dict: with crossing on it defers to
+        GET_CROSS_PERM so the permutation/conjugation follows exactly the same
+        code path the matrix element itself uses; with crossing off there is no
+        crossing to decode and the plain table lookup is emitted.
+        Same args/convention as _make_flavor_index_fortran_function.
+        """
+        template_path = pjoin(_file_path, 'iolibs', 'template_files',
+                              'fortran_matrix_flavor_pdg_fct.inc')
+        template = open(template_path).read()
+
+        if nexternal_decl == 'include':
+            nexternal_lines = "      include 'nexternal.inc'"
+        else:
+            nexternal_lines = ('      INTEGER NEXTERNAL\n'
+                               '      PARAMETER (NEXTERNAL=%d)' % int(nexternal_decl))
+
+        decl, decode, apply_block = cross_snippets
+        return template % {
+            'func_name': func_name,
+            'nexternal_decl': nexternal_lines,
+            'nflav': n_flavors,
+            'pdg_table_data': ', '.join(str(v) for v in pdg_flat),
+            'antipdg_table_data': ', '.join(str(v) for v in antipdg_flat),
+            'pdg_cross_decl': decl,
+            'pdg_cross_decode': decode,
+            'pdg_cross_apply': apply_block,
         }
 
     #===========================================================================
@@ -930,6 +1054,31 @@ C
         """Function to write a matrix.f file, for inheritance.
         """
         pass
+
+    def _check_crossing_support(self):
+        """Refuse to export when a crossing was asked for and cannot be given.
+
+        `--use_crossing` (on by default) tells the generation not to write out
+        the crossed subprocesses separately, because the matrix element is
+        expected to reach them through an extended FLAV_IDX instead. Only the
+        fortran standalone implements that decoding: any other exporter would
+        write a matrix element that silently misses those subprocesses, so it
+        has to error out and name the way to get a valid output back.
+        """
+
+        if self.supports_crossing:
+            return
+        if not self.opt.get('use_crossing', False):
+            return
+
+        raise InvalidCmd(
+            "The '%s' output does not support crossing symmetry, which the "
+            "process was generated with. Crossing symmetry is only implemented "
+            "for the fortran standalone output; every other output needs the "
+            "crossed subprocesses to be generated explicitly.\n"
+            "Regenerate the process with --use_crossing=False (e.g. "
+            "'generate <process> --use_crossing=False') and run the output "
+            "again." % self.opt.get('export_format', 'unknown'))
 
     def _configure_flavor_mask_from_cmd_options(self):
         """Honor `--mask=True|False` from the output command line."""
@@ -2061,6 +2210,437 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         """Return the denominator factor line for this matrix element"""
         return "DATA IDEN/%2r/" % \
                matrix_element.get_denominator_factor()
+
+    @staticmethod
+    def get_crossing_permutation(cross, nexternal):
+        """Return (perm, ic, valid) for the crossing code CROSS.
+
+        CROSS decomposes as I*(NEXTERNAL+1)+J, with I and J the crossing
+        partners of particle 1 and particle 2 (0 meaning "leave that particle
+        alone"). The base is NEXTERNAL+1, not NEXTERNAL, so that I and J range
+        over 0..NEXTERNAL and can therefore designate the last particle too.
+        perm[slot] is the 0-based index of the original leg sitting in that
+        slot, and ic[slot] is -1 for a leg that changed between the initial and
+        the final state. This mirrors exactly what APPLY_CROSSING does in the
+        generated fortran, so both stay in sync.
+
+        *valid* is False for the overlapping-swap codes, which must not be used.
+        CROSS asks for two independent transpositions, (particle1, I) and
+        (particle2, J). When BOTH are active and they share a slot they no
+        longer compose into an involution but into a 3-cycle, and the two code
+        paths that consume this permutation (GET_PDG_FOR_FLAVOR building the
+        signature, and APPLY_CROSSING_TABLE evaluating the matrix element) then
+        disagree, one applying the permutation and the other its inverse --
+        invisible for disjoint swaps (all involutions) but wrong for a cycle.
+        Such a code is pure redundancy: every physical process it could reach is
+        also reached by a DISJOINT swap, so it is marked invalid and its callers
+        refuse it (SPINCOL_CROSS_TABLE gets 0, which SMATRIX and
+        GET_PDG_FOR_FLAVOR both map to a null result). The two transpositions
+        {1,I} and {2,J} are both active iff I not in {0,1} and J not in {0,2}
+        (I==1 / J==2 swap a particle with itself, a no-op like 0), and they
+        overlap iff I==2 or J==1 or I==J.
+        """
+        base = nexternal + 1
+        i_part = cross // base
+        j_part = cross % base
+        perm = list(range(nexternal))
+        ic = [1] * nexternal
+
+        valid = not (i_part not in (0, 1) and j_part not in (0, 2)
+                     and (i_part == 2 or j_part == 1 or i_part == j_part))
+
+        def swap(slot_a, slot_b):
+            perm[slot_a], perm[slot_b] = perm[slot_b], perm[slot_a]
+            ic[slot_a] = -ic[slot_a]
+            ic[slot_b] = -ic[slot_b]
+
+        # I==1 (resp. J==2) would swap a particle with itself: degenerate, so
+        # treated as "no crossing" just like 0.
+        if i_part not in (0, 1):
+            swap(0, i_part - 1)
+        if j_part not in (0, 2):
+            swap(1, j_part - 1)
+        return perm, ic, valid
+
+    @staticmethod
+    def breaks_crossing_symmetry(process):
+        """True if `process` constrains a specific s-channel propagator.
+
+        Crossing permutes legs between the initial and the final state, so a
+        channel that is s-channel in the generated process is not s-channel in
+        its crossings. A constraint naming a specific s-channel therefore does
+        not survive the crossing and the crossing machinery must not be emitted:
+          - required_s_channels  (the `> A >` syntax)
+          - forbidden_s_channels (the `$$` syntax, diagram removed)
+        `forbidden_onsh_s_channels` (a single `$`) only forbids the on-shell
+        *region* of a kept diagram, so it does not break crossing symmetry and
+        is deliberately not listed here.
+
+        Works for both Process and ProcessDefinition (same attributes), and
+        recurses into decay chains, whose constraints bind just as much.
+        """
+        if process.get('required_s_channels') or \
+           process.get('forbidden_s_channels'):
+            return True
+        return any(ProcessExporterFortran.breaks_crossing_symmetry(decay)
+                   for decay in process.get('decay_chains'))
+
+    def fill_crossing_replace_dict(self, matrix_element, replace_dict,
+                                   use_crossing):
+        """Fill the crossing-machinery holes of matrix_standalone_v4.inc.
+
+        The extended FLAV_IDX (a flavor *and* a crossing) and everything
+        decoding it are only written out when the process was generated with
+        --use_crossing=True (the default) *and* the process definition pins no
+        specific s-channel (see breaks_crossing_symmetry). Otherwise the
+        crossed subprocesses are generated as separate matrix elements instead,
+        so the crossing machinery would be dead code: the tables, the
+        APPLY_CROSSING/GET_CROSS_PERM/GET_SPINCOL_CROSS/GET_IDENT_CROSS routines
+        are not emitted at all and each hole below gets the plain code path
+        (FLAV_IDX is then a bare flavor index in [1,NFLAV]).
+
+        Requires proc_prefix, nflav and den_factor_line to be set already.
+        """
+        prefix = replace_dict['proc_prefix']
+
+        if not use_crossing:
+            replace_dict.update({
+                'crossing_routines': '',
+                'iden_cross_lines': '',
+                'smatrix_cross_decl':
+                    'C     Generated without crossing symmetry: FLAV_IDX is a plain'
+                    '\nC     flavor index, there is no crossing to decode.',
+                'smatrix_cross_decode': '',
+                'smatrix_cross_apply': '',
+                'smatrix_matrix_call':
+                    '                    T=%sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_USE)'
+                    % prefix,
+                'smatrix_iden_line':
+                    'C     IDEN carries the identical-particle factor of the'
+                    ' representative\nC     flavor; BROKEN_SYM corrects it for'
+                    ' the actual one.'
+                    '\n      ANS=ANS/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)' % prefix,
+                'inter_rescale_decl': '',
+                'inter_rescale_body':
+                    'C     The static IDEN GET_INTER divides by carries the'
+                    ' identical-particle\nC     factor of the representative'
+                    ' flavor, so BROKEN_SYM must correct it for\nC     the actual'
+                    ' one, exactly as SMATRIX does with ANS/IDEN*BROKEN_SYM.'
+                    '\n      RESCALE = DBLE(%sBROKEN_SYM(FLAVOR))' % prefix,
+                'density_cross_apply': self.CROSS_PASSTHROUGH % {
+                    'nhel_copy': 'NHELUSE(:,:) = NHEL(:,:)'},
+                'allinter_cross_apply': '      IC(:)=1\n' + self.CROSS_PASSTHROUGH % {
+                    'nhel_copy': 'NHELUSE(:) = NHEL(:)'},
+                'pdg_cross_snippets': self.PDG_CROSS_SNIPPETS_OFF,
+                'nhel_idx_decl':
+                    'C     Generated without crossing symmetry: FLAV_IDX_IN is a'
+                    ' plain\nC     flavor index, so only BROKEN_SYM can move the'
+                    ' denominator.',
+                'nhel_idx_body':
+                    'C     Mirrors SMATRIX exactly: ANS=ANS/IDEN*BROKEN_SYM means'
+                    ' the effective\nC     denominator is IDEN/BROKEN_SYM. The'
+                    ' division is exact -- BROKEN_SYM is\nC     the ratio of the'
+                    ' representative to the actual identical-particle\nC     count,'
+                    ' and IDEN carries the representative one as a factor.'
+                    '\n      IDEN_STAR = IDEN_STAR / %sBROKEN_SYM(FLAVOR)' % prefix,
+            })
+            return
+
+        replace_dict['iden_cross_lines'] = \
+            self.get_iden_cross_lines(matrix_element)
+        replace_dict.update(dict(
+            (key, value % {'proc_prefix': prefix,
+                           'den_factor_line': replace_dict['den_factor_line']})
+            for key, value in self.CROSSING_SNIPPETS.items()))
+        replace_dict['pdg_cross_snippets'] = tuple(
+            snippet % {'proc_prefix': prefix}
+            for snippet in self.PDG_CROSS_SNIPPETS_ON)
+        replace_dict['nhel_idx_decl'] = (
+            '      INTEGER %(prefix)sGET_SPINCOL_CROSS\n'
+            '      INTEGER %(prefix)sGET_IDENT_CROSS' % {'prefix': prefix})
+        replace_dict['nhel_idx_body'] = (
+            'C     Mirrors SMATRIX branch for branch: IDEN/BROKEN_SYM uncrossed,\n'
+            'C     GET_SPINCOL_CROSS*GET_IDENT_CROSS crossed. Keeping the CROSS=0\n'
+            'C     branch on the old path (rather than letting the crossed formula\n'
+            'C     cover it) is what guarantees no change for existing callers.\n'
+            '      IF (NHI_CROSS .EQ. 0) THEN\n'
+            '        IDEN_STAR = IDEN_STAR / %(prefix)sBROKEN_SYM(FLAVOR)\n'
+            '      ELSE\n'
+            '        IDEN_STAR = %(prefix)sGET_SPINCOL_CROSS(NHI_CROSS)\n'
+            '     &   * %(prefix)sGET_IDENT_CROSS(NHI_CROSS, FLAVOR)\n'
+            '      ENDIF' % {'prefix': prefix})
+        crossing_template = pjoin(_file_path, 'iolibs', 'template_files',
+                                  'matrix_standalone_crossing_v4.inc')
+        replace_dict['crossing_routines'] = \
+            open(crossing_template).read() % replace_dict
+
+    # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN
+    # is a bare flavor index, so there is nothing to permute or conjugate.
+    PDG_CROSS_SNIPPETS_OFF = (
+        'C     Generated without crossing symmetry: FLAV_IDX_IN is a plain\n'
+        'C     flavor index, so the PDGs are read straight off the table.',
+        '      FP_FLAV = FLAV_IDX_IN',
+        """      DO FP_I = 1, NEXTERNAL
+        PDGS(FP_I) = FP_PDG_TABLE(FP_I, FP_FLAV)
+      ENDDO""")
+
+    # The same three holes with crossing on. GET_CROSS_PERM is reused rather
+    # than re-deriving I/J here, so the PDGs reported can never disagree with
+    # the legs the matrix element actually evaluates: PERM(K) is the input slot
+    # landing in crossed slot K and SGN(K)=-1 marks exactly the legs that
+    # swapped between the initial and the final state, which are the ones the
+    # crossed process sees as their own antiparticle.
+    PDG_CROSS_SNIPPETS_ON = (
+        """      INTEGER FP_PERM(NEXTERNAL), FP_SGN(NEXTERNAL)
+      INTEGER FP_CROSS
+      INTEGER %(proc_prefix)sGET_SPINCOL_CROSS""",
+        '      CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX_IN, FP_PERM, FP_SGN,\n'
+        '     & FP_FLAV)',
+        """C     A crossing with a null spin*color entry is one SMATRIX itself maps
+C     to a zero matrix element (out of range, or not applicable). Report no
+C     PDGs for it rather than a signature that cannot be evaluated.
+      FP_CROSS = (FLAV_IDX_IN-1) / NFLAV
+      IF (%(proc_prefix)sGET_SPINCOL_CROSS(FP_CROSS) .EQ. 0) THEN
+        RETURN
+      ENDIF
+      DO FP_I = 1, NEXTERNAL
+        IF (FP_SGN(FP_I) .EQ. 1) THEN
+          PDGS(FP_I) = FP_PDG_TABLE(FP_PERM(FP_I), FP_FLAV)
+        ELSE
+          PDGS(FP_I) = FP_ANTI_TABLE(FP_PERM(FP_I), FP_FLAV)
+        ENDIF
+      ENDDO""")
+
+    # Copy the arguments through unchanged: same shape as the crossing block it
+    # replaces, so its (single) caller does not have to know which is which.
+    CROSS_PASSTHROUGH = """C     No crossing to apply: the arguments go through unchanged.
+      PUSE(:,:) = P(:,:)
+      %(nhel_copy)s
+      ICUSE(:) = IC(:)
+      DO IPART=1,N_CHANGING
+        CPOS(IPART) = POS(IPART)
+      ENDDO"""
+
+    # The crossing-aware variants of the same holes. Kept here rather than in
+    # the template because the template can only hold one variant per hole.
+    CROSSING_SNIPPETS = {
+        'smatrix_cross_decl': """C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE the initial
+C     state spin*color average of the process it crosses into.
+      INTEGER IDENUSE, CROSSUSE
+      INTEGER %(proc_prefix)sGET_SPINCOL_CROSS
+      INTEGER %(proc_prefix)sGET_IDENT_CROSS
+C     Crossed copies of the arguments, built ONCE per SMATRIX call (see the
+C     BEGIN CODE section). They are only touched when a crossing is actually
+C     requested, so the uncrossed path pays nothing for them.
+      REAL*8 PUSE(0:3,NEXTERNAL)
+      INTEGER NHELUSE(NEXTERNAL,NCOMB)
+      INTEGER ICUSE(NEXTERNAL)
+      INTEGER DUMFLAV""",
+
+        'smatrix_cross_decode': """C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE is 0 for a
+C     crossing that cannot be applied, whose matrix element is identically zero.
+      CROSSUSE = (FLAV_IDX-1) / NFLAV
+      IDENUSE = %(proc_prefix)sGET_SPINCOL_CROSS(CROSSUSE)
+      IF (IDENUSE.EQ.0) THEN
+        ANS = 0D0
+        RETURN
+      ENDIF""",
+
+        'smatrix_cross_apply': """C     Apply the crossing ONCE, here, rather than once per helicity: the whole
+C     NHEL table is permuted in one go (the crossing is a fixed slot
+C     permutation, identical for every row) together with the momenta and the
+C     NSF/NSV flags. When CROSSUSE is 0 nothing is copied at all and the loop
+C     below passes the original arrays straight through, exactly as it did
+C     before crossings existed.
+      IF (CROSSUSE.NE.0) THEN
+        CALL %(proc_prefix)sAPPLY_CROSSING_TABLE(FLAV_IDX, NCOMB, P, NHEL,
+     &   JC, PUSE, NHELUSE, ICUSE, DUMFLAV)
+      ENDIF""",
+
+        'smatrix_matrix_call': """                    IF (CROSSUSE.EQ.0) THEN
+                      T=%(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_USE)
+                    ELSE
+                      T=%(proc_prefix)sMATRIX(PUSE,NHELUSE(1,IHEL),ICUSE(1)
+     &                 ,FLAV_USE)
+                    ENDIF""",
+
+        'smatrix_iden_line': """C     Uncrossed: keep the historical path untouched (IDEN carries the
+C     representative's identical factor and BROKEN_SYM corrects it per flavor).
+C     Crossed: BROKEN_SYM's tables describe the uncrossed final state and
+C     cannot express the crossed one, so rebuild the denominator instead as
+C     initial state spin*color (per crossing) times the identical final state
+C     factor of the actual crossed flavors (per flavor).
+      IF (CROSSUSE.EQ.0) THEN
+        ANS=ANS/DBLE(IDEN)*%(proc_prefix)sBROKEN_SYM(FLAVOR)
+      ELSE
+        ANS=ANS/DBLE(IDENUSE*%(proc_prefix)sGET_IDENT_CROSS(CROSSUSE,
+     &   FLAVOR))
+      ENDIF""",
+
+        'inter_rescale_decl': """      INTEGER CROSS, DCROSS, IDEN
+      INTEGER %(proc_prefix)sGET_SPINCOL_CROSS
+      INTEGER %(proc_prefix)sGET_IDENT_CROSS
+      %(den_factor_line)s""",
+
+        'inter_rescale_body': """      CROSS = (FLAV_IDX-1)/NFLAV
+      IF (CROSS.EQ.0) THEN
+C     Uncrossed: the static IDEN carries the identical-particle factor of the
+C     representative flavor, so BROKEN_SYM must correct it for the actual one,
+C     exactly as SMATRIX does with ANS/IDEN*BROKEN_SYM.
+        RESCALE = DBLE(%(proc_prefix)sBROKEN_SYM(FLAVOR))
+      ELSE
+C     Crossed: BROKEN_SYM's tables describe the uncrossed final state and are
+C     useless here; rebuild the whole denominator instead (see SMATRIX) and
+C     undo the IDEN that GET_INTER divided by.
+        DCROSS = %(proc_prefix)sGET_SPINCOL_CROSS(CROSS)
+     &   * %(proc_prefix)sGET_IDENT_CROSS(CROSS, FLAVOR)
+        IF (DCROSS.EQ.0) THEN
+          RESCALE = 0D0
+        ELSE
+          RESCALE = DBLE(IDEN)/DBLE(DCROSS)
+        ENDIF
+      ENDIF""",
+
+        'density_cross_apply': """      CALL %(proc_prefix)sAPPLY_CROSSING_TABLE(FLAV_IDX, NB_NHEL, P, NHEL,
+     & IC, PUSE, NHELUSE, ICUSE, DUMFLAV)
+C     POS is given in uncrossed slots; PERM(K) is the uncrossed slot sitting in
+C     crossed slot K, so invert it to move POS into the crossed numbering.
+      CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX, PERM, SGN, DUMFLAV)
+      DO IPART=1,N_CHANGING
+        DO I=1,NEXTERNAL
+          IF (PERM(I).EQ.POS(IPART)) CPOS(IPART) = I
+        ENDDO
+      ENDDO""",
+
+        'allinter_cross_apply': """C     IC starts at +1 everywhere; APPLY_CROSSING flips it for the legs that the
+C     crossing carried by FLAV_IDX moves across.
+      IC(:)=1
+      CALL %(proc_prefix)sAPPLY_CROSSING(FLAV_IDX, P, NHEL, IC, PUSE,
+     & NHELUSE, ICUSE, DUMFLAV)
+      CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX, PERM, SGN, DUMFLAV)
+      DO IPART = 1, N_CHANGING
+        DO I = 1, NEXTERNAL
+          IF (PERM(I).EQ.POS(IPART)) CPOS(IPART) = I
+        ENDDO
+      ENDDO""",
+    }
+
+    def get_iden_cross_lines(self, matrix_element):
+        """Return the DATA lines backing the crossing-dependent denominator.
+
+        SMATRIX must divide by the averaging/symmetry factor of the *crossed*
+        process. That factor splits in two, and the two halves must be handled
+        differently:
+
+        - the initial state spin*color average changes with the crossing (a
+          gluon pulled into the initial state takes the color average from 3 to
+          8) but NOT with the flavor, since every particle of a flavor group
+          shares its spin and color. It is emitted as SPINCOL_CROSS_TABLE,
+          indexed by CROSS.
+        - the identical final state factor changes with the FLAVOR: e.g.
+          d d~ > g u u~ crossed gives d g > d u u~ (nothing identical) while
+          d d~ > g d d~ crossed gives d g > d d d~ (two identical d). It cannot
+          be tabulated on CROSS alone, and the existing BROKEN_SYM cannot help:
+          its tables describe the *uncrossed* final state, so for this process
+          it emits COMP_OLD=1 and returns 1 whatever flavor array it is given.
+          It is therefore computed at runtime by GET_IDENT_CROSS, from the two
+          tables below.
+
+        BASEPID_CROSS_TABLE gives, per slot of the crossed process, the
+        representative PDG of the particle landing there (conjugated when the
+        leg swapped between the initial and the final state), which identifies
+        its flavor group. SRC_CROSS_TABLE gives the FLAVOR entry to read for
+        that slot: FLAVOR is not permuted by the crossing, so slot k must look
+        up the position of the original leg that moved into it. Two crossed
+        final legs are identical iff they share both.
+
+        Both tables are flattened as CROSS*NEXTERNAL + (slot-1).
+
+        A crossing that cannot be applied gets a 0 spin*color entry, which
+        SMATRIX maps to a null matrix element.
+        """
+        process = matrix_element.get('processes')[0]
+        model = process.get('model')
+        legs = process.get('legs')
+        nexternal = len(legs)
+        leg_ids = [leg.get('id') for leg in legs]
+        # polarization restricts the number of helicity states of a leg; it is
+        # attached to the leg, and a crossing moves legs around, so carry it.
+        polarizations = [leg.get('polarization') for leg in legs]
+
+        def particle(pdg):
+            return model.get('particle_dict')[pdg]
+
+        ninitial = len([leg for leg in legs if not leg.get('state')])
+
+        spincol = []
+        basepid = []
+        source = []
+        # CROSS = I*(NEXTERNAL+1)+J with I and J both in 0..NEXTERNAL.
+        for cross in range((nexternal + 1) * (nexternal + 1)):
+            perm, ic, valid = self.get_crossing_permutation(cross, nexternal)
+            if not valid:
+                # Overlapping-swap code: pure redundancy, and inconsistent
+                # between GET_PDG_FOR_FLAVOR and APPLY_CROSSING (see
+                # get_crossing_permutation). A 0 spin*color marks it as a
+                # crossing that must not be applied, exactly as for one that
+                # genuinely cannot be; both SMATRIX and GET_PDG_FOR_FLAVOR then
+                # refuse it via GET_SPINCOL_CROSS==0.
+                spincol.append(0)
+                slot_ids = list(leg_ids)
+            else:
+                try:
+                    # A leg that swapped between the initial and the final state
+                    # is seen as its own antiparticle by the crossed process.
+                    slot_ids = [leg_ids[perm[slot]] if ic[slot] == 1
+                                else particle(leg_ids[perm[slot]]).get_anti_pdg_code()
+                                for slot in range(nexternal)]
+
+                    # The crossing always keeps slots 1..ninitial initial.
+                    factor = 1
+                    for slot in range(ninitial):
+                        pol = polarizations[perm[slot]]
+                        factor *= len(pol) if pol else \
+                            len(particle(slot_ids[slot]).get_helicity_states())
+                        # get('color') is signed for antiparticles; only the
+                        # size of the representation matters for the average.
+                        factor *= abs(particle(slot_ids[slot]).get('color'))
+                    spincol.append(factor)
+                except (KeyError, IndexError):
+                    spincol.append(0)
+                    slot_ids = list(leg_ids)
+
+            basepid.extend(slot_ids)
+            source.extend(perm[slot] + 1 for slot in range(nexternal))
+
+        # Sanity: for the identity crossing, spin*color times the identical
+        # factor of the representative flavor must rebuild the static IDEN,
+        # else this and get_denominator_factor have drifted apart.
+        rep_final = [leg_ids[slot] for slot in range(ninitial, nexternal)]
+        rep_identical = 1
+        for pdg in set(rep_final):
+            rep_identical *= math.factorial(rep_final.count(pdg))
+        assert spincol[0] * rep_identical == \
+            matrix_element.get_denominator_factor(), \
+            'Crossing denominator disagrees with get_denominator_factor: ' \
+            '%s*%s vs %s' % (spincol[0], rep_identical,
+                             matrix_element.get_denominator_factor())
+
+        return '\n'.join([
+            self.format_integer_data_lines('SPINCOL_CROSS_TABLE', spincol),
+            self.format_integer_data_lines('BASEPID_CROSS_TABLE', basepid),
+            self.format_integer_data_lines('SRC_CROSS_TABLE', source)])
+
+    @staticmethod
+    def format_integer_data_lines(name, values, per_line=10):
+        """Emit 'DATA (name(I),I=a,b) /.../' lines for a 0-based table."""
+        lines = []
+        for start in range(0, len(values), per_line):
+            chunk = values[start:start + per_line]
+            lines.append('      DATA (%s(I),I=%d,%d) /%s/' %
+                         (name, start, start + len(chunk) - 1,
+                          ','.join(str(value) for value in chunk)))
+        return '\n'.join(lines)
 
     def get_icolamp_lines(self, mapconfigs, matrix_element, num_matrix_element):
         """Return the ICOLAMP matrix, showing which JAMPs contribute to
@@ -3311,6 +3891,11 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     f2py_wrapper_all ="f2py_wrapper_all.inc"
     f2py_matrix_splitter = "f2py_splitter.py"
     jamp_optim = True
+    # The only exporter implementing the extended FLAV_IDX decoding. The
+    # per-matrix-element cases it still cannot cross (msP/msF, matchbox,
+    # split orders) are handled by the use_crossing_ic gate in
+    # write_matrix_element_v4, which falls back to the uncrossed code.
+    supports_crossing = True
     default_vector_size = 0
     # When True, emit per-call IAND(WF_FLAVOR_MASK/AMP_FLAVOR_MASK,
     # CURRENT_FLAV_BIT) guards in MATRIX so that wavefunctions and amplitudes
@@ -4132,6 +4717,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         if 'sa_symmetry' not in self.opt:
             self.opt['sa_symmetry']=False
+        # --use_crossing of the generate command (default on); see
+        # fill_crossing_replace_dict.
+        if 'use_crossing' not in self.opt:
+            self.opt['use_crossing']=True
+
+        # ... and gated off per matrix element for processes whose definition
+        # pins a specific s-channel, which no crossing of them preserves. This
+        # is decided here rather than in the interface so that one constrained
+        # `add process` does not disable crossing for the unconstrained ones.
+        use_crossing = self.opt['use_crossing'] and \
+            not any(self.breaks_crossing_symmetry(proc)
+                    for proc in matrix_element.get('processes'))
 
 
         # The proc_id is for MadEvent grouping which is never used in SA.
@@ -4159,6 +4756,20 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_mask > 0)
         fortran_model.me_n_flavors = n_mask
         fortran_model.me_active_flavor_mask = active_flavor_mask
+        # Only matrix_standalone_v4.inc hands GET_AMP the crossed IC built by
+        # APPLY_CROSSING, so it is the only one whose NSF/NSV flags may go
+        # through IC. The other variants selected below (msP, msF, matchbox,
+        # splitOrders) have no IC to read and must keep the bare flag. Mirror
+        # the template choice made further down; split_orders is only fetched
+        # again here, which is side-effect free.
+        fortran_model.use_crossing_ic = (
+            use_crossing
+            and self.matrix_template == 'matrix_standalone_v4.inc'
+            and self.opt['export_format'] not in ('standalone_msP',
+                                                  'standalone_msF',
+                                                  'matchbox',
+                                                  'madloop_matchbox')
+            and not matrix_element.get('processes')[0].get('split_orders'))
         try:
             # Extract helas calls
             helas_calls = fortran_model.get_matrix_element_calls(\
@@ -4167,6 +4778,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
             fortran_model.me_active_flavor_mask = None
+            fortran_model.use_crossing_ic = False
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)
 
@@ -4333,6 +4945,48 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 fa_func_name, n_table, flav_table_flat,
                 nexternal_decl=bs_nexternal)
 
+        # Per-crossing denominator and the routines decoding an extended
+        # FLAV_IDX. Only matrix_standalone_v4.inc has these holes, and they are
+        # left empty when the process was generated with --use_crossing=False.
+        self.fill_crossing_replace_dict(matrix_element, replace_dict,
+                                        use_crossing)
+
+        # GET_PDG_FOR_FLAVOR (extended FLAV_IDX -> per-leg PDG). Must come after
+        # fill_crossing_replace_dict, which decides whether it decodes a
+        # crossing or just reads the table. Only matrix_standalone_v4.inc has
+        # the hole; the key is set unconditionally since an unused replace_dict
+        # entry is harmless and the other templates then stay byte-identical.
+        n_pdg_flav, pdg_flat, antipdg_flat = \
+            self._build_flav_pdg_tables(matrix_element)
+        replace_dict['flavor_pdg_function'] = \
+            self._make_flavor_pdg_fortran_function(
+                replace_dict['proc_prefix'] + 'GET_PDG_FOR_FLAVOR',
+                n_pdg_flav, pdg_flat, antipdg_flat,
+                replace_dict['pdg_cross_snippets'],
+                nexternal_decl=bs_nexternal)
+
+        # f2py entry points taking an extended FLAV_IDX (the only way a python
+        # caller can request a crossing, and reach GET_DENSITY_IDX /
+        # GET_ALL_INTER_IDX / GET_NHEL_IDX / GET_PDG_FOR_FLAVOR). Those routines
+        # only exist in matrix_standalone_v4.inc, so the wrappers are emitted
+        # only there; the other standalone templates get an empty hole (the
+        # placeholder lives in the shared matrix_standalone_f2py.inc). The
+        # snippet is pre-formatted here because the outer '% replace_dict' pass
+        # does not re-scan an inserted value for further %(...)s.
+        if matrix_template == 'matrix_standalone_v4.inc':
+            flav_idx_tmpl = open(pjoin(_file_path, 'iolibs', 'template_files',
+                                       'matrix_standalone_f2py_flav_idx.inc')).read()
+            nexternal_val = int(replace_dict['nexternal'])
+            replace_dict['f2py_flav_idx_wrappers'] = flav_idx_tmpl % {
+                'proc_prefix': replace_dict['proc_prefix'],
+                'nexternal': nexternal_val,
+                'nflav': replace_dict['nflav'],
+                'ncomb': replace_dict['ncomb'],
+                'ncross': (nexternal_val + 1) ** 2,
+            }
+        else:
+            replace_dict['f2py_flav_idx_wrappers'] = ''
+
         replace_dict['template_file'] = pjoin(_file_path, 'iolibs', 'template_files', matrix_template)
         replace_dict['template_file2'] = pjoin(_file_path, \
                                    'iolibs/template_files/split_orders_helping_functions.inc')
@@ -4483,8 +5137,11 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
            
 
     matrix_template = "matrix_standalone_matchbox.inc"
-    
-    @staticmethod    
+    # Inherits from the standalone exporter but writes its own template, which
+    # has no crossing machinery: the capability does not carry over.
+    supports_crossing = False
+
+    @staticmethod
     def get_color_string_lines(matrix_element):
         """Return the color matrix definition lines for this matrix element. Split
         rows in chunks of size n."""
@@ -11567,8 +12224,12 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         opt.update({'clean': not noclean,
                'complex_mass': cmd.options['complex_mass_scheme'],
                'export_format':cmd._export_format,
-               'mp': False,  
-               'sa_symmetry':False, 
+               'mp': False,
+               'sa_symmetry':False,
+               # --use_crossing of the generate/add process command: when off,
+               # the standalone matrix.f is written without any crossing
+               # machinery (see ProcessExporterFortranSA.write_matrix_element_v4).
+               'use_crossing': getattr(cmd, '_use_crossing', True),
                'model': cmd._curr_model.get('name'),
                'v5_model': False if cmd._model_v4_path else True,
                'running': cmd._curr_model.get('running_elements'),

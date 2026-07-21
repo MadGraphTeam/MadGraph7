@@ -1042,6 +1042,11 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         self.use_flavor_mask = False
         self.me_n_flavors = 0
         self.me_active_flavor_mask = None
+        # When True the external wavefunction NSF/NSV flag is multiplied by
+        # IC(i), letting the caller cross a leg between the initial and the
+        # final state. Only the exporters whose template passes a meaningful
+        # IC turn this on (see generate_external_wavefunction).
+        self.use_crossing_ic = False
         super(FortranUFOHelasCallWriter, self).__init__(argument, options=options)
 
     def format_helas_object(self, prefix, number):
@@ -1203,14 +1208,30 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 else:
                     call = call + "%(mass)s,"
                 call = call + "NHEL(%(number_external)d),"
+            wf_object = self.format_helas_object('W(', '%(me_id)d')
             if argument.get('spin') == 2:
-                call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
+                suffix = ", FLAVOR(%(number_external)d)," + wf_object + ")"
             else:
-                call = call + "%(state_id)+d,{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
+                suffix = "," + wf_object + ")"
+            # Two variants of the NSF/NSV flag: bare, or multiplied by IC so
+            # that the caller can flip a leg between the initial and the final
+            # state (crossing). Flipping that flag is what crosses the leg:
+            # helas stores the momentum as p*nsf and uses nhel*nsf. Only
+            # templates that actually pass a meaningful IC may use the second
+            # form -- several (e.g. the madevent MATRIX) declare IC as a local
+            # and never set it, so reading it there would give garbage.
+            call = (call + "%(state_id)+d" + suffix,
+                    call + "%(state_id)+d*IC(%(number_external)d)" + suffix)
 
-        call_function = lambda wf: call % wf.get_external_helas_call_dict()
+        if isinstance(call, tuple):
+            # The flag is read at emission time, not here: a single writer
+            # instance is reused across outputs (standalone then madevent), so
+            # the choice must not be baked into the cached call.
+            call_function = lambda wf: \
+                call[1 if self.use_crossing_ic else 0] % \
+                wf.get_external_helas_call_dict()
+        else:
+            call_function = lambda wf: call % wf.get_external_helas_call_dict()
         self.add_wavefunction(argument.get_call_key(), call_function)
 
     def generate_all_other_helas_objects(self,argument):

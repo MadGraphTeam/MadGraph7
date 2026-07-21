@@ -565,6 +565,13 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Fortran standalone (SA), and C++ standalone (SA) back-ends")
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
+        logger.info("o crossing:",'$MG:color:GREEN')
+        logger.info("   Output the process to fortran standalone twice, with the")
+        logger.info("   crossing symmetry on (--use_crossing=True) and off, then")
+        logger.info("   compare each subprocess evaluated through the extended")
+        logger.info("   FLAV_IDX crossing against its independent value.")
+        logger.info("   Requires gfortran and a working f2py (numpy) toolchain.")
+        logger.info("   Example: check crossing g u > g u",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
         logger.info("   it to the narrow width approximation in the off-shell")
@@ -2293,7 +2300,8 @@ class CompleteForCmd(cmd.CompleteCmd):
             return
 
         if text.startswith('--'):
-            return self.list_completion(text, ['--no_crossing', 
+            return self.list_completion(text, ['--use_crossing=True',
+                                               '--use_crossing=False',
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
                                                '--standalone']) 
@@ -3079,7 +3087,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _tutorial_opts = ['aMCatNLO', 'stop', 'MadLoop', 'MadGraph5']
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
-                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
+                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
+                   'crossing']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'MadAnalysis4', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
@@ -3213,6 +3222,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_helas_model = None
     _curr_exporter = None
     _second_exporter = None
+    # UI flag --use_crossing (default on); see do_add.
+    _use_crossing = True
     _done_export = False
     _curr_decaymodel = None
 
@@ -3335,20 +3346,41 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         standalone_only = False
         if '--standalone' in args:
             standalone_only = True
-            merge_crossing = True
-            args.remove('--standalone')            
+            args.remove('--standalone')
 
-        merge_crossing = False
-        if '--no_crossing' in args:
-            merge_crossing = True
-            args.remove('--no_crossing') 
+        # Crossing symmetry is used by default. --use_crossing (bare) or
+        # --use_crossing=True keep it on, --use_crossing=False turns it off.
+        # --standalone does not affect it.
+        use_crossing = True
+        for arg in args[:]:
+            if arg == '--use_crossing':
+                use_crossing = True
+                args.remove(arg)
+            elif arg.startswith('--use_crossing='):
+                value = arg.split('=', 1)[1]
+                if value.lower() in ['true', 't', '1', 'yes', 'on']:
+                    use_crossing = True
+                elif value.lower() in ['false', 'f', '0', 'no', 'off']:
+                    use_crossing = False
+                else:
+                    raise self.InvalidCmd('--use_crossing expects True or '
+                                          'False, got \'%s\'' % value)
+                args.remove(arg)
+        # Internally the switch is inverted: merge_crossing=True means "do not
+        # reuse/generate the crossed subprocesses".
+        merge_crossing = not use_crossing
 
         # Check the validity of the arguments
         self.check_add(args)
 
         if args[0] == 'model':
             return self.add_model(args[1:])
-        
+
+        # Remember the choice for the exporter: the crossing machinery is only
+        # written out in the fortran standalone if every process of the current
+        # generation asked for it (reset by clean_process/do_generate).
+        self._use_crossing = self._use_crossing and use_crossing
+
         # special option for 1->N to avoid generation of kinematically forbidden
         #decay.
         if args[-1].startswith('--optimize'):
@@ -4525,6 +4557,22 @@ This implies that with decay chains:
         # specified below where the user must be sure to have writing access.
         output_path = os.getcwd()
 
+        # The crossing check does not use the analytic MatrixElementEvaluator /
+        # gauge / CMS machinery: it regenerates the process to fortran
+        # standalone twice (crossing on and off) and compares the compiled
+        # matrix elements. Route it here and return early.
+        if args[0] == 'crossing':
+            options['proc_line'] = proc_line
+            crossing_result = process_checks.check_crossing(
+                myprocdef, param_card=param_card, options=options, cmd=self)
+            text = 'Crossing symmetry check (crossing on vs off):\n'
+            text += process_checks.output_crossing(crossing_result) + '\n'
+            logging.getLogger('madgraph.check_cmd').info(text)
+            process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+            if not options['reuse']:
+                process_checks.clean_up(self._mgme_dir)
+            return
+
         if args[0] in ['timing','stability', 'profile'] and not \
                                         myprocdef.get('perturbation_couplings'):
             raise self.InvalidCmd("Only loop processes can have their "+
@@ -4968,6 +5016,8 @@ This implies that with decay chains:
         self._uses_polarization = False
         self._uses_density_matrix = False
         self._uses_quarkonia = False
+        # Reset the --use_crossing choice (a new process definition starts)
+        self._use_crossing = True
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir

@@ -3885,6 +3885,451 @@ def output_flavor(comparison_results, output='text'):
 
 
 #===============================================================================
+# check_crossing
+#===============================================================================
+# Driver script run in a *fresh* interpreter for every compiled matrix2py
+# module.  Importing an f2py .so pollutes the importing interpreter (the module
+# name 'matrix2py' can only be bound once and its Fortran COMMON blocks leak
+# globally), so each module has to be probed in its own subprocess; the request
+# and the answer are exchanged as JSON through files/stdout.
+_CROSSING_DRIVER = r'''
+import sys, json
+import numpy as np
+req = json.load(open(sys.argv[1]))
+sys.path.insert(0, req["pdir"])
+import matrix2py
+from flavor_dispatch import FlavorDispatch
+me = FlavorDispatch(matrix2py)
+me.initialisemodel(req["card"])
+out = {}
+if req["mode"] == "enumerate":
+    nflav, nexternal, ncross = me.flavor_layout()
+    out["layout"] = [nflav, nexternal, ncross]
+    entries = []
+    for cross in range(ncross):
+        for flav in range(1, nflav + 1):
+            idx = cross * nflav + flav
+            pdg = me.pdg_for_index(idx)
+            if pdg is not None:
+                entries.append([idx, cross, flav, list(pdg)])
+    out["entries"] = entries
+elif req["mode"] == "evaluate":
+    values = []
+    for item in req["items"]:
+        P = np.asfortranarray(np.array(item["momenta"], dtype=float).T)
+        values.append(float(me.smatrix(P, int(item["index"]))))
+    out["values"] = values
+sys.stdout.write("CROSSJSON:" + json.dumps(out) + "\n")
+'''
+
+
+def _crossing_build_env():
+    """Environment for building/running the f2py module.
+
+    numpy>=1.26 drives f2py through the meson backend, whose ``meson`` and
+    ``ninja`` executables normally sit next to the running interpreter.  Prepend
+    that directory to PATH so ``make matrix2py.so`` finds them even when they are
+    not on the ambient PATH.
+    """
+    env = dict(os.environ)
+    bindir = os.path.dirname(os.path.abspath(sys.executable))
+    env['PATH'] = bindir + os.pathsep + env.get('PATH', '')
+    return env
+
+
+def _crossing_build_f2py(pdir, env):
+    """Compile ``matrix2py.so`` in *pdir*; return True on success.
+
+    The system ``f2py`` is unusable on some setups (dangling interpreter, or the
+    distutils backend removed on numpy>=1.26), so the makefile is driven with
+    ``F2PY="<python> -m numpy.f2py"`` which always resolves to the running
+    interpreter's f2py.  A plain ``make matrix2py.so`` is tried first so a
+    working system f2py is still honoured.
+    """
+    for f2py in (None, '%s -m numpy.f2py' % sys.executable):
+        for stale in glob.glob(pjoin(pdir, 'matrix2py*.so')):
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
+        cmd = ['make', 'matrix2py.so']
+        if f2py is not None:
+            cmd.append('F2PY=%s' % f2py)
+        with open(os.devnull, 'w') as devnull:
+            ret = subprocess.call(cmd, cwd=pdir, stdout=devnull,
+                                  stderr=devnull, env=env)
+        if ret == 0 and glob.glob(pjoin(pdir, 'matrix2py*.so')):
+            return True
+    return False
+
+
+def _crossing_run_driver(pdir, request, env):
+    """Run the JSON driver against the module in *pdir*; return the answer dict
+    (or None on failure)."""
+    import json
+    import tempfile
+    request = dict(request)
+    request['pdir'] = pdir
+    script = pjoin(pdir, '_crossing_driver.py')
+    with open(script, 'w') as fsock:
+        fsock.write(_CROSSING_DRIVER)
+    fd, req_path = tempfile.mkstemp(suffix='.json', dir=pdir)
+    with os.fdopen(fd, 'w') as fsock:
+        json.dump(request, fsock)
+    try:
+        proc = subprocess.Popen([sys.executable, script, req_path],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, cwd=pdir, env=env)
+        output = proc.communicate()[0].decode()
+    finally:
+        try:
+            os.remove(req_path)
+        except OSError:
+            pass
+    for line in output.split('\n'):
+        if line.startswith('CROSSJSON:'):
+            return json.loads(line[len('CROSSJSON:'):])
+    logger.debug("Crossing driver produced no answer in %s:\n%s"
+                 % (pdir, output))
+    return None
+
+
+def check_crossing(process_definition, param_card=None, options=None,
+                   cmd=FakeInterface()):
+    """Compare the crossing-enabled and crossing-disabled fortran standalone.
+
+    The process is generated twice and output to fortran standalone (with the
+    f2py wrapper):
+
+    * ``--use_crossing=False`` — the crossing machinery is *off*; each generated
+      matrix element is self-contained and reachable only as its own identity.
+      This is the independent, per-diagram reference (``value_direct``).
+    * ``--use_crossing=True`` — the crossing machinery is *on*; a single matrix
+      element reaches many physical processes through the extended ``FLAV_IDX``
+      (leg permutation + NSF flip + per-crossing denominator).
+
+    For every physical subprocess of the reference, the same signed-PDG process
+    is located in the crossing output and evaluated *through a genuine crossing*
+    (a non-identity ``FLAV_IDX`` reproducing that PDG signature, when one exists)
+    at the very same phase-space point, giving ``value_crossed``.  The two must
+    agree: this exercises ``APPLY_CROSSING`` / the dynamic NSF / the crossed
+    averaging denominator against a value computed with none of them.
+
+    Processes whose crossing is auto-disabled by an s-channel constraint (e.g.
+    ``u u~ > z > e+ e-``: what is s-channel in one arrangement is not in its
+    crossings) reach nothing but their own identity, so ``value_crossed`` falls
+    back to the identity and the result is flagged 'crossing not applicable'.
+
+    Returns a list of result dicts consumed by :func:`output_crossing`.
+    """
+    import json
+    import tempfile
+    import madgraph.interface.master_interface as master_interface
+
+    if options is None:
+        options = {}
+    energy = float(options.get('energy', 1000.0))
+
+    model = process_definition.get('model')
+    proc_line = options.get('proc_line')
+    if proc_line is None:
+        # Fall back to a regenerable string; the caller normally supplies the
+        # verbatim line via options so s-channel/forbidden constraints survive.
+        proc_line = process_definition.nice_string().split(':', 1)[-1].strip()
+    modelname = model.get('modelpath') or model.get('name')
+
+    ninitial = len([leg for leg in process_definition.get('legs')
+                    if not leg.get('state')])
+
+    tmproot = tempfile.mkdtemp(prefix='mg5_crosscheck_')
+
+    def _generate(use_crossing, name):
+        """Generate + output standalone; return the list of P* directories."""
+        mgcmd = master_interface.MasterCmd()
+        mgcmd.no_notification()
+        mgcmd.exec_cmd('set automatic_html_opening False', printcmd=False)
+        mgcmd.exec_cmd('set group_subprocesses False', printcmd=False)
+        mgcmd.exec_cmd('set apply_flavor_grouping True', printcmd=False)
+        mgcmd.exec_cmd('import model %s' % modelname, printcmd=False)
+        # Carry over any user-defined multiparticle labels (e.g. a custom
+        # 'define x = g u u~'); the built-in ones (p, j, ...) are recreated by
+        # 'import model', but user labels only live in the caller's session.
+        user_mp = getattr(cmd, '_multiparticles', None)
+        if user_mp and hasattr(mgcmd, '_multiparticles'):
+            mgcmd._multiparticles.update(user_mp)
+        mgcmd.exec_cmd('generate %s --use_crossing=%s'
+                       % (proc_line, use_crossing), printcmd=False)
+        outdir = pjoin(tmproot, name)
+        mgcmd.exec_cmd('output standalone %s -f' % outdir, printcmd=False)
+        subroot = pjoin(outdir, 'SubProcesses')
+        pdirs = [pjoin(subroot, d) for d in sorted(os.listdir(subroot))
+                 if d.startswith('P') and os.path.isdir(pjoin(subroot, d))]
+        # If the user supplied a param_card, use it in place of the model
+        # default for both the module (initialisemodel) and momenta generation.
+        if param_card:
+            shutil.copy(param_card, pjoin(outdir, 'Cards', 'param_card.dat'))
+        return outdir, pdirs
+
+    def _pdg_label(pdg):
+        try:
+            names = []
+            for code in pdg:
+                part = model.get_particle(code)
+                names.append(part.get_name() if part else str(code))
+            return (' '.join(names[:ninitial]) + ' > '
+                    + ' '.join(names[ninitial:]))
+        except Exception:
+            return str(tuple(pdg))
+
+    results = []
+    env = _crossing_build_env()
+    try:
+        ref_out, ref_pdirs = _generate('False', 'reference')
+        cross_out, cross_pdirs = _generate('True', 'crossing')
+        ref_card = pjoin(ref_out, 'Cards', 'param_card.dat')
+        cross_card = pjoin(cross_out, 'Cards', 'param_card.dat')
+
+        # ── build every module ──────────────────────────────────────────────
+        built = {}
+        for pdir in ref_pdirs + cross_pdirs:
+            built[pdir] = _crossing_build_f2py(pdir, env)
+        if not any(built.get(pdir) for pdir in ref_pdirs) or \
+           not any(built.get(pdir) for pdir in cross_pdirs):
+            # No usable module on either side: signal a skip rather than a fail.
+            return [{'status': 'build_failed'}]
+
+        # ── enumerate the crossing output: pdg-tuple -> (pdir, index, cross) ─
+        # Two-stage matching so the crossing code path is exercised *safely*:
+        #  * within a module keep the lowest-cross index per PDG (this is what
+        #    find_pdg does). A module owning the process as its identity gives
+        #    cross==0; a module reaching it only by crossing gives cross>0. The
+        #    dedup is essential -- a *shadowed* higher-cross index can report the
+        #    same PDG yet evaluate to a different (wrong) value, so it must never
+        #    be picked over the identity of the module that owns the process.
+        #  * across modules prefer a genuine crossing (cross>0) from a module
+        #    that does not own the process, so the comparison exercises
+        #    APPLY_CROSSING rather than a plain identity when the process line
+        #    spans crossable subprocesses.
+        cross_map = {}
+        for pdir in cross_pdirs:
+            if not built.get(pdir):
+                continue
+            answer = _crossing_run_driver(
+                pdir, {'mode': 'enumerate', 'card': cross_card}, env)
+            if not answer:
+                continue
+            module_map = {}     # find_pdg semantics: lowest cross per PDG
+            for idx, cross, _flav, pdg in answer['entries']:
+                key = tuple(pdg)
+                if key not in module_map:
+                    module_map[key] = (idx, cross)
+            for key, (idx, cross) in module_map.items():
+                existing = cross_map.get(key)
+                # Prefer a genuine crossing (cross>0) over an identity match.
+                if existing is None or (existing[2] == 0 and cross > 0):
+                    cross_map[key] = (pdir, idx, cross)
+
+        # ── enumerate the reference identities and generate momenta ─────────
+        # (ref_pdir, ref_idx, pdg) for every reference subprocess (cross==0).
+        ref_subprocs = []
+        momenta_by_pdg = {}
+        for pdir in ref_pdirs:
+            if not built.get(pdir):
+                continue
+            answer = _crossing_run_driver(
+                pdir, {'mode': 'enumerate', 'card': ref_card}, env)
+            if not answer:
+                continue
+            for idx, cross, _flav, pdg in answer['entries']:
+                if cross != 0:
+                    continue   # reference has no genuine crossing anyway
+                key = tuple(pdg)
+                ref_subprocs.append((pdir, idx, key))
+                if key not in momenta_by_pdg:
+                    momenta_by_pdg[key] = _crossing_momenta(
+                        key, ninitial, model, param_card, energy, cmd)
+
+        # ── batch the evaluations per module ────────────────────────────────
+        # value_direct: reference module at its own identity index.
+        direct_jobs = {}
+        for pdir, idx, key in ref_subprocs:
+            direct_jobs.setdefault(pdir, []).append((idx, key))
+        direct_val = {}
+        for pdir, jobs in direct_jobs.items():
+            items = [{'index': idx, 'momenta': momenta_by_pdg[key]}
+                     for idx, key in jobs if momenta_by_pdg[key] is not None]
+            answer = _crossing_run_driver(
+                pdir, {'mode': 'evaluate', 'card': ref_card, 'items': items},
+                env)
+            values = answer['values'] if answer else [None] * len(items)
+            vi = 0
+            for idx, key in jobs:
+                if momenta_by_pdg[key] is None:
+                    continue
+                direct_val[(pdir, idx, key)] = values[vi]
+                vi += 1
+
+        # value_crossed: crossing module at the (preferably crossed) index.
+        crossed_jobs = {}
+        for _pdir, _idx, key in ref_subprocs:
+            match = cross_map.get(key)
+            if match is None or momenta_by_pdg[key] is None:
+                continue
+            cpdir, cidx, _ccross = match
+            crossed_jobs.setdefault(cpdir, []).append((cidx, key))
+        crossed_val = {}
+        for cpdir, jobs in crossed_jobs.items():
+            items = [{'index': cidx, 'momenta': momenta_by_pdg[key]}
+                     for cidx, key in jobs]
+            answer = _crossing_run_driver(
+                cpdir, {'mode': 'evaluate', 'card': cross_card,
+                        'items': items}, env)
+            values = answer['values'] if answer else [None] * len(items)
+            for (cidx, key), value in zip(jobs, values):
+                crossed_val[(cpdir, cidx, key)] = value
+
+        # ── assemble the per-subprocess results ─────────────────────────────
+        for pdir, idx, key in ref_subprocs:
+            value_direct = direct_val.get((pdir, idx, key))
+            match = cross_map.get(key)
+            value_crossed = None
+            cross_code = None
+            if match is not None and momenta_by_pdg[key] is not None:
+                cpdir, cidx, ccross = match
+                value_crossed = crossed_val.get((cpdir, cidx, key))
+                cross_code = ccross
+            results.append({
+                'process': _pdg_label(key),
+                'pdg': key,
+                'value_direct': value_direct,
+                'value_crossed': value_crossed,
+                'cross_code': cross_code,
+                'status': 'ok',
+            })
+    finally:
+        shutil.rmtree(tmproot, ignore_errors=True)
+
+    return results
+
+
+def _crossing_momenta(pdg, ninitial, model, param_card, energy, cmd):
+    """A seeded phase-space point for the leg ordering *pdg* (signed codes).
+
+    Uses the same RAMBO seed as the check_sa templates so the point is
+    reproducible.  Returns a list of ``[E, px, py, pz]`` per leg, or None.
+    """
+    try:
+        legs = base_objects.LegList()
+        for i, code in enumerate(pdg):
+            legs.append(base_objects.Leg({'id': int(code),
+                                          'state': (i >= ninitial),
+                                          'number': i + 1}))
+        proc = base_objects.Process({'legs': legs, 'model': model})
+        evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
+                                           auth_skipping=False, reuse=False)
+        momenta = _get_seeded_python_momenta(proc, evaluator, energy)
+        if momenta is None:
+            return None
+        return [list(map(float, p)) for p in momenta]
+    except Exception as err:
+        logger.debug("Could not build momenta for %s: %s" % (tuple(pdg), err))
+        return None
+
+
+def output_crossing(comparison_results, output='text'):
+    """Present the results of a crossing check in a table.
+
+    Compares ``value_direct`` (the crossing-disabled build, evaluating the
+    subprocess with its own diagrams) against ``value_crossed`` (the
+    crossing-enabled build, evaluating the same signed-PDG process through the
+    extended ``FLAV_IDX``).  ``output='fail'`` returns the number of failures
+    instead of the formatted string.
+    """
+    if len(comparison_results) == 1 and \
+            comparison_results[0].get('status') == 'build_failed':
+        msg = ("Could not build the f2py matrix2py module (f2py / numpy build "
+               "backend unavailable); the crossing check cannot run here.")
+        return 0 if output == 'fail' else msg
+
+    proc_col_size = 17
+    process_header = "Process"
+    for data in comparison_results:
+        # Leave room for the ' (identity)' tag that may be appended below.
+        proc = data['process'] + ' (identity)'
+        if len(proc) + 1 > proc_col_size:
+            proc_col_size = len(proc) + 1
+    col_size = 20
+
+    pass_proc = 0
+    fail_proc = 0
+    no_check_proc = 0
+    failed_proc_list = []
+    no_check_proc_list = []
+    any_crossed = False
+
+    res_str = fixed_string_length(process_header, proc_col_size) + \
+        fixed_string_length("Direct", col_size) + \
+        fixed_string_length("Crossed", col_size) + \
+        fixed_string_length("Relative diff.", col_size) + \
+        "Result"
+
+    for one_comp in comparison_results:
+        proc = one_comp['process']
+        val_d = one_comp['value_direct']
+        val_c = one_comp['value_crossed']
+
+        if val_d is None or val_c is None:
+            no_check_proc += 1
+            no_check_proc_list.append(proc)
+            res_str += '\n' + fixed_string_length(proc, proc_col_size) + \
+                "    * No matrix element found for a crossing, not checked *"
+            continue
+
+        cross_code = one_comp.get('cross_code')
+        crossed = bool(cross_code)
+        any_crossed = any_crossed or crossed
+
+        ref = abs(val_d) if val_d != 0 else abs(val_c)
+        if ref == 0:
+            diff = 0.0
+        else:
+            diff = abs(val_d - val_c) / ref
+
+        tag = '' if crossed else ' (identity)'
+        res_str += '\n' + fixed_string_length(proc + tag, proc_col_size) + \
+            fixed_string_length("%1.10e" % val_d, col_size) + \
+            fixed_string_length("%1.10e" % val_c, col_size) + \
+            fixed_string_length("%1.10e" % diff, col_size)
+
+        if diff < 1e-6:
+            pass_proc += 1
+            res_str += "Passed"
+        else:
+            fail_proc += 1
+            failed_proc_list.append(proc)
+            res_str += "Failed"
+
+    res_str += "\nSummary: %i/%i passed, %i/%i failed" % (
+        pass_proc, pass_proc + fail_proc,
+        fail_proc, pass_proc + fail_proc)
+    if fail_proc:
+        res_str += "\nFailed processes: %s" % ', '.join(failed_proc_list)
+    if no_check_proc:
+        res_str += "\nNot checked processes: %s" % ', '.join(no_check_proc_list)
+    if not any_crossed and (pass_proc or fail_proc):
+        res_str += ("\nNote: every subprocess was matched at the identity, so "
+                    "this compares the crossing-enabled build against the "
+                    "crossing-disabled one at cross=0. No non-identity crossing "
+                    "was reached -- either the process line spans no crossable "
+                    "subprocesses or a constrained s-channel forbids crossing.")
+
+    if output == 'text':
+        return res_str
+    else:
+        return fail_proc
+
+
+#===============================================================================
 # Marsaglia-Zaman RNG matching the check_sa Fortran/C++ template seed
 #===============================================================================
 class _Ranmar(object):
