@@ -336,7 +336,9 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
         std::size_t prop_offset = _propagators.size();
         for (auto [permutation, diag_index, colors] :
              zip(permutations, diag_indices, diag_colors)) {
-            diagram_count += diag_indices.size();
+            if (diag_index >= diagram_count) {
+                diagram_count = diag_index + 1;
+            }
 
             for (std::size_t matrix_flavor_index = 0;
                  matrix_flavor_index < matrix_flavor_count;
