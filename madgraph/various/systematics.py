@@ -66,6 +66,7 @@ class Systematics(object):
                  ion_scaling=True,
                  weight_format=None,
                  weight_info=None,
+                 lo_nqcd=None,
                  ):
 
 
@@ -105,6 +106,17 @@ class Systematics(object):
 
         self.orig_pdf = self.banner.run_card.get_lhapdf_id()
         matching_mode = self.banner.get('run_card', 'ickkw')
+
+        # Reconstruction of the LO reweighting info for event files that do not
+        # carry an <mgrwt> block (e.g. the mg7 output): lo_nqcd is the single
+        # alpha_s power of the process, and the beam energies (needed for the
+        # Bjorken-x) come from the run_card. See Event.reconstruct_lo_weight.
+        self.lo_nqcd = lo_nqcd
+        try:
+            self.lo_ebeam = (float(self.banner.get('run_card', 'ebeam1')),
+                             float(self.banner.get('run_card', 'ebeam2')))
+        except Exception:
+            self.lo_ebeam = None
 
         #check for beam
         beam1, beam2 = self.banner.get_pdg_beam()
@@ -932,13 +944,14 @@ class Systematics(object):
         """ 
         pdf is a lhapdf object!"""
         
-        loinfo = event.parse_lo_weight()
+        loinfo = event.parse_lo_weight(nqcd=self.lo_nqcd, ebeam=self.lo_ebeam)
         if loinfo is None:
             raise SystematicsError(
                 "The event file does not contain the per-event reweighting "
                 "information (<mgrwt>: scales, x1/x2, parton PDGs and the "
-                "alpha_s power) required to compute LO systematics. The mg7 "
-                "output does not write it yet.")
+                "alpha_s power) required to compute LO systematics. For a "
+                "process with a single alpha_s power, pass lo_nqcd (that power) "
+                "so it can be reconstructed from the events.")
         if dyn == -1:
             mur = loinfo['ren_scale']
             if self.b1 != 0 and loinfo['pdf_pdg_code1']:
@@ -1344,7 +1357,7 @@ def call_systematics(args, result=sys.stdout, running=True,
                     opts[key]=[tuple(values)]
             elif key == 'result':
                 result = open(values[0],'w')
-            elif key in ['start_event', 'stop_event', 'only_beam']:
+            elif key in ['start_event', 'stop_event', 'only_beam', 'lo_nqcd']:
                 opts[key] = banner_mod.ConfigFile.format_variable(values[0], int, key)
             elif key in ['write_banner', 'ion_scalling']:
                 opts[key] = banner_mod.ConfigFile.format_variable(values[0], bool, key)
