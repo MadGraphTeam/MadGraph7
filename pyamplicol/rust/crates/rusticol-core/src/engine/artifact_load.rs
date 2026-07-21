@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: 0BSD
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use super::eager_v3_manifest::{EagerV3ExecutionManifest, parse_eager_v3_execution_manifest};
 use super::*;
 
 pub(super) enum LoadedExecutionManifest {
     Compiled(Box<ExecutionManifest>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-    Eager(Box<EagerExecutionManifest>),
+    EagerV3(Box<EagerV3ExecutionManifest>),
 }
 
 impl LoadedExecutionManifest {
@@ -13,7 +15,7 @@ impl LoadedExecutionManifest {
         match self {
             Self::Compiled(value) => &value.key,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Eager(value) => &value.key,
+            Self::EagerV3(value) => &value.key,
         }
     }
 
@@ -21,7 +23,7 @@ impl LoadedExecutionManifest {
         match self {
             Self::Compiled(value) => &value.process,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Eager(value) => &value.process,
+            Self::EagerV3(value) => &value.process,
         }
     }
 
@@ -29,7 +31,7 @@ impl LoadedExecutionManifest {
         match self {
             Self::Compiled(value) => &value.color_accuracy,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Eager(value) => &value.color_accuracy,
+            Self::EagerV3(value) => &value.color_accuracy,
         }
     }
 
@@ -37,7 +39,7 @@ impl LoadedExecutionManifest {
         match self {
             Self::Compiled(value) => &value.external_pdg_order,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Eager(value) => &value.external_pdg_order,
+            Self::EagerV3(value) => &value.external_pdg_order,
         }
     }
 
@@ -45,7 +47,7 @@ impl LoadedExecutionManifest {
         match self {
             Self::Compiled(value) => &value.required_runtime_capabilities,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Eager(value) => &value.required_runtime_capabilities,
+            Self::EagerV3(value) => &value.required_runtime_capabilities,
         }
     }
 }
@@ -86,8 +88,8 @@ pub(super) fn load_verified_evaluator(
                 "a direct execution manifest cannot represent multiple outer processes",
             ));
         }
-        let manifest = parse_execution_payload_variant(&bytes, root_manifest_path)?;
         let outer = &artifact.manifest().processes[0];
+        let manifest = parse_execution_payload_variant(&bytes, root_manifest_path, outer)?;
         if manifest.key() != outer.id
             || manifest.process() != outer.expression
             || manifest.color_accuracy() != outer.color_accuracy
@@ -194,13 +196,13 @@ pub(super) fn load_verified_evaluator(
     for entry in &process_set.processes {
         let manifest_path = execution_manifest_path(root_manifest_path, &entry.manifest_path)?;
         let bytes = artifact.read_payload(&manifest_path)?;
-        let manifest = parse_execution_payload_variant(&bytes, &manifest_path)?;
         let outer = artifact
             .manifest()
             .processes
             .iter()
             .find(|process| process.id == entry.process_id)
             .expect("execution-set ids were matched to outer processes");
+        let manifest = parse_execution_payload_variant(&bytes, &manifest_path, outer)?;
         validate_capability_list_match(
             &outer.required_runtime_capabilities,
             &entry.required_runtime_capabilities,
@@ -299,6 +301,7 @@ fn parse_execution_payload(bytes: &[u8], path: &str) -> RusticolResult<Execution
 fn parse_execution_payload_variant(
     bytes: &[u8],
     path: &str,
+    outer: &crate::ArtifactProcess,
 ) -> RusticolResult<LoadedExecutionManifest> {
     let header: ExecutionManifestHeader = serde_json::from_slice(bytes).map_err(|error| {
         RusticolError::serialization(format!(
@@ -310,12 +313,9 @@ fn parse_execution_payload_variant(
             .map(Box::new)
             .map(LoadedExecutionManifest::Compiled),
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        EAGER_EXECUTION_KIND => {
-            let manifest: EagerExecutionManifest = serde_json::from_slice(bytes)
-                .map_err(|error| execution_manifest_parse_error(path, error))?;
-            manifest.validate_header()?;
-            Ok(LoadedExecutionManifest::Eager(Box::new(manifest)))
-        }
+        EAGER_EXECUTION_KIND => parse_eager_v3_execution_manifest(bytes, outer)
+            .map(Box::new)
+            .map(LoadedExecutionManifest::EagerV3),
         _ => Err(RusticolError::compatibility(format!(
             "unsupported internal evaluator manifest kind {:?}",
             header.kind
@@ -333,8 +333,20 @@ fn validate_loaded_execution_references(
             validate_evaluator_payload_references(artifact, evaluator_root, manifest)
         }
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        LoadedExecutionManifest::Eager(manifest) => {
-            validate_eager_payload_references(artifact, evaluator_root, manifest)
+        LoadedExecutionManifest::EagerV3(manifest) => {
+            let relative_root = evaluator_root.strip_prefix(artifact.root()).map_err(|_| {
+                RusticolError::security("eager plan-v3 root escapes the verified artifact")
+            })?;
+            let relative = relative_root.join(&manifest.plan.runtime_container.path);
+            let relative = relative.to_str().ok_or_else(|| {
+                RusticolError::security("eager plan-v3 container path is not valid UTF-8")
+            })?;
+            if artifact.payload(relative)?.role != PayloadRole::EvaluatorState {
+                return Err(RusticolError::security(
+                    "eager plan-v3 runtime container is not an evaluator-state payload",
+                ));
+            }
+            Ok(())
         }
     }
 }

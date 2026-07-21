@@ -132,6 +132,7 @@ pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
 pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-cpp.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
 pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
+pub const EAGER_RUNTIME_LAYOUT_CAPABILITY: &str = crate::eager_layout::EAGER_RUNTIME_CAPABILITY;
 pub const EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY: &str =
     crate::EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY;
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
@@ -175,6 +176,7 @@ pub enum RuntimeCapability {
     CompiledHelicitySelectorUnionV1,
     CompiledRuntimeSelectorsV1,
     EagerDagComplexF64V1,
+    EagerRuntimeLayoutComplexF64V1,
     EagerLcTopologyReplayComplexF64V1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
@@ -193,6 +195,7 @@ impl RuntimeCapability {
             Self::CompiledHelicitySelectorUnionV1 => COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
             Self::CompiledRuntimeSelectorsV1 => COMPILED_RUNTIME_SELECTORS_CAPABILITY,
             Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
+            Self::EagerRuntimeLayoutComplexF64V1 => EAGER_RUNTIME_LAYOUT_CAPABILITY,
             Self::EagerLcTopologyReplayComplexF64V1 => EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
@@ -218,6 +221,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_DAG_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        EAGER_RUNTIME_LAYOUT_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
@@ -2357,6 +2362,15 @@ mod eager_manifest;
 use eager_manifest::*;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_v3_common;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_v3_decode;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_v3_load;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod eager_v3_manifest;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod eager_load;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use eager_load::*;
@@ -2398,3 +2412,7 @@ mod contraction_metadata_tests;
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/eager_integration_tests.rs"]
 mod eager_integration_tests;
+
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+#[path = "engine/eager_v3_manifest_tests.rs"]
+mod eager_v3_manifest_tests;

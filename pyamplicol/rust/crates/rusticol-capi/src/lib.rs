@@ -1298,6 +1298,7 @@ mod tests {
                 "rusticol.compiled.runtime-selectors.v1".to_string(),
                 "rusticol.eager-dag.complex-f64.v1".to_string(),
                 "rusticol.eager-dag.lc-topology-replay.v1".to_string(),
+                "rusticol.eager-runtime-layout.complex-f64.v1".to_string(),
                 "symbolica.compiled-asm.complex-f64.v1".to_string(),
                 "symbolica.compiled-cpp.complex-f64.v1".to_string(),
                 "symjit.application.complex-f64.v1".to_string(),

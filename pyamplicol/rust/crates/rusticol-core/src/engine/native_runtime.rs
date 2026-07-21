@@ -96,7 +96,6 @@ impl NativeRuntime {
         })?;
         let selection = artifact.select_process(process_id)?;
         let (manifest, evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
-        let evaluator_payloads = artifact.evaluator_payload_store(&evaluator_root)?;
         let physics_bytes = artifact.read_payload(&selection.process.physics_path)?;
         let mut physics_v1 =
             ProcessPhysicsV1::from_json(&physics_bytes, &selection.process.physics_path)?;
@@ -119,6 +118,7 @@ impl NativeRuntime {
                 LoadedExecutionManifest::Compiled(manifest) => {
                     let representative_process = manifest.process.clone();
                     let representative_key = manifest.key.clone();
+                    let evaluator_payloads = artifact.evaluator_payload_store(&evaluator_root)?;
                     let runtime =
                         load_execution_manifest_with_store(*manifest, &evaluator_payloads)?;
                     (
@@ -129,23 +129,20 @@ impl NativeRuntime {
                     )
                 }
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                LoadedExecutionManifest::Eager(manifest) => {
+                LoadedExecutionManifest::EagerV3(manifest) => {
                     let representative_process = manifest.process.clone();
                     let representative_key = manifest.key.clone();
-                    let mut runtime =
-                        ExecutionRuntime::from_manifest(manifest.compiled_metadata_manifest())?;
-                    let eager = load_eager_native_runtime(
+                    let loaded = super::eager_v3_load::load_eager_v3_native_runtime(
                         &artifact,
                         &evaluator_root,
-                        &evaluator_payloads,
                         &manifest,
-                        &mut runtime,
+                        physics_v1.clone(),
                     )?;
                     (
                         representative_process,
                         representative_key,
-                        runtime,
-                        NativeExecutionLane::Eager(Box::new(eager)),
+                        loaded.common,
+                        NativeExecutionLane::Eager(Box::new(loaded.lane)),
                     )
                 }
             };

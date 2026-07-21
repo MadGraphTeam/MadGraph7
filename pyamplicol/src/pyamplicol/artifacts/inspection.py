@@ -16,7 +16,13 @@ from .manifest import ArtifactManifest, load_manifest
 from .security import confined_path, normalize_relative_path
 
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
-_EAGER_RUNTIME_CAPABILITY = "rusticol.eager-dag.complex-f64.v1"
+_EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
+_EAGER_RUNTIME_CAPABILITIES = frozenset(
+    {
+        "rusticol.eager-dag.complex-f64.v1",
+        "rusticol.eager-runtime-layout.complex-f64.v1",
+    }
+)
 _MISSING_U32 = (1 << 32) - 1
 _EAGER_INVOCATION = struct.Struct("<IIIIIIIQQ")
 _EAGER_FINALIZATION = struct.Struct("<IIIII")
@@ -633,6 +639,8 @@ def _eager_execution_inspection(
     execution: Mapping[str, object],
     execution_path: Path,
 ) -> _ExecutionInspection:
+    if execution.get("eager_plan_abi") == _EAGER_PLAN_V3_ABI:
+        return _eager_v3_execution_inspection(manifest, execution)
     runtime_options = _mapping(
         execution.get("runtime_options"), "eager execution.runtime_options"
     )
@@ -792,6 +800,81 @@ def _eager_execution_inspection(
     )
 
 
+def _eager_v3_execution_inspection(
+    manifest: ArtifactManifest,
+    execution: Mapping[str, object],
+) -> _ExecutionInspection:
+    runtime_options = _mapping(
+        execution.get("runtime_options"), "eager execution.runtime_options"
+    )
+    requested_tile = _integer(
+        runtime_options.get("point_tile_size"),
+        "eager execution.runtime_options.point_tile_size",
+        minimum=1,
+    )
+    workspace_mib = _integer(
+        runtime_options.get("workspace_mib"),
+        "eager execution.runtime_options.workspace_mib",
+        minimum=1,
+    )
+    plan = _mapping(execution.get("plan"), "eager execution.plan")
+    summary = _mapping(
+        plan.get("inspection_summary"),
+        "eager execution.plan.inspection_summary",
+    )
+    pack_reference = _mapping(
+        execution.get("kernel_pack"), "eager execution.kernel_pack"
+    )
+    pack_path = _artifact_path(
+        manifest,
+        _string(
+            pack_reference.get("manifest_path"),
+            "eager execution.kernel_pack.manifest_path",
+        ),
+        "eager execution.kernel_pack.manifest_path",
+    )
+    pack = _json_mapping(pack_path, "prepared eager kernel pack")
+    kernels = _sequence(pack.get("kernels"), "prepared eager kernel pack.kernels")
+    invocation_count = _integer(
+        summary.get("invocation_count"),
+        "eager inspection invocation_count",
+    )
+    attachment_count = _integer(
+        summary.get("attachment_count"),
+        "eager inspection attachment_count",
+    )
+    if attachment_count < invocation_count:
+        raise ArtifactError(
+            "eager execution has fewer attachments than canonical invocations"
+        )
+    selector_domain_count = _integer(
+        summary.get("selector_domain_count"),
+        "eager inspection selector_domain_count",
+    )
+    return _ExecutionInspection(
+        execution_mode="eager",
+        prepared_backend=_string(
+            pack.get("backend"), "prepared eager kernel pack.backend"
+        ),
+        prepared_kernel_count=len(kernels),
+        invocation_count=invocation_count,
+        attachment_count=attachment_count,
+        evaluation_alias_count=attachment_count - invocation_count,
+        finalization_count=_integer(
+            summary.get("finalization_count"),
+            "eager inspection finalization_count",
+        ),
+        closure_count=_integer(
+            summary.get("closure_count"), "eager inspection closure_count"
+        ),
+        selector_closure_available=selector_domain_count > 0,
+        selector_domain_count=selector_domain_count,
+        requested_point_tile_size=requested_tile,
+        workspace_limit_bytes=workspace_mib * 1024 * 1024,
+        native_profile_phases=_profile_phases(execution),
+    )
+
+
 def _execution_inspection(
     manifest: ArtifactManifest,
     execution_path: Path,
@@ -805,9 +888,9 @@ def _execution_inspection(
             "runtime.required_runtime_capabilities",
         )
     )
-    if _EAGER_RUNTIME_CAPABILITY not in {
+    if _EAGER_RUNTIME_CAPABILITIES.isdisjoint(
         str(value) for value in capabilities
-    }:
+    ):
         # Compiled execution manifests can be several GiB at high multiplicity.
         # Their capability contract already identifies the execution lane, and
         # the manifest hash validation above has verified the payload bytes.

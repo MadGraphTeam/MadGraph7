@@ -689,7 +689,7 @@ fn load_prepared_kernel_pack(
     Ok((pack, artifact.root().join(payload_root)))
 }
 
-fn validate_prepared_kernel_references(
+pub(super) fn validate_prepared_kernel_references(
     artifact: &VerifiedArtifact,
     payload_root: &Path,
     pack: &PreparedKernelPackManifest,

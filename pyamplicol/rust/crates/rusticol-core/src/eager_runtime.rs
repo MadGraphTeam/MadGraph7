@@ -198,8 +198,13 @@ impl EagerExecutionProfile {
 
 mod execute;
 mod plan;
+mod plan_v3;
 mod profile;
 mod runtime;
 
+#[cfg(test)]
+mod plan_v3_tests;
+
 pub use plan::EagerExecutionPlan;
+pub(crate) use plan_v3::EagerPlanV3Sections;
 pub use runtime::EagerExecutionRuntime;

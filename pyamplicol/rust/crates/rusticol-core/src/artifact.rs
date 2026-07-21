@@ -1575,6 +1575,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::CompiledHelicitySelectorUnionV1,
         RuntimeCapability::CompiledRuntimeSelectorsV1,
         RuntimeCapability::EagerDagComplexF64V1,
+        RuntimeCapability::EagerRuntimeLayoutComplexF64V1,
         RuntimeCapability::EagerLcTopologyReplayComplexF64V1,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,

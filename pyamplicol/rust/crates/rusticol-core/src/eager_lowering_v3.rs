@@ -2975,7 +2975,11 @@ fn lower_stages(
                 )));
             }
             finalizations.push(EagerPlanFinalizationRow {
-                kernel_id: current.propagator_kernel_id,
+                kernel_id: if slots.propagated.is_some() {
+                    current.propagator_kernel_id
+                } else {
+                    MISSING_U32
+                },
                 current_id: *current_id,
                 unpropagated_value_slot_id: slots.unpropagated.unwrap_or(MISSING_U32),
                 propagated_value_slot_id: slots.propagated.unwrap_or(MISSING_U32),

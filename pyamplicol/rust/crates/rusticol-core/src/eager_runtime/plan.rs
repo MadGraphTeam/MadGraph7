@@ -26,7 +26,7 @@ pub(super) struct ComponentLayout {
 }
 
 impl ComponentLayout {
-    fn new(name: &str, component_counts: &[u32]) -> RusticolResult<Self> {
+    pub(super) fn new(name: &str, component_counts: &[u32]) -> RusticolResult<Self> {
         let mut slots = Vec::new();
         slots
             .try_reserve_exact(component_counts.len())
@@ -58,7 +58,7 @@ impl ComponentLayout {
         })
     }
 
-    fn get(&self, id: u32, context: &str) -> RusticolResult<ComponentRange> {
+    pub(super) fn get(&self, id: u32, context: &str) -> RusticolResult<ComponentRange> {
         let index = usize::try_from(id).map_err(|_| {
             RusticolError::artifact(format!("{context} id {id} does not fit usize"))
         })?;
