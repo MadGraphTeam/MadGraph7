@@ -883,22 +883,8 @@ class _Builder:
         self.tables.append(_freeze_table("sources", columns))
 
     def _interactions(self) -> None:
-        group_by_key: dict[tuple[str, int], int] = {}
+        group_by_key: dict[tuple[object, ...], int] = {}
         self._interaction_group_members: list[list[int]] = []
-        dense_group_ids = np.empty(len(self.dag.interactions), dtype=_U32)
-        for interaction in self.dag.interactions:
-            key = (
-                ("group", int(interaction.evaluation_group_id))
-                if interaction.evaluation_group_id is not None
-                else ("interaction", interaction.id)
-            )
-            group_id = group_by_key.get(key)
-            if group_id is None:
-                group_id = len(group_by_key)
-                group_by_key[key] = group_id
-                self._interaction_group_members.append([])
-            dense_group_ids[interaction.id] = group_id
-            self._interaction_group_members[group_id].append(interaction.id)
         columns = _allocate(
             len(self.dag.interactions),
             id=_U32,
@@ -946,7 +932,6 @@ class _Builder:
             columns["evaluation_factor_id"][row] = self.factors.add(
                 interaction.evaluation_factor, "interaction evaluation factor"
             )
-            columns["evaluation_group_id"][row] = dense_group_ids[row]
             columns["lowering_backend_string_id"][row] = self.strings.add(
                 interaction.lowering_backend
             )
@@ -954,6 +939,28 @@ class _Builder:
                 interaction.full_tensor_network_ready
             )
             _fill_resolved_kernel(columns, row, resolved, self.factors)
+            proof_key = (
+                ("group", int(interaction.evaluation_group_id))
+                if interaction.evaluation_group_id is not None
+                else ("interaction", interaction.id)
+            )
+            group_key = (
+                *proof_key,
+                int(columns["stage_subset_size"][row]),
+                coupling_id,
+                int(columns["coupling_factor_id"][row]),
+                int(columns["kernel_id"][row]),
+                tuple(int(value) for value in columns["canonical_input_order"][row]),
+                int(columns["kernel_normalization_factor_id"][row]),
+                int(columns["output_factor_source"][row]),
+            )
+            group_id = group_by_key.get(group_key)
+            if group_id is None:
+                group_id = len(group_by_key)
+                group_by_key[group_key] = group_id
+                self._interaction_group_members.append([])
+            self._interaction_group_members[group_id].append(interaction.id)
+            columns["evaluation_group_id"][row] = group_id
         self.tables.append(_freeze_table("interactions", columns))
 
     def _roots(self) -> None:
