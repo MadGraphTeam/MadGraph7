@@ -23,6 +23,7 @@ from pyamplicol.config import (
     GenerationConfig,
     GenerationValidationConfig,
     JITConfig,
+    LCFlowLayout,
     ModelConfig,
     OutputConfig,
     ProcessConfig,
@@ -33,7 +34,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 66
+    assert len(FIELD_REGISTRY) == 67
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -46,6 +47,13 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluator.execution_mode"].choices == (
         EvaluatorExecutionMode.COMPILED,
         EvaluatorExecutionMode.EAGER,
+    )
+    assert FIELD_REGISTRY["color.lc_flow_layout"].default == (
+        LCFlowLayout.TOPOLOGY_REPLAY
+    )
+    assert FIELD_REGISTRY["color.lc_flow_layout"].choices == (
+        LCFlowLayout.TOPOLOGY_REPLAY,
+        LCFlowLayout.ALL_FLOW_UNION,
     )
     assert FIELD_REGISTRY["evaluator.eager.point_tile_size"].default == 1024
     assert FIELD_REGISTRY["evaluator.eager.workspace_mib"].default == 256
@@ -129,6 +137,7 @@ def test_contract_defaults_are_typed() -> None:
     config = RunConfig(action="evaluate")
     assert config.action is Action.EVALUATE
     assert config.color.accuracy is ColorAccuracy.LC
+    assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.COMPILED
     assert config.evaluator.eager == EagerEvaluatorConfig()
@@ -140,6 +149,17 @@ def test_contract_defaults_are_typed() -> None:
     assert config.benchmark.target_runtime == 10.0
     assert config.benchmark.precision == 16
     assert config.output == OutputConfig()
+
+
+def test_all_flow_union_layout_requires_lc_accuracy() -> None:
+    assert (
+        ColorConfig(lc_flow_layout="all-flow-union").lc_flow_layout
+        is LCFlowLayout.ALL_FLOW_UNION
+    )
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy='lc'"):
+        ColorConfig(accuracy="nlc", lc_flow_layout="all-flow-union")
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy='lc'"):
+        ColorConfig(accuracy="full", lc_flow_layout="all-flow-union")
 
 
 @pytest.mark.parametrize(

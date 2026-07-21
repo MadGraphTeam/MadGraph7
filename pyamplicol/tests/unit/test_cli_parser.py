@@ -10,6 +10,7 @@ from pyamplicol.cli import build_parser, parse_cli
 from pyamplicol.config import (
     ConfigurationError,
     EvaluatorExecutionMode,
+    LCFlowLayout,
     ProcessEntry,
 )
 
@@ -41,6 +42,18 @@ def test_direct_command_flags_then_ordered_set_overrides(tmp_path: Path) -> None
 def test_generate_accepts_eager_execution_mode_override() -> None:
     config = parse_cli(("generate", "--execution-mode", "eager")).resolve().effective
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.EAGER
+
+
+def test_generate_accepts_lc_flow_layout_override() -> None:
+    resolution = parse_cli(
+        ("generate", "--lc-flow-layout", "all-flow-union")
+    ).resolve()
+    assert (
+        resolution.requested.color.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
+    )
+    assert (
+        resolution.effective.color.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
+    )
 
 
 def test_generate_force_is_an_alias_for_atomic_replace(tmp_path: Path) -> None:

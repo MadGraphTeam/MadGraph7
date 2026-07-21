@@ -248,6 +248,12 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
         choices=("lc", "nlc", "full"),
         default=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--lc-flow-layout",
+        dest="color.lc_flow_layout",
+        choices=("topology-replay", "all-flow-union"),
+        default=argparse.SUPPRESS,
+    )
 
 
 def _add_generation_options(parser: argparse.ArgumentParser) -> None:

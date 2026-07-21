@@ -10,6 +10,7 @@ from pyamplicol.config import (
     ClampRequest,
     ConfigurationError,
     EvaluatorExecutionMode,
+    LCFlowLayout,
     ProcessEntry,
     config_to_dict,
     config_to_toml,
@@ -124,6 +125,28 @@ def test_eager_evaluator_card_and_dotted_overrides_round_trip() -> None:
     serialized = config_to_toml(config)
     assert 'execution_mode = "eager"' in serialized
     assert "[evaluator.eager]" in serialized
+    assert resolve_config(tomllib.loads(serialized)).effective == config
+
+
+def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
+    pytest.importorskip("tomli_w")
+    config = resolve_config(
+        {
+            "action": "generate",
+            "color": {"accuracy": "lc", "lc_flow_layout": "topology-replay"},
+        },
+        overrides=("color.lc_flow_layout=all-flow-union",),
+    ).effective
+
+    assert config.color.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
+    plain = config_to_dict(config)
+    assert plain["color"] == {  # type: ignore[index]
+        "accuracy": "lc",
+        "lc_flow_layout": "all-flow-union",
+    }
+    assert resolve_config(plain).effective == config
+    serialized = config_to_toml(config)
+    assert 'lc_flow_layout = "all-flow-union"' in serialized
     assert resolve_config(tomllib.loads(serialized)).effective == config
 
 

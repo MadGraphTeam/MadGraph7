@@ -35,6 +35,11 @@ class ColorAccuracy(StrEnum):
     FULL = "full"
 
 
+class LCFlowLayout(StrEnum):
+    TOPOLOGY_REPLAY = "topology-replay"
+    ALL_FLOW_UNION = "all-flow-union"
+
+
 class GenerationMode(StrEnum):
     ERROR = "error"
     APPEND = "append"
@@ -400,11 +405,27 @@ class ColorConfig:
         default=ColorAccuracy.LC,
         metadata=_setting("str", choices=tuple(ColorAccuracy)),
     )
+    lc_flow_layout: LCFlowLayout = field(
+        default=LCFlowLayout.TOPOLOGY_REPLAY,
+        metadata=_setting("str", choices=tuple(LCFlowLayout)),
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "accuracy", _enum(self.accuracy, ColorAccuracy, "color.accuracy")
         )
+        object.__setattr__(
+            self,
+            "lc_flow_layout",
+            _enum(self.lc_flow_layout, LCFlowLayout, "color.lc_flow_layout"),
+        )
+        if (
+            self.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
+            and self.accuracy is not ColorAccuracy.LC
+        ):
+            raise ConfigurationError(
+                "color.lc_flow_layout='all-flow-union' requires color.accuracy='lc'"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -882,6 +903,7 @@ __all__ = [
     "GenerationMode",
     "GenerationValidationConfig",
     "JITConfig",
+    "LCFlowLayout",
     "LogLevel",
     "ModelConfig",
     "OutputConfig",
