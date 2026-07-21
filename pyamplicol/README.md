@@ -95,6 +95,49 @@ on stderr.
 output. TOML run cards continue to use `action = "benchmark"`, and the Python
 interface remains `BenchmarkRunner`/`BenchmarkResult`.
 
+### Reproduce the `q q~ > Z + 6g` benchmark workloads
+
+The packaged examples include the two independent LC workloads used for the
+corresponding performance-PDF measurements. Copy the examples, enter that
+directory, then generate and profile each artifact from its own card:
+
+```console
+pyamplicol examples copy ./pyamplicol-examples
+cd pyamplicol-examples
+
+pyamplicol generate --card benchmark_z6g_single_flow_helicity_sum.toml
+pyamplicol profile --card benchmark_z6g_single_flow_helicity_sum.toml
+
+pyamplicol generate --card benchmark_z6g_all_flows_single_helicity.toml
+pyamplicol profile --card benchmark_z6g_all_flows_single_helicity.toml
+```
+
+The first profile selects one physical color flow at runtime and sums all
+helicities. The second sums all flows and selects one helicity at runtime. The
+generated artifacts retain every physical LC flow and helicity, so either can
+select any retained component globally or per phase-space point; these are not
+generation-specialized shortcuts. Their outputs are respectively
+`artifacts/uubar_z6g_single_flow_helicity_sum` and
+`artifacts/uubar_z6g_all_flows_single_helicity`.
+
+Both cards use compiled JIT O3 and native Rusticol wall timing. To exercise the
+same complete selector contract in eager mode, override the execution mode and
+choose a distinct output path:
+
+```console
+pyamplicol generate \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --execution-mode eager \
+  --set generation.output=artifacts/uubar_z6g_single_flow_helicity_sum_eager
+```
+
+The cards use `u u~ > Z g g g g g g`. Replace `u u~` with `d d~` in both cards
+when reproducing a PDF row whose literal process is `d d~ > Z+6g`; the runtime
+selector methodology is otherwise unchanged. See
+[the packaged-example guide](examples/README.md#reproduce-the-z-ladder-workloads)
+for changing the selected flow or helicity and for the generation-specialized
+comparison cards.
+
 ## Installation
 
 | Goal | Command | Dependency source |
