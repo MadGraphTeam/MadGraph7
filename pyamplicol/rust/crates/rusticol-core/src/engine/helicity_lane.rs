@@ -116,11 +116,6 @@ impl ExecutionRuntime {
         self.compiled_helicity_execution_plan.is_some()
     }
 
-    pub(super) fn has_nested_helicity_selector_runtime(&self) -> bool {
-        self.helicity_selector_runtime_schedule_modes
-            .contains(&HelicitySelectorScheduleMode::NestedRuntime)
-    }
-
     pub(super) fn compiled_color_selector_schedule(
         &self,
         materialized_sector_ids: &BTreeSet<i64>,

@@ -54,19 +54,11 @@ impl ExecutionRuntime {
         {
             return sum_runtime.run_resolved_f64(batch, None, selected_color_ids);
         }
-        if self.lc_topology_replay_enabled
-            && selected_helicity_ids.is_some()
-            && selected_color_ids.is_none()
-            && self.has_nested_helicity_selector_runtime()
-        {
-            return self.run_resolved_f64_with_helicity_recurrence(
-                batch,
-                selected_helicity_ids,
-                None,
-                None,
-            );
-        }
         if self.lc_topology_replay_enabled {
+            // A target-flow helicity generally maps to a different source
+            // helicity in the materialized topology.  Always compose runtime
+            // helicity selection through the replay plan, even when a nested
+            // selector lane can evaluate the primary topology directly.
             return self.run_resolved_f64_with_lc_topology_replay(
                 batch,
                 selected_helicity_ids,
@@ -671,18 +663,6 @@ impl ExecutionRuntime {
                 binary_precision,
                 None,
                 selected_color_ids,
-            );
-        }
-        if self.lc_topology_replay_enabled
-            && selected_helicity_ids.is_some()
-            && selected_color_ids.is_none()
-            && self.has_nested_helicity_selector_runtime()
-        {
-            return self.run_resolved_generic_with_helicity_recurrence(
-                batch,
-                binary_precision,
-                selected_helicity_ids,
-                None,
             );
         }
         if self.lc_topology_replay_enabled {
