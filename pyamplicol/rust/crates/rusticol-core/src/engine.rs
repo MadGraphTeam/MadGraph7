@@ -25,7 +25,9 @@ use crate::{
     ProcessPhysics as ProcessPhysicsV1, RusticolError, RusticolResult, VerifiedArtifact,
 };
 
-const MAX_LC_TOPOLOGY_REPLAY_EXPANDED_POINTS: usize = 8192;
+// Keep replay state within the useful cache working set. Larger batches make
+// stage-local gather/scatter substantially slower for high-flow LC workloads.
+const MAX_LC_TOPOLOGY_REPLAY_EXPANDED_POINTS: usize = 2048;
 const LC_SECTOR_SELECTOR_PARAMETER: &str = "runtime.lc_sector_id";
 const HELICITY_RECURRENCE_CONTRACT_VERSION: u32 = 1;
 const HELICITY_RECURRENCE_KIND: &str = "pyamplicol-helicity-recurrence";
