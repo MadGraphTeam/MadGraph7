@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
 from pyamplicol.api.requests import ModelSource
-from pyamplicol.artifacts import ArtifactBuilder, ArtifactManifest, load_manifest
+from pyamplicol.artifacts import (
+    ArtifactBuilder,
+    ArtifactManifest,
+    PayloadRecord,
+    load_manifest,
+)
 from pyamplicol.config import (
     ConfigClamp,
     ConfigResolution,
@@ -47,6 +52,7 @@ from .._internal.versions import (
 from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
 from .contracts import RuntimeExpressionSchema
+from .eager_columnar import EAGER_LOWERING_INPUT_ABI
 from .eager_lowering import EAGER_RUNTIME_KIND, EagerExecutionTables
 from .eager_tables import EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY
 from .evaluator_container import (
@@ -84,6 +90,14 @@ _EVALUATOR_PAYLOAD_CONTAINER_PATH = "evaluators.pacbin"
 _EVALUATOR_PAYLOAD_CONTAINER_KIND = "pyamplicol-evaluator-payload-container"
 _EVALUATOR_PAYLOAD_CONTAINER_SCHEMA_VERSION = 1
 _EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI = "pacbin-v1"
+EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
+EAGER_RUNTIME_LAYOUT_ABI = "pyamplicol-eager-runtime-layout-v1"
+EAGER_PLAN_V3_RUNTIME_CAPABILITY = "rusticol.eager-runtime-layout.complex-f64.v1"
+EAGER_RUNTIME_CONTAINER_KIND = "pyamplicol-eager-runtime-container"
+EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
+EAGER_RUNTIME_STORAGE_ABI = "pacbin-v1"
+_EAGER_RUNTIME_CONTAINER_PATH = "eager-runtime.pacbin"
+_MAX_EAGER_EXECUTION_SUMMARY_BYTES = 1 << 20
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -157,7 +171,35 @@ class EagerProcessArtifact:
     generation_filters: Mapping[str, object]
 
 
-ProcessArtifact = CompiledProcessArtifact | EagerProcessArtifact
+@dataclass(frozen=True, slots=True)
+class EagerPlanV3ProcessArtifact:
+    """One Rust-lowered eager runtime plus its bounded publication metadata."""
+
+    process_id: str
+    expression: str
+    color_accuracy: str
+    external_pdgs: tuple[int, ...]
+    aliases: tuple[Mapping[str, object], ...]
+    physics: Mapping[str, object]
+    eager_runtime_path: Path
+    eager_runtime_size_bytes: int
+    eager_runtime_sha256: str
+    eager_runtime_member_count: int
+    eager_runtime_unpacked_size_bytes: int
+    eager_runtime_index_sha256: str
+    lowering_input_sha256: str
+    referenced_kernel_ids: frozenset[int]
+    inspection_summary: Mapping[str, object]
+    point_tile_size: int
+    workspace_mib: int
+    dag_summary: Mapping[str, object]
+    validation_point: ValidationPointRecord
+    generation_filters: Mapping[str, object]
+
+
+ProcessArtifact = (
+    CompiledProcessArtifact | EagerProcessArtifact | EagerPlanV3ProcessArtifact
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,10 +262,10 @@ class _EvaluatorPayloadCollector:
         source: Path,
         *,
         process_id: str | None,
-    ) -> None:
+    ) -> PayloadRecord:
         kind = _packed_evaluator_member_kind(relative)
         if kind is None:
-            self._builder.add_file(
+            return self._builder.add_file(
                 relative,
                 source,
                 role="evaluator-state",
@@ -238,7 +280,7 @@ class _EvaluatorPayloadCollector:
         # materializing nested selector lanes.  Snapshot each payload when it
         # is registered so a later write cannot silently change an earlier
         # logical container member before publication.
-        self._builder.add_file(
+        record = self._builder.add_file(
             relative,
             source,
             role="evaluator-state",
@@ -247,6 +289,7 @@ class _EvaluatorPayloadCollector:
             process_id=process_id,
         )
         self._register_staged_source(relative, kind)
+        return record
 
     def add_bytes(
         self,
@@ -733,14 +776,12 @@ def _eager_kernel_ids(
     compiled_model: CompiledModel,
     processes: Sequence[ProcessArtifact],
 ) -> frozenset[int]:
-    has_eager_process = any(
-        isinstance(process, EagerProcessArtifact) for process in processes
-    )
+    has_eager_process = any(_is_eager_process(process) for process in processes)
     kernel_ids = {
         kernel_id
         for process in processes
-        if isinstance(process, EagerProcessArtifact)
-        for kernel_id in process.eager_tables.referenced_kernel_ids
+        if _is_eager_process(process)
+        for kernel_id in _eager_referenced_kernel_ids(process)
     }
     has_existing_pack = (
         existing is not None and (output / _EAGER_KERNEL_PACK_PATH).is_file()
@@ -777,12 +818,15 @@ def _eager_prepared_pack_identity(
     processes: Sequence[ProcessArtifact],
 ) -> dict[str, object] | None:
     existing_uses_eager = existing is not None and (
-        EAGER_RUNTIME_CAPABILITY in _required_runtime_capabilities(existing.runtime)
+        bool(
+            {
+                EAGER_RUNTIME_CAPABILITY,
+                EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+            }.intersection(_required_runtime_capabilities(existing.runtime))
+        )
         or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
     )
-    incoming_uses_eager = any(
-        isinstance(process, EagerProcessArtifact) for process in processes
-    )
+    incoming_uses_eager = any(_is_eager_process(process) for process in processes)
     if not existing_uses_eager and not incoming_uses_eager:
         return None
     bundle = compiled_model.prepared_bundle
@@ -806,6 +850,20 @@ def _eager_prepared_pack_identity(
         "backend": bundle.kernel_pack.backend,
         "kernel_count": len(bundle.kernel_pack.kernels),
     }
+
+
+def _is_eager_process(process: ProcessArtifact) -> bool:
+    return isinstance(process, EagerProcessArtifact | EagerPlanV3ProcessArtifact)
+
+
+def _eager_referenced_kernel_ids(
+    process: ProcessArtifact,
+) -> frozenset[int]:
+    if isinstance(process, EagerPlanV3ProcessArtifact):
+        return process.referenced_kernel_ids
+    if isinstance(process, EagerProcessArtifact):
+        return process.eager_tables.referenced_kernel_ids
+    raise TypeError("compiled process has no eager kernel references")
 
 
 def _filtered_eager_resolver_manifest(
@@ -842,12 +900,22 @@ def _write_process_payloads(
     physics_path = f"{prefix}/physics.json"
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
-    schema = _runtime_schema_mapping(process.runtime_schema)
-    physics = _mapping(schema.get("physics"))
+    schema: Mapping[str, object]
+    if isinstance(process, EagerPlanV3ProcessArtifact):
+        schema = {}
+        physics = _mapping(process.physics)
+    else:
+        schema = _runtime_schema_mapping(process.runtime_schema)
+        physics = _mapping(schema.get("physics"))
     if physics.get("process_id") != process.process_id:
         raise ValueError(
             f"runtime physics process ID does not match {process.process_id!r}"
         )
+    if isinstance(process, EagerPlanV3ProcessArtifact) and (
+        physics.get("schema_version") != RUNTIME_PHYSICS_SCHEMA_VERSION
+        or physics.get("kind") != "pyamplicol-resolved-physics"
+    ):
+        raise ValueError("Rust eager lowering returned incompatible physics metadata")
     builder.add_json(
         physics_path,
         physics,
@@ -855,13 +923,29 @@ def _write_process_payloads(
         process_id=process.process_id,
         compact=True,
     )
-    execution_record = builder.add_json(
-        execution_path,
-        _execution_manifest(process, schema),
-        role="evaluator-manifest",
-        process_id=process.process_id,
-        compact=True,
-    )
+    if isinstance(process, EagerPlanV3ProcessArtifact):
+        runtime_path = f"{prefix}/{_EAGER_RUNTIME_CONTAINER_PATH}"
+        runtime_record = evaluator_payloads.add_file(
+            runtime_path,
+            process.eager_runtime_path,
+            process_id=process.process_id,
+        )
+        _validate_staged_eager_runtime(process, runtime_record)
+        execution_record = builder.add_bytes(
+            execution_path,
+            _bounded_eager_execution_summary(process),
+            role="evaluator-manifest",
+            media_type="application/json",
+            process_id=process.process_id,
+        )
+    else:
+        execution_record = builder.add_json(
+            execution_path,
+            _execution_manifest(process, schema),
+            role="evaluator-manifest",
+            process_id=process.process_id,
+            compact=True,
+        )
     builder.add_json(
         validation_path,
         process.validation_point.to_mapping(),
@@ -876,7 +960,7 @@ def _write_process_payloads(
                 media_type="application/octet-stream",
                 process_id=process.process_id,
             )
-    else:
+    elif isinstance(process, CompiledProcessArtifact):
         _copy_evaluator_payloads(
             evaluator_payloads,
             process.evaluator_root,
@@ -939,10 +1023,148 @@ def _runtime_schema_mapping(
     return schema
 
 
+def _validate_staged_eager_runtime(
+    process: EagerPlanV3ProcessArtifact,
+    record: PayloadRecord,
+) -> None:
+    if process.eager_runtime_size_bytes <= 0:
+        raise ValueError("Rust eager runtime payload must not be empty")
+    payload_sha256 = _canonical_sha256(
+        process.eager_runtime_sha256,
+        "Rust eager runtime payload SHA-256",
+    )
+    if (
+        record.size_bytes != process.eager_runtime_size_bytes
+        or record.sha256 != payload_sha256
+    ):
+        raise ValueError(
+            "Rust eager runtime payload changed after lowering and before publication"
+        )
+
+
+def _bounded_eager_execution_summary(
+    process: EagerPlanV3ProcessArtifact,
+) -> bytes:
+    try:
+        content = (
+            json.dumps(
+                _eager_plan_v3_execution_manifest(process),
+                ensure_ascii=True,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Rust eager execution summary is not canonical JSON: {exc}"
+        ) from exc
+    if len(content) >= _MAX_EAGER_EXECUTION_SUMMARY_BYTES:
+        raise ValueError(
+            "Rust eager execution summary must be smaller than 1 MiB; "
+            f"received {len(content)} bytes"
+        )
+    return content
+
+
+def _eager_plan_v3_execution_manifest(
+    process: EagerPlanV3ProcessArtifact,
+) -> dict[str, object]:
+    lowering_input_sha256 = _canonical_sha256(
+        process.lowering_input_sha256,
+        "eager lowering input SHA-256",
+    )
+    payload_sha256 = _canonical_sha256(
+        process.eager_runtime_sha256,
+        "Rust eager runtime payload SHA-256",
+    )
+    index_sha256 = _canonical_sha256(
+        process.eager_runtime_index_sha256,
+        "Rust eager runtime index SHA-256",
+    )
+    member_count = _nonnegative_integer(
+        process.eager_runtime_member_count,
+        "Rust eager runtime member count",
+        minimum=1,
+    )
+    unpacked_size = _nonnegative_integer(
+        process.eager_runtime_unpacked_size_bytes,
+        "Rust eager runtime unpacked size",
+    )
+    payload_size = _nonnegative_integer(
+        process.eager_runtime_size_bytes,
+        "Rust eager runtime payload size",
+        minimum=1,
+    )
+    capabilities = [EAGER_PLAN_V3_RUNTIME_CAPABILITY]
+    plan = {
+        "kind": EAGER_RUNTIME_KIND,
+        "eager_plan_abi": EAGER_PLAN_V3_ABI,
+        "lowering_input_abi": EAGER_LOWERING_INPUT_ABI,
+        "lowering_input_sha256": lowering_input_sha256,
+        "runtime_layout_abi": EAGER_RUNTIME_LAYOUT_ABI,
+        "required_runtime_capabilities": capabilities,
+        "runtime_container": {
+            "kind": EAGER_RUNTIME_CONTAINER_KIND,
+            "schema_version": EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION,
+            "storage_abi": EAGER_RUNTIME_STORAGE_ABI,
+            "path": _EAGER_RUNTIME_CONTAINER_PATH,
+            "size_bytes": payload_size,
+            "sha256": payload_sha256,
+            "member_count": member_count,
+            "unpacked_size_bytes": unpacked_size,
+            "index_sha256": index_sha256,
+        },
+        "inspection_summary": _deep_plain(process.inspection_summary),
+    }
+    return {
+        "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
+        "kind": EAGER_RUNTIME_KIND,
+        "required_runtime_capabilities": capabilities,
+        "process": process.expression,
+        "key": process.process_id,
+        "color_accuracy": process.color_accuracy,
+        "external_pdg_order": list(process.external_pdgs),
+        "eager_plan_abi": EAGER_PLAN_V3_ABI,
+        "kernel_pack": {
+            "manifest_path": _EAGER_KERNEL_PACK_PATH,
+            "payload_root": _EAGER_KERNEL_PAYLOAD_ROOT,
+        },
+        "runtime_options": {
+            "point_tile_size": process.point_tile_size,
+            "workspace_mib": process.workspace_mib,
+        },
+        "plan": plan,
+        "dag_summary": _dag_summary(process.dag_summary),
+    }
+
+
+def _canonical_sha256(value: object, context: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise ValueError(f"{context} must be a lowercase hexadecimal digest")
+    return value
+
+
+def _nonnegative_integer(
+    value: object,
+    context: str,
+    *,
+    minimum: int = 0,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(
+            f"{context} must be an integer greater than or equal to {minimum}"
+        )
+    return value
+
+
 def _execution_manifest(
     process: ProcessArtifact,
     compiler_schema: Mapping[str, object],
 ) -> dict[str, object]:
+    if isinstance(process, EagerPlanV3ProcessArtifact):
+        return _eager_plan_v3_execution_manifest(process)
     if isinstance(process, EagerProcessArtifact):
         topology_replay = compiler_schema.get("lc_topology_replay")
         required_runtime_capabilities = _eager_process_runtime_capabilities(process)
@@ -2360,6 +2582,8 @@ def _compiled_execution_runtime_capabilities(
 def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
+    if isinstance(process, EagerPlanV3ProcessArtifact):
+        return (EAGER_PLAN_V3_RUNTIME_CAPABILITY,)
     if isinstance(process, EagerProcessArtifact):
         return _eager_process_runtime_capabilities(process)
     return _compiled_process_runtime_capabilities(process)
@@ -2384,7 +2608,9 @@ def _required_runtime_capabilities(
     values = tuple(str(item) for item in raw)
     if values != tuple(sorted(set(values))):
         raise ValueError("runtime capabilities must be sorted and unique")
-    unknown = set(values) - EVALUATOR_RUNTIME_CAPABILITIES
+    unknown = set(values) - (
+        EVALUATOR_RUNTIME_CAPABILITIES | {EAGER_PLAN_V3_RUNTIME_CAPABILITY}
+    )
     if unknown:
         raise ValueError(
             "unsupported evaluator runtime capabilities: " + ", ".join(sorted(unknown))
@@ -2417,7 +2643,7 @@ def _extensions(
             ),
             "filters": dict(process.generation_filters),
         }
-        if isinstance(process, EagerProcessArtifact):
+        if _is_eager_process(process):
             record["execution_manifest_sha256"] = execution_manifest_sha256_by_process[
                 process.process_id
             ]
@@ -2712,10 +2938,17 @@ def _deep_plain(value: Mapping[str, object]) -> dict[str, object]:
 
 
 __all__ = [
+    "EAGER_PLAN_V3_ABI",
+    "EAGER_PLAN_V3_RUNTIME_CAPABILITY",
+    "EAGER_RUNTIME_CONTAINER_KIND",
+    "EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION",
+    "EAGER_RUNTIME_LAYOUT_ABI",
+    "EAGER_RUNTIME_STORAGE_ABI",
     "ApiBundleHook",
     "ArtifactWriteResult",
     "CompiledExecutionArtifact",
     "CompiledProcessArtifact",
+    "EagerPlanV3ProcessArtifact",
     "EagerProcessArtifact",
     "ProcessArtifact",
     "build_api_validation_points",

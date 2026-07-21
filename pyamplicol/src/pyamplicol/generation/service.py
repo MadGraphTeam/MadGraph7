@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import gc
+import hashlib
+import importlib
+import json
 import logging
 import os
 import time
@@ -12,7 +15,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from pyamplicol.api.errors import GenerationError, ModelError, PyAmpliColError
 from pyamplicol.api.models import CompiledModel, _compiled_model_payload
@@ -44,10 +47,17 @@ from ..models.prepared import PreparedKernelPack
 from ..models.prepared_target import PreparedTargetError, validate_prepared_target
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .artifact_writer import (
+    EAGER_PLAN_V3_ABI,
+    EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+    EAGER_RUNTIME_CONTAINER_KIND,
+    EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION,
+    EAGER_RUNTIME_LAYOUT_ABI,
+    EAGER_RUNTIME_STORAGE_ABI,
     CompiledColorSelectorExecutionArtifact,
     CompiledExecutionArtifact,
     CompiledHelicitySelectorExecutionArtifact,
     CompiledProcessArtifact,
+    EagerPlanV3ProcessArtifact,
     EagerProcessArtifact,
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
@@ -62,11 +72,17 @@ from .dag_algorithms import (
 )
 from .dag_compiler import _restrict_color_plan, compile_generic_dag
 from .dag_types import GenericDAG
+from .eager_columnar import (
+    EAGER_LOWERING_INPUT_ABI,
+    EagerLoweringInputV1,
+    build_eager_lowering_input_v1,
+)
 from .eager_lowering import (
     PreparedCatalogEagerKernelIndex,
     PreparedCatalogEagerKernelResolver,
     lower_fused_eager_execution,
 )
+from .eager_tables import MISSING_U32
 from .helicity_materialization import materialize_helicity_recurrence
 from .helicity_replay import (
     HELICITY_RECURRENCE_CONTRACT_VERSION,
@@ -90,9 +106,282 @@ _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
 _LOGGER = logging.getLogger("pyamplicol.generation")
 _MAX_FUSED_LC_HELICITY_SELECTOR_SECTORS = 128
+_EAGER_PLAN_VERSION_ENV = "PYAMPLICOL_EAGER_PLAN_VERSION"
+_EAGER_PLAN_V2 = "v2"
+_EAGER_PLAN_V3 = "v3"
+_EAGER_LOWERING_RESULT_KIND = "pyamplicol-eager-runtime-lowering-result"
+_EAGER_LOWERING_RESULT_SCHEMA_VERSION = 1
 # Symbolica releases the GIL while retaining process-wide mutable symbol state.
 # Keep each complete lowering/compilation transaction atomic across generators.
 _SYMBOLICA_MATERIALIZATION_LOCK = Lock()
+
+
+class _RustEagerLoweringBinding(Protocol):
+    def __call__(
+        self,
+        lowering_input: EagerLoweringInputV1,
+        destination: str,
+        /,
+    ) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _RustEagerLoweringOutput:
+    physics: Mapping[str, object]
+    inspection_summary: Mapping[str, object]
+    payload_path: Path
+    payload_size_bytes: int
+    payload_sha256: str
+    member_count: int
+    unpacked_size_bytes: int
+    index_sha256: str
+
+
+def _selected_eager_plan_version() -> Literal["v2", "v3"]:
+    value = os.environ.get(_EAGER_PLAN_VERSION_ENV, _EAGER_PLAN_V2).strip().lower()
+    if value not in {_EAGER_PLAN_V2, _EAGER_PLAN_V3}:
+        raise GenerationError(
+            f"{_EAGER_PLAN_VERSION_ENV} must be {_EAGER_PLAN_V2!r} or "
+            f"{_EAGER_PLAN_V3!r}, got {value!r}"
+        )
+    return cast(Literal["v2", "v3"], value)
+
+
+def _invoke_rust_eager_lowering_v1(
+    lowering_input: EagerLoweringInputV1,
+    destination: Path,
+) -> _RustEagerLoweringOutput:
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+    except ImportError as exc:
+        raise GenerationError(
+            "eager plan-v3 was requested, but pyamplicol._rusticol is unavailable; "
+            f"set {_EAGER_PLAN_VERSION_ENV}={_EAGER_PLAN_V2} to use plan-v2"
+        ) from exc
+    candidate = getattr(module, "_lower_eager_runtime_v1", None)
+    if not callable(candidate):
+        raise GenerationError(
+            "eager plan-v3 was requested, but pyamplicol._rusticol does not provide "
+            "the private _lower_eager_runtime_v1 binding; "
+            f"set {_EAGER_PLAN_VERSION_ENV}={_EAGER_PLAN_V2} to use plan-v2"
+        )
+    binding = cast(_RustEagerLoweringBinding, candidate)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists() or destination.is_symlink():
+        raise GenerationError(
+            f"Rust eager lowering destination already exists: {destination}"
+        )
+    try:
+        raw_result = binding(lowering_input, os.fspath(destination))
+        result = _validate_rust_eager_lowering_result(raw_result, lowering_input)
+        if destination.is_symlink() or not destination.is_file():
+            raise GenerationError(
+                "Rust eager lowering did not produce a regular eager-runtime.pacbin"
+            )
+        payload_size = destination.stat().st_size
+        if payload_size <= 0:
+            raise GenerationError(
+                "Rust eager lowering produced an empty runtime payload"
+            )
+        payload_sha256 = _file_sha256(destination)
+    except Exception as exc:
+        _discard_rust_eager_output(destination)
+        if isinstance(exc, GenerationError):
+            raise
+        raise GenerationError(f"Rust eager plan-v3 lowering failed: {exc}") from exc
+    return _RustEagerLoweringOutput(
+        physics=result["physics"],
+        inspection_summary=result["inspection_summary"],
+        payload_path=destination,
+        payload_size_bytes=payload_size,
+        payload_sha256=payload_sha256,
+        member_count=cast(int, result["member_count"]),
+        unpacked_size_bytes=cast(int, result["unpacked_size_bytes"]),
+        index_sha256=cast(str, result["index_sha256"]),
+    )
+
+
+def _validate_rust_eager_lowering_result(
+    value: object,
+    lowering_input: EagerLoweringInputV1,
+) -> dict[str, object]:
+    result = _strict_mapping(
+        value,
+        "Rust eager lowering result",
+        {
+            "kind",
+            "schema_version",
+            "lowering_input_abi",
+            "lowering_input_sha256",
+            "eager_plan_abi",
+            "runtime_layout_abi",
+            "required_runtime_capabilities",
+            "runtime_container",
+            "physics",
+            "inspection_summary",
+        },
+    )
+    expected = {
+        "kind": _EAGER_LOWERING_RESULT_KIND,
+        "schema_version": _EAGER_LOWERING_RESULT_SCHEMA_VERSION,
+        "lowering_input_abi": EAGER_LOWERING_INPUT_ABI,
+        "lowering_input_sha256": lowering_input.digest,
+        "eager_plan_abi": EAGER_PLAN_V3_ABI,
+        "runtime_layout_abi": EAGER_RUNTIME_LAYOUT_ABI,
+    }
+    mismatched = [
+        name
+        for name, expected_value in expected.items()
+        if result[name] != expected_value
+    ]
+    if mismatched:
+        raise GenerationError(
+            "Rust eager lowering result has incompatible contract fields: "
+            + ", ".join(mismatched)
+        )
+    capabilities = result["required_runtime_capabilities"]
+    if (
+        isinstance(capabilities, str | bytes)
+        or not isinstance(capabilities, Sequence)
+        or tuple(capabilities) != (EAGER_PLAN_V3_RUNTIME_CAPABILITY,)
+    ):
+        raise GenerationError(
+            "Rust eager lowering result has an incompatible runtime capability"
+        )
+    container = _strict_mapping(
+        result["runtime_container"],
+        "Rust eager runtime container metadata",
+        {
+            "kind",
+            "schema_version",
+            "storage_abi",
+            "member_count",
+            "unpacked_size_bytes",
+            "index_sha256",
+        },
+    )
+    if container["kind"] != EAGER_RUNTIME_CONTAINER_KIND:
+        raise GenerationError("Rust eager runtime container kind is incompatible")
+    if container["schema_version"] != EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION:
+        raise GenerationError("Rust eager runtime container schema is incompatible")
+    if container["storage_abi"] != EAGER_RUNTIME_STORAGE_ABI:
+        raise GenerationError(
+            "Rust eager runtime container storage ABI is incompatible"
+        )
+    member_count = _result_integer(
+        container["member_count"],
+        "Rust eager runtime member count",
+        minimum=1,
+    )
+    unpacked_size = _result_integer(
+        container["unpacked_size_bytes"],
+        "Rust eager runtime unpacked size",
+        minimum=0,
+    )
+    index_sha256 = _result_sha256(
+        container["index_sha256"],
+        "Rust eager runtime index SHA-256",
+    )
+    physics = _canonical_json_mapping(result["physics"], "Rust eager physics metadata")
+    if (
+        physics.get("schema_version") != 1
+        or physics.get("kind") != "pyamplicol-resolved-physics"
+        or physics.get("process_id") != lowering_input.process_key
+    ):
+        raise GenerationError(
+            "Rust eager lowering returned incompatible physics metadata"
+        )
+    inspection = _canonical_json_mapping(
+        result["inspection_summary"],
+        "Rust eager inspection summary",
+    )
+    return {
+        "physics": physics,
+        "inspection_summary": inspection,
+        "member_count": member_count,
+        "unpacked_size_bytes": unpacked_size,
+        "index_sha256": index_sha256,
+    }
+
+
+def _strict_mapping(
+    value: object,
+    context: str,
+    fields: set[str],
+) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise GenerationError(f"{context} must be an object")
+    result = {str(key): item for key, item in value.items()}
+    if set(result) != fields:
+        raise GenerationError(f"{context} fields do not match the v1 binding protocol")
+    return result
+
+
+def _canonical_json_mapping(value: object, context: str) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise GenerationError(f"{context} must be an object")
+    try:
+        payload = json.dumps(
+            value,
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        result = json.loads(payload)
+    except (TypeError, ValueError) as exc:
+        raise GenerationError(f"{context} is not canonical JSON: {exc}") from exc
+    if not isinstance(result, dict):  # pragma: no cover - Mapping encoded above
+        raise GenerationError(f"{context} must encode as an object")
+    return cast(dict[str, object], result)
+
+
+def _result_integer(value: object, context: str, *, minimum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise GenerationError(f"{context} must be at least {minimum}")
+    return value
+
+
+def _result_sha256(value: object, context: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise GenerationError(f"{context} must be a lowercase hexadecimal digest")
+    return value
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _discard_rust_eager_output(path: Path) -> None:
+    try:
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _eager_lowering_kernel_ids(
+    lowering_input: EagerLoweringInputV1,
+) -> frozenset[int]:
+    references: set[int] = set()
+    for table_name, column_name in (
+        ("currents", "propagator_kernel_id"),
+        ("interactions", "kernel_id"),
+        ("roots", "kernel_id"),
+    ):
+        for raw_value in lowering_input.table(table_name).column(column_name):
+            value = int(raw_value)
+            if value != MISSING_U32:
+                references.add(value)
+    return frozenset(references)
 
 
 def _builtin_sm_model() -> Model:
@@ -761,6 +1050,7 @@ class GenerationBackend:
                                     entry,
                                     generation_model,
                                     resolved_model,
+                                    temporary_root,
                                     phase,
                                 ),
                                 executor=executor,
@@ -1462,8 +1752,9 @@ class GenerationBackend:
         process: _CompiledProcess,
         model: Model,
         resolved_model: _ResolvedModel,
+        temporary_root: Path,
         phase: PhaseHandle,
-    ) -> EagerProcessArtifact:
+    ) -> EagerProcessArtifact | EagerPlanV3ProcessArtifact:
         process_name = process.expanded.request.name
         eager_kernel_index = resolved_model.eager_kernel_index
         if eager_kernel_index is None:
@@ -1474,6 +1765,14 @@ class GenerationBackend:
             process.dag,
             eager_kernel_index,
         )
+        if _selected_eager_plan_version() == _EAGER_PLAN_V3:
+            return self._construct_eager_plan_v3_artifact(
+                process,
+                model,
+                resolver,
+                temporary_root,
+                phase,
+            )
         with phase.child(
             process_name,
             f"{process_name}: eager DAG lowering",
@@ -1515,6 +1814,85 @@ class GenerationBackend:
             aliases=process.expanded.aliases,
             runtime_schema=schema_mapping,
             eager_tables=eager_tables,
+            point_tile_size=run.evaluator.eager.point_tile_size,
+            workspace_mib=run.evaluator.eager.workspace_mib,
+            dag_summary={
+                "current_count": len(dag.currents),
+                "source_count": len(dag.sources),
+                "interaction_count": len(dag.interactions),
+                "amplitude_root_count": len(dag.amplitude_roots),
+                "truncated": False,
+            },
+            validation_point=process.validation_points[0],
+            generation_filters=process.filters,
+        )
+
+    def _construct_eager_plan_v3_artifact(
+        self,
+        process: _CompiledProcess,
+        model: Model,
+        resolver: PreparedCatalogEagerKernelResolver,
+        temporary_root: Path,
+        phase: PhaseHandle,
+    ) -> EagerPlanV3ProcessArtifact:
+        process_name = process.expanded.request.name
+        with phase.child(
+            process_name,
+            f"{process_name}: Rust eager runtime lowering",
+            total=2,
+            details={"process": process_name, "step": "columnar lowering input"},
+        ) as task:
+            lowering_input = build_eager_lowering_input_v1(
+                dag=process.dag,
+                model=model,
+                resolver=resolver,
+                process_id=process_name,
+            )
+            task.update(
+                1,
+                message="columnar lowering input ready",
+                details={
+                    "process": process_name,
+                    "step": "columnar lowering input ready",
+                },
+            )
+            output = _invoke_rust_eager_lowering_v1(
+                lowering_input,
+                temporary_root
+                / "eager-plan-v3"
+                / process_name
+                / "eager-runtime.pacbin",
+            )
+            task.update(
+                2,
+                message="Rust eager runtime ready",
+                details={"process": process_name, "step": "eager runtime ready"},
+            )
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "eager runtime ready"},
+        )
+        run = self._run_config
+        if run is None:  # pragma: no cover - eager mode requires RunConfig
+            raise GenerationError("eager generation has no evaluator configuration")
+        ir = process.expanded.process_ir
+        dag = process.dag
+        return EagerPlanV3ProcessArtifact(
+            process_id=process_name,
+            expression=ir.process,
+            color_accuracy=ir.color_accuracy,
+            external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
+            aliases=process.expanded.aliases,
+            physics=output.physics,
+            eager_runtime_path=output.payload_path,
+            eager_runtime_size_bytes=output.payload_size_bytes,
+            eager_runtime_sha256=output.payload_sha256,
+            eager_runtime_member_count=output.member_count,
+            eager_runtime_unpacked_size_bytes=output.unpacked_size_bytes,
+            eager_runtime_index_sha256=output.index_sha256,
+            lowering_input_sha256=lowering_input.digest,
+            referenced_kernel_ids=_eager_lowering_kernel_ids(lowering_input),
+            inspection_summary=output.inspection_summary,
             point_tile_size=run.evaluator.eager.point_tile_size,
             workspace_mib=run.evaluator.eager.workspace_mib,
             dag_summary={
