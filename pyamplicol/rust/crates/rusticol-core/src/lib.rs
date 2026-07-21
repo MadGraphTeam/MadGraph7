@@ -10,6 +10,7 @@
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
+pub mod eager_layout;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod eager_runtime;
 mod eager_tables;

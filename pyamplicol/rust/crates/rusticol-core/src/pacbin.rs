@@ -11,21 +11,26 @@
 use crate::{RusticolError, RusticolResult};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::fs::File;
-#[cfg(not(unix))]
-use std::io::Read;
+use std::ffi::OsString;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::Deref;
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
-use std::path::Path;
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const PACBIN_VERSION: u16 = 1;
 pub const PACBIN_ALIGNMENT: u32 = 64;
 pub const PACBIN_MAX_MEMBERS: u64 = 1_000_000;
 pub const PACBIN_MAX_PATH_BYTES: u32 = 4096;
 pub const PACBIN_MAX_INDEX_BYTES: u64 = 256 * 1024 * 1024;
+pub const PACBIN_DEFAULT_CHUNK_SIZE: usize = 1024 * 1024;
+pub const PACBIN_DEFAULT_MODE: u32 = 0o644;
 
 const HEADER_MAGIC: &[u8; 8] = b"PACBIN\0\0";
 const INDEX_MAGIC: &[u8; 8] = b"PACIDX\0\0";
@@ -36,6 +41,9 @@ const INDEX_HEADER_SIZE: usize = 32;
 const INDEX_ENTRY_SIZE: usize = 56;
 const FOOTER_SIZE: usize = 64;
 const INDEX_ALIGNMENT: u64 = 8;
+const TEMPORARY_FILE_ATTEMPTS: u64 = 128;
+
+static NEXT_TEMPORARY_FILE: AtomicU64 = AtomicU64::new(0);
 
 /// Portable payload kinds defined by `pacbin-v1`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,6 +52,8 @@ pub enum PacbinMemberKind {
     SymjitApplication = 1,
     SymbolicaExactState = 2,
     NativeLibrary = 3,
+    EagerRuntimeMetadata = 4,
+    EagerRuntimeTable = 5,
 }
 
 impl PacbinMemberKind {
@@ -52,9 +62,111 @@ impl PacbinMemberKind {
             1 => Ok(Self::SymjitApplication),
             2 => Ok(Self::SymbolicaExactState),
             3 => Ok(Self::NativeLibrary),
+            4 => Ok(Self::EagerRuntimeMetadata),
+            5 => Ok(Self::EagerRuntimeTable),
             _ => Err(compatibility(format!(
                 "unknown pacbin member kind: {value}"
             ))),
+        }
+    }
+}
+
+/// One bounded source streamed into a `pacbin-v1` member.
+pub enum PacbinWriteSource<'a> {
+    Bytes(&'a [u8]),
+    Path(PathBuf),
+    Reader(&'a mut dyn Read),
+}
+
+/// One normalized member supplied to the deterministic Rust writer.
+pub struct PacbinWriteMember<'a> {
+    logical_path: String,
+    kind: PacbinMemberKind,
+    source: PacbinWriteSource<'a>,
+}
+
+impl<'a> PacbinWriteMember<'a> {
+    pub fn from_bytes(
+        logical_path: &str,
+        kind: PacbinMemberKind,
+        payload: &'a [u8],
+    ) -> RusticolResult<Self> {
+        Self::new(logical_path, kind, PacbinWriteSource::Bytes(payload))
+    }
+
+    pub fn from_path(
+        logical_path: &str,
+        kind: PacbinMemberKind,
+        source: impl Into<PathBuf>,
+    ) -> RusticolResult<Self> {
+        Self::new(logical_path, kind, PacbinWriteSource::Path(source.into()))
+    }
+
+    pub fn from_reader(
+        logical_path: &str,
+        kind: PacbinMemberKind,
+        source: &'a mut dyn Read,
+    ) -> RusticolResult<Self> {
+        Self::new(logical_path, kind, PacbinWriteSource::Reader(source))
+    }
+
+    fn new(
+        logical_path: &str,
+        kind: PacbinMemberKind,
+        source: PacbinWriteSource<'a>,
+    ) -> RusticolResult<Self> {
+        Ok(Self {
+            logical_path: normalize_logical_path(logical_path)?,
+            kind,
+            source,
+        })
+    }
+
+    pub fn logical_path(&self) -> &str {
+        &self.logical_path
+    }
+
+    pub fn kind(&self) -> PacbinMemberKind {
+        self.kind
+    }
+}
+
+/// Validated options for one atomic `pacbin-v1` publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PacbinWriteOptions {
+    chunk_size: usize,
+    mode: u32,
+}
+
+impl PacbinWriteOptions {
+    pub fn new(chunk_size: usize, mode: u32) -> RusticolResult<Self> {
+        if chunk_size == 0 {
+            return Err(RusticolError::invalid_argument(
+                "pacbin chunk size must be a positive integer",
+            ));
+        }
+        if mode > 0o777 {
+            return Err(RusticolError::invalid_argument(
+                "pacbin publication mode must be between 0o000 and 0o777",
+            ));
+        }
+        Ok(Self { chunk_size, mode })
+    }
+
+    pub fn chunk_size(&self) -> usize {
+        self.chunk_size
+    }
+
+    pub fn mode(&self) -> u32 {
+        self.mode
+    }
+}
+
+impl Default for PacbinWriteOptions {
+    fn default() -> Self {
+        Self {
+            chunk_size: PACBIN_DEFAULT_CHUNK_SIZE,
+            mode: PACBIN_DEFAULT_MODE,
         }
     }
 }
@@ -374,6 +486,409 @@ impl PacbinReader {
         self.bytes.as_ref().len()
     }
 }
+
+/// Atomically stream and publish one deterministic `pacbin-v1` container.
+///
+/// Member metadata is retained in memory, while payload bytes are copied and
+/// hashed through one bounded buffer. The destination remains untouched until
+/// a complete temporary file has been flushed and synced.
+pub fn write_pacbin_atomic<'a>(
+    destination: impl AsRef<Path>,
+    members: impl IntoIterator<Item = PacbinWriteMember<'a>>,
+    options: PacbinWriteOptions,
+) -> RusticolResult<PacbinIndex> {
+    let destination = destination.as_ref();
+    let parent = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if !parent.is_dir() {
+        return Err(RusticolError::invalid_argument(format!(
+            "pacbin destination directory does not exist: {}",
+            parent.display()
+        )));
+    }
+    let mut members = prepare_write_members(members)?;
+    let expected_index_size = validate_write_index_bounds(&members)?;
+    let (temporary_path, mut temporary_file) = create_temporary_file(destination, parent)?;
+
+    let result = (|| {
+        let index = write_pacbin_file(
+            &mut temporary_file,
+            &mut members,
+            options.chunk_size,
+            expected_index_size,
+        )?;
+        #[cfg(unix)]
+        temporary_file
+            .set_permissions(std::fs::Permissions::from_mode(options.mode))
+            .map_err(|error| artifact_io_error("set permissions on", &temporary_path, error))?;
+        temporary_file
+            .flush()
+            .map_err(|error| artifact_io_error("flush", &temporary_path, error))?;
+        temporary_file
+            .sync_all()
+            .map_err(|error| artifact_io_error("sync", &temporary_path, error))?;
+        drop(temporary_file);
+        std::fs::rename(&temporary_path, destination).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not atomically publish pacbin container {}: {error}",
+                destination.display()
+            ))
+        })?;
+        sync_directory_best_effort(parent);
+        Ok(index)
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary_path);
+    }
+    result
+}
+
+fn prepare_write_members<'a>(
+    members: impl IntoIterator<Item = PacbinWriteMember<'a>>,
+) -> RusticolResult<Vec<PacbinWriteMember<'a>>> {
+    let mut members: Vec<_> = members.into_iter().collect();
+    members.sort_by(|left, right| {
+        left.logical_path
+            .as_bytes()
+            .cmp(right.logical_path.as_bytes())
+    });
+    let mut seen_paths = BTreeSet::new();
+    let mut seen_folded = BTreeSet::new();
+    for member in &members {
+        if !seen_paths.insert(member.logical_path.clone()) {
+            return Err(RusticolError::invalid_argument(format!(
+                "duplicate pacbin member path: {}",
+                member.logical_path
+            )));
+        }
+        let folded = member.logical_path.to_ascii_lowercase();
+        if !seen_folded.insert(folded) {
+            return Err(RusticolError::invalid_argument(format!(
+                "case-colliding pacbin member path: {}",
+                member.logical_path
+            )));
+        }
+    }
+    Ok(members)
+}
+
+fn validate_write_index_bounds(members: &[PacbinWriteMember<'_>]) -> RusticolResult<u64> {
+    let member_count = u64::try_from(members.len())
+        .map_err(|_| RusticolError::invalid_argument("pacbin member count exceeds u64"))?;
+    if member_count > PACBIN_MAX_MEMBERS {
+        return Err(RusticolError::invalid_argument(format!(
+            "pacbin member count exceeds limit: {member_count}"
+        )));
+    }
+    let mut index_size = INDEX_HEADER_SIZE as u64;
+    for member in members {
+        let path_length = u64::try_from(member.logical_path.len()).map_err(|_| {
+            RusticolError::invalid_argument("pacbin logical path exceeds u64 byte length")
+        })?;
+        if path_length > u64::from(PACBIN_MAX_PATH_BYTES) {
+            return Err(RusticolError::invalid_argument(format!(
+                "pacbin member path exceeds size limit: {path_length} bytes"
+            )));
+        }
+        let record_size = (INDEX_ENTRY_SIZE as u64)
+            .checked_add(path_length)
+            .and_then(|value| value.checked_add(padding_length(value, INDEX_ALIGNMENT)))
+            .ok_or_else(|| RusticolError::invalid_argument("pacbin index size exceeds u64"))?;
+        index_size = index_size
+            .checked_add(record_size)
+            .ok_or_else(|| RusticolError::invalid_argument("pacbin index size exceeds u64"))?;
+        if index_size > PACBIN_MAX_INDEX_BYTES {
+            return Err(RusticolError::invalid_argument(
+                "pacbin index exceeds size limit",
+            ));
+        }
+    }
+    Ok(index_size)
+}
+
+fn create_temporary_file(destination: &Path, parent: &Path) -> RusticolResult<(PathBuf, File)> {
+    let file_name = destination
+        .file_name()
+        .ok_or_else(|| RusticolError::invalid_argument("pacbin destination must name a file"))?;
+    for _ in 0..TEMPORARY_FILE_ATTEMPTS {
+        let sequence = NEXT_TEMPORARY_FILE.fetch_add(1, Ordering::Relaxed);
+        let mut temporary_name = OsString::from(".");
+        temporary_name.push(file_name);
+        temporary_name.push(format!(".{}.{}.tmp", std::process::id(), sequence));
+        let temporary_path = parent.join(temporary_name);
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        match options.open(&temporary_path) {
+            Ok(file) => return Ok((temporary_path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(artifact_io_error(
+                    "create temporary pacbin container",
+                    &temporary_path,
+                    error,
+                ));
+            }
+        }
+    }
+    Err(RusticolError::artifact(format!(
+        "could not allocate a unique temporary pacbin path for {}",
+        destination.display()
+    )))
+}
+
+fn write_pacbin_file(
+    destination: &mut File,
+    members: &mut [PacbinWriteMember<'_>],
+    chunk_size: usize,
+    expected_index_size: u64,
+) -> RusticolResult<PacbinIndex> {
+    destination.seek(SeekFrom::Start(0)).map_err(|error| {
+        RusticolError::artifact(format!("could not seek pacbin output: {error}"))
+    })?;
+    destination.set_len(0).map_err(|error| {
+        RusticolError::artifact(format!("could not truncate pacbin output: {error}"))
+    })?;
+    write_all(destination, &[0; HEADER_SIZE], "pacbin header")?;
+
+    let mut buffer = Vec::new();
+    buffer.try_reserve_exact(chunk_size).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not allocate {chunk_size} byte pacbin streaming buffer: {error}"
+        ))
+    })?;
+    buffer.resize(chunk_size, 0);
+
+    let mut indexed_members = Vec::new();
+    indexed_members
+        .try_reserve_exact(members.len())
+        .map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not allocate pacbin index for {} members: {error}",
+                members.len()
+            ))
+        })?;
+    for member in members {
+        write_alignment_padding(destination, u64::from(PACBIN_ALIGNMENT))?;
+        let offset = stream_position(destination, "pacbin member offset")?;
+        let (length, sha256) = match &mut member.source {
+            PacbinWriteSource::Bytes(payload) => {
+                let mut source = std::io::Cursor::new(*payload);
+                stream_member(&mut source, destination, &mut buffer, &member.logical_path)?
+            }
+            PacbinWriteSource::Path(path) => {
+                if !path.is_file() {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "pacbin member source is not a file: {}",
+                        path.display()
+                    )));
+                }
+                let mut source = File::open(&*path)
+                    .map_err(|error| artifact_io_error("open pacbin member source", path, error))?;
+                stream_member(&mut source, destination, &mut buffer, &member.logical_path)?
+            }
+            PacbinWriteSource::Reader(source) => stream_member(
+                &mut **source,
+                destination,
+                &mut buffer,
+                &member.logical_path,
+            )?,
+        };
+        indexed_members.push(PacbinMember {
+            logical_path: member.logical_path.clone(),
+            kind: member.kind,
+            offset,
+            length,
+            sha256,
+        });
+    }
+
+    write_alignment_padding(destination, u64::from(PACBIN_ALIGNMENT))?;
+    let index_offset = stream_position(destination, "pacbin index offset")?;
+    let member_count = u64::try_from(indexed_members.len())
+        .map_err(|_| RusticolError::artifact("pacbin member count exceeds u64"))?;
+    let mut index_digest = Sha256::new();
+    let mut index_header = [0_u8; INDEX_HEADER_SIZE];
+    index_header[0..8].copy_from_slice(INDEX_MAGIC);
+    encode_u16(&mut index_header, 8, PACBIN_VERSION);
+    encode_u16(&mut index_header, 10, INDEX_HEADER_SIZE as u16);
+    encode_u32(&mut index_header, 12, SUPPORTED_FLAGS);
+    encode_u64(&mut index_header, 16, member_count);
+    write_hashed(
+        destination,
+        &mut index_digest,
+        &index_header,
+        "pacbin index",
+    )?;
+
+    for member in &indexed_members {
+        let path_bytes = member.logical_path.as_bytes();
+        let path_length = u32::try_from(path_bytes.len())
+            .map_err(|_| RusticolError::artifact("pacbin logical path exceeds u32 byte length"))?;
+        let mut entry = [0_u8; INDEX_ENTRY_SIZE];
+        encode_u32(&mut entry, 0, path_length);
+        encode_u16(&mut entry, 4, member.kind as u16);
+        encode_u16(&mut entry, 6, SUPPORTED_FLAGS as u16);
+        encode_u64(&mut entry, 8, member.offset);
+        encode_u64(&mut entry, 16, member.length);
+        entry[24..56].copy_from_slice(&member.sha256);
+        write_hashed(destination, &mut index_digest, &entry, "pacbin index")?;
+        write_hashed(destination, &mut index_digest, path_bytes, "pacbin index")?;
+        let record_length = (INDEX_ENTRY_SIZE as u64) + u64::from(path_length);
+        let padding = padding_length(record_length, INDEX_ALIGNMENT);
+        if padding != 0 {
+            let zeros = [0_u8; INDEX_ALIGNMENT as usize];
+            let padding = usize::try_from(padding)
+                .expect("pacbin index padding is smaller than INDEX_ALIGNMENT");
+            write_hashed(
+                destination,
+                &mut index_digest,
+                &zeros[..padding],
+                "pacbin index",
+            )?;
+        }
+    }
+    let actual_index_size = stream_position(destination, "pacbin index end")?
+        .checked_sub(index_offset)
+        .ok_or_else(|| RusticolError::artifact("pacbin index position underflow"))?;
+    if actual_index_size != expected_index_size {
+        return Err(RusticolError::integrity(
+            "pacbin index size disagrees with preflight",
+        ));
+    }
+    let index_sha256: [u8; 32] = index_digest.finalize().into();
+
+    let mut footer = [0_u8; FOOTER_SIZE];
+    footer[0..8].copy_from_slice(FOOTER_MAGIC);
+    encode_u16(&mut footer, 8, PACBIN_VERSION);
+    encode_u16(&mut footer, 10, FOOTER_SIZE as u16);
+    encode_u32(&mut footer, 12, SUPPORTED_FLAGS);
+    encode_u64(&mut footer, 16, index_offset);
+    encode_u64(&mut footer, 24, member_count);
+    footer[32..64].copy_from_slice(&index_sha256);
+    write_all(destination, &footer, "pacbin footer")?;
+    let file_size = stream_position(destination, "pacbin file size")?;
+
+    let mut header = [0_u8; HEADER_SIZE];
+    header[0..8].copy_from_slice(HEADER_MAGIC);
+    encode_u16(&mut header, 8, PACBIN_VERSION);
+    encode_u16(&mut header, 10, HEADER_SIZE as u16);
+    encode_u32(&mut header, 12, SUPPORTED_FLAGS);
+    encode_u32(&mut header, 16, PACBIN_ALIGNMENT);
+    encode_u64(&mut header, 24, index_offset);
+    encode_u64(&mut header, 32, member_count);
+    destination.seek(SeekFrom::Start(0)).map_err(|error| {
+        RusticolError::artifact(format!("could not seek pacbin output: {error}"))
+    })?;
+    write_all(destination, &header, "pacbin header")?;
+    destination
+        .seek(SeekFrom::Start(file_size))
+        .map_err(|error| {
+            RusticolError::artifact(format!("could not seek pacbin output: {error}"))
+        })?;
+    destination.set_len(file_size).map_err(|error| {
+        RusticolError::artifact(format!("could not truncate pacbin output: {error}"))
+    })?;
+
+    Ok(PacbinIndex {
+        version: PACBIN_VERSION,
+        index_offset,
+        index_sha256,
+        file_size,
+        members: indexed_members,
+    })
+}
+
+fn stream_member<R: Read + ?Sized>(
+    source: &mut R,
+    destination: &mut File,
+    buffer: &mut [u8],
+    logical_path: &str,
+) -> RusticolResult<(u64, [u8; 32])> {
+    let mut digest = Sha256::new();
+    let mut length = 0_u64;
+    loop {
+        let read = source.read(buffer).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not read pacbin member {logical_path}: {error}"
+            ))
+        })?;
+        if read == 0 {
+            break;
+        }
+        length = length
+            .checked_add(u64::try_from(read).expect("read byte count fits u64"))
+            .ok_or_else(|| RusticolError::artifact("pacbin member length exceeds u64"))?;
+        digest.update(&buffer[..read]);
+        write_all(destination, &buffer[..read], "pacbin member payload")?;
+    }
+    Ok((length, digest.finalize().into()))
+}
+
+fn write_alignment_padding(destination: &mut File, alignment: u64) -> RusticolResult<()> {
+    let position = stream_position(destination, "pacbin output position")?;
+    let padding = padding_length(position, alignment);
+    if padding != 0 {
+        let zeros = [0_u8; PACBIN_ALIGNMENT as usize];
+        let padding = usize::try_from(padding)
+            .expect("pacbin payload padding is smaller than PACBIN_ALIGNMENT");
+        write_all(destination, &zeros[..padding], "pacbin payload padding")?;
+    }
+    Ok(())
+}
+
+fn write_hashed(
+    destination: &mut File,
+    digest: &mut Sha256,
+    payload: &[u8],
+    label: &str,
+) -> RusticolResult<()> {
+    write_all(destination, payload, label)?;
+    digest.update(payload);
+    Ok(())
+}
+
+fn write_all(destination: &mut File, payload: &[u8], label: &str) -> RusticolResult<()> {
+    destination.write_all(payload).map_err(|error| {
+        RusticolError::artifact(format!("short write while writing {label}: {error}"))
+    })
+}
+
+fn stream_position(destination: &mut File, label: &str) -> RusticolResult<u64> {
+    destination
+        .stream_position()
+        .map_err(|error| RusticolError::artifact(format!("could not read {label}: {error}")))
+}
+
+fn encode_u16(bytes: &mut [u8], offset: usize, value: u16) {
+    bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+}
+
+fn encode_u32(bytes: &mut [u8], offset: usize, value: u32) {
+    bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+fn encode_u64(bytes: &mut [u8], offset: usize, value: u64) {
+    bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+}
+
+fn artifact_io_error(action: &str, path: &Path, error: std::io::Error) -> RusticolError {
+    RusticolError::artifact(format!("could not {action} {}: {error}", path.display()))
+}
+
+#[cfg(unix)]
+fn sync_directory_best_effort(path: &Path) {
+    if let Ok(directory) = File::open(path) {
+        let _ = directory.sync_all();
+    }
+}
+
+#[cfg(not(unix))]
+fn sync_directory_best_effort(_path: &Path) {}
 
 /// Normalize a portable ASCII member path using the Python codec's POSIX rules.
 ///

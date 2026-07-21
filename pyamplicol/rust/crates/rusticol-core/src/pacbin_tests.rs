@@ -4,6 +4,7 @@ use super::*;
 use crate::RusticolErrorKind;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::{self, Read};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const PYTHON_GOLDEN_HEX: &str = concat!(
@@ -609,4 +610,225 @@ fn normalization_follows_portable_python_posix_rules() {
         assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
         assert!(error.to_string().contains(message));
     }
+}
+
+fn temporary_directory(label: &str) -> std::path::PathBuf {
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "rusticol-pacbin-{label}-{}-{}",
+        std::process::id(),
+        NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir(&path).unwrap();
+    path
+}
+
+#[test]
+fn rust_writer_matches_python_golden_byte_for_byte() {
+    let directory = temporary_directory("python-golden");
+    let destination = directory.join("golden.pacbin");
+    let members = vec![
+        PacbinWriteMember::from_bytes(
+            "z/exact.bin",
+            PacbinMemberKind::SymbolicaExactState,
+            b"exact-state",
+        )
+        .unwrap(),
+        PacbinWriteMember::from_bytes(
+            "a//./jit.symjit",
+            PacbinMemberKind::SymjitApplication,
+            b"jit-v1",
+        )
+        .unwrap(),
+    ];
+    let index = write_pacbin_atomic(&destination, members, PacbinWriteOptions::default()).unwrap();
+    let bytes = fs::read(&destination).unwrap();
+    assert_eq!(bytes, decode_hex(PYTHON_GOLDEN_HEX));
+    assert_eq!(index.index_offset(), 192);
+    assert_eq!(index.file_size(), 432);
+    assert_eq!(index.members().len(), 2);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn writer_is_deterministic_and_supports_eager_runtime_member_kinds() {
+    let directory = temporary_directory("determinism");
+    let first = directory.join("first.pacbin");
+    let second = directory.join("second.pacbin");
+    for destination in [&first, &second] {
+        write_pacbin_atomic(
+            destination,
+            vec![
+                PacbinWriteMember::from_bytes(
+                    "tables/invocations.bin",
+                    PacbinMemberKind::EagerRuntimeTable,
+                    b"table-payload",
+                )
+                .unwrap(),
+                PacbinWriteMember::from_bytes(
+                    "metadata/runtime.bin",
+                    PacbinMemberKind::EagerRuntimeMetadata,
+                    b"metadata-payload",
+                )
+                .unwrap(),
+            ],
+            PacbinWriteOptions::new(3, 0o644).unwrap(),
+        )
+        .unwrap();
+    }
+    assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
+    let reader = PacbinReader::open(&first).unwrap();
+    assert_eq!(
+        reader.member("metadata/runtime.bin").unwrap().kind(),
+        PacbinMemberKind::EagerRuntimeMetadata
+    );
+    assert_eq!(
+        reader.member("tables/invocations.bin").unwrap().kind(),
+        PacbinMemberKind::EagerRuntimeTable
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
+
+struct TrackingReader {
+    payload: Vec<u8>,
+    position: usize,
+    maximum_request: usize,
+    fail_at: Option<usize>,
+}
+
+impl TrackingReader {
+    fn new(payload: impl Into<Vec<u8>>) -> Self {
+        Self {
+            payload: payload.into(),
+            position: 0,
+            maximum_request: 0,
+            fail_at: None,
+        }
+    }
+
+    fn failing(payload: impl Into<Vec<u8>>, fail_at: usize) -> Self {
+        Self {
+            fail_at: Some(fail_at),
+            ..Self::new(payload)
+        }
+    }
+}
+
+impl Read for TrackingReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.maximum_request = self.maximum_request.max(buffer.len());
+        if self.fail_at.is_some_and(|limit| self.position >= limit) {
+            return Err(io::Error::other("injected member read failure"));
+        }
+        let remaining = self.payload.len().saturating_sub(self.position);
+        let mut length = remaining.min(buffer.len());
+        if let Some(limit) = self.fail_at {
+            length = length.min(limit.saturating_sub(self.position));
+        }
+        if length == 0 {
+            return Ok(0);
+        }
+        buffer[..length].copy_from_slice(&self.payload[self.position..self.position + length]);
+        self.position += length;
+        Ok(length)
+    }
+}
+
+#[test]
+fn writer_streams_reader_and_path_sources_in_bounded_chunks() {
+    let directory = temporary_directory("bounded-streaming");
+    let source_path = directory.join("source.bin");
+    fs::write(&source_path, b"path-source").unwrap();
+    let destination = directory.join("container.pacbin");
+    let mut source = TrackingReader::new(vec![0x5a; 100]);
+    write_pacbin_atomic(
+        &destination,
+        vec![
+            PacbinWriteMember::from_reader(
+                "a/reader.bin",
+                PacbinMemberKind::EagerRuntimeTable,
+                &mut source,
+            )
+            .unwrap(),
+            PacbinWriteMember::from_path(
+                "b/path.bin",
+                PacbinMemberKind::EagerRuntimeMetadata,
+                &source_path,
+            )
+            .unwrap(),
+        ],
+        PacbinWriteOptions::new(7, 0o600).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(source.maximum_request, 7);
+    let reader = PacbinReader::open(&destination).unwrap();
+    assert_eq!(reader.member_bytes("a/reader.bin").unwrap(), &[0x5a; 100]);
+    assert_eq!(reader.member_bytes("b/path.bin").unwrap(), b"path-source");
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn atomic_writer_preserves_destination_and_cleans_temporary_file_on_error() {
+    let directory = temporary_directory("atomic-failure");
+    let destination = directory.join("container.pacbin");
+    fs::write(&destination, b"previous-container").unwrap();
+    let mut source = TrackingReader::failing(vec![0x41; 32], 8);
+    let error = write_pacbin_atomic(
+        &destination,
+        vec![
+            PacbinWriteMember::from_reader(
+                "tables/failing.bin",
+                PacbinMemberKind::EagerRuntimeTable,
+                &mut source,
+            )
+            .unwrap(),
+        ],
+        PacbinWriteOptions::new(4, 0o644).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Artifact);
+    assert!(error.to_string().contains("injected member read failure"));
+    assert_eq!(fs::read(&destination).unwrap(), b"previous-container");
+    let names: Vec<_> = fs::read_dir(&directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(names, vec![std::ffi::OsString::from("container.pacbin")]);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn writer_preflight_rejects_invalid_options_and_colliding_paths() {
+    assert!(PacbinWriteOptions::new(0, 0o644).is_err());
+    assert!(PacbinWriteOptions::new(1, 0o1000).is_err());
+    let directory = temporary_directory("preflight");
+    let destination = directory.join("container.pacbin");
+    let duplicate = write_pacbin_atomic(
+        &destination,
+        vec![
+            PacbinWriteMember::from_bytes("same.bin", PacbinMemberKind::EagerRuntimeMetadata, b"a")
+                .unwrap(),
+            PacbinWriteMember::from_bytes("same.bin", PacbinMemberKind::EagerRuntimeTable, b"b")
+                .unwrap(),
+        ],
+        PacbinWriteOptions::default(),
+    )
+    .unwrap_err();
+    assert_eq!(duplicate.kind(), RusticolErrorKind::InvalidArgument);
+    assert!(duplicate.to_string().contains("duplicate"));
+    let case_collision = write_pacbin_atomic(
+        &destination,
+        vec![
+            PacbinWriteMember::from_bytes("Case.bin", PacbinMemberKind::EagerRuntimeMetadata, b"a")
+                .unwrap(),
+            PacbinWriteMember::from_bytes("case.bin", PacbinMemberKind::EagerRuntimeTable, b"b")
+                .unwrap(),
+        ],
+        PacbinWriteOptions::default(),
+    )
+    .unwrap_err();
+    assert_eq!(case_collision.kind(), RusticolErrorKind::InvalidArgument);
+    assert!(case_collision.to_string().contains("case-colliding"));
+    assert!(!destination.exists());
+    fs::remove_dir_all(directory).unwrap();
 }
