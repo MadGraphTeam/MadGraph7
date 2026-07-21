@@ -11,6 +11,7 @@ compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
 pub mod eager_layout;
+mod eager_lowering_v3;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod eager_runtime;
 mod eager_tables;
@@ -23,6 +24,7 @@ pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,
     ProcessAlias, Target, VerifiedArtifact, runtime_target_info,
 };
+pub use eager_lowering_v3::*;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub use eager_runtime::{
     DEFAULT_EAGER_POINT_TILE_SIZE, DEFAULT_EAGER_WORKSPACE_MIB,
