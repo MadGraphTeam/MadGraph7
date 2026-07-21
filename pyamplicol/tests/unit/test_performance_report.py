@@ -6,7 +6,7 @@ import os
 import re
 import signal
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -393,6 +393,31 @@ def _write_current_effective_config(artifact_dir: Path) -> None:
     output_chunk_size = report.REPORT_CONFIG_OVERRIDES["evaluator.output_chunk_size"]
     (config_dir / "effective.toml").write_text(
         f"[evaluator]\noutput_chunk_size = {output_chunk_size}\n",
+        encoding="utf-8",
+    )
+
+
+def _write_current_report_artifact(
+    artifact_dir: Path,
+    *,
+    layout: str | None = None,
+) -> None:
+    _write_current_effective_config(artifact_dir)
+    if layout is not None:
+        config_path = artifact_dir / "config" / "effective.toml"
+        config_path.write_text(
+            config_path.read_text(encoding="utf-8")
+            + f'\n[color]\nlc_flow_layout = "{layout}"\n',
+            encoding="utf-8",
+        )
+    (artifact_dir / "artifact.json").write_text(
+        json.dumps({"producer": {"version": "current"}}),
+        encoding="utf-8",
+    )
+    model_dir = artifact_dir / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "compiled-model.json").write_text(
+        json.dumps({"schema_version": 9, "model_compiler_version": 13}),
         encoding="utf-8",
     )
 
@@ -1144,15 +1169,16 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
 ) -> None:
     monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 10))
     monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
+    artifact_dir = tmp_path / "artifact"
     previous = {
         "generation_seconds": 12.5,
+        "artifact_path": str(artifact_dir),
         "metadata": {
             "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
             "generation_timer_excludes_model_compile": True,
             "source_provenance": _synthetic_source_provenance(9, 10),
         },
     }
-    artifact_dir = tmp_path / "artifact"
     builtin_cell = report.CampaignCell(
         kind="matrix",
         cache_name="matrix_builtin_sm_nlc",
@@ -1201,6 +1227,52 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
             builtin_cell,
             artifact_dir,
             previous,
+        )
+        == 12.5
+    )
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            previous,
+            expected_lc_flow_layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        )
+        == 12.5
+    )
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            previous,
+            expected_lc_flow_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        )
+        is None
+    )
+    wrong_artifact = {
+        **previous,
+        "artifact_path": str(tmp_path / "other-artifact"),
+    }
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            wrong_artifact,
+        )
+        is None
+    )
+    union_previous = {
+        **previous,
+        "metadata": {
+            **previous["metadata"],
+            "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+        },
+    }
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            union_previous,
+            expected_lc_flow_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
         )
         == 12.5
     )
@@ -1280,6 +1352,197 @@ def test_runtime_only_revision_hops_allow_generation_reuse(
     stale_contract["head"] = "e307d218c169e246e6ce8f8e1392799c36108785"
     stale_contract["model_compiler_version"] = 12
     assert not report._source_provenance_generation_reusable(stale_contract)
+
+
+def test_lc_union_source_transition_allows_only_named_prefeature_bases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = {
+        "head": "post-union-head",
+        "report_version": report.REPORT_VERSION,
+        "cache_schema_version": report.CACHE_SCHEMA_VERSION,
+        "compiled_model_schema_version": 9,
+        "model_compiler_version": 13,
+    }
+    monkeypatch.setattr(report, "_report_source_provenance", lambda: current)
+    monkeypatch.setattr(
+        report,
+        "_git_is_ancestor",
+        lambda ancestor, descendant: (
+            ancestor == report.LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION
+            and descendant == "post-union-head"
+        ),
+    )
+
+    for previous_head in report.LC_ALL_FLOW_UNION_REUSE_BASE_REVISIONS:
+        previous = {**current, "head": previous_head}
+        assert report._source_provenance_generation_reusable(previous)
+
+    unrelated = {**current, "head": "unrelated-old-head"}
+    assert not report._source_provenance_generation_reusable(unrelated)
+
+
+def test_union_transition_reuses_topology_generation_but_not_preunion_union(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pre_union_revision = "c7e45b090747097965e62b919386d6ee598f94a7"
+    current_revision = "post-union-head"
+    current_provenance = {
+        **_synthetic_source_provenance(9, 13),
+        "head": current_revision,
+    }
+    monkeypatch.setattr(
+        report,
+        "_report_source_provenance",
+        lambda: current_provenance,
+    )
+    monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 13))
+    monkeypatch.setattr(
+        report,
+        "_git_is_ancestor",
+        lambda ancestor, descendant: (
+            ancestor == report.LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION
+            and descendant == current_revision
+        ),
+    )
+    cell = report.CampaignCell(
+        kind="matrix",
+        cache_name="matrix_builtin_sm_lc",
+        dataset_id="matrix_builtin_sm_lc",
+        n_final=3,
+        process="d d~ > z g g",
+        process_key="dd_z_jets",
+    )
+
+    def prior_measurement(
+        artifact_dir: Path,
+        *,
+        layout: str,
+    ) -> dict[str, object]:
+        _write_current_report_artifact(artifact_dir, layout=layout)
+        return {
+            "generation_seconds": 4.0,
+            "artifact_path": str(artifact_dir),
+            "metadata": {
+                "lc_flow_layout": layout,
+                "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                "generation_timer_excludes_model_compile": True,
+                "source_provenance": {
+                    **current_provenance,
+                    "head": pre_union_revision,
+                },
+            },
+        }
+
+    topology_dir = tmp_path / "complete-lc"
+    topology = prior_measurement(
+        topology_dir,
+        layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
+    )
+    pre_union_dir = tmp_path / "all-flow-union"
+    pre_union = prior_measurement(
+        pre_union_dir,
+        layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+    )
+    before = json.dumps(
+        {"topology": topology, "pre_union": pre_union},
+        sort_keys=True,
+    )
+
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            cell,
+            topology_dir,
+            topology,
+            expected_lc_flow_layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        )
+        == 4.0
+    )
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            cell,
+            pre_union_dir,
+            pre_union,
+            expected_lc_flow_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        )
+        is None
+    )
+    assert (
+        json.dumps(
+            {"topology": topology, "pre_union": pre_union},
+            sort_keys=True,
+        )
+        == before
+    )
+
+
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_union_transition_preserves_non_lc_measurements_without_mutating_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    accuracy: str,
+) -> None:
+    spec = next(
+        item
+        for item in report.MATRIX_SPECS
+        if item.dataset_id == f"matrix_builtin_sm_{accuracy}"
+    )
+    payload = report.build_matrix_cache(spec)
+    entry = payload["entries"][0]
+    artifact_dir = tmp_path / accuracy / "artifact"
+    _write_current_report_artifact(artifact_dir)
+    provenance = _synthetic_source_provenance(9, 13)
+    provenance["head"] = "c7e45b090747097965e62b919386d6ee598f94a7"
+    measurement = report._empty_measurement()
+    measurement.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 1.0,
+            "artifact_path": str(artifact_dir),
+            "environment": {
+                "wall_time_source": "runtime_core_repeated_wall_time",
+                "evaluator_time_source": (
+                    "runtime_profile_core_evaluator_call_time"
+                ),
+            },
+            "metadata": {
+                "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                "generation_timer_excludes_model_compile": True,
+                "source_provenance": provenance,
+            },
+        }
+    )
+    legacy = report._empty_measurement()
+    legacy["status"] = report.ResultStatus.OK.value
+    entry.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "legacy_amplicol": legacy,
+            "pyamplicol_jit_o3": measurement,
+        }
+    )
+    cell = report.CampaignCell(
+        kind="matrix",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=int(entry["n_final"]),
+        process=str(entry["process"]),
+        process_key=str(entry["process_key"]),
+    )
+    before = json.dumps(payload, sort_keys=True)
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 13))
+    monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
+    monkeypatch.setattr(report, "_legacy_measurement_revision_current", lambda _: True)
+    monkeypatch.setattr(report, "_legacy_measurement_profile_current", lambda _: True)
+    monkeypatch.setattr(report, "_git_is_ancestor", lambda *_args: True)
+
+    assert not report._campaign_cell_needs_measurement(
+        cell,
+        {spec.cache_name: payload},
+    )
+    assert json.dumps(payload, sort_keys=True) == before
 
 
 def test_legacy_revision_check_accepts_non_numerical_followup_pin(
@@ -1509,7 +1772,7 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
         lambda **_kwargs: {
             **report._empty_eager_selector_contract(),
             "status": report.ResultStatus.OK.value,
-            "reference_digest": "digest",
+            "reference_digest": report._eager_reference_digest(cell, legacy),
             "selected_reference_color_order": [2, 4, 5, 1, 3],
             "selected_color_flow_ids": ["flow:2,4,5,1"],
             "all_flow_source_helicities": fixed_helicity["source_helicities"],
@@ -1614,9 +1877,11 @@ def test_compiled_lc_refreshes_only_stale_all_flow_union(
         selection_source="test",
         validation_note="test",
     )
+    legacy = {"status": report.ResultStatus.OK.value}
     contract = {
         **report._empty_eager_selector_contract(),
         "status": report.ResultStatus.OK.value,
+        "reference_digest": report._eager_reference_digest(cell, legacy),
         "selected_reference_color_order": [2, 4, 5, 1, 3],
         "selected_color_flow_ids": ["flow:2,4,5,1"],
         "all_flow_source_helicities": fixed_helicity["source_helicities"],
@@ -1698,7 +1963,7 @@ def test_compiled_lc_refreshes_only_stale_all_flow_union(
         cell=cell,
         spec=spec,
         variant_overrides={"evaluator.backend": "jit"},
-        legacy={"status": report.ResultStatus.OK.value},
+        legacy=legacy,
         artifact_root=tmp_path,
         generation_timeout_seconds=60.0,
         target_runtime=0.1,
@@ -1718,7 +1983,132 @@ def test_compiled_lc_refreshes_only_stale_all_flow_union(
     assert metadata["old_matrix_format"]["all_flow_generation_s"] == 7.0
 
 
-def test_lc_nested_freshness_invalidates_only_old_all_flow_layout(
+@pytest.mark.parametrize(
+    "stale_layout",
+    (report.LC_TOPOLOGY_REPLAY_LAYOUT, report.LC_ALL_FLOW_UNION_LAYOUT),
+)
+def test_compiled_lc_reuse_rejects_stale_reference_digest_for_each_lane(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    stale_layout: str,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    spec = report.LADDER_SPECS[0]
+    legacy = {
+        "status": report.ResultStatus.OK.value,
+        "matrix_element": 3.0,
+    }
+    current_digest = report._eager_reference_digest(cell, legacy)
+    fixed_helicity = report._source_helicity_choice_payload(
+        cell.process,
+        {"1": -1, "2": 1, "3": -1, "4": 1, "5": -1},
+        selection_source="test",
+        validation_note="test",
+    )
+    current_contract = {
+        **report._empty_eager_selector_contract(),
+        "status": report.ResultStatus.OK.value,
+        "reference_digest": current_digest,
+        "selected_reference_color_order": [2, 4, 5, 1, 3],
+        "selected_color_flow_ids": ["flow:2,4,5,1"],
+        "all_flow_source_helicities": fixed_helicity["source_helicities"],
+        "all_flow_helicity_ids": ["h:-1,+1,-1,+1,-1"],
+    }
+    stale_contract = {**current_contract, "reference_digest": "stale-reference"}
+
+    def lane(layout: str, contract: Mapping[str, object]) -> dict[str, object]:
+        artifact_label = (
+            "complete-lc"
+            if layout == report.LC_TOPOLOGY_REPLAY_LAYOUT
+            else "all-flow-union"
+        )
+        return {
+            **report._empty_measurement(),
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 2.0,
+            "wall_seconds_per_point": 2.0e-6,
+            "evaluator_seconds_per_point": 1.0e-6,
+            "matrix_element": 1.0,
+            "artifact_path": f"/artifact/{artifact_label}",
+            "metadata": {
+                "lc_flow_layout": layout,
+                "selector_contract": dict(contract),
+            },
+        }
+
+    selected_contract = (
+        stale_contract
+        if stale_layout == report.LC_TOPOLOGY_REPLAY_LAYOUT
+        else current_contract
+    )
+    all_flow_contract = (
+        stale_contract
+        if stale_layout == report.LC_ALL_FLOW_UNION_LAYOUT
+        else current_contract
+    )
+    previous_selected = lane(report.LC_TOPOLOGY_REPLAY_LAYOUT, selected_contract)
+    previous_all_flow = lane(report.LC_ALL_FLOW_UNION_LAYOUT, all_flow_contract)
+    previous = {
+        **previous_selected,
+        "metadata": {
+            "selected_flow_measurement": previous_selected,
+            "all_flow_measurement": previous_all_flow,
+            "selector_contract": dict(selected_contract),
+        },
+    }
+    calls: list[str] = []
+
+    def measure_lane(
+        **kwargs: object,
+    ) -> tuple[dict[str, object], object, dict[str, object]]:
+        layout = str(kwargs["layout"])
+        calls.append(layout)
+        return lane(layout, current_contract), ("point",), current_contract
+
+    monkeypatch.setattr(
+        report,
+        "_lc_nested_measurement_current",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+    monkeypatch.setattr(
+        report,
+        "_load_lc_runtime_for_cross_validation",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_cross_artifact_validation",
+        lambda *_args, **_kwargs: {"status": report.ResultStatus.OK.value},
+    )
+
+    measurement, _points = report._measure_pyamplicol_lc_two_workloads(
+        cell=cell,
+        spec=spec,
+        variant_overrides={"evaluator.backend": "jit"},
+        legacy=legacy,
+        artifact_root=tmp_path,
+        generation_timeout_seconds=60.0,
+        target_runtime=0.1,
+        cell_cores=1,
+        points=("point",),
+        fixed_helicity=fixed_helicity,
+        previous_measurement=previous,
+    )
+
+    assert calls == [stale_layout]
+    metadata = measurement["metadata"]
+    selected = metadata["selected_flow_measurement"]
+    all_flow = metadata["all_flow_measurement"]
+    assert report._cached_lc_selector_contract(selected) == current_contract
+    assert report._cached_lc_selector_contract(all_flow) == current_contract
+
+
+def test_lc_combined_freshness_requires_matching_current_selector_contracts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cell = next(
@@ -1726,39 +2116,149 @@ def test_lc_nested_freshness_invalidates_only_old_all_flow_layout(
         for item in report._campaign_cells()
         if item.cell_id == "z-builtin-sm-n3-jit-o3"
     )
-    monkeypatch.setattr(report, "_measurement_ok", lambda _value: True)
-    monkeypatch.setattr(
-        report, "_pyamplicol_timing_profile_current", lambda _value: True
-    )
-    monkeypatch.setattr(
-        report, "_pyamplicol_generation_profile_current", lambda _value: True
-    )
+    reference = {"status": report.ResultStatus.OK.value, "matrix_element": 3.0}
+    digest = report._eager_reference_digest(cell, reference)
+    contract = {
+        **report._empty_eager_selector_contract(),
+        "status": report.ResultStatus.OK.value,
+        "reference_digest": digest,
+    }
+
+    def lane(selector_contract: Mapping[str, object]) -> dict[str, object]:
+        return {"metadata": {"selector_contract": dict(selector_contract)}}
+
     monkeypatch.setattr(
         report,
-        "_pyamplicol_measurement_source_fences_current",
-        lambda _cell, _value: True,
+        "_lc_nested_measurement_current",
+        lambda *_args, **_kwargs: True,
     )
+    selected = lane(contract)
+    mismatched = lane({**contract, "all_flow_helicity_ids": ["h:other"]})
+    combined = {
+        "metadata": {
+            "selected_flow_measurement": selected,
+            "all_flow_measurement": mismatched,
+            "selector_contract": dict(contract),
+        }
+    }
+
+    assert not report._lc_combined_measurement_current(
+        cell,
+        combined,
+        execution_mode="compiled",
+        reference_measurement=reference,
+    )
+
+    combined["metadata"]["all_flow_measurement"] = lane(contract)
+    assert report._lc_combined_measurement_current(
+        cell,
+        combined,
+        execution_mode="compiled",
+        reference_measurement=reference,
+    )
+
+    combined["metadata"]["selector_contract"] = {
+        **contract,
+        "all_flow_helicity_ids": ["h:other"],
+    }
+    assert not report._lc_combined_measurement_current(
+        cell,
+        combined,
+        execution_mode="compiled",
+        reference_measurement=reference,
+    )
+
+    combined["metadata"]["selector_contract"] = dict(contract)
+    changed_reference = {**reference, "matrix_element": 4.0}
+    assert not report._lc_combined_measurement_current(
+        cell,
+        combined,
+        execution_mode="compiled",
+        reference_measurement=changed_reference,
+    )
+
+
+def test_lc_nested_freshness_invalidates_only_old_all_flow_layout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    pre_union_revision = "c7e45b090747097965e62b919386d6ee598f94a7"
+    current_revision = report.LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION
+    monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 13))
     monkeypatch.setattr(
         report,
-        "_pyamplicol_artifacts_current",
-        lambda _value, **_kwargs: True,
+        "_git_is_ancestor",
+        lambda ancestor, descendant: (
+            ancestor == report.LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION
+            and descendant == current_revision
+        ),
     )
-    topology = {
-        "artifact_path": "/artifact/complete-lc",
-        "effective_config": {"evaluator": {"execution_mode": "compiled"}},
-    }
-    union = {
-        "artifact_path": "/artifact/all-flow-union",
-        "effective_config": {
-            "color": {"lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT},
-            "evaluator": {"execution_mode": "compiled"},
-        },
-    }
+
+    def measurement(
+        artifact_dir: Path,
+        *,
+        layout: str,
+        source_revision: str,
+    ) -> dict[str, object]:
+        _write_current_report_artifact(artifact_dir, layout=layout)
+        return {
+            **report._empty_measurement(),
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 1.0,
+            "artifact_path": str(artifact_dir),
+            "effective_config": {
+                "color": {"lc_flow_layout": layout},
+                "evaluator": {"execution_mode": "compiled"},
+            },
+            "environment": {
+                "wall_time_source": "runtime_core_repeated_wall_time",
+                "evaluator_time_source": (
+                    "runtime_profile_core_evaluator_call_time"
+                ),
+            },
+            "metadata": {
+                "lc_flow_layout": layout,
+                "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                "generation_timer_excludes_model_compile": True,
+                "source_provenance": {
+                    **_synthetic_source_provenance(9, 13),
+                    "head": source_revision,
+                },
+            },
+        }
+
+    topology = measurement(
+        tmp_path / "complete-lc",
+        layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        source_revision=pre_union_revision,
+    )
+    pre_union = measurement(
+        tmp_path / "pre-union" / "all-flow-union",
+        layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        source_revision=pre_union_revision,
+    )
+    union = measurement(
+        tmp_path / "current" / "all-flow-union",
+        layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        source_revision=current_revision,
+    )
     sliced = {
         **topology,
-        "artifact_path": "/artifact/selected-flow",
-        "metadata": {"generation_slice": {"selected_color_sector_ids": [0]}},
+        "metadata": {
+            **topology["metadata"],
+            "generation_slice": {"selected_color_sector_ids": [0]},
+        },
     }
+    before = json.dumps(
+        {"topology": topology, "pre_union": pre_union, "union": union},
+        sort_keys=True,
+    )
 
     assert report._lc_nested_measurement_current(
         cell,
@@ -1769,6 +2269,12 @@ def test_lc_nested_freshness_invalidates_only_old_all_flow_layout(
     assert not report._lc_nested_measurement_current(
         cell,
         topology,
+        expected_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        execution_mode="compiled",
+    )
+    assert not report._lc_nested_measurement_current(
+        cell,
+        pre_union,
         expected_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
         execution_mode="compiled",
     )
@@ -1783,6 +2289,13 @@ def test_lc_nested_freshness_invalidates_only_old_all_flow_layout(
         sliced,
         expected_layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
         execution_mode="compiled",
+    )
+    assert (
+        json.dumps(
+            {"topology": topology, "pre_union": pre_union, "union": union},
+            sort_keys=True,
+        )
+        == before
     )
 
 

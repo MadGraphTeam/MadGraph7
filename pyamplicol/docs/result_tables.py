@@ -72,6 +72,15 @@ ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON = (
     "original AmpliCol supports at most three open quark lines"
 )
 ONE_LINE_NLC_FULL_ORDERING_FIX_REVISION = "cf8017dd393fc000c47f95d97b155ccdba6a5151"
+LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION = (
+    "e4cd45494fb761979a44f12f3f175e0699f4b914"
+)
+LC_ALL_FLOW_UNION_REUSE_BASE_REVISIONS = frozenset(
+    {
+        "68e652b27a903674fdf96a0dea48b2d0ea563dde",
+        "c7e45b090747097965e62b919386d6ee598f94a7",
+    }
+)
 PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
     {
         (
@@ -4570,6 +4579,10 @@ def _lc_nested_measurement_current(
         and _pyamplicol_timing_profile_current(measurement)
         and _pyamplicol_generation_profile_current(measurement)
         and _pyamplicol_measurement_source_fences_current(cell, measurement)
+        and _lc_flow_layout_source_current(
+            measurement,
+            expected_layout=expected_layout,
+        )
         and _lc_measurement_has_complete_coverage(
             measurement,
             expected_layout=expected_layout,
@@ -4599,27 +4612,45 @@ def _lc_combined_measurement_current(
     measurement: Mapping[str, object],
     *,
     execution_mode: str,
+    reference_measurement: Mapping[str, object] | None = None,
 ) -> bool:
     metadata = measurement.get("metadata")
     if not isinstance(metadata, Mapping):
         return False
-    return _lc_nested_measurement_current(
+    selected = metadata.get("selected_flow_measurement")
+    all_flow = metadata.get("all_flow_measurement")
+    if not _lc_nested_measurement_current(
         cell,
-        metadata.get("selected_flow_measurement"),
+        selected,
         expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
         execution_mode=execution_mode,
-    ) and _lc_nested_measurement_current(
+    ) or not _lc_nested_measurement_current(
         cell,
-        metadata.get("all_flow_measurement"),
+        all_flow,
         expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
         execution_mode=execution_mode,
-    )
+    ):
+        return False
+    selected_contract = _cached_lc_selector_contract(selected)
+    all_flow_contract = _cached_lc_selector_contract(all_flow)
+    combined_contract = _cached_lc_selector_contract(measurement)
+    if (
+        selected_contract is None
+        or selected_contract != all_flow_contract
+        or selected_contract != combined_contract
+    ):
+        return False
+    if reference_measurement is None:
+        return False
+    current_reference_digest = _eager_reference_digest(cell, reference_measurement)
+    return selected_contract.get("reference_digest") == current_reference_digest
 
 
 def _eager_measurement_current(
     measurement: Mapping[str, object],
     *,
     cell: CampaignCell | None = None,
+    reference_measurement: Mapping[str, object] | None = None,
 ) -> bool:
     metadata = measurement.get("metadata")
     if (
@@ -4631,6 +4662,7 @@ def _eager_measurement_current(
             cell,
             measurement,
             execution_mode="eager",
+            reference_measurement=reference_measurement,
         )
     if not (
         _measurement_ok(measurement)
@@ -4683,7 +4715,11 @@ def _campaign_cell_needs_measurement(
             ):
                 return True
             return not (
-                _eager_measurement_current(measurement, cell=cell)
+                _eager_measurement_current(
+                    measurement,
+                    cell=cell,
+                    reference_measurement=reference,
+                )
                 and selector_contract.get("reference_digest")
                 == _eager_reference_digest(cell, reference)
             )
@@ -4734,6 +4770,7 @@ def _campaign_cell_needs_measurement(
                         cell,
                         pyamplicol,
                         execution_mode="compiled",
+                        reference_measurement=legacy,
                     )
                 )
             pyamplicol = entry.get("pyamplicol_jit_o3")
@@ -4802,7 +4839,11 @@ def _campaign_cell_needs_measurement(
                     and isinstance(metadata, Mapping)
                     and metadata.get("compiled_reference_digest")
                     == _eager_reference_digest(cell, compiled)
-                    and _eager_measurement_current(measurement, cell=cell)
+                    and _eager_measurement_current(
+                        measurement,
+                        cell=cell,
+                        reference_measurement=compiled,
+                    )
                 )
             if cell.variant != "reference" and status == ResultStatus.OK.value:
                 metadata = measurement.get("metadata")
@@ -4810,10 +4851,18 @@ def _campaign_cell_needs_measurement(
                     isinstance(metadata, Mapping)
                     and "selected_flow_measurement" in metadata
                 ):
+                    reference = _z_variant_measurement(
+                        payload,
+                        n_final=cell.n_final,
+                        variant="reference",
+                    )
                     return not _lc_combined_measurement_current(
                         cell,
                         measurement,
                         execution_mode="compiled",
+                        reference_measurement=(
+                            reference if isinstance(reference, Mapping) else None
+                        ),
                     )
                 return not (
                     _pyamplicol_timing_profile_current(measurement)
@@ -5190,11 +5239,16 @@ def _source_provenance_generation_reusable(provenance: object) -> bool:
         return False
     previous_head = provenance.get("head")
     current_head = current.get("head")
+    if not isinstance(previous_head, str) or not isinstance(current_head, str):
+        return False
+    if (
+        previous_head,
+        current_head,
+    ) in PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS:
+        return True
     return (
-        isinstance(previous_head, str)
-        and isinstance(current_head, str)
-        and (previous_head, current_head)
-        in PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS
+        previous_head in LC_ALL_FLOW_UNION_REUSE_BASE_REVISIONS
+        and _git_is_ancestor(LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION, current_head)
     )
 
 
@@ -5218,6 +5272,20 @@ def _measurement_source_revision(
         return None
     revision = provenance.get("head")
     return revision if isinstance(revision, str) and revision else None
+
+
+def _lc_flow_layout_source_current(
+    measurement: Mapping[str, object],
+    *,
+    expected_layout: str,
+) -> bool:
+    if expected_layout != LC_ALL_FLOW_UNION_LAYOUT:
+        return True
+    measurement_revision = _measurement_source_revision(measurement)
+    return measurement_revision is not None and _git_is_ancestor(
+        LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION,
+        measurement_revision,
+    )
 
 
 def _pyamplicol_required_minimum_source_revision(
@@ -5281,12 +5349,44 @@ def _reusable_legacy_lc_measurement(value: object) -> dict[str, object] | None:
     return dict(value)
 
 
+def _resolved_report_artifact_path(value: object) -> Path | None:
+    if not isinstance(value, str) or not value:
+        return None
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = _repo_root() / path
+    return path.resolve(strict=False)
+
+
 def _reusable_pyamplicol_generation_seconds(
     cell: CampaignCell,
     artifact_dir: Path,
     previous_measurement: Mapping[str, object] | None,
+    *,
+    expected_lc_flow_layout: str | None = None,
 ) -> float | None:
     if previous_measurement is None:
+        return None
+    previous_artifact_path = _resolved_report_artifact_path(
+        previous_measurement.get("artifact_path")
+    )
+    target_artifact_path = _resolved_report_artifact_path(os.fspath(artifact_dir))
+    if (
+        previous_artifact_path is None
+        or target_artifact_path is None
+        or previous_artifact_path != target_artifact_path
+    ):
+        return None
+    if (
+        expected_lc_flow_layout is not None
+        and _measurement_lc_flow_layout(previous_measurement)
+        != expected_lc_flow_layout
+    ):
+        return None
+    if expected_lc_flow_layout is not None and not _lc_flow_layout_source_current(
+        previous_measurement,
+        expected_layout=expected_lc_flow_layout,
+    ):
         return None
     previous_generation_seconds = _optional_positive_float(
         previous_measurement.get("generation_seconds")
@@ -6706,6 +6806,7 @@ def _measure_pyamplicol_lc_lane(
         cell,
         artifact_dir,
         previous_measurement,
+        expected_lc_flow_layout=layout,
     )
     artifact_reusable = reusable_generation_seconds is not None
     snapshot = {
@@ -7461,11 +7562,21 @@ def _measure_pyamplicol_lc_two_workloads(
             artifact_root=artifact_root,
         )
     reference_measurement = legacy or previous_measurement or {}
-    selected_is_current = _lc_nested_measurement_current(
+    current_reference_digest = _eager_reference_digest(
         cell,
-        previous_selected,
-        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
-        execution_mode="compiled",
+        reference_measurement,
+    )
+    selected_is_current = (
+        _lc_nested_measurement_current(
+            cell,
+            previous_selected,
+            expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+            execution_mode="compiled",
+        )
+        and _lc_selector_contract_matches_reference(
+            previous_selected,
+            current_reference_digest,
+        )
     )
     if selected_is_current:
         assert isinstance(previous_selected, Mapping)
@@ -7492,11 +7603,17 @@ def _measure_pyamplicol_lc_two_workloads(
                 previous_selected if isinstance(previous_selected, Mapping) else None
             ),
         )
-    all_flow_is_current = _lc_nested_measurement_current(
-        cell,
-        previous_all_flow,
-        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
-        execution_mode="compiled",
+    all_flow_is_current = (
+        _lc_nested_measurement_current(
+            cell,
+            previous_all_flow,
+            expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+            execution_mode="compiled",
+        )
+        and _lc_selector_contract_matches_reference(
+            previous_all_flow,
+            current_reference_digest,
+        )
     )
     if all_flow_is_current:
         assert isinstance(previous_all_flow, Mapping)
@@ -7525,17 +7642,39 @@ def _measure_pyamplicol_lc_two_workloads(
         if selected_points is None:
             selected_points = all_flow_points
 
+    contracts_agree = (
+        selected_contract is not None
+        and selected_contract == all_flow_contract
+        and selected_contract.get("reference_digest") == current_reference_digest
+    )
     selector_contract = (
         selected_contract
-        or all_flow_contract
-        or _cached_lc_selector_contract(previous_measurement)
-        or _empty_eager_selector_contract()
+        if contracts_agree
+        else (
+            selected_contract
+            or all_flow_contract
+            or _cached_lc_selector_contract(previous_measurement)
+            or _empty_eager_selector_contract()
+        )
     )
     cross_validation: dict[str, object] = {
         "status": NA_STATUS,
         "message": "cross-artifact validation requires two successful artifacts",
     }
-    if (
+    if _measurement_ok(selected) and _measurement_ok(all_flow) and not contracts_agree:
+        selector_contract = {
+            **_empty_eager_selector_contract(),
+            "status": ResultStatus.VALIDATION_FAILED.value,
+            "reference_digest": current_reference_digest,
+            "message": "LC selected-flow and all-flow selector contracts disagree",
+        }
+        cross_validation = {
+            "status": ResultStatus.VALIDATION_FAILED.value,
+            "message": "LC selected-flow and all-flow selector contracts disagree",
+        }
+        all_flow = dict(all_flow)
+        all_flow["status"] = ResultStatus.VALIDATION_FAILED.value
+    elif (
         _measurement_ok(selected)
         and _measurement_ok(all_flow)
         and selected_points is not None
