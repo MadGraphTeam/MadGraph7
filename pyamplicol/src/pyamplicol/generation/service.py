@@ -88,6 +88,7 @@ from .helicity_replay import (
     HELICITY_RECURRENCE_CONTRACT_VERSION,
     build_helicity_recurrence_plan,
 )
+from .physics_metadata import build_resolved_physics_from_dag
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .runtime_schema import build_runtime_expression_schema
 from .stage_compiler import (
@@ -127,7 +128,6 @@ class _RustEagerLoweringBinding(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class _RustEagerLoweringOutput:
-    physics: Mapping[str, object]
     inspection_summary: Mapping[str, object]
     payload_path: Path
     payload_size_bytes: int
@@ -190,7 +190,6 @@ def _invoke_rust_eager_lowering_v1(
             raise
         raise GenerationError(f"Rust eager plan-v3 lowering failed: {exc}") from exc
     return _RustEagerLoweringOutput(
-        physics=result["physics"],
         inspection_summary=result["inspection_summary"],
         payload_path=destination,
         payload_size_bytes=payload_size,
@@ -217,7 +216,6 @@ def _validate_rust_eager_lowering_result(
             "runtime_layout_abi",
             "required_runtime_capabilities",
             "runtime_container",
-            "physics",
             "inspection_summary",
         },
     )
@@ -282,21 +280,11 @@ def _validate_rust_eager_lowering_result(
         container["index_sha256"],
         "Rust eager runtime index SHA-256",
     )
-    physics = _canonical_json_mapping(result["physics"], "Rust eager physics metadata")
-    if (
-        physics.get("schema_version") != 1
-        or physics.get("kind") != "pyamplicol-resolved-physics"
-        or physics.get("process_id") != lowering_input.process_key
-    ):
-        raise GenerationError(
-            "Rust eager lowering returned incompatible physics metadata"
-        )
     inspection = _canonical_json_mapping(
         result["inspection_summary"],
         "Rust eager inspection summary",
     )
     return {
-        "physics": physics,
         "inspection_summary": inspection,
         "member_count": member_count,
         "unpacked_size_bytes": unpacked_size,
@@ -1877,13 +1865,18 @@ class GenerationBackend:
             raise GenerationError("eager generation has no evaluator configuration")
         ir = process.expanded.process_ir
         dag = process.dag
+        physics = build_resolved_physics_from_dag(
+            dag,
+            model,
+            process_id=process_name,
+        )
         return EagerPlanV3ProcessArtifact(
             process_id=process_name,
             expression=ir.process,
             color_accuracy=ir.color_accuracy,
             external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
             aliases=process.expanded.aliases,
-            physics=output.physics,
+            physics=physics,
             eager_runtime_path=output.payload_path,
             eager_runtime_size_bytes=output.payload_size_bytes,
             eager_runtime_sha256=output.payload_sha256,

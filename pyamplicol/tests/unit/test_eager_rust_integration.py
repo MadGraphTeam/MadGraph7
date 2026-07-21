@@ -12,6 +12,7 @@ from typing import cast
 import pytest
 
 import pyamplicol.generation.artifact_writer as artifact_writer
+import pyamplicol.generation.runtime_schema as runtime_schema
 import pyamplicol.generation.service as generation_service
 from pyamplicol.api.errors import GenerationError
 from pyamplicol.api.requests import ModelSource, ProcessRequest
@@ -121,11 +122,6 @@ def _binding_result(lowering_input: EagerLoweringInputV1) -> dict[str, object]:
             "unpacked_size_bytes": 4096,
             "index_sha256": _INDEX_SHA256,
         },
-        "physics": {
-            "schema_version": 1,
-            "kind": "pyamplicol-resolved-physics",
-            "process_id": lowering_input.process_key,
-        },
         "inspection_summary": {
             "stage_count": 3,
             "invocation_count": 17,
@@ -186,6 +182,11 @@ def test_plan_v3_builds_columnar_input_without_schema_or_evaluator_compilation(
             name,
             _forbidden(f"plan-v3 called {name}"),
         )
+    monkeypatch.setattr(
+        runtime_schema,
+        "build_runtime_schema_layout",
+        _forbidden("plan-v3 called expanded runtime-schema construction"),
+    )
 
     backend = generation_service.GenerationBackend(
         RunConfig(
@@ -208,6 +209,28 @@ def test_plan_v3_builds_columnar_input_without_schema_or_evaluator_compilation(
     assert result.lowering_input_sha256 == captured[0].digest
     assert result.eager_runtime_path.read_bytes() == _RUNTIME_BYTES
     assert result.referenced_kernel_ids
+    assert result.physics["schema_version"] == 1
+    assert result.physics["kind"] == "pyamplicol-resolved-physics"
+    assert result.physics["process_id"] == _PROCESS_ID
+    assert result.physics["process"] == compiled.dag.process.process
+    coverage = cast(dict[str, object], result.physics["coverage"])
+    assert coverage["helicities"] == "complete"
+    assert coverage["color"] == "complete"
+    assert coverage["color_kind"] == "physical-lc-flows"
+    assert len(cast(list[object], result.physics["external_particles"])) == 4
+    helicities = cast(list[dict[str, object]], result.physics["helicities"])
+    assert len(helicities) == 24
+    assert coverage["structural_zero_helicity_count"] == sum(
+        bool(record["structural_zero"]) for record in helicities
+    )
+    assert cast(list[object], result.physics["color_components"])
+    assert cast(dict[str, object], result.physics["reduction"])["groups"]
+    assert cast(list[object], result.physics["model_parameters"])
+    assert result.physics["selectors"] == {
+        "helicity": True,
+        "color_flow": True,
+        "contracted_color": False,
+    }
 
 
 def test_plan_v3_binding_failure_is_closed_and_removes_partial_output(

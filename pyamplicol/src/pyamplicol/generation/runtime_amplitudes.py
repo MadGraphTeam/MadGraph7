@@ -23,6 +23,48 @@ def build_runtime_amplitude_stage(
 ) -> dict[str, object]:
     """Build evaluator roots and physical coherent-amplitude metadata."""
 
+    metadata = build_runtime_amplitude_metadata(dag, model)
+    metadata_roots = _mapping_sequence(metadata["roots"])
+    roots: list[dict[str, object]] = []
+    for root, record in zip(dag.amplitude_roots, metadata_roots, strict=True):
+        roots.append(
+            {
+                "output_index": record["output_index"],
+                "root_id": record["root_id"],
+                "dag_root_id": record["dag_root_id"],
+                "kind": record["kind"],
+                "left_current_id": record["left_current_id"],
+                "right_current_id": record["right_current_id"],
+                "left_slot": _current_slot_ref(current_slots[root.left_id]),
+                "right_slot": _current_slot_ref(current_slots[root.right_id]),
+                "left_value_slot": _value_slot_ref(
+                    _amplitude_value_slot(dag.currents[root.left_id], value_slots)
+                ),
+                "right_value_slot": _value_slot_ref(
+                    _amplitude_value_slot(dag.currents[root.right_id], value_slots)
+                ),
+                "vertex_kind": record["vertex_kind"],
+                "vertex_particles": record["vertex_particles"],
+                "coupling": record["coupling"],
+                "coupling_parameter_names": record["coupling_parameter_names"],
+                "color_weight": record["color_weight"],
+                "color_sector_id": record["color_sector_id"],
+                "contraction": record["contraction"],
+                "contraction_ir": record["contraction_ir"],
+                "coherent_group_id": record["coherent_group_id"],
+                "helicity_weight": record["helicity_weight"],
+                "all_sector_weight": record["all_sector_weight"],
+            }
+        )
+    return {**metadata, "roots": roots}
+
+
+def build_runtime_amplitude_metadata(
+    dag: GenericDAG,
+    model: Model,
+) -> dict[str, object]:
+    """Build slot-free amplitude and coherent-group metadata for one DAG."""
+
     group_ids, descriptors = _amplitude_groups(dag, dag.amplitude_roots)
     color_contraction = build_color_contraction_plan(dag.color_plan, descriptors)
     multiple_lc_sectors = _has_multiple_lc_root_sectors(dag)
@@ -47,14 +89,6 @@ def build_runtime_amplitude_stage(
                 "kind": root.kind,
                 "left_current_id": root.left_id,
                 "right_current_id": root.right_id,
-                "left_slot": _current_slot_ref(current_slots[root.left_id]),
-                "right_slot": _current_slot_ref(current_slots[root.right_id]),
-                "left_value_slot": _value_slot_ref(
-                    _amplitude_value_slot(dag.currents[root.left_id], value_slots)
-                ),
-                "right_value_slot": _value_slot_ref(
-                    _amplitude_value_slot(dag.currents[root.right_id], value_slots)
-                ),
                 "vertex_kind": root.vertex_kind,
                 "vertex_particles": (
                     None
@@ -117,6 +151,17 @@ def build_runtime_amplitude_stage(
             None if color_contraction is None else color_contraction.to_json_dict()
         ),
     }
+
+
+def _mapping_sequence(value: object) -> tuple[Mapping[str, object], ...]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise TypeError("runtime amplitude field must be an array")
+    result: list[Mapping[str, object]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise TypeError("runtime amplitude record must be an object")
+        result.append(item)
+    return tuple(result)
 
 
 def _amplitude_groups(
@@ -332,4 +377,7 @@ def _amplitude_value_slot(
         ) from exc
 
 
-__all__ = ["build_runtime_amplitude_stage"]
+__all__ = [
+    "build_runtime_amplitude_metadata",
+    "build_runtime_amplitude_stage",
+]

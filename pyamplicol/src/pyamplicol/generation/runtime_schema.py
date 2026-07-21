@@ -8,9 +8,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..models.base import Model
-from .contracts import RuntimeExpressionSchema, runtime_coupling_parameter_names
+from .contracts import RuntimeExpressionSchema
 from .dag_types import CurrentNode, GenericDAG, InteractionNode
-from .physics_metadata import build_resolved_physics_payload
+from .physics_metadata import (
+    build_resolved_physics_payload,
+    build_runtime_model_parameter_records,
+    build_runtime_normalization,
+)
 from .runtime_amplitudes import build_runtime_amplitude_stage
 
 RUNTIME_PHYSICS_SCHEMA_VERSION = 1
@@ -134,7 +138,7 @@ def build_runtime_schema_layout(
         current_slots=current_slots,
         value_slots=value_slots,
     )
-    model_parameters = _model_parameter_records(
+    model_parameters = build_runtime_model_parameter_records(
         dag,
         model,
         amplitude_stage=amplitude_stage,
@@ -148,7 +152,7 @@ def build_runtime_schema_layout(
     )
     stages = [stage.record for stage in stage_layouts]
     external_particles = _external_particles(dag)
-    normalization = _normalization(dag, model)
+    normalization = build_runtime_normalization(dag, model)
     physics = build_resolved_physics_payload(
         dag,
         model,
@@ -531,207 +535,6 @@ def _propagators_by_current(dag: GenericDAG, model: Model) -> list[Any]:
     return result
 
 
-def _model_parameter_records(
-    dag: GenericDAG,
-    model: Model,
-    *,
-    amplitude_stage: Mapping[str, object],
-) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
-    seen: set[str] = set()
-
-    def add(name: str, kind: str, default: float, **metadata: object) -> None:
-        if name in seen:
-            return
-        seen.add(name)
-        records.append(
-            {
-                "name": name,
-                "kind": kind,
-                "parameter_index": len(records),
-                "default": float(default),
-                **metadata,
-            }
-        )
-
-    def add_complex(
-        name: str,
-        value: object,
-        *,
-        kind: str,
-        **metadata: object,
-    ) -> None:
-        real, imaginary = _complex_pair(value, name)
-        for component, default in (("real", real), ("imag", imaginary)):
-            add(
-                f"{name}.{component}",
-                kind,
-                default,
-                runtime_name=name,
-                complex_component=component,
-                **metadata,
-            )
-
-    for raw_name, value in sorted(
-        model.runtime_normalization_parameter_defaults().items()
-    ):
-        add(str(raw_name), "normalization", float(value))
-    defaults_provider = getattr(model, "runtime_parameter_defaults", None)
-    if callable(defaults_provider):
-        type_provider = getattr(model, "runtime_parameter_type", None)
-        for raw_name, value in sorted(defaults_provider().items()):
-            name = str(raw_name)
-            declared = (
-                str(type_provider(name)).lower()
-                if callable(type_provider)
-                else "complex"
-            )
-            if declared == "complex":
-                add_complex(name, value, kind="external_parameter_component")
-            else:
-                real, imaginary = _complex_pair(value, name)
-                if imaginary != 0.0:
-                    raise ValueError(
-                        "real runtime model parameter "
-                        f"{name!r} has an imaginary default"
-                    )
-                add(name, "external_parameter", real, parameter_type=declared)
-        _add_derived_parameter_records(
-            dag,
-            model,
-            amplitude_stage=amplitude_stage,
-            add_complex=add_complex,
-        )
-        return records
-
-    for particle in sorted(model.particles.values(), key=lambda item: item.pdg):
-        if float(particle.mass) != 0.0:
-            add(
-                f"particle.{particle.pdg}.mass",
-                "particle_mass",
-                float(particle.mass),
-                pdg=particle.pdg,
-            )
-        if float(particle.width) != 0.0:
-            add(
-                f"particle.{particle.pdg}.width",
-                "particle_width",
-                float(particle.width),
-                pdg=particle.pdg,
-            )
-    for kind, particles, coupling in _coupling_signatures(dag, amplitude_stage):
-        names = runtime_coupling_parameter_names(
-            kind,
-            particles,
-            coupling,
-            model=model,
-        )
-        for component, name in enumerate(names):
-            if name is None:
-                continue
-            add(
-                name,
-                "coupling_component",
-                float(coupling[component]),
-                vertex_kind=kind,
-                vertex_particles=list(particles),
-                component=component,
-            )
-    return records
-
-
-def _add_derived_parameter_records(
-    dag: GenericDAG,
-    model: Model,
-    *,
-    amplitude_stage: Mapping[str, object],
-    add_complex: Any,
-) -> None:
-    defaults_provider = getattr(model, "runtime_derived_parameter_defaults_for", None)
-    if not callable(defaults_provider):
-        return
-    used = _used_coupling_parameter_names(dag, model, amplitude_stage)
-    values = defaults_provider(tuple(sorted(used)))
-    domains_provider = getattr(model, "runtime_derived_parameter_domains_for", None)
-    domains = (
-        domains_provider(tuple(sorted(used))) if callable(domains_provider) else {}
-    )
-    for raw_name, value in sorted(values.items()):
-        name = str(raw_name)
-        domain = str(domains.get(raw_name, domains.get(name, "complex")))
-        if domain not in {"real", "imaginary", "complex"}:
-            raise ValueError(f"unsupported runtime parameter domain {domain!r}")
-        add_complex(
-            name,
-            value,
-            kind="derived_parameter_component",
-            derived=True,
-            complex_domain=domain,
-        )
-
-
-def _used_coupling_parameter_names(
-    dag: GenericDAG,
-    model: Model,
-    amplitude_stage: Mapping[str, object],
-) -> set[str]:
-    names = {
-        name
-        for interaction in dag.interactions
-        for name in runtime_coupling_parameter_names(
-            interaction.vertex_kind,
-            interaction.vertex_particles,
-            interaction.coupling,
-            model=model,
-        )
-        if name is not None
-    }
-    for root in _mapping_sequence(amplitude_stage["roots"]):
-        raw_names = root.get("coupling_parameter_names")
-        if isinstance(raw_names, list):
-            names.update(str(name) for name in raw_names if isinstance(name, str))
-    runtime_particle_names = getattr(
-        model,
-        "runtime_parameter_names_for_particle",
-        None,
-    )
-    if callable(runtime_particle_names):
-        for particle_id in {current.index.particle_id for current in dag.currents}:
-            names.update(str(name) for name in runtime_particle_names(int(particle_id)))
-    return names
-
-
-def _coupling_signatures(
-    dag: GenericDAG,
-    amplitude_stage: Mapping[str, object],
-) -> tuple[tuple[int, tuple[int, ...], tuple[float, ...]], ...]:
-    signatures = {
-        (
-            interaction.vertex_kind,
-            tuple(interaction.vertex_particles),
-            tuple(interaction.coupling),
-        )
-        for interaction in dag.interactions
-    }
-    for root in _mapping_sequence(amplitude_stage["roots"]):
-        kind = root.get("vertex_kind")
-        particles = root.get("vertex_particles")
-        coupling = root.get("coupling")
-        if (
-            isinstance(kind, int)
-            and isinstance(particles, list)
-            and isinstance(coupling, list)
-        ):
-            signatures.add(
-                (
-                    kind,
-                    tuple(int(pdg) for pdg in particles),
-                    tuple(float(value) for value in coupling),
-                )
-            )
-    return tuple(sorted(signatures))
-
-
 def _source_records(
     dag: GenericDAG,
     model: Model,
@@ -866,10 +669,6 @@ def _source_record(
         "helicity_ancestry": current_slot["helicity_ancestry"],
         "color_state": color_state_payload,
     }
-
-
-def _normalization(dag: GenericDAG, model: Model) -> dict[str, object]:
-    return dict(model.runtime_normalization_payload(dag))
 
 
 def _model_payload(dag: GenericDAG, model: Model) -> dict[str, object]:
@@ -1017,20 +816,6 @@ def _value_slot_ref(slot: Mapping[str, object]) -> dict[str, object]:
             "dimension",
         )
     }
-
-
-def _complex_pair(value: object, name: str) -> tuple[float, float]:
-    if isinstance(value, complex):
-        return float(value.real), float(value.imag)
-    if isinstance(value, Sequence) and not isinstance(value, str | bytes):
-        if len(value) != 2:
-            raise ValueError(
-                f"runtime model parameter {name!r} must have two components"
-            )
-        return float(value[0]), float(value[1])
-    if not isinstance(value, str | int | float):
-        raise ValueError(f"runtime model parameter {name!r} is not numeric")
-    return float(value), 0.0
 
 
 def _spin_state(value: object) -> object:

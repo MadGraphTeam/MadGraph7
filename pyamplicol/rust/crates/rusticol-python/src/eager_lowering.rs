@@ -534,12 +534,6 @@ fn result_mapping(
     container.set_item("index_sha256", native.index_sha256)?;
     result.set_item("runtime_container", container)?;
 
-    let physics = PyDict::new(py);
-    physics.set_item("schema_version", 1)?;
-    physics.set_item("kind", "pyamplicol-resolved-physics")?;
-    physics.set_item("process_id", &native.process_key)?;
-    result.set_item("physics", physics)?;
-
     let inspection = PyDict::new(py);
     inspection.set_item("execution_mode", "eager")?;
     inspection.set_item("eager_plan_abi", EAGER_PLAN_ABI)?;
