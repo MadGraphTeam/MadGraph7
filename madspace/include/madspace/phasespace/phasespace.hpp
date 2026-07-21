@@ -48,6 +48,13 @@ public:
         return _topology.outgoing_masses().size() + 2;
     }
     std::size_t channel_count() const { return _permutations.size(); }
+    bool return_invariants() const { return _return_invariants; }
+    std::size_t invariant_count() const {
+        if (!_return_invariants) {
+            return 0;
+        }
+        return output_types().at("invariant_pids_and_masks").shape.at(0);
+    }
 
 private:
     Result build_forward_impl(

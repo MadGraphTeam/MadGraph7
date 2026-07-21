@@ -320,6 +320,12 @@ extern "C"
         case UMAMI_IN_DIAGRAM_INDEX:
           diagram_in = static_cast<const int*>( input );
           break;
+        case UMAMI_IN_INVARIANT_COUNT:
+        case UMAMI_IN_INVARIANT_PIDS_AND_MASKS:
+        case UMAMI_IN_INVARIANT_MASSES:
+        case UMAMI_IN_INVARIANT_VIRTUALITIES:
+          // accept, but ignore externally supplied invariants
+          break;
         default:
           return UMAMI_ERROR_UNSUPPORTED_INPUT;
       }

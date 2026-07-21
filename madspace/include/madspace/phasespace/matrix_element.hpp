@@ -16,7 +16,14 @@ public:
         random_diagram_in,
         helicity_in,
         channel_in,
-        diagram_in
+        diagram_in,
+        // number of invariants passed as invariant_pids_and_masks_in/
+        // invariant_masses_in/invariant_virtualities_in; a host constant, see
+        // the invariant_count constructor argument, not a per-event value
+        invariant_count_in,
+        invariant_pids_and_masks_in,
+        invariant_masses_in,
+        invariant_virtualities_in
     };
 
     enum MatrixElementOutput {
@@ -33,13 +40,15 @@ public:
         const std::vector<MatrixElementInput>& inputs = {momenta_in},
         const std::vector<MatrixElementOutput>& outputs = {matrix_element_out},
         std::size_t diagram_count = 1,
-        bool sample_random_inputs = false
+        bool sample_random_inputs = false,
+        std::size_t invariant_count = 0
     );
     MatrixElement(
         const MatrixElementApi& matrix_element_api,
         const std::vector<MatrixElementInput>& inputs = {momenta_in},
         const std::vector<MatrixElementOutput>& outputs = {matrix_element_out},
-        bool sample_random_inputs = false
+        bool sample_random_inputs = false,
+        std::size_t invariant_count = 0
     ) :
         MatrixElement(
             matrix_element_api.index(),
@@ -47,11 +56,20 @@ public:
             inputs,
             outputs,
             matrix_element_api.diagram_count(),
-            sample_random_inputs
+            sample_random_inputs,
+            invariant_count
         ) {};
     std::size_t matrix_element_index() const { return _matrix_element_index; }
     std::size_t diagram_count() const { return _diagram_count; }
     std::size_t particle_count() const { return _particle_count; }
+    std::size_t invariant_count() const {
+        for (auto input : _inputs) {
+            if (input == invariant_pids_and_masks_in) {
+                return arg_types().at("invariant_pids_and_masks").shape.at(0);
+            }
+        }
+        return 0;
+    }
     const std::vector<MatrixElementInput>& inputs() const { return _inputs; }
     const std::vector<MatrixElementOutput>& outputs() const { return _outputs; }
     std::vector<MatrixElementInput> external_inputs() const;

@@ -114,6 +114,28 @@ std::size_t ps_discrete_dim(
     return 0;
 }
 
+// Total number of invariants reported when return_invariants is set.
+std::size_t ps_invariant_count(
+    const Topology& topology,
+    bool leptonic,
+    PhaseSpaceMapping::TChannelMode t_channel_mode
+) {
+    std::size_t invariant_count =
+        topology.decays().size() - topology.outgoing_masses().size();
+    if (leptonic ||
+        (topology.t_propagator_count() != 0 &&
+         t_channel_mode == PhaseSpaceMapping::chili)) {
+        --invariant_count;
+    }
+    if (topology.t_propagator_count() > 0 &&
+        (t_channel_mode == PhaseSpaceMapping::propagator ||
+         topology.t_propagator_count() < 2)) {
+        invariant_count +=
+            TPropagatorMapping::invariant_count(topology.t_propagator_count());
+    }
+    return invariant_count;
+}
+
 } // namespace
 
 PhaseSpaceMapping::PhaseSpaceMapping(
@@ -156,19 +178,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             };
             if (return_invariants) {
                 std::size_t invariant_count =
-                    topology.decays().size() - topology.outgoing_masses().size();
-                if (leptonic ||
-                    (_topology.t_propagator_count() != 0 &&
-                     t_channel_mode == PhaseSpaceMapping::chili)) {
-                    --invariant_count;
-                }
-                if (topology.t_propagator_count() > 0 &&
-                    (t_channel_mode == PhaseSpaceMapping::propagator ||
-                     topology.t_propagator_count() < 2)) {
-                    invariant_count += TPropagatorMapping::invariant_count(
-                        topology.t_propagator_count()
-                    );
-                }
+                    ps_invariant_count(topology, leptonic, t_channel_mode);
                 out.push_back(
                     "invariant_pids_and_masks", batch_int_array(invariant_count)
                 );
