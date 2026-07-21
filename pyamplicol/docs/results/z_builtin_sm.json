@@ -19173,7 +19173,7 @@
     },
     {
       "measurement": {
-        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/selected-flow",
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc",
         "command": [
           ".venv/bin/python",
           "docs/result_tables.py",
@@ -19216,6 +19216,11 @@
               "native_arch": false,
               "optimization": "O3"
             },
+            "eager": {
+              "point_tile_size": 1024,
+              "workspace_mib": 256
+            },
+            "execution_mode": "compiled",
             "jit": {
               "optimization_level": 3
             },
@@ -19277,48 +19282,62 @@
         "environment": {
           "batch_size": 64,
           "calibration_block_count": 2,
-          "calibration_elapsed_seconds": 0.210459558,
-          "calibration_evaluation_count": 2599,
-          "calibration_probe_seconds": 9.6231e-05,
+          "calibration_elapsed_seconds": 0.212187343,
+          "calibration_evaluation_count": 1908,
+          "calibration_probe_seconds": 0.000131121,
+          "color_accuracy": "lc",
+          "color_workload": "selected 1/2 physical LC flows: flow:2,4,5,1",
           "completed_sample_count": 80,
           "completion_fraction": 1.0,
-          "elapsed_seconds": 16.827334659999998,
-          "evaluator_elapsed_seconds": 0.0011047646403312683,
-          "evaluator_relative_standard_error": 0.115975378836602,
-          "evaluator_sample_count": 5,
-          "evaluator_standard_deviation_seconds_per_point": 1.8995998936248058e-07,
-          "evaluator_standard_error_seconds_per_point": 8.49526898439287e-08,
+          "elapsed_seconds": 16.876215331,
+          "evaluator_elapsed_seconds": 16.9247207660228,
+          "evaluator_relative_standard_error": 0.0005044647759775937,
+          "evaluator_sample_count": 80,
+          "evaluator_standard_deviation_seconds_per_point": 2.9380488798243207e-09,
+          "evaluator_standard_error_seconds_per_point": 3.2848385082521453e-10,
+          "evaluator_time_sample_pass": "runtime.profile_repeated",
           "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+          "execution_mode": "compiled",
+          "helicity_workload": "all 48 generated helicity configurations; 24 structural zeros",
           "interrupted": false,
           "machine": "x86_64",
-          "measured_evaluation_count": 207840,
-          "measured_point_count": 13301760,
-          "native_profile_calls_per_block": 0.0625,
-          "native_profile_sample_count": 5,
-          "native_profile_sample_limit": 5,
-          "native_profile_total_call_count": 7,
+          "measured_evaluation_count": 152560,
+          "measured_point_count": 9763840,
+          "native_profile_calls_per_block": 1.0,
+          "native_profile_points_per_sample": 122048,
+          "native_profile_repetitions_per_sample": 1907,
+          "native_profile_sample_count": 80,
+          "native_profile_sample_limit": 80,
+          "native_profile_total_call_count": 82,
           "native_profile_warmup_call_count": 2,
           "planned_sample_count": 80,
           "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
           "precision": 16,
           "python": "3.11.15",
-          "repetitions_per_sample": 2598,
+          "repetitions_per_sample": 1907,
+          "selected_color_ids": [
+            "flow:2,4,5,1"
+          ],
+          "selected_helicity_ids": [],
           "target": null,
           "target_sample_seconds": 0.25,
+          "timing_breakdown_sample_pass": "runtime.profile_repeated",
+          "timing_sample_contract": "shared_native_repeated_profile_v1",
+          "wall_time_sample_pass": "runtime.profile_repeated",
           "wall_time_source": "runtime_core_repeated_wall_time",
-          "warmup_elapsed_seconds": 0.0006994828581809998
+          "warmup_elapsed_seconds": 0.0032016653567552567
         },
-        "evaluator_seconds_per_point": 7.3250625e-07,
+        "evaluator_seconds_per_point": 6.511531953616608e-07,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": 0.20628466457128525,
+        "generation_seconds": 0.7484776545315981,
         "limit_gib": null,
-        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/logs/pyamplicol-selected-flow.log",
-        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/selected-flow/manifest.json",
-        "matrix_element": 0.00022626601239021494,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/logs/pyamplicol-complete-lc.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc/manifest.json",
+        "matrix_element": 0.000226266012390215,
         "metadata": {
           "all_flow_measurement": {
-            "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/all-flows",
+            "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc",
             "command": [
               ".venv/bin/python",
               "docs/result_tables.py",
@@ -19361,6 +19380,11 @@
                   "native_arch": false,
                   "optimization": "O3"
                 },
+                "eager": {
+                  "point_tile_size": 1024,
+                  "workspace_mib": 256
+                },
+                "execution_mode": "compiled",
                 "jit": {
                   "optimization_level": 3
                 },
@@ -19422,44 +19446,58 @@
             "environment": {
               "batch_size": 64,
               "calibration_block_count": 2,
-              "calibration_elapsed_seconds": 0.247477208,
-              "calibration_evaluation_count": 7061,
-              "calibration_probe_seconds": 3.5411e-05,
+              "calibration_elapsed_seconds": 0.234564613,
+              "calibration_evaluation_count": 2503,
+              "calibration_probe_seconds": 9.994e-05,
+              "color_accuracy": "lc",
+              "color_workload": "all 2 generated physical LC flows",
               "completed_sample_count": 80,
               "completion_fraction": 1.0,
-              "elapsed_seconds": 19.79703727,
-              "evaluator_elapsed_seconds": 0.0006248727440834045,
-              "evaluator_relative_standard_error": 0.0044074213513879135,
-              "evaluator_sample_count": 5,
-              "evaluator_standard_deviation_seconds_per_point": 1.9837474401369762e-09,
-              "evaluator_standard_error_seconds_per_point": 8.871588252674947e-10,
+              "elapsed_seconds": 18.742788466999993,
+              "evaluator_elapsed_seconds": 18.753523347899318,
+              "evaluator_relative_standard_error": 0.00022193196788089688,
+              "evaluator_sample_count": 80,
+              "evaluator_standard_deviation_seconds_per_point": 7.542496456334875e-10,
+              "evaluator_standard_error_seconds_per_point": 8.432767398208027e-11,
+              "evaluator_time_sample_pass": "runtime.profile_repeated",
               "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+              "execution_mode": "compiled",
+              "helicity_workload": "selected 1/48 helicities: h:-1,+1,-1,+1,-1",
               "interrupted": false,
               "machine": "x86_64",
-              "measured_evaluation_count": 564800,
-              "measured_point_count": 36147200,
-              "native_profile_calls_per_block": 0.0625,
-              "native_profile_sample_count": 5,
-              "native_profile_sample_limit": 5,
-              "native_profile_total_call_count": 7,
+              "measured_evaluation_count": 200160,
+              "measured_point_count": 12810240,
+              "native_profile_calls_per_block": 1.0,
+              "native_profile_points_per_sample": 160128,
+              "native_profile_repetitions_per_sample": 2502,
+              "native_profile_sample_count": 80,
+              "native_profile_sample_limit": 80,
+              "native_profile_total_call_count": 82,
               "native_profile_warmup_call_count": 2,
               "planned_sample_count": 80,
               "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
               "precision": 16,
               "python": "3.11.15",
-              "repetitions_per_sample": 7060,
+              "repetitions_per_sample": 2502,
+              "selected_color_ids": [],
+              "selected_helicity_ids": [
+                "h:-1,+1,-1,+1,-1"
+              ],
               "target": null,
               "target_sample_seconds": 0.25,
+              "timing_breakdown_sample_pass": "runtime.profile_repeated",
+              "timing_sample_contract": "shared_native_repeated_profile_v1",
+              "wall_time_sample_pass": "runtime.profile_repeated",
               "wall_time_source": "runtime_core_repeated_wall_time",
-              "warmup_elapsed_seconds": 0.00044351257383823395
+              "warmup_elapsed_seconds": 0.003307083621621132
             },
-            "evaluator_seconds_per_point": 2.012875e-07,
+            "evaluator_seconds_per_point": 3.7997082974245505e-07,
             "failure_kind": null,
             "failure_message": null,
-            "generation_seconds": 0.14241086319088936,
+            "generation_seconds": 0.7484776545315981,
             "limit_gib": null,
-            "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/logs/pyamplicol-all-flows.log",
-            "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/all-flows/manifest.json",
+            "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/logs/pyamplicol-complete-lc.log",
+            "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc/manifest.json",
             "matrix_element": 0.000180803517737966,
             "metadata": {
               "artifact_reused_for_timing": false,
@@ -19479,44 +19517,70 @@
                 "process_key": null,
                 "variant": "jit_o3"
               },
+              "color_flow_ids": [],
               "generation_seconds_source": "fresh_generation",
-              "generation_slice": {
-                "reference_color_order": [],
-                "selected_color_sector_ids": [],
-                "selected_source_helicities": {
-                  "1": -1,
-                  "2": 1,
-                  "3": -1,
-                  "4": 1,
-                  "5": -1
-                }
-              },
+              "generation_slice": null,
               "generation_timer_excludes_model_compile": true,
-              "high_precision_matrix_element": null,
-              "high_precision_relative_difference": null,
-              "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/inputs/pyamplicol-inputs.json",
+              "helicity_ids": [
+                "h:-1,+1,-1,+1,-1"
+              ],
+              "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/inputs/pyamplicol-complete-lc-inputs.json",
               "model_precompile_cache_dir": null,
               "model_precompile_policy": "precompiled_model_before_generation_v1",
-              "model_precompile_seconds": 0.018795521929860115,
+              "model_precompile_seconds": 0.0722151342779398,
               "model_precompile_source_kind": "built-in-sm",
               "model_precompile_used_cache": true,
               "model_source": {
                 "cache": true,
                 "source": "built-in-sm"
               },
+              "resolved_sum_validation": {
+                "absolute_tolerance": 1e-15,
+                "maximum_absolute_difference": 0.0,
+                "maximum_relative_difference": 0.0,
+                "relative_tolerance": 1e-12,
+                "status": "ok"
+              },
               "runtime_process": "d_dbar_to_z_g_g",
+              "runtime_selector_policy": "complete_lc_runtime_selectors_v1",
+              "runtime_selector_role": "all-flows-fixed-helicity",
+              "selector_contract": {
+                "all_flow_helicity_ids": [
+                  "h:-1,+1,-1,+1,-1"
+                ],
+                "all_flow_source_helicities": {
+                  "1": -1,
+                  "2": 1,
+                  "3": -1,
+                  "4": 1,
+                  "5": -1
+                },
+                "message": null,
+                "reference_digest": "df27ce15ead3d1b59c7e7a5bc1e6843b672d1ebb990cb1a2eb5edd310131c88b",
+                "selected_color_flow_ids": [
+                  "flow:2,4,5,1"
+                ],
+                "selected_reference_color_order": [
+                  2,
+                  4,
+                  5,
+                  1,
+                  3
+                ],
+                "status": "ok"
+              },
               "source_provenance": {
                 "cache_schema_version": 2,
                 "compiled_model_schema_version": 9,
-                "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+                "head": "e307d218c169e246e6ce8f8e1392799c36108785",
                 "model_compiler_version": 13,
-                "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+                "origin_main": "e307d218c169e246e6ce8f8e1392799c36108785",
                 "report_version": "0.1.0",
                 "repository": "/shared/vhirschi/pyamplicol"
               }
             },
             "peak_rss_gib": null,
-            "relative_standard_error": 0.00012175866190679737,
+            "relative_standard_error": 0.0001842767182159673,
             "requested_config": {
               "action": "generate",
               "benchmark": {
@@ -19550,6 +19614,11 @@
                   "native_arch": false,
                   "optimization": "O3"
                 },
+                "eager": {
+                  "point_tile_size": 1024,
+                  "workspace_mib": 256
+                },
+                "execution_mode": "compiled",
                 "jit": {
                   "optimization_level": 3
                 },
@@ -19609,11 +19678,11 @@
               }
             },
             "sample_count": 80,
-            "standard_deviation_seconds_per_point": 5.964449953197232e-10,
-            "standard_error_seconds_per_point": 6.668457771872224e-11,
+            "standard_deviation_seconds_per_point": 2.4115285072286997e-09,
+            "standard_error_seconds_per_point": 2.6961708359209826e-10,
             "status": "ok",
             "timeout_seconds": 86400.0,
-            "wall_seconds_per_point": 5.476783062035233e-07
+            "wall_seconds_per_point": 1.4631098610954986e-06
           },
           "artifact_reused_for_timing": false,
           "cell": {
@@ -19632,27 +19701,17 @@
             "process_key": null,
             "variant": "jit_o3"
           },
+          "color_flow_ids": [
+            "flow:2,4,5,1"
+          ],
           "generation_seconds_source": "fresh_generation",
-          "generation_slice": {
-            "reference_color_order": [
-              2,
-              4,
-              5,
-              1,
-              3
-            ],
-            "selected_color_sector_ids": [
-              0
-            ],
-            "selected_source_helicities": null
-          },
+          "generation_slice": null,
           "generation_timer_excludes_model_compile": true,
-          "high_precision_matrix_element": null,
-          "high_precision_relative_difference": null,
-          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/inputs/pyamplicol-inputs.json",
+          "helicity_ids": [],
+          "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/inputs/pyamplicol-complete-lc-inputs.json",
           "model_precompile_cache_dir": null,
           "model_precompile_policy": "precompiled_model_before_generation_v1",
-          "model_precompile_seconds": 0.03383246250450611,
+          "model_precompile_seconds": 0.0722151342779398,
           "model_precompile_source_kind": "built-in-sm",
           "model_precompile_used_cache": true,
           "model_source": {
@@ -19669,13 +19728,16 @@
             ],
             "all_flow_backend": "jit",
             "all_flow_error": null,
-            "all_flow_generation_s": 0.14241086319088936,
+            "all_flow_generation_s": 0.7484776545315981,
+            "all_flow_helicity_ids": [
+              "h:-1,+1,-1,+1,-1"
+            ],
             "all_flow_helicity_mode": "fixed-source-helicity",
             "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
             "all_flow_jit_optimization_level": 3,
             "all_flow_matrix_element": 0.000180803517737966,
-            "all_flow_output_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/all-flows",
-            "all_flow_runtime_us_per_point": 0.2012875,
+            "all_flow_output_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc",
+            "all_flow_runtime_us_per_point": 0.37997082974245505,
             "all_flow_source_helicities": {
               "1": -1,
               "2": 1,
@@ -19685,18 +19747,28 @@
             },
             "all_flow_status": "ok",
             "all_flow_validation_note": "fixed source-helicity selection is used for timing; selected-flow spin-summed validation remains authoritative",
-            "all_flow_wall_us_per_point": 0.5476783062035233,
-            "generation_s": 0.20628466457128525,
-            "runtime_us_per_point": 0.73250625,
+            "all_flow_wall_us_per_point": 1.4631098610954987,
+            "generation_s": 0.7484776545315981,
+            "reference_color_order": [
+              2,
+              4,
+              5,
+              1,
+              3
+            ],
+            "runtime_us_per_point": 0.6511531953616608,
             "selected_backend": "jit",
-            "selected_generation_s": 0.20628466457128525,
+            "selected_color_flow_ids": [
+              "flow:2,4,5,1"
+            ],
+            "selected_generation_s": 0.7484776545315981,
             "selected_jit_optimization_level": 3,
-            "selected_output_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/selected-flow",
+            "selected_output_dir": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc",
             "status": "ok",
-            "wall_us_per_point": 1.265045727783391
+            "wall_us_per_point": 1.7284403811410265
           },
           "pointwise_validation": {
-            "absolute_difference": 4.336808689942018e-19,
+            "absolute_difference": 3.7947076036992655e-19,
             "absolute_tolerance": 1e-15,
             "all_flow_absolute_difference": 1.779988916678077e-16,
             "all_flow_pyamplicol_matrix_element": 0.000180803517737966,
@@ -19705,15 +19777,24 @@
             "all_flow_status": "ok",
             "message": null,
             "point_source": "shared validation point",
-            "pyamplicol_matrix_element": 0.00022626601239021494,
+            "pyamplicol_matrix_element": 0.000226266012390215,
             "reference_matrix_element": 0.00022626601239021538,
-            "relative_difference": 1.916685870815991e-15,
+            "relative_difference": 1.677100136963992e-15,
             "relative_tolerance": 1e-08,
             "status": "ok"
           },
+          "resolved_sum_validation": {
+            "absolute_tolerance": 1e-15,
+            "maximum_absolute_difference": 0.0,
+            "maximum_relative_difference": 0.0,
+            "relative_tolerance": 1e-12,
+            "status": "ok"
+          },
           "runtime_process": "d_dbar_to_z_g_g",
+          "runtime_selector_policy": "complete_lc_runtime_selectors_v1",
+          "runtime_selector_role": "selected-flow-helicity-sum",
           "selected_flow_measurement": {
-            "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/selected-flow",
+            "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc",
             "command": [
               ".venv/bin/python",
               "docs/result_tables.py",
@@ -19756,6 +19837,11 @@
                   "native_arch": false,
                   "optimization": "O3"
                 },
+                "eager": {
+                  "point_tile_size": 1024,
+                  "workspace_mib": 256
+                },
+                "execution_mode": "compiled",
                 "jit": {
                   "optimization_level": 3
                 },
@@ -19817,45 +19903,59 @@
             "environment": {
               "batch_size": 64,
               "calibration_block_count": 2,
-              "calibration_elapsed_seconds": 0.210459558,
-              "calibration_evaluation_count": 2599,
-              "calibration_probe_seconds": 9.6231e-05,
+              "calibration_elapsed_seconds": 0.212187343,
+              "calibration_evaluation_count": 1908,
+              "calibration_probe_seconds": 0.000131121,
+              "color_accuracy": "lc",
+              "color_workload": "selected 1/2 physical LC flows: flow:2,4,5,1",
               "completed_sample_count": 80,
               "completion_fraction": 1.0,
-              "elapsed_seconds": 16.827334659999998,
-              "evaluator_elapsed_seconds": 0.0011047646403312683,
-              "evaluator_relative_standard_error": 0.115975378836602,
-              "evaluator_sample_count": 5,
-              "evaluator_standard_deviation_seconds_per_point": 1.8995998936248058e-07,
-              "evaluator_standard_error_seconds_per_point": 8.49526898439287e-08,
+              "elapsed_seconds": 16.876215331,
+              "evaluator_elapsed_seconds": 16.9247207660228,
+              "evaluator_relative_standard_error": 0.0005044647759775937,
+              "evaluator_sample_count": 80,
+              "evaluator_standard_deviation_seconds_per_point": 2.9380488798243207e-09,
+              "evaluator_standard_error_seconds_per_point": 3.2848385082521453e-10,
+              "evaluator_time_sample_pass": "runtime.profile_repeated",
               "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+              "execution_mode": "compiled",
+              "helicity_workload": "all 48 generated helicity configurations; 24 structural zeros",
               "interrupted": false,
               "machine": "x86_64",
-              "measured_evaluation_count": 207840,
-              "measured_point_count": 13301760,
-              "native_profile_calls_per_block": 0.0625,
-              "native_profile_sample_count": 5,
-              "native_profile_sample_limit": 5,
-              "native_profile_total_call_count": 7,
+              "measured_evaluation_count": 152560,
+              "measured_point_count": 9763840,
+              "native_profile_calls_per_block": 1.0,
+              "native_profile_points_per_sample": 122048,
+              "native_profile_repetitions_per_sample": 1907,
+              "native_profile_sample_count": 80,
+              "native_profile_sample_limit": 80,
+              "native_profile_total_call_count": 82,
               "native_profile_warmup_call_count": 2,
               "planned_sample_count": 80,
               "platform": "Linux-6.12.63-x86_64-with-glibc2.42",
               "precision": 16,
               "python": "3.11.15",
-              "repetitions_per_sample": 2598,
+              "repetitions_per_sample": 1907,
+              "selected_color_ids": [
+                "flow:2,4,5,1"
+              ],
+              "selected_helicity_ids": [],
               "target": null,
               "target_sample_seconds": 0.25,
+              "timing_breakdown_sample_pass": "runtime.profile_repeated",
+              "timing_sample_contract": "shared_native_repeated_profile_v1",
+              "wall_time_sample_pass": "runtime.profile_repeated",
               "wall_time_source": "runtime_core_repeated_wall_time",
-              "warmup_elapsed_seconds": 0.0006994828581809998
+              "warmup_elapsed_seconds": 0.0032016653567552567
             },
-            "evaluator_seconds_per_point": 7.3250625e-07,
+            "evaluator_seconds_per_point": 6.511531953616608e-07,
             "failure_kind": null,
             "failure_message": null,
-            "generation_seconds": 0.20628466457128525,
+            "generation_seconds": 0.7484776545315981,
             "limit_gib": null,
-            "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/logs/pyamplicol-selected-flow.log",
-            "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/selected-flow/manifest.json",
-            "matrix_element": 0.00022626601239021494,
+            "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/logs/pyamplicol-complete-lc.log",
+            "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/pyamplicol-schema9-compiler13/complete-lc/manifest.json",
+            "matrix_element": 0.000226266012390215,
             "metadata": {
               "artifact_reused_for_timing": false,
               "cell": {
@@ -19874,46 +19974,70 @@
                 "process_key": null,
                 "variant": "jit_o3"
               },
+              "color_flow_ids": [
+                "flow:2,4,5,1"
+              ],
               "generation_seconds_source": "fresh_generation",
-              "generation_slice": {
-                "reference_color_order": [
-                  2,
-                  4,
-                  5,
-                  1,
-                  3
-                ],
-                "selected_color_sector_ids": [
-                  0
-                ],
-                "selected_source_helicities": null
-              },
+              "generation_slice": null,
               "generation_timer_excludes_model_compile": true,
-              "high_precision_matrix_element": null,
-              "high_precision_relative_difference": null,
-              "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/inputs/pyamplicol-inputs.json",
+              "helicity_ids": [],
+              "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-builtin-sm-n3-jit-o3/inputs/pyamplicol-complete-lc-inputs.json",
               "model_precompile_cache_dir": null,
               "model_precompile_policy": "precompiled_model_before_generation_v1",
-              "model_precompile_seconds": 0.03383246250450611,
+              "model_precompile_seconds": 0.0722151342779398,
               "model_precompile_source_kind": "built-in-sm",
               "model_precompile_used_cache": true,
               "model_source": {
                 "cache": true,
                 "source": "built-in-sm"
               },
+              "resolved_sum_validation": {
+                "absolute_tolerance": 1e-15,
+                "maximum_absolute_difference": 0.0,
+                "maximum_relative_difference": 0.0,
+                "relative_tolerance": 1e-12,
+                "status": "ok"
+              },
               "runtime_process": "d_dbar_to_z_g_g",
+              "runtime_selector_policy": "complete_lc_runtime_selectors_v1",
+              "runtime_selector_role": "selected-flow-helicity-sum",
+              "selector_contract": {
+                "all_flow_helicity_ids": [
+                  "h:-1,+1,-1,+1,-1"
+                ],
+                "all_flow_source_helicities": {
+                  "1": -1,
+                  "2": 1,
+                  "3": -1,
+                  "4": 1,
+                  "5": -1
+                },
+                "message": null,
+                "reference_digest": "df27ce15ead3d1b59c7e7a5bc1e6843b672d1ebb990cb1a2eb5edd310131c88b",
+                "selected_color_flow_ids": [
+                  "flow:2,4,5,1"
+                ],
+                "selected_reference_color_order": [
+                  2,
+                  4,
+                  5,
+                  1,
+                  3
+                ],
+                "status": "ok"
+              },
               "source_provenance": {
                 "cache_schema_version": 2,
                 "compiled_model_schema_version": 9,
-                "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+                "head": "e307d218c169e246e6ce8f8e1392799c36108785",
                 "model_compiler_version": 13,
-                "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+                "origin_main": "e307d218c169e246e6ce8f8e1392799c36108785",
                 "report_version": "0.1.0",
                 "repository": "/shared/vhirschi/pyamplicol"
               }
             },
             "peak_rss_gib": null,
-            "relative_standard_error": 0.00042210475000799654,
+            "relative_standard_error": 0.0008164633770917779,
             "requested_config": {
               "action": "generate",
               "benchmark": {
@@ -19947,6 +20071,11 @@
                   "native_arch": false,
                   "optimization": "O3"
                 },
+                "eager": {
+                  "point_tile_size": 1024,
+                  "workspace_mib": 256
+                },
+                "execution_mode": "compiled",
                 "jit": {
                   "optimization_level": 3
                 },
@@ -20006,24 +20135,49 @@
               }
             },
             "sample_count": 80,
-            "standard_deviation_seconds_per_point": 4.776078509668139e-09,
-            "standard_error_seconds_per_point": 5.339818106746923e-10,
+            "standard_deviation_seconds_per_point": 1.2622230494674976e-08,
+            "standard_error_seconds_per_point": 1.4112082706882021e-09,
             "status": "ok",
             "timeout_seconds": 86400.0,
-            "wall_seconds_per_point": 1.265045727783391e-06
+            "wall_seconds_per_point": 1.7284403811410264e-06
+          },
+          "selector_contract": {
+            "all_flow_helicity_ids": [
+              "h:-1,+1,-1,+1,-1"
+            ],
+            "all_flow_source_helicities": {
+              "1": -1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1
+            },
+            "message": null,
+            "reference_digest": "df27ce15ead3d1b59c7e7a5bc1e6843b672d1ebb990cb1a2eb5edd310131c88b",
+            "selected_color_flow_ids": [
+              "flow:2,4,5,1"
+            ],
+            "selected_reference_color_order": [
+              2,
+              4,
+              5,
+              1,
+              3
+            ],
+            "status": "ok"
           },
           "source_provenance": {
             "cache_schema_version": 2,
             "compiled_model_schema_version": 9,
-            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "head": "e307d218c169e246e6ce8f8e1392799c36108785",
             "model_compiler_version": 13,
-            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "origin_main": "e307d218c169e246e6ce8f8e1392799c36108785",
             "report_version": "0.1.0",
             "repository": "/shared/vhirschi/pyamplicol"
           }
         },
         "peak_rss_gib": null,
-        "relative_standard_error": 0.00042210475000799654,
+        "relative_standard_error": 0.0008164633770917779,
         "requested_config": {
           "action": "generate",
           "benchmark": {
@@ -20057,6 +20211,11 @@
               "native_arch": false,
               "optimization": "O3"
             },
+            "eager": {
+              "point_tile_size": 1024,
+              "workspace_mib": 256
+            },
+            "execution_mode": "compiled",
             "jit": {
               "optimization_level": 3
             },
@@ -20116,11 +20275,11 @@
           }
         },
         "sample_count": 80,
-        "standard_deviation_seconds_per_point": 4.776078509668139e-09,
-        "standard_error_seconds_per_point": 5.339818106746923e-10,
+        "standard_deviation_seconds_per_point": 1.2622230494674976e-08,
+        "standard_error_seconds_per_point": 1.4112082706882021e-09,
         "status": "ok",
         "timeout_seconds": 86400.0,
-        "wall_seconds_per_point": 1.265045727783391e-06
+        "wall_seconds_per_point": 1.7284403811410264e-06
       },
       "n_final": 3,
       "process": "d d~ > z g g",
@@ -20141,7 +20300,24 @@
         "log_path": null,
         "manifest_path": null,
         "matrix_element": null,
-        "metadata": {},
+        "metadata": {
+          "pointwise_validation": {
+            "absolute_difference": null,
+            "absolute_tolerance": 1e-15,
+            "all_flow_absolute_difference": null,
+            "all_flow_pyamplicol_matrix_element": null,
+            "all_flow_reference_matrix_element": null,
+            "all_flow_relative_difference": null,
+            "all_flow_status": "not_available",
+            "message": null,
+            "point_source": null,
+            "pyamplicol_matrix_element": null,
+            "reference_matrix_element": null,
+            "relative_difference": null,
+            "relative_tolerance": 1e-08,
+            "status": "not_available"
+          }
+        },
         "peak_rss_gib": null,
         "relative_standard_error": null,
         "requested_config": null,
@@ -55350,7 +55526,7 @@
   "report_version": "0.1.0",
   "schema_version": 2,
   "spdx_license_identifier": "0BSD",
-  "updated_at": "2026-07-20T08:40:00+00:00",
+  "updated_at": "2026-07-21T08:08:30+00:00",
   "variants": [
     {
       "config_overrides": {},

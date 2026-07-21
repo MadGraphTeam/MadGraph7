@@ -6,6 +6,7 @@ import os
 import re
 import signal
 import sys
+from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -1331,6 +1332,217 @@ def test_legacy_lc_contract_rejects_fixed_point_profile_config() -> None:
 
     assert not report._legacy_measurement_profile_current(measurement)
     assert not report._legacy_lc_measurement_contract_current(measurement)
+
+
+def test_compiled_lc_uses_complete_artifact_and_runtime_selectors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import pyamplicol.api as api
+    import pyamplicol.config.resolver as resolver
+
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    spec = report.LADDER_SPECS[0]
+    legacy = report._empty_measurement()
+    fixed_helicity = report._source_helicity_choice_payload(
+        cell.process,
+        {"1": -1, "2": 1, "3": -1, "4": 1, "5": -1},
+        selection_source="test",
+        validation_note="test",
+    )
+    legacy.update(
+        {
+            "status": report.ResultStatus.OK.value,
+            "matrix_element": 1.0,
+            "metadata": {
+                "old_matrix_format": {
+                    "reference_color_order": [2, 4, 5, 1, 3],
+                    "all_flow_source_helicities": fixed_helicity[
+                        "source_helicities"
+                    ],
+                }
+            },
+        }
+    )
+    resolution = SimpleNamespace(
+        requested=SimpleNamespace(),
+        effective=SimpleNamespace(benchmark=BenchmarkConfig(target_runtime=0.1)),
+    )
+    generated: list[tuple[str, Path, object, str]] = []
+    profile_calls: list[dict[str, object]] = []
+
+    class FakeGenerator:
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        def generate(
+            self,
+            process: str,
+            artifact_dir: Path,
+            *,
+            model: object,
+            mode: str,
+        ) -> None:
+            generated.append((process, artifact_dir, model, mode))
+            artifact_dir.mkdir(parents=True)
+
+    class FakeRuntime:
+        physics = SimpleNamespace()
+
+    class FakeRuntimeLoader:
+        @staticmethod
+        def load(_artifact_dir: Path, *, process: str) -> FakeRuntime:
+            assert process == cell.process
+            return FakeRuntime()
+
+    def fake_profile(
+        _runtime: object,
+        *,
+        benchmark_config: object,
+        points: object,
+        helicity_ids: Sequence[str] = (),
+        color_flow_ids: Sequence[str] = (),
+    ) -> dict[str, object]:
+        profile_calls.append(
+            {
+                "benchmark_config": benchmark_config,
+                "points": points,
+                "helicity_ids": tuple(helicity_ids),
+                "color_flow_ids": tuple(color_flow_ids),
+            }
+        )
+        measurement = report._empty_measurement()
+        measurement.update(
+            {
+                "status": report.ResultStatus.OK.value,
+                "sample_count": 2,
+                "wall_seconds_per_point": 2.0e-6,
+                "evaluator_seconds_per_point": 1.0e-6,
+                "standard_deviation_seconds_per_point": 0.0,
+                "standard_error_seconds_per_point": 0.0,
+                "relative_standard_error": 0.0,
+                "matrix_element": 1.0,
+                "requested_config": {},
+                "effective_config": {},
+                "environment": {
+                    "wall_time_source": "runtime_core_repeated_wall_time",
+                    "evaluator_time_source": (
+                        "runtime_profile_core_evaluator_call_time"
+                    ),
+                },
+                "metadata": {
+                    "helicity_ids": list(helicity_ids),
+                    "color_flow_ids": list(color_flow_ids),
+                },
+            }
+        )
+        return measurement
+
+    monkeypatch.setattr(api, "Generator", FakeGenerator)
+    monkeypatch.setattr(api, "Runtime", FakeRuntimeLoader)
+    monkeypatch.setattr(
+        resolver,
+        "resolve_config",
+        lambda *_args, **_kwargs: resolution,
+    )
+    monkeypatch.setattr(resolver, "config_to_dict", lambda _value: {})
+    monkeypatch.setattr(
+        report,
+        "_precompile_model_for_generation",
+        lambda *_args, **_kwargs: (
+            "compiled-model",
+            {
+                "model_precompile_policy": (
+                    report.PYAMPLICOL_GENERATION_PROFILE_POLICY
+                ),
+                "model_precompile_seconds": 0.0,
+                "model_precompile_cache_dir": None,
+                "model_precompile_used_cache": True,
+                "model_precompile_source_kind": "built-in-sm",
+                "generation_timer_excludes_model_compile": True,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        report,
+        "_single_artifact_process_id",
+        lambda _artifact_dir, *, fallback: fallback,
+    )
+    monkeypatch.setattr(report, "_profile_eager_runtime", fake_profile)
+    monkeypatch.setattr(
+        report,
+        "_lc_runtime_selector_contract",
+        lambda **_kwargs: {
+            **report._empty_eager_selector_contract(),
+            "status": report.ResultStatus.OK.value,
+            "reference_digest": "digest",
+            "selected_reference_color_order": [2, 4, 5, 1, 3],
+            "selected_color_flow_ids": ["flow:2,4,5,1"],
+            "all_flow_source_helicities": fixed_helicity["source_helicities"],
+            "all_flow_helicity_ids": ["h:-1,+1,-1,+1,-1"],
+        },
+    )
+    monkeypatch.setattr(
+        report,
+        "_generation_slice_tools",
+        lambda: pytest.fail("compiled LC report path must not use GenerationSlice"),
+    )
+    monkeypatch.setattr(
+        report,
+        "_report_source_provenance",
+        lambda: {
+            "head": "test",
+            "report_version": report.REPORT_VERSION,
+            "cache_schema_version": report.CACHE_SCHEMA_VERSION,
+            "compiled_model_schema_version": 9,
+            "model_compiler_version": 13,
+        },
+    )
+    monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 13))
+
+    measurement, returned_points = report._measure_pyamplicol_lc_two_workloads(
+        cell=cell,
+        spec=spec,
+        variant_overrides={
+            "evaluator.backend": "jit",
+            "evaluator.jit.optimization_level": 3,
+        },
+        legacy=legacy,
+        artifact_root=tmp_path,
+        generation_timeout_seconds=60.0,
+        target_runtime=0.1,
+        cell_cores=1,
+        points=("point",),
+        fixed_helicity=fixed_helicity,
+    )
+
+    assert returned_points == ("point",)
+    assert len(generated) == 1
+    assert generated[0][1].parts[-1] == "complete-lc"
+    assert generated[0][3] == "replace"
+    assert profile_calls[0]["color_flow_ids"] == ("flow:2,4,5,1",)
+    assert profile_calls[0]["helicity_ids"] == ()
+    assert profile_calls[1]["color_flow_ids"] == ()
+    assert profile_calls[1]["helicity_ids"] == ("h:-1,+1,-1,+1,-1",)
+    metadata = measurement["metadata"]
+    assert metadata["generation_slice"] is None
+    assert metadata["runtime_selector_policy"] == "complete_lc_runtime_selectors_v1"
+    old = metadata["old_matrix_format"]
+    assert old["selected_output_dir"] == old["all_flow_output_dir"]
+    assert old["selected_color_flow_ids"] == ["flow:2,4,5,1"]
+    assert old["all_flow_helicity_ids"] == ["h:-1,+1,-1,+1,-1"]
+    snapshot = (
+        tmp_path
+        / "cells"
+        / cell.cell_id
+        / "inputs"
+        / "pyamplicol-complete-lc-inputs.json"
+    )
+    assert json.loads(snapshot.read_text(encoding="utf-8"))["generation_slice"] is None
 
 
 def test_z_ladder_revalidates_variants_when_reference_is_available() -> None:

@@ -5858,6 +5858,8 @@ def _measure_pyamplicol(
     artifact_subdir: str = "pyamplicol",
     log_name: str = "pyamplicol.log",
     previous_measurement: Mapping[str, object] | None = None,
+    helicity_ids: Sequence[str] = (),
+    color_flow_ids: Sequence[str] = (),
 ) -> tuple[dict[str, object], object | None]:
     from pyamplicol.api import BenchmarkRunner, CompatibilityError, Generator, Runtime
     from pyamplicol.config import Action
@@ -5900,6 +5902,10 @@ def _measure_pyamplicol(
         "process_overrides": dict(process_overrides or {}),
         "benchmark_overrides": dict(benchmark_overrides or {}),
         "generation_slice": _generation_slice_snapshot(generation_slice),
+        "runtime_selectors": {
+            "helicity_ids": list(helicity_ids),
+            "color_flow_ids": list(color_flow_ids),
+        },
         "target_runtime": target_runtime,
         "cell_cores": cell_cores,
         "artifact_reused_for_timing": artifact_reusable,
@@ -5968,19 +5974,36 @@ def _measure_pyamplicol(
                     if points_override is not None
                     else _runtime_validation_momenta(runtime)
                 )
-                values = runtime.evaluate(points) if points is not None else ()
+                selector_kwargs = {
+                    "helicities": tuple(helicity_ids) or None,
+                    "color_flows": tuple(color_flow_ids) or None,
+                }
+                values = (
+                    runtime.evaluate(points, **selector_kwargs)
+                    if points is not None
+                    else ()
+                )
                 matrix_element = _real_nonnegative_scalar(values[0]) if values else None
                 high_precision_value: float | None = None
                 high_precision_relative_difference: float | None = None
                 if high_precision and points is not None:
-                    precise = runtime.evaluate(points, precision=32)
+                    precise = runtime.evaluate(
+                        points,
+                        precision=32,
+                        **selector_kwargs,
+                    )
                     if precise:
                         high_precision_value = _real_nonnegative_scalar(precise[0])
                         high_precision_relative_difference = _safe_divide(
                             abs((matrix_element or 0.0) - high_precision_value),
                             max(abs(high_precision_value), 1.0e-300),
                         )
-                benchmark = BenchmarkRunner(resolution.effective).run(
+                benchmark_config = replace(
+                    resolution.effective.benchmark,
+                    helicity_ids=tuple(helicity_ids),
+                    color_flow_ids=tuple(color_flow_ids),
+                )
+                benchmark = BenchmarkRunner(benchmark_config).run(
                     runtime,
                     points=points,  # type: ignore[arg-type]
                 )
@@ -5998,6 +6021,7 @@ def _measure_pyamplicol(
             "high_precision_matrix_element": high_precision_value,
             "high_precision_relative_difference": high_precision_relative_difference,
             "generation_slice": snapshot["generation_slice"],
+            "runtime_selectors": snapshot["runtime_selectors"],
             **model_precompile_metadata,
         }
         measurement = {
@@ -6128,7 +6152,7 @@ def _prepared_model_source_for_eager(
 
 
 def _eager_lc_reference_spec(
-    spec: EagerMatrixSpec | LadderSpec,
+    spec: MatrixSpec | EagerMatrixSpec | LadderSpec,
 ) -> MatrixSpec | LadderSpec:
     if isinstance(spec, EagerMatrixSpec):
         reference = _spec_by_dataset()[spec.reference_dataset_id]
@@ -6146,11 +6170,33 @@ def _eager_lc_selector_contract(
     physics: object,
     artifact_root: Path,
 ) -> dict[str, object]:
+    return _lc_runtime_selector_contract(
+        cell=cell,
+        spec=spec,
+        reference_measurement=reference_measurement,
+        physics=physics,
+        artifact_root=artifact_root,
+    )
+
+
+def _lc_runtime_selector_contract(
+    *,
+    cell: CampaignCell,
+    spec: MatrixSpec | EagerMatrixSpec | LadderSpec,
+    reference_measurement: Mapping[str, object],
+    physics: object,
+    artifact_root: Path,
+    fixed_helicity: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     old = _measurement_old_matrix_fields(reference_measurement)
     raw_reference_order = _selected_flow_reference_color_order(old, cell)
-    if not isinstance(raw_reference_order, list) or not raw_reference_order:
-        raise ValueError("compiled LC reference has no source-label color order")
-    reference_order = tuple(int(label) for label in raw_reference_order)
+    color_flows = getattr(physics, "color_flows", ())
+    if isinstance(raw_reference_order, list) and raw_reference_order:
+        reference_order = tuple(int(label) for label in raw_reference_order)
+    elif color_flows:
+        reference_order = tuple(int(label) for label in color_flows[0].word)
+    else:
+        raise ValueError("LC reference has no source-label color order")
     reference_spec = _eager_lc_reference_spec(spec)
     partition_words = _selected_lc_reference_partition_words(
         cell.process,
@@ -6158,7 +6204,6 @@ def _eager_lc_selector_contract(
         reference_order=reference_order,
         artifact_root=artifact_root,
     )
-    color_flows = getattr(physics, "color_flows", ())
     color_ids = tuple(
         str(flow.id)
         for flow in color_flows
@@ -6166,13 +6211,17 @@ def _eager_lc_selector_contract(
     )
     if not color_ids:
         raise ValueError(
-            "compiled LC reference color order does not resolve to an eager "
+            "LC reference color order does not resolve to a runtime "
             f"physical flow: {list(reference_order)}"
         )
 
     raw_source_helicities = old.get("all_flow_source_helicities")
     if not isinstance(raw_source_helicities, Mapping):
-        raise ValueError("compiled LC reference has no fixed source helicities")
+        if fixed_helicity is None:
+            raise ValueError("LC reference has no fixed source helicities")
+        raw_source_helicities = fixed_helicity.get("source_helicities")
+    if not isinstance(raw_source_helicities, Mapping):
+        raise ValueError("LC fixed-helicity selection is unavailable")
     source_helicities = {
         int(label): int(helicity)
         for label, helicity in raw_source_helicities.items()
@@ -6187,7 +6236,7 @@ def _eager_lc_selector_contract(
     )
     if not helicity_ids:
         raise ValueError(
-            "compiled LC fixed-helicity contract does not resolve to an eager "
+            "LC fixed-helicity contract does not resolve to a runtime "
             f"physical helicity: {source_helicities}"
         )
     return {
@@ -6628,9 +6677,10 @@ def _measure_pyamplicol_lc_two_workloads(
     fixed_helicity: Mapping[str, object] | None = None,
     previous_measurement: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], object | None]:
-    GenerationSlice, _generate_slice = _generation_slice_tools()
+    from pyamplicol.api import CompatibilityError, Generator, Runtime
+    from pyamplicol.config import Action
+    from pyamplicol.config.resolver import config_to_dict, resolve_config
 
-    old_legacy = _measurement_old_matrix_fields(legacy or {})
     previous_metadata = (
         previous_measurement.get("metadata")
         if isinstance(previous_measurement, Mapping)
@@ -6641,69 +6691,29 @@ def _measure_pyamplicol_lc_two_workloads(
         if isinstance(previous_metadata, Mapping)
         else None
     )
-    previous_all_flow = (
-        previous_metadata.get("all_flow_measurement")
-        if isinstance(previous_metadata, Mapping)
-        else None
-    )
-    reference_order = _selected_flow_reference_color_order(old_legacy, cell)
-    selected_slice: object | None = None
-    if isinstance(reference_order, list) and reference_order:
-        normalized_reference_order = [int(label) for label in reference_order]
-        selected_sector_ids = _selected_lc_sector_ids_for_reference_order(
-            cell.process,
-            spec=spec,
-            reference_order=normalized_reference_order,
-            artifact_root=artifact_root,
-        )
-        selected_slice = GenerationSlice(
-            reference_color_order=tuple(normalized_reference_order),
-            selected_color_sector_ids=tuple(sorted(selected_sector_ids or ())),
-        )
-    else:
-        selected_sector_ids = _selected_lc_sector_ids_for_reference_order(
-            cell.process,
-            spec=spec,
-            reference_order=None,
-            artifact_root=artifact_root,
-        )
-        if selected_sector_ids is not None:
-            selected_slice = GenerationSlice(
-                selected_color_sector_ids=tuple(sorted(selected_sector_ids)),
-            )
     process_overrides = _pyamplicol_process_overrides_for_process(cell.process)
-    selected, selected_points = _measure_pyamplicol(
-        cell=cell,
-        spec=spec,
-        color_accuracy="lc",
-        variant_overrides=variant_overrides,
-        process_overrides=process_overrides,
-        benchmark_overrides={
-            "benchmark.batch_size": 64,
-            "evaluator.batch_size": 64,
-        },
-        artifact_root=artifact_root,
-        generation_timeout_seconds=generation_timeout_seconds,
-        target_runtime=target_runtime,
-        cell_cores=cell_cores,
-        generation_slice=selected_slice,
-        points_override=points,
-        artifact_subdir="pyamplicol/selected-flow",
-        log_name="pyamplicol-selected-flow.log",
-        previous_measurement=(
-            previous_selected if isinstance(previous_selected, Mapping) else None
-        ),
-    )
-
     if fixed_helicity is None:
         fixed_helicity = _fixed_source_helicity_choice(
             cell.process,
             spec=spec,
             artifact_root=artifact_root,
         )
-    all_flow, _all_flow_points = _measure_pyamplicol(
-        cell=cell,
-        spec=spec,
+
+    cell_root = artifact_root / "cells" / cell.cell_id
+    artifact_dir = cell_root / _pyamplicol_artifact_subdir("pyamplicol/complete-lc")
+    log_path = cell_root / "logs" / "pyamplicol-complete-lc.log"
+    manifest_path = artifact_dir / "manifest.json"
+    snapshot_path = cell_root / "inputs" / "pyamplicol-complete-lc-inputs.json"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    reusable_generation_seconds = _reusable_pyamplicol_generation_seconds(
+        cell,
+        artifact_dir,
+        previous_selected if isinstance(previous_selected, Mapping) else None,
+    )
+    artifact_reusable = reusable_generation_seconds is not None
+    config_values = _run_config_values(
+        model=spec.model,
         color_accuracy="lc",
         variant_overrides=variant_overrides,
         process_overrides=process_overrides,
@@ -6712,24 +6722,193 @@ def _measure_pyamplicol_lc_two_workloads(
             "evaluator.batch_size": 64,
         },
         artifact_root=artifact_root,
-        generation_timeout_seconds=generation_timeout_seconds,
         target_runtime=target_runtime,
         cell_cores=cell_cores,
-        generation_slice=GenerationSlice(
-            selected_source_helicities={
-                int(label): int(helicity)
-                for label, helicity in fixed_helicity[
-                    "source_helicities"
-                ].items()
-            }
-        ),
-        points_override=points,
-        artifact_subdir="pyamplicol/all-flows",
-        log_name="pyamplicol-all-flows.log",
-        previous_measurement=(
-            previous_all_flow if isinstance(previous_all_flow, Mapping) else None
-        ),
     )
+    resolution = resolve_config(
+        config_values,
+        action=Action.GENERATE,
+        base_dir=_repo_root(),
+    )
+    snapshot = {
+        "cell": cell.as_json(),
+        "model": spec.model.as_json(),
+        "model_source": config_values["model"],
+        "color_accuracy": "lc",
+        "variant_overrides": dict(variant_overrides),
+        "process_overrides": dict(process_overrides),
+        "benchmark_overrides": {
+            "benchmark.batch_size": 64,
+            "evaluator.batch_size": 64,
+        },
+        "generation_slice": None,
+        "runtime_selector_policy": "complete_lc_runtime_selectors_v1",
+        "target_runtime": target_runtime,
+        "cell_cores": cell_cores,
+        "artifact_reused_for_timing": artifact_reusable,
+        "source_provenance": _report_source_provenance(),
+        "captured_at": _utc_now(),
+    }
+    snapshot_path.write_text(_json_text(snapshot), encoding="utf-8")
+    command = [
+        os.fspath(DEFAULT_DEV_PYTHON),
+        "docs/result_tables.py",
+        "measure-cell",
+        "--dataset-id",
+        cell.dataset_id,
+        "--n-final",
+        str(cell.n_final),
+    ]
+    try:
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(
+                f"# pyAmpliCol complete LC cell {cell.cell_id} started "
+                f"{_utc_now()}\n"
+            )
+            log.flush()
+            with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                model_for_generation: object | None = None
+                model_precompile_metadata: dict[str, object] = {
+                    "model_precompile_policy": PYAMPLICOL_GENERATION_PROFILE_POLICY,
+                    "model_precompile_seconds": None,
+                    "model_precompile_cache_dir": None,
+                    "model_precompile_used_cache": None,
+                    "model_precompile_source_kind": None,
+                    "generation_timer_excludes_model_compile": True,
+                    "model_precompile_skipped": "artifact_reused_for_timing",
+                }
+                if artifact_reusable:
+                    generation_seconds = float(reusable_generation_seconds)
+                else:
+                    model_for_generation, model_precompile_metadata = (
+                        _precompile_model_for_generation(spec.model, config_values)
+                    )
+                    started = time.perf_counter()
+                    with _generation_timeout(generation_timeout_seconds):
+                        Generator(resolution).generate(
+                            cell.process,
+                            artifact_dir,
+                            model=model_for_generation,
+                            mode="replace",
+                        )
+                    generation_seconds = time.perf_counter() - started
+                runtime_process = _single_artifact_process_id(
+                    artifact_dir,
+                    fallback=cell.process,
+                )
+                runtime = Runtime.load(artifact_dir, process=runtime_process)
+                selected_points = (
+                    points
+                    if points is not None
+                    else _runtime_validation_momenta(runtime)
+                )
+                if selected_points is None:
+                    raise RuntimeError(
+                        "pyAmpliCol LC benchmark requires validation momenta"
+                    )
+                selector_contract = _lc_runtime_selector_contract(
+                    cell=cell,
+                    spec=spec,
+                    reference_measurement=legacy or {},
+                    physics=runtime.physics,
+                    artifact_root=artifact_root,
+                    fixed_helicity=fixed_helicity,
+                )
+                selected = _profile_eager_runtime(
+                    runtime,
+                    benchmark_config=resolution.effective.benchmark,
+                    points=selected_points,
+                    color_flow_ids=selector_contract["selected_color_flow_ids"],  # type: ignore[arg-type]
+                )
+                all_flow = _profile_eager_runtime(
+                    runtime,
+                    benchmark_config=resolution.effective.benchmark,
+                    points=selected_points,
+                    helicity_ids=selector_contract["all_flow_helicity_ids"],  # type: ignore[arg-type]
+                )
+    except ReportGenerationTimeout as exc:
+        return (
+            _failure_measurement(
+                ResultStatus.TIMEOUT,
+                str(exc),
+                failure_kind="generation_timeout",
+                artifact_path=artifact_dir,
+                log_path=log_path,
+                manifest_path=manifest_path,
+                timeout_seconds=generation_timeout_seconds,
+                command=command,
+                metadata={
+                    "cell": cell.as_json(),
+                    "input_snapshot_path": os.fspath(snapshot_path),
+                    "source_provenance": _report_source_provenance(),
+                },
+            ),
+            None,
+        )
+    except Exception as exc:
+        status = (
+            ResultStatus.UNSUPPORTED
+            if isinstance(exc, CompatibilityError)
+            else ResultStatus.ERROR
+        )
+        return (
+            _failure_measurement(
+                status,
+                str(exc),
+                failure_kind=type(exc).__name__,
+                artifact_path=artifact_dir,
+                log_path=log_path,
+                manifest_path=manifest_path,
+                timeout_seconds=generation_timeout_seconds,
+                command=command,
+                metadata={
+                    "cell": cell.as_json(),
+                    "input_snapshot_path": os.fspath(snapshot_path),
+                    "source_provenance": _report_source_provenance(),
+                },
+            ),
+            None,
+        )
+
+    common_measurement_fields = {
+        "generation_seconds": generation_seconds,
+        "requested_config": config_to_dict(resolution.requested),
+        "effective_config": config_to_dict(resolution.effective),
+        "artifact_path": os.fspath(artifact_dir),
+        "log_path": os.fspath(log_path),
+        "manifest_path": os.fspath(manifest_path),
+        "limit_gib": None,
+        "timeout_seconds": generation_timeout_seconds,
+        "command": command,
+    }
+    common_metadata = {
+        "cell": cell.as_json(),
+        "model_source": snapshot["model_source"],
+        "input_snapshot_path": os.fspath(snapshot_path),
+        "runtime_process": runtime_process,
+        "artifact_reused_for_timing": artifact_reusable,
+        "generation_seconds_source": (
+            "previous_measurement" if artifact_reusable else "fresh_generation"
+        ),
+        "source_provenance": _report_source_provenance(),
+        "generation_slice": None,
+        "runtime_selector_policy": snapshot["runtime_selector_policy"],
+        "selector_contract": selector_contract,
+        **model_precompile_metadata,
+    }
+    for measurement, role in (
+        (selected, "selected-flow-helicity-sum"),
+        (all_flow, "all-flows-fixed-helicity"),
+    ):
+        measurement.update(common_measurement_fields)
+        metadata = dict(
+            measurement.get("metadata")
+            if isinstance(measurement.get("metadata"), Mapping)
+            else {}
+        )
+        metadata.update(common_metadata)
+        metadata["runtime_selector_role"] = role
+        measurement["metadata"] = metadata
 
     combined = dict(selected)
     metadata = dict(
@@ -6756,6 +6935,8 @@ def _measure_pyamplicol_lc_two_workloads(
         "selected_backend": backend,
         "selected_jit_optimization_level": jit_level,
         "selected_output_dir": selected.get("artifact_path"),
+        "reference_color_order": selector_contract["selected_reference_color_order"],
+        "selected_color_flow_ids": selector_contract["selected_color_flow_ids"],
         "all_flow_status": _measurement_status(all_flow),
         "all_flow_generation_s": all_flow.get("generation_seconds"),
         "all_flow_runtime_us_per_point": (
@@ -6780,11 +6961,21 @@ def _measure_pyamplicol_lc_two_workloads(
         "all_flow_source_helicities": fixed_helicity["source_helicities"],
         "all_flow_amplicol_helicities": fixed_helicity["amplicol_helicities"],
         "all_flow_validation_note": fixed_helicity["validation_note"],
+        "all_flow_helicity_ids": selector_contract["all_flow_helicity_ids"],
     }
     metadata["old_matrix_format"] = old_fields
     metadata["selected_flow_measurement"] = selected
     metadata["all_flow_measurement"] = all_flow
     combined["metadata"] = metadata
+    manifest = {
+        "cell": cell.as_json(),
+        "measurement": combined,
+        "selector_contract": selector_contract,
+        "input_snapshot_path": os.fspath(snapshot_path),
+        "source_provenance": _report_source_provenance(),
+        "captured_at": _utc_now(),
+    }
+    manifest_path.write_text(_json_text(manifest), encoding="utf-8")
     return combined, selected_points
 
 
