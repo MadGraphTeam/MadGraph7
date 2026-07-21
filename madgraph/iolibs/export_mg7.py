@@ -196,8 +196,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             pdg_color_types[part_id] = self.model.get_particle(part_id).get_color()
             if abs(part_id) in self.model["merged_particles"]:
                 for pdg in self.model["merged_particles"][abs(part_id)]:
-                    sign = -1 if part_id < 0 else 1
-                    pdg_color_types[sign * pdg] = sign * self.model.get_particle(part_id).get_color()
+                    pdg_color_types[pdg] = self.model.get_particle(part_id).get_color()
 
         has_mirror_all = self.matrix_element.get("has_mirror_process")
         same_initial_multiparticle = self.incoming[0] == self.incoming[1]

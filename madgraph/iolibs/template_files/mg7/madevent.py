@@ -984,6 +984,7 @@ class MadgraphSubprocess:
                     integration_order=0,
                     e_min=e_min,
                     e_max=e_max,
+                    pdg_id=pid,
                 ))
             vertices = channel["vertices"]
             diagrams = channel["diagrams"]
