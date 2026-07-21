@@ -285,7 +285,7 @@ def test_plan_v3_binding_failure_is_closed_and_removes_partial_output(
     assert not destination.exists()
 
 
-def test_plan_v2_remains_default_and_compiled_mode_ignores_v3_gate(
+def test_plan_v3_is_default_v2_is_explicit_and_compiled_mode_ignores_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -296,16 +296,33 @@ def test_plan_v2_remains_default_and_compiled_mode_ignores_v3_gate(
         "PreparedCatalogEagerKernelResolver",
         lambda *_args: resolver,
     )
-    monkeypatch.setattr(
-        generation_service,
-        "build_eager_lowering_input_v1",
-        _forbidden("default plan-v2 built a v3 lowering input"),
+    captured: list[EagerLoweringInputV1] = []
+
+    def binding(lowering_input: EagerLoweringInputV1, destination: str) -> object:
+        captured.append(lowering_input)
+        Path(destination).write_bytes(_RUNTIME_BYTES)
+        return _binding_result(lowering_input)
+
+    _patch_binding(monkeypatch, binding)
+
+    eager_backend = generation_service.GenerationBackend(
+        RunConfig(
+            action=Action.GENERATE,
+            evaluator=EvaluatorConfig(execution_mode="eager"),
+        ),
+        None,
     )
-    monkeypatch.setattr(
-        generation_service,
-        "_invoke_rust_eager_lowering_v1",
-        _forbidden("default plan-v2 invoked Rust lowering"),
+    eager = eager_backend._construct_eager_artifact(
+        compiled,
+        model,
+        resolved,
+        tmp_path,
+        PhaseHandle("v3", None, 1),
     )
+    assert isinstance(eager, EagerPlanV3ProcessArtifact)
+    assert len(captured) == 1
+
+    monkeypatch.setenv(generation_service._EAGER_PLAN_VERSION_ENV, "v2")
 
     class V2Tables:
         referenced_kernel_ids = frozenset({100})
@@ -324,23 +341,16 @@ def test_plan_v2_remains_default_and_compiled_mode_ignores_v3_gate(
             cast(object, V2Tables()),
         ),
     )
-    eager_backend = generation_service.GenerationBackend(
-        RunConfig(
-            action=Action.GENERATE,
-            evaluator=EvaluatorConfig(execution_mode="eager"),
-        ),
-        None,
-    )
-    eager = eager_backend._construct_eager_artifact(
+    explicit_v2 = eager_backend._construct_eager_artifact(
         compiled,
         model,
         resolved,
-        tmp_path,
+        tmp_path / "v2",
         PhaseHandle("v2", None, 1),
     )
-    assert isinstance(eager, EagerProcessArtifact)
+    assert isinstance(explicit_v2, EagerProcessArtifact)
 
-    monkeypatch.setenv(generation_service._EAGER_PLAN_VERSION_ENV, "v3")
+    monkeypatch.setenv(generation_service._EAGER_PLAN_VERSION_ENV, "v2")
     compiled_backend = generation_service.GenerationBackend(
         RunConfig(action=Action.GENERATE),
         None,

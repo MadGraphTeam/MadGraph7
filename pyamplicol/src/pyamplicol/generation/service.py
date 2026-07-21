@@ -139,7 +139,7 @@ class _RustEagerLoweringOutput:
 
 
 def _selected_eager_plan_version() -> Literal["v2", "v3"]:
-    value = os.environ.get(_EAGER_PLAN_VERSION_ENV, _EAGER_PLAN_V2).strip().lower()
+    value = os.environ.get(_EAGER_PLAN_VERSION_ENV, _EAGER_PLAN_V3).strip().lower()
     if value not in {_EAGER_PLAN_V2, _EAGER_PLAN_V3}:
         raise GenerationError(
             f"{_EAGER_PLAN_VERSION_ENV} must be {_EAGER_PLAN_V2!r} or "
