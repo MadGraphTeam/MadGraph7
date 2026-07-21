@@ -208,6 +208,9 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     auto acc_float_array = [](int n) {
         return Type(DataType::dt_float, acc_batch_size, {n});
     };
+    auto acc_int_array = [](int n) {
+        return Type(DataType::dt_int, acc_batch_size, {n});
+    };
     auto acc_four_vec_array = [](int n) {
         return Type(DataType::dt_float, acc_batch_size, {n, 4});
     };
@@ -245,9 +248,7 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     ret.push_back("x2_acc", acc_float);
     if (_mapping.return_invariants()) {
         int invariant_count = static_cast<int>(_mapping.invariant_count());
-        ret.push_back(
-            "invariant_pids_and_masks_acc", single_int_array(invariant_count)
-        );
+        ret.push_back("invariant_pids_and_masks_acc", acc_int_array(invariant_count));
         ret.push_back("invariant_masses_acc", acc_float_array(invariant_count));
         ret.push_back("invariant_virtualities_acc", acc_float_array(invariant_count));
     }
@@ -386,12 +387,11 @@ NamedVector<Value> Integrand::build_channel_part(
     std::array<Value, 2> x_acc{
         {fb.batch_gather(indices_acc, x0), fb.batch_gather(indices_acc, x1)}
     };
-    // pids and masks are diagram-level constants (independent of the random
-    // numbers), so they don't need to be filtered by indices_acc
     Value invariant_pids_and_masks_acc, invariant_masses_acc,
         invariant_virtualities_acc;
     if (_mapping.return_invariants()) {
-        invariant_pids_and_masks_acc = mapping_result["invariant_pids_and_masks"];
+        invariant_pids_and_masks_acc =
+            fb.batch_gather(indices_acc, mapping_result["invariant_pids_and_masks"]);
         invariant_masses_acc =
             fb.batch_gather(indices_acc, mapping_result["invariant_masses"]);
         invariant_virtualities_acc =

@@ -868,10 +868,31 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_IN_HELICITY_INDEX:
         case UMAMI_IN_DIAGRAM_INDEX:
         case UMAMI_IN_CHANNEL_INDEX:
+        case UMAMI_IN_INVARIANT_COUNT:
             if (input_type.dtype != DataType::dt_int || input_type.shape.size() != 0) {
                 throw std::invalid_argument(
                     std::format(
                         "matrix_element, argument {}: expected batch of integers", i + 1
+                    )
+                );
+            }
+            break;
+        case UMAMI_IN_INVARIANT_PIDS_AND_MASKS:
+            if (input_type.dtype != DataType::dt_int || input_type.shape.size() != 1) {
+                throw std::invalid_argument(
+                    std::format(
+                        "matrix_element, argument {}: expected array of integers", i + 1
+                    )
+                );
+            }
+            break;
+        case UMAMI_IN_INVARIANT_MASSES:
+        case UMAMI_IN_INVARIANT_VIRTUALITIES:
+            if (input_type.dtype != DataType::dt_float ||
+                input_type.shape.size() != 1) {
+                throw std::invalid_argument(
+                    std::format(
+                        "matrix_element, argument {}: expected array of floats", i + 1
                     )
                 );
             }

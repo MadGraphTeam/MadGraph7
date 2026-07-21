@@ -1060,6 +1060,9 @@ class MadgraphSubprocess:
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
+                    return_invariants=self.process.run_card["phasespace"][
+                        "pass_invariants_to_matrix_element"
+                    ],
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -1114,6 +1117,9 @@ class MadgraphSubprocess:
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
             leptonic=self.process.leptonic,
+            return_invariants=self.process.run_card["phasespace"][
+                "pass_invariants_to_matrix_element"
+            ],
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_before, discrete_after = self.build_discrete(
@@ -1377,37 +1383,62 @@ class MadgraphSubprocess:
             flavor_remap.append(flav["index"])
             flavor_factors.append(len(flav["options"]))
             flavor_mirror.append(flav["mirror"])
-        if self.matrix_element:
-            matrix_element = ms.MatrixElement(
-                self.matrix_element,
-                ms.Integrand.matrix_element_inputs,
-                ms.Integrand.matrix_element_outputs,
-                True,
-            )
-        else:
-            matrix_element = ms.MatrixElement(
-                0xBADCAFE,
-                self.particle_count,
-                ms.Integrand.matrix_element_inputs,
-                ms.Integrand.matrix_element_outputs,
-                self.meta["diagram_count"],
-                True,
-            )
+        pass_invariants = self.process.run_card["phasespace"][
+            "pass_invariants_to_matrix_element"
+        ]
+        matrix_element_inputs = list(ms.Integrand.matrix_element_inputs)
+        if pass_invariants:
+            matrix_element_inputs += [
+                ms.MatrixElement.invariant_count_in,
+                ms.MatrixElement.invariant_pids_and_masks_in,
+                ms.MatrixElement.invariant_masses_in,
+                ms.MatrixElement.invariant_virtualities_in,
+            ]
+
         pdf_grid = None if self.process.leptonic else self.process.pdf_grid
         pdf_arg = None if self.process.leptonic else ms.CachedPdf()
-        cross_section = ms.DifferentialCrossSection(
-            matrix_element=matrix_element,
-            cm_energy=self.process.e_cm,
-            running_coupling=None,
-            energy_scale=ms.CachedScale(),
-            pid_options=flavors,
-            pdf1=pdf_arg,
-            pdf2=pdf_arg,
-            input_momentum_fraction=True,
-        )
+
+        def build_cross_section(invariant_count: int) -> ms.DifferentialCrossSection:
+            if self.matrix_element:
+                matrix_element = ms.MatrixElement(
+                    self.matrix_element,
+                    matrix_element_inputs,
+                    ms.Integrand.matrix_element_outputs,
+                    True,
+                    invariant_count,
+                )
+            else:
+                matrix_element = ms.MatrixElement(
+                    0xBADCAFE,
+                    self.particle_count,
+                    matrix_element_inputs,
+                    ms.Integrand.matrix_element_outputs,
+                    self.meta["diagram_count"],
+                    True,
+                    invariant_count,
+                )
+            return ms.DifferentialCrossSection(
+                matrix_element=matrix_element,
+                cm_energy=self.process.e_cm,
+                running_coupling=None,
+                energy_scale=ms.CachedScale(),
+                pid_options=flavors,
+                pdf1=pdf_arg,
+                pdf2=pdf_arg,
+                input_momentum_fraction=True,
+            )
+
+        # only build per-integrand cross sections if invariants are passed
+        shared_cross_section = None if pass_invariants else build_cross_section(0)
+
         partial_weights = self.process.run_card["generation"]["systematics"]
         integrands = []
         for channel in phasespace.channels:
+            cross_section = (
+                shared_cross_section
+                if shared_cross_section is not None
+                else build_cross_section(channel.phasespace_mapping.invariant_count())
+            )
             integrands.append(ms.Integrand(
                 channel.phasespace_mapping,
                 cross_section,
