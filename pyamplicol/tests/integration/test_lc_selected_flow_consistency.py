@@ -391,7 +391,9 @@ def test_complete_pure_gluon_fixed_helicity_preserves_every_physical_flow(
     ).generate("g g > g g", artifact, model=model)
 
     execution = json.loads(
-        (artifact / "processes/g_g_to_g_g/execution.json").read_text(encoding="utf-8")
+        (artifact / "processes/g_g_to_g_g/execution.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert any(
         record["schedule_mode"] == "nested-runtime"
