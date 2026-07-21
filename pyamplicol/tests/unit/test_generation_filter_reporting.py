@@ -40,6 +40,7 @@ def test_generation_reports_structural_reduction_and_helicity_recurrence() -> No
     assert set(prepared.filters) == {
         "structural_helicity_reduction",
         "helicity_recurrence",
+        "lc_flow_layout",
     }
     structural = prepared.filters["structural_helicity_reduction"]
     assert isinstance(structural, dict)

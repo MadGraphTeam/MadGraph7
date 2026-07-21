@@ -41,6 +41,68 @@ _SUPPORTED_PREPARED_BACKENDS = frozenset(("jit", "asm", "cpp"))
 _PREPARED_CATALOG_ABI = "pyamplicol-prepared-kernel-catalog-v1"
 
 
+@dataclass(frozen=True, slots=True)
+class _ExactCouplingRow:
+    real_parameter_id: int
+    imag_parameter_id: int
+    constant: _ComplexDecimal
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactInvocationRow:
+    kernel_id: int
+    left_value_slot_id: int
+    right_value_slot_id: int
+    left_momentum_slot_id: int
+    right_momentum_slot_id: int
+    coupling_slot_id: int
+    output_factor_source: int
+    attachment_start: int
+    attachment_count: int
+    selector_domain_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactComplexProduct:
+    numerators: tuple[_ComplexDecimal, ...]
+    denominator: _ComplexDecimal | None = None
+
+
+_ExactFactor = _ComplexDecimal | _ExactComplexProduct
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactAttachmentRow:
+    result_current_id: int
+    factor: _ExactFactor
+    selector_domain_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactFinalizationRow:
+    kernel_id: int
+    current_id: int
+    unpropagated_value_slot_id: int
+    propagated_value_slot_id: int
+    momentum_slot_id: int
+    unpropagated_selector_domain_id: int | None = None
+    propagated_selector_domain_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactClosureRow:
+    kernel_id: int
+    left_value_slot_id: int
+    right_value_slot_id: int
+    amplitude_index: int
+    coupling_slot_id: int
+    output_factor_source: int
+    factor: _ExactFactor
+    direct_coefficients: tuple[_ComplexDecimal, ...] | None
+    coherent_group_id: int | None = None
+    selector_domain_id: int | None = None
+
+
 class _KernelEvaluator(Protocol):
     input_len: int
 
@@ -70,6 +132,27 @@ def _complex_mul(left: _ComplexDecimal, right: _ComplexDecimal) -> _ComplexDecim
         left[0] * right[0] - left[1] * right[1],
         left[0] * right[1] + left[1] * right[0],
     )
+
+
+def _complex_div(left: _ComplexDecimal, right: _ComplexDecimal) -> _ComplexDecimal:
+    denominator = right[0] * right[0] + right[1] * right[1]
+    if denominator == _ZERO:
+        raise ArtifactError("exact eager factor has a zero denominator")
+    return (
+        (left[0] * right[0] + left[1] * right[1]) / denominator,
+        (left[1] * right[0] - left[0] * right[1]) / denominator,
+    )
+
+
+def _resolve_exact_factor(factor: _ExactFactor) -> _ComplexDecimal:
+    if not isinstance(factor, _ExactComplexProduct):
+        return factor
+    result = (Decimal(1), _ZERO)
+    for numerator in factor.numerators:
+        result = _complex_mul(result, numerator)
+    if factor.denominator is not None:
+        result = _complex_div(result, factor.denominator)
+    return result
 
 
 def _complex_pair(real: object, imaginary: object, context: str) -> _ComplexDecimal:

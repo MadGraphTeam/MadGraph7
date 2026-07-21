@@ -19,16 +19,12 @@ from pyamplicol.runtime.eager_exact._contracts import (
     _ZERO,
     _complex_add,
     _complex_mul,
-    _complex_pair,
     _complex_zero,
-    _direct_coefficients,
-    _mapping,
-    _sequence,
+    _resolve_exact_factor,
 )
 from pyamplicol.runtime.eager_exact._plan import _EagerExactPlan
 from pyamplicol.runtime.symbolica_exact import (
     _ComplexDecimal,
-    _decimal,
     _fill_momenta,
     _fill_sources,
 )
@@ -46,6 +42,35 @@ def _evaluate_point(
             f"eager runtime has {len(model_parameters)} model parameters, "
             f"expected {plan.parameter_count}"
         )
+    couplings = _resolve_couplings(plan, model_parameters)
+    amplitudes = [_complex_zero() for _ in range(plan.amplitude_count)]
+    selector_groups: tuple[int | None, ...] = (
+        (None,) if plan.selector_group_ids is None else tuple(plan.selector_group_ids)
+    )
+    for selector_group_id in selector_groups:
+        _evaluate_selector_group(
+            plan,
+            point,
+            model_parameters,
+            prepared_parameters,
+            couplings,
+            precision,
+            selector_group_id,
+            amplitudes,
+        )
+    return tuple(amplitudes)
+
+
+def _evaluate_selector_group(
+    plan: _EagerExactPlan,
+    point: tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...],
+    model_parameters: tuple[Decimal, ...],
+    prepared_parameters: tuple[_ComplexDecimal, ...],
+    couplings: tuple[_ComplexDecimal, ...],
+    precision: int,
+    selector_group_id: int | None,
+    amplitudes: list[_ComplexDecimal],
+) -> None:
     flattened = [
         _complex_zero()
         for _ in range(plan.value_component_count + plan.momentum_component_count)
@@ -55,9 +80,27 @@ def _evaluate_point(
     values = flattened[: plan.value_component_count]
     momenta = flattened[plan.value_component_count :]
     currents = [_complex_zero() for _ in range(plan.current_component_count)]
-    couplings = _resolve_couplings(plan, model_parameters)
     for stage in plan.stages:
         for invocation in stage.invocations:
+            if not _selector_domain_active(
+                plan,
+                invocation.selector_domain_id,
+                selector_group_id,
+            ):
+                continue
+            start = invocation.attachment_start
+            stop = start + invocation.attachment_count
+            active_attachments = tuple(
+                attachment
+                for attachment in stage.attachments[start:stop]
+                if _selector_domain_active(
+                    plan,
+                    attachment.selector_domain_id,
+                    selector_group_id,
+                )
+            )
+            if not active_attachments:
+                continue
             kernel = plan.kernels[invocation.kernel_id]
             inputs = _gather_inputs(
                 kernel.record,
@@ -81,17 +124,10 @@ def _evaluate_point(
                 invocation.output_factor_source,
                 couplings[invocation.coupling_slot_id],
             )
-            start = invocation.attachment_start
-            stop = start + invocation.attachment_count
-            for attachment in stage.attachments[start:stop]:
+            for attachment in active_attachments:
                 target = plan.current_slots[attachment.result_current_id]
                 factor = _complex_mul(
-                    _complex_pair(
-                        attachment.factor_real,
-                        attachment.factor_imag,
-                        "eager attachment factor",
-                    ),
-                    output_factor,
+                    _resolve_exact_factor(attachment.factor), output_factor
                 )
                 accumulated = target.read(currents)
                 target.write(
@@ -106,11 +142,22 @@ def _evaluate_point(
         for finalization in stage.finalizations:
             current_slot = plan.current_slots[finalization.current_id]
             current = current_slot.read(currents)
-            if finalization.unpropagated_value_slot_id != MISSING_U32:
+            if (
+                finalization.unpropagated_value_slot_id != MISSING_U32
+                and _selector_domain_active(
+                    plan,
+                    finalization.unpropagated_selector_domain_id,
+                    selector_group_id,
+                )
+            ):
                 plan.value_slots[finalization.unpropagated_value_slot_id].write(
                     values, current, "unpropagated current finalization"
                 )
-            if finalization.kernel_id == MISSING_U32:
+            if finalization.kernel_id == MISSING_U32 or not _selector_domain_active(
+                plan,
+                finalization.propagated_selector_domain_id,
+                selector_group_id,
+            ):
                 continue
             kernel = plan.kernels[finalization.kernel_id]
             inputs = _gather_inputs(
@@ -129,20 +176,24 @@ def _evaluate_point(
                 values, outputs, "propagated current finalization"
             )
 
-    amplitudes = [_complex_zero() for _ in range(plan.amplitude_count)]
-    roots = _sequence(
-        _mapping(plan.runtime_schema.get("amplitude_stage"), "amplitude_stage").get(
-            "roots"
-        ),
-        "amplitude roots",
-    )
-    for index, (closure, raw_root) in enumerate(zip(plan.closures, roots, strict=True)):
+    for closure in plan.closures:
+        if selector_group_id is not None and (
+            closure.coherent_group_id != selector_group_id
+            or not _selector_domain_active(
+                plan,
+                closure.selector_domain_id,
+                selector_group_id,
+            )
+        ):
+            continue
         left = plan.value_slots[closure.left_value_slot_id].read(values)
         right = plan.value_slots[closure.right_value_slot_id].read(values)
         if closure.kernel_id == MISSING_U32:
-            coefficients = _direct_coefficients(
-                _mapping(raw_root, f"amplitude root {index}"), index
-            )
+            coefficients = closure.direct_coefficients
+            if coefficients is None:
+                raise ArtifactError(
+                    "direct eager closure has no exact contraction coefficients"
+                )
             output = _complex_zero()
             for coefficient, left_value, right_value in zip(
                 coefficients, left, right, strict=True
@@ -163,11 +214,7 @@ def _evaluate_point(
                 prepared_parameters=prepared_parameters,
             )
             output = kernel.evaluate(inputs, precision)[0]
-        factor = _complex_pair(
-            closure.factor_real,
-            closure.factor_imag,
-            "eager closure factor",
-        )
+        factor = _resolve_exact_factor(closure.factor)
         if closure.kernel_id != MISSING_U32:
             factor = _complex_mul(
                 factor,
@@ -180,7 +227,18 @@ def _evaluate_point(
         amplitudes[amplitude_id] = _complex_add(
             amplitudes[amplitude_id], _complex_mul(factor, output)
         )
-    return tuple(amplitudes)
+
+
+def _selector_domain_active(
+    plan: _EagerExactPlan,
+    domain_id: int | None,
+    selector_group_id: int | None,
+) -> bool:
+    if plan.selector_domains is None:
+        return True
+    if domain_id is None or selector_group_id is None:
+        raise ArtifactError("compact eager exact execution lacks a selector domain")
+    return selector_group_id in plan.selector_domains[domain_id]
 
 
 def _resolved_output_factor(
@@ -201,14 +259,14 @@ def _resolve_couplings(
     parameters: Sequence[Decimal],
 ) -> tuple[_ComplexDecimal, ...]:
     result = []
-    for index, row in enumerate(plan.couplings):
+    for row in plan.couplings:
         real = (
-            _decimal(row.constant_real, f"coupling {index} real constant")
+            row.constant[0]
             if row.real_parameter_id == MISSING_U32
             else parameters[row.real_parameter_id]
         )
         imaginary = (
-            _decimal(row.constant_imag, f"coupling {index} imaginary constant")
+            row.constant[1]
             if row.imag_parameter_id == MISSING_U32
             else parameters[row.imag_parameter_id]
         )

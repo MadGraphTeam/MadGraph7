@@ -3677,13 +3677,17 @@ mod helicity_recurrence_contract_tests {
 
     #[cfg(feature = "f64-symjit")]
     #[test]
-    fn primary_helicity_recurrence_requires_its_semantic_capability() {
+    fn primary_recurrence_legacy_omission_does_not_mask_other_capability_drift() {
         let mut value = crate::artifact::tests::minimal_helicity_selector_lane_execution();
         value["required_runtime_capabilities"]
             .as_array_mut()
             .expect("capability array")
             .retain(|capability| {
-                capability.as_str() != Some(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY)
+                !matches!(
+                    capability.as_str(),
+                    Some(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY)
+                        | Some(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
+                )
             });
         let manifest = serde_json::from_value::<ExecutionManifest>(value)
             .expect("deserialize selector-lane fixture");
@@ -3694,7 +3698,7 @@ mod helicity_recurrence_contract_tests {
         assert!(
             error
                 .to_string()
-                .contains(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY),
+                .contains(COMPILED_RUNTIME_SELECTORS_CAPABILITY),
             "{error}"
         );
     }

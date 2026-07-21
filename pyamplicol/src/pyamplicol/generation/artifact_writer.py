@@ -48,6 +48,7 @@ from .._internal.versions import (
     SYMJIT_F64_RUNTIME_CAPABILITY,
     TOML_SCHEMA_VERSION,
     package_version,
+    verify_native_module,
 )
 from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
@@ -2283,6 +2284,7 @@ def _target_metadata(
     )
     try:
         rusticol = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(rusticol)
         info = rusticol.target_info()
         triple = str(info.triple)
         available_features = tuple(str(item) for item in info.cpu_features)

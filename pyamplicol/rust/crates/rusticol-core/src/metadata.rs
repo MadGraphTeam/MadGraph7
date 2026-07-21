@@ -496,12 +496,17 @@ impl ProcessPhysics {
                     group.id
                 )));
             }
-            if !helicity_ids.contains_key(group.representative_helicity_id.as_str())
-                || !color_ids.contains_key(group.representative_color_id.as_str())
-            {
+            let has_representative_helicity =
+                helicity_ids.contains_key(group.representative_helicity_id.as_str());
+            let has_representative_color =
+                color_ids.contains_key(group.representative_color_id.as_str());
+            if !has_representative_helicity || !has_representative_color {
                 return Err(RusticolError::artifact(format!(
-                    "reduction group {} references an unknown representative",
-                    group.id
+                    "reduction group {} references an unknown representative: helicity {:?} present={has_representative_helicity}, color {:?} present={has_representative_color}; available colors={:?}",
+                    group.id,
+                    group.representative_helicity_id,
+                    group.representative_color_id,
+                    color_ids.keys().collect::<Vec<_>>(),
                 )));
             }
             if !group

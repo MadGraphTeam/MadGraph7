@@ -620,7 +620,30 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
     representative_manifest.validate().unwrap();
     let representative_physics = PhysicsRuntime::new(representative_manifest.clone()).unwrap();
     let alias = three_cycle_alias();
-    let alias_manifest = apply_final_state_alias_metadata(representative_manifest, &alias).unwrap();
+    let alias_manifest =
+        apply_final_state_alias_metadata(representative_manifest.clone(), &alias).unwrap();
+
+    let helicity_id_map = representative_manifest
+        .helicities
+        .iter()
+        .zip(&alias_manifest.helicities)
+        .map(|(representative, public)| (representative.id.clone(), public.id.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let color_id_map = representative_manifest
+        .color_components
+        .iter()
+        .zip(&alias_manifest.color_components)
+        .map(|(representative, public)| (representative.id().to_string(), public.id().to_string()))
+        .collect::<BTreeMap<_, _>>();
+    let mut override_runtime = empty_generic_runtime();
+    override_runtime.physics_reduction_override = Some(representative_manifest.reduction.clone());
+    override_runtime
+        .remap_physics_reduction_overrides(&helicity_id_map, &color_id_map)
+        .unwrap();
+    assert_eq!(
+        override_runtime.physics_reduction_override,
+        Some(alias_manifest.reduction.clone())
+    );
 
     assert_eq!(alias_manifest.process_id, "cycled");
     assert_eq!(alias_manifest.process, "d d~ > a z g");

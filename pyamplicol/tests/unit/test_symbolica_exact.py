@@ -13,6 +13,7 @@ from pyamplicol.runtime.symbolica_exact import (
     SymbolicaExactExecutor,
     _apply_lc_replay_input_mapping,
     _apply_lc_replay_resolved,
+    _decimal,
     _exact_helicity_plan,
     _ExactEvaluator,
     _ExactRuntimeSourceState,
@@ -22,6 +23,13 @@ from pyamplicol.runtime.symbolica_exact import (
     _upcast_decimal,
     _working_precision,
 )
+
+
+def test_binary64_decimal_tag_preserves_exact_float_value() -> None:
+    parsed = _decimal("binary64:3fb999999999999a", "test scalar")
+
+    assert parsed == Decimal.from_float(0.1)
+    assert parsed != Decimal("0.1")
 
 
 class _RecordingEvaluator:

@@ -179,7 +179,12 @@ The repository flake supplies Python 3.11, the pinned Rust toolchain, C/C++ and
 Fortran compilers, native libraries, PDF utilities, and a complete TeX setup.
 `just dev-install` remains responsible for the lock-controlled Python packages
 and candidate dependency checkouts; the flake deliberately does not duplicate
-them.
+them. It also stages the candidate wheel's native extension and SDK beside
+`src/pyamplicol` for source-tree tests. Contributor builds record a lightweight
+native-source build ID and the staged extension hash. If native sources change,
+or a different extension is found, the next import fails with a request to rerun
+`just dev-install` instead of silently loading stale code. Published wheels keep
+the normal package-manager import path.
 
 Strict source and wheel builds use `dependencies/release-lock.toml` and fail
 closed while a required published dependency remains unverified. Contributor

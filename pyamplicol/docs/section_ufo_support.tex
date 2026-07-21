@@ -18,9 +18,8 @@ contract: \texttt{BuiltinSM}\allowbreak\texttt{Model} may use SM-specific
 formulae, while \texttt{CompiledUFO}\allowbreak\texttt{Model} must derive its
 decisions from particle metadata,
 normalized tensors, propagators, couplings, and exact algebra.  The boundary
-is audited by \path{tests/unit/test_model_boundary_audit.py}; in particular,
-SM PDG classifiers and built-in implementation symbols may not leak into the
-external-model modules.
+forbids SM PDG classifiers and built-in implementation symbols from leaking
+into the external-model modules.
 
 \subsection{One route from UFO and JSON to an executable model}
 
@@ -124,7 +123,7 @@ materializes dense tensor components in a declared Cartesian order.  Residual
 UFO tensor heads, indeterminate expressions, duplicate coordinates, or missing
 dense coordinates are errors.
 
-The currently normalized Lorentz basis includes scalars, momenta, metrics,
+The normalized Lorentz basis includes scalars, momenta, metrics,
 Dirac identity and gamma matrices, \(\gamma_5\), chiral projectors, slashed
 momenta, and sigma tensors.  The supported colour representations are the
 SU(3) singlet, fundamental, antifundamental, and adjoint.  Exact trilinear
@@ -178,7 +177,7 @@ The word \emph{proof} is used narrowly.  It is a reproducible algebraic
 witness that an optimized or decomposed executable contract reconstructs the
 normalized source contract.  It is not a statement that a model is physically
 consistent, unitary, or gauge complete.  Three assurance mechanisms are
-currently distinct:
+distinct:
 
 \begin{enumerate}
   \item A \textbf{serialized decomposition proof} is attached to a four-point
@@ -228,8 +227,8 @@ spinor indices.  Its reserved replacement head is
 \begin{center}
   \texttt{pyamplicol::canonical\_tensor\_index}.
 \end{center}
-Tests explicitly check alpha-renaming invariance and contraction-graph
-sensitivity.
+The certificate contract requires alpha-renaming invariance and
+contraction-graph sensitivity.
 
 The important fail-closed distinction is:
 \begin{itemize}
@@ -343,7 +342,7 @@ Eq.~\eqref{eq:contact-final}; Eq.~\eqref{eq:contact-partial} has unit coupling
 and no propagator.  The factorization therefore introduces neither an
 unphysical pole nor a duplicated coupling/order weight.
 
-The Lorentz split is not inferred from the name ``four gluon.''  Spenso first
+The Lorentz split is not inferred from the phrase ``four-gluon vertex.''  Spenso first
 contracts the chosen input pair while leaving the result and remaining-leg
 axes open.  \texttt{\_compress\_contact\_components()} stores a basis of
 distinct components and reconstructs every omitted component by an exact
@@ -398,7 +397,7 @@ the direct input work exceeds 1024 components; each staged group is limited to
 256 input components and its intermediate tensor is materialized before the
 next contraction.  This changes only contraction order.  The direct function
 \path{eager_color_singlet_vertex_term_components()} remains the
-component oracle used to test the tree result.
+component oracle for the tree result.
 
 This is deliberately not advertised as an arbitrary coloured \(n\)-point
 algorithm.  It is generic in valence, spin, momentum dependence, and Lorentz
@@ -463,15 +462,15 @@ reflection, and shared single-trace basis.  The ordinary DAG remains complete
 when the certificate is absent.
 
 These generic proofs recover the built-in-SM current topology for the
-established UFO-SM validation ladder without assuming that every future
-UFO model must do so.  The current tests compare the built-in SM and UFO-SM
-for electroweak, QCD, top, pure-gluon, charged-current, multi-boson, and up to
-three-quark-line examples.  They require equal minimal coupling limits and
-equal current, interaction, amplitude-root, and colour-sector counts; exact
-kernel reuse may reduce evaluator calls but may not increase them.  The tests
-also repeat the proof after arbitrary particle-name, PDG, and inventory-order
-changes.  This is strong evidence for the certified classes, not a universal
-topology theorem for all UFO syntax.
+established UFO-SM validation matrix without assuming that every external model
+must do so.  Validation covers electroweak, QCD, top, pure-gluon,
+charged-current, multi-boson, and up to three-quark-line examples.  Equivalent
+built-in and UFO-SM models must have equal minimal coupling limits and equal
+current, interaction, amplitude-root, and colour-sector counts; exact kernel
+reuse may reduce evaluator calls but may not increase them.  The same proof is
+invariant under arbitrary particle-name, PDG, and inventory-order changes.
+This establishes the certified classes, not a universal topology theorem for
+all UFO syntax.
 
 \subsection{Propagators, closures, Goldstones, and spin two}
 
@@ -523,8 +522,8 @@ massive spin-two phenomenology is not yet a qualified release capability.
 
 \subsection{Implemented support boundary}
 
-The support matrix below separates an exact current capability from
-a known unsupported class.  ``Proof-gated'' means that qualifying models work
+The support matrix below separates implemented current capabilities from
+unsupported classes.  ``Proof-gated'' means that qualifying models work
 without an SM-specific exception; it does not mean every algebraically
 equivalent UFO spelling is already recognized.
 
@@ -594,74 +593,54 @@ normalization and contact lowering impose the narrower executable boundary
 after preflight.  Thus recognizing a UFO head such as \texttt{K6} during
 syntax inspection does not imply that a sextet colour current can be built.
 
-\subsection{Extending the proof-gated subset}
+\subsection{Support boundary and extension requirements}
 
-A contributor should extend contracts rather than add a process-family or PDG
-exception.  The safe sequence is:
-\begin{enumerate}
-  \item add a typed source representation and normalization rule in
-        \path{models/tensors.py} or the propagator compiler;
-  \item define the component ordering, current embedding, direct contraction,
-        and colour-flow meaning in \path{models/contracts.py} and
-        \path{models/compiler_tensor_ordering.py};
-  \item materialize a direct component oracle before introducing a factored or
-        reused evaluator;
-  \item encode the exact identity, orientation signs, coupling/order placement,
-        and stale-proof identity in a proof record or derived certificate;
-  \item test source-index renaming, particle/PDG renaming, serialization round
-        trip, forged or stale metadata, resolved-sum equality, and comparison
-        with the direct or higher-precision oracle.
-\end{enumerate}
+Support is defined by algebraic contracts rather than process-family or PDG
+exceptions.  A new class requires a typed source representation and
+normalization, an explicit component ordering and current embedding, a direct
+contraction and colour-flow interpretation, and an exact proof of orientation
+signs, coupling placement, multiplicities, and any evaluator reuse.  The proof
+must remain invariant under dummy-index, source-label, and particle-name
+renaming, and its resolved sum must agree with a direct or higher-precision
+oracle.  Without those contracts the model is rejected at the corresponding
+boundary rather than assigned an inferred implementation.
 
 \begingroup
 \footnotesize
-\begin{longtable}{@{}L{1.42in}L{0.75in}L{4.15in}@{}}
+\begin{longtable}{@{}L{1.75in}L{4.65in}@{}}
 \toprule
-\textbf{remaining class} & \textbf{effort} & \textbf{main missing contract} \\
+\textbf{unsupported or restricted class} & \textbf{required contract} \\
 \midrule
 \endfirsthead
 \toprule
-\textbf{remaining class} & \textbf{effort} & \textbf{main missing contract} \\
+\textbf{unsupported or restricted class} & \textbf{required contract} \\
 \midrule
 \endhead
-additional scalar UFO functions & low--medium & define a serializable
+additional scalar UFO functions & define a serializable
   Symbolica lowering and derivatives/branch semantics where relevant \\
-adjoint $d^{abc}$ trilinears & medium & add a physical colour basis,
+adjoint $d^{abc}$ trilinears & add a physical colour basis,
   projection, contraction, and LC/NLC/full interpretation \\
-epsilon and sextet tensors & medium--high & add sextet current identities,
+epsilon and sextet tensors & add sextet current identities,
   conjugation, flow basis, and sparse colour metric before tensor lowering \\
-other coloured four-point contacts & medium--high & prove a complete set of
+other coloured four-point contacts & prove a complete set of
   auxiliary irreducible channels and exact reconstruction, including repeated
   representations and multiplicities \\
-coloured valence above four & high & general representation-channel tree with
+coloured valence above four & general representation-channel tree with
   associativity/basis-change proofs and controlled intermediate growth \\
-Majorana/FNV fermions & high & fermion-flow orientation, charge conjugation,
+Majorana/FNV fermions & fermion-flow orientation, charge conjugation,
   signs, wavefunctions, propagators, and closure contracts \\
-spin $3/2$ & high & ordered Rarita--Schwinger wavefunctions, projectors,
+spin $3/2$ & ordered Rarita--Schwinger wavefunctions, projectors,
   contractions, and tensor-component qualification \\
-multiple colour groups & high & group-qualified representations, independent
+multiple colour groups & group-qualified representations, independent
   invariant tensors, product flow bases, and contracted colour metrics \\
-general massive spin two & medium--high & broader model and gauge/constraint
+general massive spin two & broader model and gauge/constraint
   validation around the existing 16-component propagator contract \\
 \bottomrule
 \end{longtable}
 \endgroup
 
-The principal regression suites are:
-\begin{center}
-\footnotesize
-\begin{tabular}{@{}L{3.25in}L{3.25in}@{}}
-\path{tests/unit/test_contact_color_proofs.py} &
-\path{tests/unit/test_contact_tensor_execution.py} \\
-\path{tests/unit/test_external_symmetry_certificates.py} &
-\path{tests/unit/test_external_model_independence.py} \\
-\path{tests/unit/test_external_goldstone_contract.py} &
-\path{tests/unit/test_external_spin2_contraction.py} \\
-\path{tests/unit/test_compiler_tensor_order.py} & \\
-\end{tabular}
-\end{center}
-They test not only successful examples but also deliberately deformed tensors,
-couplings, propagators, index orderings, and stale proof records.  That
-negative coverage is what makes the advertised subset useful: an unfamiliar
-model either satisfies the same explicit algebraic contract or receives a
-diagnostic at the boundary where a new proof is required.
+Validation includes successful examples and deliberately deformed tensors,
+couplings, propagators, index orderings, and proof records.  This negative
+coverage is part of the advertised support boundary: an unfamiliar model either
+satisfies the same explicit algebraic contract or receives a diagnostic where a
+new proof is required.

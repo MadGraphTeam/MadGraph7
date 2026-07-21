@@ -672,7 +672,8 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
         name_cursor = name_cursor
             .checked_add(1)
             .ok_or_else(|| RusticolError::artifact("retained name count exceeds u32"))?;
-        let table_name = required_catalog(&names, table.name_id, "retained table name")?.clone();
+        let table_name: Box<str> =
+            required_catalog(&names, table.name_id, "retained table name")?.into();
         for (column_index, column) in table_columns.iter().enumerate() {
             if column.table_id != table.table_id
                 || column.column_id != usize_u32(column_index, "retained column ID")?
@@ -701,8 +702,8 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
             if column.value_start != *cursor {
                 return Err(integrity("retained primitive ranges are not contiguous"));
             }
-            let column_name =
-                required_catalog(&names, column.name_id, "retained column name")?.clone();
+            let column_name: Box<str> =
+                required_catalog(&names, column.name_id, "retained column name")?.into();
             let values = decode_retained_column_values(
                 &primitive_sections,
                 column,
@@ -2142,13 +2143,10 @@ fn require_count(section: &DecodedSection<'_>, expected: u64, context: &str) -> 
     Ok(())
 }
 
-fn required_catalog<'a>(
-    values: &'a [Box<str>],
-    id: u32,
-    context: &str,
-) -> RusticolResult<&'a Box<str>> {
+fn required_catalog<'a>(values: &'a [Box<str>], id: u32, context: &str) -> RusticolResult<&'a str> {
     values
         .get(required_index(id, values.len(), context)?)
+        .map(Box::as_ref)
         .ok_or_else(|| integrity(format!("{context} is out of range")))
 }
 

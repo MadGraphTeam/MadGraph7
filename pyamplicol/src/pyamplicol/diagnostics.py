@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 from . import __version__
+from ._internal.versions import verify_native_module
 
 CheckStatus = Literal["pass", "warning", "fail"]
 
@@ -66,6 +67,7 @@ def _asset_check() -> DiagnosticCheck:
 def _native_check(*, required: bool) -> DiagnosticCheck:
     try:
         native = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(native)
         abi_version = int(native.abi_version())
         native_version = str(native.package_version())
     except (ImportError, AttributeError, TypeError, ValueError, RuntimeError) as exc:
@@ -119,6 +121,7 @@ def _complex_pair(value: object, description: str) -> complex:
 def _physics_check() -> DiagnosticCheck:
     try:
         native = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(native)
         target = str(native.target_info().triple)
         fixture = resources.files("pyamplicol").joinpath("assets", "selftest", target)
         expected_raw = json.loads(

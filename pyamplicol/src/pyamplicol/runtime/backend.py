@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_DAG_F64_RUNTIME_CAPABILITY,
+    verify_native_module,
 )
 from pyamplicol.api.errors import (
     ArtifactError,
@@ -53,6 +54,7 @@ def _manifest_integer(value: object, description: str) -> int:
 def _load_native_module() -> Any:
     try:
         module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
     except ImportError as exc:
         raise DependencyError(
             "the pyamplicol._rusticol native runtime extension is unavailable"
@@ -99,8 +101,7 @@ def _accepts_keyword_arguments(operation: object, *names: str) -> bool:
         return False
     declared = {parameter.name for parameter in parameters}
     accepts_arbitrary = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
     )
     return accepts_arbitrary or all(name in declared for name in names)
 
@@ -608,9 +609,7 @@ class RusticolRuntimeBackend:
         precision: int = 16,
     ) -> ResolvedEvaluation:
         helicities = _normalized_selectors(helicities)
-        color_flows = self._resolve_color_flows(
-            _normalized_selectors(color_flows)
-        )
+        color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         if precision != 16:
             return self._exact().evaluate_resolved(
                 momenta,

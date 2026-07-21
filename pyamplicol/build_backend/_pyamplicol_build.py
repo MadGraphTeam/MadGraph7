@@ -127,6 +127,28 @@ _CANDIDATE_SOURCES = {
     "symbolica-community",
     "symjit",
 }
+_NATIVE_BUILD_INPUT_FILES = (
+    Path("Cargo.lock"),
+    Path("Cargo.toml"),
+    Path("pyproject.toml"),
+    Path("rust-toolchain.toml"),
+    Path("dependencies/candidate-Cargo.lock"),
+    Path("dependencies/candidate-cargo-config.toml"),
+    Path("dependencies/contributor-lock.toml"),
+    Path("dependencies/install-state.json"),
+    Path("dependencies/release-lock.toml"),
+)
+_NATIVE_BUILD_INPUT_TREES = (Path("build_backend"), Path("rust"))
+_NATIVE_BUILD_INPUT_SUFFIXES = {
+    ".f90",
+    ".h",
+    ".hpp",
+    ".json",
+    ".py",
+    ".pyi",
+    ".rs",
+    ".toml",
+}
 _INJECTION_ENVIRONMENT_NAMES = {
     "AR",
     "CARGO",
@@ -147,6 +169,7 @@ _INJECTION_ENVIRONMENT_NAMES = {
     "OBJC_INCLUDE_PATH",
     "PKG_CONFIG_PATH",
     "PYAMPLICOL_BUILD_OVERLAY",
+    "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256",
     "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP",
     "PYAMPLICOL_SDK_STAGING",
     "PYTHONHOME",
@@ -175,8 +198,7 @@ def _prepared_model_bootstrap(mode: str) -> bool:
         )
     if value == "1" and mode != "candidate":
         raise RuntimeError(
-            "prepared-model bootstrap is restricted to non-publishable candidate "
-            "builds"
+            "prepared-model bootstrap is restricted to non-publishable candidate builds"
         )
     return value == "1"
 
@@ -649,6 +671,34 @@ def _candidate_digest(
     return digest.hexdigest()[:12]
 
 
+def _native_build_inputs_digest(root: Path) -> str:
+    """Hash every checked-out input that can change the native runtime build."""
+
+    paths = [root / relative for relative in _NATIVE_BUILD_INPUT_FILES]
+    for relative in _NATIVE_BUILD_INPUT_TREES:
+        tree = root / relative
+        if not tree.is_dir():
+            continue
+        paths.extend(
+            path
+            for path in tree.rglob("*")
+            if path.is_file()
+            and not {"__pycache__", "target"}.intersection(path.relative_to(tree).parts)
+            and path.suffix in _NATIVE_BUILD_INPUT_SUFFIXES
+        )
+    digest = hashlib.sha256()
+    for path in sorted(set(paths)):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(8, "little"))
+        digest.update(relative)
+        data = path.read_bytes()
+        digest.update(len(data).to_bytes(8, "little"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
 def _canonical_candidate_config(candidate_config: Path) -> bytes:
     """Return a semantic Cargo patch identity independent of checkout paths."""
 
@@ -699,7 +749,12 @@ def _canonical_checkout_path(raw: str) -> str:
     )
 
 
-def _mark_candidate(overlay: Path, base_version: str) -> None:
+def _mark_candidate(
+    overlay: Path,
+    base_version: str,
+    *,
+    native_build_inputs_sha256: str,
+) -> None:
     if not (ROOT / _CONTRIBUTOR_LOCK).is_file():
         raise RuntimeError("candidate build has no contributor dependency contract")
     check_contributor_lock_consistency(ROOT)
@@ -760,6 +815,8 @@ def _mark_candidate(overlay: Path, base_version: str) -> None:
                 "schema_version": 1,
                 "publishable": False,
                 "candidate_fingerprint": digest,
+                "native_build_inputs_sha256": native_build_inputs_sha256,
+                "source_checkout": str(ROOT.resolve()),
                 "source_revision": source_revision,
                 "version": python_version,
             },
@@ -855,7 +912,12 @@ def _candidate_inputs() -> tuple[Path, Path, Path]:
     return lock, config, state
 
 
-def _stage_cargo_inputs(overlay: Path, mode: str) -> None:
+def _stage_cargo_inputs(
+    overlay: Path,
+    mode: str,
+    *,
+    native_build_inputs_sha256: str | None,
+) -> None:
     """Keep release and contributor Cargo resolution physically separate."""
 
     if mode not in {"candidate", "release"}:
@@ -874,7 +936,13 @@ def _stage_cargo_inputs(overlay: Path, mode: str) -> None:
         if lock.read_bytes() != canonical.read_bytes():
             raise RuntimeError("release build overlay changed canonical Cargo.lock")
         return
-    _mark_candidate(overlay, base_version)
+    if native_build_inputs_sha256 is None:
+        raise RuntimeError("candidate build has no native source identity")
+    _mark_candidate(
+        overlay,
+        base_version,
+        native_build_inputs_sha256=native_build_inputs_sha256,
+    )
     if not config.is_file():
         raise RuntimeError("candidate build overlay has no Cargo patch configuration")
 
@@ -884,8 +952,15 @@ def _overlay(mode: str) -> Iterator[tuple[Path, Path]]:
     with TemporaryDirectory(prefix="pyamplicol-build-") as temporary:
         root = Path(temporary)
         source = root / "source"
+        native_build_inputs_sha256 = (
+            _native_build_inputs_digest(ROOT) if mode == "candidate" else None
+        )
         _copy_allowlisted_source(source)
-        _stage_cargo_inputs(source, mode)
+        _stage_cargo_inputs(
+            source,
+            mode,
+            native_build_inputs_sha256=native_build_inputs_sha256,
+        )
         yield source, root / "cargo-target"
 
 
@@ -1026,6 +1101,17 @@ def _from_overlay(
                 "CARGO_TARGET_DIR": str(target_dir),
                 "PYAMPLICOL_BUILD_OVERLAY": str(overlay),
             }
+            build_info_path = overlay / "src" / "pyamplicol" / "_build_info.json"
+            if build_info_path.is_file():
+                try:
+                    build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
+                    environment["PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256"] = str(
+                        build_info["native_build_inputs_sha256"]
+                    )
+                except (KeyError, OSError, TypeError, ValueError) as error:
+                    raise RuntimeError(
+                        "candidate native provenance could not be exported to Rust"
+                    ) from error
             if sys.platform == "darwin":
                 environment["MACOSX_DEPLOYMENT_TARGET"] = "11.0"
             with _environment(environment), _working_directory(overlay):

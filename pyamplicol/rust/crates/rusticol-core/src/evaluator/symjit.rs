@@ -10,6 +10,8 @@ pub(crate) struct SymjitApplicationEvaluator {
     application_path: PathBuf,
     input_len: usize,
     output_len: usize,
+    input_tail_scratch: Vec<Complex<f64>>,
+    output_tail_scratch: Vec<Complex<f64>>,
 }
 
 impl std::fmt::Debug for SymjitApplicationEvaluator {
@@ -103,10 +105,87 @@ impl SymjitApplicationEvaluator {
             application_path: display_path,
             input_len: metadata.input_len,
             output_len: metadata.output_len,
+            input_tail_scratch: Vec::new(),
+            output_tail_scratch: Vec::new(),
         })
     }
 
     pub(crate) fn evaluate_batch(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
+        validate_batch_lengths(
+            batch_size,
+            self.input_len,
+            self.output_len,
+            params.len(),
+            out.len(),
+        )?;
+        if batch_size == 0 {
+            return Ok(());
+        }
+        let lane_width = super::native_f64_simd_lane_width();
+        let remainder = batch_size % lane_width;
+        if remainder == 0 {
+            return evaluate_matrix(
+                &self.applet,
+                &self.application_path,
+                batch_size,
+                params,
+                out,
+            );
+        }
+
+        let aligned_batch_size = batch_size - remainder;
+        if aligned_batch_size != 0 {
+            evaluate_matrix(
+                &self.applet,
+                &self.application_path,
+                aligned_batch_size,
+                &params[..aligned_batch_size * self.input_len],
+                &mut out[..aligned_batch_size * self.output_len],
+            )?;
+        }
+
+        let padded_input_len = lane_width
+            .checked_mul(self.input_len)
+            .ok_or_else(|| RusticolError::invalid_argument("SymJIT SIMD input batch overflows"))?;
+        self.input_tail_scratch
+            .resize(padded_input_len, Complex::new(0.0, 0.0));
+        let source_start = aligned_batch_size * self.input_len;
+        let source_end = source_start + remainder * self.input_len;
+        self.input_tail_scratch[..remainder * self.input_len]
+            .copy_from_slice(&params[source_start..source_end]);
+        let tail_row_start = (remainder - 1) * self.input_len;
+        for row in remainder..lane_width {
+            let target_start = row * self.input_len;
+            self.input_tail_scratch.copy_within(
+                tail_row_start..tail_row_start + self.input_len,
+                target_start,
+            );
+        }
+        let padded_output_len = lane_width
+            .checked_mul(self.output_len)
+            .ok_or_else(|| RusticolError::invalid_argument("SymJIT SIMD output batch overflows"))?;
+        self.output_tail_scratch
+            .resize(padded_output_len, Complex::new(0.0, 0.0));
+        evaluate_matrix(
+            &self.applet,
+            &self.application_path,
+            lane_width,
+            &self.input_tail_scratch,
+            &mut self.output_tail_scratch,
+        )?;
+        let output_start = aligned_batch_size * self.output_len;
+        let output_end = output_start + remainder * self.output_len;
+        out[output_start..output_end]
+            .copy_from_slice(&self.output_tail_scratch[..remainder * self.output_len]);
+        Ok(())
+    }
+
+    pub(crate) fn evaluate_batch_unpadded(
         &self,
         batch_size: usize,
         params: &[Complex<f64>],
@@ -119,19 +198,35 @@ impl SymjitApplicationEvaluator {
             params.len(),
             out.len(),
         )?;
-        let params = complex_slice_as_scalars(params);
-        let out = complex_slice_as_scalars_mut(out);
-        guard_symjit_panic(
-            || self.applet.evaluate_matrix(params, out, batch_size),
-            |detail| {
-                RusticolError::evaluation(format!(
-                    "SymJIT panicked while evaluating application {}: {detail}",
-                    self.application_path.display()
-                ))
-            },
-        )?;
-        Ok(())
+        evaluate_matrix(
+            &self.applet,
+            &self.application_path,
+            batch_size,
+            params,
+            out,
+        )
     }
+}
+
+fn evaluate_matrix(
+    applet: &Applet,
+    application_path: &Path,
+    batch_size: usize,
+    params: &[Complex<f64>],
+    out: &mut [Complex<f64>],
+) -> RusticolResult<()> {
+    let params = complex_slice_as_scalars(params);
+    let out = complex_slice_as_scalars_mut(out);
+    guard_symjit_panic(
+        || applet.evaluate_matrix(params, out, batch_size),
+        |detail| {
+            RusticolError::evaluation(format!(
+                "SymJIT panicked while evaluating application {}: {detail}",
+                application_path.display()
+            ))
+        },
+    )?;
+    Ok(())
 }
 
 fn guard_symjit_panic<T>(
@@ -420,7 +515,7 @@ mod tests {
     #[test]
     fn direct_application_loads_and_evaluates_complex_batches() {
         let path = write_application(&application_bytes(), "batch");
-        let evaluator = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap();
+        let mut evaluator = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap();
         let params = [
             Complex::new(1.0, 2.0),
             Complex::new(3.0, 4.0),
@@ -431,6 +526,32 @@ mod tests {
         evaluator.evaluate_batch(2, &params, &mut outputs).unwrap();
         assert_eq!(outputs[0], Complex::new(4.0, 6.0));
         assert_eq!(outputs[1], Complex::new(3.0, 1.0));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn direct_application_pads_incomplete_simd_tails() {
+        let path = write_application(&application_bytes(), "simd-tail");
+        let mut evaluator = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap();
+        let lane_width = super::super::native_f64_simd_lane_width();
+        let batch_size = lane_width.saturating_add(1);
+        let mut params = Vec::with_capacity(batch_size * 2);
+        let mut expected = Vec::with_capacity(batch_size);
+        for row in 0..batch_size {
+            let left = Complex::new(row as f64 + 1.0, 2.0);
+            let right = Complex::new(3.0, -(row as f64));
+            params.extend([left, right]);
+            expected.push(left + right);
+        }
+        let mut outputs = vec![Complex::new(0.0, 0.0); batch_size];
+        evaluator
+            .evaluate_batch(batch_size, &params, &mut outputs)
+            .unwrap();
+        assert_eq!(outputs, expected);
+        if lane_width > 1 {
+            assert_eq!(evaluator.input_tail_scratch.len(), lane_width * 2);
+            assert_eq!(evaluator.output_tail_scratch.len(), lane_width);
+        }
         let _ = fs::remove_file(path);
     }
 

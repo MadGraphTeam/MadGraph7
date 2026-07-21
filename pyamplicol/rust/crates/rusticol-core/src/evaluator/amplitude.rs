@@ -186,7 +186,10 @@ impl AmplitudeRuntime {
                     }
                 }
             }
-            let input_pack_s = pack_start.elapsed().as_secs_f64();
+            // Generated evaluators may use the platform floating-point ABI
+            // aggressively. Keep timing state in integer-backed Duration
+            // values until the generated call has returned.
+            let input_pack_elapsed = pack_start.elapsed();
             let eval_start = Instant::now();
             if let Some(order) = self.evaluator_output_order.as_deref() {
                 self.evaluator.evaluate_batch_into(
@@ -207,7 +210,10 @@ impl AmplitudeRuntime {
                     &mut self.output_scratch_f64,
                 )?;
             }
-            return Ok((input_pack_s, eval_start.elapsed().as_secs_f64()));
+            return Ok((
+                profile_duration_seconds(input_pack_elapsed),
+                eval_start.elapsed().as_secs_f64(),
+            ));
         }
         let eval_start = Instant::now();
         if let Some(order) = self.evaluator_output_order.as_deref() {
@@ -949,7 +955,7 @@ impl AmplitudeRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
-        let mut input_pack_s = 0.0;
+        let mut input_pack_elapsed = Duration::ZERO;
         let (evaluated, evaluator_call_s) = if let Some(input_components) =
             self.input_components.as_ref()
         {
@@ -977,7 +983,7 @@ impl AmplitudeRuntime {
                     }
                 }
             }
-            input_pack_s = pack_start.elapsed().as_secs_f64();
+            input_pack_elapsed = pack_start.elapsed();
             let eval_start = Instant::now();
             let evaluated = self.evaluator.evaluate_batch_generic(
                 batch_size,
@@ -999,7 +1005,11 @@ impl AmplitudeRuntime {
                 batch_size * self.output_length
             )));
         }
-        Ok((evaluated, input_pack_s, evaluator_call_s))
+        Ok((
+            evaluated,
+            profile_duration_seconds(input_pack_elapsed),
+            evaluator_call_s,
+        ))
     }
 
     #[cfg(feature = "symbolica-runtime")]

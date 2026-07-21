@@ -385,7 +385,7 @@ impl ExecutionRuntime {
                 point,
             )?;
         }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
+        let source_fill_elapsed = source_start.elapsed();
 
         let momentum_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -405,7 +405,7 @@ impl ExecutionRuntime {
                 row_state,
             )?;
         }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
+        let momentum_setup_elapsed = momentum_start.elapsed();
 
         let stages = self.stages.as_mut().expect("generic stages checked");
         if schedule.active_stage_chunk_indices.len() != stages.len() {
@@ -496,8 +496,8 @@ impl ExecutionRuntime {
         Ok((
             resolved,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                momentum_setup_s: profile_duration_seconds(momentum_setup_elapsed),
                 stage_input_pack_s,
                 stage_evaluator_call_s,
                 stage_evaluator_s: stage_input_pack_s + stage_evaluator_call_s,
@@ -670,7 +670,7 @@ impl ExecutionRuntime {
                 point,
             )?;
         }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
+        let source_fill_elapsed = source_start.elapsed();
 
         let momentum_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -690,7 +690,7 @@ impl ExecutionRuntime {
                 row_state,
             )?;
         }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
+        let momentum_setup_elapsed = momentum_start.elapsed();
 
         let stages = self.stages.as_mut().expect("generic stages checked");
         if schedule.active_stage_chunk_indices.len() != stages.len() {
@@ -740,8 +740,8 @@ impl ExecutionRuntime {
         Ok((
             resolved,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                momentum_setup_s: profile_duration_seconds(momentum_setup_elapsed),
                 stage_input_pack_s,
                 stage_evaluator_call_s,
                 stage_evaluator_s: stage_input_pack_s + stage_evaluator_call_s,

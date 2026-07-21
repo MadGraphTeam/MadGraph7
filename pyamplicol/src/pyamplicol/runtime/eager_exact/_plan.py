@@ -32,9 +32,15 @@ from pyamplicol.runtime.eager_exact._contracts import (
     _PREPARED_CATALOG_ABI,
     _SUPPORTED_PREPARED_BACKENDS,
     _artifact_kernel_loader,
+    _complex_pair,
     _component_slots,
     _ComponentSlot,
     _direct_coefficients,
+    _ExactAttachmentRow,
+    _ExactClosureRow,
+    _ExactCouplingRow,
+    _ExactFinalizationRow,
+    _ExactInvocationRow,
     _integer,
     _joined_payload_path,
     _KernelLoader,
@@ -46,14 +52,20 @@ from pyamplicol.runtime.eager_exact._contracts import (
     _sequence,
     _validate_execution_header,
 )
+from pyamplicol.runtime.eager_exact._plan_v3 import (
+    EAGER_PLAN_V3_ABI,
+    _load_eager_exact_sections_v1,
+    _NativeExactSectionsLoader,
+    _validate_plan_v3_execution_header,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class _ExactStage:
     stage_index: int
-    invocations: tuple[EagerInvocationRow, ...]
-    attachments: tuple[EagerAttachmentRow, ...]
-    finalizations: tuple[EagerFinalizationRow, ...]
+    invocations: tuple[_ExactInvocationRow, ...]
+    attachments: tuple[_ExactAttachmentRow, ...]
+    finalizations: tuple[_ExactFinalizationRow, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +171,9 @@ class _ExactParameterDerivation:
 @dataclass(slots=True)
 class _EagerExactPlan:
     runtime_schema: Mapping[str, object]
+    physics_reduction_groups: tuple[Mapping[str, object], ...] | None
+    selector_group_ids: tuple[int, ...] | None
+    selector_domains: tuple[frozenset[int], ...] | None
     kernels: Mapping[int, _LazyExactKernel]
     value_slots: tuple[_ComponentSlot, ...]
     momentum_slots: tuple[_ComponentSlot, ...]
@@ -170,9 +185,199 @@ class _EagerExactPlan:
     parameter_projection: _PreparedParameterProjection
     parameter_derivation: _ExactParameterDerivation | None
     amplitude_count: int
-    couplings: tuple[EagerCouplingRow, ...]
+    couplings: tuple[_ExactCouplingRow, ...]
     stages: tuple[_ExactStage, ...]
-    closures: tuple[EagerClosureRow, ...]
+    closures: tuple[_ExactClosureRow, ...]
+
+    @classmethod
+    def load_for_execution(
+        cls,
+        *,
+        artifact_root: Path,
+        process_root: Path,
+        process_id: str,
+        execution: Mapping[str, object],
+        manifest: ArtifactManifest,
+        kernel_loader: _KernelLoader | None,
+        exact_payloads: ExactEvaluatorPayloadResolver,
+        native_sections_loader: _NativeExactSectionsLoader | None = None,
+    ) -> _EagerExactPlan:
+        if execution.get("eager_plan_abi") == EAGER_PLAN_V3_ABI:
+            return cls.load_v3(
+                artifact_root=artifact_root,
+                process_id=process_id,
+                execution=execution,
+                manifest=manifest,
+                kernel_loader=kernel_loader,
+                exact_payloads=exact_payloads,
+                native_sections_loader=native_sections_loader,
+            )
+        return cls.load(
+            artifact_root=artifact_root,
+            process_root=process_root,
+            process_id=process_id,
+            execution=execution,
+            manifest=manifest,
+            kernel_loader=kernel_loader,
+            exact_payloads=exact_payloads,
+        )
+
+    @classmethod
+    def load_v3(
+        cls,
+        *,
+        artifact_root: Path,
+        process_id: str,
+        execution: Mapping[str, object],
+        manifest: ArtifactManifest,
+        kernel_loader: _KernelLoader | None,
+        exact_payloads: ExactEvaluatorPayloadResolver,
+        native_sections_loader: _NativeExactSectionsLoader | None,
+    ) -> _EagerExactPlan:
+        _validate_plan_v3_execution_header(execution)
+        sections = _load_eager_exact_sections_v1(
+            artifact_root,
+            process_id,
+            loader=native_sections_loader,
+        )
+        (
+            pack,
+            payload_root,
+            effective_kernel_loader,
+        ) = _load_exact_kernel_pack(
+            artifact_root=artifact_root,
+            execution=execution,
+            manifest=manifest,
+            kernel_loader=kernel_loader,
+            exact_payloads=exact_payloads,
+        )
+        return cls._from_exact_sections(
+            runtime_schema=sections.exact_schema,
+            physics_reduction_groups=sections.reduction_groups,
+            selector_group_ids=sections.selector_group_ids,
+            selector_domains=sections.selector_domains,
+            pack=pack,
+            payload_root=payload_root,
+            kernel_loader=effective_kernel_loader,
+            couplings=sections.couplings,
+            stages=tuple(
+                _ExactStage(
+                    stage.stage_index,
+                    stage.invocations,
+                    stage.attachments,
+                    stage.finalizations,
+                )
+                for stage in sections.stages
+            ),
+            closures=sections.closures,
+        )
+
+    @classmethod
+    def _from_exact_sections(
+        cls,
+        *,
+        runtime_schema: Mapping[str, object],
+        physics_reduction_groups: tuple[Mapping[str, object], ...] | None,
+        selector_group_ids: tuple[int, ...] | None,
+        selector_domains: tuple[frozenset[int], ...] | None,
+        pack: PreparedKernelPack,
+        payload_root: Path,
+        kernel_loader: _KernelLoader,
+        couplings: tuple[_ExactCouplingRow, ...],
+        stages: tuple[_ExactStage, ...],
+        closures: tuple[_ExactClosureRow, ...],
+    ) -> _EagerExactPlan:
+        layout = _mapping(runtime_schema.get("parameter_layout"), "parameter_layout")
+        value_count = _integer(
+            layout.get("value_component_count"), "value_component_count"
+        )
+        momentum_count = _integer(
+            layout.get("momentum_parameter_count"), "momentum_parameter_count"
+        )
+        parameter_count = _integer(
+            layout.get("model_parameter_count"), "model_parameter_count"
+        )
+        current_storage = _mapping(
+            runtime_schema.get("current_storage"), "current_storage"
+        )
+        value_storage = _mapping(runtime_schema.get("value_storage"), "value_storage")
+        current_count = _integer(
+            current_storage.get("component_count"), "current component count"
+        )
+        values = _component_slots(
+            value_storage.get("value_slots"),
+            id_field="value_slot_id",
+            start_field="component_start",
+            stop_field="component_stop",
+            dimension_field="dimension",
+            component_count=value_count,
+            context="value slots",
+        )
+        momenta = _component_slots(
+            runtime_schema.get("momentum_slots"),
+            id_field="momentum_slot_id",
+            start_field="component_start",
+            stop_field="component_stop",
+            dimension_field=None,
+            component_count=momentum_count,
+            context="momentum slots",
+        )
+        currents = _component_slots(
+            current_storage.get("current_slots"),
+            id_field="current_id",
+            start_field="component_start",
+            stop_field="component_stop",
+            dimension_field="dimension",
+            component_count=current_count,
+            context="current slots",
+        )
+        kernels = {
+            kernel.kernel_id: _LazyExactKernel(kernel, payload_root, kernel_loader)
+            for kernel in pack.kernels
+            if kernel.contract_kind != "model-parameter"
+        }
+        parameter_projection = _prepared_parameter_projection(
+            pack.kernels,
+            runtime_schema,
+            parameter_count,
+        )
+        parameter_derivation = _exact_parameter_derivation(
+            pack.kernels,
+            runtime_schema,
+            parameter_projection,
+            payload_root,
+            kernel_loader,
+        )
+        amplitude_stage = _mapping(
+            runtime_schema.get("amplitude_stage"), "amplitude_stage"
+        )
+        amplitude_count = _integer(
+            amplitude_stage.get("output_count"),
+            "amplitude output count",
+            minimum=1,
+        )
+        result = cls(
+            runtime_schema=runtime_schema,
+            physics_reduction_groups=physics_reduction_groups,
+            selector_group_ids=selector_group_ids,
+            selector_domains=selector_domains,
+            kernels=kernels,
+            value_slots=values,
+            momentum_slots=momenta,
+            current_slots=currents,
+            value_component_count=value_count,
+            momentum_component_count=momentum_count,
+            current_component_count=current_count,
+            parameter_count=parameter_count,
+            parameter_projection=parameter_projection,
+            parameter_derivation=parameter_derivation,
+            amplitude_count=amplitude_count,
+            couplings=couplings,
+            stages=stages,
+            closures=closures,
+        )
+        result._validate()
+        return result
 
     @classmethod
     def load(
@@ -300,7 +505,7 @@ class _EagerExactPlan:
         )
         plan_record = _mapping(execution.get("plan"), "plan")
         process_prefix = f"processes/{process_id}"
-        couplings = _load_table(
+        raw_couplings = _load_table(
             process_root,
             process_prefix,
             _mapping(plan_record.get("couplings"), "plan.couplings"),
@@ -308,6 +513,18 @@ class _EagerExactPlan:
             payloads,
             process_id,
             "couplings",
+        )
+        couplings = tuple(
+            _ExactCouplingRow(
+                row.real_parameter_id,
+                row.imag_parameter_id,
+                _complex_pair(
+                    row.constant_real,
+                    row.constant_imag,
+                    f"eager coupling {index} constant",
+                ),
+            )
+            for index, row in enumerate(raw_couplings)
         )
         raw_runtime_stages = _sequence(runtime_schema.get("stages"), "runtime stages")
         raw_stages = _sequence(plan_record.get("stages"), "plan.stages")
@@ -328,39 +545,74 @@ class _EagerExactPlan:
             previous_stage = stage_index
             if stage_index != _integer(runtime_stage.get("stage_index"), "stage_index"):
                 raise ArtifactError("eager plan stage does not match runtime schema")
+            raw_invocations = _load_table(
+                process_root,
+                process_prefix,
+                _mapping(stage.get("invocations"), "stage.invocations"),
+                EagerInvocationRow,
+                payloads,
+                process_id,
+                f"stage {stage_index} invocations",
+            )
+            raw_attachments = _load_table(
+                process_root,
+                process_prefix,
+                _mapping(stage.get("attachments"), "stage.attachments"),
+                EagerAttachmentRow,
+                payloads,
+                process_id,
+                f"stage {stage_index} attachments",
+            )
+            raw_finalizations = _load_table(
+                process_root,
+                process_prefix,
+                _mapping(stage.get("finalizations"), "stage.finalizations"),
+                EagerFinalizationRow,
+                payloads,
+                process_id,
+                f"stage {stage_index} finalizations",
+            )
             stages.append(
                 _ExactStage(
                     stage_index,
-                    _load_table(
-                        process_root,
-                        process_prefix,
-                        _mapping(stage.get("invocations"), "stage.invocations"),
-                        EagerInvocationRow,
-                        payloads,
-                        process_id,
-                        f"stage {stage_index} invocations",
+                    tuple(
+                        _ExactInvocationRow(
+                            row.kernel_id,
+                            row.left_value_slot_id,
+                            row.right_value_slot_id,
+                            row.left_momentum_slot_id,
+                            row.right_momentum_slot_id,
+                            row.coupling_slot_id,
+                            row.output_factor_source,
+                            row.attachment_start,
+                            row.attachment_count,
+                        )
+                        for row in raw_invocations
                     ),
-                    _load_table(
-                        process_root,
-                        process_prefix,
-                        _mapping(stage.get("attachments"), "stage.attachments"),
-                        EagerAttachmentRow,
-                        payloads,
-                        process_id,
-                        f"stage {stage_index} attachments",
+                    tuple(
+                        _ExactAttachmentRow(
+                            row.result_current_id,
+                            _complex_pair(
+                                row.factor_real,
+                                row.factor_imag,
+                                f"stage {stage_index} attachment factor",
+                            ),
+                        )
+                        for row in raw_attachments
                     ),
-                    _load_table(
-                        process_root,
-                        process_prefix,
-                        _mapping(stage.get("finalizations"), "stage.finalizations"),
-                        EagerFinalizationRow,
-                        payloads,
-                        process_id,
-                        f"stage {stage_index} finalizations",
+                    tuple(
+                        _ExactFinalizationRow(
+                            row.kernel_id,
+                            row.current_id,
+                            row.unpropagated_value_slot_id,
+                            row.propagated_value_slot_id,
+                            row.momentum_slot_id,
+                        )
+                        for row in raw_finalizations
                     ),
                 )
             )
-        closures = _load_table(
+        raw_closures = _load_table(
             process_root,
             process_prefix,
             _mapping(plan_record.get("closures"), "plan.closures"),
@@ -375,8 +627,38 @@ class _EagerExactPlan:
         amplitude_count = _integer(
             amplitude_stage.get("output_count"), "amplitude output count", minimum=1
         )
+        roots = _sequence(amplitude_stage.get("roots"), "amplitude roots")
+        if len(roots) != len(raw_closures):
+            raise ArtifactError("eager closure rows do not match amplitude roots")
+        closures = tuple(
+            _ExactClosureRow(
+                kernel_id=row.kernel_id,
+                left_value_slot_id=row.left_value_slot_id,
+                right_value_slot_id=row.right_value_slot_id,
+                amplitude_index=row.amplitude_index,
+                coupling_slot_id=row.coupling_slot_id,
+                output_factor_source=row.output_factor_source,
+                factor=_complex_pair(
+                    row.factor_real,
+                    row.factor_imag,
+                    f"eager closure {index} factor",
+                ),
+                direct_coefficients=(
+                    _direct_coefficients(
+                        _mapping(root, f"amplitude root {index}"),
+                        index,
+                    )
+                    if row.kernel_id == MISSING_U32
+                    else None
+                ),
+            )
+            for index, (row, root) in enumerate(zip(raw_closures, roots, strict=True))
+        )
         result = cls(
             runtime_schema=runtime_schema,
+            physics_reduction_groups=None,
+            selector_group_ids=None,
+            selector_domains=None,
             kernels=kernel_map,
             value_slots=values,
             momentum_slots=momenta,
@@ -412,6 +694,37 @@ class _EagerExactPlan:
         return self.parameter_derivation.evaluate(runtime, prepared, precision)
 
     def _validate(self) -> None:
+        if (self.selector_group_ids is None) != (self.selector_domains is None):
+            raise ArtifactError(
+                "eager exact selector groups and domains must be provided together"
+            )
+        selector_groups = (
+            set() if self.selector_group_ids is None else set(self.selector_group_ids)
+        )
+        if self.selector_group_ids is not None:
+            if not self.selector_group_ids:
+                raise ArtifactError("eager exact selector group catalog is empty")
+            if len(selector_groups) != len(self.selector_group_ids):
+                raise ArtifactError("eager exact selector group IDs must be unique")
+            assert self.selector_domains is not None
+            if not self.selector_domains:
+                raise ArtifactError("eager exact selector domain catalog is empty")
+            for index, members in enumerate(self.selector_domains):
+                unknown = members - selector_groups
+                if unknown:
+                    raise ArtifactError(
+                        f"eager exact selector domain {index} references unknown "
+                        f"group {min(unknown)}"
+                    )
+
+        def validate_domain(domain_id: int | None, context: str) -> None:
+            if self.selector_domains is None:
+                if domain_id is not None:
+                    raise ArtifactError(f"{context} unexpectedly has a selector domain")
+                return
+            if domain_id is None or domain_id >= len(self.selector_domains):
+                raise ArtifactError(f"{context} selector domain is out of range")
+
         for index, coupling in enumerate(self.couplings):
             for component, parameter_id in (
                 ("real", coupling.real_parameter_id),
@@ -427,6 +740,10 @@ class _EagerExactPlan:
             cursor = 0
             attached: set[int] = set()
             for index, invocation in enumerate(stage.invocations):
+                validate_domain(
+                    invocation.selector_domain_id,
+                    f"eager invocation {index}",
+                )
                 kernel = self._require_kernel(
                     invocation.kernel_id, "vertex", f"invocation {index}"
                 )
@@ -474,6 +791,10 @@ class _EagerExactPlan:
                     context=f"invocation {index}",
                 )
                 for attachment in stage.attachments[cursor:stop]:
+                    validate_domain(
+                        attachment.selector_domain_id,
+                        "eager attachment",
+                    )
                     current = self._slot(
                         self.current_slots,
                         attachment.result_current_id,
@@ -490,6 +811,14 @@ class _EagerExactPlan:
                 raise ArtifactError("eager attachment table is not fully referenced")
             stage_finalized: set[int] = set()
             for index, finalization in enumerate(stage.finalizations):
+                validate_domain(
+                    finalization.unpropagated_selector_domain_id,
+                    f"eager finalization {index} unpropagated",
+                )
+                validate_domain(
+                    finalization.propagated_selector_domain_id,
+                    f"eager finalization {index} propagated",
+                )
                 if (
                     finalization.current_id in stage_finalized
                     or finalization.current_id in finalized
@@ -572,6 +901,20 @@ class _EagerExactPlan:
         for index, (closure, raw_root) in enumerate(
             zip(self.closures, roots, strict=True)
         ):
+            validate_domain(closure.selector_domain_id, f"eager closure {index}")
+            if self.selector_domains is not None:
+                if closure.coherent_group_id not in selector_groups:
+                    raise ArtifactError(
+                        f"eager closure {index} coherent group is unknown"
+                    )
+                assert closure.selector_domain_id is not None
+                if (
+                    closure.coherent_group_id
+                    not in self.selector_domains[closure.selector_domain_id]
+                ):
+                    raise ArtifactError(
+                        f"eager closure {index} domain excludes its coherent group"
+                    )
             root = _mapping(raw_root, f"amplitude root {index}")
             left = self._slot(
                 self.value_slots, closure.left_value_slot_id, "closure left value"
@@ -592,10 +935,18 @@ class _EagerExactPlan:
                     raise ArtifactError(
                         "direct eager closure lacks contraction metadata"
                     )
-                coefficients = _direct_coefficients(root, index)
+                coefficients = closure.direct_coefficients
+                if not coefficients:
+                    raise ArtifactError(
+                        "direct eager closure has no exact contraction coefficients"
+                    )
                 if left.width != right.width or left.width != len(coefficients):
                     raise ArtifactError("direct eager closure component widths differ")
             else:
+                if closure.direct_coefficients is not None:
+                    raise ArtifactError(
+                        "kernel eager closure carries direct coefficients"
+                    )
                 if root.get("kind") == "direct-contraction":
                     raise ArtifactError("kernel eager closure has direct metadata")
                 if closure.coupling_slot_id >= len(self.couplings):
@@ -721,6 +1072,59 @@ class _EagerExactPlan:
                     f"kernel {record.kernel_id} repeats eager input {descriptor!r}"
                 )
             seen.add(descriptor)
+
+
+def _load_exact_kernel_pack(
+    *,
+    artifact_root: Path,
+    execution: Mapping[str, object],
+    manifest: ArtifactManifest,
+    kernel_loader: _KernelLoader | None,
+    exact_payloads: ExactEvaluatorPayloadResolver,
+) -> tuple[PreparedKernelPack, Path, _KernelLoader]:
+    payloads = _PayloadIndex.from_manifest(manifest)
+    kernel_reference = _mapping(execution.get("kernel_pack"), "kernel_pack")
+    pack_path = kernel_reference.get("manifest_path")
+    if not isinstance(pack_path, str):
+        raise ArtifactError("kernel_pack.manifest_path must be a string")
+    payload_root_name = kernel_reference.get("payload_root")
+    if not isinstance(payload_root_name, str):
+        raise ArtifactError("kernel_pack.payload_root must be a string")
+    pack_path = normalize_relative_path(pack_path)
+    payload_root_name = normalize_relative_path(payload_root_name)
+    payloads.require(pack_path, role="evaluator-manifest", process_id=None)
+    pack_payload = _read_json(
+        confined_path(artifact_root, pack_path), "eager kernel pack"
+    )
+    raw_backend = pack_payload.get("backend")
+    if raw_backend not in _SUPPORTED_PREPARED_BACKENDS:
+        raise CompatibilityError(f"unsupported prepared eager backend {raw_backend!r}")
+    mutable_pack = dict(pack_payload)
+    kernel_abi = mutable_pack.pop("eager_kernel_abi", None)
+    if kernel_abi != EAGER_KERNEL_ABI:
+        raise CompatibilityError(f"unsupported eager kernel ABI {kernel_abi!r}")
+    try:
+        pack = PreparedKernelPack.from_dict(mutable_pack)
+    except PreparedModelBundleError as exc:
+        raise ArtifactError(f"eager kernel pack is malformed: {exc}") from exc
+    if pack.resolver_manifest.get("abi") != _PREPARED_CATALOG_ABI:
+        raise CompatibilityError("unsupported prepared eager kernel catalog ABI")
+    payload_root = artifact_root / payload_root_name
+    if payload_root.exists() and (
+        not payload_root.is_dir() or payload_root.is_symlink()
+    ):
+        raise ArtifactError("eager kernel payload root is invalid")
+    for kernel in pack.kernels:
+        exact_path = _joined_payload_path(
+            payload_root_name,
+            kernel.exact_evaluator_state_path,
+        )
+        exact_payloads.require_exact_state(exact_path, process_id=None)
+    effective_loader = kernel_loader or _artifact_kernel_loader(
+        exact_payloads,
+        payload_root_name,
+    )
+    return pack, payload_root, effective_loader
 
 
 def _prepared_parameter_projection(

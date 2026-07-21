@@ -145,7 +145,6 @@ impl BorrowedValues<'_> {
 
 struct BorrowedColumn<'py> {
     name: String,
-    dtype: String,
     shape: Vec<usize>,
     values: BorrowedValues<'py>,
 }
@@ -671,7 +670,6 @@ fn parse_input<'py>(input: &Bound<'py, PyAny>) -> PyResult<BorrowedInput<'py>> {
             column_by_name.insert(column_name.clone(), columns.len());
             columns.push(BorrowedColumn {
                 name: column_name,
-                dtype,
                 shape,
                 values,
             });

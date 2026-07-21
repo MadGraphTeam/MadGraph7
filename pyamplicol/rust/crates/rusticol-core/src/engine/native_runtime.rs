@@ -54,30 +54,67 @@ fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
             .any(|lane| execution_uses_simd_jit(lane))
 }
 
-fn native_f64_simd_lane_width() -> usize {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if std::is_x86_feature_detected!("avx512f") {
-            return 8;
-        }
-        if std::is_x86_feature_detected!("avx2") {
-            return 4;
-        }
-        if std::is_x86_feature_detected!("sse2") {
-            return 2;
-        }
-    }
-    #[cfg(target_arch = "aarch64")]
-    {
-        if std::arch::is_aarch64_feature_detected!("neon") {
-            return 2;
-        }
-    }
-    1
-}
-
 impl NativeRuntime {
     pub const ABI_VERSION: u32 = crate::C_ABI_VERSION;
+
+    /// Load only the exact-required sections of an eager plan-v3 artifact.
+    ///
+    /// This authenticates the artifact and compact runtime container but does
+    /// not instantiate the prepared f64 backend. It is intentionally separate
+    /// from the normal runtime hot path.
+    pub fn load_eager_exact_sections(
+        artifact_path: impl AsRef<Path>,
+        process_id: &str,
+    ) -> Result<NativeEagerExactSections, RusticolError> {
+        let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
+            let selection = manifest.select_process(Some(process_id))?;
+            ensure_runtime_capabilities_supported(
+                selection
+                    .process
+                    .required_runtime_capabilities
+                    .iter()
+                    .map(String::as_str),
+            )
+        })?;
+        let selection = artifact.select_process(Some(process_id))?;
+        if selection.alias.is_some() {
+            return Err(RusticolError::invalid_argument(
+                "compact eager exact sections must be requested by representative process ID",
+            ));
+        }
+        let (manifest, evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
+        let physics_bytes = artifact.read_payload(&selection.process.physics_path)?;
+        let mut physics =
+            ProcessPhysicsV1::from_json(&physics_bytes, &selection.process.physics_path)?;
+        if physics.process_id != selection.process.id
+            || physics.process != selection.process.expression
+            || physics.color_accuracy.as_str() != selection.process.color_accuracy
+            || physics
+                .external_particles
+                .iter()
+                .map(|particle| particle.pdg)
+                .ne(selection.process.external_pdgs.iter().copied())
+        {
+            return Err(RusticolError::integrity(format!(
+                "runtime physics payload {:?} does not match process {:?}",
+                selection.process.physics_path, selection.process.id
+            )));
+        }
+        match manifest {
+            LoadedExecutionManifest::Compiled(_) => Err(RusticolError::compatibility(
+                "compact exact-section loading requires an eager plan-v3 artifact",
+            )),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::EagerV3(manifest) => {
+                super::eager_v3_load::load_eager_v3_exact_sections(
+                    &artifact,
+                    &evaluator_root,
+                    &manifest,
+                    &mut physics,
+                )
+            }
+        }
+    }
 
     pub fn load(
         artifact_path: impl AsRef<Path>,
@@ -116,6 +153,7 @@ impl NativeRuntime {
         let (representative_process, representative_key, mut runtime, execution_lane) =
             match manifest {
                 LoadedExecutionManifest::Compiled(manifest) => {
+                    super::eager_v3_load::reject_native_reduction_groups_for_compiled(&physics_v1)?;
                     let representative_process = manifest.process.clone();
                     let representative_key = manifest.key.clone();
                     let evaluator_payloads = artifact.evaluator_payload_store(&evaluator_root)?;
@@ -136,7 +174,7 @@ impl NativeRuntime {
                         &artifact,
                         &evaluator_root,
                         &manifest,
-                        physics_v1.clone(),
+                        &mut physics_v1,
                     )?;
                     (
                         representative_process,
@@ -153,8 +191,38 @@ impl NativeRuntime {
             .unwrap_or_else(|| representative_process.clone());
         let process_key = selection.requested_id.clone();
         let input_crossing_map = if let Some(alias) = &selection.alias {
-            runtime.remap_lc_topology_replay_public_labels(&alias.external_permutation)?;
-            physics_v1 = apply_final_state_alias_metadata(physics_v1, alias)?;
+            let representative_physics = physics_v1.clone();
+            let alias_physics =
+                apply_final_state_alias_metadata(physics_v1, alias).map_err(|error| {
+                    RusticolError::with_kind(
+                        error.kind(),
+                        format!("could not remap alias physics metadata: {error}"),
+                    )
+                })?;
+            let helicity_id_map = representative_physics
+                .helicities
+                .iter()
+                .zip(&alias_physics.helicities)
+                .map(|(representative, public)| (representative.id.clone(), public.id.clone()))
+                .collect::<BTreeMap<_, _>>();
+            let color_id_map = representative_physics
+                .color_components
+                .iter()
+                .zip(&alias_physics.color_components)
+                .map(|(representative, public)| {
+                    (representative.id().to_string(), public.id().to_string())
+                })
+                .collect::<BTreeMap<_, _>>();
+            runtime
+                .remap_lc_topology_replay_public_labels(&alias.external_permutation)
+                .map_err(|error| {
+                    RusticolError::with_kind(
+                        error.kind(),
+                        format!("could not remap alias execution metadata: {error}"),
+                    )
+                })?;
+            runtime.remap_physics_reduction_overrides(&helicity_id_map, &color_id_map)?;
+            physics_v1 = alias_physics;
             runtime.set_external_pdg_order_recursive(&alias.external_pdgs);
             Some(
                 alias
@@ -188,7 +256,7 @@ impl NativeRuntime {
                 NativeExecutionLane::Eager(runtime) => runtime.backend_name() == "jit",
             };
             if uses_simd_jit {
-                native_f64_simd_lane_width()
+                super::evaluator::native_f64_simd_lane_width()
             } else {
                 1
             }

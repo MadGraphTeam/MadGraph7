@@ -59,6 +59,21 @@ pub(super) fn build_eager_v3_common_runtime(
     EagerV3CommonParts::checked(decoded, manifest, physics).map(EagerV3CommonParts::into_runtime)
 }
 
+/// Build the bounded schema fragment required by the lazy Python exact lane.
+///
+/// This deliberately omits compiled-stage metadata and all high-cardinality
+/// proof tables. Those remain authenticated in PACBIN and are exposed through
+/// the dedicated exact row bridge only when non-f64 execution is requested.
+pub(super) fn build_eager_v3_exact_schema(
+    decoded: &DecodedEagerRuntimeV3,
+    manifest: &EagerV3ExecutionManifest,
+    physics: ProcessPhysicsV1,
+    amplitude_stage: Value,
+) -> RusticolResult<Value> {
+    EagerV3CommonParts::checked(decoded, manifest, physics)?
+        .into_exact_schema(decoded, amplitude_stage)
+}
+
 impl EagerV3CommonParts {
     fn checked(
         decoded: &DecodedEagerRuntimeV3,
@@ -217,6 +232,124 @@ impl EagerV3CommonParts {
             state_scratch_f64_requires_clear: false,
             values_scratch_f64: Vec::new(),
         }
+    }
+
+    fn into_exact_schema(
+        self,
+        decoded: &DecodedEagerRuntimeV3,
+        amplitude_stage: Value,
+    ) -> RusticolResult<Value> {
+        let source_current_ids = self
+            .sources
+            .iter()
+            .map(|source| source.current_id)
+            .collect::<BTreeSet<_>>();
+        let current_component_count = decoded
+            .dimensions
+            .current_component_counts
+            .iter()
+            .try_fold(0_usize, |total, count| {
+                total
+                    .checked_add(*count as usize)
+                    .ok_or_else(|| RusticolError::artifact("eager exact current layout overflows"))
+            })?;
+        let current_slots = decoded
+            .currents
+            .iter()
+            .map(|row| {
+                let start = usize_count(row.component_start, "exact current component start")?;
+                let dimension = row.component_count as usize;
+                Ok(json!({
+                    "current_id": row.current_id,
+                    "component_start": start,
+                    "component_stop": start + dimension,
+                    "dimension": dimension,
+                    "is_source": source_current_ids.contains(&(row.current_id as usize)),
+                }))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let value_slots = decoded
+            .values
+            .iter()
+            .map(|row| {
+                let start = usize_count(row.component_start, "exact value component start")?;
+                let dimension = row.component_count as usize;
+                let variant = match row.kind {
+                    crate::eager_lowering_v3::EagerValueSlotKind::Source => "source",
+                    crate::eager_lowering_v3::EagerValueSlotKind::Unpropagated => "unpropagated",
+                    crate::eager_lowering_v3::EagerValueSlotKind::Propagated => "propagated",
+                };
+                Ok(json!({
+                    "value_slot_id": row.value_slot_id,
+                    "current_id": row.current_id,
+                    "variant": variant,
+                    "component_start": start,
+                    "component_stop": start + dimension,
+                    "dimension": dimension,
+                }))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let external_particles = self
+            .physics
+            .manifest
+            .external_particles
+            .iter()
+            .map(|particle| {
+                json!({
+                    "label": particle.label,
+                    "index": particle.index,
+                    "pdg": particle.pdg,
+                    "role": match particle.role {
+                        crate::ParticleRole::Initial => "initial",
+                        crate::ParticleRole::Final => "final",
+                    },
+                    "momentum_slot": particle.momentum_slot,
+                })
+            })
+            .collect::<Vec<_>>();
+        let model_particles = self
+            .particle_masses
+            .iter()
+            .map(|(pdg, mass)| {
+                json!({
+                    "pdg": pdg,
+                    "mass": mass,
+                    "mass_parameter": self.particle_mass_parameter_names.get(pdg),
+                })
+            })
+            .collect::<Vec<_>>();
+        let flattened_parameter_count = self
+            .value_parameter_count
+            .checked_add(self.momentum_parameter_count)
+            .and_then(|count| count.checked_add(self.model_parameters.len()))
+            .ok_or_else(|| RusticolError::artifact("eager exact parameter layout overflows"))?;
+
+        Ok(json!({
+            "kind": "pyamplicol-eager-exact-schema-v1",
+            "parameter_layout": {
+                "value_component_count": self.value_parameter_count,
+                "momentum_parameter_count": self.momentum_parameter_count,
+                "model_parameter_count": self.model_parameters.len(),
+                "parameter_count_if_flattened": flattened_parameter_count,
+            },
+            "current_storage": {
+                "component_count": current_component_count,
+                "current_slots": current_slots,
+            },
+            "value_storage": {
+                "component_count": self.value_parameter_count,
+                "value_slots": value_slots,
+            },
+            "momentum_slots": self.momentum_slots,
+            "external_particles": external_particles,
+            "model": {"particles": model_particles},
+            "model_parameters": self.model_parameters,
+            "source_fill": {
+                "source_count": self.sources.len(),
+                "sources": self.sources,
+            },
+            "amplitude_stage": amplitude_stage,
+        }))
     }
 }
 

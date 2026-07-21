@@ -630,14 +630,16 @@ pub(super) fn apply_final_state_alias_metadata(
     }
 
     for group in &mut physics.reduction.groups {
+        let representative_helicity_id = group.representative_helicity_id.clone();
+        let representative_color_id = group.representative_color_id.clone();
         group.representative_helicity_id = remapped_alias_id(
             &helicity_id_map,
-            &group.representative_helicity_id,
+            &representative_helicity_id,
             "reduction representative helicity",
         )?;
         group.representative_color_id = remapped_alias_id(
             &color_id_map,
-            &group.representative_color_id,
+            &representative_color_id,
             "reduction representative color",
         )?;
         for id in &mut group.physical_helicity_ids {

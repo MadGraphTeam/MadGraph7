@@ -6,6 +6,7 @@ import math
 from collections.abc import Callable, Sequence
 from decimal import Decimal, localcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -27,12 +28,44 @@ from pyamplicol.generation.eager_tables import (
     pack_rows,
 )
 from pyamplicol.models.prepared import PreparedKernelPack, PreparedKernelRecord
-from pyamplicol.runtime.eager_exact import EagerExactExecutor
+from pyamplicol.runtime.eager_exact import EagerExactExecutor, _plan_v3
+from pyamplicol.runtime.eager_exact._contracts import (
+    _ExactComplexProduct,
+    _resolve_exact_factor,
+)
 from pyamplicol.runtime.eager_exact._execution import _gather_inputs
 from pyamplicol.runtime.eager_exact._plan import _prepared_parameter_projection
+from pyamplicol.runtime.eager_exact._plan_v3 import (
+    EAGER_EXACT_SECTIONS_ABI,
+    EAGER_PLAN_V3_ABI,
+    EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+    EAGER_RUNTIME_LAYOUT_ABI,
+)
+
+eager_plan_v3 = _plan_v3
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _ExactCallable = Callable[[Sequence[_ComplexDecimal], int], Sequence[_ComplexDecimal]]
+
+
+def test_exact_factor_product_is_combined_at_requested_precision() -> None:
+    factors = _ExactComplexProduct(
+        numerators=(
+            (Decimal.from_float(0.1), Decimal(0)),
+            (Decimal.from_float(0.2), Decimal(0)),
+        ),
+        denominator=(Decimal.from_float(0.3), Decimal(0)),
+    )
+
+    with localcontext() as context:
+        context.prec = 50
+        resolved = _resolve_exact_factor(factors)
+        expected = (
+            Decimal.from_float(0.1) * Decimal.from_float(0.2) / Decimal.from_float(0.3)
+        )
+
+    assert resolved == (expected, Decimal(0))
+    assert resolved[0] != Decimal.from_float((0.1 * 0.2) / 0.3)
 
 
 class _NativeRuntime:
@@ -348,7 +381,8 @@ def _build_artifact(
     coupling_row: EagerCouplingRow | None = None,
     invocation_output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE,
     closure_output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE,
-) -> None:
+    compact_v3: bool = False,
+) -> dict[str, object] | None:
     payload_target = {"triple": "test-target", "cpu_features": []}
     kernels = (
         _kernel(
@@ -517,6 +551,91 @@ def _build_artifact(
         "dag_summary": {},
         "runtime_schema": runtime_schema,
     }
+    capabilities = [EAGER_RUNTIME_CAPABILITY]
+    compact_sections: dict[str, object] | None = None
+    if compact_v3:
+        capabilities = [EAGER_PLAN_V3_RUNTIME_CAPABILITY]
+        execution = {
+            "schema_version": 3,
+            "kind": EAGER_RUNTIME_KIND,
+            "required_runtime_capabilities": capabilities,
+            "process": "s > s",
+            "key": "synthetic",
+            "color_accuracy": "lc",
+            "external_pdg_order": [9000001, 9000001, 9000001],
+            "eager_plan_abi": EAGER_PLAN_V3_ABI,
+            "kernel_pack": {
+                "manifest_path": "model/eager-kernel-pack.json",
+                "payload_root": "model/eager-kernels",
+            },
+            "runtime_options": {"point_tile_size": 1024, "workspace_mib": 256},
+            "plan": {
+                "kind": EAGER_RUNTIME_KIND,
+                "eager_plan_abi": EAGER_PLAN_V3_ABI,
+                "lowering_input_abi": "pyamplicol-eager-lowering-input-v1",
+                "lowering_input_sha256": "1" * 64,
+                "runtime_layout_abi": EAGER_RUNTIME_LAYOUT_ABI,
+                "required_runtime_capabilities": capabilities,
+                "runtime_container": {
+                    "kind": "pyamplicol-eager-runtime-container",
+                    "schema_version": 1,
+                    "storage_abi": "pacbin-v1",
+                    "path": "eager-runtime.pacbin",
+                    "size_bytes": 1,
+                    "sha256": "2" * 64,
+                    "member_count": 1,
+                    "unpacked_size_bytes": 1,
+                    "index_sha256": "3" * 64,
+                },
+                "inspection_summary": {},
+            },
+            "dag_summary": {},
+        }
+        compact_sections = {
+            "abi": EAGER_EXACT_SECTIONS_ABI,
+            "runtime_layout_abi": EAGER_RUNTIME_LAYOUT_ABI,
+            "process_id": "synthetic",
+            "exact_schema": runtime_schema,
+            "reduction_groups": _physics()["reduction"]["groups"],
+            "selector_group_ids": [0],
+            "selector_domains": [[0]],
+            "couplings": [
+                [
+                    row.real_parameter_id,
+                    row.imag_parameter_id,
+                    str(row.constant_real),
+                    str(row.constant_imag),
+                ]
+                for row in coupling_rows
+            ],
+            "stages": [[1, 0, len(invocations), 0, len(attachments), 0, 1]],
+            "invocations": [[*row._values(), 0] for row in invocations],
+            "attachments": [
+                [
+                    row.result_current_id,
+                    [[str(row.factor_real), str(row.factor_imag)]],
+                    None,
+                    0,
+                ]
+                for row in attachments
+            ],
+            "finalizations": [[*row._values(), 0, 0] for row in finalizations],
+            "closures": [
+                [
+                    closure.kernel_id,
+                    closure.left_value_slot_id,
+                    closure.right_value_slot_id,
+                    closure.amplitude_index,
+                    closure.coupling_slot_id,
+                    closure.output_factor_source,
+                    [[str(closure.factor_real), str(closure.factor_imag)]],
+                    None,
+                    [["2.0", "0.0"]] if direct_closure else None,
+                    0,
+                    0,
+                ]
+            ],
+        }
 
     with ArtifactBuilder(root) as builder:
         builder.add_json(
@@ -538,21 +657,31 @@ def _build_artifact(
             role="evaluator-manifest",
             process_id="synthetic",
         )
+        if compact_v3:
+            builder.add_bytes(
+                "processes/synthetic/eager-runtime.pacbin",
+                b"x",
+                role="evaluator-state",
+                media_type="application/octet-stream",
+                target=payload_target,
+                process_id="synthetic",
+            )
         builder.add_json(
             "processes/synthetic/physics.json",
             _physics(),
             role="runtime-physics",
             process_id="synthetic",
         )
-        for path, content in tables.items():
-            builder.add_bytes(
-                f"processes/synthetic/{path}",
-                content,
-                role="evaluator-state",
-                media_type="application/octet-stream",
-                target=payload_target,
-                process_id="synthetic",
-            )
+        if not compact_v3:
+            for path, content in tables.items():
+                builder.add_bytes(
+                    f"processes/synthetic/{path}",
+                    content,
+                    role="evaluator-state",
+                    media_type="application/octet-stream",
+                    target=payload_target,
+                    process_id="synthetic",
+                )
         builder.finalize(
             kind="pyamplicol-process",
             producer=_producer(),
@@ -575,7 +704,7 @@ def _build_artifact(
                     "color_accuracy": "lc",
                     "external_pdgs": [9000001, 9000001, 9000001],
                     "physics_path": "processes/synthetic/physics.json",
-                    "required_runtime_capabilities": [EAGER_RUNTIME_CAPABILITY],
+                    "required_runtime_capabilities": capabilities,
                     "aliases": [],
                 }
             ],
@@ -585,9 +714,10 @@ def _build_artifact(
                 "engine_version": "0.1.0",
                 "evaluator_manifest_path": "processes/evaluators.json",
                 "api_bundle_path": None,
-                "required_runtime_capabilities": [EAGER_RUNTIME_CAPABILITY],
+                "required_runtime_capabilities": capabilities,
             },
         )
+    return compact_sections
 
 
 def _loader(
@@ -644,6 +774,67 @@ def test_eager_exact_accumulates_then_finalizes_once(tmp_path: Path) -> None:
     assert result.values == (((Decimal(9409),),),)
     assert result.helicity_ids == ("h:0",)
     assert result.color_ids == ("flow:1",)
+
+
+def test_eager_exact_plan_v3_uses_native_compact_sections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "artifact"
+    sections = _build_artifact(artifact, compact_v3=True)
+    assert sections is not None
+    calls: list[tuple[str, str]] = []
+
+    def load_sections(artifact_root: str, process_id: str) -> object:
+        calls.append((artifact_root, process_id))
+        return sections
+
+    module = SimpleNamespace(_load_eager_exact_sections_v1=load_sections)
+    monkeypatch.setattr(
+        eager_plan_v3.importlib,
+        "import_module",
+        lambda name: (
+            module
+            if name == "pyamplicol._rusticol"
+            else pytest.fail(f"unexpected native import {name}")
+        ),
+    )
+    finalization_inputs: list[tuple[_ComplexDecimal, ...]] = []
+    executor = EagerExactExecutor(
+        artifact,
+        "synthetic",
+        _NativeRuntime(),
+        kernel_loader=_loader(finalization_inputs),
+    )
+
+    result = executor.evaluate_resolved(
+        [[(5, 0, 0, 0)]],
+        helicities=None,
+        color_flows=None,
+        precision=50,
+    )
+
+    assert calls == [(str(artifact.resolve()), "synthetic")]
+    assert finalization_inputs == [((Decimal(9), Decimal(0)), (Decimal(5), Decimal(0)))]
+    assert result.values == (((Decimal(9409),),),)
+
+
+def test_eager_exact_plan_v3_rejects_wrong_native_section_abi(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    sections = _build_artifact(artifact, compact_v3=True)
+    assert sections is not None
+    sections["abi"] = "pyamplicol-eager-exact-sections-v0"
+
+    with pytest.raises(CompatibilityError, match="exact-sections ABI"):
+        EagerExactExecutor(
+            artifact,
+            "synthetic",
+            _NativeRuntime(),
+            kernel_loader=_loader([]),
+            native_sections_loader=lambda _root, _process: sections,
+        )
 
 
 def test_eager_exact_applies_dynamic_output_factor_after_kernel(

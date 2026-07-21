@@ -9,6 +9,8 @@ import struct
 import sys
 from collections.abc import Mapping, Sequence
 
+from pyamplicol._internal.versions import verify_native_module
+
 SYMJIT_STORAGE_V3_ABI = "symjit-application-storage-v3"
 SYMJIT_STORAGE_V3_TARGET_PREFIX = "symjit-storage-v3"
 
@@ -66,15 +68,14 @@ def native_prepared_target(*, include_cpu_features: bool) -> dict[str, object]:
 
     try:
         rusticol = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(rusticol)
         info = rusticol.target_info()
     except (AttributeError, ImportError, OSError) as exc:
         raise PreparedTargetError(
             "native prepared packs require Rusticol target introspection"
         ) from exc
     features = (
-        sorted(str(item) for item in info.cpu_features)
-        if include_cpu_features
-        else []
+        sorted(str(item) for item in info.cpu_features) if include_cpu_features else []
     )
     return {
         "portable": False,
@@ -131,6 +132,7 @@ def validate_prepared_target(
     required_features = set(_strings(actual.get("cpu_features")))
     try:
         rusticol = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(rusticol)
         available_features = {str(item) for item in rusticol.target_info().cpu_features}
     except (AttributeError, ImportError, OSError) as exc:
         raise PreparedTargetError(

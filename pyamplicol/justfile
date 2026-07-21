@@ -117,6 +117,7 @@ install-wheel PYTHON_ARG="":
 
 dev-install: _source-checkout
     {{python}} dependencies/install_dependencies.py
+    PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/developer/prepare_source_runtime.py --candidate --wheel-directory .artifacts/candidate
 
 # Report/campaign prerequisite. pyAmpliCol is not released yet, so this keeps
 # the explicit build entrypoint tied to the patched dev-install environment.

@@ -876,11 +876,10 @@ impl<'a> PlanBuilder<'a> {
             })?;
             let mut coefficient = self.factor(entry.factor_id, "eager color contraction factor")?;
             if entry.auxiliary_factor_id != MISSING_U32 {
-                coefficient = coefficient
-                    * self.factor(
-                        entry.auxiliary_factor_id,
-                        "eager color contraction symmetry factor",
-                    )?;
+                coefficient *= self.factor(
+                    entry.auxiliary_factor_id,
+                    "eager color contraction symmetry factor",
+                )?;
             }
             require_finite(coefficient, "eager color contraction coefficient")?;
             entries.push(EagerReductionEntry {
@@ -1561,8 +1560,8 @@ fn validate_kernel_specs(
         {
             return Err(artifact(format!("invalid eager kernel spec {index}")));
         }
-        if spec.independent_block_size != 1 {
-            if spec.independent_block_size != EAGER_INDEPENDENT_BLOCK_SIZE
+        if spec.independent_block_size != 1
+            && (spec.independent_block_size != EAGER_INDEPENDENT_BLOCK_SIZE
                 || spec.role != EagerKernelRole::Vertex
                 || spec.inputs.iter().any(|input| {
                     !matches!(
@@ -1570,13 +1569,12 @@ fn validate_kernel_specs(
                         EagerKernelInput::FirstCurrentComponent(_)
                             | EagerKernelInput::SecondCurrentComponent(_)
                     )
-                })
-            {
-                return Err(artifact(format!(
-                    "eager kernel {} has an invalid independent block contract",
-                    spec.kernel_id
-                )));
-            }
+                }))
+        {
+            return Err(artifact(format!(
+                "eager kernel {} has an invalid independent block contract",
+                spec.kernel_id
+            )));
         }
         let mut inputs = BTreeSet::new();
         for input in &spec.inputs {

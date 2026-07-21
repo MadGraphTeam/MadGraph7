@@ -22,13 +22,14 @@ Compiled unit
   & One canonical model-local kernel evaluation class \\
 Process generation
   & Builds and compiles process-specific stage applications
-  & Writes DAG invocation, attachment, finalization, closure, and selector tables \\
+  & Rust lowers proven DAG columns to invocation, finalization, closure, reduction,
+    and selector tables \\
 Runtime scheduling
   & Calls a small number of wide process-stage applications
   & Gathers packets, calls reusable kernels, scatters contributions, and finalizes currents \\
-Coverage tradeoff
-  & Can specialize the generated artifact to one flow or helicity slice
-  & A complete artifact can apply any generated flow or helicity selector at runtime \\
+Coverage contract
+  & Complete artifacts support runtime selectors; selected-coverage artifacts may specialize
+  & The same complete-coverage and selected-coverage contracts \\
 Default
   & Yes
   & No; selected with \texttt{execution\_mode = "eager"} \\
@@ -60,12 +61,15 @@ where \(\mathcal{I}_{M}\) is the portable compiled-model IR,
 \(\mathcal{E}_{M}\) retains exact expressions, \(K_\kappa\) is one prepared
 kernel for canonical evaluation class \(\kappa\), and \(\mathcal{P}_{M}\)
 contains ABI and provenance metadata.  The labels \(b,o,a\) identify backend,
-optimization settings, and architecture class.  The implementation lives in
-\path{src/pyamplicol/models/prepared_catalog.py},
-\path{prepared_catalog_builder.py}, and \path{prepared_compile.py}.
+optimization settings, and architecture class.  A bundle contains exactly one
+prepared JIT, C++, or ASM backend pack.
 
-The process generator consumes \(\mathcal{B}\) and the ordinary current DAG,
-but it never constructs a backend evaluator in eager mode.  It emits
+Eager process generation keeps symbolic and numerical responsibilities
+separate.  Python performs the Symbolica algebra, physics proofs,
+prepared-kernel resolution, and extraction of the proven \texttt{GenericDAG}.
+It then fills fixed-width columnar arrays for currents, interactions, roots,
+kernel references, permutations, aliases, selector proofs, and reductions.
+Rust validates those columns and lowers them directly to
 \begin{equation}
   \mathcal{Q}_{P}
   = \left(
@@ -79,10 +83,17 @@ Here \(\mathsf{Inv}_s\) identifies kernel calls in recursion stage \(s\),
 \(\mathsf{Fin}_s\) applies the current's finalization or propagator once,
 \(\mathsf{Close}\) builds amplitudes, and \(\mathsf{Reduce}\) performs the
 physical colour/helicity contraction.  \(\mathsf{Select}\) stores dependency
-domains for runtime selectors.  Lowering and binary serialization are in
-\path{src/pyamplicol/generation/eager_lowering.py} and
-\path{eager_tables.py}; artifact ownership is enforced by
-\path{artifact_writer.py}.
+domains for runtime selectors.  The Rust lowering assigns slots, interns
+selector domains, groups invocations, schedules attachments and finalizations,
+constructs closures and coherent reductions, validates the resulting plan, and
+writes the indexed binary runtime layout.  It does not return expanded Python
+row objects or construct a large JSON runtime schema.
+
+No backend evaluator is built or compiled during this process step.  Invocation
+rows refer to kernels already present in \(\mathcal{B}\), and the referenced
+prepared applications are copied into the standalone process artifact.  The
+cost of preparing \(\mathcal{B}\) is therefore a separate model-level quantity,
+not part of eager process-generation time.
 
 Prepared kernels are derived from the same verified oriented-kernel catalog
 used by the model-generic UFO lowering.  The built-in Standard Model emits that
@@ -187,6 +198,9 @@ Eager profiling separates initialization, gather, kernel calls, invocation
 scatter, finalization, finalization scatter, closure, reduction, and copy-out.
 Those markers are returned by \texttt{pyamplicol profile} and the same native
 runtime profile used by Python, C11, C++17, Fortran 2008, and Rust 2021 clients.
+The report's eager \texttt{eval} field is the inclusive eager execution lane,
+not kernel-call time alone; the detailed profile separates its constituent
+phases.
 
 \subsection{Runtime selectors and complete LC coverage}
 
@@ -224,22 +238,46 @@ but are not the reusable report workloads.
 An eager process artifact is standalone.  It copies each referenced prepared
 kernel exactly once under the artifact root and never depends on the original
 prepared-model path.  Fixed-width little-endian tables use 32-bit identifiers
-and 64-bit offsets/counts.  The current contracts are runtime kind
-\texttt{pyamplicol-runtime-eager-execution}, eager-plan ABI v2, and capability
-\texttt{rusticol.eager-dag.complex-f64.v1}.  The loader rejects malformed
-offsets, unknown kernel identifiers, incompatible ABIs, and target mismatches
-before entering native evaluation.
+and 64-bit offsets/counts.  Plan-v3 artifacts use runtime kind
+\texttt{pyamplicol-runtime-eager-execution}, capability
+\texttt{rusticol.eager-runtime-layout.complex-f64.v1}, and four complementary
+records:
+\begin{itemize}
+  \item a small \path{execution.json} summary containing identity, ABI,
+        provenance, counts, digests, options, and inspection statistics;
+  \item a compact \path{physics.json} containing public process axes, coverage,
+        selector metadata, parameters, normalization, and proof summaries;
+  \item \path{processes/<id>/eager-runtime.pacbin}, containing the
+        process-local invocation, slot, selector, closure, reduction, and proof
+        tables; and
+  \item the artifact-root \path{evaluators.pacbin}, containing indexed prepared
+        evaluators and their exact states.
+\end{itemize}
 
-SymJIT applications and their exact evaluator-state companions are stored as
-indexed members of one artifact-root \texttt{evaluators.pacbin} container.
-Rusticol validates the outer artifact digest, memory-maps the container
-read-only, and loads member slices without extracting them.  This keeps the
-logical evaluator decomposition while replacing thousands of filesystem
-entries by one physical payload.  Exact Python execution reads the same index.
-Target-native C++ and ASM libraries remain separate files.
+High-cardinality runtime data is not duplicated in JSON.  Rusticol
+authenticates the artifact and PACBIN indices, memory-maps the containers, and
+decodes the eager layout into a validated owned execution plan.  Normal
+\texttt{inspect} operations use the summary metadata rather than scanning every
+table.  The loader rejects malformed offsets, unknown kernel identifiers,
+incompatible ABIs, and target mismatches before entering native evaluation.
+
+This representation reduces Python object construction, JSON serialization,
+filesystem entry count, artifact footprint, peak generation memory, and cold
+load work.  It does not change the eager numerical schedule: topology replay,
+LC all-flow union, NLC/full contraction, aliases, structural zeros, and global
+or per-point selectors retain their existing semantics.  Both LC layouts use
+the same Rust lowering and compact container contract.  Exact Python execution
+reads the same indexed plan and evaluator states.  Target-native C++ and ASM
+libraries remain separate payloads.
+
+Plan-v3 is the eager artifact compatibility boundary.  Earlier eager artifacts
+use an expanded runtime representation and must be regenerated; the loader
+identifies that capability before opening the old high-cardinality payload and
+reports the required regeneration.  This requirement is limited to eager
+artifacts and does not change compiled artifacts or prepared-model bundles.
 
 JIT packs store SymJIT application state rather than final machine code.  With
-the current SymJIT storage v3 contract, register-allocation state is scoped to
+the SymJIT storage v3 contract, register-allocation state is scoped to
 an architecture class.  Wheels therefore carry separate \texttt{x86\_64} and
 \texttt{aarch64} built-in-SM JIT O3 packs and select the host pack before DAG
 construction.  Transfer is tested across operating systems within a matching
@@ -253,82 +291,32 @@ including multicore use.  Exact expressions remain in the artifact, and
 double-double and arbitrary precision.  Thus the execution-mode choice does
 not change the public precision contract.
 
-\subsection{Generation validation and measured scaling}
+\subsection{Performance interpretation and scaling}
 
-The bounded milestone matrix compares built-in SM and UFO-SM, LC/NLC/full
-colour, and five processes chosen to exercise singlets, massive fermions, pure
-Yang--Mills recursion, multiple open quark lines, and high fanout.  Model
-preparation is excluded from process-generation timing.  On the local
-macOS/arm64 implementation-validation host, the process-core speedup ranges
-were:
+Eager process-generation timing begins with an already prepared model bundle
+and ends with an authenticated, loadable process artifact.  It includes Python
+proof/DAG extraction, transfer-column construction, Rust plan lowering, compact
+container writing, and post-build validation.  Prepared-model creation is
+reported separately.  Useful comparisons therefore report process generation,
+prepared-model creation, artifact size, peak resident memory, authenticated
+cold load, and first-use break-even as distinct quantities.
 
-\begin{center}
-\small
-\begin{tabular}{L{0.34\textwidth}L{0.34\textwidth}R{0.17\textwidth}}
-\toprule
-\textbf{Process} & \textbf{Distinguishing structure} &
-\textbf{Compiled/eager} \\
-\midrule
-\(d\bar d\to Z g g g\) & singlet plus mixed QCD/electroweak recursion & \(8.31\)--\(10.01\) \\
-\(g g\to t\bar t g g\) & massive fermions with gluon initial state & \(15.09\)--\(20.65\) \\
-\(g g\to g g g g\) & pure Yang--Mills and dense colour & \(11.68\)--\(14.59\) \\
-\(d\bar d\to u\bar u s\bar s g\) & three open quark lines & \(9.27\)--\(12.08\) \\
-\(d\bar d\to t\bar t g g g\) & high-fanout massive-QCD recursion & \(13.64\)--\(21.32\) \\
-\bottomrule
-\end{tabular}
-\end{center}
+Rust table lowering and high-cardinality serialization handle the part of
+eager generation that grows with the process DAG.  Compact PACBIN storage also
+avoids materializing equivalent expanded Python and JSON objects.
+The resulting benefit depends on current count, selector-domain complexity,
+colour contraction, and proof metadata; it is not represented by one universal
+speedup.  Published process and $Z$-ladder tables provide the measured values
+under the benchmark contract defined in the main methodology section.
 
-These are eager feature-acceptance measurements, not values from the cluster
-table campaign.  The ranges span built-in/UFO-SM and LC/NLC/full records.  All
-30 records passed
-f64 and resolved-component parity, built-in/UFO topology parity, and the hard
-generation gate: every NLC/full record and every per-process geometric mean is
-at least seven times faster to generate.  Ten times remains a soft target.
-Compiled-mode median runtime remained within the two-percent regression gate
-(measured ratio 0.989 relative to the pre-branch baseline).
-
-Runtime has no single mode-wide multiplier.  Eager mode avoids hundreds of
-process-specific backend compilations, but pays explicit gather, scatter,
-finalization, and reusable-kernel dispatch.  SymJIT can amortize those costs
-over large point batches through internal SIMD.  A separately specialized
-compiled stage can still be faster for some selectors.  Fusing whole
-recurrence regions would remove more dispatch, but would recreate the compiled
-mode's process-specific applications and is intentionally outside the eager
-design.
-
-The hard reusable-versus-specialized wall-time ratio is applied to
-phenomenologically relevant \(n=4\) and \(n=5\) workloads at batch sizes 128
-and 1024.  The \(u\bar u\to Z+6g\) (\(n=7\)) cards remain a mandatory
-correctness, memory, SIMD-occupancy, and timing-integrity stress test, including
-homogeneous, pre-pooled, alternating, and random per-point selectors.  Their
-runtime ratio is reported diagnostically rather than used as a release-blocking
-target.
-
-An additional 30 GiB-guarded LC scaling study used the selector-complete
-process family \(g g\to t\bar t+(n-2)g\).  The numbers below are process
-generation wall time and peak resident memory after model preparation:
-
-\begin{center}
-\small
-\begin{tabular}{cL{0.34\textwidth}R{0.18\textwidth}R{0.18\textwidth}}
-\toprule
-\(n\) & \textbf{Concrete process} & \textbf{Time [s]} & \textbf{Peak RSS [GiB]} \\
-\midrule
-3 & \(g g\to t\bar t g\)       & 0.198 & 0.049 \\
-4 & \(g g\to t\bar t g g\)     & 0.404 & 0.096 \\
-5 & \(g g\to t\bar t g g g\)   & 5.059 & 0.521 \\
-6 & \(g g\to t\bar t g g g g\) & 164.318 & 9.338 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-For \(n=6\), the measured decomposition was 19.864 s for DAG construction,
-133.085 s for eager lowering, and 10.390 s for artifact writing.  The next
-multiplicity was not run because the current explicit selector-domain tables
-were projected to exceed the 30 GiB ceiling.  Extending this frontier would
-primarily require a compressed selector-domain representation; it is not a
-kernel-compilation or Rusticol allocation issue, and it is intentionally not
-hidden by raising the memory limit.
+For runtime, eager mode avoids process-specific backend compilation but pays
+explicit gather, scatter, finalization, and reusable-kernel dispatch.  SymJIT
+amortizes those costs over point batches through internal SIMD.  Selector
+measurements distinguish homogeneous, already grouped, alternating, and random
+per-point selections because regrouping and SIMD occupancy can change the wall
+time without changing the matrix element.  A separately specialized compiled
+stage can remain faster for some selectors; fusing entire recurrence regions
+would instead reproduce the compiled mode's process-specific applications.
 
 \subsection{Choosing the mode}
 

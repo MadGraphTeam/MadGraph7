@@ -37,6 +37,16 @@ from pyamplicol.generation.eager_lowering import (
     MappingEagerKernelResolver,
     PreparedCatalogEagerKernelIndex,
 )
+from pyamplicol.generation.physics_metadata import (
+    EAGER_PLAN_V3_REDUCTION_ENTRIES_MEMBER,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_CONTAINER_PATH,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_KIND,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_MEMBER,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_RUNTIME_LAYOUT_ABI,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_SCHEMA_VERSION,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_STORAGE_ABI,
+    NATIVE_REDUCTION_GROUPS_EXTENSION_KEY,
+)
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.generation.validation import ValidationPointRecord
 from pyamplicol.models import BuiltinSMModel
@@ -224,7 +234,22 @@ def test_plan_v3_builds_columnar_input_without_schema_or_evaluator_compilation(
         bool(record["structural_zero"]) for record in helicities
     )
     assert cast(list[object], result.physics["color_components"])
-    assert cast(dict[str, object], result.physics["reduction"])["groups"]
+    assert cast(dict[str, object], result.physics["reduction"])["groups"] == []
+    descriptor = cast(dict[str, object], result.physics["extensions"])[
+        NATIVE_REDUCTION_GROUPS_EXTENSION_KEY
+    ]
+    assert descriptor == {
+        "kind": EAGER_PLAN_V3_REDUCTION_GROUPS_KIND,
+        "schema_version": EAGER_PLAN_V3_REDUCTION_GROUPS_SCHEMA_VERSION,
+        "storage_abi": EAGER_PLAN_V3_REDUCTION_GROUPS_STORAGE_ABI,
+        "runtime_layout_abi": EAGER_PLAN_V3_REDUCTION_GROUPS_RUNTIME_LAYOUT_ABI,
+        "container_path": EAGER_PLAN_V3_REDUCTION_GROUPS_CONTAINER_PATH,
+        "group_member": EAGER_PLAN_V3_REDUCTION_GROUPS_MEMBER,
+        "entry_member": EAGER_PLAN_V3_REDUCTION_ENTRIES_MEMBER,
+        "group_count": len(
+            cast(list[object], captured[0].table("coherent_groups").column("id"))
+        ),
+    }
     assert cast(list[object], result.physics["model_parameters"])
     assert result.physics["selectors"] == {
         "helicity": True,

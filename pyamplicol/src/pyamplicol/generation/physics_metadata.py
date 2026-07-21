@@ -19,6 +19,14 @@ from .helicity_replay import (
 from .runtime_amplitudes import build_runtime_amplitude_metadata
 
 _HELICITY_WEIGHT_TOLERANCE = 1.0e-12
+NATIVE_REDUCTION_GROUPS_EXTENSION_KEY = "native_reduction_groups"
+EAGER_PLAN_V3_REDUCTION_GROUPS_KIND = "pyamplicol-eager-plan-v3-reduction-groups"
+EAGER_PLAN_V3_REDUCTION_GROUPS_SCHEMA_VERSION = 1
+EAGER_PLAN_V3_REDUCTION_GROUPS_STORAGE_ABI = "pacbin-v1"
+EAGER_PLAN_V3_REDUCTION_GROUPS_RUNTIME_LAYOUT_ABI = "pyamplicol-eager-runtime-layout-v1"
+EAGER_PLAN_V3_REDUCTION_GROUPS_CONTAINER_PATH = "eager-runtime.pacbin"
+EAGER_PLAN_V3_REDUCTION_GROUPS_MEMBER = "reductions/groups.bin"
+EAGER_PLAN_V3_REDUCTION_ENTRIES_MEMBER = "reductions/entries.bin"
 _NORMALIZATION_EXTENSION_KEYS = (
     "color_accuracy",
     "color_factor",
@@ -37,6 +45,7 @@ def build_resolved_physics_from_dag(
     model: Model,
     *,
     process_id: str | None = None,
+    native_eager_plan_v3_reduction_groups: bool = False,
 ) -> dict[str, object]:
     """Build strict public physics without constructing runtime storage layouts."""
 
@@ -53,6 +62,7 @@ def build_resolved_physics_from_dag(
         amplitude_stage=amplitude_metadata,
         model_parameters=model_parameters,
         normalization=build_runtime_normalization(dag, model),
+        native_eager_plan_v3_reduction_groups=(native_eager_plan_v3_reduction_groups),
     )
 
 
@@ -64,6 +74,7 @@ def build_resolved_physics_payload(
     amplitude_stage: Mapping[str, object],
     model_parameters: Sequence[Mapping[str, object]],
     normalization: Mapping[str, object],
+    native_eager_plan_v3_reduction_groups: bool = False,
 ) -> dict[str, object]:
     """Build strict public axes and exact representative-reuse metadata."""
 
@@ -75,18 +86,36 @@ def build_resolved_physics_payload(
         _mapping_sequence(amplitude_stage.get("roots", ())),
     )
     color_components, group_colors = _color_metadata(dag, coherent_groups)
-    helicity_ids = {
-        tuple(_integer(value) for value in _sequence(record["values"])): str(
-            record["id"]
+    if native_eager_plan_v3_reduction_groups:
+        reduction_groups: list[dict[str, object]] = []
+        native_reduction_extension = {
+            NATIVE_REDUCTION_GROUPS_EXTENSION_KEY: {
+                "kind": EAGER_PLAN_V3_REDUCTION_GROUPS_KIND,
+                "schema_version": EAGER_PLAN_V3_REDUCTION_GROUPS_SCHEMA_VERSION,
+                "storage_abi": EAGER_PLAN_V3_REDUCTION_GROUPS_STORAGE_ABI,
+                "runtime_layout_abi": (
+                    EAGER_PLAN_V3_REDUCTION_GROUPS_RUNTIME_LAYOUT_ABI
+                ),
+                "container_path": EAGER_PLAN_V3_REDUCTION_GROUPS_CONTAINER_PATH,
+                "group_member": EAGER_PLAN_V3_REDUCTION_GROUPS_MEMBER,
+                "entry_member": EAGER_PLAN_V3_REDUCTION_ENTRIES_MEMBER,
+                "group_count": len(coherent_groups),
+            }
+        }
+    else:
+        helicity_ids = {
+            tuple(_integer(value) for value in _sequence(record["values"])): str(
+                record["id"]
+            )
+            for record in helicities
+        }
+        reduction_groups = _reduction_groups(
+            coherent_groups,
+            group_helicities=group_helicities,
+            group_colors=group_colors,
+            helicity_ids=helicity_ids,
         )
-        for record in helicities
-    }
-    reduction_groups = _reduction_groups(
-        coherent_groups,
-        group_helicities=group_helicities,
-        group_colors=group_colors,
-        helicity_ids=helicity_ids,
-    )
+        native_reduction_extension = {}
     lc_color_complete = (
         dag.color_coverage == "complete"
         and not dag.selected_color_sector_ids
@@ -138,6 +167,7 @@ def build_resolved_physics_payload(
                 else {"lc_topology_replay": dag.lc_topology_replay.to_json_dict()}
             ),
             **_runtime_selector_extension(dag),
+            **native_reduction_extension,
         },
     }
 
@@ -924,6 +954,14 @@ def _number(value: object) -> float:
 
 
 __all__ = [
+    "EAGER_PLAN_V3_REDUCTION_ENTRIES_MEMBER",
+    "EAGER_PLAN_V3_REDUCTION_GROUPS_CONTAINER_PATH",
+    "EAGER_PLAN_V3_REDUCTION_GROUPS_KIND",
+    "EAGER_PLAN_V3_REDUCTION_GROUPS_MEMBER",
+    "EAGER_PLAN_V3_REDUCTION_GROUPS_RUNTIME_LAYOUT_ABI",
+    "EAGER_PLAN_V3_REDUCTION_GROUPS_SCHEMA_VERSION",
+    "EAGER_PLAN_V3_REDUCTION_GROUPS_STORAGE_ABI",
+    "NATIVE_REDUCTION_GROUPS_EXTENSION_KEY",
     "build_resolved_physics_from_dag",
     "build_resolved_physics_payload",
     "build_runtime_model_parameter_records",

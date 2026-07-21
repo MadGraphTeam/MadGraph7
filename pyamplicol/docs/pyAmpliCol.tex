@@ -58,8 +58,8 @@
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
 \newcommand{\ReportMatrixLegend}{\ReportTableNote{Cell ordering and units follow the reading guide at the start of this section. The first/second LC slots use the complete-coverage topology-replay selected-flow/helicity-sum and all-flow-union all-flows/fixed-helicity layouts, respectively. A vertical bar separates the pyAmpliCol Rusticol-core wall and evaluator-only multipliers. Every multiplier is pyAmpliCol divided by AmpliCol.}}
-\newcommand{\ReportEagerMatrixLegend}{\ReportTableNote{Cell ordering and units match the preceding process matrices, but compiled UFO-SM JIT O3 is the reference and eager-DAG JIT O3 is the candidate. The first/second LC slots compare topology-replay and all-flow-union artifacts with like-for-like layouts. A vertical bar separates eager Rusticol-core wall and evaluator-only multipliers. Every multiplier is eager divided by compiled.}}
-\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload block reports its own process generation in seconds and Rusticol-core wall and evaluator-only runtime in microseconds per point: topology replay for selected-flow/helicity-sum, and all-flow union for all-flows/fixed-helicity. Parenthesized multipliers compare pyAmpliCol with AmpliCol; the UFO-SM ``vs blt-in'' columns compare the same UFO-SM and built-in-SM setup.}}
+\newcommand{\ReportEagerMatrixLegend}{\ReportTableNote{Cell ordering and units match the preceding process matrices, but compiled UFO-SM JIT O3 is the reference and eager-DAG JIT O3 is the candidate. The first/second LC slots compare topology-replay and all-flow-union artifacts with like-for-like layouts. A vertical bar separates the eager Rusticol-core wall and inclusive eager-execution multipliers. Every multiplier is eager divided by compiled.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload block reports its own process generation in seconds and Rusticol-core wall and native execution-submetric runtime in microseconds per point: topology replay for selected-flow/helicity-sum, and all-flow union for all-flows/fixed-helicity. For compiled rows the submetric is generated stage/root evaluator calls; for eager rows it is inclusive eager execution. Parenthesized multipliers compare pyAmpliCol with AmpliCol; the UFO-SM ``vs blt-in'' columns compare the same UFO-SM and built-in-SM setup.}}
 \newcommand{\ReportLandscapeFooter}{}
 
 \lstset{
@@ -83,7 +83,7 @@
 
 \begin{abstract}
 This report defines the public theory, validation, and performance methodology
-for \PAC{}, release 0.1.0. It fixes the canonical process coverage for the
+for \PAC{}, release 0.1.0. It defines the canonical process coverage for the
 built-in Standard Model, the same physics loaded as a UFO/JSON Standard Model
 (UFO-SM), a scalar contact model, and a scalar-gravity model. Its tables present
 reproducible measurements tied to an effective configuration, execution
@@ -100,11 +100,14 @@ environment, generated artifact, and independent-reference provenance.
 \section{Scope}
 
 \PAC{} generates tree-level scattering-amplitude artifacts and evaluates them
-through the Rusticol runtime. The Python layer resolves models and processes,
-constructs a shared-current directed acyclic graph (DAG), lowers bounded stages
-to Symbolica evaluators, and writes a versioned process artifact. The runtime
-loads that artifact and provides summed and resolved evaluation through one
-physics contract to Python, Rust 2021, C++17, and Fortran 2008 clients.
+through the Rusticol runtime. The Python layer resolves models and processes
+and constructs a shared-current directed acyclic graph (DAG). In compiled mode,
+bounded stages become process-specific Symbolica evaluators. In eager mode,
+Python extracts proven fixed-width DAG columns and Rust lowers them to compact
+invocation tables over a prepared model-kernel pack. Both routes write a
+versioned process artifact. Rusticol loads that artifact and provides summed
+and resolved evaluation through one physics contract to Python, C11, C++17,
+Fortran 2008, and Rust 2021 clients.
 
 The report has three purposes:
 \begin{enumerate}
@@ -269,26 +272,35 @@ independently of the requested level. Requested and effective configurations
 are retained separately so resource or license adjustments remain visible.
 
 Generation time is wall time for one explicit \texttt{Generator.generate()}
-operation starting from an already compiled canonical model and ending with a
-committed, loadable process artifact. It includes process expansion, DAG and
-evaluator construction, evaluator compilation, validation-point preparation,
-and API-bundle emission. Loading and compiling the UFO/JSON or built-in model
-is performed before the generation timer, passed to ordinary generation with
-the resolved execution mode and LC flow layout, and recorded separately as
-\texttt{model\_precompile\_seconds}. It is not included in a process-generation
-cell. Existing artifacts may be benchmarked, but their generation slot remains
-\ReportNA{} unless a matching generation measurement is available.
+operation starting from the resolved model input required by the selected
+execution mode and ending with a committed, loadable process artifact. It
+includes process expansion, DAG construction,
+validation-point preparation, artifact publication, and API-bundle emission.
+Compiled mode additionally includes process-stage evaluator construction and
+backend compilation. Eager mode instead includes proven-DAG column extraction,
+Rust plan lowering, and compact runtime-container serialization; preparation of
+its reusable model-kernel pack is excluded. Resolving the UFO/JSON or built-in
+model is performed before the process-generation timer and recorded separately
+as \texttt{model\_precompile\_seconds}. Eager prepared-pack creation is also a
+separate model-level measurement. Neither quantity is included in a
+process-generation cell. Existing artifacts may be benchmarked, but their
+generation slot remains \ReportNA{} unless a matching generation measurement
+is available.
 
 Runtime measurements use \texttt{BenchmarkRunner} and the summed
 \texttt{Runtime.evaluate()} observable. The reported wall time begins inside
 Rusticol after caller-language array conversion and covers repeated ordinary
-core evaluations, including source preparation, stage input packing, evaluator
-calls, output assignment, and reduction. The evaluator time is the subset spent
-inside the generated stage and amplitude evaluators. Python/NumPy packing and
-language-binding conversion are therefore excluded from both. A measurement
-records sample count, time per point, uncertainty, effective settings, and
-environment. Comparisons are valid only for the same process, colour accuracy,
-parameters, phase-space ensemble, precision, selectors, and normalization.
+core evaluations, including source preparation, numerical execution, output
+assignment, selector work, and reduction. The secondary execution submetric is
+mode-specific: in compiled mode it is the time inside generated stage and
+amplitude evaluators; in eager mode it is the inclusive eager execution lane,
+which contains gather, prepared-kernel calls, scatter, finalization, closure,
+and eager reduction. Python/NumPy packing and language-binding conversion are
+therefore excluded from both reported quantities. A measurement records sample
+count, time per point, uncertainty, effective settings, software revision,
+artifact identity, hardware, and execution environment. Comparisons are valid
+only for the same process, colour accuracy, parameters, phase-space ensemble,
+precision, selectors, and normalization.
 
 \subsection{Benchmark platform}
 
@@ -304,20 +316,17 @@ VAES, and carry-less multiplication.  Installed memory reported by the kernel
 is \texttt{1188419660 kB} (\(\simeq 1.11\) TiB), with no configured swap.
 
 All report measurements use the repository's developer installation through
-\texttt{.venv/bin/python} inside \texttt{nix develop}.  The effective toolchain
-for the current campaign is Python \texttt{3.11.15} with NumPy \texttt{2.4.2},
+\texttt{.venv/bin/python} inside \texttt{nix develop}.  The recorded toolchain
+is Python \texttt{3.11.15} with NumPy \texttt{2.4.2},
 Rust \texttt{1.89.0}, Cargo \texttt{1.89.0}, GCC/G++/GNU Fortran
 \texttt{15.2.0}, and pdfTeX \texttt{3.141592653-2.6-1.40.27} from TeX Live
-2025.  The campaign commands enforce an 800~GiB RSS limit, a 3600~s generation
-timeout per cell generation workload, and a 20~s target runtime for benchmark
-sampling.  Unless a cell's manifest states otherwise, each cell uses one
-generation/evaluator core (\texttt{--cell-cores 1}); the current table-filling
-batches use up to eight concurrent process workers with
-\texttt{--allow-symbolica-parallel}, while the earlier scalar-ladder
-cross-check used one process worker with the same per-cell core and timing
-policy.  Wall times are native Rusticol repeated-core timings after
-caller-language momentum packing, and model compilation is recorded separately
-from process-generation time.
+2025.  Unless a cell's manifest states otherwise, generation and evaluation use
+one core and runtime sampling targets twenty seconds.  Resource ceilings and
+timeouts are retained in each measurement record; a limit reached is rendered
+as a status rather than a timing value.  Collection concurrency and scheduler
+queue time are not part of a cell's workload.  Wall times are native Rusticol
+repeated-core timings after caller-language momentum packing, and model
+compilation is recorded separately from process-generation time.
 
 \subsection{Numerical validation}
 
@@ -330,14 +339,9 @@ also satisfy the resolved-sum identity and preserve expected structural zeros.
 
 No timing is accepted as a numerical validation result. Conversely, a valid
 matrix element does not populate generation or runtime fields without a
-matching timing run.
-
-\paragraph{Result provenance.}
-
-Each displayed number is retained with its resolved configuration, software
-revision, hardware and execution environment, numerical check, and timing
-statistics. A result enters the report only after its record is internally
-consistent and its pointwise comparison has the status required by the table.
+matching timing run. A result enters the report only after its record is
+internally consistent and its pointwise comparison has the status required by
+the table.
 
 \clearpage
 \begin{landscape}
@@ -439,8 +443,8 @@ generate one complete topology-replay artifact and one complete all-flow-union
 artifact.  Candidate generation ratios are layout-matched: eager replay over
 compiled replay, followed by eager union over compiled union.  The lower-left
 slot retains the two absolute compiled Rusticol-core wall times.  Each
-candidate \texttt{(xwall$\mid$eval)} pair is the eager core-wall and eager
-evaluator-only time divided by the matching compiled core-wall time.  NLC and
+candidate \texttt{(xwall$\mid$eval)} pair is the eager core-wall and inclusive
+eager-execution time divided by the matching compiled core-wall time.  NLC and
 full colour use the same four-field layout as before, with one compiled
 generation/runtime reference and one eager generation plus wall/evaluator
 ratio pair.
@@ -500,7 +504,7 @@ The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
 with compiled JIT level 1, compiled JIT level 3, eager-DAG JIT O3, ASM O3, and
 C++ O3 evaluator configurations. They retain
 final-state multiplicities $n=1,\ldots,9$ for both the built-in model and
-the UFO-SM campaign. Each row states its evaluator backend
+the UFO-SM result set. Each row states its evaluator backend
 and optimization level explicitly; all other workload settings follow the
 benchmark contract above.
 
@@ -515,9 +519,9 @@ the same selector and layout with the stricter eager-comparison tolerance.
 Prepared-model creation is excluded from both process-generation entries and
 retained as separate provenance.
 
-Runtime comparisons between these backends also include their present
+Runtime comparisons between these backends also include their
 vectorization strategy. The SymJIT application evaluates a batch with SIMD
-across phase-space points, whereas the current generated ASM and C++ payloads
+across phase-space points, whereas generated ASM and C++ payloads
 are scalar and Rusticol invokes them point by point. Their ratios therefore
 measure both symbolic/code-generation quality and this SIMD advantage; they
 must not be interpreted as a comparison of otherwise identical vectorized
@@ -580,7 +584,7 @@ performance ratio.
 
 \section{Interpretation}
 
-This report establishes coverage, methodology, and the current measured result
+This report establishes coverage, methodology, and the measured result
 set. Performance comparisons are meaningful only for a reviewed baseline
 produced from the same effective configuration on named hardware. Readers
 should treat every \ReportNA{} entry as unavailable and should not interpolate,

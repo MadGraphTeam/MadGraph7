@@ -213,7 +213,7 @@ impl EagerKernelBackend for PreparedEvaluatorBackend {
         #[cfg(not(feature = "symbolica-runtime"))]
         let evaluator_inputs = call.inputs;
 
-        kernel.evaluator.evaluate_batch_into(
+        kernel.evaluator.evaluate_batch_into_padded_simd_tail(
             call.lane_count,
             evaluator_inputs,
             &mut kernel.output_scratch,

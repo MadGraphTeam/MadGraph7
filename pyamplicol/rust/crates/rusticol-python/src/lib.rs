@@ -5,6 +5,7 @@ mod eager_lowering;
 
 #[cfg(feature = "numpy")]
 use numpy::{PyReadonlyArray3, PyUntypedArrayMethods};
+use pyo3::IntoPyObjectExt;
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -15,6 +16,7 @@ use rusticol_core::{
     ProcessPhysics as CoreProcessPhysics, ReductionKind, RusticolError as CoreError,
     RusticolErrorKind, preflight_prepared_kernel_pack, runtime_target_info,
 };
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -973,6 +975,11 @@ fn package_version() -> &'static str {
 }
 
 #[pyfunction]
+fn native_build_inputs_sha256() -> &'static str {
+    option_env!("PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256").unwrap_or("")
+}
+
+#[pyfunction]
 fn target_info() -> TargetInfo {
     let target = runtime_target_info();
     TargetInfo {
@@ -984,6 +991,196 @@ fn target_info() -> TargetInfo {
 #[pyfunction]
 fn _preflight_eager_kernel_pack(manifest_path: PathBuf, payload_root: PathBuf) -> PyResult<usize> {
     preflight_prepared_kernel_pack(&manifest_path, &payload_root).map_err(python_error)
+}
+
+#[pyfunction]
+fn _load_eager_exact_sections_v1(
+    py: Python<'_>,
+    artifact_root: PathBuf,
+    process_id: String,
+) -> PyResult<Py<PyAny>> {
+    let sections = py
+        .detach(move || NativeRuntime::load_eager_exact_sections(artifact_root, &process_id))
+        .map_err(python_error)?;
+    eager_exact_sections_to_python(py, sections)
+}
+
+fn eager_exact_sections_to_python(
+    py: Python<'_>,
+    sections: rusticol_core::NativeEagerExactSections,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("abi", "pyamplicol-eager-exact-sections-v1")?;
+    result.set_item("runtime_layout_abi", "pyamplicol-eager-runtime-layout-v1")?;
+    result.set_item("process_id", sections.process_id)?;
+    result.set_item(
+        "exact_schema",
+        json_value_to_python(py, &sections.exact_schema)?,
+    )?;
+    result.set_item(
+        "reduction_groups",
+        json_value_to_python(py, &sections.reduction_groups)?,
+    )?;
+    result.set_item("selector_group_ids", sections.selector_group_ids)?;
+    result.set_item("selector_domains", sections.selector_domains)?;
+    result.set_item(
+        "couplings",
+        sections
+            .couplings
+            .into_iter()
+            .map(|row| {
+                (
+                    row.real_parameter_id,
+                    row.imaginary_parameter_id,
+                    row.constant_real,
+                    row.constant_imaginary,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "stages",
+        sections
+            .stages
+            .into_iter()
+            .map(|row| {
+                (
+                    row.stage_index,
+                    row.invocation_start,
+                    row.invocation_count,
+                    row.attachment_start,
+                    row.attachment_count,
+                    row.finalization_start,
+                    row.finalization_count,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "invocations",
+        sections
+            .invocations
+            .into_iter()
+            .map(|row| {
+                (
+                    row.kernel_id,
+                    row.left_value_slot_id,
+                    row.right_value_slot_id,
+                    row.left_momentum_slot_id,
+                    row.right_momentum_slot_id,
+                    row.coupling_slot_id,
+                    row.output_factor_source,
+                    row.attachment_start,
+                    row.attachment_count,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "attachments",
+        sections
+            .attachments
+            .into_iter()
+            .map(|row| {
+                (
+                    row.result_current_id,
+                    row.factor_numerators
+                        .into_iter()
+                        .map(|[real, imaginary]| (real, imaginary))
+                        .collect::<Vec<_>>(),
+                    row.factor_denominator
+                        .map(|[real, imaginary]| (real, imaginary)),
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "finalizations",
+        sections
+            .finalizations
+            .into_iter()
+            .map(|row| {
+                (
+                    row.kernel_id,
+                    row.current_id,
+                    row.unpropagated_value_slot_id,
+                    row.propagated_value_slot_id,
+                    row.momentum_slot_id,
+                    row.unpropagated_selector_domain_id,
+                    row.propagated_selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "closures",
+        sections
+            .closures
+            .into_iter()
+            .map(|row| {
+                (
+                    row.kernel_id,
+                    row.left_value_slot_id,
+                    row.right_value_slot_id,
+                    row.amplitude_index,
+                    row.coupling_slot_id,
+                    row.output_factor_source,
+                    row.factor_numerators
+                        .into_iter()
+                        .map(|[real, imaginary]| (real, imaginary))
+                        .collect::<Vec<_>>(),
+                    row.factor_denominator
+                        .map(|[real, imaginary]| (real, imaginary)),
+                    row.direct_coefficients.map(|values| {
+                        values
+                            .into_iter()
+                            .map(|[real, imaginary]| (real, imaginary))
+                            .collect::<Vec<_>>()
+                    }),
+                    row.coherent_group_id,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(result.into_any().unbind())
+}
+
+fn json_value_to_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+    match value {
+        Value::Null => Ok(py.None()),
+        Value::Bool(value) => value.into_py_any(py),
+        Value::Number(value) => {
+            if let Some(value) = value.as_i64() {
+                value.into_py_any(py)
+            } else if let Some(value) = value.as_u64() {
+                value.into_py_any(py)
+            } else if let Some(value) = value.as_f64() {
+                value.into_py_any(py)
+            } else {
+                Err(ArtifactError::new_err(
+                    "compact eager exact schema contains an invalid number",
+                ))
+            }
+        }
+        Value::String(value) => value.as_str().into_py_any(py),
+        Value::Array(values) => {
+            let values = values
+                .iter()
+                .map(|value| json_value_to_python(py, value))
+                .collect::<PyResult<Vec<_>>>()?;
+            Ok(PyList::new(py, values)?.into_any().unbind())
+        }
+        Value::Object(values) => {
+            let result = PyDict::new(py);
+            for (key, value) in values {
+                result.set_item(key, json_value_to_python(py, value)?)?;
+            }
+            Ok(result.into_any().unbind())
+        }
+    }
 }
 
 #[pymodule]
@@ -1013,8 +1210,10 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<TargetInfo>()?;
     module.add_function(wrap_pyfunction!(abi_version, module)?)?;
     module.add_function(wrap_pyfunction!(package_version, module)?)?;
+    module.add_function(wrap_pyfunction!(native_build_inputs_sha256, module)?)?;
     module.add_function(wrap_pyfunction!(target_info, module)?)?;
     module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
+    module.add_function(wrap_pyfunction!(_load_eager_exact_sections_v1, module)?)?;
     #[cfg(feature = "numpy")]
     module.add_function(wrap_pyfunction!(
         eager_lowering::_lower_eager_runtime_v1,

@@ -7,9 +7,18 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+import pyamplicol.generation.physics_metadata as physics_metadata
 import pyamplicol.generation.runtime_schema as runtime_schema
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.physics_metadata import (
+    EAGER_PLAN_V3_REDUCTION_ENTRIES_MEMBER,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_CONTAINER_PATH,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_KIND,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_MEMBER,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_RUNTIME_LAYOUT_ABI,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_SCHEMA_VERSION,
+    EAGER_PLAN_V3_REDUCTION_GROUPS_STORAGE_ABI,
+    NATIVE_REDUCTION_GROUPS_EXTENSION_KEY,
     _color_id,
     build_resolved_physics_from_dag,
 )
@@ -62,9 +71,56 @@ def test_bounded_public_physics_matches_expanded_schema_without_building_it(
     assert bounded["helicities"]
     assert bounded["color_components"]
     assert bounded["reduction"]["groups"]
+    assert NATIVE_REDUCTION_GROUPS_EXTENSION_KEY not in bounded["extensions"]
     assert bounded["model_parameters"]
     assert set(bounded["selectors"]) == {
         "helicity",
         "color_flow",
         "contracted_color",
     }
+
+
+def test_eager_plan_v3_reduction_groups_are_pacbin_backed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = BuiltinSMModel()
+    dag = compile_generic_dag(build_process_ir("d d~ > z g"), model=model)
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("plan-v3 constructed expanded reduction groups")
+
+    monkeypatch.setattr(physics_metadata, "_reduction_groups", forbidden)
+    physics = build_resolved_physics_from_dag(
+        dag,
+        model,
+        process_id="compact-eager-v3",
+        native_eager_plan_v3_reduction_groups=True,
+    )
+
+    assert physics["reduction"] == {"kind": "lc-diagonal", "groups": []}
+    extensions = physics["extensions"]
+    descriptor = extensions[NATIVE_REDUCTION_GROUPS_EXTENSION_KEY]
+    assert descriptor == {
+        "kind": EAGER_PLAN_V3_REDUCTION_GROUPS_KIND,
+        "schema_version": EAGER_PLAN_V3_REDUCTION_GROUPS_SCHEMA_VERSION,
+        "storage_abi": EAGER_PLAN_V3_REDUCTION_GROUPS_STORAGE_ABI,
+        "runtime_layout_abi": EAGER_PLAN_V3_REDUCTION_GROUPS_RUNTIME_LAYOUT_ABI,
+        "container_path": EAGER_PLAN_V3_REDUCTION_GROUPS_CONTAINER_PATH,
+        "group_member": EAGER_PLAN_V3_REDUCTION_GROUPS_MEMBER,
+        "entry_member": EAGER_PLAN_V3_REDUCTION_ENTRIES_MEMBER,
+        "group_count": len(
+            physics_metadata._mapping_sequence(
+                physics_metadata.build_runtime_amplitude_metadata(dag, model).get(
+                    "coherent_groups", ()
+                )
+            )
+        ),
+    }
+    schema = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "schemas"
+            / "runtime-physics-v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema).validate(physics)

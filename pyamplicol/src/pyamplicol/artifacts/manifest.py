@@ -13,7 +13,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
-from pyamplicol._internal.versions import EVALUATOR_RUNTIME_CAPABILITIES
+from pyamplicol._internal.versions import (
+    EVALUATOR_RUNTIME_CAPABILITIES,
+    verify_native_module,
+)
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
 
 from .security import (
@@ -768,6 +771,7 @@ def validate_payloads(
 def _runtime_target_metadata() -> tuple[str, tuple[str, ...]]:
     try:
         rusticol = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(rusticol)
         info = rusticol.target_info()
         triple = str(info.triple)
         features = tuple(str(feature) for feature in info.cpu_features)

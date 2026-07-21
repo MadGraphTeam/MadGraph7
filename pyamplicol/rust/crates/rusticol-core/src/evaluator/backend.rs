@@ -145,7 +145,7 @@ impl EvaluatorGroup {
             self.chunk_scratch_f64
                 .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
             let eval_start = Instant::now();
-            evaluator.evaluate_f64_batch(
+            evaluator.evaluate_f64_batch_unpadded(
                 batch_size,
                 evaluator_params,
                 &mut self.chunk_scratch_f64,
@@ -263,7 +263,7 @@ impl EvaluatorGroup {
                 })?;
             self.chunk_scratch_f64.resize(scratch_len, c64(0.0, 0.0));
             let eval_start = Instant::now();
-            evaluator.evaluate_f64_batch(
+            evaluator.evaluate_f64_batch_unpadded(
                 batch_size,
                 evaluator_params,
                 &mut self.chunk_scratch_f64,
@@ -388,7 +388,7 @@ impl EvaluatorGroup {
                 c64(0.0, 0.0),
             );
             let eval_start = Instant::now();
-            evaluator.evaluate_f64_batch(
+            evaluator.evaluate_f64_batch_unpadded(
                 batch_size,
                 evaluator_params,
                 &mut self.chunk_scratch_f64,
@@ -415,6 +415,25 @@ impl EvaluatorGroup {
         params: &[Complex<f64>],
         out: &mut Vec<Complex<f64>>,
     ) -> RusticolResult<()> {
+        self.evaluate_batch_into_with_tail_policy(batch_size, params, out, false)
+    }
+
+    pub(crate) fn evaluate_batch_into_padded_simd_tail(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut Vec<Complex<f64>>,
+    ) -> RusticolResult<()> {
+        self.evaluate_batch_into_with_tail_policy(batch_size, params, out, true)
+    }
+
+    fn evaluate_batch_into_with_tail_policy(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut Vec<Complex<f64>>,
+        pad_incomplete_simd_tail: bool,
+    ) -> RusticolResult<()> {
         let expected_output_len = batch_size * self.output_len;
         if out.len() != expected_output_len {
             out.resize(expected_output_len, c64(0.0, 0.0));
@@ -437,7 +456,11 @@ impl EvaluatorGroup {
                 &mut self.chunk_parameter_scratch_f64,
             );
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
-            evaluator.evaluate_f64_batch(batch_size, evaluator_params, out)?;
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(batch_size, evaluator_params, out)?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(batch_size, evaluator_params, out)?;
+            }
             return Ok(());
         }
         let mut output_offset = 0;
@@ -458,11 +481,19 @@ impl EvaluatorGroup {
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
             self.chunk_scratch_f64
                 .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
-            evaluator.evaluate_f64_batch(
-                batch_size,
-                evaluator_params,
-                &mut self.chunk_scratch_f64,
-            )?;
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            }
             for row in 0..batch_size {
                 let src = row * evaluator.output_len;
                 let dst = row * self.output_len + output_offset;
@@ -676,6 +707,41 @@ impl LoadedEvaluator {
         match &mut self.eval {
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => eval.evaluate_batch(batch_size, params, out),
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(eval) => eval.evaluate_batch(batch_size, params, out),
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::Jit(eval) => {
+                if params.len() != batch_size * self.input_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "parameter buffer has length {}, expected {}",
+                        params.len(),
+                        batch_size * self.input_len
+                    )));
+                }
+                if out.len() != batch_size * self.output_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "output buffer has length {}, expected {}",
+                        out.len(),
+                        batch_size * self.output_len
+                    )));
+                }
+                eval.evaluate_batch(batch_size, params, out)
+                    .map_err(RusticolError::evaluation)
+            }
+        }
+    }
+
+    fn evaluate_f64_batch_unpadded(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
+        match &mut self.eval {
+            #[cfg(feature = "f64-symjit")]
+            F64Evaluator::SymjitApplication(eval) => {
+                eval.evaluate_batch_unpadded(batch_size, params, out)
+            }
             #[cfg(feature = "f64-compiled")]
             F64Evaluator::Compiled(eval) => eval.evaluate_batch(batch_size, params, out),
             #[cfg(feature = "symbolica-runtime")]

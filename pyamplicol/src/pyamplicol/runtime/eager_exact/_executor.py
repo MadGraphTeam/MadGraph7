@@ -16,12 +16,14 @@ from pyamplicol.artifacts.security import confined_path
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime.eager_exact._contracts import (
     _KernelLoader,
+    _mapping,
     _PayloadIndex,
     _read_json,
     _selected_process,
 )
 from pyamplicol.runtime.eager_exact._execution import _evaluate_point
 from pyamplicol.runtime.eager_exact._plan import _EagerExactPlan
+from pyamplicol.runtime.eager_exact._plan_v3 import _NativeExactSectionsLoader
 from pyamplicol.runtime.symbolica_exact import (
     _apply_lc_replay_input_mapping,
     _apply_lc_replay_resolved,
@@ -44,6 +46,7 @@ class EagerExactExecutor:
         native_runtime: Any,
         *,
         kernel_loader: _KernelLoader | None = None,
+        native_sections_loader: _NativeExactSectionsLoader | None = None,
     ) -> None:
         self._artifact = Path(artifact).expanduser().resolve(strict=True)
         self._native_runtime = native_runtime
@@ -78,10 +81,8 @@ class EagerExactExecutor:
         )
         process_root = self._artifact / "processes" / representative_id
         self._execution = execution
-        self._physics = physics
         self._permutation = permutation
-        self._lc_replay = _lc_replay_plan(execution, physics, permutation)
-        self._plan = _EagerExactPlan.load(
+        self._plan = _EagerExactPlan.load_for_execution(
             artifact_root=self._artifact,
             process_root=process_root,
             process_id=representative_id,
@@ -89,7 +90,25 @@ class EagerExactExecutor:
             manifest=manifest,
             kernel_loader=kernel_loader,
             exact_payloads=exact_payloads,
+            native_sections_loader=native_sections_loader,
         )
+        if self._plan.physics_reduction_groups is not None:
+            physics = dict(physics)
+            reduction = dict(_mapping(physics.get("reduction"), "physics reduction"))
+            reduction["groups"] = list(self._plan.physics_reduction_groups)
+            physics["reduction"] = reduction
+        self._physics = physics
+        if "runtime_schema" in execution:
+            exact_execution = execution
+        else:
+            exact_execution = {
+                "runtime_schema": self._plan.runtime_schema,
+                "lc_topology_replay": self._plan.runtime_schema.get(
+                    "lc_topology_replay"
+                ),
+            }
+        self._exact_execution = exact_execution
+        self._lc_replay = _lc_replay_plan(exact_execution, physics, permutation)
 
     def evaluate_resolved(
         self,
@@ -143,7 +162,7 @@ class EagerExactExecutor:
             )
             values, helicity_ids, color_ids = _reduce_resolved(
                 amplitudes,
-                self._execution,
+                self._exact_execution,
                 self._physics,
                 normalization,
                 helicities if self._lc_replay is None else None,

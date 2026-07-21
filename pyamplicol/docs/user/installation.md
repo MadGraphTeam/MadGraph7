@@ -104,6 +104,13 @@ to rebuild the performance report. It intentionally omits pyAmpliCol's Python
 runtime, test, and patched candidate packages: `just dev-install` installs
 those into `.venv` from the repository's contributor locks.
 
+The same command stages the candidate wheel's Rust extension and native SDK
+beside the Python source. Contributor imports verify a lightweight native-source
+build ID and the staged extension hash. If Rust or native build inputs change,
+or another extension is found, imports fail with `just dev-install` as the
+refresh command. This check is limited to source and candidate builds; normal
+published-wheel imports are unchanged.
+
 The flake is a source-checkout contributor tool rather than part of the PyPI
 source distribution, because that distribution excludes the candidate
 dependency installer and accepts published dependencies only.

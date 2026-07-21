@@ -207,9 +207,9 @@ packed once per stage and batch, each compiled chunk consumes that same packed
 buffer, and the concatenated outputs are scattered to their recorded slots.
 Dependencies are still cut only between recursion stages.
 
-Generation streams these stages.  Once a blueprint has been compiled and
-written, its Symbolica expressions can be released before the next stage is
-built.  This bounds peak expression memory without changing the DAG or the
+Compiled generation streams these stages.  Once a blueprint has been compiled
+and written, its Symbolica expressions can be released before the next stage
+is built.  This bounds peak expression memory without changing the DAG or the
 runtime schedule.  The relevant writer path is
 \path{src/pyamplicol/generation/stage_artifacts.py}, while backend settings and
 payload construction live in
@@ -217,7 +217,8 @@ payload construction live in
 
 \subsection{Artifact records and Rusticol execution}
 
-The root \texttt{artifact.json} is a process-artifact schema-v3 manifest.  It
+For the compiled route described in this section, the root
+\texttt{artifact.json} is a process-artifact schema-v3 manifest.  It
 binds global model/configuration data and payload hashes to process-local
 records.  The files relevant to one concrete process are:
 

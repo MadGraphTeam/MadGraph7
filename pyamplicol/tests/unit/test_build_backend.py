@@ -102,7 +102,6 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         lambda: candidate_inputs,
     )
     monkeypatch.setattr(backend, "_clean_source_revision", lambda: "a" * 40)
-
     with backend._overlay("candidate") as (overlay, target):
         assert target.parent == overlay.parent
         cargo = (overlay / "Cargo.toml").read_text(encoding="utf-8")
@@ -125,6 +124,8 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         )
         assert build_info["publishable"] is False
         assert len(build_info["candidate_fingerprint"]) == 12
+        assert len(build_info["native_build_inputs_sha256"]) == 64
+        assert build_info["source_checkout"] == str(ROOT.resolve())
         assert build_info["source_revision"] == "a" * 40
         target = "aarch64-apple-darwin"
         backend._stage_selftest_fixture(overlay, target)
@@ -223,6 +224,15 @@ def test_release_overlay_uses_only_canonical_registry_lock() -> None:
         assert not (overlay / "dependencies" / "candidate-Cargo.lock").exists()
 
 
+def test_release_overlay_skips_contributor_native_digest(monkeypatch) -> None:
+    def unexpected_digest(_root: Path) -> str:
+        raise AssertionError("release builds must not hash contributor inputs")
+
+    monkeypatch.setattr(backend, "_native_build_inputs_digest", unexpected_digest)
+    with backend._overlay("release") as (overlay, _target):
+        assert not (overlay / "src/pyamplicol/_build_info.json").exists()
+
+
 def test_selftest_staging_rejects_an_unavailable_target() -> None:
     with (
         backend._overlay("release") as (overlay, _target),
@@ -252,7 +262,11 @@ def test_portable_selftest_stages_for_every_release_target(target: str) -> None:
 
 def test_cargo_overlay_rejects_unknown_resolution_mode(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="unsupported Cargo input mode"):
-        backend._stage_cargo_inputs(tmp_path, "mixed")
+        backend._stage_cargo_inputs(
+            tmp_path,
+            "mixed",
+            native_build_inputs_sha256="0" * 64,
+        )
 
 
 def test_candidate_inputs_fail_closed_when_installer_has_not_run() -> None:
@@ -500,8 +514,7 @@ def test_candidate_digest_covers_only_contributor_dependency_inputs(
 
     checkout = tmp_path / "dependencies" / "checkouts" / "symbolica"
     inputs[1].write_text(
-        "[patch.crates-io]\n"
-        f'symbolica = {{ path = "{checkout}" }}\n',
+        f'[patch.crates-io]\nsymbolica = {{ path = "{checkout}" }}\n',
         encoding="utf-8",
     )
     config_changed = backend._candidate_digest(*inputs)
@@ -522,8 +535,7 @@ def test_candidate_digest_rejects_patch_paths_outside_dependency_checkouts(
 ) -> None:
     inputs = _candidate_inputs(tmp_path)
     inputs[1].write_text(
-        "[patch.crates-io]\n"
-        f'symbolica = {{ path = "{tmp_path / "symbolica"}" }}\n',
+        f'[patch.crates-io]\nsymbolica = {{ path = "{tmp_path / "symbolica"}" }}\n',
         encoding="utf-8",
     )
 
@@ -646,9 +658,7 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     assert bool(sdk_stages) is with_sdk
     assert selftest_stages == ([(overlay, "aarch64-apple-darwin")] if with_sdk else [])
     assert prepared_model_stages == (
-        [(overlay, "release")]
-        if with_sdk or hook == "build_sdist"
-        else []
+        [(overlay, "release")] if with_sdk or hook == "build_sdist" else []
     )
     for name, value in injected.items():
         assert os.environ[name] == value

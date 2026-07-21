@@ -553,6 +553,26 @@ impl ExecutionRuntime {
         }
     }
 
+    pub(super) fn remap_physics_reduction_overrides(
+        &mut self,
+        helicity_id_map: &BTreeMap<String, String>,
+        color_id_map: &BTreeMap<String, String>,
+    ) -> RusticolResult<()> {
+        if let Some(reduction) = self.physics_reduction_override.as_mut() {
+            remap_reduction_ids(reduction, helicity_id_map, color_id_map)?;
+        }
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
+            sum_runtime.remap_physics_reduction_overrides(helicity_id_map, color_id_map)?;
+        }
+        for selector_runtime in &mut self.helicity_selector_runtimes {
+            selector_runtime.remap_physics_reduction_overrides(helicity_id_map, color_id_map)?;
+        }
+        for selector_runtime in self.color_selector_runtimes.values_mut() {
+            selector_runtime.remap_physics_reduction_overrides(helicity_id_map, color_id_map)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn attach_physics(&mut self, physics: Arc<PhysicsRuntime>) -> RusticolResult<()> {
         self.physics = Some(Arc::clone(&physics));
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
@@ -772,6 +792,48 @@ impl ExecutionRuntime {
         self.lc_resolved_replay_selection_cache = None;
         Ok(())
     }
+}
+
+fn remap_reduction_ids(
+    reduction: &mut crate::Reduction,
+    helicity_id_map: &BTreeMap<String, String>,
+    color_id_map: &BTreeMap<String, String>,
+) -> RusticolResult<()> {
+    for group in &mut reduction.groups {
+        group.representative_helicity_id = helicity_id_map
+            .get(&group.representative_helicity_id)
+            .cloned()
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "reduction override representative helicity {:?} is absent from alias remapping",
+                    group.representative_helicity_id
+                ))
+            })?;
+        group.representative_color_id = color_id_map
+            .get(&group.representative_color_id)
+            .cloned()
+            .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "reduction override representative color {:?} is absent from alias remapping",
+                group.representative_color_id
+            ))
+        })?;
+        for id in &mut group.physical_helicity_ids {
+            *id = helicity_id_map.get(id).cloned().ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "reduction override physical helicity {id:?} is absent from alias remapping"
+                ))
+            })?;
+        }
+        for id in &mut group.physical_color_ids {
+            *id = color_id_map.get(id).cloned().ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "reduction override physical color {id:?} is absent from alias remapping"
+                ))
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn lc_color_replay_weight(group: &RawSumGroup) -> RusticolResult<f64> {

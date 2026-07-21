@@ -5,12 +5,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import platform
 import shutil
 import sys
 import zipfile
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
@@ -31,7 +34,9 @@ from _common import (  # noqa: E402
 )
 
 SOURCE_PACKAGE = ROOT / "src" / "pyamplicol"
-SOURCE_BUILD_INFO = ROOT / ".artifacts" / "source-runtime" / "_build_info.json"
+SOURCE_RUNTIME_ROOT = ROOT / ".artifacts" / "source-runtime"
+SOURCE_BUILD_INFO = SOURCE_RUNTIME_ROOT / "_build_info.json"
+SOURCE_RUNTIME_STAGING = SOURCE_RUNTIME_ROOT / ".staging"
 _SDK_PREFIXES = (
     "pyamplicol/_sdk/fortran/",
     "pyamplicol/_sdk/include/",
@@ -41,11 +46,88 @@ _SDK_FILES = {
     "pyamplicol/_sdk/link.json",
     "pyamplicol/_sdk/metadata.json",
 }
+_NATIVE_BUILD_INPUT_FILES = (
+    Path("Cargo.lock"),
+    Path("Cargo.toml"),
+    Path("pyproject.toml"),
+    Path("rust-toolchain.toml"),
+    Path("dependencies/candidate-Cargo.lock"),
+    Path("dependencies/candidate-cargo-config.toml"),
+    Path("dependencies/contributor-lock.toml"),
+    Path("dependencies/install-state.json"),
+    Path("dependencies/release-lock.toml"),
+)
+_NATIVE_BUILD_INPUT_TREES = (Path("build_backend"), Path("rust"))
+_NATIVE_BUILD_INPUT_SUFFIXES = {
+    ".f90",
+    ".h",
+    ".hpp",
+    ".json",
+    ".py",
+    ".pyi",
+    ".rs",
+    ".toml",
+}
+_NATIVE_EXTENSION_SUFFIXES = (".dylib", ".pyd", ".so")
 
 
-def _wheel_identity(
-    members: Mapping[str, bytes],
-) -> tuple[str, str]:
+def _host_target() -> str | None:
+    machine = platform.machine().lower()
+    if machine in {"arm64", "aarch64"} and sys.platform == "darwin":
+        return "aarch64-apple-darwin"
+    if machine in {"amd64", "x86_64"} and sys.platform == "darwin":
+        return "x86_64-apple-darwin"
+    if machine in {"amd64", "x86_64"} and sys.platform.startswith("linux"):
+        return "x86_64-unknown-linux-gnu"
+    return None
+
+
+@contextmanager
+def _publication_lock(directory: Path):
+    """Serialize the developer-only publication of source runtime files."""
+
+    try:
+        import fcntl
+    except ImportError as error:  # pragma: no cover - unsupported build host
+        raise ReleaseError(
+            "source runtime publication requires a POSIX advisory lock"
+        ) from error
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / ".publication.lock").open("a+b") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def _native_build_inputs_digest(root: Path) -> str:
+    paths = [root / relative for relative in _NATIVE_BUILD_INPUT_FILES]
+    for relative in _NATIVE_BUILD_INPUT_TREES:
+        tree = root / relative
+        if not tree.is_dir():
+            continue
+        paths.extend(
+            path
+            for path in tree.rglob("*")
+            if path.is_file()
+            and not {"__pycache__", "target"}.intersection(path.relative_to(tree).parts)
+            and path.suffix in _NATIVE_BUILD_INPUT_SUFFIXES
+        )
+    digest = hashlib.sha256()
+    for path in sorted(set(paths)):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        data = path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "little"))
+        digest.update(relative)
+        digest.update(len(data).to_bytes(8, "little"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
+def _wheel_identity(members: Mapping[str, bytes]) -> tuple[str, str]:
     metadata_names = [name for name in members if name.endswith(".dist-info/METADATA")]
     if len(metadata_names) != 1:
         raise ReleaseError("source runtime wheel must contain one METADATA file")
@@ -75,6 +157,19 @@ def _write_atomic(path: Path, data: bytes, *, mode: int = 0o644) -> None:
     temporary.write_bytes(data)
     temporary.chmod(mode)
     os.replace(temporary, path)
+
+
+def _native_extension_inventory(source_package: Path) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            (
+                path
+                for path in source_package.glob("_rusticol.*")
+                if path.is_file() and path.name.endswith(_NATIVE_EXTENSION_SUFFIXES)
+            ),
+            key=lambda path: path.name,
+        )
+    )
 
 
 def _stage_selftest_tree(
@@ -131,14 +226,19 @@ def _stage_selftest_tree(
         raise
 
 
-def stage_runtime(
+def _stage_runtime_locked(
     wheel: Path,
     *,
     source_package: Path = SOURCE_PACKAGE,
     source_build_info: Path = SOURCE_BUILD_INFO,
+    source_root: Path = ROOT,
     mode: str,
     audit: bool = True,
 ) -> dict[str, object]:
+    """Stage one wheel and publish its provenance only after all payloads."""
+
+    marker = source_build_info.parent / ".staging"
+    _write_atomic(marker, b"incomplete\n", mode=0o600)
     wheel = wheel.resolve(strict=True)
     if audit:
         audit_wheel(wheel, mode=mode)
@@ -174,6 +274,42 @@ def stage_runtime(
         raise ReleaseError("source runtime wheel has invalid SDK metadata") from error
     if not target or target in {".", ".."} or "/" in target or "\\" in target:
         raise ReleaseError(f"source runtime wheel has an unsafe target: {target!r}")
+    host_target = _host_target()
+    if host_target is not None and target != host_target:
+        raise ReleaseError(
+            f"source runtime wheel targets {target}, but this host requires "
+            f"{host_target}"
+        )
+
+    build_info_name = "pyamplicol/_build_info.json"
+    if build_info_name in members:
+        try:
+            build_info = json.loads(members[build_info_name])
+        except (TypeError, ValueError) as error:
+            raise ReleaseError(
+                "source runtime wheel has invalid build metadata"
+            ) from error
+        if not isinstance(build_info, dict):
+            raise ReleaseError("source runtime wheel build metadata must be an object")
+    else:
+        build_info = {
+            "schema_version": 1,
+            "publishable": mode == "release",
+            "version": version,
+        }
+    if build_info.get("version") != version:
+        raise ReleaseError(
+            "source runtime wheel build metadata and METADATA versions differ"
+        )
+    native_digest = _native_build_inputs_digest(source_root)
+    if mode == "candidate":
+        if build_info.get("publishable") is not False:
+            raise ReleaseError("candidate source runtime wheel is not marked candidate")
+        if build_info.get("native_build_inputs_sha256") != native_digest:
+            raise ReleaseError(
+                "candidate source runtime wheel was built from different native "
+                "sources; rerun `just dev-install`"
+            )
 
     selftest_prefix = f"pyamplicol/assets/selftest/{target}/"
     selected = {
@@ -204,23 +340,24 @@ def stage_runtime(
         target=target,
     )
 
-    build_info_name = "pyamplicol/_build_info.json"
-    if build_info_name in members:
-        build_info = members[build_info_name]
-    else:
-        build_info = (
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "publishable": mode == "release",
-                    "version": version,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        ).encode("utf-8")
-    _write_atomic(source_build_info, build_info)
+    expected_extension = PurePosixPath(extension_names[0]).name
+    for path in _native_extension_inventory(source_package):
+        if path.name != expected_extension:
+            path.unlink()
+    final_extensions = _native_extension_inventory(source_package)
+    if len(final_extensions) != 1 or final_extensions[0].name != expected_extension:
+        raise ReleaseError("source runtime extension publication was not exact")
+
+    build_info["source_runtime"] = {
+        "extension_name": expected_extension,
+        "extension_sha256": hashlib.sha256(members[extension_names[0]]).hexdigest(),
+        "native_build_inputs_sha256": native_digest,
+    }
+    _write_atomic(
+        source_build_info,
+        (json.dumps(build_info, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    marker.unlink()
     return {
         "mode": mode,
         "target": target,
@@ -228,6 +365,28 @@ def stage_runtime(
         "wheel": wheel.name,
         "staged_file_count": len(selected) + 1,
     }
+
+
+def stage_runtime(
+    wheel: Path,
+    *,
+    source_package: Path = SOURCE_PACKAGE,
+    source_build_info: Path = SOURCE_BUILD_INFO,
+    source_root: Path = ROOT,
+    mode: str,
+    audit: bool = True,
+) -> dict[str, object]:
+    """Stage one wheel while excluding concurrent developer publications."""
+
+    with _publication_lock(source_build_info.parent):
+        return _stage_runtime_locked(
+            wheel,
+            source_package=source_package,
+            source_build_info=source_build_info,
+            source_root=source_root,
+            mode=mode,
+            audit=audit,
+        )
 
 
 def build_and_stage(*, python: Path, mode: str) -> dict[str, object]:

@@ -465,7 +465,7 @@ def test_strict_eager_validation_checks_selected_and_all_flow() -> None:
     assert failed["all_flow_status"] == report.ResultStatus.VALIDATION_FAILED.value
 
 
-def test_lc_eager_measurement_generates_once_and_profiles_two_selectors(
+def test_lc_eager_measurement_generates_two_layouts_and_profiles_two_selectors(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -526,7 +526,11 @@ def test_lc_eager_measurement_generates_once_and_profiles_two_selectors(
         "config_to_dict",
         lambda value: {"evaluator": {"execution_mode": "eager"}},
     )
-    monkeypatch.setattr(report, "_run_config_values", lambda **kwargs: {})
+    monkeypatch.setattr(
+        report,
+        "_run_config_values",
+        lambda **kwargs: {"model": "ufo-sm.json"},
+    )
     monkeypatch.setattr(
         report,
         "_prepared_model_source_for_eager",
@@ -557,7 +561,7 @@ def test_lc_eager_measurement_generates_once_and_profiles_two_selectors(
     monkeypatch.setattr(report, "_profile_eager_runtime", fake_profile)
     monkeypatch.setattr(
         report,
-        "_eager_lc_selector_contract",
+        "_lc_runtime_selector_contract",
         lambda **kwargs: {
             **report._empty_eager_selector_contract(),
             "status": "ok",
@@ -592,14 +596,24 @@ def test_lc_eager_measurement_generates_once_and_profiles_two_selectors(
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
 
-    assert len(generated) == 1
+    assert len(generated) == 2
+    assert {path.name for path in generated} == {
+        "eager-complete",
+        "eager-all-flow-union",
+    }
     assert profiles == [
         ((), ("flow:2,4,1",)),
         (("helicity:-1,1,-1,1",), ()),
     ]
+    metadata = measurement["metadata"]
     old = measurement["metadata"]["old_matrix_format"]
-    assert old["selected_generation_s"] == old["all_flow_generation_s"]
-    assert measurement["metadata"]["prepared_model_creation_excluded_from_generation"]
+    assert old["selected_generation_s"] == metadata["selected_flow_measurement"][
+        "generation_seconds"
+    ]
+    assert old["all_flow_generation_s"] == metadata["all_flow_measurement"][
+        "generation_seconds"
+    ]
+    assert metadata["prepared_model_creation_excluded_from_generation"]
 
 
 def test_separate_processes_merge_disjoint_eager_cells_without_lost_updates(

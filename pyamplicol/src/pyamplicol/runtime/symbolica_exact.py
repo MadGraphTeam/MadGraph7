@@ -9,6 +9,7 @@ decode or reinterpret Symbolica's serialization format.
 from __future__ import annotations
 
 import json
+import struct
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
@@ -103,7 +104,13 @@ def _json_integer(value: object) -> int:
 
 def _decimal(value: object, context: str) -> Decimal:
     try:
-        result = value if isinstance(value, Decimal) else Decimal(str(value))
+        if isinstance(value, str) and value.startswith("binary64:"):
+            bits = value.removeprefix("binary64:")
+            if len(bits) != 16:
+                raise ValueError("binary64 payload must contain 16 hexadecimal digits")
+            result = Decimal.from_float(struct.unpack(">d", bytes.fromhex(bits))[0])
+        else:
+            result = value if isinstance(value, Decimal) else Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise EvaluationError(f"{context} is not a decimal scalar") from exc
     if not result.is_finite():
@@ -198,9 +205,7 @@ class _ExactEvaluator:
             for raw_chunk in raw_chunks:
                 if not isinstance(raw_chunk, Mapping):
                     raise ArtifactError("chunked evaluator entry is not an object")
-                evaluators.append(
-                    cls.load(raw_chunk, root, state_loader=state_loader)
-                )
+                evaluators.append(cls.load(raw_chunk, root, state_loader=state_loader))
             if not evaluators:
                 raise ArtifactError("chunked evaluator has no evaluators")
             raw_input_len = manifest.get("input_len")
@@ -272,8 +277,7 @@ class _ExactEvaluator:
                 state = path.read_bytes()
             except OSError as exc:
                 raise CompatibilityError(
-                    f"could not read retained Symbolica evaluator state {path}: "
-                    f"{exc}"
+                    f"could not read retained Symbolica evaluator state {path}: {exc}"
                 ) from exc
         else:
             state = state_loader(state_path)
@@ -382,9 +386,7 @@ class SymbolicaExactExecutor:
                 f"process {representative_id!r} must declare one evaluator manifest"
             )
         self._process_root = artifact / "processes" / representative_id
-        self._process_prefix = normalize_relative_path(
-            f"processes/{representative_id}"
-        )
+        self._process_prefix = normalize_relative_path(f"processes/{representative_id}")
         try:
             self._execution = json.loads(
                 (artifact / records[0].path).read_text(encoding="utf-8")
@@ -1216,9 +1218,7 @@ def _lc_replay_plan(
 ) -> _LcReplayPlan | None:
     compiled = execution.get("compiled")
     compiled_replay = (
-        compiled.get("lc_topology_replay")
-        if isinstance(compiled, Mapping)
-        else None
+        compiled.get("lc_topology_replay") if isinstance(compiled, Mapping) else None
     )
     eager_replay = execution.get("lc_topology_replay")
     if (

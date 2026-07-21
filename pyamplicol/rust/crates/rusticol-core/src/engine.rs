@@ -895,7 +895,7 @@ struct GenericRuntimeModelManifest {
     particles: Vec<GenericRuntimeParticleManifest>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericRuntimeModelParameterManifest {
     name: String,
@@ -1094,7 +1094,7 @@ struct GenericSourceFillManifest {
     sources: Vec<GenericSourceRecordManifest>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum GenericSourceOrientationManifest {
     Particle,
@@ -1102,7 +1102,7 @@ enum GenericSourceOrientationManifest {
     SelfConjugate,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum GenericParticleStatisticsManifest {
     Boson,
@@ -1111,7 +1111,7 @@ enum GenericParticleStatisticsManifest {
     Auxiliary,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum GenericWavefunctionFamilyManifest {
     Scalar,
@@ -1135,7 +1135,7 @@ impl GenericWavefunctionFamilyManifest {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum GenericMomentumTransformManifest {
     Identity,
@@ -1151,14 +1151,14 @@ impl GenericMomentumTransformManifest {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 enum GenericSourceSpinStateManifest {
     Scalar(i32),
     Components(Vec<i32>),
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericSourceStateIrManifest {
     helicity: i32,
@@ -1197,7 +1197,7 @@ impl GenericSourceStateIrManifest {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericCrossingIrManifest {
     momentum_transform: GenericMomentumTransformManifest,
@@ -1217,7 +1217,7 @@ impl GenericCrossingIrManifest {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericParticleIdentityIrManifest {
     canonical_id: String,
@@ -1244,7 +1244,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericSourceIrManifest {
     identity: GenericParticleIdentityIrManifest,
@@ -1260,7 +1260,7 @@ struct GenericSourceIrManifest {
     width_parameter: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericSourceRecordManifest {
     source_id: usize,
@@ -1292,7 +1292,7 @@ struct GenericSourceRecordManifest {
     color_state: Value,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericMomentumSlotManifest {
     momentum_slot_id: usize,
@@ -1461,7 +1461,7 @@ struct GenericContractionIrManifest {
     metric_signature: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericValueSlotRefManifest {
     value_slot_id: usize,
@@ -1678,6 +1678,9 @@ struct EvaluatorGroup {
     chunk_scratch_f64: Vec<Complex<f64>>,
 }
 
+// Evaluator groups already own these values behind a Vec allocation. Boxing
+// only the SymJIT variant would add an indirection to every hot kernel call.
+#[allow(clippy::large_enum_variant)]
 enum F64Evaluator {
     #[cfg(feature = "f64-symjit")]
     SymjitApplication(SymjitApplicationEvaluator),
@@ -1982,6 +1985,91 @@ pub struct NativeRuntimeMetadata {
     pub interaction_count: usize,
     pub stage_count: usize,
     pub amplitude_output_count: usize,
+}
+
+/// Exact-required sections decoded lazily from one authenticated eager plan-v3
+/// artifact. This bridge is intentionally private to pyAmpliCol's Python exact
+/// executor; f64 execution never constructs it.
+#[derive(Debug)]
+pub struct NativeEagerExactSections {
+    pub process_id: String,
+    pub exact_schema: Value,
+    pub reduction_groups: Value,
+    pub selector_group_ids: Vec<u32>,
+    pub selector_domains: Vec<Vec<u32>>,
+    pub couplings: Vec<NativeEagerExactCoupling>,
+    pub stages: Vec<NativeEagerExactStage>,
+    pub invocations: Vec<NativeEagerExactInvocation>,
+    pub attachments: Vec<NativeEagerExactAttachment>,
+    pub finalizations: Vec<NativeEagerExactFinalization>,
+    pub closures: Vec<NativeEagerExactClosure>,
+}
+
+#[derive(Debug)]
+pub struct NativeEagerExactCoupling {
+    pub real_parameter_id: u32,
+    pub imaginary_parameter_id: u32,
+    pub constant_real: String,
+    pub constant_imaginary: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct NativeEagerExactStage {
+    pub stage_index: u32,
+    pub invocation_start: u64,
+    pub invocation_count: u64,
+    pub attachment_start: u64,
+    pub attachment_count: u64,
+    pub finalization_start: u64,
+    pub finalization_count: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct NativeEagerExactInvocation {
+    pub kernel_id: u32,
+    pub left_value_slot_id: u32,
+    pub right_value_slot_id: u32,
+    pub left_momentum_slot_id: u32,
+    pub right_momentum_slot_id: u32,
+    pub coupling_slot_id: u32,
+    pub output_factor_source: u8,
+    pub attachment_start: u64,
+    pub attachment_count: u64,
+    pub selector_domain_id: u32,
+}
+
+#[derive(Debug)]
+pub struct NativeEagerExactAttachment {
+    pub result_current_id: u32,
+    pub factor_numerators: Vec<[String; 2]>,
+    pub factor_denominator: Option<[String; 2]>,
+    pub selector_domain_id: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct NativeEagerExactFinalization {
+    pub kernel_id: u32,
+    pub current_id: u32,
+    pub unpropagated_value_slot_id: u32,
+    pub propagated_value_slot_id: u32,
+    pub momentum_slot_id: u32,
+    pub unpropagated_selector_domain_id: u32,
+    pub propagated_selector_domain_id: u32,
+}
+
+#[derive(Debug)]
+pub struct NativeEagerExactClosure {
+    pub kernel_id: u32,
+    pub left_value_slot_id: u32,
+    pub right_value_slot_id: u32,
+    pub amplitude_index: u32,
+    pub coupling_slot_id: u32,
+    pub output_factor_source: u8,
+    pub factor_numerators: Vec<[String; 2]>,
+    pub factor_denominator: Option<[String; 2]>,
+    pub direct_coefficients: Option<Vec<[String; 2]>>,
+    pub coherent_group_id: u32,
+    pub selector_domain_id: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -2357,6 +2445,7 @@ mod eager_backend;
 use eager_backend::*;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[allow(dead_code)]
 mod eager_manifest;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use eager_manifest::*;
@@ -2371,6 +2460,7 @@ mod eager_v3_load;
 mod eager_v3_manifest;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[allow(dead_code)]
 mod eager_load;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use eager_load::*;

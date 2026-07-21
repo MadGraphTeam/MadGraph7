@@ -17,6 +17,7 @@ from threading import Lock
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
+from pyamplicol._internal.versions import verify_native_module
 from pyamplicol.api.errors import GenerationError, ModelError, PyAmpliColError
 from pyamplicol.api.models import CompiledModel, _compiled_model_payload
 from pyamplicol.api.requests import (
@@ -153,6 +154,7 @@ def _invoke_rust_eager_lowering_v1(
 ) -> _RustEagerLoweringOutput:
     try:
         module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
     except ImportError as exc:
         raise GenerationError(
             "eager plan-v3 was requested, but pyamplicol._rusticol is unavailable; "
@@ -1869,6 +1871,7 @@ class GenerationBackend:
             dag,
             model,
             process_id=process_name,
+            native_eager_plan_v3_reduction_groups=True,
         )
         return EagerPlanV3ProcessArtifact(
             process_id=process_name,

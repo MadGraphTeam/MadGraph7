@@ -394,7 +394,7 @@ impl ExecutionRuntime {
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_sources_row(sources, external_count, particle_masses, row_state, point)?;
         }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
+        let source_fill_elapsed = source_start.elapsed();
 
         let momentum_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -409,7 +409,7 @@ impl ExecutionRuntime {
                 point,
             )?;
         }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
+        let momentum_setup_elapsed = momentum_start.elapsed();
 
         let model_parameter_start_time = Instant::now();
         for row in 0..n_points {
@@ -421,7 +421,7 @@ impl ExecutionRuntime {
                 row_state,
             )?;
         }
-        let model_parameter_setup_s = model_parameter_start_time.elapsed().as_secs_f64();
+        let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
         let mut stage_input_pack_by_stage_s = Vec::new();
         let mut stage_evaluator_call_by_stage_s = Vec::new();
         let mut stage_output_assign_by_stage_s = Vec::new();
@@ -490,8 +490,10 @@ impl ExecutionRuntime {
         Ok((
             self.values_scratch_f64.clone(),
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s: momentum_setup_s + model_parameter_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                momentum_setup_s: profile_duration_seconds(
+                    momentum_setup_elapsed + model_parameter_setup_elapsed,
+                ),
                 stage_input_pack_s,
                 stage_evaluator_call_s,
                 stage_evaluator_s,
@@ -603,7 +605,7 @@ impl ExecutionRuntime {
                 point,
             )?;
         }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
+        let source_fill_elapsed = source_start.elapsed();
 
         let momentum_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -618,7 +620,7 @@ impl ExecutionRuntime {
                 point,
             )?;
         }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
+        let momentum_setup_elapsed = momentum_start.elapsed();
 
         let model_parameter_start_time = Instant::now();
         for row in 0..n_points {
@@ -630,7 +632,7 @@ impl ExecutionRuntime {
                 row_state,
             )?;
         }
-        let model_parameter_setup_s = model_parameter_start_time.elapsed().as_secs_f64();
+        let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
 
         let mut stage_input_pack_s = 0.0;
         let mut stage_evaluator_call_s = 0.0;
@@ -672,8 +674,10 @@ impl ExecutionRuntime {
         Ok((
             values,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s: momentum_setup_s + model_parameter_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                momentum_setup_s: profile_duration_seconds(
+                    momentum_setup_elapsed + model_parameter_setup_elapsed,
+                ),
                 stage_input_pack_s,
                 stage_evaluator_call_s,
                 stage_evaluator_s,
@@ -877,7 +881,7 @@ impl ExecutionRuntime {
                 point,
             )?;
         }
-        let source_fill_s = source_start.elapsed().as_secs_f64();
+        let source_fill_elapsed = source_start.elapsed();
 
         let momentum_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -892,7 +896,7 @@ impl ExecutionRuntime {
                 point,
             )?;
         }
-        let momentum_setup_s = momentum_start.elapsed().as_secs_f64();
+        let momentum_setup_elapsed = momentum_start.elapsed();
 
         let model_parameter_start_time = Instant::now();
         for row in 0..n_points {
@@ -904,7 +908,7 @@ impl ExecutionRuntime {
                 row_state,
             )?;
         }
-        let model_parameter_setup_s = model_parameter_start_time.elapsed().as_secs_f64();
+        let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
 
         let mut stage_input_pack_s = 0.0;
         let mut stage_evaluator_call_s = 0.0;
@@ -948,8 +952,10 @@ impl ExecutionRuntime {
         Ok((
             resolved,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s: momentum_setup_s + model_parameter_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                momentum_setup_s: profile_duration_seconds(
+                    momentum_setup_elapsed + model_parameter_setup_elapsed,
+                ),
                 stage_input_pack_s,
                 stage_evaluator_call_s,
                 stage_evaluator_s,
