@@ -326,6 +326,8 @@ def _artifact_inspection() -> ArtifactInspection:
         helicity_coverage="complete",
         color_coverage="complete",
         aliases=(alias,),
+        lc_flow_layout="all-flow-union",
+        lc_union_sector_count=1,
     )
     return ArtifactInspection(
         kind="pyamplicol-artifact-inspection",
@@ -370,6 +372,9 @@ def test_artifact_inspection_uses_process_and_alias_tables() -> None:
     assert "ddbar_zg" in rendered
     assert "d d~ > z g" in rendered
     assert "24 (12 eval.)" in rendered
+    assert "LC flow layout" in rendered
+    assert "all-flow-union" in rendered
+    assert "1 physical / materialized; 0 residual" in rendered
 
 
 def test_eager_artifact_inspection_reports_execution_contract() -> None:

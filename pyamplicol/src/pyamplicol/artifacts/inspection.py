@@ -82,6 +82,8 @@ class ArtifactProcessInspection:
     lc_materialized_sector_count: int | None = None
     lc_replayed_sector_count: int | None = None
     lc_residual_sector_count: int | None = None
+    lc_flow_layout: str | None = None
+    lc_union_sector_count: int | None = None
     execution_mode: str = "compiled"
     prepared_backend: str | None = None
     prepared_kernel_count: int | None = None
@@ -1138,6 +1140,31 @@ def _process_inspection(
     execution: _ExecutionInspection,
 ) -> ArtifactProcessInspection:
     process_id = str(process["id"])
+    lc_flow_layout: str | None = None
+    if str(process["color_accuracy"]) == "lc":
+        lc_flow_layout = "topology-replay"
+        generation = manifest.extensions.get("generation")
+        if isinstance(generation, Mapping):
+            concrete = generation.get("concrete_processes")
+            if isinstance(concrete, Sequence) and not isinstance(
+                concrete, (str, bytes)
+            ):
+                for record in concrete:
+                    if (
+                        not isinstance(record, Mapping)
+                        or record.get("id") != process_id
+                    ):
+                        continue
+                    filters = record.get("filters")
+                    if not isinstance(filters, Mapping):
+                        continue
+                    candidate = filters.get("lc_flow_layout")
+                    if candidate is not None:
+                        lc_flow_layout = str(candidate)
+                if lc_flow_layout not in {"topology-replay", "all-flow-union"}:
+                    raise ArtifactError(
+                        f"process {process_id}.filters.lc_flow_layout is unsupported"
+                    )
     aliases: list[ArtifactAliasInspection] = []
     for index, raw_alias in enumerate(
         _sequence(process.get("aliases"), f"process {process_id}.aliases")
@@ -1158,6 +1185,11 @@ def _process_inspection(
             )
         )
     physics = _physics_inspection(manifest, process)
+    union_sector_count = (
+        physics.physical_color_components
+        if lc_flow_layout == "all-flow-union"
+        else None
+    )
     return ArtifactProcessInspection(
         id=process_id,
         expression=str(process["expression"]),
@@ -1202,6 +1234,8 @@ def _process_inspection(
         lc_materialized_sector_count=physics.lc_materialized_sector_count,
         lc_replayed_sector_count=physics.lc_replayed_sector_count,
         lc_residual_sector_count=physics.lc_residual_sector_count,
+        lc_flow_layout=lc_flow_layout,
+        lc_union_sector_count=union_sector_count,
         execution_mode=execution.execution_mode,
         prepared_backend=execution.prepared_backend,
         prepared_kernel_count=execution.prepared_kernel_count,

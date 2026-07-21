@@ -1293,6 +1293,7 @@ mod tests {
             vec![
                 "rusticol.compiled.color-topology-lanes.v1".to_string(),
                 "rusticol.compiled.helicity-dual-lane.v1".to_string(),
+                "rusticol.compiled.helicity-primary-recurrence.v1".to_string(),
                 "rusticol.compiled.helicity-selector-union.v1".to_string(),
                 "rusticol.compiled.runtime-selectors.v1".to_string(),
                 "rusticol.eager-dag.complex-f64.v1".to_string(),

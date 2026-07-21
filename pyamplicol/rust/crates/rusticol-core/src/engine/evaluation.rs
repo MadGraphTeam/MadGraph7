@@ -40,6 +40,17 @@ impl ExecutionRuntime {
         if self.lc_topology_replay_enabled {
             return self.run_f64_with_lc_topology_replay(batch);
         }
+        if self.has_compiled_helicity_execution_plan() {
+            let (resolved, profile) =
+                self.run_resolved_f64_with_helicity_recurrence(batch, None, None, None)?;
+            let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+            let values = resolved
+                .values
+                .chunks_exact(component_count)
+                .map(|components| components.iter().sum())
+                .collect();
+            return Ok((values, profile));
+        }
         self.run_f64_selected(batch, None)
     }
 
@@ -65,7 +76,7 @@ impl ExecutionRuntime {
                 selected_color_ids,
             );
         }
-        if self.has_compiled_helicity_execution_plan() && selected_helicity_ids.is_some() {
+        if self.has_compiled_helicity_execution_plan() {
             return self.run_resolved_f64_with_helicity_recurrence(
                 batch,
                 selected_helicity_ids,
@@ -299,6 +310,9 @@ impl ExecutionRuntime {
         if self.lc_topology_replay_enabled {
             return self.run_generic_with_lc_topology_replay(batch, None);
         }
+        if self.has_compiled_helicity_execution_plan() {
+            return self.run_generic_with_helicity_recurrence(batch, None);
+        }
         self.run_generic_materialized(batch, None)
     }
 
@@ -313,6 +327,9 @@ impl ExecutionRuntime {
         }
         if self.lc_topology_replay_enabled {
             return self.run_generic_with_lc_topology_replay(batch, Some(binary_precision));
+        }
+        if self.has_compiled_helicity_execution_plan() {
+            return self.run_generic_with_helicity_recurrence(batch, Some(binary_precision));
         }
         self.run_generic_materialized(batch, Some(binary_precision))
     }
@@ -519,6 +536,37 @@ impl ExecutionRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
+    fn run_generic_with_helicity_recurrence<T>(
+        &mut self,
+        batch: &[Vec<[T; 4]>],
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<(Vec<T>, RuntimeProfile)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let (resolved, profile) = self.run_resolved_generic_with_helicity_recurrence(
+            batch,
+            binary_precision,
+            None,
+            None,
+            true,
+        )?;
+        let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+        let values = resolved
+            .values
+            .chunks_exact(component_count)
+            .map(|components| {
+                components
+                    .iter()
+                    .cloned()
+                    .fold(T::new_zero(), |sum, value| sum + value)
+            })
+            .collect();
+        Ok((values, profile))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
     pub(super) fn run_generic_materialized<T>(
         &mut self,
         batch: &[Vec<[T; 4]>],
@@ -673,12 +721,13 @@ impl ExecutionRuntime {
                 selected_color_ids,
             );
         }
-        if self.has_compiled_helicity_execution_plan() && selected_helicity_ids.is_some() {
+        if self.has_compiled_helicity_execution_plan() {
             return self.run_resolved_generic_with_helicity_recurrence(
                 batch,
                 binary_precision,
                 selected_helicity_ids,
                 selected_color_ids,
+                true,
             );
         }
         self.run_resolved_generic_materialized(
@@ -749,6 +798,7 @@ impl ExecutionRuntime {
                         binary_precision,
                         Some(&source_group.helicity_ids),
                         Some(&source_group.color_ids),
+                        false,
                     )?
                 } else {
                     self.run_resolved_generic_materialized(

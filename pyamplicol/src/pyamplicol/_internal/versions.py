@@ -26,25 +26,21 @@ SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY = (
 SYMBOLICA_CPP_RUNTIME_CAPABILITY = "symbolica.compiled-cpp.complex-f64.v1"
 SYMBOLICA_ASM_RUNTIME_CAPABILITY = "symbolica.compiled-asm.complex-f64.v1"
 EAGER_DAG_F64_RUNTIME_CAPABILITY = "rusticol.eager-dag.complex-f64.v1"
-EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY = (
-    "rusticol.eager-dag.lc-topology-replay.v1"
-)
-COMPILED_RUNTIME_SELECTORS_CAPABILITY = (
-    "rusticol.compiled.runtime-selectors.v1"
-)
-COMPILED_HELICITY_DUAL_LANE_CAPABILITY = (
-    "rusticol.compiled.helicity-dual-lane.v1"
-)
+EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY = "rusticol.eager-dag.lc-topology-replay.v1"
+COMPILED_RUNTIME_SELECTORS_CAPABILITY = "rusticol.compiled.runtime-selectors.v1"
+COMPILED_HELICITY_DUAL_LANE_CAPABILITY = "rusticol.compiled.helicity-dual-lane.v1"
 COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY = (
     "rusticol.compiled.helicity-selector-union.v1"
 )
-COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY = (
-    "rusticol.compiled.color-topology-lanes.v1"
+COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY = (
+    "rusticol.compiled.helicity-primary-recurrence.v1"
 )
+COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY = "rusticol.compiled.color-topology-lanes.v1"
 EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
     {
         COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
         COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+        COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         EAGER_DAG_F64_RUNTIME_CAPABILITY,
@@ -85,6 +81,7 @@ def package_version(default: str = "0.1.0") -> str:
 __all__ = [
     "COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY",
     "COMPILED_HELICITY_DUAL_LANE_CAPABILITY",
+    "COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY",
     "COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY",
     "COMPILED_MODEL_SCHEMA_VERSION",
     "COMPILED_RUNTIME_SELECTORS_CAPABILITY",

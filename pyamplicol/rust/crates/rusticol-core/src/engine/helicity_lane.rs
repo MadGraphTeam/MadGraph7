@@ -207,10 +207,14 @@ impl ExecutionRuntime {
                 .get(&schedule.selector_domain_id)
                 .copied()
                 .filter(|lane_index| {
+                    // A nested union understands public color IDs, but not a
+                    // topology-replay group's parent materialized-sector
+                    // restriction. Use the parent schedule for those groups.
                     self.helicity_selector_runtime_schedule_modes
                         .get(*lane_index)
                         .is_some_and(|schedule_mode| {
-                            *schedule_mode == HelicitySelectorScheduleMode::NestedRuntime
+                            (*schedule_mode == HelicitySelectorScheduleMode::NestedRuntime
+                                && selected_materialized_sector_ids.is_none())
                                 || (selected_color_ids.is_none()
                                     && selected_materialized_sector_ids.is_none())
                         })
@@ -478,6 +482,7 @@ impl ExecutionRuntime {
         binary_precision: Option<u32>,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
+        allow_nested_runtime: bool,
     ) -> RusticolResult<(ResolvedValues<T>, RuntimeProfile)>
     where
         T: RusticolHighPrecisionNumber,
@@ -523,9 +528,11 @@ impl ExecutionRuntime {
                 .get(&schedule.selector_domain_id)
                 .copied()
                 .filter(|lane_index| {
-                    self.helicity_selector_runtime_schedule_modes
-                        .get(*lane_index)
-                        == Some(&HelicitySelectorScheduleMode::NestedRuntime)
+                    allow_nested_runtime
+                        && self
+                            .helicity_selector_runtime_schedule_modes
+                            .get(*lane_index)
+                            == Some(&HelicitySelectorScheduleMode::NestedRuntime)
                 });
             let (selected, schedule_profile) = if let Some(lane_index) = nested_lane_index {
                 let selected_helicity =

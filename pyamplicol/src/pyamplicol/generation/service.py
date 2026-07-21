@@ -252,19 +252,14 @@ class _HelicitySelectorLane:
     dag: GenericDAG
     runtime_schema: RuntimeExpressionSchema
     stage_input: StageCompilationInput
-    schedule_mode: Literal["parent-closure", "nested-runtime"] = (
-        "parent-closure"
-    )
+    schedule_mode: Literal["parent-closure", "nested-runtime"] = "parent-closure"
     child_lanes: tuple[_HelicitySelectorLane, ...] = ()
 
 
 def _compiled_lc_color_selector_lane_dags(
     dag: GenericDAG,
 ) -> tuple[tuple[int, GenericDAG], ...]:
-    if (
-        dag.color_plan.color_accuracy != "lc"
-        or dag.color_coverage != "complete"
-    ):
+    if dag.color_plan.color_accuracy != "lc" or dag.color_coverage != "complete":
         return ()
     lanes: list[tuple[int, GenericDAG]] = []
     for sector_id in contributing_color_sector_ids(dag):
@@ -390,8 +385,7 @@ def _helicity_closure_runtime_schema(
                     "Sequence[object]",
                     stage["input_value_slot_ids"],
                 )
-                if int(value_slots[int(slot_id)]["current_id"])
-                in input_current_ids
+                if int(value_slots[int(slot_id)]["current_id"]) in input_current_ids
             )
         )
         output_value_slot_ids = tuple(
@@ -401,8 +395,7 @@ def _helicity_closure_runtime_schema(
                     "Sequence[object]",
                     stage["output_value_slot_ids"],
                 )
-                if int(value_slots[int(slot_id)]["current_id"])
-                in output_current_ids
+                if int(value_slots[int(slot_id)]["current_id"]) in output_current_ids
             )
         )
         momentum_slot_ids = {
@@ -795,7 +788,8 @@ class GenerationBackend:
                             )
 
                         jit_total = sum(
-                            _runtime_stage_count(evaluator.runtime_schema) + 1
+                            _runtime_stage_count(evaluator.runtime_schema)
+                            + 1
                             + (
                                 0
                                 if evaluator.helicity_sum_runtime_schema is None
@@ -805,9 +799,7 @@ class GenerationBackend:
                                 + 1
                             )
                             + sum(
-                                _helicity_selector_lane_compile_task_count(
-                                    lane
-                                )
+                                _helicity_selector_lane_compile_task_count(lane)
                                 for lane in evaluator.helicity_selector_lanes
                             )
                             + sum(
@@ -1130,6 +1122,7 @@ class GenerationBackend:
         )
         helicity_sum_dag: GenericDAG | None = None
         helicity_selector_union_dag: GenericDAG | None = None
+        all_flow_union = self._all_flow_union_enabled
         helicity_recurrence = build_helicity_recurrence_plan(reduced, model)
         if helicity_recurrence is not None:
             if self._eager_execution_enabled:
@@ -1143,15 +1136,16 @@ class GenerationBackend:
                     helicity_materialization=None,
                 )
             else:
-                # Preserve the ordinary fused evaluator lane for the common
-                # helicity-summed workload.  The materialized recurrence lane
-                # is compiled separately below and is entered only when a
-                # runtime helicity selector is present.
-                helicity_sum_dag = replace(
-                    reduced,
-                    helicity_recurrence=None,
-                    helicity_materialization=None,
-                )
+                # Topology replay keeps its existing fused helicity-sum lane.
+                # The all-flow union is itself the primary reusable lane, so
+                # compiling that second payload would duplicate the expensive
+                # cross-flow recurrence without helping its target workload.
+                if not all_flow_union:
+                    helicity_sum_dag = replace(
+                        reduced,
+                        helicity_recurrence=None,
+                        helicity_materialization=None,
+                    )
                 materialization = materialize_helicity_recurrence(
                     reduced,
                     helicity_recurrence,
@@ -1161,12 +1155,13 @@ class GenerationBackend:
                     helicity_recurrence=helicity_recurrence,
                     helicity_materialization=materialization,
                 )
-                helicity_selector_union_dag = (
-                    self._compile_complete_lc_helicity_selector_union(
-                        process,
-                        model,
+                if not all_flow_union:
+                    helicity_selector_union_dag = (
+                        self._compile_complete_lc_helicity_selector_union(
+                            process,
+                            model,
+                        )
                     )
-                )
                 if helicity_selector_union_dag is not None:
                     _validate_matching_helicity_selector_domains(
                         reduced,
@@ -1181,6 +1176,15 @@ class GenerationBackend:
         )
         validation = self._generation_config.validation
         filters: dict[str, object] = {
+            **(
+                {}
+                if self._color_accuracy != "lc"
+                else {
+                    "lc_flow_layout": (
+                        "all-flow-union" if all_flow_union else "topology-replay"
+                    )
+                }
+            ),
             "structural_helicity_reduction": {
                 "applied": parity_preweighted or reduced is not process.dag,
                 "before_amplitude_roots": before_amplitude_roots,
@@ -1322,8 +1326,7 @@ class GenerationBackend:
             )
             helicity_selector_lanes: tuple[_HelicitySelectorLane, ...] = ()
             if (
-                process.helicity_sum_dag is not None
-                and process.dag.helicity_coverage == "complete"
+                process.dag.helicity_coverage == "complete"
                 and not process.dag.selected_source_helicities
                 and process.dag.helicity_recurrence is not None
                 and process.dag.helicity_materialization is not None
@@ -1366,12 +1369,10 @@ class GenerationBackend:
                         ),
                     )
                 else:
-                    helicity_selector_lanes = (
-                        _compiled_helicity_selector_closure_lanes(
-                            process.dag,
-                            schema,
-                            model,
-                        )
+                    helicity_selector_lanes = _compiled_helicity_selector_closure_lanes(
+                        process.dag,
+                        schema,
+                        model,
                     )
             color_selector_dag = (
                 process.dag
@@ -1379,9 +1380,12 @@ class GenerationBackend:
                 else process.helicity_sum_dag
             )
             color_selector_lanes: list[_ColorSelectorLane] = []
-            for sector_id, lane_dag in _compiled_lc_color_selector_lane_dags(
-                color_selector_dag
-            ):
+            sector_lanes = (
+                ()
+                if self._all_flow_union_enabled
+                else _compiled_lc_color_selector_lane_dags(color_selector_dag)
+            )
+            for sector_id, lane_dag in sector_lanes:
                 lane_schema = build_runtime_expression_schema(
                     lane_dag,
                     model,
@@ -1442,8 +1446,7 @@ class GenerationBackend:
             helicity_sum_runtime_schema=helicity_sum_schema,
             helicity_sum_stage_input=(
                 None
-                if helicity_sum_schema is None
-                or process.helicity_sum_dag is None
+                if helicity_sum_schema is None or process.helicity_sum_dag is None
                 else StageCompilationInput(
                     process.helicity_sum_dag,
                     model,
@@ -1686,8 +1689,7 @@ class GenerationBackend:
                 or process.compiled.helicity_sum_dag is None
             ):
                 raise GenerationError(
-                    f"helicity-sum execution inputs for {process_id!r} "
-                    "are inconsistent"
+                    f"helicity-sum execution inputs for {process_id!r} are inconsistent"
                 )
             helicity_sum_root = temporary_root / ".helicity-sum" / process_id
             (
@@ -1703,16 +1705,12 @@ class GenerationBackend:
             helicity_sum_execution = CompiledExecutionArtifact(
                 runtime_schema=process.helicity_sum_runtime_schema,
                 stage_manifest=helicity_sum_stage_manifest,
-                model_parameter_evaluator=(
-                    helicity_sum_model_parameter_evaluator
-                ),
+                model_parameter_evaluator=(helicity_sum_model_parameter_evaluator),
                 dag_summary={
                     "current_count": len(helicity_sum_dag.currents),
                     "source_count": len(helicity_sum_dag.sources),
                     "interaction_count": len(helicity_sum_dag.interactions),
-                    "amplitude_root_count": len(
-                        helicity_sum_dag.amplitude_roots
-                    ),
+                    "amplitude_root_count": len(helicity_sum_dag.amplitude_roots),
                     "truncated": False,
                 },
                 evaluator_root=helicity_sum_root,
@@ -1736,11 +1734,8 @@ class GenerationBackend:
             child_executions = tuple(
                 compile_helicity_selector_lane(
                     child,
-                    lane_root.parent
-                    / f"{lane_root.name}-closure-{child_index}",
-                    execution_lane=(
-                        f"{execution_lane}-closure-{child_index}"
-                    ),
+                    lane_root.parent / f"{lane_root.name}-closure-{child_index}",
+                    execution_lane=(f"{execution_lane}-closure-{child_index}"),
                 )
                 for child_index, child in enumerate(lane.child_lanes)
             )
@@ -1750,14 +1745,10 @@ class GenerationBackend:
                 execution=CompiledExecutionArtifact(
                     runtime_schema=lane.runtime_schema,
                     stage_manifest=lane_stage_manifest,
-                    model_parameter_evaluator=(
-                        lane_model_parameter_evaluator
-                    ),
+                    model_parameter_evaluator=(lane_model_parameter_evaluator),
                     # Closure lanes retain their parent's stable current and
                     # amplitude storage ABI while filtering stage interactions.
-                    dag_summary=_runtime_schema_dag_summary(
-                        lane.runtime_schema
-                    ),
+                    dag_summary=_runtime_schema_dag_summary(lane.runtime_schema),
                     evaluator_root=lane_root,
                     helicity_selector_executions=child_executions,
                 ),
@@ -1777,9 +1768,7 @@ class GenerationBackend:
                     execution_lane=f"helicity-selector-class-{lane_index}",
                 )
             )
-        color_selector_executions: list[
-            CompiledColorSelectorExecutionArtifact
-        ] = []
+        color_selector_executions: list[CompiledColorSelectorExecutionArtifact] = []
         selector_root_name = (
             ".helicity-sum-color-selector"
             if helicity_sum_execution is not None
@@ -1796,10 +1785,7 @@ class GenerationBackend:
                 lane.stage_input,
                 lane.runtime_schema,
                 lane_root,
-                execution_lane=(
-                    "color-selector "
-                    f"sector-{lane.materialized_sector_id}"
-                ),
+                execution_lane=(f"color-selector sector-{lane.materialized_sector_id}"),
             )
             color_selector_executions.append(
                 CompiledColorSelectorExecutionArtifact(
@@ -1807,16 +1793,12 @@ class GenerationBackend:
                     execution=CompiledExecutionArtifact(
                         runtime_schema=lane.runtime_schema,
                         stage_manifest=lane_stage_manifest,
-                        model_parameter_evaluator=(
-                            lane_model_parameter_evaluator
-                        ),
+                        model_parameter_evaluator=(lane_model_parameter_evaluator),
                         dag_summary={
                             "current_count": len(lane.dag.currents),
                             "source_count": len(lane.dag.sources),
                             "interaction_count": len(lane.dag.interactions),
-                            "amplitude_root_count": len(
-                                lane.dag.amplitude_roots
-                            ),
+                            "amplitude_root_count": len(lane.dag.amplitude_roots),
                             "truncated": False,
                         },
                         evaluator_root=lane_root,
@@ -2072,6 +2054,15 @@ class GenerationBackend:
     def _eager_execution_enabled(self) -> bool:
         run = self._run_config
         return run is not None and str(run.evaluator.execution_mode) == "eager"
+
+    @property
+    def _all_flow_union_enabled(self) -> bool:
+        run = self._run_config
+        if run is None:
+            return False
+        return str(getattr(run.color, "lc_flow_layout", "topology-replay")) == (
+            "all-flow-union"
+        )
 
     @property
     def _generation_config(self) -> GenerationConfig:
@@ -2472,6 +2463,7 @@ class GenerationBackend:
         model: Model | None,
     ) -> dict[str, object]:
         selection = self._process_selection
+        self._validate_lc_flow_layout(selection)
         if (
             selection.selected_color_sector_ids is not None
             and self._color_accuracy != "lc"
@@ -2533,6 +2525,7 @@ class GenerationBackend:
         progress_callback: Callable[[Mapping[str, str | int]], None] | None = None,
     ) -> tuple[GenericDAG, dict[str, object]]:
         selection = self._process_selection
+        self._validate_lc_flow_layout(selection)
         if (
             selection.selected_color_sector_ids is not None
             and self._color_accuracy != "lc"
@@ -2577,6 +2570,7 @@ class GenerationBackend:
         materialized_sector_ids = selection.selected_color_sector_ids
         if (
             self._color_accuracy == "lc"
+            and not self._all_flow_union_enabled
             and selection.selected_color_sector_ids is None
             and selection.selected_source_helicities is None
         ):
@@ -2596,7 +2590,9 @@ class GenerationBackend:
             max_coupling_orders=limits or None,
             max_quark_pairs=self._max_quark_pairs,
             selected_source_helicities=selection.selected_source_helicities,
-            online_evaluation_reuse=self._eager_execution_enabled,
+            online_evaluation_reuse=(
+                self._eager_execution_enabled or self._all_flow_union_enabled
+            ),
             backward_live_planning=self._eager_execution_enabled,
             progress_callback=progress_callback,
         )
@@ -2652,6 +2648,17 @@ class GenerationBackend:
                 "color_sector_count": dag.color_plan.sector_count,
                 **(
                     {}
+                    if self._color_accuracy != "lc"
+                    else {
+                        "lc_flow_layout": (
+                            "all-flow-union"
+                            if self._all_flow_union_enabled
+                            else "topology-replay"
+                        )
+                    }
+                ),
+                **(
+                    {}
                     if dag.lc_topology_replay is None
                     else {
                         "materialized_color_sector_count": len(
@@ -2676,6 +2683,27 @@ class GenerationBackend:
             },
         )
 
+    def _validate_lc_flow_layout(self, selection: _ProcessSelection) -> None:
+        if not self._all_flow_union_enabled:
+            return
+        if self._color_accuracy != "lc":
+            raise GenerationError(
+                "color.lc_flow_layout='all-flow-union' is available only for "
+                "LC generation"
+            )
+        incompatible: list[str] = []
+        if selection.max_color_sectors is not None:
+            incompatible.append("process.max_color_sectors")
+        if selection.selected_color_sector_ids is not None:
+            incompatible.append("process.selected_color_sector_ids")
+        if selection.selected_source_helicities is not None:
+            incompatible.append("process.selected_source_helicities")
+        if incompatible:
+            raise GenerationError(
+                "color.lc_flow_layout='all-flow-union' requires complete runtime "
+                "flow and helicity coverage; remove " + ", ".join(incompatible)
+            )
+
     def _compile_complete_lc_helicity_selector_union(
         self,
         process: _DagProcess,
@@ -2699,19 +2727,14 @@ class GenerationBackend:
             or parent.selected_source_helicities
             or parent.helicity_coverage != "complete"
             or parent.lc_topology_replay is None
-            or len(parent.color_plan.sectors)
-            > _MAX_FUSED_LC_HELICITY_SELECTOR_SECTORS
+            or len(parent.color_plan.sectors) > _MAX_FUSED_LC_HELICITY_SELECTOR_SECTORS
         ):
             return None
 
         limits_payload = process.coverage.get("coupling_order_limits", {})
         if not isinstance(limits_payload, Mapping):
-            raise GenerationError(
-                "process coupling-order coverage is not a mapping"
-            )
-        limits = {
-            str(name): int(value) for name, value in limits_payload.items()
-        }
+            raise GenerationError("process coupling-order coverage is not a mapping")
+        limits = {str(name): int(value) for name, value in limits_payload.items()}
         selection = self._process_selection
         union = compile_generic_dag(
             process.expanded.process_ir,
@@ -2733,8 +2756,7 @@ class GenerationBackend:
                 "complete amplitude DAG"
             )
         parity_preweighted = any(
-            float(root.helicity_weight) > 1.0
-            for root in union.amplitude_roots
+            float(root.helicity_weight) > 1.0 for root in union.amplitude_roots
         )
         reduced = (
             prune_dag_to_amplitude_roots(union)
@@ -2755,6 +2777,7 @@ class GenerationBackend:
             helicity_materialization=materialization,
         )
 
+
 def _runtime_stage_count(schema: RuntimeExpressionSchema) -> int:
     stages = schema.to_mapping().get("stages")
     if isinstance(stages, str | bytes) or not isinstance(stages, Sequence):
@@ -2766,17 +2789,20 @@ def _helicity_selector_lane_stage_count(
     lane: _HelicitySelectorLane,
 ) -> int:
     return _runtime_stage_count(lane.runtime_schema) + sum(
-        _helicity_selector_lane_stage_count(child)
-        for child in lane.child_lanes
+        _helicity_selector_lane_stage_count(child) for child in lane.child_lanes
     )
 
 
 def _helicity_selector_lane_compile_task_count(
     lane: _HelicitySelectorLane,
 ) -> int:
-    return _runtime_stage_count(lane.runtime_schema) + 1 + sum(
-        _helicity_selector_lane_compile_task_count(child)
-        for child in lane.child_lanes
+    return (
+        _runtime_stage_count(lane.runtime_schema)
+        + 1
+        + sum(
+            _helicity_selector_lane_compile_task_count(child)
+            for child in lane.child_lanes
+        )
     )
 
 
@@ -2792,9 +2818,7 @@ def _runtime_schema_dag_summary(
     return {
         "current_count": len(current_slots),
         "source_count": int(source_fill["source_count"]),
-        "interaction_count": sum(
-            int(stage["interaction_count"]) for stage in stages
-        ),
+        "interaction_count": sum(int(stage["interaction_count"]) for stage in stages),
         "amplitude_root_count": int(amplitude_stage["output_count"]),
         "truncated": False,
     }

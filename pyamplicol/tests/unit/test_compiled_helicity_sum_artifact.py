@@ -12,6 +12,7 @@ import pyamplicol.generation.service as service_module
 from pyamplicol._internal.versions import (
     COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+    COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
     COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
@@ -21,7 +22,7 @@ from pyamplicol._internal.versions import (
 )
 from pyamplicol.api import ModelSource, ProcessRequest
 from pyamplicol.artifacts import load_manifest
-from pyamplicol.config import GenerationConfig
+from pyamplicol.config import ColorConfig, GenerationConfig, RunConfig
 from pyamplicol.generation.artifact_writer import (
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
@@ -37,6 +38,7 @@ def _evaluator_process(
     expression: str = "d d~ > z g",
     *,
     selection: _ProcessSelection | None = None,
+    config: GenerationConfig | RunConfig | None = None,
 ) -> tuple[
     service_module.GenerationBackend,
     BuiltinSMModel,
@@ -44,7 +46,7 @@ def _evaluator_process(
 ]:
     model = BuiltinSMModel()
     backend = service_module.GenerationBackend(
-        GenerationConfig(),
+        GenerationConfig() if config is None else config,
         None,
         process_selection=selection,
     )
@@ -94,9 +96,7 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
         "endianness": "little",
         "required_defuns": [],
         "evaluator_state_path": state.relative_to(root).as_posix(),
-        "evaluator_state_runtime_capability": (
-            SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
-        ),
+        "evaluator_state_runtime_capability": (SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY),
     }
     amplitude_stage = {
         "stage_index": 0,
@@ -142,10 +142,12 @@ def _materialize_without_symbolica(
     *,
     expression: str = "d d~ > z g",
     selection: _ProcessSelection | None = None,
+    config: GenerationConfig | RunConfig | None = None,
 ) -> service_module.CompiledProcessArtifact:
     backend, model, evaluator = _evaluator_process(
         expression,
         selection=selection,
+        config=config,
     )
     calls: list[tuple[Path, int]] = []
 
@@ -191,6 +193,7 @@ def _materialize_without_symbolica(
                 len(evaluator.compiled.helicity_sum_dag.currents),
             )
         )
+
     def add_selector_lane_call(
         lane: service_module._HelicitySelectorLane,
         root: Path,
@@ -202,9 +205,7 @@ def _materialize_without_symbolica(
                 root.parent / f"{root.name}-closure-{child_index}",
             )
 
-    selector_root = (
-        tmp_path / "build" / ".helicity-selector-union" / "dual_lane"
-    )
+    selector_root = tmp_path / "build" / ".helicity-selector-union" / "dual_lane"
     for lane_index, lane in enumerate(evaluator.helicity_selector_lanes):
         add_selector_lane_call(lane, selector_root / f"class-{lane_index}")
     selector_root = (
@@ -252,10 +253,7 @@ def test_generation_retains_selector_and_fused_helicity_sum_dags() -> None:
     assert prepared.helicity_sum_dag.helicity_recurrence is None
     assert prepared.helicity_sum_dag.helicity_materialization is None
     assert prepared.dag.helicity_materialization is not None
-    assert (
-        prepared.dag.helicity_materialization.strategy
-        == "quotient"
-    )
+    assert prepared.dag.helicity_materialization.strategy == "quotient"
     assert prepared.dag.helicity_materialization.materialized_current_count == len(
         prepared.dag.currents
     )
@@ -267,10 +265,7 @@ def test_generation_retains_selector_and_fused_helicity_sum_dags() -> None:
     assert evaluator.helicity_sum_runtime_schema is not None
     assert evaluator.helicity_sum_stage_input is not None
     assert "materialization" in primary["helicity_recurrence"]
-    assert (
-        primary["helicity_recurrence"]["materialization"]["strategy"]
-        == "quotient"
-    )
+    assert primary["helicity_recurrence"]["materialization"]["strategy"] == "quotient"
     assert "helicity_recurrence" not in (
         evaluator.helicity_sum_runtime_schema.to_mapping()
     )
@@ -305,8 +300,7 @@ def test_generation_retains_selector_and_fused_helicity_sum_dags() -> None:
         selector_schema = lane.runtime_schema.to_mapping()
         assert "helicity_recurrence" not in selector_schema
         assert all(
-            int(stage["interaction_count"])
-            < int(parent_stage["interaction_count"])
+            int(stage["interaction_count"]) < int(parent_stage["interaction_count"])
             for stage, parent_stage in zip(
                 selector_schema["stages"],
                 primary["stages"],
@@ -315,16 +309,59 @@ def test_generation_retains_selector_and_fused_helicity_sum_dags() -> None:
         )
 
 
-def test_color_topology_lane_capability_is_publicly_supported() -> None:
+def test_all_flow_union_artifact_omits_duplicate_execution_lanes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    artifact = _materialize_without_symbolica(
+        monkeypatch,
+        tmp_path,
+        expression="d d~ > z g g",
+        config=RunConfig(
+            action="generate",
+            color=ColorConfig(lc_flow_layout="all-flow-union"),
+            generation=GenerationConfig(
+                emit_api_bundle=False,
+            ),
+        ),
+    )
+
+    assert artifact.helicity_sum_execution is None
+    assert artifact.helicity_selector_executions
+    assert all(
+        record.schedule_mode == "parent-closure"
+        for record in artifact.helicity_selector_executions
+    )
+    assert artifact.color_selector_executions == ()
+    capabilities = artifact_writer._compiled_process_runtime_capabilities(artifact)
+    assert COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY in capabilities
+    execution = artifact_writer._execution_manifest(
+        artifact,
+        artifact.runtime_schema.to_mapping(),
+    )
     assert (
-        COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY
-        in EVALUATOR_RUNTIME_CAPABILITIES
+        COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
+        in execution["required_runtime_capabilities"]
+    )
+    assert (
+        COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
+        not in execution["compiled"]["stage_evaluators"][
+            "required_runtime_capabilities"
+        ]
     )
 
 
+def test_color_topology_lane_capability_is_publicly_supported() -> None:
+    assert COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY in EVALUATOR_RUNTIME_CAPABILITIES
+
+
 def test_helicity_selector_union_capability_is_publicly_supported() -> None:
+    assert COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY in EVALUATOR_RUNTIME_CAPABILITIES
+
+
+def test_primary_helicity_recurrence_capability_is_publicly_supported() -> None:
     assert (
-        COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY
+        COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
         in EVALUATOR_RUNTIME_CAPABILITIES
     )
 
@@ -342,10 +379,9 @@ def test_complete_lc_union_dispatches_to_exact_helicity_closure_lanes() -> None:
             for stage in child.runtime_schema.to_mapping()["stages"]
         )
         for child in union.child_lanes
-    } == {97}
+    } == {115}
     assert all(
-        child.schedule_mode == "parent-closure"
-        and not child.child_lanes
+        child.schedule_mode == "parent-closure" and not child.child_lanes
         for child in union.child_lanes
     )
 
@@ -382,9 +418,7 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
     )
 
     execution = json.loads(
-        (output / "processes/dual_lane/execution.json").read_text(
-            encoding="utf-8"
-        )
+        (output / "processes/dual_lane/execution.json").read_text(encoding="utf-8")
     )
     outer = execution["helicity_selector_executions"][0]
     assert outer["schedule_mode"] == "nested-runtime"
@@ -413,9 +447,7 @@ def test_generation_specialized_color_artifact_has_no_topology_lanes(
         monkeypatch,
         tmp_path,
         expression="d d~ > z g g",
-        selection=_ProcessSelection(
-            selected_color_sector_ids=frozenset({0})
-        ),
+        selection=_ProcessSelection(selected_color_sector_ids=frozenset({0})),
     )
 
     assert artifact.color_selector_executions == ()
@@ -430,9 +462,10 @@ def test_generation_specialized_color_artifact_has_no_topology_lanes(
     auxiliary = manifest.get("helicity_sum_execution")
     if isinstance(auxiliary, dict):
         assert "color_selector_executions" not in auxiliary
-    assert COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY not in manifest[
-        "required_runtime_capabilities"
-    ]
+    assert (
+        COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY
+        not in manifest["required_runtime_capabilities"]
+    )
 
 
 def test_complete_lc_artifact_serializes_every_materialized_sector_lane(
@@ -440,9 +473,7 @@ def test_complete_lc_artifact_serializes_every_materialized_sector_lane(
     tmp_path: Path,
 ) -> None:
     _backend, _model, evaluator = _evaluator_process("g g > g g")
-    target_dag = (
-        evaluator.compiled.helicity_sum_dag or evaluator.compiled.dag
-    )
+    target_dag = evaluator.compiled.helicity_sum_dag or evaluator.compiled.dag
     expected_sector_ids = tuple(
         sorted(
             {
@@ -453,9 +484,10 @@ def test_complete_lc_artifact_serializes_every_materialized_sector_lane(
         )
     )
     assert expected_sector_ids
-    assert tuple(
-        lane.materialized_sector_id for lane in evaluator.color_selector_lanes
-    ) == expected_sector_ids
+    assert (
+        tuple(lane.materialized_sector_id for lane in evaluator.color_selector_lanes)
+        == expected_sector_ids
+    )
 
     artifact = _materialize_without_symbolica(
         monkeypatch,
@@ -468,9 +500,10 @@ def test_complete_lc_artifact_serializes_every_materialized_sector_lane(
     )
     parent = manifest.get("helicity_sum_execution", manifest)
     records = parent["color_selector_executions"]
-    assert tuple(
-        record["materialized_sector_id"] for record in records
-    ) == expected_sector_ids
+    assert (
+        tuple(record["materialized_sector_id"] for record in records)
+        == expected_sector_ids
+    )
     assert all(
         "color_selector_executions" not in record["execution"]
         and "helicity_sum_execution" not in record["execution"]
@@ -507,9 +540,10 @@ def test_fixed_helicity_complete_lc_attaches_color_lanes_to_primary(
     )
     assert "helicity_sum_execution" not in manifest
     assert manifest["color_selector_executions"]
-    assert COMPILED_RUNTIME_SELECTORS_CAPABILITY in manifest[
-        "required_runtime_capabilities"
-    ]
+    assert (
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY
+        in manifest["required_runtime_capabilities"]
+    )
 
 
 def test_eager_process_artifacts_have_no_compiled_selector_union_lane() -> None:
@@ -520,16 +554,15 @@ def test_eager_process_artifacts_have_no_compiled_selector_union_lane() -> None:
 
 def test_replayed_physical_flows_compile_only_materialized_sector_lanes() -> None:
     _backend, _model, evaluator = _evaluator_process("d d~ > z g g")
-    target_dag = (
-        evaluator.compiled.helicity_sum_dag or evaluator.compiled.dag
-    )
+    target_dag = evaluator.compiled.helicity_sum_dag or evaluator.compiled.dag
     replay = target_dag.lc_topology_replay
 
     assert replay is not None
     assert len(replay.physical_sector_ids) > len(replay.materialized_sector_ids)
-    assert tuple(
-        lane.materialized_sector_id for lane in evaluator.color_selector_lanes
-    ) == replay.materialized_sector_ids
+    assert (
+        tuple(lane.materialized_sector_id for lane in evaluator.color_selector_lanes)
+        == replay.materialized_sector_ids
+    )
 
 
 def test_color_selector_execution_lanes_cannot_nest(
@@ -568,10 +601,13 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
     artifact = _materialize_without_symbolica(monkeypatch, tmp_path)
     assert artifact.helicity_sum_execution is not None
     assert artifact.helicity_selector_executions
-    assert artifact.dag_summary["current_count"] == (
-        artifact.runtime_schema.to_mapping()["helicity_recurrence"][
-            "materialization"
-        ]["materialized_current_count"]
+    assert (
+        artifact.dag_summary["current_count"]
+        == (
+            artifact.runtime_schema.to_mapping()["helicity_recurrence"][
+                "materialization"
+            ]["materialized_current_count"]
+        )
     )
     assert "helicity_recurrence" not in (
         artifact.helicity_sum_execution.runtime_schema.to_mapping()
@@ -581,20 +617,24 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
         selector = record.execution
         selector_schema = selector.runtime_schema.to_mapping()
         assert "helicity_recurrence" not in selector_schema
-        assert selector_schema["physics"]["reduction"] == (
-            primary_schema["physics"]["reduction"]
+        assert (
+            selector_schema["physics"]["reduction"]
+            == (primary_schema["physics"]["reduction"])
         )
         assert selector.dag_summary["current_count"] == len(
             selector_schema["current_storage"]["current_slots"]
         )
-        assert selector.dag_summary["amplitude_root_count"] == (
-            selector_schema["amplitude_stage"]["output_count"]
+        assert (
+            selector.dag_summary["amplitude_root_count"]
+            == (selector_schema["amplitude_stage"]["output_count"])
         )
-        assert selector.dag_summary["interaction_count"] < (
-            artifact.dag_summary["interaction_count"]
+        assert (
+            selector.dag_summary["interaction_count"]
+            < (artifact.dag_summary["interaction_count"])
         )
-        assert COMPILED_RUNTIME_SELECTORS_CAPABILITY not in (
-            selector.stage_manifest["required_runtime_capabilities"]
+        assert (
+            COMPILED_RUNTIME_SELECTORS_CAPABILITY
+            not in (selector.stage_manifest["required_runtime_capabilities"])
         )
     selector_records = artifact_writer._execution_manifest(
         artifact,
@@ -605,8 +645,9 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
         assert selector_record["selector_domain_ids"]
         selector_manifest = selector_record["execution"]
         assert selector_manifest["kind"] == "pyamplicol-runtime-execution"
-        assert selector_manifest["physics_reduction"] == (
-            primary_schema["physics"]["reduction"]
+        assert (
+            selector_manifest["physics_reduction"]
+            == (primary_schema["physics"]["reduction"])
         )
         assert "helicity_sum_execution" not in selector_manifest
         assert "helicity_selector_executions" not in selector_manifest
@@ -670,9 +711,9 @@ def test_writer_emits_selector_and_fused_sum_lanes_and_owns_all_payloads(
     )
     assert "helicity_sum_execution" in execution_manifest
     assert (
-        execution_manifest["runtime_schema"]["helicity_recurrence"][
-            "materialization"
-        ]["strategy"]
+        execution_manifest["runtime_schema"]["helicity_recurrence"]["materialization"][
+            "strategy"
+        ]
         == "quotient"
     )
 
@@ -699,9 +740,7 @@ def test_writer_emits_selector_and_fused_sum_lanes_and_owns_all_payloads(
     )
 
     execution = json.loads(
-        (output / "processes/dual_lane/execution.json").read_text(
-            encoding="utf-8"
-        )
+        (output / "processes/dual_lane/execution.json").read_text(encoding="utf-8")
     )
     assert "helicity_sum_execution" in execution
     assert "helicity_selector_executions" in execution
@@ -712,44 +751,48 @@ def test_writer_emits_selector_and_fused_sum_lanes_and_owns_all_payloads(
         ]
         == "quotient"
     )
-    primary_evaluator = execution["compiled"]["stage_evaluators"][
-        "amplitude_stage"
-    ]["evaluator"]
+    primary_evaluator = execution["compiled"]["stage_evaluators"]["amplitude_stage"][
+        "evaluator"
+    ]
     assert primary_evaluator["optimization_level"] == 3
     helicity_sum_evaluator = execution["helicity_sum_execution"]["compiled"][
         "stage_evaluators"
     ]["amplitude_stage"]["evaluator"]
     assert helicity_sum_evaluator["optimization_level"] == 3
-    assert "helicity_recurrence" not in execution["helicity_sum_execution"][
-        "runtime_schema"
-    ]
+    assert (
+        "helicity_recurrence"
+        not in execution["helicity_sum_execution"]["runtime_schema"]
+    )
     selector_records = execution["helicity_selector_executions"]
     assert selector_records
     for record in selector_records:
         selector_lane = record["execution"]
         assert record["selector_domain_ids"]
         assert "helicity_recurrence" not in selector_lane["runtime_schema"]
-        assert selector_lane["physics_reduction"] == primary_schema["physics"][
-            "reduction"
-        ]
-        assert COMPILED_RUNTIME_SELECTORS_CAPABILITY not in selector_lane[
-            "required_runtime_capabilities"
-        ]
+        assert (
+            selector_lane["physics_reduction"] == primary_schema["physics"]["reduction"]
+        )
+        assert (
+            COMPILED_RUNTIME_SELECTORS_CAPABILITY
+            not in selector_lane["required_runtime_capabilities"]
+        )
     color_selector_records = execution["helicity_sum_execution"][
         "color_selector_executions"
     ]
     assert artifact.helicity_sum_execution is not None
-    assert [
-        record["materialized_sector_id"]
-        for record in color_selector_records
-    ] == [0]
+    assert [record["materialized_sector_id"] for record in color_selector_records] == [
+        0
+    ]
     color_selector_execution = color_selector_records[0]["execution"]
     assert "helicity_sum_execution" not in color_selector_execution
     assert "color_selector_executions" not in color_selector_execution
-    assert color_selector_execution["physics_reduction"] == (
-        artifact.helicity_sum_execution.color_selector_executions[
-            0
-        ].execution.runtime_schema.to_mapping()["physics"]["reduction"]
+    assert (
+        color_selector_execution["physics_reduction"]
+        == (
+            artifact.helicity_sum_execution.color_selector_executions[
+                0
+            ].execution.runtime_schema.to_mapping()["physics"]["reduction"]
+        )
     )
 
     manifest = load_manifest(output)
@@ -757,12 +800,9 @@ def test_writer_emits_selector_and_fused_sum_lanes_and_owns_all_payloads(
     referenced = _payload_paths(execution)
     assert referenced
     assert any(path.startswith("helicity-sum/") for path in referenced)
+    assert any(path.startswith("helicity-selector-union/") for path in referenced)
     assert any(
-        path.startswith("helicity-selector-union/") for path in referenced
-    )
-    assert any(
-        path.startswith("helicity-sum/color-selector/sector-0/")
-        for path in referenced
+        path.startswith("helicity-sum/color-selector/sector-0/") for path in referenced
     )
     assert "evaluators.pacbin" in declared
     with PacbinReader.open(output / "evaluators.pacbin") as container:

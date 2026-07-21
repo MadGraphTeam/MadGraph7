@@ -1571,6 +1571,7 @@ fn validate_runtime_capabilities(
     let known = [
         RuntimeCapability::CompiledColorTopologyLanesV1,
         RuntimeCapability::CompiledHelicityDualLaneV1,
+        RuntimeCapability::CompiledHelicityPrimaryRecurrenceV1,
         RuntimeCapability::CompiledHelicitySelectorUnionV1,
         RuntimeCapability::CompiledRuntimeSelectorsV1,
         RuntimeCapability::EagerDagComplexF64V1,

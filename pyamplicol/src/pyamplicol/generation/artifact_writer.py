@@ -27,6 +27,7 @@ from pyamplicol.config import (
 from .._internal.versions import (
     COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+    COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
     COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
@@ -100,9 +101,7 @@ class CompiledExecutionArtifact:
     model_parameter_evaluator: Mapping[str, object] | None
     dag_summary: Mapping[str, object]
     evaluator_root: Path
-    color_selector_executions: tuple[
-        CompiledColorSelectorExecutionArtifact, ...
-    ] = ()
+    color_selector_executions: tuple[CompiledColorSelectorExecutionArtifact, ...] = ()
     helicity_selector_executions: tuple[
         CompiledHelicitySelectorExecutionArtifact, ...
     ] = ()
@@ -139,9 +138,7 @@ class CompiledProcessArtifact:
     helicity_selector_executions: tuple[
         CompiledHelicitySelectorExecutionArtifact, ...
     ] = ()
-    color_selector_executions: tuple[
-        CompiledColorSelectorExecutionArtifact, ...
-    ] = ()
+    color_selector_executions: tuple[CompiledColorSelectorExecutionArtifact, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -950,9 +947,7 @@ def _execution_manifest(
         topology_replay = compiler_schema.get("lc_topology_replay")
         required_runtime_capabilities = _eager_process_runtime_capabilities(process)
         plan = process.eager_tables.to_metadata()
-        plan["required_runtime_capabilities"] = list(
-            required_runtime_capabilities
-        )
+        plan["required_runtime_capabilities"] = list(required_runtime_capabilities)
         return {
             "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
             "kind": EAGER_RUNTIME_KIND,
@@ -976,11 +971,7 @@ def _execution_manifest(
             **(
                 {}
                 if topology_replay is None
-                else {
-                    "lc_topology_replay": _plain_mapping(
-                        _mapping(topology_replay)
-                    )
-                }
+                else {"lc_topology_replay": _plain_mapping(_mapping(topology_replay))}
             ),
         }
     primary = _compiled_execution_lane_manifest(
@@ -990,21 +981,15 @@ def _execution_manifest(
         dag_summary=process.dag_summary,
         payload_prefix=None,
     )
-    required_runtime_capabilities = set(
-        _required_runtime_capabilities(primary)
-    )
+    required_runtime_capabilities = set(_required_runtime_capabilities(primary))
     color_selector_executions = _compiled_color_selector_execution_manifests(
         process=process,
         executions=process.color_selector_executions,
         parent_payload_prefix=None,
     )
     if color_selector_executions:
-        required_runtime_capabilities.add(
-            COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY
-        )
-        required_runtime_capabilities.add(
-            COMPILED_RUNTIME_SELECTORS_CAPABILITY
-        )
+        required_runtime_capabilities.add(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY)
+        required_runtime_capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
         for record in color_selector_executions:
             required_runtime_capabilities.update(
                 _required_runtime_capabilities(_mapping(record["execution"]))
@@ -1017,29 +1002,23 @@ def _execution_manifest(
             execution=helicity_sum_execution,
             payload_prefix=_HELICITY_SUM_PAYLOAD_ROOT,
         )
-        required_runtime_capabilities.update(
-            _required_runtime_capabilities(auxiliary)
-        )
-        required_runtime_capabilities.add(
-            COMPILED_HELICITY_DUAL_LANE_CAPABILITY
-        )
-    helicity_selector_executions = (
-        _compiled_helicity_selector_execution_manifests(
-            process=process,
-            executions=process.helicity_selector_executions,
-            parent_payload_prefix=None,
-        )
+        required_runtime_capabilities.update(_required_runtime_capabilities(auxiliary))
+        required_runtime_capabilities.add(COMPILED_HELICITY_DUAL_LANE_CAPABILITY)
+    helicity_selector_executions = _compiled_helicity_selector_execution_manifests(
+        process=process,
+        executions=process.helicity_selector_executions,
+        parent_payload_prefix=None,
     )
     if helicity_selector_executions:
         for record in helicity_selector_executions:
             required_runtime_capabilities.update(
                 _required_runtime_capabilities(_mapping(record["execution"]))
             )
+        required_runtime_capabilities.add(COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY)
+        required_runtime_capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
+    if _uses_primary_helicity_recurrence(process):
         required_runtime_capabilities.add(
-            COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY
-        )
-        required_runtime_capabilities.add(
-            COMPILED_RUNTIME_SELECTORS_CAPABILITY
+            COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
         )
     return {
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
@@ -1052,11 +1031,7 @@ def _execution_manifest(
         "compiled": primary["compiled"],
         "dag_summary": primary["dag_summary"],
         "runtime_schema": primary["runtime_schema"],
-        **(
-            {}
-            if auxiliary is None
-            else {"helicity_sum_execution": auxiliary}
-        ),
+        **({} if auxiliary is None else {"helicity_sum_execution": auxiliary}),
         **(
             {}
             if not helicity_selector_executions
@@ -1086,9 +1061,7 @@ def _compiled_helicity_selector_execution_manifests(
                 "compiled helicity-selector closure execution cannot contain "
                 "nested execution lanes"
             )
-        lane_prefix = (
-            f"{_HELICITY_SELECTOR_UNION_PAYLOAD_ROOT}/class-{lane_index}"
-        )
+        lane_prefix = f"{_HELICITY_SELECTOR_UNION_PAYLOAD_ROOT}/class-{lane_index}"
         payload_prefix = (
             lane_prefix
             if parent_payload_prefix is None
@@ -1137,34 +1110,29 @@ def _compiled_nested_execution_manifest(
         executions=execution.color_selector_executions,
         parent_payload_prefix=payload_prefix,
     )
-    required_runtime_capabilities = set(
-        _required_runtime_capabilities(lane)
-    )
-    helicity_selector_executions = (
-        _compiled_helicity_selector_execution_manifests(
-            process=process,
-            executions=execution.helicity_selector_executions,
-            parent_payload_prefix=payload_prefix,
+    required_runtime_capabilities = set(_required_runtime_capabilities(lane))
+    if _runtime_schema_uses_primary_helicity_recurrence(
+        runtime_schema,
+        has_helicity_sum_execution=False,
+    ):
+        required_runtime_capabilities.add(
+            COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
         )
+    helicity_selector_executions = _compiled_helicity_selector_execution_manifests(
+        process=process,
+        executions=execution.helicity_selector_executions,
+        parent_payload_prefix=payload_prefix,
     )
     if helicity_selector_executions:
-        required_runtime_capabilities.add(
-            COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY
-        )
-        required_runtime_capabilities.add(
-            COMPILED_RUNTIME_SELECTORS_CAPABILITY
-        )
+        required_runtime_capabilities.add(COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY)
+        required_runtime_capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
         for record in helicity_selector_executions:
             required_runtime_capabilities.update(
                 _required_runtime_capabilities(_mapping(record["execution"]))
             )
     if color_selector_executions:
-        required_runtime_capabilities.add(
-            COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY
-        )
-        required_runtime_capabilities.add(
-            COMPILED_RUNTIME_SELECTORS_CAPABILITY
-        )
+        required_runtime_capabilities.add(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY)
+        required_runtime_capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
         for record in color_selector_executions:
             required_runtime_capabilities.update(
                 _required_runtime_capabilities(_mapping(record["execution"]))
@@ -1191,11 +1159,7 @@ def _compiled_nested_execution_manifest(
         **(
             {}
             if not helicity_selector_executions
-            else {
-                "helicity_selector_executions": (
-                    helicity_selector_executions
-                )
-            }
+            else {"helicity_selector_executions": (helicity_selector_executions)}
         ),
     }
 
@@ -1208,9 +1172,7 @@ def _compiled_color_selector_execution_manifests(
 ) -> list[dict[str, object]]:
     result: list[dict[str, object]] = []
     for record in _ordered_color_selector_executions(executions):
-        lane_prefix = _color_selector_payload_prefix(
-            record.materialized_sector_id
-        )
+        lane_prefix = _color_selector_payload_prefix(record.materialized_sector_id)
         payload_prefix = (
             lane_prefix
             if parent_payload_prefix is None
@@ -1304,8 +1266,7 @@ def _prefix_evaluator_payload_paths(
             return f"{prefix.rstrip('/')}/{path.as_posix()}"
         if isinstance(value, Mapping):
             return {
-                str(key): visit(item, field=str(key))
-                for key, item in value.items()
+                str(key): visit(item, field=str(key)) for key, item in value.items()
             }
         if isinstance(value, list):
             return [visit(item) for item in value]
@@ -1654,9 +1615,7 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
         )
     )
     declared = set(_required_runtime_capabilities(result))
-    evaluator_capabilities = declared - {
-        COMPILED_RUNTIME_SELECTORS_CAPABILITY
-    }
+    evaluator_capabilities = declared - {COMPILED_RUNTIME_SELECTORS_CAPABILITY}
     if set(actual) != evaluator_capabilities:
         raise ValueError(
             "stage evaluator runtime capabilities do not match evaluator payloads"
@@ -1898,8 +1857,7 @@ def _copy_helicity_selector_evaluator_payloads(
         _ordered_helicity_selector_executions(executions)
     ):
         lane_prefix = (
-            f"{prefix}/{_HELICITY_SELECTOR_UNION_PAYLOAD_ROOT}/"
-            f"class-{lane_index}"
+            f"{prefix}/{_HELICITY_SELECTOR_UNION_PAYLOAD_ROOT}/class-{lane_index}"
         )
         _copy_evaluator_payloads(
             evaluator_payloads,
@@ -1918,9 +1876,7 @@ def _copy_helicity_selector_evaluator_payloads(
 def _color_selector_payload_prefix(materialized_sector_id: int) -> str:
     if materialized_sector_id < 0:
         raise ValueError("materialized colour-sector ids must be non-negative")
-    return (
-        f"{_COLOR_SELECTOR_PAYLOAD_ROOT}/sector-{materialized_sector_id}"
-    )
+    return f"{_COLOR_SELECTOR_PAYLOAD_ROOT}/sector-{materialized_sector_id}"
 
 
 def _ordered_color_selector_executions(
@@ -1936,18 +1892,14 @@ def _ordered_color_selector_executions(
         if record.materialized_sector_id < 0:
             raise ValueError("materialized colour-sector ids must be non-negative")
         if record.execution.color_selector_executions:
-            raise ValueError(
-                "compiled colour-selector execution lanes cannot nest"
-            )
+            raise ValueError("compiled colour-selector execution lanes cannot nest")
     return ordered
 
 
 def _ordered_helicity_selector_executions(
     executions: Sequence[CompiledHelicitySelectorExecutionArtifact],
 ) -> tuple[CompiledHelicitySelectorExecutionArtifact, ...]:
-    ordered = tuple(
-        sorted(executions, key=lambda record: record.selector_domain_ids)
-    )
+    ordered = tuple(sorted(executions, key=lambda record: record.selector_domain_ids))
     seen: set[int] = set()
     for record in ordered:
         domain_ids = tuple(sorted(set(record.selector_domain_ids)))
@@ -1969,9 +1921,7 @@ def _ordered_helicity_selector_executions(
                 "'parent-closure' or 'nested-runtime'"
             )
         if record.execution.color_selector_executions:
-            raise ValueError(
-                "compiled helicity-selector execution lanes cannot nest"
-            )
+            raise ValueError("compiled helicity-selector execution lanes cannot nest")
         children = record.execution.helicity_selector_executions
         if children:
             if record.schedule_mode != "nested-runtime":
@@ -2324,6 +2274,8 @@ def _compiled_process_runtime_capabilities(
         capabilities.update(
             _required_runtime_capabilities(process.model_parameter_evaluator)
         )
+    if _uses_primary_helicity_recurrence(process):
+        capabilities.add(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY)
     if process.color_selector_executions:
         capabilities.add(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY)
         capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
@@ -2350,12 +2302,35 @@ def _compiled_process_runtime_capabilities(
     return tuple(sorted(capabilities))
 
 
+def _uses_primary_helicity_recurrence(process: CompiledProcessArtifact) -> bool:
+    return _runtime_schema_uses_primary_helicity_recurrence(
+        _runtime_schema_mapping(process.runtime_schema),
+        has_helicity_sum_execution=process.helicity_sum_execution is not None,
+    )
+
+
+def _runtime_schema_uses_primary_helicity_recurrence(
+    runtime_schema: Mapping[str, object],
+    *,
+    has_helicity_sum_execution: bool,
+) -> bool:
+    if has_helicity_sum_execution:
+        return False
+    recurrence = runtime_schema.get("helicity_recurrence")
+    return isinstance(recurrence, Mapping) and isinstance(
+        recurrence.get("materialization"), Mapping
+    )
+
+
 def _compiled_execution_runtime_capabilities(
     execution: CompiledExecutionArtifact,
 ) -> tuple[str, ...]:
-    capabilities = set(
-        _required_runtime_capabilities(execution.stage_manifest)
-    )
+    capabilities = set(_required_runtime_capabilities(execution.stage_manifest))
+    if _runtime_schema_uses_primary_helicity_recurrence(
+        _runtime_schema_mapping(execution.runtime_schema),
+        has_helicity_sum_execution=False,
+    ):
+        capabilities.add(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY)
     if execution.model_parameter_evaluator is not None:
         capabilities.update(
             _required_runtime_capabilities(execution.model_parameter_evaluator)

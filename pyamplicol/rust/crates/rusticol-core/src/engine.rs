@@ -138,6 +138,8 @@ pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runti
 pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
 pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
     "rusticol.compiled.helicity-selector-union.v1";
+pub const COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY: &str =
+    "rusticol.compiled.helicity-primary-recurrence.v1";
 pub const COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY: &str =
     "rusticol.compiled.color-topology-lanes.v1";
 #[cfg(feature = "f64-symjit")]
@@ -169,6 +171,7 @@ pub fn preflight_prepared_kernel_pack(
 pub enum RuntimeCapability {
     CompiledColorTopologyLanesV1,
     CompiledHelicityDualLaneV1,
+    CompiledHelicityPrimaryRecurrenceV1,
     CompiledHelicitySelectorUnionV1,
     CompiledRuntimeSelectorsV1,
     EagerDagComplexF64V1,
@@ -184,6 +187,9 @@ impl RuntimeCapability {
         match self {
             Self::CompiledColorTopologyLanesV1 => COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
             Self::CompiledHelicityDualLaneV1 => COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+            Self::CompiledHelicityPrimaryRecurrenceV1 => {
+                COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
+            }
             Self::CompiledHelicitySelectorUnionV1 => COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
             Self::CompiledRuntimeSelectorsV1 => COMPILED_RUNTIME_SELECTORS_CAPABILITY,
             Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
@@ -204,6 +210,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

@@ -692,6 +692,20 @@ def _artifact_inspection_summary(
         backend = process.get("prepared_backend")
         mode_text = mode if backend is None else f"{mode} ({backend})"
         execution_table.add_row((process_id, "mode / backend", mode_text))
+        lc_flow_layout = process.get("lc_flow_layout")
+        if lc_flow_layout is not None:
+            execution_table.add_row(
+                (process_id, "LC flow layout", str(lc_flow_layout))
+            )
+        union_sector_count = process.get("lc_union_sector_count")
+        if union_sector_count is not None:
+            execution_table.add_row(
+                (
+                    process_id,
+                    "LC union sectors",
+                    f"{union_sector_count} physical / materialized; 0 residual",
+                )
+            )
         phases = cast(Sequence[object], process.get("native_profile_phases", ()))
         execution_table.add_row(
             (

@@ -62,9 +62,7 @@ def _lc_sector_support(basis_keys: Iterable[str]) -> frozenset[int] | None:
 
 
 def _without_lc_sector_support(basis_keys: Iterable[str]) -> set[str]:
-    return {
-        key for key in basis_keys if not key.startswith(_LC_SECTOR_SUPPORT_PREFIX)
-    }
+    return {key for key in basis_keys if not key.startswith(_LC_SECTOR_SUPPORT_PREFIX)}
 
 
 class ColorEngine:
@@ -125,9 +123,7 @@ class ColorEngine:
         )
         try:
             shared_single_trace_color_basis = (
-                self.model.shared_single_trace_color_basis_is_proven(
-                    color_plan.process
-                )
+                self.model.shared_single_trace_color_basis_is_proven(color_plan.process)
             )
         except (KeyError, NotImplementedError, TypeError, ValueError):
             shared_single_trace_color_basis = False
@@ -142,9 +138,7 @@ class ColorEngine:
         self._shared_single_trace_words = tuple(
             word for sector in color_plan.sectors for word in (sector.color_words or ())
         )
-        self._shared_single_trace_word_set = frozenset(
-            self._shared_single_trace_words
-        )
+        self._shared_single_trace_word_set = frozenset(self._shared_single_trace_words)
         self._shared_single_trace_segments = frozenset(
             tuple(word[start:stop])
             for word in self._shared_single_trace_words
@@ -368,6 +362,7 @@ class ColorEngine:
         vertex: Vertex,
         *,
         ordered_external_labels: tuple[int, ...] = (),
+        sector_support_label_variants: tuple[tuple[int, ...], ...] | None = None,
     ) -> tuple[ColorFlow, ...]:
         if left.accuracy != right.accuracy:
             return ()
@@ -402,6 +397,7 @@ class ColorEngine:
                 right,
                 vertex,
                 ordered_external_labels,
+                sector_support_label_variants=sector_support_label_variants,
             )
             if not projections:
                 return ()
@@ -427,6 +423,7 @@ class ColorEngine:
             right,
             vertex,
             ordered_external_labels,
+            sector_support_label_variants=sector_support_label_variants,
         )
         if not projections:
             return ()
@@ -449,6 +446,8 @@ class ColorEngine:
         right: ColorState,
         vertex: Vertex,
         ordered_external_labels: tuple[int, ...],
+        *,
+        sector_support_label_variants: tuple[tuple[int, ...], ...] | None = None,
     ) -> tuple[tuple[tuple[str, ...], tuple[float, float]], ...]:
         basis_with_support = set(left.basis_key) | set(right.basis_key)
         inherited_support = _lc_sector_support(basis_with_support)
@@ -491,9 +490,16 @@ class ColorEngine:
                 basis.add(_lc_color_identity_closure_key(colored_labels))
 
         if self._shared_lc_orderings:
-            compatible_sector_ids = self._shared_lc_compatible_sector_ids(
-                ordered_external_labels
+            support_label_variants = (
+                (ordered_external_labels,)
+                if sector_support_label_variants is None
+                else sector_support_label_variants
             )
+            compatible_sector_ids: set[int] = set()
+            for support_labels in support_label_variants:
+                compatible_sector_ids.update(
+                    self._shared_lc_compatible_sector_ids(support_labels)
+                )
             if inherited_support is not None:
                 compatible_sector_ids.intersection_update(inherited_support)
             if not compatible_sector_ids:
@@ -510,9 +516,10 @@ class ColorEngine:
 
             candidates: list[tuple[set[str], tuple[float, float], set[int]]] = []
             if creates_fierz_projection:
-                fierz_sector_ids = self._lc_fierz_sector_ids(
-                    ordered_external_labels
-                ) & compatible_sector_ids
+                fierz_sector_ids = (
+                    self._lc_fierz_sector_ids(ordered_external_labels)
+                    & compatible_sector_ids
+                )
                 ordinary_sector_ids = compatible_sector_ids - fierz_sector_ids
                 if ordinary_sector_ids:
                     candidates.append((set(basis), (1.0, 0.0), ordinary_sector_ids))
@@ -744,20 +751,14 @@ class ColorEngine:
         if (
             self._fundamental_line_auxiliary_ids
             and self._fundamental_fermion_pair_count >= 2
-            and self.model.vertex_color_structure(vertex)
-            == "fundamental-generator"
+            and self.model.vertex_color_structure(vertex) == "fundamental-generator"
         ):
             representations = tuple(
-                self.model.color_rep(particle_id)
-                for particle_id in vertex.particles
+                self.model.color_rep(particle_id) for particle_id in vertex.particles
             )
-            if (
-                representations.count(8) == 1
-                and sorted(
-                    abs(value) for value in representations if value != 8
-                )
-                == [3, 3]
-            ):
+            if representations.count(8) == 1 and sorted(
+                abs(value) for value in representations if value != 8
+            ) == [3, 3]:
                 return representations in {
                     (3, 8, 3),
                     (8, -3, -3),
@@ -832,9 +833,7 @@ class ColorEngine:
                 *left_index.ordered_external_labels,
                 *right_index.ordered_external_labels,
             )
-            labels = (
-                segment if segment in self._shared_single_trace_segments else None
-            )
+            labels = segment if segment in self._shared_single_trace_segments else None
             self._ordered_combination_labels_cache[cache_key] = labels
             return labels
         if self._shared_lc_orderings:

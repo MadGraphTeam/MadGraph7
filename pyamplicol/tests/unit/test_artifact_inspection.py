@@ -32,6 +32,7 @@ def test_artifact_inspection_lists_processes_without_loading_evaluators() -> Non
     assert process.computed_color_components == 1
     assert process.helicity_coverage == "complete"
     assert process.color_coverage == "complete"
+    assert process.lc_flow_layout == "topology-replay"
     assert process.execution_mode == "compiled"
     assert process.prepared_backend is None
     assert process.invocation_count is None

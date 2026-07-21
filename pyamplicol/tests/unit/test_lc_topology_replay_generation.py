@@ -5,9 +5,17 @@ from pathlib import Path
 
 import pytest
 
+import pyamplicol.generation.service as service_module
+from pyamplicol.api import ProcessRequest
+from pyamplicol.api.errors import GenerationError
 from pyamplicol.color import plan_replay as replay_module
 from pyamplicol.color.plan import build_color_plan, build_lc_topology_replay_plan
-from pyamplicol.config import EvaluatorConfig, RunConfig
+from pyamplicol.config import (
+    ColorConfig,
+    EvaluatorConfig,
+    ProcessConfig,
+    RunConfig,
+)
 from pyamplicol.generation import artifact_writer as artifact_writer_module
 from pyamplicol.generation.artifact_writer import CompiledProcessArtifact
 from pyamplicol.generation.dag_algorithms import (
@@ -15,6 +23,7 @@ from pyamplicol.generation.dag_algorithms import (
 )
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_types import GenericDAG, InteractionNode
+from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
 from pyamplicol.generation.service import (
     GenerationBackend,
@@ -76,6 +85,123 @@ def test_complete_lc_generation_materializes_replay_representative() -> None:
         and item["factor"] == [item["weight"] * item["sign"], 0.0]
         for item in manifest["groups"][0]["sector_permutations"]
     )
+
+
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
+def test_all_flow_union_materializes_complete_color_plan(
+    execution_mode: str,
+) -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("d d~ > z g g")
+    backend = GenerationBackend(
+        RunConfig(
+            action="generate",
+            color=ColorConfig(lc_flow_layout="all-flow-union"),
+            evaluator=EvaluatorConfig(execution_mode=execution_mode),
+        ),
+        None,
+    )
+
+    dag, coverage = backend._compile_concrete_process(process, model)
+
+    assert dag.lc_topology_replay is None
+    assert dag.color_coverage == "complete"
+    assert dag.helicity_coverage == "complete"
+    assert coverage["lc_flow_layout"] == "all-flow-union"
+    assert {
+        int(root.color_sector_id)
+        for root in dag.amplitude_roots
+        if root.color_sector_id is not None
+    } == {int(sector.id) for sector in dag.color_plan.sectors}
+
+
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_contracted_color_coverage_has_no_lc_layout_provenance(
+    accuracy: str,
+) -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("d d~ > z g g", color_accuracy=accuracy)
+    backend = GenerationBackend(
+        RunConfig(action="generate", color=ColorConfig(accuracy=accuracy)),
+        None,
+    )
+
+    _dag, coverage = backend._compile_concrete_process(process, model)
+
+    assert "lc_flow_layout" not in coverage
+
+
+def test_compiled_all_flow_union_is_the_only_materialized_execution_lane() -> None:
+    model = BuiltinSMModel()
+    expression = "d d~ > z g g"
+    process = build_process_ir(expression)
+    backend = GenerationBackend(
+        RunConfig(
+            action="generate",
+            color=ColorConfig(lc_flow_layout="all-flow-union"),
+        ),
+        None,
+    )
+    dag, coverage = backend._compile_concrete_process(process, model)
+    prepared = backend._prepare_warmup_process(
+        service_module._DagProcess(
+            expanded=service_module._ExpandedProcess(
+                request=ProcessRequest.parse(expression, name="all_flow_union"),
+                process_ir=process,
+            ),
+            dag=dag,
+            coverage=coverage,
+        ),
+        model,
+        index=0,
+        phase=PhaseHandle("test", None, 1),
+    )
+    evaluator = backend._construct_evaluator(
+        prepared,
+        model,
+        PhaseHandle("test", None, 1),
+    )
+
+    assert prepared.helicity_sum_dag is None
+    assert prepared.helicity_selector_union_dag is None
+    assert prepared.dag.helicity_materialization is not None
+    assert evaluator.helicity_sum_runtime_schema is None
+    assert evaluator.helicity_selector_lanes
+    assert all(
+        lane.schedule_mode == "parent-closure"
+        for lane in evaluator.helicity_selector_lanes
+    )
+    assert evaluator.color_selector_lanes == ()
+
+
+@pytest.mark.parametrize(
+    "process",
+    (
+        ProcessConfig(max_color_sectors=1),
+        ProcessConfig(selected_color_sector_ids=(0,)),
+        ProcessConfig(selected_source_helicities={"1": -1}),
+    ),
+)
+def test_all_flow_union_rejects_generation_selected_coverage(
+    process: ProcessConfig,
+) -> None:
+    backend = GenerationBackend(
+        RunConfig(
+            action="generate",
+            process=process,
+            color=ColorConfig(lc_flow_layout="all-flow-union"),
+        ),
+        None,
+    )
+
+    with pytest.raises(
+        GenerationError,
+        match="requires complete runtime flow and helicity coverage",
+    ):
+        backend._compile_concrete_process(
+            build_process_ir("d d~ > z g g"),
+            BuiltinSMModel(),
+        )
 
 
 def test_lc_replay_derives_exact_shared_and_private_current_closures() -> None:

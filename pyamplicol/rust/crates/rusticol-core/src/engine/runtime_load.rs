@@ -3379,6 +3379,15 @@ fn ensure_execution_capabilities_supported(manifest: &ExecutionManifest) -> Rust
         );
         execution_capabilities.insert(COMPILED_HELICITY_DUAL_LANE_CAPABILITY.to_string());
     }
+    if !has_helicity_sum_execution
+        && manifest
+            .runtime_schema
+            .helicity_recurrence
+            .as_ref()
+            .is_some_and(|recurrence| recurrence.materialization.is_some())
+    {
+        execution_capabilities.insert(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY.to_string());
+    }
     if has_helicity_selector_executions {
         execution_capabilities.extend(manifest.helicity_selector_executions.iter().flat_map(
             |record| {
@@ -3609,6 +3618,30 @@ mod helicity_recurrence_contract_tests {
             .expect("deserialize selector-lane fixture");
 
         ensure_execution_capabilities_supported(&manifest).unwrap();
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    #[test]
+    fn primary_helicity_recurrence_requires_its_semantic_capability() {
+        let mut value = crate::artifact::tests::minimal_helicity_selector_lane_execution();
+        value["required_runtime_capabilities"]
+            .as_array_mut()
+            .expect("capability array")
+            .retain(|capability| {
+                capability.as_str() != Some(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY)
+            });
+        let manifest = serde_json::from_value::<ExecutionManifest>(value)
+            .expect("deserialize selector-lane fixture");
+
+        let error = ensure_execution_capabilities_supported(&manifest).unwrap_err();
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY),
+            "{error}"
+        );
     }
 
     #[cfg(feature = "f64-symjit")]

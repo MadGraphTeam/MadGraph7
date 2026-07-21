@@ -763,6 +763,7 @@ pub(crate) fn minimal_helicity_selector_lane_execution() -> Value {
     lane["physics_reduction"] = minimal_runtime_physics("p0", "a b > c", "c")["reduction"].clone();
     execution["runtime_schema"]["helicity_recurrence"] = mock_helicity_materialization();
     execution["required_runtime_capabilities"] = json!([
+        crate::engine::COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
         crate::engine::COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
         crate::engine::COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         DIRECT,
@@ -779,6 +780,7 @@ fn helicity_selector_lane_artifact(execution: Value) -> TestArtifact {
     const DIRECT: &str = "symjit.application.complex-f64.v1";
     let mut artifact = TestArtifact::new();
     let capabilities = json!([
+        crate::engine::COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
         crate::engine::COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
         crate::engine::COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         DIRECT,

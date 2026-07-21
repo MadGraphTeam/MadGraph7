@@ -219,9 +219,7 @@ class GenericDAGCompiler:
         selected_source_helicities = tuple(
             sorted((self.selected_source_helicities or {}).items())
         )
-        selected_color_sector_ids = tuple(
-            sorted(self.selected_color_sector_ids or ())
-        )
+        selected_color_sector_ids = tuple(sorted(self.selected_color_sector_ids or ()))
         color_coverage = (
             "selected"
             if color_plan.truncated or self.selected_color_sector_ids is not None
@@ -300,7 +298,13 @@ class GenericDAGCompiler:
         auxiliary_kind_cache: dict[int, str | None] = {}
         duplicate_orientation_cache: dict[Vertex, bool] = {}
         color_flow_cache: dict[
-            tuple[ColorState, ColorState, Vertex, tuple[int, ...]],
+            tuple[
+                ColorState,
+                ColorState,
+                Vertex,
+                tuple[int, ...],
+                tuple[tuple[int, ...], ...],
+            ],
             tuple[ColorFlow, ...],
         ] = {}
         full_mask = _labels_mask(leg.label for leg in process_ir.legs)
@@ -630,6 +634,7 @@ class GenericDAGCompiler:
             right: CurrentIndex,
             vertex: Vertex,
             ordered_external_labels: tuple[int, ...],
+            sector_support_label_variants: tuple[tuple[int, ...], ...],
         ) -> tuple[ColorFlow, ...]:
             if not self.online_evaluation_reuse:
                 return color_engine.combine(
@@ -637,12 +642,14 @@ class GenericDAGCompiler:
                     right.color_state,
                     vertex,
                     ordered_external_labels=ordered_external_labels,
+                    sector_support_label_variants=sector_support_label_variants,
                 )
             key = (
                 left.color_state,
                 right.color_state,
                 vertex,
                 ordered_external_labels,
+                sector_support_label_variants,
             )
             cached = color_flow_cache.get(key)
             if cached is None:
@@ -651,6 +658,7 @@ class GenericDAGCompiler:
                     right.color_state,
                     vertex,
                     ordered_external_labels=ordered_external_labels,
+                    sector_support_label_variants=sector_support_label_variants,
                 )
                 color_flow_cache[key] = cached
             return cached
@@ -870,12 +878,20 @@ class GenericDAGCompiler:
                             ):
                                 continue
                             order_variants: tuple[
-                                tuple[tuple[int, ...], tuple[float, float]],
+                                tuple[
+                                    tuple[int, ...],
+                                    tuple[tuple[int, ...], ...],
+                                    tuple[float, float],
+                                ],
                                 ...,
                             ]
                             if left_reflection_reusable or right_reflection_reusable:
                                 variants: list[
-                                    tuple[tuple[int, ...], tuple[float, float]]
+                                    tuple[
+                                        tuple[int, ...],
+                                        tuple[tuple[int, ...], ...],
+                                        tuple[float, float],
+                                    ]
                                 ] = []
                                 for (
                                     proposed_labels,
@@ -898,7 +914,26 @@ class GenericDAGCompiler:
                                     )
                                     if projected is None:
                                         continue
-                                    variants.append((projected, symmetry_weight))
+                                    support_label_variants = (proposed_labels,)
+                                    if (
+                                        result_reflection_proven
+                                        and color_coverage == "complete"
+                                    ):
+                                        reflected_labels = tuple(
+                                            reversed(proposed_labels)
+                                        )
+                                        if reflected_labels != proposed_labels:
+                                            support_label_variants = (
+                                                proposed_labels,
+                                                reflected_labels,
+                                            )
+                                    variants.append(
+                                        (
+                                            projected,
+                                            support_label_variants,
+                                            symmetry_weight,
+                                        )
+                                    )
                                 order_variants = tuple(variants)
                                 if not order_variants:
                                     continue
@@ -906,7 +941,11 @@ class GenericDAGCompiler:
                                 if ordered_external_labels is None:
                                     continue
                                 order_variants = (
-                                    (ordered_external_labels, (1.0, 0.0)),
+                                    (
+                                        ordered_external_labels,
+                                        (ordered_external_labels,),
+                                        (1.0, 0.0),
+                                    ),
                                 )
                             quantum_flow_key = (
                                 vertex.kind,
@@ -930,6 +969,7 @@ class GenericDAGCompiler:
                             for quantum_flow in quantum_flows:
                                 for variant_index, (
                                     variant_ordered_labels,
+                                    sector_support_label_variants,
                                     symmetry_weight,
                                 ) in enumerate(order_variants):
                                     for color_flow in combined_color_flows(
@@ -937,6 +977,7 @@ class GenericDAGCompiler:
                                         right.index,
                                         vertex,
                                         variant_ordered_labels,
+                                        sector_support_label_variants,
                                     ):
                                         if not _lc_line_groups_within_limit(
                                             color_flow.state,
@@ -1231,9 +1272,9 @@ class GenericDAGCompiler:
         )
         ids_by_shape: dict[_LiveCurrentShape, dict[int, int]] = {}
         for source, current_id in zip(plan.sources, sources, strict=True):
-            ids_by_shape.setdefault(source.shape, {})[
-                source.helicity_ancestry
-            ] = current_id
+            ids_by_shape.setdefault(source.shape, {})[source.helicity_ancestry] = (
+                current_id
+            )
         transitions_by_mask: dict[int, list[BackwardLiveTransition]] = {}
         for transition in plan.transitions:
             transitions_by_mask.setdefault(
@@ -1283,9 +1324,7 @@ class GenericDAGCompiler:
                         chirality=transition.result.chirality,
                         spin_state=transition.result.spin_state,
                         flavour_flow=transition.result.flavour_flow,
-                        quantum_number_flow=(
-                            transition.result.quantum_number_flow
-                        ),
+                        quantum_number_flow=(transition.result.quantum_number_flow),
                         color_state=transition.result.color_state,
                         momentum_mask=transition.result.external_mask,
                         coupling_orders=transition.result.coupling_orders,
@@ -1408,9 +1447,7 @@ class GenericDAGCompiler:
                 if truncated:
                     break
             if reuse_tracker is not None:
-                reuse_tracker.finalize_currents(
-                    table.currents[mask_current_start:]
-                )
+                reuse_tracker.finalize_currents(table.currents[mask_current_start:])
             if truncated:
                 break
 
