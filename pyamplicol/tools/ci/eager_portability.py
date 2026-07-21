@@ -389,8 +389,7 @@ def _preflight_all_prepared_applications(bundle: Path) -> int:
             root = Path(raw)
             pack_path = root / "kernel-pack.json"
             pack_path.write_text(
-                json.dumps(kernel_pack, sort_keys=True, separators=(",", ":"))
-                + "\n",
+                json.dumps(kernel_pack, sort_keys=True, separators=(",", ":")) + "\n",
                 encoding="utf-8",
             )
             for index, raw_member in enumerate(members):
@@ -707,60 +706,140 @@ def verify_consumer_artifact(
     ) != bundle_pack.get("target"):
         raise PortabilityError("consumer changed the architecture-scoped JIT target")
     filtered_kernels = _array(filtered_pack.get("kernels"), "filtered pack kernels")
+    filtered_variants = _array(
+        filtered_pack.get("kernel_variants", []),
+        "filtered pack kernel variants",
+    )
     if not filtered_kernels:
         raise PortabilityError("consumer artifact references no prepared kernels")
 
-    copied_paths: set[str] = set()
-    for index, raw_kernel in enumerate(filtered_kernels):
-        kernel = _object(raw_kernel, f"filtered kernel {index}")
-        f64 = _object(
-            kernel.get("f64_evaluator_manifest"), f"filtered kernel {index} f64"
-        )
-        for field in ("application_path", "evaluator_state_path"):
-            source_path = _canonical_member_path(
-                f64.get(field), f"filtered kernel {index} {field}"
+    packed_reader = None
+    container_record = extensions.get("evaluator_payload_container")
+    with contextlib.ExitStack() as stack:
+        if container_record is not None:
+            from pyamplicol.generation.evaluator_container import (
+                PacbinMemberKind,
+                PacbinReader,
             )
-            destination_path = f"model/eager-kernels/{source_path}"
-            destination = artifact / PurePosixPath(destination_path)
-            source_record = bundle_members.get(source_path)
-            destination_record = artifact_payloads.get(destination_path)
-            if source_record is None or destination_record is None:
-                raise PortabilityError(
-                    f"consumer omitted transferred kernel payload {source_path!r}"
-                )
-            source_sha = _string(source_record.get("sha256"), "source payload SHA")
-            if destination_record.get("sha256") != source_sha:
-                raise PortabilityError(
-                    f"consumer rebuilt or changed kernel payload {source_path!r}"
-                )
-            if destination.read_bytes() != bundle_payloads[source_path]:
-                raise PortabilityError(
-                    f"consumer kernel payload {source_path!r} is not byte-identical"
-                )
-            copied_paths.add(source_path)
 
-    for path, record in artifact_payloads.items():
-        suffix = PurePosixPath(path).suffix.lower()
-        if suffix in _FORBIDDEN_SUFFIXES:
-            raise PortabilityError(
-                f"consumer artifact contains native/source payload {path!r}"
+            container = _object(
+                container_record,
+                "artifact.extensions.evaluator_payload_container",
             )
-        if path.startswith("model/eager-kernels/"):
-            payload = (artifact / PurePosixPath(path)).read_bytes()
-            native_kind = _native_payload_kind(payload)
-            if native_kind is not None:
+            container_path = _canonical_member_path(
+                container.get("path"),
+                "artifact evaluator container path",
+            )
+            if container_path not in artifact_payloads:
                 raise PortabilityError(
-                    f"consumer kernel payload {path!r} contains {native_kind}"
+                    "consumer evaluator container is absent from artifact payloads"
                 )
-            if record.get("executable") is not False:
+            packed_reader = stack.enter_context(
+                PacbinReader.open(artifact / PurePosixPath(container_path))
+            )
+
+        copied_paths: set[str] = set()
+        filtered_records = [
+            (f"filtered kernel {index}", raw)
+            for index, raw in enumerate(filtered_kernels)
+        ]
+        filtered_records.extend(
+            (f"filtered kernel variant {index}", raw)
+            for index, raw in enumerate(filtered_variants)
+        )
+        for context, raw_kernel in filtered_records:
+            kernel = _object(raw_kernel, context)
+            f64 = _object(kernel.get("f64_evaluator_manifest"), f"{context} f64")
+            for field in ("application_path", "evaluator_state_path"):
+                source_path = _canonical_member_path(
+                    f64.get(field), f"{context} {field}"
+                )
+                destination_path = f"model/eager-kernels/{source_path}"
+                source_record = bundle_members.get(source_path)
+                destination_record = artifact_payloads.get(destination_path)
+                packed_member = None
+                if packed_reader is not None:
+                    with contextlib.suppress(KeyError):
+                        packed_member = packed_reader.member(destination_path)
+                if source_record is None or (
+                    destination_record is None and packed_member is None
+                ):
+                    raise PortabilityError(
+                        f"consumer omitted transferred kernel payload {source_path!r}"
+                    )
+                source_sha = _string(source_record.get("sha256"), "source payload SHA")
+                if packed_member is not None:
+                    destination_sha = packed_member.sha256
+                    destination_payload = packed_reader.read_member(
+                        destination_path,
+                        length=packed_member.length,
+                    )
+                else:
+                    assert destination_record is not None
+                    destination_sha = _string(
+                        destination_record.get("sha256"),
+                        "destination payload SHA",
+                    )
+                    destination_payload = (
+                        artifact / PurePosixPath(destination_path)
+                    ).read_bytes()
+                if destination_sha != source_sha:
+                    raise PortabilityError(
+                        f"consumer rebuilt or changed kernel payload {source_path!r}"
+                    )
+                if destination_payload != bundle_payloads[source_path]:
+                    raise PortabilityError(
+                        f"consumer kernel payload {source_path!r} is not byte-identical"
+                    )
+                copied_paths.add(source_path)
+
+        for path, record in artifact_payloads.items():
+            suffix = PurePosixPath(path).suffix.lower()
+            if suffix in _FORBIDDEN_SUFFIXES:
                 raise PortabilityError(
-                    f"consumer kernel payload {path!r} is executable"
+                    f"consumer artifact contains native/source payload {path!r}"
                 )
+            if path.startswith("model/eager-kernels/"):
+                payload = (artifact / PurePosixPath(path)).read_bytes()
+                native_kind = _native_payload_kind(payload)
+                if native_kind is not None:
+                    raise PortabilityError(
+                        f"consumer kernel payload {path!r} contains {native_kind}"
+                    )
+                if record.get("executable") is not False:
+                    raise PortabilityError(
+                        f"consumer kernel payload {path!r} is executable"
+                    )
+
+        if packed_reader is not None:
+            for member in packed_reader.members:
+                suffix = PurePosixPath(member.logical_path).suffix.lower()
+                if suffix in _FORBIDDEN_SUFFIXES:
+                    raise PortabilityError(
+                        "consumer evaluator container contains native/source payload "
+                        f"{member.logical_path!r}"
+                    )
+                if member.kind is PacbinMemberKind.NATIVE_LIBRARY:
+                    raise PortabilityError(
+                        "consumer evaluator container contains a native library "
+                        f"{member.logical_path!r}"
+                    )
+                prefix = packed_reader.read_member(
+                    member.logical_path,
+                    length=min(member.length, 64),
+                )
+                native_kind = _native_payload_kind(prefix)
+                if native_kind is not None:
+                    raise PortabilityError(
+                        "consumer evaluator container payload "
+                        f"{member.logical_path!r} contains {native_kind}"
+                    )
 
     return {
         "artifact_id": manifest.get("artifact_id"),
         "copied_kernel_payload_count": len(copied_paths),
         "filtered_kernel_count": len(filtered_kernels),
+        "filtered_kernel_variant_count": len(filtered_variants),
         "process_id": DEFAULT_PROCESS_ID,
         "runtime_kind": execution.get("kind"),
     }

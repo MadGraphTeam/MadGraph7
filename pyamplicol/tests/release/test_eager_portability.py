@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -190,6 +191,110 @@ def _write_transfer_fixture(
     return directory
 
 
+def _write_packed_consumer_artifact(
+    artifact: Path,
+    bundle: Path,
+    contracts: portability.RuntimeContracts,
+) -> Path:
+    from pyamplicol.generation.evaluator_container import (
+        PacbinMemberKind,
+        PacbinMemberSource,
+        write_pacbin_atomic,
+    )
+
+    artifact.mkdir()
+    bundle_manifest, bundle_payloads = portability._archive_manifest(bundle)
+    kernel_pack = bundle_manifest["kernel_pack"]
+    assert isinstance(kernel_pack, dict)
+    kernels = kernel_pack["kernels"]
+    assert isinstance(kernels, list) and len(kernels) == 1
+    kernel = kernels[0]
+    assert isinstance(kernel, dict)
+    f64 = kernel["f64_evaluator_manifest"]
+    assert isinstance(f64, dict)
+
+    filtered_pack = dict(kernel_pack)
+    filtered_pack["kernels"] = [kernel]
+    filtered_pack["kernel_variants"] = []
+    pack_path = artifact / "model" / "eager-kernel-pack.json"
+    pack_path.parent.mkdir(parents=True)
+    pack_path.write_text(json.dumps(filtered_pack), encoding="utf-8")
+
+    execution_path = (
+        artifact / "processes" / portability.DEFAULT_PROCESS_ID / "execution.json"
+    )
+    execution_path.parent.mkdir(parents=True)
+    execution_path.write_text(
+        json.dumps({"kind": "pyamplicol-runtime-eager-execution"}),
+        encoding="utf-8",
+    )
+
+    packed_sources = []
+    for field, kind in (
+        ("application_path", PacbinMemberKind.SYMJIT_APPLICATION),
+        ("evaluator_state_path", PacbinMemberKind.SYMBOLICA_EXACT_STATE),
+    ):
+        source_path = str(f64[field])
+        packed_sources.append(
+            PacbinMemberSource(
+                f"model/eager-kernels/{source_path}",
+                kind,
+                io.BytesIO(bundle_payloads[source_path]),
+            )
+        )
+    container_path = artifact / "evaluators.pacbin"
+    container_index = write_pacbin_atomic(container_path, packed_sources)
+
+    payload_paths = (
+        "evaluators.pacbin",
+        "model/eager-kernel-pack.json",
+        f"processes/{portability.DEFAULT_PROCESS_ID}/execution.json",
+    )
+    payloads = []
+    for relative in payload_paths:
+        path = artifact / relative
+        payloads.append(
+            {
+                "executable": False,
+                "path": relative,
+                "sha256": portability._sha256_file(path),
+                "size_bytes": path.stat().st_size,
+            }
+        )
+    manifest = {
+        "artifact_id": "packed-portability-fixture",
+        "extensions": {
+            "eager_prepared_pack": {
+                "backend": "jit",
+                "eager_kernel_abi": contracts.eager_kernel_abi,
+                "kernel_count": 1,
+            },
+            "evaluator_payload_container": {
+                "index_sha256": container_index.index_sha256,
+                "member_count": len(container_index.members),
+                "path": "evaluators.pacbin",
+                "storage_abi": "pacbin-v1",
+            },
+        },
+        "kind": "pyamplicol-process",
+        "payloads": payloads,
+        "processes": [
+            {
+                "expression": portability.DEFAULT_PROCESS,
+                "id": portability.DEFAULT_PROCESS_ID,
+                "required_runtime_capabilities": [contracts.eager_runtime_capability],
+            }
+        ],
+        "producer": {"version": contracts.package_version},
+        "schema_version": 3,
+    }
+    (artifact / "artifact.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+    return artifact
+
+
 @pytest.mark.parametrize("architecture", ("x86_64", "aarch64"))
 def test_architecture_jit_bundle_audit_accepts_matching_storage_v3_pack(
     tmp_path: Path,
@@ -376,6 +481,29 @@ def test_consumer_generation_command_uses_eager_pack_without_model_compile(
     )
     assert "--no-post-build-validation" in command
     assert "--no-emit-api-bundle" in command
+
+
+def test_consumer_verifier_accepts_byte_identical_packed_kernel_payloads(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+) -> None:
+    bundle = _write_bundle(tmp_path / "model.pyamplicol-model", contracts)
+    artifact = _write_packed_consumer_artifact(
+        tmp_path / "artifact",
+        bundle,
+        contracts,
+    )
+
+    result = portability.verify_consumer_artifact(
+        artifact,
+        bundle,
+        contracts=contracts,
+        bundle_audit={"kernel_count": 1},
+    )
+
+    assert result["copied_kernel_payload_count"] == 2
+    assert result["filtered_kernel_count"] == 1
+    assert result["filtered_kernel_variant_count"] == 0
 
 
 def test_python_executable_preserves_virtual_environment_symlink(
