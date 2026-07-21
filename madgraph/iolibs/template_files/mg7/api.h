@@ -14,6 +14,7 @@
 #ifndef UMAMI_HEADER
 #define UMAMI_HEADER 1
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -66,6 +67,9 @@ typedef enum {
     UMAMI_IN_DIAGRAM_INDEX,
 } UmamiInputKey;
 
+/** Number of values in `UmamiInputKey` */
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_DIAGRAM_INDEX + 1)
+
 typedef enum {
     UMAMI_OUT_MATRIX_ELEMENT,
     UMAMI_OUT_DIAGRAM_AMP2,
@@ -76,6 +80,9 @@ typedef enum {
     // NLO: born, virtual, poles, counterterms
     // color: LC-ME, FC-ME
 } UmamiOutputKey;
+
+/** Number of values in `UmamiOutputKey` */
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_GPU_STREAM + 1)
 
 typedef void* UmamiHandle;
 
@@ -93,6 +100,33 @@ typedef void* UmamiHandle;
  *     UMAMI_SUCCESS on success, error code otherwise
  */
 UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result);
+
+/**
+ * Reports which input keys can be passed to this matrix element implementation.
+ * Optional — callers that fail to resolve this symbol should treat it as unavailable.
+ *
+ * @param supported pointer set to an implementation-owned boolean array
+ * @param count pointer set to the length of `*supported`
+ */
+UmamiStatus umami_supported_inputs(bool const** supported, int* count);
+
+/**
+ * Reports which input keys are mandatory. Subset of `umami_supported_inputs`.
+ * Optional — callers that fail to resolve this symbol should treat it as unavailable.
+ *
+ * @param required pointer set to an implementation-owned boolean array
+ * @param count pointer set to the length of `*required`
+ */
+UmamiStatus umami_required_inputs(bool const** required, int* count);
+
+/**
+ * Reports which output keys can be requested from this matrix element implementation.
+ * Optional — callers that fail to resolve this symbol should treat it as unavailable.
+ *
+ * @param supported pointer set to an implementation-owned boolean array
+ * @param count pointer set to the length of `*supported`
+ */
+UmamiStatus umami_supported_outputs(bool const** supported, int* count);
 
 /**
  * Creates an instance of the matrix element. Each instance is independent, so thread

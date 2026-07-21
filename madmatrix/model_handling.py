@@ -954,17 +954,20 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # code. See docs/mg7_merged_flavor_mssm_design.md.
         self._assert_flv_couplings_supported(params)
 
+        from madgraph.core import base_objects
         def_flv = []
         # For each parameter, write name = expr;
         for coupl in params:
             for key, c in coupl.flavors.items():
-                nonzero = [i for i in key if i != 0]
-                if len(nonzero) == 2:
-                    k1, k2 = nonzero
-                else:
-                    # single merged leg: unmerged partner has flavor index 1
-                    # (mirror Fortran flavor_couplings.f)
-                    k1 = nonzero[0]; k2 = 1
+                # Same (k1, k2) derivation as the Fortran/C++/Python backends:
+                # for a single merged leg the unmerged partner is flavor index 1
+                # and the PARTNER/PARTNER2 direction depends on which fermion
+                # carries the merged leg (see FLV_Coupling.get_partner_indices).
+                # Using this shared helper keeps mg7 consistent with the others
+                # -- previously it always used (k, 1), which transposed the
+                # table for a single merged leg not in the first position (e.g.
+                # the merged neutrino of `w+ ta+ vt~`).
+                k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
                 def_flv.append('%(name)s.partner1[%(in)i] = %(out)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
                 def_flv.append('%(name)s.partner2[%(out)i] = %(in)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
                 def_flv.append('%(name)s.value[%(in)i] = &%(coupl)s;' % {'name': coupl.name,'in': k1-1, 'coupl': c})
@@ -1647,9 +1650,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             for flv_coup in flv_couplings:
                 coup_str_hrd_partner1 += ( ('Parameters_%(model_name)s::%(coup)s.param1' % {"model_name": self.model_name, "coup": flv_coup} + '[%d], ') * nMF) % ( *range(nMF), )
                 coup_str_hrd_partner2 += ( ('Parameters_%(model_name)s::%(coup)s.param2' % {"model_name": self.model_name, "coup": flv_coup} + '[%d], ') * nMF) % ( *range(nMF), )
-                value_string = '(fptype)Parameters_%(model_name)s::%(coup)s.value' % {"model_name": self.model_name, "coup": flv_coup}
-                range_ids = [ [ i, i ] for i in range(nMF) ]
-                coup_str_hrd_value += ( ( value_string + '[%d].real(), ' + value_string + '[%d].imag(), ' ) * nMF) % ( *[ j for i in range_ids for j in i ], )
+                # Guard against null value[] slots: flavor combinations with no
+                # coupling are left null by the FLV_COUPLING constructor, so the
+                # hardcoded cIPF_value read must not dereference an uninitialised
+                # pointer.  Mirrors the runtime path (value[j] ? *value[j] : 0).
+                value_base = 'Parameters_%(model_name)s::%(coup)s.value' % {"model_name": self.model_name, "coup": flv_coup}
+                for i in range(nMF):
+                    coup_str_hrd_value += '(fptype)( %(b)s[%(i)d] ? %(b)s[%(i)d]->real() : 0. ), ' % {'b': value_base, 'i': i}
+                    coup_str_hrd_value += '(fptype)( %(b)s[%(i)d] ? %(b)s[%(i)d]->imag() : 0. ), ' % {'b': value_base, 'i': i}
             coup_str_hrd_partner1 = coup_str_hrd_partner1[:-2] + ' };'
             coup_str_hrd_partner2 = coup_str_hrd_partner2[:-2] + ' };'
             coup_str_hrd_value    = coup_str_hrd_value[:-2] + ' };'
@@ -2172,22 +2180,34 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Return the flavor matrix definition lines for this matrix element"""
         # Emitted at namespace scope (file-local linkage), so the host-side table
         # is visible to both the CPPProcess constructor and CPPProcess::flavorPDG.
-        flavor_line = '  static constexpr short flavors[nmaxflavor][npar] = {\n    '; # (this is tFlavors)
-        flavor_line_list = []
-        for flavors in matrix_element.get_external_flavors_with_iden():
-            # get only the index 0 one because the other ones have same matrix element
-            # additionally they will be used as indices in some cases (e.g. matrix flavor couplings)
-            # so we need to subtract 1 because FORTRAN indices starts from 1, and C++ from zero
-            cpp_flavors = list(map(lambda f: f-1, flavors[0]))
-            flavor_line_list.append( '{ ' + ', '.join(['%d'] * len(cpp_flavors)) % tuple(cpp_flavors) + ' }' )
-        out = flavor_line + ',\n    '.join(flavor_line_list) + ' };'
-        # Companion table with the true signed PDG ids of each flavor
-        # combination (same convention as the PDG lines printed by the
-        # Fortran/C++ standalone 'check' drivers); used by CPPProcess::flavorPDG.
         model = matrix_element.get('processes')[0].get('model')
         merged = model.get('merged_particles') or {}
         all_pdgs = [l.get('id') for l in
                     matrix_element.get('processes')[0].get('legs_with_decays')]
+
+        flavor_line = '  static constexpr short flavors[nmaxflavor][npar] = {\n    '; # (this is tFlavors)
+        flavor_line_list = []
+        for flavors in matrix_element.get_external_flavors_with_iden():
+            # get only the index 0 one because the other ones have same matrix element.
+            # These values are used at runtime as 0-based indices into the per-flavor
+            # FLV_COUPLING arrays (partner1/partner2/value, size max_flavor).  A
+            # merged leg's entry is the *physical PDG* of its flavor, so convert it
+            # to the 0-based position inside the merged group; an unmerged leg maps
+            # to 0.  Subtracting 1 directly only worked for the light quarks, whose
+            # PDG (1..4) equals the position; for a merged lepton/neutrino it gave an
+            # out-of-range index (e.g. 15 for nu_tau) -> out-of-bounds read (segfault).
+            cpp_flavors = []
+            for j, flv in enumerate(flavors[0]):
+                raw = all_pdgs[j]
+                if abs(raw) in merged:
+                    cpp_flavors.append(list(merged[abs(raw)]).index(abs(flv)))
+                else:
+                    cpp_flavors.append(0)
+            flavor_line_list.append( '{ ' + ', '.join('%d' % v for v in cpp_flavors) + ' }' )
+        out = flavor_line + ',\n    '.join(flavor_line_list) + ' };'
+        # Companion table with the true signed PDG ids of each flavor
+        # combination (same convention as the PDG lines printed by the
+        # Fortran/C++ standalone 'check' drivers); used by CPPProcess::flavorPDG.
         pdg_line_list = []
         for flavors in matrix_element.get_external_flavors_with_iden():
             row = []
