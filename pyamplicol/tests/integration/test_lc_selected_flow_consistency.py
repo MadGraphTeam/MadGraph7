@@ -354,6 +354,127 @@ def test_complete_lc_fixed_helicity_selection_composes_with_flow_replay(
     )
 
 
+@pytest.mark.parametrize("model_kind", ("built-in", "ufo-sm"))
+def test_complete_pure_gluon_fixed_helicity_preserves_every_physical_flow(
+    tmp_path: Path,
+    model_kind: str,
+) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    artifact = tmp_path / model_kind
+    model = None
+    if model_kind == "ufo-sm":
+        model_root = (
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "pyamplicol"
+            / "assets"
+            / "models"
+            / "json"
+            / "sm"
+        )
+        model = ModelSource.from_path(
+            model_root / "sm.json",
+            restriction=model_root / "restrict_default.json",
+        )
+    Generator(
+        RunConfig(
+            action="generate",
+            generation=GenerationConfig(
+                emit_api_bundle=False,
+                validation=GenerationValidationConfig(
+                    enabled=False,
+                    post_build_validation=False,
+                ),
+            ),
+            evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=0)),
+        )
+    ).generate("g g > g g", artifact, model=model)
+
+    execution = json.loads(
+        (artifact / "processes/g_g_to_g_g/execution.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert any(
+        record["schedule_mode"] == "nested-runtime"
+        for record in execution["helicity_selector_executions"]
+    )
+
+    point = (
+        (500.0, 0.0, 0.0, 500.0),
+        (500.0, 0.0, 0.0, -500.0),
+        (
+            499.99999999999994,
+            -306.65836769058797,
+            210.51071473894038,
+            334.1345305493651,
+        ),
+        (
+            499.99999999999994,
+            306.65836769058797,
+            -210.51071473894038,
+            -334.1345305493651,
+        ),
+    )
+    runtime = Runtime.load(artifact)
+    helicity_id = "h:-1,+1,-1,+1"
+    complete = runtime.evaluate_resolved((point,))
+    helicity_index = complete.helicity_ids.index(helicity_id)
+    selected = runtime.evaluate_resolved((point,), helicities=(helicity_id,))
+    exact_selected = runtime.evaluate_resolved(
+        (point,),
+        helicities=(helicity_id,),
+        precision=32,
+    )
+
+    expected_by_flow = {
+        "flow:1,2,3,4": 0.2420310029906875,
+        "flow:1,2,4,3": 6.121124826711009,
+        "flow:1,3,2,4": 8.79749514971447,
+        "flow:1,3,4,2": 6.121124826711009,
+        "flow:1,4,2,3": 8.79749514971447,
+        "flow:1,4,3,2": 0.2420310029906875,
+    }
+    assert selected.color_ids == complete.color_ids
+    assert selected.values[0][0] == pytest.approx(
+        complete.values[0][helicity_index],
+        rel=1.0e-11,
+        abs=1.0e-14,
+    )
+    assert exact_selected.color_ids == selected.color_ids
+    for color_id, value in zip(
+        selected.color_ids,
+        selected.values[0][0],
+        strict=True,
+    ):
+        assert value.real == pytest.approx(
+            expected_by_flow[color_id],
+            rel=1.0e-10,
+            abs=1.0e-13,
+        )
+        assert value.imag == pytest.approx(0.0, abs=1.0e-15)
+    for exact_value, value in zip(
+        exact_selected.values[0][0],
+        selected.values[0][0],
+        strict=True,
+    ):
+        assert complex(exact_value) == pytest.approx(
+            value,
+            rel=1.0e-12,
+            abs=1.0e-15,
+        )
+
+    total = runtime.evaluate((point,), helicities=(helicity_id,))[0]
+    assert total.real == pytest.approx(
+        30.321301958832333,
+        rel=1.0e-10,
+        abs=1.0e-12,
+    )
+    assert total.imag == pytest.approx(0.0, abs=1.0e-15)
+
+
 def test_eager_complete_replay_matches_specialized_flows_and_point_selectors(
     tmp_path: Path,
 ) -> None:

@@ -679,6 +679,7 @@ impl ExecutionRuntime {
                 binary_precision,
                 selected_helicity_ids,
                 selected_color_ids,
+                true,
             );
         }
         self.run_resolved_generic_materialized(
@@ -749,6 +750,7 @@ impl ExecutionRuntime {
                         binary_precision,
                         Some(&source_group.helicity_ids),
                         Some(&source_group.color_ids),
+                        false,
                     )?
                 } else {
                     self.run_resolved_generic_materialized(
