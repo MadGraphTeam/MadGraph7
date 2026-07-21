@@ -1354,6 +1354,31 @@ def test_runtime_only_revision_hops_allow_generation_reuse(
     assert not report._source_provenance_generation_reusable(stale_contract)
 
 
+def test_lc_replay_runtime_fix_reuses_pre_fix_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = {
+        "head": "post-replay-fix-head",
+        "report_version": report.REPORT_VERSION,
+        "cache_schema_version": report.CACHE_SCHEMA_VERSION,
+        "compiled_model_schema_version": 9,
+        "model_compiler_version": 13,
+    }
+    monkeypatch.setattr(report, "_report_source_provenance", lambda: current)
+    monkeypatch.setattr(
+        report,
+        "_git_is_ancestor",
+        lambda ancestor, descendant: (
+            ancestor == report.LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION
+            and descendant == "post-replay-fix-head"
+        ),
+    )
+    previous = dict(current)
+    previous["head"] = "55bfedc80df4695dc7aa55bc5d40669d248d2f14"
+
+    assert report._source_provenance_generation_reusable(previous)
+
+
 def test_lc_union_source_transition_allows_only_named_prefeature_bases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1503,9 +1528,7 @@ def test_union_transition_preserves_non_lc_measurements_without_mutating_cache(
             "artifact_path": str(artifact_dir),
             "environment": {
                 "wall_time_source": "runtime_core_repeated_wall_time",
-                "evaluator_time_source": (
-                    "runtime_profile_core_evaluator_call_time"
-                ),
+                "evaluator_time_source": ("runtime_profile_core_evaluator_call_time"),
             },
             "metadata": {
                 "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
@@ -1842,9 +1865,7 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
     )
     point_digest = report._measurement_point_digest(("point",))
     assert (
-        metadata["selected_flow_measurement"]["metadata"][
-            "measurement_point_digest"
-        ]
+        metadata["selected_flow_measurement"]["metadata"]["measurement_point_digest"]
         == point_digest
     )
     assert (
@@ -1862,8 +1883,7 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
     assert snapshot_payload["generation_slice"] is None
     assert snapshot_payload["measurement_point_digest"] == point_digest
     assert (
-        snapshot_payload["measurement_point_source"]
-        == "caller-supplied-report-point"
+        snapshot_payload["measurement_point_source"] == "caller-supplied-report-point"
     )
     all_flow_snapshot = (
         tmp_path
@@ -1876,8 +1896,7 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
         all_flow_snapshot.read_text(encoding="utf-8")
     )
     assert (
-        all_flow_snapshot_payload["lc_flow_layout"]
-        == report.LC_ALL_FLOW_UNION_LAYOUT
+        all_flow_snapshot_payload["lc_flow_layout"] == report.LC_ALL_FLOW_UNION_LAYOUT
     )
     assert all_flow_snapshot_payload["measurement_point_digest"] == point_digest
 
@@ -2239,9 +2258,7 @@ def test_lc_nested_freshness_invalidates_only_old_all_flow_layout(
             },
             "environment": {
                 "wall_time_source": "runtime_core_repeated_wall_time",
-                "evaluator_time_source": (
-                    "runtime_profile_core_evaluator_call_time"
-                ),
+                "evaluator_time_source": ("runtime_profile_core_evaluator_call_time"),
             },
             "metadata": {
                 "lc_flow_layout": layout,

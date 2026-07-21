@@ -72,14 +72,16 @@ ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON = (
     "original AmpliCol supports at most three open quark lines"
 )
 ONE_LINE_NLC_FULL_ORDERING_FIX_REVISION = "cf8017dd393fc000c47f95d97b155ccdba6a5151"
-LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION = (
-    "e4cd45494fb761979a44f12f3f175e0699f4b914"
-)
+LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION = "e4cd45494fb761979a44f12f3f175e0699f4b914"
 LC_ALL_FLOW_UNION_REUSE_BASE_REVISIONS = frozenset(
     {
         "68e652b27a903674fdf96a0dea48b2d0ea563dde",
         "c7e45b090747097965e62b919386d6ee598f94a7",
     }
+)
+LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION = "f1f24548e8d7daec1d1c84b0db8bf3cfa567b13b"
+LC_HELICITY_REPLAY_REUSE_BASE_REVISIONS = frozenset(
+    {"55bfedc80df4695dc7aa55bc5d40669d248d2f14"}
 )
 PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
     {
@@ -5249,6 +5251,9 @@ def _source_provenance_generation_reusable(provenance: object) -> bool:
     return (
         previous_head in LC_ALL_FLOW_UNION_REUSE_BASE_REVISIONS
         and _git_is_ancestor(LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION, current_head)
+    ) or (
+        previous_head in LC_HELICITY_REPLAY_REUSE_BASE_REVISIONS
+        and _git_is_ancestor(LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION, current_head)
     )
 
 
@@ -5379,8 +5384,7 @@ def _reusable_pyamplicol_generation_seconds(
         return None
     if (
         expected_lc_flow_layout is not None
-        and _measurement_lc_flow_layout(previous_measurement)
-        != expected_lc_flow_layout
+        and _measurement_lc_flow_layout(previous_measurement) != expected_lc_flow_layout
     ):
         return None
     if expected_lc_flow_layout is not None and not _lc_flow_layout_source_current(
@@ -7601,17 +7605,14 @@ def _measure_pyamplicol_lc_two_workloads(
         cell,
         reference_measurement,
     )
-    selected_is_current = (
-        _lc_nested_measurement_current(
-            cell,
-            previous_selected,
-            expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
-            execution_mode="compiled",
-        )
-        and _lc_selector_contract_matches_reference(
-            previous_selected,
-            current_reference_digest,
-        )
+    selected_is_current = _lc_nested_measurement_current(
+        cell,
+        previous_selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        execution_mode="compiled",
+    ) and _lc_selector_contract_matches_reference(
+        previous_selected,
+        current_reference_digest,
     )
     if selected_is_current:
         assert isinstance(previous_selected, Mapping)
@@ -7638,17 +7639,14 @@ def _measure_pyamplicol_lc_two_workloads(
                 previous_selected if isinstance(previous_selected, Mapping) else None
             ),
         )
-    all_flow_is_current = (
-        _lc_nested_measurement_current(
-            cell,
-            previous_all_flow,
-            expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
-            execution_mode="compiled",
-        )
-        and _lc_selector_contract_matches_reference(
-            previous_all_flow,
-            current_reference_digest,
-        )
+    all_flow_is_current = _lc_nested_measurement_current(
+        cell,
+        previous_all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        execution_mode="compiled",
+    ) and _lc_selector_contract_matches_reference(
+        previous_all_flow,
+        current_reference_digest,
     )
     if all_flow_is_current:
         assert isinstance(previous_all_flow, Mapping)
