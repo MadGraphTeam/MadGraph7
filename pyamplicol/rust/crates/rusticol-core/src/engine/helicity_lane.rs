@@ -49,6 +49,8 @@ impl ExecutionRuntime {
         }
 
         let mut schedules_by_physical_helicity = vec![None; physics.manifest.helicities.len()];
+        let mut schedule_by_domain = vec![None; recurrence.selector_domains.len()];
+        let mut physical_helicity_by_domain = vec![None; recurrence.selector_domains.len()];
         for schedule in &materialization.selector_schedules {
             let domain = recurrence
                 .selector_domains
@@ -67,10 +69,13 @@ impl ExecutionRuntime {
             }
             let physical_helicity_index =
                 physical_helicity_index_for_domain(physics, domain, public_label_permutation)?;
-            if schedules_by_physical_helicity[physical_helicity_index].is_some() {
+            if physical_helicity_by_domain[schedule.selector_domain_id]
+                .replace(physical_helicity_index)
+                .is_some()
+            {
                 return Err(RusticolError::integrity(format!(
-                    "physical helicity {} has multiple recurrence schedules",
-                    physics.manifest.helicities[physical_helicity_index].id
+                    "helicity selector domain {} has multiple recurrence schedules",
+                    schedule.selector_domain_id
                 )));
             }
 
@@ -90,7 +95,7 @@ impl ExecutionRuntime {
                 &materialization.amplitude_routes,
                 schedule,
             )?;
-            schedules_by_physical_helicity[physical_helicity_index] =
+            schedule_by_domain[schedule.selector_domain_id] =
                 Some(Arc::new(CompiledHelicitySelectorSchedule {
                     selector_domain_id: schedule.selector_domain_id,
                     physical_helicity_index,
@@ -100,6 +105,40 @@ impl ExecutionRuntime {
                     root_factors,
                     structural_zero: schedule.structural_zero,
                 }));
+        }
+        let execution_domain_by_domain = helicity_execution_domain_by_domain(
+            recurrence.selector_domains.len(),
+            &materialization.amplitude_routes,
+        )?;
+        for (domain_id, execution_candidate) in schedule_by_domain.iter().enumerate() {
+            if execution_candidate.is_none() {
+                continue;
+            }
+            let physical_helicity_index =
+                physical_helicity_by_domain[domain_id].ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "helicity selector domain {domain_id} has no physical-helicity mapping"
+                    ))
+                })?;
+            let execution_domain_id = execution_domain_by_domain[domain_id];
+            let execution_schedule = schedule_by_domain
+                .get(execution_domain_id)
+                .and_then(Option::as_ref)
+                .cloned()
+                .ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "helicity selector domain {domain_id} maps to absent execution domain {execution_domain_id}"
+                    ))
+                })?;
+            if schedules_by_physical_helicity[physical_helicity_index]
+                .replace(execution_schedule)
+                .is_some()
+            {
+                return Err(RusticolError::integrity(format!(
+                    "physical helicity {} has multiple recurrence schedules",
+                    physics.manifest.helicities[physical_helicity_index].id
+                )));
+            }
         }
         if schedules_by_physical_helicity.iter().any(Option::is_none) {
             return Err(RusticolError::integrity(
@@ -219,7 +258,7 @@ impl ExecutionRuntime {
                                     && selected_materialized_sector_ids.is_none())
                         })
                 });
-            let (selected, schedule_profile) = if let Some(lane_index) = selector_lane_index {
+            let (mut selected, schedule_profile) = if let Some(lane_index) = selector_lane_index {
                 let schedule_mode = self
                     .helicity_selector_runtime_schedule_modes
                     .get(lane_index)
@@ -246,7 +285,7 @@ impl ExecutionRuntime {
                         )?,
                     HelicitySelectorScheduleMode::NestedRuntime => {
                         let selected_helicity = BTreeSet::from([physics.manifest.helicities
-                            [helicity_index]
+                            [schedule.physical_helicity_index]
                             .id
                             .clone()]);
                         selector_runtime.run_resolved_f64(
@@ -266,7 +305,7 @@ impl ExecutionRuntime {
                     false,
                 )?
             };
-            if selected.helicity_indices != [helicity_index]
+            if selected.helicity_indices != [schedule.physical_helicity_index]
                 || selected.color_indices != color_indices
                 || selected.point_count != point_count
             {
@@ -274,6 +313,7 @@ impl ExecutionRuntime {
                     "materialized helicity schedule returned an inconsistent resolved shape",
                 ));
             }
+            selected.helicity_indices[0] = helicity_index;
             if helicity_indices.len() == 1 {
                 let mut selected_profile = schedule_profile;
                 selected_profile.total_s = total_start.elapsed().as_secs_f64();
@@ -534,9 +574,11 @@ impl ExecutionRuntime {
                             .get(*lane_index)
                             == Some(&HelicitySelectorScheduleMode::NestedRuntime)
                 });
-            let (selected, schedule_profile) = if let Some(lane_index) = nested_lane_index {
-                let selected_helicity =
-                    BTreeSet::from([physics.manifest.helicities[helicity_index].id.clone()]);
+            let (mut selected, schedule_profile) = if let Some(lane_index) = nested_lane_index {
+                let selected_helicity = BTreeSet::from([physics.manifest.helicities
+                    [schedule.physical_helicity_index]
+                    .id
+                    .clone()]);
                 self.helicity_selector_runtimes
                     .get_mut(lane_index)
                     .ok_or_else(|| {
@@ -560,7 +602,7 @@ impl ExecutionRuntime {
                     &schedule,
                 )?
             };
-            if selected.helicity_indices != [helicity_index]
+            if selected.helicity_indices != [schedule.physical_helicity_index]
                 || selected.color_indices != color_indices
                 || selected.point_count != point_count
             {
@@ -568,6 +610,7 @@ impl ExecutionRuntime {
                     "materialized helicity schedule returned an inconsistent resolved shape",
                 ));
             }
+            selected.helicity_indices[0] = helicity_index;
             for point_index in 0..point_count {
                 let source_start = point_index * color_indices.len();
                 let target_start =
@@ -914,6 +957,54 @@ fn materialized_root_factors_for_domain(
     Ok(factors)
 }
 
+fn helicity_execution_domain_by_domain(
+    domain_count: usize,
+    routes: &[HelicityMaterializedAmplitudeRouteRuntime],
+) -> RusticolResult<Vec<usize>> {
+    // The producer orders each proven route as its retained source state
+    // followed by synthetic global-flip aliases. Execute aliases through the
+    // retained source route and relabel the resolved result for the caller.
+    let mut execution_domain_by_domain = (0..domain_count).collect::<Vec<_>>();
+    let mut primary_domains = BTreeSet::new();
+    for route in routes {
+        let Some((&primary_domain, replay_domains)) = route.selector_domain_ids.split_first()
+        else {
+            return Err(RusticolError::artifact(
+                "helicity materialized amplitude route has no selector domains",
+            ));
+        };
+        if primary_domain >= domain_count {
+            return Err(RusticolError::integrity(format!(
+                "helicity amplitude route references stale primary domain {primary_domain}"
+            )));
+        }
+        primary_domains.insert(primary_domain);
+        for replay_domain in replay_domains {
+            if *replay_domain >= domain_count {
+                return Err(RusticolError::integrity(format!(
+                    "helicity amplitude route references stale replay domain {replay_domain}"
+                )));
+            }
+            let previous = execution_domain_by_domain[*replay_domain];
+            if previous != *replay_domain && previous != primary_domain {
+                return Err(RusticolError::artifact(format!(
+                    "helicity replay domain {replay_domain} maps to inconsistent execution domains {previous} and {primary_domain}"
+                )));
+            }
+            execution_domain_by_domain[*replay_domain] = primary_domain;
+        }
+    }
+    for primary_domain in primary_domains {
+        let execution_domain = execution_domain_by_domain[primary_domain];
+        if execution_domain != primary_domain {
+            return Err(RusticolError::artifact(format!(
+                "helicity selector domain {primary_domain} is both a primary and replay-only domain"
+            )));
+        }
+    }
+    Ok(execution_domain_by_domain)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -935,5 +1026,30 @@ mod tests {
                 .to_string()
                 .contains("complete helicity-label permutation")
         );
+    }
+
+    #[test]
+    fn global_flip_domains_execute_their_retained_partner_routes() {
+        let routes = vec![
+            HelicityMaterializedAmplitudeRouteRuntime {
+                materialized_root_id: 0,
+                selector_domain_ids: vec![2, 7],
+                factor: [1.0, 0.0],
+                residual: false,
+            },
+            HelicityMaterializedAmplitudeRouteRuntime {
+                materialized_root_id: 1,
+                selector_domain_ids: vec![3, 6],
+                factor: [1.0, 0.0],
+                residual: false,
+            },
+        ];
+
+        let execution = helicity_execution_domain_by_domain(8, &routes).unwrap();
+
+        assert_eq!(execution[2], 2);
+        assert_eq!(execution[7], 2);
+        assert_eq!(execution[3], 3);
+        assert_eq!(execution[6], 3);
     }
 }

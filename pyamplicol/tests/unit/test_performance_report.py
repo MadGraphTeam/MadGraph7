@@ -1840,6 +1840,17 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
         metadata["all_flow_measurement"]["metadata"]["lc_flow_layout"]
         == report.LC_ALL_FLOW_UNION_LAYOUT
     )
+    point_digest = report._measurement_point_digest(("point",))
+    assert (
+        metadata["selected_flow_measurement"]["metadata"][
+            "measurement_point_digest"
+        ]
+        == point_digest
+    )
+    assert (
+        metadata["all_flow_measurement"]["metadata"]["measurement_point_digest"]
+        == point_digest
+    )
     snapshot = (
         tmp_path
         / "cells"
@@ -1847,7 +1858,13 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
         / "inputs"
         / "pyamplicol-complete-lc-inputs.json"
     )
-    assert json.loads(snapshot.read_text(encoding="utf-8"))["generation_slice"] is None
+    snapshot_payload = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert snapshot_payload["generation_slice"] is None
+    assert snapshot_payload["measurement_point_digest"] == point_digest
+    assert (
+        snapshot_payload["measurement_point_source"]
+        == "caller-supplied-report-point"
+    )
     all_flow_snapshot = (
         tmp_path
         / "cells"
@@ -1855,10 +1872,14 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
         / "inputs"
         / "pyamplicol-all-flow-union-inputs.json"
     )
+    all_flow_snapshot_payload = json.loads(
+        all_flow_snapshot.read_text(encoding="utf-8")
+    )
     assert (
-        json.loads(all_flow_snapshot.read_text(encoding="utf-8"))["lc_flow_layout"]
+        all_flow_snapshot_payload["lc_flow_layout"]
         == report.LC_ALL_FLOW_UNION_LAYOUT
     )
+    assert all_flow_snapshot_payload["measurement_point_digest"] == point_digest
 
 
 def test_compiled_lc_refreshes_only_stale_all_flow_union(
@@ -2554,6 +2575,9 @@ def test_lc_cross_artifact_validation_matches_components_by_id() -> None:
 
     assert validation["status"] == report.ResultStatus.OK.value
     assert validation["maximum_absolute_difference"] == 0.0
+    assert validation["measurement_point_digest"] == report._measurement_point_digest(
+        ("point",)
+    )
 
 
 def test_lc_cross_artifact_validation_rejects_missing_and_extra_ids() -> None:
@@ -2585,8 +2609,22 @@ def test_lc_cross_artifact_validation_rejects_missing_and_extra_ids() -> None:
     )
 
     assert validation["status"] == report.ResultStatus.ERROR.value
+    assert validation["measurement_point_digest"] == report._measurement_point_digest(
+        ("point",)
+    )
     assert "missing=[('h:minus', 'flow:b')]" in validation["message"]
     assert "extra=[('h:minus', 'flow:c')]" in validation["message"]
+
+
+def test_measurement_point_digest_tracks_exact_canonical_point() -> None:
+    point = (((500.0, 0.0, 0.0, 500.0), (500.0, 0.0, 0.0, -500.0)),)
+
+    assert report._measurement_point_digest(point) == report._measurement_point_digest(
+        json.loads(json.dumps(point))
+    )
+    assert report._measurement_point_digest(point) != report._measurement_point_digest(
+        (((500.0, 0.0, 0.0, 499.0), (500.0, 0.0, 0.0, -500.0)),)
+    )
 
 
 def test_reusable_legacy_lc_measurement_preserves_current_reference(

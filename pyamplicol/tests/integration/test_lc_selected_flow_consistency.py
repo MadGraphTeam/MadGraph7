@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol import Generator, ModelSource, Runtime
+from pyamplicol import Generator, ModelSource, ResolvedEvaluation, Runtime
 from pyamplicol.artifacts import inspect_artifact
 from pyamplicol.color.plan import build_color_plan
 from pyamplicol.config import (
@@ -21,6 +21,7 @@ from pyamplicol.config import (
 )
 from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.builtin.validation import generic_validation_point
 
 
 @pytest.mark.parametrize(
@@ -349,6 +350,100 @@ def test_complete_lc_fixed_helicity_selection_composes_with_flow_replay(
         0.000180803517738144,
         rel=1.0e-11,
         abs=1.0e-15,
+    )
+
+
+def test_three_line_lc_publication_reload_and_union_components_match(
+    tmp_path: Path,
+) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    process = "d d~ > u u~ s s~ g"
+    generation = GenerationConfig(
+        emit_api_bundle=False,
+        validation=GenerationValidationConfig(
+            enabled=False,
+            post_build_validation=False,
+        ),
+    )
+    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=0))
+    complete_path = tmp_path / "complete"
+    union_path = tmp_path / "all-flow-union"
+    Generator(
+        RunConfig(
+            action="generate",
+            generation=generation,
+            evaluator=evaluator,
+        )
+    ).generate(process, complete_path)
+    Generator(
+        RunConfig(
+            action="generate",
+            color=ColorConfig(lc_flow_layout="all-flow-union"),
+            generation=generation,
+            evaluator=evaluator,
+        )
+    ).generate(process, union_path)
+
+    point = tuple(
+        tuple(float(component) for component in particle.momentum)
+        for particle in generic_validation_point(process)
+    )
+    points = (point,)
+    flow_id = "flow:2,7,1,3,4,5,6"
+    helicity_id = "h:-1,+1,-1,+1,-1,+1,-1"
+    complete = Runtime.load(complete_path)
+    union_immediate = Runtime.load(union_path)
+
+    def flattened_values(resolved: ResolvedEvaluation) -> tuple[complex, ...]:
+        return tuple(
+            complex(value)
+            for point_values in resolved.values
+            for helicity_values in point_values
+            for value in helicity_values
+        )
+
+    complete_selected = complete.evaluate_resolved(points, color_flows=(flow_id,))
+    union_selected = union_immediate.evaluate_resolved(
+        points,
+        color_flows=(flow_id,),
+    )
+    assert union_selected.helicity_ids == complete_selected.helicity_ids
+    assert union_selected.color_ids == complete_selected.color_ids
+    assert flattened_values(union_selected) == pytest.approx(
+        flattened_values(complete_selected),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert complete.evaluate(points, color_flows=(flow_id,))[0].real == pytest.approx(
+        8.495913119023438e-15,
+        rel=1.0e-11,
+        abs=1.0e-25,
+    )
+
+    complete_fixed = complete.evaluate_resolved(points, helicities=(helicity_id,))
+    union_fixed = union_immediate.evaluate_resolved(points, helicities=(helicity_id,))
+    assert union_fixed.color_ids == complete_fixed.color_ids
+    assert flattened_values(union_fixed) == pytest.approx(
+        flattened_values(complete_fixed),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert complete_fixed.total()[0].real == pytest.approx(
+        4.899181433766111e-14,
+        rel=1.0e-11,
+        abs=1.0e-24,
+    )
+
+    union_reloaded = Runtime.load(union_path)
+    reloaded_selected = union_reloaded.evaluate_resolved(
+        points, color_flows=(flow_id,)
+    )
+    assert flattened_values(reloaded_selected) == pytest.approx(
+        flattened_values(union_selected),
+        rel=0.0,
+        abs=0.0,
     )
 
 
