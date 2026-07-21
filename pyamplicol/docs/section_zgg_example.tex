@@ -175,18 +175,22 @@ three- and four-leg layers contain 224 attachments but only 192 distinct
 kernel evaluations.  The resulting sharing is stronger than merely caching a
 list of Feynman diagrams.
 
-\subsection{Coverage slices, reduction, and reproduction}
+\subsection{Coverage, execution layout, and reproduction}
 
 Normal public generation materializes both flows and complete helicity
-metadata.  Runtime selection then uses the stable physical IDs.  The report's
-specialized one-flow workload instead uses the private developer helper
-\texttt{GenerationSlice}: the source-label order
-$(2,5,4,1,3)$ identifies the coloured traversal $(2,5,4,1)$, while the
-singlet $3$ is retained only as source-order provenance.  The reference flow
-is inserted first, so artifact-local sector $0$ can be retained during that
-specialized generation.  This sliced graph has 65 currents, 90 interactions,
-and 24 roots; those internal numbers are not a substitute for the public flow
-ID.
+metadata.  Runtime selection then uses the stable physical IDs.  For the
+report's selected-flow/helicity-sum workload, the topology-replay layout maps
+the source-label order $(2,5,4,1,3)$ to the coloured traversal $(2,5,4,1)$;
+the singlet $3$ remains source-order provenance.  The all-flow-union layout
+retains the same two public flows but constructs their shared recurrence
+directly.  Section~\ref{sec:lc-flow-layouts} gives the two layout contracts.
+Neither report artifact fixes this flow or a helicity during generation.
+
+The private developer helper \texttt{GenerationSlice} can deliberately
+restrict coverage for diagnostic experiments.  A one-flow slice of this
+process has 65 currents, 90 interactions, and 24 roots, but those internal
+numbers and its artifact-local sector ID are not substitutes for the public
+flow ID and are not used for reusable report timings.
 
 \begin{center}
 \small

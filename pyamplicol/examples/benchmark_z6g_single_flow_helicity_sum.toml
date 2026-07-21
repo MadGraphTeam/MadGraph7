@@ -21,6 +21,8 @@ entries = [
 
 [color]
 accuracy = "lc"
+# The default topology-replay layout is optimized for selecting one physical
+# flow at runtime while summing the retained helicities.
 
 [generation]
 output = "artifacts/uubar_z6g_single_flow_helicity_sum"

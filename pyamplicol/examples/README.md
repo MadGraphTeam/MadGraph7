@@ -32,8 +32,8 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
 | `benchmark.toml` | Short benchmark of the same selected subprocess |
-| `benchmark_z6g_single_flow_helicity_sum.toml` | Profile reusable compiled JIT O3 runtime flow selection with a helicity sum for `u u~ > Z + 6g` |
-| `benchmark_z6g_all_flows_single_helicity.toml` | Profile reusable compiled JIT O3 runtime helicity selection with an all-flow sum for `u u~ > Z + 6g` |
+| `benchmark_z6g_single_flow_helicity_sum.toml` | Profile the default topology-replay layout for runtime flow selection with a helicity sum in `u u~ > Z + 6g` |
+| `benchmark_z6g_all_flows_single_helicity.toml` | Profile the explicit all-flow-union layout for an all-flow sum at one runtime-selected helicity in `u u~ > Z + 6g` |
 | `benchmark_z6g_generation_specialized_flow_helicity_sum.toml` | Generation-specialized flow baseline for the reusable-selector comparison |
 | `benchmark_z6g_generation_specialized_all_flows_single_helicity.toml` | Generation-specialized helicity baseline for the reusable-selector comparison |
 | `process_set_mixed_multiplicity.toml` | Named UFO-SM 2-to-2 and 2-to-3 requests |
@@ -49,12 +49,17 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 ## Reproduce The Z-Ladder Workloads
 
 These acceptance cards use two separately generated compiled-mode artifacts so
-their generation and profile logs remain independent. Both artifacts retain all
-physical LC flows and all physical helicities. The first selects flow ordinal
-`1` only at profile time and sums all helicities; the second sums all flows and
-selects one stable helicity ID only at profile time. Either artifact can select
-any retained flow or helicity globally or per point at runtime. Generate and
-profile them independently:
+their generation and profile logs remain independent. The first keeps the
+default `topology-replay` LC layout, selects flow ordinal `1` only at profile
+time, and sums all helicities. The second explicitly sets
+`color.lc_flow_layout = "all-flow-union"`, sums all flows, and selects one
+stable helicity ID only at profile time. The union shares currents across the
+physical flows and is optimized for this second workload.
+
+Both artifacts retain all physical LC flows and all physical helicities. Either
+can select any retained flow or helicity globally or per point at runtime;
+neither card fixes a selector at generation time. Generate and profile them
+independently:
 
 ```console
 pyamplicol generate --card benchmark_z6g_single_flow_helicity_sum.toml
@@ -86,6 +91,22 @@ Python's `Runtime.evaluate(..., color_flow_by_point=..., helicity_by_point=...)`
 accepts one physical selector per phase-space point. Homogeneous, alternating,
 and randomized selector batches all use the same complete artifact.
 
+The layout is also a dedicated CLI option. For example, this creates a union
+artifact from the otherwise topology-replay card:
+
+```console
+pyamplicol generate \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --lc-flow-layout all-flow-union \
+  --set generation.output=artifacts/uubar_z6g_all_flows_override
+```
+
+`topology-replay` remains the global default because it is optimized for a
+single runtime-selected flow with a helicity sum. `all-flow-union` is LC-only;
+configuration rejects it for NLC/full and for LC requests with a
+generation-selected color sector, a generation-selected helicity, or truncated
+color coverage.
+
 The execution mode can be overridden directly at invocation time. Use a
 different output so the eager artifact cannot collide with the compiled one:
 
@@ -96,9 +117,10 @@ pyamplicol generate \
   --set generation.output=artifacts/uubar_z6g_single_flow_helicity_sum_eager
 ```
 
-The eager override keeps the same complete reusable-selector contract. Eager
-generation and execution apply flow and helicity choices through Rusticol's
-selector schedule rather than generation-time specialization.
+The eager override keeps the same complete reusable-selector contract and the
+card's LC flow layout. Eager generation and execution apply flow and helicity
+choices through Rusticol's selector schedule rather than generation-time
+specialization.
 
 `examples copy` also materializes wheel-owned `sm`, `scalars`, and
 `scalar_gravity` resources into `models/`. The included

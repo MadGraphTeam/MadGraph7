@@ -112,17 +112,29 @@ pyamplicol generate --card benchmark_z6g_all_flows_single_helicity.toml
 pyamplicol profile --card benchmark_z6g_all_flows_single_helicity.toml
 ```
 
-The first profile selects one physical color flow at runtime and sums all
-helicities. The second sums all flows and selects one helicity at runtime. The
-generated artifacts retain every physical LC flow and helicity, so either can
-select any retained component globally or per phase-space point; these are not
-generation-specialized shortcuts. Their outputs are respectively
-`artifacts/uubar_z6g_single_flow_helicity_sum` and
+The first card uses the default `topology-replay` LC layout, which is optimized
+for selecting one physical color flow at runtime and summing all helicities.
+The second explicitly uses `all-flow-union`, which builds a shared cross-flow
+recurrence optimized for summing all flows at one runtime-selected helicity.
+Both artifacts retain every physical LC flow and helicity, so either can select
+any retained component globally or per phase-space point; these are layout
+choices, not generation-selected coverage shortcuts. Their outputs are
+respectively `artifacts/uubar_z6g_single_flow_helicity_sum` and
 `artifacts/uubar_z6g_all_flows_single_helicity`.
 
-Both cards use compiled JIT O3 and native Rusticol wall timing. To exercise the
-same complete selector contract in eager mode, override the execution mode and
-choose a distinct output path:
+Both cards use compiled JIT O3 and native Rusticol wall timing. The default
+layout can be overridden directly; for example, the following command creates
+an all-flow union without editing the single-flow card:
+
+```console
+pyamplicol generate \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --lc-flow-layout all-flow-union \
+  --set generation.output=artifacts/uubar_z6g_all_flows_override
+```
+
+To exercise the same complete selector contract in eager mode, override the
+execution mode and choose a distinct output path:
 
 ```console
 pyamplicol generate \
@@ -373,6 +385,11 @@ At NLC/full, color is contracted and the final dimension has length one.
 Selectors use stable IDs from `runtime.physics`; color-flow selection is valid
 only for leading-color artifacts. CLI `--color-flow` also accepts a one-based
 ordinal, so `--color-flow 1` selects the first flow advertised by the artifact.
+The default LC recurrence layout is `topology-replay`, optimized for a selected
+flow with a helicity sum. Use `--lc-flow-layout all-flow-union` when the hot
+workload sums all flows at a runtime-selected helicity. The union layout is
+rejected for NLC/full and for LC requests with generation-selected color
+sectors, generation-selected helicities, or truncated color coverage.
 When an axis was not fixed during generation, the same artifact supports a
 different physical selector for every point. Rusticol stably groups mixed
 selectors before evaluator dispatch, leaves already pooled input in place, and

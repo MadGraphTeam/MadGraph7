@@ -201,22 +201,23 @@ The active schedule is
 including all transitive current dependencies.  Masks and packet schedules are
 rebuilt only when a selector changes, not at every phase-space point.
 
-This distinction is important for LC timing.  One \emph{complete} eager LC
-artifact contains every physical flow and generated helicity component.  A
+This distinction is important for LC timing.  Every \emph{complete} eager LC
+artifact contains each physical flow and generated helicity component.  A
 caller may select any one flow for a helicity sum, one helicity for all flows,
 or any supported subset at runtime.  The flow identifier, for example
-\texttt{flow:3,1,2,5,6,7,4}, is therefore a runtime choice rather than the flow
+\texttt{flow:3,1,2,5,6,7,4}, is therefore a runtime choice rather than a flow
 hard-wired during process generation.  A deliberately selected-coverage eager
 artifact remains limited to the components that were generated.
 
-Compiled mode now exposes the same complete-coverage runtime contract.  For a
-fair AmpliCol comparison, ``single-flow, helicity-sum'' uses a complete compiled
-artifact and selects the benchmark flow at runtime; ``all-flows,
-single-helicity'' selects the benchmark helicity at runtime.  Either artifact
-can choose any retained flow or helicity without regeneration.  Deliberately
-specialized compiled artifacts remain useful as an optimization baseline, but
-are reported separately and are not the denominator for the reusable eager
-comparison.
+Compiled mode exposes the same complete-coverage runtime contract.  Coverage
+does not, however, prescribe one execution graph.  As described in
+Sec.~\ref{sec:lc-flow-layouts}, both execution modes provide topology-replay
+and all-flow-union layouts.  The report uses topology replay for
+single-flow/helicity-sum and the all-flow union for
+all-flows/single-helicity, with separate process-generation times.  Either
+artifact can choose any retained flow or helicity without regeneration.
+Deliberately specialized artifacts remain useful as optimization baselines,
+but are not the reusable report workloads.
 
 \subsection{Artifact, precision, and portability contracts}
 
@@ -230,7 +231,7 @@ offsets, unknown kernel identifiers, incompatible ABIs, and target mismatches
 before entering native evaluation.
 
 SymJIT applications and their exact evaluator-state companions are stored as
-indexed members of one artifact-root 	exttt{evaluators.pacbin} container.
+indexed members of one artifact-root \texttt{evaluators.pacbin} container.
 Rusticol validates the outer artifact digest, memory-maps the container
 read-only, and loads member slices without extracting them.  This keeps the
 logical evaluator decomposition while replacing thousands of filesystem

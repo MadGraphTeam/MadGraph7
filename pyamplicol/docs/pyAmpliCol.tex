@@ -57,9 +57,9 @@
 \newcommand{\ReportStatus}[1]{\textcolor{ReportMuted}{\textsc{#1}}}
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
-\newcommand{\ReportMatrixLegend}{\ReportTableNote{Cell ordering and units follow the reading guide at the start of this section. A slash separates the two AmpliCol LC runtime workloads; a vertical bar separates the pyAmpliCol Rusticol-core wall and evaluator-only multipliers. Every multiplier is pyAmpliCol divided by AmpliCol.}}
-\newcommand{\ReportEagerMatrixLegend}{\ReportTableNote{Cell ordering and units match the preceding process matrices, but compiled UFO-SM JIT O3 is the reference and eager-DAG JIT O3 is the candidate. A slash separates the compiled LC selected-flow and all-flow workloads; a vertical bar separates eager Rusticol-core wall and evaluator-only multipliers. Every multiplier is eager divided by compiled.}}
-\newcommand{\ReportLadderLegend}{\ReportTableNote{Each workload block reports generation in seconds and Rusticol-core wall and evaluator-only runtime in microseconds per point. Parenthesized multipliers compare pyAmpliCol with AmpliCol; the UFO-SM ``vs blt-in'' columns compare the same UFO-SM and built-in-SM setup.}}
+\newcommand{\ReportMatrixLegend}{\ReportTableNote{Cell ordering and units follow the reading guide at the start of this section. The first/second LC slots use the complete-coverage topology-replay selected-flow/helicity-sum and all-flow-union all-flows/fixed-helicity layouts, respectively. A vertical bar separates the pyAmpliCol Rusticol-core wall and evaluator-only multipliers. Every multiplier is pyAmpliCol divided by AmpliCol.}}
+\newcommand{\ReportEagerMatrixLegend}{\ReportTableNote{Cell ordering and units match the preceding process matrices, but compiled UFO-SM JIT O3 is the reference and eager-DAG JIT O3 is the candidate. The first/second LC slots compare topology-replay and all-flow-union artifacts with like-for-like layouts. A vertical bar separates eager Rusticol-core wall and evaluator-only multipliers. Every multiplier is eager divided by compiled.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload block reports its own process generation in seconds and Rusticol-core wall and evaluator-only runtime in microseconds per point: topology replay for selected-flow/helicity-sum, and all-flow union for all-flows/fixed-helicity. Parenthesized multipliers compare pyAmpliCol with AmpliCol; the UFO-SM ``vs blt-in'' columns compare the same UFO-SM and built-in-SM setup.}}
 \newcommand{\ReportLandscapeFooter}{}
 
 \lstset{
@@ -273,8 +273,8 @@ operation starting from an already compiled canonical model and ending with a
 committed, loadable process artifact. It includes process expansion, DAG and
 evaluator construction, evaluator compilation, validation-point preparation,
 and API-bundle emission. Loading and compiling the UFO/JSON or built-in model
-is performed before the generation timer, passed to either ordinary generation
-or the selected \texttt{GenerationSlice}, and recorded separately as
+is performed before the generation timer, passed to ordinary generation with
+the resolved execution mode and LC flow layout, and recorded separately as
 \texttt{model\_precompile\_seconds}. It is not included in a process-generation
 cell. Existing artifacts may be benchmarked, but their generation slot remains
 \ReportNA{} unless a matching generation measurement is available.
@@ -385,12 +385,17 @@ NLC/full, lower & \AC{} fully contracted runtime in microseconds per point & \te
 \end{tabular}
 \end{center}
 
-The two LC generation ratios correspond to separately generated selected-flow
-and complete-flow \PAC{} artifacts. \AC{} generates one library that supports
-both runtime workloads, so the same \AC{} generation time is the denominator
-of both ratios. ``Selected flow, helicity sum'' evaluates one matched physical
-LC ordering and sums all supported helicities. ``All flows, fixed helicity''
-evaluates every represented physical LC ordering for one supported helicity.
+The two LC generation ratios correspond to separately generated,
+complete-coverage \PAC{} artifacts with the layouts defined in
+Sec.~\ref{sec:lc-flow-layouts}.  The topology-replay artifact supplies the
+selected-flow/helicity-sum workload; the all-flow-union artifact supplies the
+all-flows/fixed-helicity workload.  Both retain every physical LC flow and
+helicity, and the displayed flow or helicity is selected at runtime.  \AC{}
+generates one library that supports both workloads, so the same \AC{}
+generation time is the denominator of both ratios.  ``Selected flow, helicity
+sum'' evaluates one matched physical LC ordering and sums all supported
+helicities. ``All flows, fixed helicity'' evaluates every represented physical
+LC ordering for one supported helicity.
 NLC and full colour instead report one helicity-summed, fully
 colour-contracted workload; no per-flow scalar is defined for those contracts.
 Exception: for the four-open-quark-line LC family the \AC{} colour probe has no
@@ -429,17 +434,16 @@ eager-DAG execution or generation is faster than compiled execution or
 generation.
 
 In an LC eager cell, the upper-left reference slot contains the two compiled
-generation times as \texttt{selected/all-flow}.  Compiled mode specializes and
-generates these two artifacts independently.  Eager mode instead generates
-one complete process DAG whose invocation tables support both runtime
-selectors.  Its one process-generation time is consequently compared once
-with each compiled generation time and is displayed in both candidate
-generation slots.  The lower-left slot retains the two absolute compiled
-Rusticol-core wall times.  Each candidate \texttt{(xwall$\mid$eval)} pair is
-the eager core-wall and eager evaluator-only time divided by the matching
-compiled core-wall time.  NLC and full colour use the same four-field layout
-as before, with one compiled generation/runtime reference and one eager
-generation plus wall/evaluator ratio pair.
+generation times as \texttt{replay/union}.  Compiled and eager modes each
+generate one complete topology-replay artifact and one complete all-flow-union
+artifact.  Candidate generation ratios are layout-matched: eager replay over
+compiled replay, followed by eager union over compiled union.  The lower-left
+slot retains the two absolute compiled Rusticol-core wall times.  Each
+candidate \texttt{(xwall$\mid$eval)} pair is the eager core-wall and eager
+evaluator-only time divided by the matching compiled core-wall time.  NLC and
+full colour use the same four-field layout as before, with one compiled
+generation/runtime reference and one eager generation plus wall/evaluator
+ratio pair.
 
 The eager process-generation timer starts from an already prepared UFO-SM
 model bundle.  Preparing its reusable JIT O3 canonical-kernel pack is an
@@ -501,13 +505,14 @@ and optimization level explicitly; all other workload settings follow the
 benchmark contract above.
 
 The eager row starts from the corresponding prepared model bundle and creates
-one complete process artifact.  Its single generation time is repeated in the
-selected-flow/helicity-sum and all-flows/fixed-helicity workload blocks, while
-the two runtime measurements apply their selectors independently to that same
-artifact.  The displayed Z-ladder ratios continue to use original \AC{} as the
-reference.  In addition, each eager row is checked pointwise against compiled
-JIT O3 at the same selectors with the stricter eager-comparison tolerance.
-Prepared-model creation is excluded from the process-generation entry and
+two complete process artifacts: topology replay for
+selected-flow/helicity-sum and all-flow union for
+all-flows/fixed-helicity.  Each workload block reports its own process
+generation time and applies its flow or helicity selector at runtime.  The
+displayed Z-ladder ratios continue to use original \AC{} as the reference.  In
+addition, each eager workload is checked pointwise against compiled JIT O3 at
+the same selector and layout with the stricter eager-comparison tolerance.
+Prepared-model creation is excluded from both process-generation entries and
 retained as separate provenance.
 
 Runtime comparisons between these backends also include their present
@@ -531,16 +536,16 @@ colour line enters through \(\bar d\), traverses the gluon, and exits through
 keep source labels unambiguous. Internally, the colour-sector match is the
 coloured word \((2,4,1)\).
 
-\PAC{} builds one shared-current DAG for the selected process. Source nodes
-carry particle, momentum, helicity, flavour, and colour-flow labels; composite
-nodes are keyed by the full current identity and the external-label mask. When
-two diagrams need the same current, the DAG contains one node and downstream
-amplitude roots reuse its value. In the selected-flow/helicity-sum workload the
-generator keeps the colour sector compatible with \((2,4,1)\) and sums source
-helicities. In the all-flows/fixed-helicity workload it keeps all LC colour
-flows but fixes one DAG-supported source-helicity assignment. The generated
-artifact serializes the stages and evaluator payloads; Rusticol loads that
-artifact, executes \texttt{Runtime.evaluate()} inside the native core, and
+\PAC{} builds a shared-current DAG for the selected process. Source nodes carry
+particle, momentum, helicity, flavour, and colour-flow labels; composite nodes
+are keyed by the full current identity and the external-label mask. When two
+diagrams need the same current, the DAG contains one node and downstream
+amplitude roots reuse its value. Both LC report artifacts retain all physical
+flows and helicities. The topology-replay artifact selects \((2,4,1)\) at
+runtime and sums source helicities; the all-flow-union artifact selects one
+source-helicity assignment at runtime and sums every LC flow. Each generated
+artifact serializes its own stages and evaluator payloads; Rusticol loads it,
+executes \texttt{Runtime.evaluate()} inside the native core, and
 \texttt{BenchmarkRunner} records both the native repeated wall time and the sum
 of evaluator-call timings.
 
@@ -589,6 +594,8 @@ publication presentation.
 \input{section_zgg_example.tex}
 \clearpage
 \input{section_zgg_dag.tex}
+\clearpage
+\input{section_lc_flow_layouts.tex}
 \clearpage
 \input{section_eager_execution.tex}
 \clearpage

@@ -153,12 +153,14 @@ def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:
     assert selected.process.reference_color_order == ()
     assert selected.process.selected_color_sector_ids == ()
     assert selected.process.selected_source_helicities == {}
+    assert selected.color.lc_flow_layout.value == "topology-replay"
     assert selected.benchmark.color_flow_ids == ("1",)
     assert selected.benchmark.helicity_ids == ()
 
     assert all_flows.process.reference_color_order == ()
     assert all_flows.process.selected_color_sector_ids == ()
     assert all_flows.process.selected_source_helicities == {}
+    assert all_flows.color.lc_flow_layout.value == "all-flow-union"
     assert all_flows.benchmark.color_flow_ids == ()
     assert all_flows.benchmark.helicity_ids == (
         "h:-1,+1,-1,+1,-1,+1,-1,+1,-1",

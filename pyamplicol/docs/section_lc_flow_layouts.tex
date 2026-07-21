@@ -1,0 +1,159 @@
+% SPDX-License-Identifier: 0BSD
+\section{Reusable Leading-Colour Execution Layouts}
+\label{sec:lc-flow-layouts}
+
+Leading-colour coverage and leading-colour execution layout are separate
+contracts.  Let \(\mathcal H\) be the retained physical helicity IDs and let
+\(\mathcal F\) be the retained physical colour-flow IDs.  A complete LC
+artifact represents
+\begin{equation}
+  \mathcal C_{\mathrm{LC}}=\mathcal H\times\mathcal F
+  \label{eq:lc-complete-coverage}
+\end{equation}
+and can therefore expose every resolved component
+\(\mathcal A_{h f}\), independently of how its recurrence is scheduled.  For
+runtime-selected subsets \(S_H\subseteq\mathcal H\) and
+\(S_F\subseteq\mathcal F\), Rusticol computes
+\begin{equation}
+  \mathcal W(S_H,S_F)
+  =\mathcal N\sum_{h\in S_H}\sum_{f\in S_F}w_{hf}
+   \left|\sum_{r\in G(h,f)}\mathcal A^{(r)}_{hf}\right|^2 .
+  \label{eq:lc-runtime-selection}
+\end{equation}
+Here \(G(h,f)\) is one coherent root group, \(w_{hf}\) contains the exact
+symmetry and LC weights, and \(\mathcal N\) is the process normalization.  A
+layout changes the representation and order used to evaluate these terms; it
+does not change \(\mathcal H\), \(\mathcal F\), or Eq.~\eqref{eq:lc-runtime-selection}.
+
+\subsection{Two complete-coverage layouts}
+
+\PAC{} provides two LC layouts because the two principal workloads expose
+different opportunities for current sharing.
+
+\begin{center}
+\small
+\begin{tabular}{@{}L{1.26in}L{2.42in}L{2.42in}@{}}
+\toprule
+\textbf{property} & \textbf{\texttt{topology-replay}} &
+  \textbf{\texttt{all-flow-union}} \\
+\midrule
+Primary workload & one runtime-selected flow, summed helicities &
+  all flows, one runtime-selected helicity \\
+Retained physics & every physical flow and helicity &
+  every physical flow and helicity \\
+Main reuse & exact flow-topology representatives, label permutations,
+  signs, and multiplicities & currents, interactions, and closures shared
+  directly across the union of physical flows \\
+Compiled lane & representative fused stage recurrences replayed by Rusticol &
+  fused cross-flow union stages selected by runtime helicity \\
+Eager lane & prepared-kernel invocations scheduled by replay class &
+  prepared-kernel invocations lowered from the same cross-flow union \\
+Default & yes & explicit opt-in \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+In the topology-replay layout, exact certificates partition physical flows
+into recurrence classes.  If \(\rho(f)\) is the representative of the class
+containing \(f\), the artifact records a source-label permutation \(\pi_f\),
+an exact sign or factor \(s_f\), and its reduction weight.  Schematically,
+\begin{equation}
+  \mathcal A_{h f}(p)
+  =s_f\,\mathcal A_{\pi_f(h),\rho(f)}\!\left(\pi_f(p)\right).
+  \label{eq:lc-topology-replay}
+\end{equation}
+Rusticol maps the requested flow to its representative, groups compatible
+point rows, evaluates contiguous backend batches, and scatters the weighted
+result to the public flow ID.  This avoids materializing one independent DAG
+for every physical ordering and is the layout used for the
+single-flow/helicity-sum benchmark.
+
+The all-flow-union layout instead constructs the complete cross-flow current
+DAG before evaluator lowering.  If \(D_{hf}\) is the dependency graph of one
+resolved component, its graph is the exact quotient
+\begin{equation}
+  D_{\mathrm{union}}
+  =\left(\bigcup_{h\in\mathcal H,\,f\in\mathcal F}D_{hf}\right)
+   \big/\!\sim ,
+  \label{eq:lc-all-flow-union}
+\end{equation}
+where \(\sim\) identifies currents, kernel evaluations, attachments, and
+closures whose canonical contracts prove them equal up to stored factors.
+For a selected helicity, one sweep of this union shares common intermediate
+currents across all requested flows.  This is the layout used for the
+all-flows/single-helicity benchmark.  The artifact does not also carry a
+second topology-replay graph or a generation-fixed-helicity graph.
+
+Both layouts are available with compiled and eager execution.  Compiled mode
+lowers the chosen graph to process-specific stage evaluators.  Eager mode
+lowers it to invocation tables over the prepared model kernels.  Thus
+\texttt{execution\_mode} selects how numerical kernels are supplied, while
+\texttt{lc\_flow\_layout} selects how complete LC recurrence work is shared.
+
+\subsection{Runtime selectors}
+
+Public selectors always use the stable IDs stored in the physics manifest,
+such as \path{flow:2,5,4,1} and \path{h:-1,+1,+0,-1,+1}.  Batch-global
+\texttt{color\_flows} and \texttt{helicities} select rectangular subsets of
+Eq.~\eqref{eq:lc-complete-coverage}.  The per-point
+\texttt{color\_flow\_}\allowbreak\texttt{by\_point} and
+\texttt{helicity\_}\allowbreak\texttt{by\_point} inputs select one component
+on the corresponding axis for each point.  A global and a per-point selector
+are mutually exclusive on the same axis.  Omitting an axis sums every retained
+component on that axis.
+
+Rusticol stably groups per-point selector rows before numerical evaluation so
+that equal selectors form contiguous SIMD-compatible packets.  An already
+grouped input remains in order and does not pay for a redundant sort.  This
+selector planning is a runtime operation; it does not reduce the generated
+coverage of either layout.  Deliberately generation-sliced artifacts remain a
+separate expert facility and, by construction, can select only components
+that were retained during their generation.  The all-flow-union layout
+requires complete flow and helicity coverage and therefore rejects such
+generation slices.
+
+The layout is selected in a run card with
+\begin{lstlisting}
+[color]
+accuracy = "lc"
+lc_flow_layout = "all-flow-union"
+\end{lstlisting}
+or with \texttt{--lc-flow-layout all-flow-union}.  Omitting the option keeps
+the \texttt{topology-replay} default.
+
+\subsection{Why the report has two generation times}
+
+The two layouts retain the same physical component set but build different
+graphs, evaluator payloads, and runtime schedules.  Their process-generation
+times are consequently distinct observables,
+\begin{equation}
+  T_{\mathrm{gen}}^{\mathrm{replay}}
+  \quad\hbox{and}\quad
+  T_{\mathrm{gen}}^{\mathrm{union}},
+  \label{eq:lc-two-generation-times}
+\end{equation}
+and neither value is copied into the other workload's table slot.  The LC
+selected-flow/helicity-sum columns use
+\(T_{\mathrm{gen}}^{\mathrm{replay}}\); the all-flows/single-helicity columns
+use \(T_{\mathrm{gen}}^{\mathrm{union}}\).  Original \AC{} produces one
+table-driven library for both workloads, so its one generation time remains
+the denominator of both \PAC{}/\AC{} ratios.  In eager-versus-compiled tables,
+each eager generation is compared with the compiled generation using the
+same LC layout.  Prepared-model creation is a reusable model-level operation
+and remains outside either eager process-generation timer.
+
+\subsection{NLC and full colour}
+
+The layout option applies only to LC.  NLC and full-colour artifacts already
+construct one complete amplitude basis and contract it with a sparse colour
+metric,
+\begin{equation}
+  \mathcal W_{\mathrm{contracted}}
+  =\mathcal N\sum_h\sum_{a,b}
+   \mathcal A_{ha}^{*}\,C_{ab}\,\mathcal A_{hb}.
+  \label{eq:contracted-colour-layout}
+\end{equation}
+They do not expose the physical LC-flow axis whose alternative scheduling
+motivates topology replay and the all-flow union.  Configuration therefore
+rejects \texttt{all-flow-union} for NLC and full colour.  Their generation,
+contraction, cache, and runtime contracts are unchanged by this choice.

@@ -139,6 +139,27 @@ benchmark selectors use the corresponding `benchmark` fields. Color-flow
 selectors are valid only for LC. NLC/full currently describe the supported
 contracted SU(3) calculations rather than an arbitrary UFO color basis.
 
+`color.lc_flow_layout` chooses how complete LC coverage is organized:
+
+| LC flow layout | Optimized workload |
+| --- | --- |
+| `topology-replay` | Default. One runtime-selected flow with a helicity sum. |
+| `all-flow-union` | All physical flows with one runtime-selected helicity. |
+
+Both layouts retain every physical flow and helicity and accept runtime
+selectors. The union layout constructs one shared cross-flow recurrence; enable
+it in a card with `lc_flow_layout = "all-flow-union"` under `[color]`, or use:
+
+```console
+pyamplicol generate --card run.toml --lc-flow-layout all-flow-union
+```
+
+`all-flow-union` is rejected for NLC/full. It is also incompatible with an LC
+request that fixes `process.selected_color_sector_ids` or
+`process.selected_source_helicities`, or truncates coverage with
+`process.max_color_sectors`. Use the default topology-replay layout for those
+generation-selected or truncated artifacts.
+
 `evaluation.resolved = false` selects the optimized total. With
 `resolved = true`, all selected physical components are returned and their
 explicit sum must agree with the total.

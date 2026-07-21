@@ -60,6 +60,10 @@ QED = 2
 [color]
 # color.accuracy: "lc", "nlc", or "full". Default lc.
 accuracy = "lc"
+# color.lc_flow_layout: "topology-replay" or "all-flow-union". Default
+# topology-replay. The all-flow union is LC-only and cannot be combined with
+# generation-selected or truncated color/helicity coverage.
+lc_flow_layout = "topology-replay"
 
 [generation]
 # generation.output: Optional artifact output path. Default null.

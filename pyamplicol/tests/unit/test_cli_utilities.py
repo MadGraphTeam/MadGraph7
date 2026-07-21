@@ -30,6 +30,14 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     assert (
         destination / "benchmark_z6g_all_flows_single_helicity.toml"
     ).is_file()
+    selected_card = (
+        destination / "benchmark_z6g_single_flow_helicity_sum.toml"
+    ).read_text(encoding="utf-8")
+    union_card = (
+        destination / "benchmark_z6g_all_flows_single_helicity.toml"
+    ).read_text(encoding="utf-8")
+    assert 'lc_flow_layout = "all-flow-union"' not in selected_card
+    assert 'lc_flow_layout = "all-flow-union"' in union_card
     assert (destination / "models/json/sm/sm.json").is_file()
     assert (destination / "models/ufo/sm/vertices.py").is_file()
     stderr = io.StringIO()

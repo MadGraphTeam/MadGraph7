@@ -50,9 +50,7 @@ def test_generation_slice_import_guard_restores_repo_root() -> None:
     original = list(sys.path)
     try:
         sys.path[:] = [
-            entry
-            for entry in sys.path
-            if entry not in {"", root, resolved_root}
+            entry for entry in sys.path if entry not in {"", root, resolved_root}
         ]
         GenerationSlice, generate_slice = report._generation_slice_tools()
         assert root in sys.path or resolved_root in sys.path
@@ -373,10 +371,7 @@ def test_lc_matrix_reference_runtime_pair_uses_tight_spacing() -> None:
 
     assert r"\matrixslot{0.86in}{#4}" in macros
     assert r"\makebox[0.27in][l]{#1}" in macros
-    assert (
-        r"\hspace{0.006in}\matrixpunct{/}\hspace{0.012in}"
-        in macros
-    )
+    assert r"\hspace{0.006in}\matrixpunct{/}\hspace{0.012in}" in macros
 
 
 def _synthetic_source_provenance(
@@ -526,9 +521,7 @@ def test_selected_flow_reference_order_prefers_source_mapped_order() -> None:
 
 
 def test_generated_library_probe_parser_requires_matching_row() -> None:
-    output = (
-        "AMPICOL_PROBE_VALUE 1 3 2 1.60358797632899820000000E+000\n"
-    )
+    output = "AMPICOL_PROBE_VALUE 1 3 2 1.60358797632899820000000E+000\n"
 
     assert report._parse_legacy_generated_library_probe_value(
         output,
@@ -547,9 +540,7 @@ def test_legacy_lc_color_probe_scope_matches_fortran_probe_limit() -> None:
     assert report._legacy_lc_color_probe_supported((1, -1, 23, 21, 21, 21))
     assert not report._legacy_lc_color_probe_supported((1, -1, 2, -2, 3, -3))
     assert report._legacy_direct_color_probe_supported((1, -1, 2, -2, 3, -3))
-    assert not report._legacy_direct_color_probe_supported(
-        (1, -1, 2, -2, 3, -3, 4, -4)
-    )
+    assert not report._legacy_direct_color_probe_supported((1, -1, 2, -2, 3, -3, 4, -4))
     assert report._legacy_probe_scope_limited(
         "d d~ > u u~ s s~: 3 quark lines exceed the legacy scope"
     )
@@ -611,9 +602,12 @@ def test_selected_flow_library_probe_record_uses_indexed_helper(
     assert calls[0]["kwargs"]["source_pdgs"] == (1, -1, 2, -2, 3, -3)
     assert os.environ["LD_LIBRARY_PATH"] == "/existing"
     assert payload["process_pdgs"] == [1, -1, 2, -2, 3, -3]
-    assert json.loads(Path(record["output_path"]).read_text(encoding="utf-8"))[
-        "value_decimal"
-    ] == "1.25"
+    assert (
+        json.loads(Path(record["output_path"]).read_text(encoding="utf-8"))[
+            "value_decimal"
+        ]
+        == "1.25"
+    )
 
 
 def test_snapshot_legacy_generated_library_preserves_executable_and_libs(
@@ -688,9 +682,7 @@ def test_lc_selected_flow_matrix_element_sums_fixed_helicity_partitions(
         calls.append(tuple(helicities))
         value = 1.0 if helicities[0] == helicities[1] else 2.0
         probe = SimpleNamespace(
-            lc_row_partitions=(
-                SimpleNamespace(row=1, value=value, permutation=(1, 2)),
-            )
+            lc_row_partitions=(SimpleNamespace(row=1, value=value, permutation=(1, 2)),)
         )
         return {"args": ["probe", *map(str, helicities)]}, [], probe
 
@@ -712,18 +704,27 @@ def test_lc_selected_flow_matrix_element_sums_fixed_helicity_partitions(
 
 
 def test_legacy_adaptive_profile_points_are_target_runtime_bounded() -> None:
-    assert report._legacy_adaptive_profile_points(
-        0.05,
-        target_runtime=20.0,
-    ) == 40_000
-    assert report._legacy_adaptive_profile_points(
-        1.0e-9,
-        target_runtime=20.0,
-    ) == report.DEFAULT_LEGACY_PROFILE_MAX_POINTS
-    assert report._legacy_adaptive_profile_points(
-        1000.0,
-        target_runtime=20.0,
-    ) == report.DEFAULT_LEGACY_PROFILE_MIN_POINTS
+    assert (
+        report._legacy_adaptive_profile_points(
+            0.05,
+            target_runtime=20.0,
+        )
+        == 40_000
+    )
+    assert (
+        report._legacy_adaptive_profile_points(
+            1.0e-9,
+            target_runtime=20.0,
+        )
+        == report.DEFAULT_LEGACY_PROFILE_MAX_POINTS
+    )
+    assert (
+        report._legacy_adaptive_profile_points(
+            1000.0,
+            target_runtime=20.0,
+        )
+        == report.DEFAULT_LEGACY_PROFILE_MIN_POINTS
+    )
 
 
 def test_legacy_profiled_command_warms_up_and_selects_points(
@@ -1360,7 +1361,7 @@ def test_legacy_lc_contract_rejects_fixed_point_profile_config() -> None:
     assert not report._legacy_lc_measurement_contract_current(measurement)
 
 
-def test_compiled_lc_uses_complete_artifact_and_runtime_selectors(
+def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1387,9 +1388,7 @@ def test_compiled_lc_uses_complete_artifact_and_runtime_selectors(
             "metadata": {
                 "old_matrix_format": {
                     "reference_color_order": [2, 4, 5, 1, 3],
-                    "all_flow_source_helicities": fixed_helicity[
-                        "source_helicities"
-                    ],
+                    "all_flow_source_helicities": fixed_helicity["source_helicities"],
                 }
             },
         }
@@ -1501,6 +1500,11 @@ def test_compiled_lc_uses_complete_artifact_and_runtime_selectors(
     monkeypatch.setattr(report, "_profile_eager_runtime", fake_profile)
     monkeypatch.setattr(
         report,
+        "_lc_cross_artifact_validation",
+        lambda *_args, **_kwargs: {"status": report.ResultStatus.OK.value},
+    )
+    monkeypatch.setattr(
+        report,
         "_lc_runtime_selector_contract",
         lambda **_kwargs: {
             **report._empty_eager_selector_contract(),
@@ -1547,20 +1551,32 @@ def test_compiled_lc_uses_complete_artifact_and_runtime_selectors(
     )
 
     assert returned_points == ("point",)
-    assert len(generated) == 1
+    assert len(generated) == 2
     assert generated[0][1].parts[-1] == "complete-lc"
+    assert generated[1][1].parts[-1] == "all-flow-union"
     assert generated[0][3] == "replace"
+    assert generated[1][3] == "replace"
     assert profile_calls[0]["color_flow_ids"] == ("flow:2,4,5,1",)
     assert profile_calls[0]["helicity_ids"] == ()
     assert profile_calls[1]["color_flow_ids"] == ()
     assert profile_calls[1]["helicity_ids"] == ("h:-1,+1,-1,+1,-1",)
     metadata = measurement["metadata"]
     assert metadata["generation_slice"] is None
-    assert metadata["runtime_selector_policy"] == "complete_lc_runtime_selectors_v1"
+    assert metadata["runtime_selector_policy"] == "complete_lc_runtime_selectors_v2"
     old = metadata["old_matrix_format"]
-    assert old["selected_output_dir"] == old["all_flow_output_dir"]
+    assert old["selected_output_dir"] != old["all_flow_output_dir"]
+    assert old["selected_output_dir"].endswith("complete-lc")
+    assert old["all_flow_output_dir"].endswith("all-flow-union")
     assert old["selected_color_flow_ids"] == ["flow:2,4,5,1"]
     assert old["all_flow_helicity_ids"] == ["h:-1,+1,-1,+1,-1"]
+    assert (
+        metadata["selected_flow_measurement"]["metadata"]["lc_flow_layout"]
+        == report.LC_TOPOLOGY_REPLAY_LAYOUT
+    )
+    assert (
+        metadata["all_flow_measurement"]["metadata"]["lc_flow_layout"]
+        == report.LC_ALL_FLOW_UNION_LAYOUT
+    )
     snapshot = (
         tmp_path
         / "cells"
@@ -1569,6 +1585,510 @@ def test_compiled_lc_uses_complete_artifact_and_runtime_selectors(
         / "pyamplicol-complete-lc-inputs.json"
     )
     assert json.loads(snapshot.read_text(encoding="utf-8"))["generation_slice"] is None
+    all_flow_snapshot = (
+        tmp_path
+        / "cells"
+        / cell.cell_id
+        / "inputs"
+        / "pyamplicol-all-flow-union-inputs.json"
+    )
+    assert (
+        json.loads(all_flow_snapshot.read_text(encoding="utf-8"))["lc_flow_layout"]
+        == report.LC_ALL_FLOW_UNION_LAYOUT
+    )
+
+
+def test_compiled_lc_refreshes_only_stale_all_flow_union(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    spec = report.LADDER_SPECS[0]
+    fixed_helicity = report._source_helicity_choice_payload(
+        cell.process,
+        {"1": -1, "2": 1, "3": -1, "4": 1, "5": -1},
+        selection_source="test",
+        validation_note="test",
+    )
+    contract = {
+        **report._empty_eager_selector_contract(),
+        "status": report.ResultStatus.OK.value,
+        "selected_reference_color_order": [2, 4, 5, 1, 3],
+        "selected_color_flow_ids": ["flow:2,4,5,1"],
+        "all_flow_source_helicities": fixed_helicity["source_helicities"],
+        "all_flow_helicity_ids": ["h:-1,+1,-1,+1,-1"],
+    }
+    selected = {
+        **report._empty_measurement(),
+        "status": report.ResultStatus.OK.value,
+        "generation_seconds": 2.0,
+        "wall_seconds_per_point": 2.0e-6,
+        "evaluator_seconds_per_point": 1.0e-6,
+        "artifact_path": "/preserved/complete-lc",
+        "metadata": {
+            "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
+            "selector_contract": contract,
+        },
+    }
+    stale_all_flow = {
+        **selected,
+        "generation_seconds": 3.0,
+        "artifact_path": "/preserved/old-complete-lc",
+    }
+    previous = {
+        **selected,
+        "metadata": {
+            "selected_flow_measurement": selected,
+            "all_flow_measurement": stale_all_flow,
+            "selector_contract": contract,
+        },
+    }
+    lane_calls: list[dict[str, object]] = []
+
+    def nested_current(
+        _cell: report.CampaignCell,
+        measurement: object,
+        *,
+        expected_layout: str,
+        execution_mode: str,
+    ) -> bool:
+        assert execution_mode == "compiled"
+        return (
+            measurement is selected
+            and expected_layout == report.LC_TOPOLOGY_REPLAY_LAYOUT
+        )
+
+    def measure_lane(
+        **kwargs: object,
+    ) -> tuple[dict[str, object], object, dict[str, object]]:
+        lane_calls.append(dict(kwargs))
+        result = {
+            **report._empty_measurement(),
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 7.0,
+            "wall_seconds_per_point": 4.0e-6,
+            "evaluator_seconds_per_point": 3.0e-6,
+            "matrix_element": 1.0,
+            "artifact_path": "/fresh/all-flow-union",
+            "metadata": {
+                "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+                "selector_contract": contract,
+            },
+        }
+        return result, ("point",), contract
+
+    monkeypatch.setattr(report, "_lc_nested_measurement_current", nested_current)
+    monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+    monkeypatch.setattr(
+        report,
+        "_load_lc_runtime_for_cross_validation",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_cross_artifact_validation",
+        lambda *_args, **_kwargs: {"status": report.ResultStatus.OK.value},
+    )
+
+    measurement, returned_points = report._measure_pyamplicol_lc_two_workloads(
+        cell=cell,
+        spec=spec,
+        variant_overrides={"evaluator.backend": "jit"},
+        legacy={"status": report.ResultStatus.OK.value},
+        artifact_root=tmp_path,
+        generation_timeout_seconds=60.0,
+        target_runtime=0.1,
+        cell_cores=1,
+        points=("point",),
+        fixed_helicity=fixed_helicity,
+        previous_measurement=previous,
+    )
+
+    assert returned_points == ("point",)
+    assert len(lane_calls) == 1
+    assert lane_calls[0]["layout"] == report.LC_ALL_FLOW_UNION_LAYOUT
+    assert lane_calls[0]["artifact_label"] == "all-flow-union"
+    metadata = measurement["metadata"]
+    assert metadata["selected_flow_measurement"] == selected
+    assert metadata["old_matrix_format"]["selected_generation_s"] == 2.0
+    assert metadata["old_matrix_format"]["all_flow_generation_s"] == 7.0
+
+
+def test_lc_nested_freshness_invalidates_only_old_all_flow_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    monkeypatch.setattr(report, "_measurement_ok", lambda _value: True)
+    monkeypatch.setattr(
+        report, "_pyamplicol_timing_profile_current", lambda _value: True
+    )
+    monkeypatch.setattr(
+        report, "_pyamplicol_generation_profile_current", lambda _value: True
+    )
+    monkeypatch.setattr(
+        report,
+        "_pyamplicol_measurement_source_fences_current",
+        lambda _cell, _value: True,
+    )
+    monkeypatch.setattr(
+        report,
+        "_pyamplicol_artifacts_current",
+        lambda _value, **_kwargs: True,
+    )
+    topology = {
+        "artifact_path": "/artifact/complete-lc",
+        "effective_config": {"evaluator": {"execution_mode": "compiled"}},
+    }
+    union = {
+        "artifact_path": "/artifact/all-flow-union",
+        "effective_config": {
+            "color": {"lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT},
+            "evaluator": {"execution_mode": "compiled"},
+        },
+    }
+    sliced = {
+        **topology,
+        "artifact_path": "/artifact/selected-flow",
+        "metadata": {"generation_slice": {"selected_color_sector_ids": [0]}},
+    }
+
+    assert report._lc_nested_measurement_current(
+        cell,
+        topology,
+        expected_layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        execution_mode="compiled",
+    )
+    assert not report._lc_nested_measurement_current(
+        cell,
+        topology,
+        expected_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        execution_mode="compiled",
+    )
+    assert report._lc_nested_measurement_current(
+        cell,
+        union,
+        expected_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        execution_mode="compiled",
+    )
+    assert not report._lc_nested_measurement_current(
+        cell,
+        sliced,
+        expected_layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        execution_mode="compiled",
+    )
+
+
+def test_eager_previous_cache_lookup_matches_process_and_multiplicity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = next(
+        item for item in report._campaign_cells() if item.kind == "eager_matrix"
+    )
+    wrong = {
+        "process_key": "wrong-process",
+        "n_final": cell.n_final,
+        "eager_jit_o3": {"marker": "wrong"},
+    }
+    expected = {
+        "process_key": cell.process_key,
+        "n_final": cell.n_final,
+        "eager_jit_o3": {"marker": "expected"},
+    }
+    monkeypatch.setattr(
+        report,
+        "load_caches",
+        lambda _paths: {cell.cache_name: {"entries": [wrong, expected]}},
+    )
+
+    assert report._previous_cache_entry_for_cell(cell) == expected
+
+
+def test_eager_lc_uses_topology_replay_and_all_flow_union_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.kind == "eager_matrix" and item.dataset_id.endswith("_lc")
+    )
+    spec = report._spec_by_dataset()[cell.dataset_id]
+    assert isinstance(spec, report.EagerMatrixSpec)
+    contract = {
+        **report._empty_eager_selector_contract(),
+        "status": report.ResultStatus.OK.value,
+        "selected_reference_color_order": [2, 4, 1, 3],
+        "selected_color_flow_ids": ["flow:2,4,1"],
+        "all_flow_source_helicities": {"1": -1, "2": 1, "3": -1, "4": 1},
+        "all_flow_helicity_ids": ["h:-1,+1,-1,+1"],
+    }
+    calls: list[dict[str, object]] = []
+
+    def measure_lane(
+        **kwargs: object,
+    ) -> tuple[dict[str, object], object, dict[str, object]]:
+        calls.append(dict(kwargs))
+        layout = str(kwargs["layout"])
+        generation = 2.0 if layout == report.LC_TOPOLOGY_REPLAY_LAYOUT else 7.0
+        measurement = {
+            **report._empty_measurement(),
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": generation,
+            "wall_seconds_per_point": 2.0e-6,
+            "evaluator_seconds_per_point": 1.0e-6,
+            "matrix_element": 1.0,
+            "artifact_path": f"/artifact/{kwargs['artifact_label']}",
+            "metadata": {"lc_flow_layout": layout, "selector_contract": contract},
+        }
+        return measurement, ("point",), contract
+
+    monkeypatch.setattr(
+        report,
+        "_prepared_model_source_for_eager",
+        lambda *_args: (tmp_path / "prepared.pyamplicol-model", {"kind": "test"}),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_nested_measurement_current",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+    monkeypatch.setattr(
+        report,
+        "_load_lc_runtime_for_cross_validation",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_cross_artifact_validation",
+        lambda *_args, **_kwargs: {"status": report.ResultStatus.OK.value},
+    )
+    reference_measurement = {"status": report.ResultStatus.OK.value}
+
+    measurement, returned_points, returned_contract = (
+        report._measure_pyamplicol_eager_lc_two_workloads(
+            cell=cell,
+            spec=spec,
+            reference_measurement=reference_measurement,
+            artifact_root=tmp_path,
+            generation_timeout_seconds=60.0,
+            target_runtime=0.1,
+            cell_cores=1,
+            points=("point",),
+            previous_measurement=None,
+        )
+    )
+
+    assert returned_points == ("point",)
+    assert returned_contract == {
+        **contract,
+        "reference_digest": report._eager_reference_digest(
+            cell,
+            reference_measurement,
+        ),
+    }
+    assert [call["artifact_label"] for call in calls] == [
+        "eager-complete",
+        "eager-all-flow-union",
+    ]
+    assert [call["layout"] for call in calls] == [
+        report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        report.LC_ALL_FLOW_UNION_LAYOUT,
+    ]
+    old = measurement["metadata"]["old_matrix_format"]
+    assert old["selected_generation_s"] == 2.0
+    assert old["all_flow_generation_s"] == 7.0
+
+
+def test_eager_lc_partial_reuse_rejects_stale_compiled_reference_digest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.kind == "eager_matrix" and item.dataset_id.endswith("_lc")
+    )
+    spec = report._spec_by_dataset()[cell.dataset_id]
+    assert isinstance(spec, report.EagerMatrixSpec)
+    current_contract = {
+        **report._empty_eager_selector_contract(),
+        "status": report.ResultStatus.OK.value,
+        "reference_digest": "current-reference",
+        "selected_reference_color_order": [2, 4, 1, 3],
+        "selected_color_flow_ids": ["flow:2,4,1"],
+        "all_flow_source_helicities": {"1": -1, "2": 1, "3": -1, "4": 1},
+        "all_flow_helicity_ids": ["h:-1,+1,-1,+1"],
+    }
+    stale_contract = {**current_contract, "reference_digest": "stale-reference"}
+
+    def lane(layout: str, contract: dict[str, object]) -> dict[str, object]:
+        return {
+            **report._empty_measurement(),
+            "status": report.ResultStatus.OK.value,
+            "generation_seconds": 2.0,
+            "wall_seconds_per_point": 2.0e-6,
+            "evaluator_seconds_per_point": 1.0e-6,
+            "matrix_element": 1.0,
+            "artifact_path": f"/artifact/{layout}",
+            "metadata": {"lc_flow_layout": layout, "selector_contract": contract},
+        }
+
+    previous_selected = lane(report.LC_TOPOLOGY_REPLAY_LAYOUT, stale_contract)
+    previous_all_flow = lane(report.LC_ALL_FLOW_UNION_LAYOUT, current_contract)
+    previous = {
+        **previous_selected,
+        "metadata": {
+            "selected_flow_measurement": previous_selected,
+            "all_flow_measurement": previous_all_flow,
+            "selector_contract": stale_contract,
+        },
+    }
+    calls: list[str] = []
+
+    def measure_lane(
+        **kwargs: object,
+    ) -> tuple[dict[str, object], object, dict[str, object]]:
+        layout = str(kwargs["layout"])
+        calls.append(layout)
+        return lane(layout, current_contract), ("point",), current_contract
+
+    monkeypatch.setattr(
+        report, "_eager_reference_digest", lambda *_args: "current-reference"
+    )
+    monkeypatch.setattr(
+        report,
+        "_prepared_model_source_for_eager",
+        lambda *_args: (tmp_path / "prepared.pyamplicol-model", {"kind": "test"}),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_nested_measurement_current",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+    monkeypatch.setattr(
+        report,
+        "_load_lc_runtime_for_cross_validation",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_cross_artifact_validation",
+        lambda *_args, **_kwargs: {"status": report.ResultStatus.OK.value},
+    )
+
+    measurement, _points, contract = report._measure_pyamplicol_eager_lc_two_workloads(
+        cell=cell,
+        spec=spec,
+        reference_measurement={"status": report.ResultStatus.OK.value},
+        artifact_root=tmp_path,
+        generation_timeout_seconds=60.0,
+        target_runtime=0.1,
+        cell_cores=1,
+        points=("point",),
+        previous_measurement=previous,
+    )
+
+    assert calls == [report.LC_TOPOLOGY_REPLAY_LAYOUT]
+    assert contract["reference_digest"] == "current-reference"
+    metadata = measurement["metadata"]
+    assert metadata["selector_contract"]["reference_digest"] == "current-reference"
+    assert (
+        metadata["selected_flow_measurement"]["metadata"]["selector_contract"][
+            "reference_digest"
+        ]
+        == "current-reference"
+    )
+    assert metadata["all_flow_measurement"] == previous_all_flow
+
+
+def test_lc_cross_artifact_validation_matches_components_by_id() -> None:
+    selected = SimpleNamespace(
+        helicity_ids=("h:minus", "h:plus"),
+        color_ids=("flow:a", "flow:b"),
+        values=[[[1.0, 2.0], [3.0, 4.0]]],
+    )
+    reordered = SimpleNamespace(
+        helicity_ids=("h:plus", "h:minus"),
+        color_ids=("flow:b", "flow:a"),
+        values=[[[4.0, 3.0], [2.0, 1.0]]],
+    )
+    selected_runtime = SimpleNamespace(
+        evaluate_resolved=lambda *_args, **_kwargs: selected
+    )
+    union_runtime = SimpleNamespace(
+        evaluate_resolved=lambda *_args, **_kwargs: reordered
+    )
+
+    validation = report._lc_cross_artifact_validation(
+        selected_runtime,
+        union_runtime,
+        ("point",),
+        {
+            "selected_color_flow_ids": ["flow:a"],
+            "all_flow_helicity_ids": ["h:minus"],
+        },
+    )
+
+    assert validation["status"] == report.ResultStatus.OK.value
+    assert validation["maximum_absolute_difference"] == 0.0
+
+
+def test_lc_cross_artifact_validation_rejects_missing_and_extra_ids() -> None:
+    selected = SimpleNamespace(
+        helicity_ids=("h:minus",),
+        color_ids=("flow:a", "flow:b"),
+        values=[[[1.0, 2.0]]],
+    )
+    mismatched = SimpleNamespace(
+        helicity_ids=("h:minus",),
+        color_ids=("flow:a", "flow:c"),
+        values=[[[1.0, 2.0]]],
+    )
+    selected_runtime = SimpleNamespace(
+        evaluate_resolved=lambda *_args, **_kwargs: selected
+    )
+    union_runtime = SimpleNamespace(
+        evaluate_resolved=lambda *_args, **_kwargs: mismatched
+    )
+
+    validation = report._lc_cross_artifact_validation(
+        selected_runtime,
+        union_runtime,
+        ("point",),
+        {
+            "selected_color_flow_ids": ["flow:a"],
+            "all_flow_helicity_ids": ["h:minus"],
+        },
+    )
+
+    assert validation["status"] == report.ResultStatus.ERROR.value
+    assert "missing=[('h:minus', 'flow:b')]" in validation["message"]
+    assert "extra=[('h:minus', 'flow:c')]" in validation["message"]
+
+
+def test_reusable_legacy_lc_measurement_preserves_current_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    measurement = {"status": report.ResultStatus.OK.value, "marker": "legacy"}
+    monkeypatch.setattr(report, "_legacy_measurement_revision_current", lambda _v: True)
+    monkeypatch.setattr(report, "_legacy_measurement_profile_current", lambda _v: True)
+    monkeypatch.setattr(
+        report,
+        "_legacy_lc_measurement_contract_current",
+        lambda _v: True,
+    )
+
+    assert report._reusable_legacy_lc_measurement(measurement) == measurement
 
 
 def test_z_ladder_revalidates_variants_when_reference_is_available() -> None:

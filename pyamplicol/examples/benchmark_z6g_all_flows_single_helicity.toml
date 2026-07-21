@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: 0BSD
-# Exercise the reusable compiled JIT O3 all-flows, single-helicity workload.
+# Exercise the reusable compiled JIT O3 all-flows, single-helicity workload
+# with the explicit all-flow-union recurrence layout.
 #
 # From a copied examples directory, generate and profile with:
 #   pyamplicol generate --card benchmark_z6g_all_flows_single_helicity.toml
@@ -21,6 +22,7 @@ entries = [
 
 [color]
 accuracy = "lc"
+lc_flow_layout = "all-flow-union"
 
 [generation]
 output = "artifacts/uubar_z6g_all_flows_single_helicity"
