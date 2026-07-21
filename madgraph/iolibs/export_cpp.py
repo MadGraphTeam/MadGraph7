@@ -3425,12 +3425,20 @@ class ProcessExporterMG7(ProcessExporterCPP):
             procs.extend(me.get('processes'))
             # power of alpha_s in |M|^2 = QCD coupling order of the amplitude;
             # collect it over every diagram so we can tell whether it is uniform.
-            for diagram in me.get('diagrams'):
-                qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+            # Never let this break the output: on any surprise just fall back to
+            # -1 (systematics then simply cannot reconstruct the reweighting).
+            try:
+                for diagram in me.get('diagrams'):
+                    qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+            except Exception as error:
+                logger.debug('could not determine the QCD order: %s', error)
+                qcd_orders.add(None)
 
         # a single value of alpha_s (uniform QCD power) lets systematics
         # reconstruct the LO reweighting info without an <mgrwt> block
-        pc['single_qcd_order'] = qcd_orders.pop() if len(qcd_orders) == 1 else -1
+        pc['single_qcd_order'] = (qcd_orders.pop()
+                                  if len(qcd_orders) == 1 and None not in qcd_orders
+                                  else -1)
 
         if procs:
             pc['pdg_initial1'] = [p.get_initial_pdg(1) for p in procs
