@@ -883,7 +883,7 @@ class _Builder:
         self.tables.append(_freeze_table("sources", columns))
 
     def _interactions(self) -> None:
-        group_by_key: dict[tuple[object, ...], int] = {}
+        group_by_key: dict[tuple[str, int], int] = {}
         self._interaction_group_members: list[list[int]] = []
         columns = _allocate(
             len(self.dag.interactions),
@@ -939,20 +939,10 @@ class _Builder:
                 interaction.full_tensor_network_ready
             )
             _fill_resolved_kernel(columns, row, resolved, self.factors)
-            proof_key = (
+            group_key = (
                 ("group", int(interaction.evaluation_group_id))
                 if interaction.evaluation_group_id is not None
                 else ("interaction", interaction.id)
-            )
-            group_key = (
-                *proof_key,
-                int(columns["stage_subset_size"][row]),
-                coupling_id,
-                int(columns["coupling_factor_id"][row]),
-                int(columns["kernel_id"][row]),
-                tuple(int(value) for value in columns["canonical_input_order"][row]),
-                int(columns["kernel_normalization_factor_id"][row]),
-                int(columns["output_factor_source"][row]),
             )
             group_id = group_by_key.get(group_key)
             if group_id is None:

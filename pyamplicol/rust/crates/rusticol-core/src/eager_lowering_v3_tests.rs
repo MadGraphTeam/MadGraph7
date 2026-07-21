@@ -565,12 +565,13 @@ fn equivalent_group_members_may_use_different_logical_current_ids() {
     validate_group_signature(&representative, &equivalent, 0).unwrap();
 
     equivalent.kernel_id += 1;
+    equivalent.coupling_id += 1;
+    equivalent.canonical_input_order = [1, 0];
+    validate_group_signature(&representative, &equivalent, 0).unwrap();
+
+    equivalent.stage_subset_size += 1;
     let error = validate_group_signature(&representative, &equivalent, 0).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("incompatible invocation metadata")
-    );
+    assert!(error.to_string().contains("crosses recursion stages"));
 }
 
 #[test]
@@ -648,4 +649,7 @@ fn checked_u32_and_u64_overflow_are_rejected() {
 
     let error = checked_usize_range(u64::MAX, 1, 0, "overflow probe").unwrap_err();
     assert!(error.to_string().contains("exceeds u64"));
+
+    let error = usize_present_u32(u32::MAX as usize, "selector domain ID").unwrap_err();
+    assert!(error.to_string().contains("missing-ID sentinel"));
 }

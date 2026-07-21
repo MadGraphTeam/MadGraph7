@@ -14,10 +14,8 @@ use crate::eager_layout::{
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::fs::{self, File};
-use std::io::Read;
+use std::fs;
 use std::path::Path;
 
 pub(super) const EAGER_EXECUTION_KIND: &str = "pyamplicol-runtime-eager-execution";
@@ -33,7 +31,6 @@ const MAX_EAGER_RUNTIME_CONTAINER_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_POINT_TILE_SIZE: u64 = 1_048_576;
 const MAX_WORKSPACE_MIB: u64 = 4096;
 const MAX_SUMMARY_COUNT: u64 = 1 << 48;
-const FILE_HASH_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -394,14 +391,11 @@ pub(super) fn open_eager_v3_runtime_container(
             "eager runtime container file size does not match execution manifest",
         ));
     }
+    // A complete container digest authenticates every indexed member. Hashing
+    // and parsing use the same mapped storage to avoid a path-replacement race.
+    // PACBIN still validates its index, canonical layout, and boundaries.
     let expected_file_sha = parse_sha256(&container.sha256, "eager runtime container")?;
-    if hash_file(&path)? != expected_file_sha {
-        return Err(RusticolError::integrity(
-            "eager runtime container payload digest mismatch",
-        ));
-    }
-
-    let reader = PacbinReader::open(&path)?;
+    let reader = PacbinReader::open_with_sha256(&path, &expected_file_sha)?;
     let index = reader.index();
     let mapped_size = u64::try_from(reader.container_size())
         .map_err(|_| RusticolError::integrity("eager runtime PACBIN size exceeds u64"))?;
@@ -534,30 +528,6 @@ fn hex_nibble(value: u8) -> u8 {
         b'a'..=b'f' => value - b'a' + 10,
         _ => unreachable!("digest validation precedes hexadecimal decoding"),
     }
-}
-
-fn hash_file(path: &Path) -> RusticolResult<[u8; 32]> {
-    let mut file = File::open(path).map_err(|error| {
-        RusticolError::artifact(format!(
-            "could not open eager runtime container {} for hashing: {error}",
-            path.display()
-        ))
-    })?;
-    let mut digest = Sha256::new();
-    let mut buffer = vec![0_u8; FILE_HASH_BUFFER_SIZE];
-    loop {
-        let count = file.read(&mut buffer).map_err(|error| {
-            RusticolError::artifact(format!(
-                "could not hash eager runtime container {}: {error}",
-                path.display()
-            ))
-        })?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    Ok(digest.finalize().into())
 }
 
 #[derive(Clone, Copy)]

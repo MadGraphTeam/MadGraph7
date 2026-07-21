@@ -25,7 +25,7 @@ use crate::eager_lowering_v3::{
 use crate::eager_runtime::{EagerKernelRole, EagerKernelSpec, EagerPlanDimensions};
 use crate::pacbin::PacbinReader;
 use crate::{MISSING_U32, RusticolError, RusticolResult};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 const SERIALIZATION_SCHEMA: u32 = 1;
 const METADATA_RECORD_SIZE: u32 = 224;
@@ -55,6 +55,10 @@ pub(super) enum DecodedEagerPrimitiveColumn {
     I32(Vec<i32>),
     /// Raw binary64 bits preserve signed zero and NaN payloads.
     F64Bits(Vec<u64>),
+    /// Authenticated and shape-validated retained data not needed by f64 load.
+    ValidatedOnly {
+        len: usize,
+    },
 }
 
 impl DecodedEagerPrimitiveColumn {
@@ -64,6 +68,7 @@ impl DecodedEagerPrimitiveColumn {
             Self::U32(values) => values.len(),
             Self::U64(values) | Self::F64Bits(values) => values.len(),
             Self::I32(values) => values.len(),
+            Self::ValidatedOnly { len } => *len,
         }
     }
 }
@@ -173,6 +178,14 @@ struct RetainedColumnRecord {
     elements_per_row: u32,
     value_start: u64,
     value_count: u64,
+}
+
+struct RetainedPrimitiveSections<'a> {
+    u8_values: DecodedSection<'a>,
+    u32_values: DecodedSection<'a>,
+    u64_values: DecodedSection<'a>,
+    i32_values: DecodedSection<'a>,
+    f64_values: DecodedSection<'a>,
 }
 
 /// Decode one already authenticated/preflighted eager plan-v3 container.
@@ -534,14 +547,10 @@ fn decode_text_catalog(
     kind: EagerSectionKind,
 ) -> RusticolResult<Vec<Box<str>>> {
     let (ranges_path, bytes_path) = match base {
-        "metadata/identity" | "retained/name" => (
-            format!("{base}-ranges.bin"),
-            format!("{base}-bytes.bin"),
-        ),
-        _ => (
-            format!("{base}/ranges.bin"),
-            format!("{base}/bytes.bin"),
-        ),
+        "metadata/identity" | "retained/name" => {
+            (format!("{base}-ranges.bin"), format!("{base}-bytes.bin"))
+        }
+        _ => (format!("{base}/ranges.bin"), format!("{base}/bytes.bin")),
     };
     let ranges = decode_catalog_ranges(reader, &ranges_path)?;
     let bytes = section(reader, &bytes_path, kind, 1)?;
@@ -595,27 +604,38 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
             })
         },
     )?;
-    let u8_values = decode_u8_section(reader, "retained/values-u8.bin")?;
-    let u32_values = decode_u32_section(
-        reader,
-        "retained/values-u32.bin",
-        EagerSectionKind::Metadata,
-    )?;
-    let u64_values = decode_u64_section(
-        reader,
-        "retained/values-u64.bin",
-        EagerSectionKind::Metadata,
-    )?;
-    let i32_values = decode_i32_section(
-        reader,
-        "retained/values-i32.bin",
-        EagerSectionKind::Metadata,
-    )?;
-    let f64_values = decode_u64_section(
-        reader,
-        "retained/values-f64-bits.bin",
-        EagerSectionKind::Metadata,
-    )?;
+    let primitive_sections = RetainedPrimitiveSections {
+        u8_values: section(
+            reader,
+            "retained/values-u8.bin",
+            EagerSectionKind::Metadata,
+            1,
+        )?,
+        u32_values: section(
+            reader,
+            "retained/values-u32.bin",
+            EagerSectionKind::Metadata,
+            4,
+        )?,
+        u64_values: section(
+            reader,
+            "retained/values-u64.bin",
+            EagerSectionKind::Metadata,
+            8,
+        )?,
+        i32_values: section(
+            reader,
+            "retained/values-i32.bin",
+            EagerSectionKind::Metadata,
+            4,
+        )?,
+        f64_values: section(
+            reader,
+            "retained/values-f64-bits.bin",
+            EagerSectionKind::Metadata,
+            8,
+        )?,
+    };
 
     let mut primitive_cursors = BTreeMap::from([
         (RETAINED_U8, 0_u64),
@@ -652,6 +672,7 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
         name_cursor = name_cursor
             .checked_add(1)
             .ok_or_else(|| RusticolError::artifact("retained name count exceeds u32"))?;
+        let table_name = required_catalog(&names, table.name_id, "retained table name")?.clone();
         for (column_index, column) in table_columns.iter().enumerate() {
             if column.table_id != table.table_id
                 || column.column_id != usize_u32(column_index, "retained column ID")?
@@ -680,61 +701,20 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
             if column.value_start != *cursor {
                 return Err(integrity("retained primitive ranges are not contiguous"));
             }
-            let values = match column.primitive_kind {
-                RETAINED_U8 => DecodedEagerPrimitiveColumn::U8(
-                    checked_range(
-                        &u8_values,
-                        column.value_start,
-                        column.value_count,
-                        "retained u8",
-                    )?
-                    .to_vec(),
-                ),
-                RETAINED_U32 => DecodedEagerPrimitiveColumn::U32(
-                    checked_range(
-                        &u32_values,
-                        column.value_start,
-                        column.value_count,
-                        "retained u32",
-                    )?
-                    .to_vec(),
-                ),
-                RETAINED_U64 => DecodedEagerPrimitiveColumn::U64(
-                    checked_range(
-                        &u64_values,
-                        column.value_start,
-                        column.value_count,
-                        "retained u64",
-                    )?
-                    .to_vec(),
-                ),
-                RETAINED_I32 => DecodedEagerPrimitiveColumn::I32(
-                    checked_range(
-                        &i32_values,
-                        column.value_start,
-                        column.value_count,
-                        "retained i32",
-                    )?
-                    .to_vec(),
-                ),
-                RETAINED_F64_BITS => DecodedEagerPrimitiveColumn::F64Bits(
-                    checked_range(
-                        &f64_values,
-                        column.value_start,
-                        column.value_count,
-                        "retained f64 bits",
-                    )?
-                    .to_vec(),
-                ),
-                _ => unreachable!("primitive kind checked above"),
-            };
+            let column_name =
+                required_catalog(&names, column.name_id, "retained column name")?.clone();
+            let values = decode_retained_column_values(
+                &primitive_sections,
+                column,
+                retained_column_is_runtime_required(&table_name, &column_name),
+            )?;
             if values.len() != usize_count(column.value_count, "retained value count")? {
                 return Err(integrity(
                     "retained decoded value count changed unexpectedly",
                 ));
             }
             decoded_columns.push(DecodedEagerRetainedColumn {
-                name: required_catalog(&names, column.name_id, "retained column name")?.clone(),
+                name: column_name,
                 elements_per_row: column.elements_per_row,
                 values,
             });
@@ -749,25 +729,133 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
             .checked_add(table.column_count)
             .ok_or_else(|| RusticolError::artifact("retained column cursor exceeds u64"))?;
         result.push(DecodedEagerRetainedTable {
-            name: required_catalog(&names, table.name_id, "retained table name")?.clone(),
+            name: table_name,
             row_count: table.row_count,
             columns: decoded_columns,
         });
     }
     if usize_count(column_cursor, "retained column cursor")? != columns.len()
         || usize::try_from(name_cursor).ok() != Some(names.len())
-        || primitive_cursors[&RETAINED_U8] != usize_u64(u8_values.len(), "retained u8")?
-        || primitive_cursors[&RETAINED_U32] != usize_u64(u32_values.len(), "retained u32")?
-        || primitive_cursors[&RETAINED_U64] != usize_u64(u64_values.len(), "retained u64")?
-        || primitive_cursors[&RETAINED_I32] != usize_u64(i32_values.len(), "retained i32")?
-        || primitive_cursors[&RETAINED_F64_BITS]
-            != usize_u64(f64_values.len(), "retained f64 bits")?
+        || primitive_cursors[&RETAINED_U8] != primitive_sections.u8_values.count
+        || primitive_cursors[&RETAINED_U32] != primitive_sections.u32_values.count
+        || primitive_cursors[&RETAINED_U64] != primitive_sections.u64_values.count
+        || primitive_cursors[&RETAINED_I32] != primitive_sections.i32_values.count
+        || primitive_cursors[&RETAINED_F64_BITS] != primitive_sections.f64_values.count
     {
         return Err(integrity(
             "retained catalogs contain unreachable trailing data",
         ));
     }
     Ok(result)
+}
+
+fn retained_column_is_runtime_required(table: &str, column: &str) -> bool {
+    matches!(
+        (table, column),
+        ("metadata", "normalization_ir_id")
+            | ("model_parameters", "pdg")
+            | ("currents", "particle_id")
+            | ("currents", "source_leg_label")
+            | ("currents", "source_helicity")
+            | ("currents", "chirality")
+            | ("currents", "spin_state_sequence_id")
+            | ("currents", "helicity_ancestry_bitset_id")
+    )
+}
+
+fn decode_retained_column_values(
+    sections: &RetainedPrimitiveSections<'_>,
+    column: &RetainedColumnRecord,
+    materialize: bool,
+) -> RusticolResult<DecodedEagerPrimitiveColumn> {
+    let (section, width, context) = match column.primitive_kind {
+        RETAINED_U8 => (&sections.u8_values, 1_usize, "retained u8"),
+        RETAINED_U32 => (&sections.u32_values, 4, "retained u32"),
+        RETAINED_U64 => (&sections.u64_values, 8, "retained u64"),
+        RETAINED_I32 => (&sections.i32_values, 4, "retained i32"),
+        RETAINED_F64_BITS => (&sections.f64_values, 8, "retained f64 bits"),
+        _ => unreachable!("primitive kind checked before retained-value decoding"),
+    };
+    let end = column
+        .value_start
+        .checked_add(column.value_count)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} range exceeds u64")))?;
+    if end > section.count {
+        return Err(integrity(format!(
+            "{context} range exceeds its primitive catalog"
+        )));
+    }
+    let count = usize_count(column.value_count, context)?;
+    if !materialize {
+        return Ok(DecodedEagerPrimitiveColumn::ValidatedOnly { len: count });
+    }
+    let start = usize_count(column.value_start, context)?;
+    let byte_start = start
+        .checked_mul(width)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} byte offset exceeds usize")))?;
+    let byte_count = count
+        .checked_mul(width)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} byte count exceeds usize")))?;
+    let byte_end = byte_start
+        .checked_add(byte_count)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} byte range exceeds usize")))?;
+    let payload = section.payload.get(byte_start..byte_end).ok_or_else(|| {
+        integrity(format!(
+            "{context} byte range exceeds its primitive payload"
+        ))
+    })?;
+    match column.primitive_kind {
+        RETAINED_U8 => Ok(DecodedEagerPrimitiveColumn::U8(payload.to_vec())),
+        RETAINED_U32 => Ok(DecodedEagerPrimitiveColumn::U32(decode_primitive_rows(
+            payload,
+            width,
+            count,
+            context,
+            |row| read_u32(row, 0),
+        )?)),
+        RETAINED_U64 => Ok(DecodedEagerPrimitiveColumn::U64(decode_primitive_rows(
+            payload,
+            width,
+            count,
+            context,
+            |row| read_u64(row, 0),
+        )?)),
+        RETAINED_I32 => Ok(DecodedEagerPrimitiveColumn::I32(decode_primitive_rows(
+            payload,
+            width,
+            count,
+            context,
+            |row| read_i32(row, 0),
+        )?)),
+        RETAINED_F64_BITS => Ok(DecodedEagerPrimitiveColumn::F64Bits(decode_primitive_rows(
+            payload,
+            width,
+            count,
+            context,
+            |row| read_u64(row, 0),
+        )?)),
+        _ => unreachable!("primitive kind checked before retained-value materialization"),
+    }
+}
+
+fn decode_primitive_rows<T>(
+    payload: &[u8],
+    width: usize,
+    count: usize,
+    context: &str,
+    mut decode: impl FnMut(&[u8]) -> RusticolResult<T>,
+) -> RusticolResult<Vec<T>> {
+    let mut values = Vec::new();
+    reserve(&mut values, count, context)?;
+    for row in payload.chunks_exact(width) {
+        values.push(decode(row)?);
+    }
+    if values.len() != count {
+        return Err(integrity(format!(
+            "{context} decoded row count changed unexpectedly"
+        )));
+    }
+    Ok(values)
 }
 
 fn decode_currents(reader: &PacbinReader) -> RusticolResult<Vec<EagerPlanCurrentRow>> {
@@ -1626,7 +1714,7 @@ fn validate_semantics(
     let known_groups = reduction_groups
         .iter()
         .map(|group| group.coherent_group_id)
-        .collect::<BTreeSet<_>>();
+        .collect::<HashSet<_>>();
     if known_groups.len() != reduction_groups.len() {
         return Err(integrity("reduction groups repeat coherent-group IDs"));
     }
@@ -1962,12 +2050,6 @@ fn decode_rows<T>(
         )));
     }
     Ok(result)
-}
-
-fn decode_u8_section(reader: &PacbinReader, path: &str) -> RusticolResult<Vec<u8>> {
-    let section = section(reader, path, EagerSectionKind::Metadata, 1)?;
-    check_count(path, section.payload.len(), section.count)?;
-    Ok(section.payload.to_vec())
 }
 
 fn decode_u32_section(

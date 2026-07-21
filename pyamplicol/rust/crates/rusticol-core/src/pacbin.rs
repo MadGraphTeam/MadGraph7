@@ -357,11 +357,35 @@ impl PacbinReader {
         Self::open_with_payload_verification(path, false)
     }
 
+    /// Open and authenticate the exact mapped bytes against an enclosing
+    /// manifest digest. Hashing and parsing share one storage object, so a
+    /// path replacement cannot substitute a different container between them.
+    pub(crate) fn open_with_sha256(
+        path: impl AsRef<Path>,
+        expected_sha256: &[u8; 32],
+    ) -> RusticolResult<Self> {
+        let path = path.as_ref();
+        let storage = Self::open_storage(path)?;
+        let actual: [u8; 32] = Sha256::digest(storage.as_ref()).into();
+        if &actual != expected_sha256 {
+            return Err(RusticolError::integrity(format!(
+                "pacbin container {} payload digest mismatch",
+                path.display()
+            )));
+        }
+        Self::from_storage(storage, false)
+    }
+
     fn open_with_payload_verification(
         path: impl AsRef<Path>,
         verify_payloads: bool,
     ) -> RusticolResult<Self> {
         let path = path.as_ref();
+        let storage = Self::open_storage(path)?;
+        Self::from_storage(storage, verify_payloads)
+    }
+
+    fn open_storage(path: &Path) -> RusticolResult<PacbinStorage> {
         let file = File::open(path).map_err(|error| {
             RusticolError::artifact(format!(
                 "could not open pacbin container {}: {error}",
@@ -417,7 +441,7 @@ impl PacbinReader {
             }
             PacbinStorage::Owned(bytes.into_boxed_slice())
         };
-        Self::from_storage(storage, verify_payloads)
+        Ok(storage)
     }
 
     /// Own and fully authenticate already-read container bytes.

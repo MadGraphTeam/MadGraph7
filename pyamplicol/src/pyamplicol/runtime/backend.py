@@ -264,16 +264,23 @@ def _scalar_from_native(value: Any) -> complex | Decimal:
     return value if isinstance(value, Decimal) else complex(value)
 
 
-def _native_execution_mode(runtime: Any) -> Literal["compiled", "eager"]:
+def _native_runtime_metadata(runtime: Any) -> Mapping[str, object]:
     metadata_json = getattr(runtime, "metadata_json", None)
     if not callable(metadata_json):
-        return "compiled"
+        return {"execution_mode": "compiled"}
     try:
         payload = json.loads(str(metadata_json()))
     except (TypeError, ValueError) as exc:
         raise ArtifactError(f"native runtime metadata is invalid: {exc}") from exc
     if not isinstance(payload, Mapping):
         raise ArtifactError("native runtime metadata must be an object")
+    return dict(payload)
+
+
+def _native_execution_mode(
+    metadata: Mapping[str, object],
+) -> Literal["compiled", "eager"]:
+    payload = metadata
     mode = payload.get("execution_mode", "compiled")
     if mode not in {"compiled", "eager"}:
         raise CompatibilityError(f"unsupported runtime execution mode {mode!r}")
@@ -293,7 +300,9 @@ class RusticolRuntimeBackend:
         self._runtime = runtime
         self._native_module = native_module
         self._artifact_path = artifact_path
-        self._execution_mode = _native_execution_mode(runtime)
+        self._native_metadata = _native_runtime_metadata(runtime)
+        self._execution_mode = _native_execution_mode(self._native_metadata)
+        self._physics: ProcessPhysics | None = None
         self._exact_executor: _ExactExecutor | None = None
         self._required_runtime_capabilities: tuple[str, ...] = ()
         self._supports_per_point_selectors = _accepts_keyword_arguments(
@@ -306,7 +315,9 @@ class RusticolRuntimeBackend:
 
     @property
     def physics(self) -> ProcessPhysics:
-        return _physics_from_native(self._runtime.physics)
+        if self._physics is None:
+            self._physics = _physics_from_native(self._runtime.physics)
+        return self._physics
 
     @property
     def execution_mode(self) -> Literal["compiled", "eager"]:
@@ -336,7 +347,10 @@ class RusticolRuntimeBackend:
         self,
         manifest: ArtifactManifest,
     ) -> None:
-        process = _selected_manifest_process(manifest, self.physics.process_id)
+        selected_id = self._native_metadata.get("process_key")
+        if not isinstance(selected_id, str) or not selected_id:
+            selected_id = self.physics.process_id
+        process = _selected_manifest_process(manifest, selected_id)
         capabilities = tuple(
             str(value)
             for value in cast(
@@ -966,8 +980,14 @@ def load_runtime_backend(
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
     parameters = dict(model_parameters) if model_parameters is not None else None
     module = _load_native_module()
+    # Rusticol is the authoritative runtime loader and verifies every declared
+    # payload before returning.  Parse the manifest here only for the Python
+    # adapter's selector-contract checks; hashing it again would add a complete
+    # extra pass over large compact eager containers.
     manifest = (
-        load_manifest(path) if (path / MANIFEST_NAME).is_file() else None
+        load_manifest(path, verify_payloads=False)
+        if (path / MANIFEST_NAME).is_file()
+        else None
     )
     runtime = _invoke(
         module,

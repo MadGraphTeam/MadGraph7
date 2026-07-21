@@ -64,8 +64,7 @@ pub(super) fn load_eager_v3_native_runtime(
     physics: ProcessPhysicsV1,
 ) -> RusticolResult<LoadedEagerV3Runtime> {
     let pack = load_eager_v3_prepared_pack(artifact, manifest)?;
-    let container =
-        super::eager_v3_manifest::open_eager_v3_runtime_container(evaluator_root, manifest)?;
+    let container = open_verified_eager_v3_runtime_container(artifact, evaluator_root, manifest)?;
     let decoded =
         super::eager_v3_decode::decode_eager_v3_runtime(&container, manifest, &pack.manifest)?;
     let mut common =
@@ -147,6 +146,46 @@ pub(super) fn load_eager_v3_native_runtime(
             color_contraction,
         ),
     })
+}
+
+fn open_verified_eager_v3_runtime_container(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &EagerV3ExecutionManifest,
+) -> RusticolResult<crate::pacbin::PacbinReader> {
+    let container = &manifest.plan.runtime_container;
+    let path = evaluator_root.join(&container.path);
+    let relative = path.strip_prefix(artifact.root()).map_err(|_| {
+        RusticolError::security("eager runtime container escapes the verified artifact root")
+    })?;
+    let mut parts = Vec::new();
+    for component in relative.components() {
+        let std::path::Component::Normal(part) = component else {
+            return Err(RusticolError::security(
+                "eager runtime container path is not canonical",
+            ));
+        };
+        parts.push(part.to_str().ok_or_else(|| {
+            RusticolError::security("eager runtime container path is not valid UTF-8")
+        })?);
+    }
+    let logical_path = parts.join("/");
+    let payload = artifact.payload(&logical_path)?;
+    if payload.role != crate::PayloadRole::EvaluatorState
+        || payload.media_type != "application/octet-stream"
+        || payload.process_id.as_deref() != Some(manifest.key.as_str())
+        || payload.executable
+    {
+        return Err(RusticolError::integrity(
+            "eager runtime container has an invalid outer payload declaration",
+        ));
+    }
+    if payload.size_bytes != container.size_bytes || payload.sha256 != container.sha256 {
+        return Err(RusticolError::integrity(
+            "eager runtime container metadata disagrees with its authenticated outer payload",
+        ));
+    }
+    super::eager_v3_manifest::open_eager_v3_runtime_container(evaluator_root, manifest)
 }
 
 fn prepare_plan_v3_parameter_state(

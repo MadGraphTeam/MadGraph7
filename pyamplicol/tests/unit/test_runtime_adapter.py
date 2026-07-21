@@ -137,7 +137,9 @@ class _NativeRuntime:
         return self.physics_value
 
     def metadata_json(self) -> str:
-        return json.dumps({"execution_mode": self.execution_mode})
+        return json.dumps(
+            {"execution_mode": self.execution_mode, "process_key": "uux_g"}
+        )
 
     def evaluate(self, _momenta: object, **kwargs: object) -> list[object]:
         type(self).last_evaluate_options = dict(kwargs)
@@ -429,13 +431,27 @@ def test_adapter_requires_selector_capability_for_reusable_artifact(
         tmp_path,
         capabilities=(SYMJIT_F64_RUNTIME_CAPABILITY,),
     )
-    monkeypatch.setattr(backend_module, "load_manifest", lambda _path: manifest)
+    manifest_options: list[dict[str, object]] = []
+
+    def load_adapter_manifest(
+        _path: Path,
+        **options: object,
+    ) -> ArtifactManifest:
+        manifest_options.append(options)
+        return manifest
+
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        load_adapter_manifest,
+    )
 
     with pytest.raises(
         CompatibilityError,
         match=r"declares reusable runtime selectors.*does not require",
     ):
         backend_module.load_runtime_backend(tmp_path, process="uux_g")
+    assert manifest_options == [{"verify_payloads": False}]
 
 
 def test_adapter_checks_native_selector_callable_against_capability(
@@ -451,7 +467,11 @@ def test_adapter_checks_native_selector_callable_against_capability(
         SYMJIT_F64_RUNTIME_CAPABILITY,
     )
     manifest = _selector_manifest(tmp_path, capabilities=capabilities)
-    monkeypatch.setattr(backend_module, "load_manifest", lambda _path: manifest)
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
 
     with pytest.raises(
         CompatibilityError,

@@ -199,6 +199,30 @@ fn open_keeps_one_immutable_mapping_after_atomic_source_replacement() {
 }
 
 #[test]
+fn expected_container_digest_authenticates_the_mapped_storage() {
+    static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "rusticol-pacbin-authenticated-{}-{}.pacbin",
+        std::process::id(),
+        NEXT_PATH.fetch_add(1, Ordering::Relaxed)
+    ));
+    let bytes = decode_hex(PYTHON_GOLDEN_HEX);
+    let digest: [u8; 32] = Sha256::digest(&bytes).into();
+    fs::write(&path, &bytes).unwrap();
+    let reader = PacbinReader::open_with_sha256(&path, &digest).unwrap();
+
+    let replacement = path.with_extension("replacement");
+    fs::write(&replacement, b"replaced after authenticated open").unwrap();
+    fs::rename(&replacement, &path).unwrap();
+    assert_eq!(reader.member_bytes("a/jit.symjit").unwrap(), b"jit-v1");
+
+    let error = PacbinReader::open_with_sha256(&path, &digest).unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("payload digest mismatch"));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn empty_and_zero_length_members_are_valid() {
     let empty = PacbinReader::from_bytes(build_container(&[])).unwrap();
     assert!(empty.members().is_empty());

@@ -25,7 +25,8 @@ use crate::{
     EagerPlanStageRow, EagerPlanValueRow, EagerValueSlotKind, MISSING_U32, RusticolError,
     RusticolResult,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fmt;
 
 /// Borrowed execution-relevant sections of a plan-v3 artifact.
 ///
@@ -202,7 +203,7 @@ impl<'a> PlanBuilder<'a> {
         let mut initial_value_ranges = Vec::new();
         for slot_id in 0..self.input.values.len() {
             let slot_id = usize_u32(slot_id, "eager value slot")?;
-            if !stored_value_slots.contains(&slot_id) {
+            if !stored_value_slots[slot_id as usize] {
                 initial_value_ranges.push(self.values.get(slot_id, "eager initial value")?);
             }
         }
@@ -265,7 +266,7 @@ impl<'a> PlanBuilder<'a> {
     fn load_stages(
         &self,
         coupling_count: usize,
-    ) -> RusticolResult<(Vec<EagerStagePlan>, BTreeSet<u32>)> {
+    ) -> RusticolResult<(Vec<EagerStagePlan>, Vec<bool>)> {
         validate_stage_ranges(
             self.input.stages,
             self.input.invocations.len(),
@@ -273,8 +274,8 @@ impl<'a> PlanBuilder<'a> {
             self.input.finalizations.len(),
         )?;
         let mut stages = Vec::with_capacity(self.input.stages.len());
-        let mut finalized_currents = BTreeSet::new();
-        let mut stored_value_slots = BTreeSet::new();
+        let mut finalized_currents = vec![false; self.input.currents.len()];
+        let mut stored_value_slots = vec![false; self.input.values.len()];
         let mut previous_stage = None;
         for stage in self.input.stages {
             if previous_stage.is_some_and(|previous| stage.stage_index <= previous) {
@@ -295,8 +296,8 @@ impl<'a> PlanBuilder<'a> {
         &self,
         stage: &EagerPlanStageRow,
         coupling_count: usize,
-        globally_finalized_currents: &mut BTreeSet<u32>,
-        globally_stored_value_slots: &mut BTreeSet<u32>,
+        globally_finalized_currents: &mut [bool],
+        globally_stored_value_slots: &mut [bool],
     ) -> RusticolResult<EagerStagePlan> {
         let invocation_range = checked_range(
             self.input.invocations,
@@ -320,7 +321,7 @@ impl<'a> PlanBuilder<'a> {
 
         let mut invocations = Vec::with_capacity(invocation_range.len());
         let mut attachments = Vec::with_capacity(attachment_range.len());
-        let mut attached_currents = BTreeSet::new();
+        let mut attached_currents = vec![false; self.input.currents.len()];
         let mut attachment_cursor = stage_attachment_start;
         for (index, row) in invocation_range.iter().enumerate() {
             let kernel = require_kernel(
@@ -401,7 +402,7 @@ impl<'a> PlanBuilder<'a> {
                     attachment.selector_domain_id,
                     "eager attachment selector",
                 )?;
-                attached_currents.insert(attachment.result_current_id);
+                attached_currents[attachment.result_current_id as usize] = true;
                 attachments.push(ScheduledAttachment {
                     row: EagerAttachmentRow {
                         result_current_id: attachment.result_current_id,
@@ -446,12 +447,17 @@ impl<'a> PlanBuilder<'a> {
 
         let mut finalizations = Vec::new();
         let mut finalization_copies = Vec::new();
-        let mut stage_current_ranges = BTreeMap::new();
+        let mut stage_current_ranges = vec![None; self.input.currents.len()];
         let mut current_component_count = 0usize;
-        let mut stage_finalized_currents = BTreeSet::new();
+        let mut stage_finalized_currents = vec![false; self.input.currents.len()];
         for (index, row) in finalization_range.iter().enumerate() {
-            if !stage_finalized_currents.insert(row.current_id)
-                || !globally_finalized_currents.insert(row.current_id)
+            let current_index = required_index(
+                row.current_id,
+                self.input.currents.len(),
+                "eager finalization current",
+            )?;
+            if std::mem::replace(&mut stage_finalized_currents[current_index], true)
+                || std::mem::replace(&mut globally_finalized_currents[current_index], true)
             {
                 return Err(artifact(format!(
                     "eager current {} is finalized more than once",
@@ -466,12 +472,17 @@ impl<'a> PlanBuilder<'a> {
                 )));
             }
             for value_slot_id in [row.unpropagated_value_slot_id, row.propagated_value_slot_id] {
-                if value_slot_id != MISSING_U32
-                    && !globally_stored_value_slots.insert(value_slot_id)
-                {
-                    return Err(artifact(format!(
-                        "eager value slot {value_slot_id} is stored more than once"
-                    )));
+                if value_slot_id != MISSING_U32 {
+                    let value_index = required_index(
+                        value_slot_id,
+                        self.input.values.len(),
+                        "eager finalization value",
+                    )?;
+                    if std::mem::replace(&mut globally_stored_value_slots[value_index], true) {
+                        return Err(artifact(format!(
+                            "eager value slot {value_slot_id} is stored more than once"
+                        )));
+                    }
                 }
             }
             let global_current = self
@@ -484,7 +495,7 @@ impl<'a> PlanBuilder<'a> {
             current_component_count = current_component_count
                 .checked_add(global_current.len)
                 .ok_or_else(|| artifact("eager stage current workspace overflows usize"))?;
-            stage_current_ranges.insert(row.current_id, local_current);
+            stage_current_ranges[current_index] = Some(local_current);
             let unpropagated = self.optional_value(
                 row.unpropagated_value_slot_id,
                 EagerValueSlotKind::Unpropagated,
@@ -591,8 +602,9 @@ impl<'a> PlanBuilder<'a> {
             )));
         }
         for attachment in &mut attachments {
-            attachment.current = *stage_current_ranges
-                .get(&attachment.row.result_current_id)
+            attachment.current = stage_current_ranges
+                .get(attachment.row.result_current_id as usize)
+                .and_then(|range| *range)
                 .ok_or_else(|| artifact("eager attachment has no stage-local current"))?;
         }
         invocations.sort_by_key(|item| item.row.kernel_id);
@@ -758,9 +770,10 @@ impl<'a> PlanBuilder<'a> {
         if self.input.reduction_groups.is_empty() {
             return Err(artifact("eager reduction requires nonempty groups"));
         }
-        let mut group_index_by_id = BTreeMap::new();
+        let mut group_index_by_id = HashMap::with_capacity(self.input.reduction_groups.len());
         let mut covered_entries = vec![false; self.input.reduction_entries.len()];
-        let mut covered_amplitudes = BTreeSet::new();
+        let mut covered_amplitudes = vec![false; self.amplitude_count];
+        let mut covered_amplitude_count = 0usize;
         let mut groups = Vec::with_capacity(self.input.reduction_groups.len());
         for (group_index, group) in self.input.reduction_groups.iter().enumerate() {
             if group_index_by_id
@@ -795,17 +808,18 @@ impl<'a> PlanBuilder<'a> {
             }
             let mut amplitude_indices = Vec::with_capacity(amplitudes.len());
             for entry in amplitudes {
-                required_index(
+                let amplitude_index = required_index(
                     entry.left_id,
                     self.amplitude_count,
                     "eager reduction amplitude",
                 )?;
-                if !covered_amplitudes.insert(entry.left_id) {
+                if std::mem::replace(&mut covered_amplitudes[amplitude_index], true) {
                     return Err(artifact(format!(
                         "eager amplitude {} belongs to multiple groups",
                         entry.left_id
                     )));
                 }
+                covered_amplitude_count += 1;
                 amplitude_indices.push(entry.left_id);
             }
             self.reduction_owned_range(
@@ -821,11 +835,10 @@ impl<'a> PlanBuilder<'a> {
                 amplitude_indices,
             });
         }
-        if covered_amplitudes.len() != self.amplitude_count {
+        if covered_amplitude_count != self.amplitude_count {
             return Err(artifact(format!(
                 "eager reduction groups cover {} of {} amplitudes",
-                covered_amplitudes.len(),
-                self.amplitude_count
+                covered_amplitude_count, self.amplitude_count
             )));
         }
         let contraction = checked_range(
@@ -917,7 +930,8 @@ impl<'a> PlanBuilder<'a> {
                 group_by_amplitude[*amplitude as usize] = Some(group.coherent_group_id);
             }
         }
-        let mut value_domains = BTreeMap::<u32, BTreeSet<u32>>::new();
+        let mut proof = SelectorProofScratch::new(&self.selector_plan)?;
+        let mut value_domain_sources = vec![Vec::<u32>::new(); self.input.values.len()];
         for (index, closure) in self.input.closures.iter().enumerate() {
             let amplitude = required_index(
                 closure.amplitude_index,
@@ -931,21 +945,24 @@ impl<'a> PlanBuilder<'a> {
                     "eager closure {index} coherent group disagrees with reduction ownership"
                 )));
             }
-            self.validate_domain_members(
+            proof.validate_singleton(
                 closure.selector_domain_id,
-                &BTreeSet::from([group]),
-                &format!("eager closure {index}"),
+                group,
+                ProofContext::closure(index),
             )?;
-            value_domains
-                .entry(closure.left_value_slot_id)
-                .or_default()
-                .insert(group);
-            value_domains
-                .entry(closure.right_value_slot_id)
-                .or_default()
-                .insert(group);
+            push_value_domain_source(
+                &mut value_domain_sources,
+                closure.left_value_slot_id,
+                closure.selector_domain_id,
+                "eager closure left value",
+            )?;
+            push_value_domain_source(
+                &mut value_domain_sources,
+                closure.right_value_slot_id,
+                closure.selector_domain_id,
+                "eager closure right value",
+            )?;
         }
-
         for stage in self.input.stages.iter().rev() {
             let invocations = checked_range(
                 self.input.invocations,
@@ -965,52 +982,58 @@ impl<'a> PlanBuilder<'a> {
                 stage.finalization_count,
                 "eager selector stage finalizations",
             )?;
-            let mut current_domains = BTreeMap::<u32, BTreeSet<u32>>::new();
+            let mut current_domain_sources = vec![None::<[u32; 2]>; self.input.currents.len()];
             for (index, finalization) in finalizations.iter().enumerate() {
-                let unpropagated = value_domains_for_optional(
-                    &value_domains,
+                let unpropagated = domain_sources_for_optional_value(
+                    &value_domain_sources,
                     finalization.unpropagated_value_slot_id,
-                );
-                self.validate_domain_members(
+                    "eager unpropagated finalization value",
+                )?;
+                proof.validate_union(
                     finalization.unpropagated_selector_domain_id,
-                    &unpropagated,
-                    &format!(
-                        "eager stage {} unpropagated finalization {index}",
-                        stage.stage_index
-                    ),
+                    unpropagated.iter().copied(),
+                    ProofContext::stage(stage.stage_index, "unpropagated finalization", index),
                 )?;
-                let propagated = value_domains_for_optional(
-                    &value_domains,
+                let propagated = domain_sources_for_optional_value(
+                    &value_domain_sources,
                     finalization.propagated_value_slot_id,
-                );
-                self.validate_domain_members(
-                    finalization.propagated_selector_domain_id,
-                    &propagated,
-                    &format!(
-                        "eager stage {} propagated finalization {index}",
-                        stage.stage_index
-                    ),
+                    "eager propagated finalization value",
                 )?;
-                let mut current = unpropagated;
-                current.extend(propagated);
-                current_domains.insert(finalization.current_id, current);
+                proof.validate_union(
+                    finalization.propagated_selector_domain_id,
+                    propagated.iter().copied(),
+                    ProofContext::stage(stage.stage_index, "propagated finalization", index),
+                )?;
+                let current_index = required_index(
+                    finalization.current_id,
+                    current_domain_sources.len(),
+                    "eager selector finalization current",
+                )?;
+                current_domain_sources[current_index] = Some([
+                    finalization.unpropagated_selector_domain_id,
+                    finalization.propagated_selector_domain_id,
+                ]);
             }
-            let mut attachment_domains = Vec::with_capacity(attachments.len());
             for (index, attachment) in attachments.iter().enumerate() {
-                let expected = current_domains
-                    .get(&attachment.result_current_id)
+                let current_index = required_index(
+                    attachment.result_current_id,
+                    current_domain_sources.len(),
+                    "eager selector attachment current",
+                )?;
+                let sources = current_domain_sources
+                    .get(current_index)
+                    .and_then(|sources| *sources)
                     .ok_or_else(|| {
                         artifact(format!(
                             "eager stage {} attachment {index} has no finalized current",
                             stage.stage_index
                         ))
                     })?;
-                self.validate_domain_members(
+                proof.validate_union(
                     attachment.selector_domain_id,
-                    expected,
-                    &format!("eager stage {} attachment {index}", stage.stage_index),
+                    sources.into_iter(),
+                    ProofContext::stage(stage.stage_index, "attachment", index),
                 )?;
-                attachment_domains.push(expected.clone());
             }
             let stage_attachment_start =
                 usize_count(stage.attachment_start, "eager stage attachment start")?;
@@ -1030,28 +1053,29 @@ impl<'a> PlanBuilder<'a> {
                 let local_stop = local_start
                     .checked_add(count)
                     .ok_or_else(|| artifact("eager invocation attachment range overflows"))?;
-                let mut expected = BTreeSet::new();
-                for domain in attachment_domains
-                    .get(local_start..local_stop)
-                    .ok_or_else(|| {
+                let invocation_attachments =
+                    attachments.get(local_start..local_stop).ok_or_else(|| {
                         artifact("eager invocation attachment range exceeds its stage")
-                    })?
-                {
-                    expected.extend(domain);
-                }
-                self.validate_domain_members(
+                    })?;
+                proof.validate_union(
                     invocation.selector_domain_id,
-                    &expected,
-                    &format!("eager stage {} invocation {index}", stage.stage_index),
+                    invocation_attachments
+                        .iter()
+                        .map(|attachment| attachment.selector_domain_id),
+                    ProofContext::stage(stage.stage_index, "invocation", index),
                 )?;
-                value_domains
-                    .entry(invocation.left_value_slot_id)
-                    .or_default()
-                    .extend(&expected);
-                value_domains
-                    .entry(invocation.right_value_slot_id)
-                    .or_default()
-                    .extend(expected);
+                push_value_domain_source(
+                    &mut value_domain_sources,
+                    invocation.left_value_slot_id,
+                    invocation.selector_domain_id,
+                    "eager invocation left value",
+                )?;
+                push_value_domain_source(
+                    &mut value_domain_sources,
+                    invocation.right_value_slot_id,
+                    invocation.selector_domain_id,
+                    "eager invocation right value",
+                )?;
             }
         }
         Ok(())
@@ -1130,19 +1154,170 @@ impl<'a> PlanBuilder<'a> {
         }
         Ok(())
     }
+}
 
-    fn validate_domain_members(
-        &self,
-        id: u32,
-        expected: &BTreeSet<u32>,
-        context: &str,
-    ) -> RusticolResult<()> {
-        let index = self.validate_domain_id(id, context)?;
-        if !self.selector_plan.memberships[index]
+#[derive(Clone, Copy)]
+struct ProofContext {
+    stage_index: Option<u32>,
+    kind: &'static str,
+    row_index: usize,
+}
+
+impl ProofContext {
+    fn closure(row_index: usize) -> Self {
+        Self {
+            stage_index: None,
+            kind: "closure",
+            row_index,
+        }
+    }
+
+    fn stage(stage_index: u32, kind: &'static str, row_index: usize) -> Self {
+        Self {
+            stage_index: Some(stage_index),
+            kind,
+            row_index,
+        }
+    }
+}
+
+impl fmt::Display for ProofContext {
+    fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(stage_index) = self.stage_index {
+            write!(
+                output,
+                "eager stage {stage_index} {} {}",
+                self.kind, self.row_index
+            )
+        } else {
+            write!(output, "eager {} {}", self.kind, self.row_index)
+        }
+    }
+}
+
+enum GroupIndex {
+    Dense,
+    Sparse(HashMap<u32, usize>),
+}
+
+impl GroupIndex {
+    fn resolve(&self, group_id: u32, group_count: usize) -> Option<usize> {
+        match self {
+            Self::Dense => usize::try_from(group_id)
+                .ok()
+                .filter(|index| *index < group_count),
+            Self::Sparse(indices) => indices.get(&group_id).copied(),
+        }
+    }
+}
+
+struct SelectorProofScratch<'a> {
+    memberships: &'a [Vec<u32>],
+    group_index: GroupIndex,
+    marks: Vec<u32>,
+    epoch: u32,
+}
+
+impl<'a> SelectorProofScratch<'a> {
+    fn new(plan: &'a SelectorDomainPlan) -> RusticolResult<Self> {
+        let dense = plan
+            .group_ids
             .iter()
-            .copied()
-            .eq(expected.iter().copied())
-        {
+            .enumerate()
+            .all(|(index, group_id)| usize::try_from(*group_id).ok() == Some(index));
+        let group_index = if dense {
+            GroupIndex::Dense
+        } else {
+            let mut indices = HashMap::with_capacity(plan.group_ids.len());
+            for (index, group_id) in plan.group_ids.iter().copied().enumerate() {
+                if indices.insert(group_id, index).is_some() {
+                    return Err(artifact("eager selector proof repeats coherent group IDs"));
+                }
+            }
+            GroupIndex::Sparse(indices)
+        };
+        Ok(Self {
+            memberships: &plan.memberships,
+            group_index,
+            marks: vec![0; plan.group_ids.len()],
+            epoch: 0,
+        })
+    }
+
+    fn validate_singleton(
+        &self,
+        domain_id: u32,
+        expected: u32,
+        context: ProofContext,
+    ) -> RusticolResult<()> {
+        let index = required_index(
+            domain_id,
+            self.memberships.len(),
+            "eager selector proof domain",
+        )?;
+        if self.memberships[index].as_slice() != [expected] {
+            return Err(artifact(format!(
+                "{context} selector domain does not match its dependency closure"
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_union(
+        &mut self,
+        domain_id: u32,
+        sources: impl IntoIterator<Item = u32>,
+        context: ProofContext,
+    ) -> RusticolResult<()> {
+        let target_index = required_index(
+            domain_id,
+            self.memberships.len(),
+            "eager selector proof target domain",
+        )?;
+        if self.epoch > u32::MAX - 2 {
+            self.marks.fill(0);
+            self.epoch = 2;
+        } else {
+            self.epoch += 2;
+        }
+        let expected_mark = self.epoch;
+        let covered_mark = expected_mark + 1;
+        let target = &self.memberships[target_index];
+        for group_id in target {
+            let group_index = self
+                .group_index
+                .resolve(*group_id, self.marks.len())
+                .ok_or_else(|| artifact("eager selector proof references an unknown group"))?;
+            self.marks[group_index] = expected_mark;
+        }
+
+        let mut covered = 0usize;
+        for source_id in sources {
+            let source_index = required_index(
+                source_id,
+                self.memberships.len(),
+                "eager selector proof source domain",
+            )?;
+            for group_id in &self.memberships[source_index] {
+                let group_index = self
+                    .group_index
+                    .resolve(*group_id, self.marks.len())
+                    .ok_or_else(|| artifact("eager selector proof references an unknown group"))?;
+                match self.marks[group_index] {
+                    mark if mark == expected_mark => {
+                        self.marks[group_index] = covered_mark;
+                        covered += 1;
+                    }
+                    mark if mark == covered_mark => {}
+                    _ => {
+                        return Err(artifact(format!(
+                            "{context} selector domain does not match its dependency closure"
+                        )));
+                    }
+                }
+            }
+        }
+        if covered != target.len() {
             return Err(artifact(format!(
                 "{context} selector domain does not match its dependency closure"
             )));
@@ -1276,16 +1451,18 @@ fn load_selector_plan(
     if rows.is_empty() {
         return Err(artifact("eager selector-domain table is empty"));
     }
-    let known_groups = groups
-        .iter()
-        .map(|group| group.coherent_group_id)
-        .collect::<BTreeSet<_>>();
-    if known_groups.len() != groups.len() {
-        return Err(artifact("eager reduction groups repeat coherent group IDs"));
+    let mut known_groups = HashSet::with_capacity(groups.len());
+    let mut group_ids = Vec::with_capacity(groups.len());
+    for group in groups {
+        if !known_groups.insert(group.coherent_group_id) {
+            return Err(artifact("eager reduction groups repeat coherent group IDs"));
+        }
+        group_ids.push(group.coherent_group_id);
     }
+    group_ids.sort_unstable();
     let mut result = Vec::with_capacity(rows.len());
     let mut cursor = 0usize;
-    let mut unique = BTreeSet::new();
+    let mut unique = HashSet::<&[u32]>::with_capacity(rows.len());
     for (domain_id, row) in rows.iter().enumerate() {
         let start = usize_count(row.member_start, "eager selector member start")?;
         let count = usize_count(row.member_count, "eager selector member count")?;
@@ -1299,8 +1476,7 @@ fn load_selector_plan(
             .ok_or_else(|| artifact("eager selector membership range overflows"))?;
         let members = memberships
             .get(start..stop)
-            .ok_or_else(|| artifact("eager selector domain exceeds its membership table"))?
-            .to_vec();
+            .ok_or_else(|| artifact("eager selector domain exceeds its membership table"))?;
         if members.windows(2).any(|pair| pair[0] >= pair[1]) {
             return Err(artifact(format!(
                 "eager selector domain {domain_id} is not sorted and unique"
@@ -1311,12 +1487,12 @@ fn load_selector_plan(
                 "eager selector domain references unknown coherent group {unknown}"
             )));
         }
-        if !unique.insert(members.clone()) {
+        if !unique.insert(members) {
             return Err(artifact(format!(
                 "eager selector domain {domain_id} duplicates an earlier domain"
             )));
         }
-        result.push(members);
+        result.push(members.to_vec());
         cursor = stop;
     }
     if cursor != memberships.len() || !result.iter().any(Vec::is_empty) {
@@ -1326,7 +1502,7 @@ fn load_selector_plan(
     }
     Ok(SelectorDomainPlan {
         memberships: result,
-        group_ids: known_groups.into_iter().collect(),
+        group_ids,
     })
 }
 
@@ -1511,15 +1687,30 @@ fn validate_output_factor(source: u8, coupling: u32, context: &str) -> RusticolR
     Ok(source)
 }
 
-fn value_domains_for_optional(
-    domains: &BTreeMap<u32, BTreeSet<u32>>,
+fn domain_sources_for_optional_value<'a>(
+    domains: &'a [Vec<u32>],
     value_slot_id: u32,
-) -> BTreeSet<u32> {
+    context: &str,
+) -> RusticolResult<&'a [u32]> {
     if value_slot_id == MISSING_U32 {
-        BTreeSet::new()
+        Ok(&[])
     } else {
-        domains.get(&value_slot_id).cloned().unwrap_or_default()
+        let index = required_index(value_slot_id, domains.len(), context)?;
+        Ok(&domains[index])
     }
+}
+
+fn push_value_domain_source(
+    domains: &mut [Vec<u32>],
+    value_slot_id: u32,
+    domain_id: u32,
+    context: &str,
+) -> RusticolResult<()> {
+    let index = required_index(value_slot_id, domains.len(), context)?;
+    if domains[index].last().copied() != Some(domain_id) {
+        domains[index].push(domain_id);
+    }
+    Ok(())
 }
 
 fn validate_dense_ids(ids: impl Iterator<Item = u32>, context: &str) -> RusticolResult<()> {

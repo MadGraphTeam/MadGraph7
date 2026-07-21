@@ -323,3 +323,28 @@ fn rejects_prepared_kernel_role_mismatches() {
     let error = EagerExecutionPlan::from_plan_v3_sections(fixture.sections()).unwrap_err();
     assert!(error.to_string().contains("expected Vertex"));
 }
+
+#[test]
+fn rejects_duplicate_selector_domains() {
+    let mut fixture = Fixture::new();
+    fixture.selector_domains.push(EagerPlanSelectorDomainRow {
+        member_start: 1,
+        member_count: 0,
+    });
+
+    let error = EagerExecutionPlan::from_plan_v3_sections(fixture.sections()).unwrap_err();
+    assert!(error.to_string().contains("duplicates an earlier domain"));
+}
+
+#[test]
+fn rejects_selector_union_missing_an_attachment_dependency() {
+    let mut fixture = Fixture::new();
+    fixture.invocations[0].selector_domain_id = 0;
+
+    let error = EagerExecutionPlan::from_plan_v3_sections(fixture.sections()).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("selector domain does not match its dependency closure")
+    );
+}

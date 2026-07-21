@@ -3111,7 +3111,7 @@ impl DomainInterner {
         if let Some(existing) = self.by_members.get(members) {
             return Ok(*existing);
         }
-        let id = usize_u32(self.members.len(), "selector domain ID")?;
+        let id = usize_present_u32(self.members.len(), "selector domain ID")?;
         let owned = copy_slice(members, "selector domain members")?;
         self.by_members.insert(owned.clone(), id);
         self.members.push(owned);
@@ -3235,7 +3235,7 @@ fn lower_selector_domains(
         .ok_or_else(|| invalid("selector membership count exceeds usize"))?;
     let mut memberships = reserved(member_capacity, "selector memberships")?;
     for (final_id, provisional_id) in order.into_iter().enumerate() {
-        remap[provisional_id] = usize_u32(final_id, "final selector domain ID")?;
+        remap[provisional_id] = usize_present_u32(final_id, "final selector domain ID")?;
         let members = &interner.members[provisional_id];
         domain_rows.push(EagerPlanSelectorDomainRow {
             member_start: usize_u64(memberships.len(), "selector member start")?,
@@ -3444,16 +3444,13 @@ fn validate_group_signature(
     member: &InputInteraction,
     group_id: usize,
 ) -> RusticolResult<()> {
-    let compatible = representative.stage_subset_size == member.stage_subset_size
-        && representative.coupling_id == member.coupling_id
-        && representative.coupling_factor_id == member.coupling_factor_id
-        && representative.kernel_id == member.kernel_id
-        && representative.canonical_input_order == member.canonical_input_order
-        && representative.kernel_normalization_factor_id == member.kernel_normalization_factor_id
-        && representative.output_factor_source == member.output_factor_source;
-    if !compatible {
+    // Evaluation-group identity is the compiler's exact proof that these
+    // oriented interactions share one representative kernel evaluation. The
+    // attachment rows retain each member's factors and output contract. Only
+    // crossing a stage boundary would make the shared invocation unschedulable.
+    if representative.stage_subset_size != member.stage_subset_size {
         return Err(invalid(format!(
-            "interaction group {group_id} has incompatible invocation metadata"
+            "interaction group {group_id} crosses recursion stages"
         )));
     }
     Ok(())
@@ -3709,6 +3706,16 @@ fn count_u32(count: u64, context: &str) -> RusticolResult<u32> {
 
 fn usize_u32(value: usize, context: &str) -> RusticolResult<u32> {
     u32::try_from(value).map_err(|_| invalid(format!("{context} exceeds u32")))
+}
+
+fn usize_present_u32(value: usize, context: &str) -> RusticolResult<u32> {
+    let value = usize_u32(value, context)?;
+    if value == MISSING_U32 {
+        return Err(invalid(format!(
+            "{context} collides with the missing-ID sentinel"
+        )));
+    }
+    Ok(value)
 }
 
 fn usize_u64(value: usize, context: &str) -> RusticolResult<u64> {
