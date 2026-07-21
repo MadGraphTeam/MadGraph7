@@ -3414,12 +3414,67 @@ fn ensure_execution_capabilities_supported(manifest: &ExecutionManifest) -> Rust
         execution_capabilities.insert(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY.to_string());
         execution_capabilities.insert(COMPILED_RUNTIME_SELECTORS_CAPABILITY.to_string());
     }
-    validate_declared_capabilities(
+    validate_declared_execution_capabilities(
         &manifest.required_runtime_capabilities,
         &execution_capabilities,
-        "execution manifest",
     )?;
     Ok(())
+}
+
+fn validate_declared_execution_capabilities(
+    declared: &[String],
+    actual: &BTreeSet<String>,
+) -> RusticolResult<()> {
+    let declared_set = declared.iter().cloned().collect::<BTreeSet<_>>();
+    if declared_set.len() == declared.len() && &declared_set == actual {
+        return Ok(());
+    }
+
+    // Artifacts written before this capability was made explicit already carry
+    // the complete primary-recurrence materialization. Accept only that exact
+    // legacy omission; every other declaration mismatch remains an integrity
+    // error.
+    let mut legacy_actual = actual.clone();
+    if declared_set.len() == declared.len()
+        && legacy_actual.remove(COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY)
+        && declared_set == legacy_actual
+    {
+        return Ok(());
+    }
+
+    Err(RusticolError::integrity(format!(
+        "execution manifest capabilities {declared:?} do not match evaluator capabilities {actual:?}"
+    )))
+}
+
+#[cfg(test)]
+mod legacy_primary_recurrence_capability_tests {
+    use super::*;
+
+    fn capabilities(values: &[&str]) -> BTreeSet<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn accepts_only_the_legacy_primary_recurrence_omission() {
+        let direct = "symjit.application.complex-f64.v1";
+        let declared = vec![direct.to_string()];
+        let actual = capabilities(&[COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY, direct]);
+
+        validate_declared_execution_capabilities(&declared, &actual)
+            .expect("the legacy omission remains compatible");
+    }
+
+    #[test]
+    fn rejects_every_other_capability_mismatch() {
+        let direct = "symjit.application.complex-f64.v1";
+        let declared = vec![direct.to_string()];
+        let actual = capabilities(&[COMPILED_RUNTIME_SELECTORS_CAPABILITY, direct]);
+
+        let error = validate_declared_execution_capabilities(&declared, &actual)
+            .expect_err("unrelated missing capabilities remain invalid");
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    }
 }
 
 fn validate_declared_capabilities(
