@@ -1339,7 +1339,7 @@ class TestRunCardMG7(unittest.TestCase):
         out = io.StringIO()
         rc.write(out, template=self.template)
         data = tomllib.loads(out.getvalue())
-        self.assertEqual(data['run']['output_format'], 'compact_npy')
+        self.assertEqual(data['run']['output_format'], 'lhe')
         self.assertEqual(data['beam']['e_cm'], 13000.0)
         self.assertIs(data['vegas']['enable'], True)
         self.assertEqual(data['multiparticles']['photon'], [22])

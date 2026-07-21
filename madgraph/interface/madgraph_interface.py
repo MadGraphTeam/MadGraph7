@@ -5365,6 +5365,9 @@ This implies that with decay chains:
                     
 
             duplicate =1
+            if part_name[0].isdigit() and len(part_name) > 1 and not part_name[1].isdigit(): 
+                duplicate, part_name = int(part_name[0]), part_name[1:]
+
             if part_name in self._multiparticles:
                 # final-state multiparticles cannot be tagged
                 if is_tagged and state:
@@ -5433,19 +5436,7 @@ This implies that with decay chains:
                                 break
                     else:  
                         mylegids.append(pdg)
-                else:
-                    # check for duplication flag!
-                    if part_name[0].isdigit():
-                        duplicate, part_name = int(part_name[0]), part_name[1:]
-                        if part_name in self._multiparticles:
-                            if isinstance(self._multiparticles[part_name][0], list):
-                                raise self.InvalidCmd(\
-                                      "Multiparticle %s is or-multiparticle" % part_name + \
-                                      " which can be used only for required s-channels")
-                            mylegids.extend(self._multiparticles[part_name])                        
-                        else:
-                            mypart = self._curr_model['particles'].get_copy(part_name)
-                            mylegids.append(mypart.get_pdg_code())
+
 
             if mylegids:
                 for _ in range(duplicate):
@@ -9921,10 +9912,19 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
         if self._me_curr_exporter:
             self._curr_exporter.grouped_mode = 'gpu'
-            # temporary should be passed to 
+            # temporary should be passed to
             # self._curr_exporter.grouped_mode = self._me_curr_exporter.grouped_mode
             # or the most restricted of the two
-            
+
+        # When the flavor-mask optimization is disabled (`--mask=False`) the
+        # matrix element must be directly evaluable for *every* flavor
+        # combination, not just one representative per permutation class.  Ask
+        # the flavor machinery to enumerate all combinations: permutation-
+        # duplicate diagrams then keep a valid flavor and are not trimmed, while
+        # genuinely unphysical diagrams (no flavor at all) are still removed.
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = \
+            not getattr(self._curr_exporter, 'use_flavor_mask', True)
+
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
 
         calls = 0
