@@ -38,6 +38,12 @@ from .runtime_schema import RuntimeSchemaLayout, build_runtime_schema_layout
 EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
 EagerProgressCallback = Callable[[Mapping[str, str | int]], None]
 
+# Dense Python integer masks are substantially cheaper than materialized
+# membership tuples for the selector universes seen in complete LC artifacts.
+# Keep the sparse interning path for unusually large universes, where retaining
+# one arbitrary-width integer per distinct domain would dominate memory.
+_DENSE_SELECTOR_DOMAIN_GROUP_LIMIT = 4096
+
 
 class EagerKernelResolver(Protocol):
     """Resolve model-local prepared kernels without compiling them."""
@@ -305,14 +311,15 @@ class EagerSelectorClosureTables:
                 raise ValueError(
                     f"eager selector domain {domain_id} exceeds its membership table"
                 )
-            members = tuple(
-                row.coherent_group_id for row in self.domain_group_ids[cursor:stop]
-            )
-            if members != tuple(sorted(set(members))):
-                raise ValueError(
-                    f"eager selector domain {domain_id} members must be unique "
-                    "and sorted"
-                )
+            previous = -1
+            for member_index in range(cursor, stop):
+                member = self.domain_group_ids[member_index].coherent_group_id
+                if member <= previous:
+                    raise ValueError(
+                        f"eager selector domain {domain_id} members must be unique "
+                        "and sorted"
+                    )
+                previous = member
             cursor = stop
         if cursor != len(self.domain_group_ids):
             raise ValueError(
@@ -1068,6 +1075,11 @@ def _build_selector_closure_tables(
         group_id: bit_index for bit_index, group_id in enumerate(ordered_group_ids)
     }
 
+    dense_mask_interning = (
+        len(ordered_group_ids) <= _DENSE_SELECTOR_DOMAIN_GROUP_LIMIT
+    )
+    domain_masks: list[int] = []
+    domain_ids_by_mask: dict[int, int] = {}
     domain_members: list[tuple[int, ...]] = []
     domain_ids_by_members: dict[tuple[int, ...], int] = {}
 
@@ -1089,19 +1101,30 @@ def _build_selector_closure_tables(
             remaining ^= lowest
         return tuple(result)
 
-    def intern_stage_mask(
-        domain: int,
-        domain_ids_by_mask: dict[int, int],
-    ) -> int:
+    def intern_mask(domain: int) -> int:
         existing = domain_ids_by_mask.get(domain)
         if existing is not None:
             return existing
-        domain_id = intern_members(members(domain))
+        domain_id = len(domain_masks)
+        domain_masks.append(domain)
         domain_ids_by_mask[domain] = domain_id
         return domain_id
 
+    def intern_stage_mask(
+        domain: int,
+        stage_domain_ids_by_mask: dict[int, int],
+    ) -> int:
+        if dense_mask_interning:
+            return intern_mask(domain)
+        existing = stage_domain_ids_by_mask.get(domain)
+        if existing is not None:
+            return existing
+        domain_id = intern_members(members(domain))
+        stage_domain_ids_by_mask[domain] = domain_id
+        return domain_id
+
     value_domains = [0] * value_slot_count
-    empty_domain_id = intern_members(())
+    empty_domain_id = intern_mask(0) if dense_mask_interning else intern_members(())
     closure_domain_ids: list[int] = []
     for closure, root in zip(closures, roots, strict=True):
         if closure.amplitude_index != int(root["output_index"]):
@@ -1115,7 +1138,11 @@ def _build_selector_closure_tables(
                 f"amplitude root references undeclared coherent group {group_id}"
             )
         domain = 1 << bit_index
-        closure_domain_ids.append(intern_members((group_id,)))
+        closure_domain_ids.append(
+            intern_mask(domain)
+            if dense_mask_interning
+            else intern_members((group_id,))
+        )
         value_domains[closure.left_value_slot_id] |= domain
         value_domains[closure.right_value_slot_id] |= domain
 
@@ -1197,47 +1224,83 @@ def _build_selector_closure_tables(
             current_domain_ids[finalization.current_id] = empty_domain_id
         stage_domain_ids_by_mask.clear()
 
-    # These retain the arbitrary-width construction masks and the duplicate
-    # interning index; neither participates in final ID assignment or emission.
+    # Construction-only masks and interning indexes do not participate in final
+    # ID assignment or emission.
     value_domains.clear()
     current_domains.clear()
     current_domain_ids.clear()
     group_bit_indices.clear()
-    domain_ids_by_members.clear()
 
     # Match the prior dense-mask ordering exactly. For equal-cardinality masks,
     # integer comparison examines the highest differing bit first, equivalent
     # to lexicographically comparing the reversed, sorted member tuples.
-    ordered_provisional_ids = tuple(
-        sorted(
-            range(len(domain_members)),
-            key=lambda domain_id: (
-                len(domain_members[domain_id]),
-                tuple(reversed(domain_members[domain_id])),
-            ),
+    if dense_mask_interning:
+        ordered_provisional_ids = tuple(
+            sorted(
+                range(len(domain_masks)),
+                key=lambda domain_id: (
+                    domain_masks[domain_id].bit_count(),
+                    domain_masks[domain_id],
+                ),
+            )
         )
-    )
-    final_domain_ids = [0] * len(domain_members)
+    else:
+        ordered_provisional_ids = tuple(
+            sorted(
+                range(len(domain_members)),
+                key=lambda domain_id: (
+                    len(domain_members[domain_id]),
+                    tuple(reversed(domain_members[domain_id])),
+                ),
+            )
+        )
+    final_domain_ids = [0] * len(ordered_provisional_ids)
     for final_domain_id, provisional_domain_id in enumerate(ordered_provisional_ids):
         final_domain_ids[provisional_domain_id] = final_domain_id
 
     domain_rows: list[EagerSelectorDomainRow] = []
     group_rows: list[EagerSelectorGroupRow] = []
-    group_row_by_id = {
-        group_id: EagerSelectorGroupRow._from_trusted_values(group_id)
+    group_rows_by_bit_index = tuple(
+        EagerSelectorGroupRow._from_trusted_values(group_id)
         for group_id in ordered_group_ids
-    }
+    )
+    group_row_by_id = (
+        {}
+        if dense_mask_interning
+        else {
+            group_id: group_rows_by_bit_index[bit_index]
+            for bit_index, group_id in enumerate(ordered_group_ids)
+        }
+    )
     for provisional_domain_id in ordered_provisional_ids:
-        resolved_members = domain_members[provisional_domain_id]
+        if dense_mask_interning:
+            domain = domain_masks[provisional_domain_id]
+            member_count = domain.bit_count()
+        else:
+            resolved_members = domain_members[provisional_domain_id]
+            member_count = len(resolved_members)
         domain_rows.append(
             EagerSelectorDomainRow._from_trusted_values(
-                len(group_rows), len(resolved_members)
+                len(group_rows), member_count
             )
         )
-        group_rows.extend(group_row_by_id[group_id] for group_id in resolved_members)
+        if dense_mask_interning:
+            while domain:
+                lowest = domain & -domain
+                group_rows.append(
+                    group_rows_by_bit_index[lowest.bit_length() - 1]
+                )
+                domain ^= lowest
+        else:
+            group_rows.extend(
+                group_row_by_id[group_id] for group_id in resolved_members
+            )
 
-    domain_count = len(domain_members)
+    domain_count = len(ordered_provisional_ids)
+    domain_masks.clear()
+    domain_ids_by_mask.clear()
     domain_members.clear()
+    domain_ids_by_members.clear()
     group_row_by_id.clear()
     domain_reference_rows = tuple(
         EagerSelectorDomainIdRow._from_trusted_values(domain_id)

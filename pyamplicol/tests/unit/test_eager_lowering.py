@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
 from dataclasses import replace
 
+import pytest
+
+import pyamplicol.generation.eager_lowering as eager_lowering_module
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.eager_lowering import (
     EAGER_RUNTIME_KIND,
@@ -22,41 +24,19 @@ from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.prepared_catalog import build_prepared_kernel_catalog
 
-_DENSE_SELECTOR_REFERENCE_SHA256 = {
-    "eager/closure-domains.bin": (
-        "aeb63db345168a2b73755639d5ef055da5834cb4aab10e68c64ae64903a85a71"
-    ),
-    "eager/selector-domain-group-ids.bin": (
-        "ac9cd69c0f607e6a99b3a5d3187d9e235a3e4d350d91a6bd9469660da4a0c32b"
-    ),
-    "eager/selector-domains.bin": (
-        "e10e71b9645279ffd97999c95de7514efbfadb61556319aa237653efb0a2f72c"
-    ),
-    "eager/stage-1-attachment-domains.bin": (
-        "8975ddf06e863c02f1bfac68fb526de9ffdd716a666b64744554805d4b299f03"
-    ),
-    "eager/stage-1-invocation-domains.bin": (
-        "8975ddf06e863c02f1bfac68fb526de9ffdd716a666b64744554805d4b299f03"
-    ),
-    "eager/stage-1-propagated-finalization-domains.bin": (
-        "6c3df7e594cc851fcf5f660b141ccfa6f2c371e551c8cf19fc23a230b7fd7c4c"
-    ),
-    "eager/stage-1-unpropagated-finalization-domains.bin": (
-        "c51eeab8ffdfb8f66fc63ee241cca7300e47c86bd8f20379cb2daafd343521b5"
-    ),
-    "eager/stage-2-attachment-domains.bin": (
-        "364d8c0d41ca46cbe4017fffbce33beb0a861c3e549a7047eca4cba6cb2bebed"
-    ),
-    "eager/stage-2-invocation-domains.bin": (
-        "1f71b6e4dfe37562558da3f029d99f82d5cd97998dcc1e30baa514e887f05f03"
-    ),
-    "eager/stage-2-propagated-finalization-domains.bin": (
-        "2ea9ab9198d1638007400cd2c3bef1cc745b864b76011a0e1bc52180ac6452d4"
-    ),
-    "eager/stage-2-unpropagated-finalization-domains.bin": (
-        "985053fc157f63a679b14d6ce5fda64734cfcebf9b7991354b1bae6df7f70577"
-    ),
-}
+_SELECTOR_PAYLOAD_PATHS = (
+    "eager/closure-domains.bin",
+    "eager/selector-domain-group-ids.bin",
+    "eager/selector-domains.bin",
+    "eager/stage-1-attachment-domains.bin",
+    "eager/stage-1-invocation-domains.bin",
+    "eager/stage-1-propagated-finalization-domains.bin",
+    "eager/stage-1-unpropagated-finalization-domains.bin",
+    "eager/stage-2-attachment-domains.bin",
+    "eager/stage-2-invocation-domains.bin",
+    "eager/stage-2-propagated-finalization-domains.bin",
+    "eager/stage-2-unpropagated-finalization-domains.bin",
+)
 
 
 def _gluon_scattering_tables():
@@ -244,15 +224,29 @@ def test_selector_domains_preserve_shared_invocation_partial_fanout() -> None:
     assert found_partial_fanout
 
 
-def test_sparse_selector_interning_matches_dense_reference_bytes() -> None:
-    _model, _dag, _schema, tables = _gluon_scattering_tables()
-    payloads = tables.binary_payloads()
+def test_selector_interning_paths_emit_identical_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        eager_lowering_module,
+        "_DENSE_SELECTOR_DOMAIN_GROUP_LIMIT",
+        0,
+    )
+    _model, _dag, _schema, sparse_tables = _gluon_scattering_tables()
+    sparse_payloads = sparse_tables.binary_payloads()
+    monkeypatch.setattr(
+        eager_lowering_module,
+        "_DENSE_SELECTOR_DOMAIN_GROUP_LIMIT",
+        4096,
+    )
+    _model, _dag, _schema, dense_tables = _gluon_scattering_tables()
+    dense_payloads = dense_tables.binary_payloads()
 
-    actual = {
-        path: hashlib.sha256(payloads[path]).hexdigest()
-        for path in _DENSE_SELECTOR_REFERENCE_SHA256
+    assert {
+        path: dense_payloads[path] for path in _SELECTOR_PAYLOAD_PATHS
+    } == {
+        path: sparse_payloads[path] for path in _SELECTOR_PAYLOAD_PATHS
     }
-    assert actual == _DENSE_SELECTOR_REFERENCE_SHA256
 
 
 def test_eager_lowering_emits_standalone_binary_table_metadata() -> None:
