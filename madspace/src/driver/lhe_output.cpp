@@ -331,7 +331,6 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
              args.permutations,
              args.diagram_indices,
              args.diagram_color_indices)) {
-        std::size_t prop_offset = _propagators.size();
         for (auto [permutation, diag_index, colors] :
              zip(permutations, diag_indices, diag_colors)) {
             if (diag_index >= diagram_count) {
@@ -352,6 +351,7 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
                     prop_colors,
                     resonant_prop_indices
                 );
+                std::size_t prop_offset = _propagators.size();
                 find_resonant_propagators(
                     topo,
                     args,
