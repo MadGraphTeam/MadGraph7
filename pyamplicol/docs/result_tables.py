@@ -72,14 +72,16 @@ ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON = (
     "original AmpliCol supports at most three open quark lines"
 )
 ONE_LINE_NLC_FULL_ORDERING_FIX_REVISION = "cf8017dd393fc000c47f95d97b155ccdba6a5151"
-LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION = (
-    "e4cd45494fb761979a44f12f3f175e0699f4b914"
-)
+LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION = "e4cd45494fb761979a44f12f3f175e0699f4b914"
 LC_ALL_FLOW_UNION_REUSE_BASE_REVISIONS = frozenset(
     {
         "68e652b27a903674fdf96a0dea48b2d0ea563dde",
         "c7e45b090747097965e62b919386d6ee598f94a7",
     }
+)
+LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION = "f1f24548e8d7daec1d1c84b0db8bf3cfa567b13b"
+LC_HELICITY_REPLAY_REUSE_BASE_REVISIONS = frozenset(
+    {"55bfedc80df4695dc7aa55bc5d40669d248d2f14"}
 )
 PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
     {
@@ -5249,6 +5251,9 @@ def _source_provenance_generation_reusable(provenance: object) -> bool:
     return (
         previous_head in LC_ALL_FLOW_UNION_REUSE_BASE_REVISIONS
         and _git_is_ancestor(LC_ALL_FLOW_UNION_IMPLEMENTATION_REVISION, current_head)
+    ) or (
+        previous_head in LC_HELICITY_REPLAY_REUSE_BASE_REVISIONS
+        and _git_is_ancestor(LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION, current_head)
     )
 
 
@@ -5379,8 +5384,7 @@ def _reusable_pyamplicol_generation_seconds(
         return None
     if (
         expected_lc_flow_layout is not None
-        and _measurement_lc_flow_layout(previous_measurement)
-        != expected_lc_flow_layout
+        and _measurement_lc_flow_layout(previous_measurement) != expected_lc_flow_layout
     ):
         return None
     if expected_lc_flow_layout is not None and not _lc_flow_layout_source_current(
@@ -5715,6 +5719,25 @@ def _runtime_validation_momenta(runtime: object) -> object | None:
     if callable(loader):
         return loader()
     return None
+
+
+def _measurement_point_digest(points: object) -> str:
+    def encode_unknown(value: object) -> object:
+        to_list = getattr(value, "tolist", None)
+        if callable(to_list):
+            return to_list()
+        scalar = getattr(value, "item", None)
+        if callable(scalar):
+            return scalar()
+        raise TypeError(f"unsupported measurement-point value {type(value).__name__}")
+
+    encoded = json.dumps(
+        points,
+        allow_nan=False,
+        separators=(",", ":"),
+        default=encode_unknown,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _single_artifact_process_id(artifact_dir: Path, fallback: str) -> str:
@@ -6646,6 +6669,7 @@ def _lc_cross_artifact_validation(
         ),
     )
     results: dict[str, object] = {}
+    point_digest = _measurement_point_digest(points)
     maximum_absolute = 0.0
     maximum_relative = 0.0
     passed = True
@@ -6714,6 +6738,7 @@ def _lc_cross_artifact_validation(
             "message": str(exc),
             "relative_tolerance": 1.0e-12,
             "absolute_tolerance": 1.0e-15,
+            "measurement_point_digest": point_digest,
             "workloads": results,
         }
     return {
@@ -6724,6 +6749,7 @@ def _lc_cross_artifact_validation(
         "maximum_relative_difference": maximum_relative,
         "relative_tolerance": 1.0e-12,
         "absolute_tolerance": 1.0e-15,
+        "measurement_point_digest": point_digest,
         "workloads": results,
     }
 
@@ -6823,6 +6849,14 @@ def _measure_pyamplicol_lc_lane(
         "target_runtime": target_runtime,
         "cell_cores": cell_cores,
         "artifact_reused_for_timing": artifact_reusable,
+        "measurement_point_digest": (
+            None if points is None else _measurement_point_digest(points)
+        ),
+        "measurement_point_source": (
+            "artifact-validation-momenta"
+            if points is None
+            else "caller-supplied-report-point"
+        ),
         "source_provenance": _report_source_provenance(),
         "captured_at": _utc_now(),
     }
@@ -6890,6 +6924,9 @@ def _measure_pyamplicol_lc_lane(
                     raise RuntimeError(
                         "pyAmpliCol LC benchmark requires validation momenta"
                     )
+                measurement_point_digest = _measurement_point_digest(selected_points)
+                snapshot["measurement_point_digest"] = measurement_point_digest
+                snapshot_path.write_text(_json_text(snapshot), encoding="utf-8")
                 selector_contract = _lc_runtime_selector_contract(
                     cell=cell,
                     spec=spec,
@@ -6945,6 +6982,8 @@ def _measure_pyamplicol_lc_lane(
                 "runtime_selector_policy": snapshot["runtime_selector_policy"],
                 "runtime_selector_role": role,
                 "lc_flow_layout": layout,
+                "measurement_point_digest": measurement_point_digest,
+                "measurement_point_source": snapshot["measurement_point_source"],
                 "selector_contract": selector_contract,
                 **model_precompile_metadata,
                 **dict(extra_metadata or {}),
@@ -7566,17 +7605,14 @@ def _measure_pyamplicol_lc_two_workloads(
         cell,
         reference_measurement,
     )
-    selected_is_current = (
-        _lc_nested_measurement_current(
-            cell,
-            previous_selected,
-            expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
-            execution_mode="compiled",
-        )
-        and _lc_selector_contract_matches_reference(
-            previous_selected,
-            current_reference_digest,
-        )
+    selected_is_current = _lc_nested_measurement_current(
+        cell,
+        previous_selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        execution_mode="compiled",
+    ) and _lc_selector_contract_matches_reference(
+        previous_selected,
+        current_reference_digest,
     )
     if selected_is_current:
         assert isinstance(previous_selected, Mapping)
@@ -7603,17 +7639,14 @@ def _measure_pyamplicol_lc_two_workloads(
                 previous_selected if isinstance(previous_selected, Mapping) else None
             ),
         )
-    all_flow_is_current = (
-        _lc_nested_measurement_current(
-            cell,
-            previous_all_flow,
-            expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
-            execution_mode="compiled",
-        )
-        and _lc_selector_contract_matches_reference(
-            previous_all_flow,
-            current_reference_digest,
-        )
+    all_flow_is_current = _lc_nested_measurement_current(
+        cell,
+        previous_all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        execution_mode="compiled",
+    ) and _lc_selector_contract_matches_reference(
+        previous_all_flow,
+        current_reference_digest,
     )
     if all_flow_is_current:
         assert isinstance(previous_all_flow, Mapping)
@@ -9146,12 +9179,23 @@ def _measure_legacy_amplicol(
                             context=cell.process,
                         )
                         momenta = _legacy_momenta_from_pyamplicol(points)
+                        measurement_points = points
                         point_source = "pyamplicol-shared-validation-momenta"
                         if momenta is None:
                             particles = _shared_validation_particles(cell.process)
                             momenta = _legacy_momenta_from_particles(particles)
+                            measurement_points = _pyamplicol_points_from_particles(
+                                particles
+                            )
                             source_pdgs = _legacy_pdgs_from_particles(particles)
                             point_source = "generic_validation_point"
+                        if measurement_points is None:
+                            raise RuntimeError(
+                                "legacy AmpliCol measurement has no canonical point"
+                            )
+                        measurement_point_digest = _measurement_point_digest(
+                            measurement_points
+                        )
                         process_command = _legacy_process_list_command(
                             repository,
                             family,
@@ -9771,6 +9815,7 @@ def _measure_legacy_amplicol(
                 "method": "legacy_amplicol_generated_library",
                 "color_accuracy": color_accuracy,
                 "point_source": point_source,
+                "measurement_point_digest": measurement_point_digest,
                 "jobs": max(1, int(jobs)),
                 **_legacy_profile_requested_config(target_runtime),
             },
@@ -9804,6 +9849,7 @@ def _measure_legacy_amplicol(
                 "runtime_profile": runtime_profile,
                 "matrix_element_probe": matrix_element_probe,
                 "point_source": point_source,
+                "measurement_point_digest": measurement_point_digest,
                 "source_provenance": _report_source_provenance(),
                 "old_matrix_format": {
                     "status": ResultStatus.OK.value,
