@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
 import os
 from collections.abc import Mapping, Sequence
@@ -9,6 +10,10 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from pyamplicol._internal.versions import (
+    COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    EAGER_DAG_F64_RUNTIME_CAPABILITY,
+)
 from pyamplicol.api.errors import (
     ArtifactError,
     CompatibilityError,
@@ -27,7 +32,7 @@ from pyamplicol.api.results import (
     ReductionGroup,
     ResolvedEvaluation,
 )
-from pyamplicol.artifacts import load_manifest
+from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
 
 if TYPE_CHECKING:
     from .eager_exact import EagerExactExecutor
@@ -83,6 +88,89 @@ def _invoke(module: Any, operation: Any, *args: Any, **kwargs: Any) -> Any:
         if translated is None:
             raise
         raise translated from exc
+
+
+def _accepts_keyword_arguments(operation: object, *names: str) -> bool:
+    if not callable(operation):
+        return False
+    try:
+        parameters = inspect.signature(operation).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    declared = {parameter.name for parameter in parameters}
+    accepts_arbitrary = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+    return accepts_arbitrary or all(name in declared for name in names)
+
+
+def _normalized_selectors(values: Sequence[str] | None) -> tuple[str, ...] | None:
+    if values is None:
+        return None
+    return tuple(values) or None
+
+
+def _selected_manifest_process(
+    manifest: ArtifactManifest,
+    selected_id: str,
+) -> Mapping[str, object]:
+    for process in manifest.processes:
+        if process["id"] == selected_id:
+            return process
+        if any(
+            alias["id"] == selected_id
+            for alias in cast(Sequence[Mapping[str, object]], process["aliases"])
+        ):
+            return process
+    raise ArtifactError(
+        f"runtime selected process {selected_id!r} is absent from its artifact"
+    )
+
+
+def _has_reusable_runtime_selector_contract(
+    manifest: ArtifactManifest,
+    process: Mapping[str, object],
+) -> bool:
+    relative = str(process["physics_path"])
+    try:
+        payload = json.loads((manifest.root / relative).read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ArtifactError(
+            f"could not read runtime selector metadata {relative}: {exc}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ArtifactError(
+            f"invalid runtime selector metadata {relative}: {exc}"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise ArtifactError(f"runtime physics metadata {relative} must be an object")
+    extensions = payload.get("extensions")
+    if extensions is None:
+        return False
+    if not isinstance(extensions, Mapping):
+        raise ArtifactError(
+            f"runtime physics metadata {relative}.extensions is invalid"
+        )
+    selectors = extensions.get("runtime_selectors")
+    if selectors is None:
+        return False
+    if not isinstance(selectors, Mapping):
+        raise ArtifactError(
+            f"runtime physics metadata {relative}.extensions.runtime_selectors "
+            "is invalid"
+        )
+    axes = selectors.get("axes")
+    if not isinstance(axes, Mapping):
+        raise ArtifactError(
+            f"runtime physics metadata {relative}.extensions.runtime_selectors.axes "
+            "is invalid"
+        )
+    return any(
+        isinstance(axis, Mapping)
+        and axis.get("runtime_contract") == "complete-reusable"
+        for axis in axes.values()
+    )
 
 
 def _physics_from_native(value: Any) -> ProcessPhysics:
@@ -195,12 +283,26 @@ def _native_execution_mode(runtime: Any) -> Literal["compiled", "eager"]:
 class RusticolRuntimeBackend:
     """Public-protocol adapter around ``pyamplicol._rusticol.Runtime``."""
 
-    def __init__(self, runtime: Any, native_module: Any, artifact_path: Path) -> None:
+    def __init__(
+        self,
+        runtime: Any,
+        native_module: Any,
+        artifact_path: Path,
+        manifest: ArtifactManifest | None = None,
+    ) -> None:
         self._runtime = runtime
         self._native_module = native_module
         self._artifact_path = artifact_path
         self._execution_mode = _native_execution_mode(runtime)
         self._exact_executor: _ExactExecutor | None = None
+        self._required_runtime_capabilities: tuple[str, ...] = ()
+        self._supports_per_point_selectors = _accepts_keyword_arguments(
+            runtime.evaluate,
+            "helicity_by_point",
+            "color_flow_by_point",
+        )
+        if manifest is not None:
+            self._validate_runtime_selector_capability(manifest)
 
     @property
     def physics(self) -> ProcessPhysics:
@@ -218,16 +320,116 @@ class RusticolRuntimeBackend:
 
         return callable(getattr(self._runtime, "profile", None))
 
+    @property
+    def supports_per_point_selectors(self) -> bool:
+        """Whether this artifact/runtime pair supports per-point selectors."""
+
+        return self._supports_per_point_selectors
+
+    @property
+    def required_runtime_capabilities(self) -> tuple[str, ...]:
+        """Runtime capabilities declared by the selected artifact process."""
+
+        return self._required_runtime_capabilities
+
+    def _validate_runtime_selector_capability(
+        self,
+        manifest: ArtifactManifest,
+    ) -> None:
+        process = _selected_manifest_process(manifest, self.physics.process_id)
+        capabilities = tuple(
+            str(value)
+            for value in cast(
+                Sequence[object], process["required_runtime_capabilities"]
+            )
+        )
+        self._required_runtime_capabilities = capabilities
+        reusable_selectors = _has_reusable_runtime_selector_contract(
+            manifest,
+            process,
+        )
+        if self._execution_mode == "compiled":
+            declares_selector_capability = (
+                COMPILED_RUNTIME_SELECTORS_CAPABILITY in capabilities
+            )
+            if reusable_selectors and not declares_selector_capability:
+                raise CompatibilityError(
+                    "compiled artifact declares reusable runtime selectors but does "
+                    f"not require {COMPILED_RUNTIME_SELECTORS_CAPABILITY!r}; "
+                    "regenerate the artifact with the current pyAmpliCol"
+                )
+            self._supports_per_point_selectors = declares_selector_capability
+        else:
+            self._supports_per_point_selectors = (
+                EAGER_DAG_F64_RUNTIME_CAPABILITY in capabilities
+            )
+        if self._supports_per_point_selectors and not _accepts_keyword_arguments(
+            self._runtime.evaluate,
+            "helicity_by_point",
+            "color_flow_by_point",
+        ):
+            required = (
+                COMPILED_RUNTIME_SELECTORS_CAPABILITY
+                if self._execution_mode == "compiled"
+                else EAGER_DAG_F64_RUNTIME_CAPABILITY
+            )
+            raise CompatibilityError(
+                f"artifact requires runtime capability {required!r}, but the "
+                "installed native runtime does not accept per-point selectors"
+            )
+
     def evaluate(
         self,
         momenta: Momenta,
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[str] | None = None,
+        color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
     ) -> tuple[complex | Decimal, ...]:
+        helicities = _normalized_selectors(helicities)
+        color_flows = _normalized_selectors(color_flows)
+        helicity_by_point = _normalized_selectors(helicity_by_point)
+        color_flow_by_point = _normalized_selectors(color_flow_by_point)
+        if helicities is not None and helicity_by_point is not None:
+            raise EvaluationError(
+                "helicities and helicity_by_point are mutually exclusive"
+            )
+        if color_flows is not None and color_flow_by_point is not None:
+            raise EvaluationError(
+                "color_flows and color_flow_by_point are mutually exclusive"
+            )
         color_flows = self._resolve_color_flows(color_flows)
+        color_flow_by_point = self._resolve_color_flows(color_flow_by_point)
+        if (
+            helicity_by_point is not None or color_flow_by_point is not None
+        ) and not self._supports_per_point_selectors:
+            raise CompatibilityError(
+                "the selected artifact/runtime does not support per-point "
+                "helicity or color-flow selectors; regenerate a reusable-selector "
+                "artifact with the current pyAmpliCol"
+            )
+        helicity_indices = self._point_selector_indices(
+            helicity_by_point,
+            self.physics.helicity_ids,
+            "helicity_by_point",
+        )
+        color_indices = self._point_selector_indices(
+            color_flow_by_point,
+            self.physics.color_ids,
+            "color_flow_by_point",
+        )
         if precision != 16:
+            if helicity_by_point is not None or color_flow_by_point is not None:
+                return self._evaluate_exact_by_point(
+                    momenta,
+                    helicities=helicities,
+                    color_flows=color_flows,
+                    helicity_by_point=helicity_by_point,
+                    color_flow_by_point=color_flow_by_point,
+                    precision=precision,
+                )
             return (
                 self._exact()
                 .evaluate_resolved(
@@ -238,6 +440,11 @@ class RusticolRuntimeBackend:
                 )
                 .total()
             )
+        selector_arguments: dict[str, object] = {}
+        if helicity_indices is not None:
+            selector_arguments["helicity_by_point"] = helicity_indices
+        if color_indices is not None:
+            selector_arguments["color_flow_by_point"] = color_indices
         values = _invoke(
             self._native_module,
             self._runtime.evaluate,
@@ -245,8 +452,75 @@ class RusticolRuntimeBackend:
             helicities=helicities,
             color_flows=color_flows,
             precision=precision,
+            **selector_arguments,
         )
         return tuple(_scalar_from_native(value) for value in values)
+
+    @staticmethod
+    def _point_selector_indices(
+        values: Sequence[str] | None,
+        available: Sequence[str],
+        name: str,
+    ) -> tuple[int, ...] | None:
+        if values is None:
+            return None
+        index_by_id = {identifier: index for index, identifier in enumerate(available)}
+        indices: list[int] = []
+        for point_index, identifier in enumerate(values):
+            try:
+                indices.append(index_by_id[identifier])
+            except KeyError as exc:
+                raise EvaluationError(
+                    f"{name}[{point_index}] references unknown selector {identifier!r}"
+                ) from exc
+        return tuple(indices)
+
+    def _evaluate_exact_by_point(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        helicity_by_point: Sequence[str] | None,
+        color_flow_by_point: Sequence[str] | None,
+        precision: int,
+    ) -> tuple[complex | Decimal, ...]:
+        point_count = len(momenta)
+        for name, selectors in (
+            ("helicity_by_point", helicity_by_point),
+            ("color_flow_by_point", color_flow_by_point),
+        ):
+            if selectors is not None and len(selectors) != point_count:
+                raise EvaluationError(
+                    f"{name} contains {len(selectors)} entries, expected one "
+                    f"selector for each of {point_count} points"
+                )
+        grouped: dict[tuple[str | None, str | None], list[int]] = {}
+        for point_index in range(point_count):
+            key = (
+                None if helicity_by_point is None else helicity_by_point[point_index],
+                None
+                if color_flow_by_point is None
+                else color_flow_by_point[point_index],
+            )
+            grouped.setdefault(key, []).append(point_index)
+        output: list[complex | Decimal | None] = [None] * point_count
+        exact = self._exact()
+        for (point_helicity, point_color), point_indices in grouped.items():
+            selected_momenta = tuple(momenta[index] for index in point_indices)
+            resolved = exact.evaluate_resolved(
+                selected_momenta,
+                helicities=(
+                    (point_helicity,) if point_helicity is not None else helicities
+                ),
+                color_flows=(point_color,) if point_color is not None else color_flows,
+                precision=precision,
+            )
+            for point_index, value in zip(point_indices, resolved.total(), strict=True):
+                output[point_index] = value
+        if any(value is None for value in output):
+            raise EvaluationError("per-point exact selector evaluation was incomplete")
+        return cast(tuple[complex | Decimal, ...], tuple(output))
 
     def _benchmark_f64_wall_time(
         self,
@@ -255,12 +529,49 @@ class RusticolRuntimeBackend:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[str] | None = None,
+        color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
     ) -> float:
+        helicities = _normalized_selectors(helicities)
+        color_flows = _normalized_selectors(color_flows)
+        helicity_by_point = _normalized_selectors(helicity_by_point)
+        color_flow_by_point = _normalized_selectors(color_flow_by_point)
+        if helicities is not None and helicity_by_point is not None:
+            raise EvaluationError(
+                "helicities and helicity_by_point are mutually exclusive"
+            )
+        if color_flows is not None and color_flow_by_point is not None:
+            raise EvaluationError(
+                "color_flows and color_flow_by_point are mutually exclusive"
+            )
         color_flows = self._resolve_color_flows(color_flows)
+        color_flow_by_point = self._resolve_color_flows(color_flow_by_point)
+        if (
+            helicity_by_point is not None or color_flow_by_point is not None
+        ) and not self._supports_per_point_selectors:
+            raise CompatibilityError(
+                "the selected artifact/runtime does not support per-point "
+                "helicity or color-flow selectors"
+            )
+        helicity_indices = self._point_selector_indices(
+            helicity_by_point,
+            self.physics.helicity_ids,
+            "helicity_by_point",
+        )
+        color_indices = self._point_selector_indices(
+            color_flow_by_point,
+            self.physics.color_ids,
+            "color_flow_by_point",
+        )
         timer = getattr(self._runtime, "_benchmark_f64_wall_time", None)
         if not callable(timer):
             raise EvaluationError("native Rusticol wall timer is unavailable")
+        selector_arguments: dict[str, object] = {}
+        if helicity_indices is not None:
+            selector_arguments["helicity_by_point"] = helicity_indices
+        if color_indices is not None:
+            selector_arguments["color_flow_by_point"] = color_indices
         return float(
             _invoke(
                 self._native_module,
@@ -270,6 +581,7 @@ class RusticolRuntimeBackend:
                 helicities=helicities,
                 color_flows=color_flows,
                 precision=precision,
+                **selector_arguments,
             )
         )
 
@@ -281,7 +593,10 @@ class RusticolRuntimeBackend:
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
     ) -> ResolvedEvaluation:
-        color_flows = self._resolve_color_flows(color_flows)
+        helicities = _normalized_selectors(helicities)
+        color_flows = self._resolve_color_flows(
+            _normalized_selectors(color_flows)
+        )
         if precision != 16:
             return self._exact().evaluate_resolved(
                 momenta,
@@ -317,10 +632,25 @@ class RusticolRuntimeBackend:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[str] | None = None,
+        color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
         include_values: bool = False,
     ) -> Mapping[str, object]:
-        color_flows = self._resolve_color_flows(color_flows)
+        helicities = _normalized_selectors(helicities)
+        color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
+        helicity_by_point = _normalized_selectors(helicity_by_point)
+        color_flow_by_point = self._resolve_color_flows(
+            _normalized_selectors(color_flow_by_point)
+        )
+        if helicities is not None and helicity_by_point is not None:
+            raise EvaluationError(
+                "helicities and helicity_by_point are mutually exclusive"
+            )
+        if color_flows is not None and color_flow_by_point is not None:
+            raise EvaluationError(
+                "color_flows and color_flow_by_point are mutually exclusive"
+            )
         if precision != 16:
             raise EvaluationError(
                 "runtime profiling is available only for native f64 precision"
@@ -328,6 +658,31 @@ class RusticolRuntimeBackend:
         profiler = getattr(self._runtime, "profile", None)
         if not callable(profiler):
             raise EvaluationError("native runtime does not expose profiling")
+        selector_arguments: dict[str, object] = {}
+        if helicity_by_point is not None or color_flow_by_point is not None:
+            if not self._supports_per_point_selectors or not _accepts_keyword_arguments(
+                profiler,
+                "helicity_by_point",
+                "color_flow_by_point",
+            ):
+                raise CompatibilityError(
+                    "the selected artifact/runtime does not support profiling "
+                    "with per-point helicity or color-flow selectors"
+                )
+            helicity_indices = self._point_selector_indices(
+                helicity_by_point,
+                self.physics.helicity_ids,
+                "helicity_by_point",
+            )
+            color_indices = self._point_selector_indices(
+                color_flow_by_point,
+                self.physics.color_ids,
+                "color_flow_by_point",
+            )
+            if helicity_indices is not None:
+                selector_arguments["helicity_by_point"] = helicity_indices
+            if color_indices is not None:
+                selector_arguments["color_flow_by_point"] = color_indices
         payload = _invoke(
             self._native_module,
             profiler,
@@ -336,9 +691,83 @@ class RusticolRuntimeBackend:
             color_flows=color_flows,
             precision=precision,
             include_values=include_values,
+            **selector_arguments,
         )
         if not isinstance(payload, Mapping):
             raise EvaluationError("native runtime profile is not a mapping")
+        return cast(Mapping[str, object], dict(payload))
+
+    def profile_repeated(
+        self,
+        momenta: Momenta,
+        repetitions: int,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[str] | None = None,
+        color_flow_by_point: Sequence[str] | None = None,
+        precision: int = 16,
+        include_values: bool = False,
+    ) -> Mapping[str, object]:
+        helicities = _normalized_selectors(helicities)
+        color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
+        helicity_by_point = _normalized_selectors(helicity_by_point)
+        color_flow_by_point = self._resolve_color_flows(
+            _normalized_selectors(color_flow_by_point)
+        )
+        if helicities is not None and helicity_by_point is not None:
+            raise EvaluationError(
+                "helicities and helicity_by_point are mutually exclusive"
+            )
+        if color_flows is not None and color_flow_by_point is not None:
+            raise EvaluationError(
+                "color_flows and color_flow_by_point are mutually exclusive"
+            )
+        if precision != 16:
+            raise EvaluationError(
+                "runtime profiling is available only for native f64 precision"
+            )
+        profiler = getattr(self._runtime, "profile_repeated", None)
+        if not callable(profiler):
+            raise EvaluationError("native runtime does not expose repeated profiling")
+        selector_arguments: dict[str, object] = {}
+        if helicity_by_point is not None or color_flow_by_point is not None:
+            if not self._supports_per_point_selectors or not _accepts_keyword_arguments(
+                profiler,
+                "helicity_by_point",
+                "color_flow_by_point",
+            ):
+                raise CompatibilityError(
+                    "the selected artifact/runtime does not support profiling "
+                    "with per-point helicity or color-flow selectors"
+                )
+            helicity_indices = self._point_selector_indices(
+                helicity_by_point,
+                self.physics.helicity_ids,
+                "helicity_by_point",
+            )
+            color_indices = self._point_selector_indices(
+                color_flow_by_point,
+                self.physics.color_ids,
+                "color_flow_by_point",
+            )
+            if helicity_indices is not None:
+                selector_arguments["helicity_by_point"] = helicity_indices
+            if color_indices is not None:
+                selector_arguments["color_flow_by_point"] = color_indices
+        payload = _invoke(
+            self._native_module,
+            profiler,
+            momenta,
+            repetitions,
+            helicities=helicities,
+            color_flows=color_flows,
+            precision=precision,
+            include_values=include_values,
+            **selector_arguments,
+        )
+        if not isinstance(payload, Mapping):
+            raise EvaluationError("native repeated runtime profile is not a mapping")
         return cast(Mapping[str, object], dict(payload))
 
     def evaluate_profile(
@@ -347,6 +776,8 @@ class RusticolRuntimeBackend:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[str] | None = None,
+        color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
         include_values: bool = False,
     ) -> Mapping[str, object]:
@@ -354,6 +785,8 @@ class RusticolRuntimeBackend:
             momenta,
             helicities=helicities,
             color_flows=color_flows,
+            helicity_by_point=helicity_by_point,
+            color_flow_by_point=color_flow_by_point,
             precision=precision,
             include_values=include_values,
         )
@@ -362,7 +795,7 @@ class RusticolRuntimeBackend:
         self,
         color_flows: Sequence[str] | None,
     ) -> tuple[str, ...] | None:
-        if color_flows is None:
+        if color_flows is None or not color_flows:
             return None
         available = self.physics.color_ids
         resolved: list[str] = []
@@ -533,6 +966,9 @@ def load_runtime_backend(
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
     parameters = dict(model_parameters) if model_parameters is not None else None
     module = _load_native_module()
+    manifest = (
+        load_manifest(path) if (path / MANIFEST_NAME).is_file() else None
+    )
     runtime = _invoke(
         module,
         module.Runtime.load,
@@ -541,7 +977,7 @@ def load_runtime_backend(
         model_parameters=parameters,
         mute_warnings=mute_warnings,
     )
-    return RusticolRuntimeBackend(runtime, module, path)
+    return RusticolRuntimeBackend(runtime, module, path, manifest)
 
 
 __all__ = ["RusticolRuntimeBackend", "load_runtime_backend"]

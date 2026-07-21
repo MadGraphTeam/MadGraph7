@@ -234,8 +234,10 @@ def assign_recursive_current_evaluation_reuse(
     vector of model-certified kernel terms and coefficients is byte-exactly
     equal or opposite to the representative vector.  The current contract
     keeps every field consumed by source, kernel, and propagator evaluation;
-    only colour bookkeeping, ordering metadata, and ancestry bit allocation
-    are deliberately excluded.
+    colour bookkeeping, ordering metadata, and ancestry bit allocation are
+    deliberately excluded. Ordering may differ only through the exact
+    model-certified input permutation and reflection factors included in the
+    term signature below.
 
     This recovers AmpliCol-style reflection fan-out, but also recognizes exact
     reuse across colour sectors and helicity subgraphs.  No approximate

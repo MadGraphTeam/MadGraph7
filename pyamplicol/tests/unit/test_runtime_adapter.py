@@ -11,6 +11,10 @@ from typing import Any
 
 import pytest
 
+from pyamplicol._internal.versions import (
+    COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    SYMJIT_F64_RUNTIME_CAPABILITY,
+)
 from pyamplicol.api import (
     ArtifactError,
     ColorFlow,
@@ -23,7 +27,8 @@ from pyamplicol.api import (
     Runtime,
     RuntimeBackend,
 )
-from pyamplicol.api.errors import EvaluationError
+from pyamplicol.api.errors import CompatibilityError, EvaluationError
+from pyamplicol.artifacts import ArtifactManifest
 
 
 def _native_physics(accuracy: str = "lc") -> SimpleNamespace:
@@ -115,6 +120,8 @@ class _NativeRuntime:
     load_arguments: tuple[object, ...] | None = None
     execution_mode = "compiled"
     last_evaluate_options: dict[str, object] | None = None
+    last_benchmark_options: dict[str, object] | None = None
+    last_profile_options: dict[str, object] | None = None
 
     def __init__(self) -> None:
         self.parameter_updates: list[dict[str, complex | float | int]] = []
@@ -147,6 +154,22 @@ class _NativeRuntime:
             color_accuracy=accuracy,
         )
 
+    def _benchmark_f64_wall_time(
+        self, _momenta: object, _repetitions: int, **kwargs: object
+    ) -> float:
+        type(self).last_benchmark_options = dict(kwargs)
+        return 0.25
+
+    def profile(self, _momenta: object, **kwargs: object) -> dict[str, object]:
+        type(self).last_profile_options = dict(kwargs)
+        return {"wall_time_s": 0.25}
+
+    def profile_repeated(
+        self, _momenta: object, _repetitions: int, **kwargs: object
+    ) -> dict[str, object]:
+        type(self).last_profile_options = dict(kwargs)
+        return {"wall_time_s": 0.5}
+
     def set_model_parameters(self, mapping: dict[str, complex | float | int]) -> None:
         self.parameter_updates.append(mapping)
 
@@ -158,6 +181,28 @@ class _NativeRuntime:
 
     def take_warnings(self) -> list[str]:
         return ["native warning"]
+
+
+class _PreSelectorNativeRuntime(_NativeRuntime):
+    @classmethod
+    def load(cls, artifact: Path, **kwargs: object) -> _PreSelectorNativeRuntime:
+        cls.load_arguments = (artifact, kwargs)
+        return cls()
+
+    def evaluate(
+        self,
+        _momenta: object,
+        *,
+        helicities: object = None,
+        color_flows: object = None,
+        precision: int = 16,
+    ) -> list[object]:
+        type(self).last_evaluate_options = {
+            "helicities": helicities,
+            "color_flows": color_flows,
+            "precision": precision,
+        }
+        return [2.0]
 
 
 class _ExactExecutor:
@@ -183,6 +228,57 @@ def _install_native(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     module.ArtifactError = _NativeArtifactError  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return module
+
+
+def _selector_manifest(
+    tmp_path: Path,
+    *,
+    capabilities: tuple[str, ...],
+) -> ArtifactManifest:
+    physics_path = Path("processes/uux_g/physics.json")
+    destination = tmp_path / physics_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(
+            {
+                "extensions": {
+                    "runtime_selectors": {
+                        "axes": {
+                            "helicity": {
+                                "runtime_contract": "complete-reusable"
+                            },
+                            "color_flow": {
+                                "runtime_contract": "complete-reusable"
+                            },
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "artifact.json").write_text("{}", encoding="utf-8")
+    process = {
+        "id": "uux_g",
+        "physics_path": physics_path.as_posix(),
+        "required_runtime_capabilities": capabilities,
+        "aliases": (),
+    }
+    return ArtifactManifest(
+        root=tmp_path,
+        kind="pyamplicol-process",
+        artifact_id="0" * 64,
+        created_utc="2026-07-21T00:00:00Z",
+        producer={},
+        model={},
+        configuration={},
+        processes=(process,),
+        default_process_id="uux_g",
+        runtime={"required_runtime_capabilities": capabilities},
+        payloads=(),
+        dependencies=(),
+        extensions={},
+    )
 
 
 def test_runtime_discovery_does_not_import_native_extension(
@@ -294,6 +390,153 @@ def test_adapter_accepts_one_based_color_flow_ordinals(
     assert _NativeRuntime.last_evaluate_options["color_flows"] == ("c0",)
     with pytest.raises(EvaluationError, match=r"choose 1\.\.1"):
         backend.evaluate([], color_flows=("2",))
+
+
+def test_adapter_resolves_per_point_selector_ids_to_native_indices(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_native(monkeypatch)
+    from pyamplicol.runtime import load_runtime_backend
+
+    _NativeRuntime.physics_value = _native_physics("lc")
+    _NativeRuntime.last_evaluate_options = None
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+
+    backend.evaluate(
+        [(), ()],
+        helicity_by_point=("h0", "h0"),
+        color_flow_by_point=("1", "c0"),
+    )
+
+    assert _NativeRuntime.last_evaluate_options is not None
+    assert _NativeRuntime.last_evaluate_options["helicity_by_point"] == (0, 0)
+    assert _NativeRuntime.last_evaluate_options["color_flow_by_point"] == (0, 0)
+    with pytest.raises(EvaluationError, match=r"helicity_by_point\[1\]"):
+        backend.evaluate(
+            [(), ()],
+            helicity_by_point=("h0", "missing"),
+        )
+
+
+def test_adapter_requires_selector_capability_for_reusable_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(
+        tmp_path,
+        capabilities=(SYMJIT_F64_RUNTIME_CAPABILITY,),
+    )
+    monkeypatch.setattr(backend_module, "load_manifest", lambda _path: manifest)
+
+    with pytest.raises(
+        CompatibilityError,
+        match=r"declares reusable runtime selectors.*does not require",
+    ):
+        backend_module.load_runtime_backend(tmp_path, process="uux_g")
+
+
+def test_adapter_checks_native_selector_callable_against_capability(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _install_native(monkeypatch)
+    module.Runtime = _PreSelectorNativeRuntime  # type: ignore[attr-defined]
+    import pyamplicol.runtime.backend as backend_module
+
+    capabilities = (
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        SYMJIT_F64_RUNTIME_CAPABILITY,
+    )
+    manifest = _selector_manifest(tmp_path, capabilities=capabilities)
+    monkeypatch.setattr(backend_module, "load_manifest", lambda _path: manifest)
+
+    with pytest.raises(
+        CompatibilityError,
+        match="installed native runtime does not accept per-point selectors",
+    ):
+        backend_module.load_runtime_backend(tmp_path, process="uux_g")
+
+
+def test_adapter_does_not_pass_selector_keywords_when_axes_are_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _install_native(monkeypatch)
+    module.Runtime = _PreSelectorNativeRuntime  # type: ignore[attr-defined]
+    from pyamplicol.runtime import load_runtime_backend
+
+    _PreSelectorNativeRuntime.last_evaluate_options = None
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+
+    assert backend.evaluate(
+        [],
+        helicities=(),
+        color_flows=(),
+        helicity_by_point=(),
+        color_flow_by_point=(),
+    ) == (2.0 + 0.0j,)
+    assert _PreSelectorNativeRuntime.last_evaluate_options == {
+        "helicities": None,
+        "color_flows": None,
+        "precision": 16,
+    }
+
+    with pytest.raises(CompatibilityError, match="does not support per-point"):
+        backend.evaluate([()], helicity_by_point=("h0",))
+
+
+def test_native_wall_timer_resolves_per_point_selectors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_native(monkeypatch)
+    from pyamplicol.runtime import load_runtime_backend
+
+    _NativeRuntime.physics_value = _native_physics("lc")
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+    elapsed = backend._benchmark_f64_wall_time(
+        ((), ()),
+        3,
+        helicity_by_point=("h0", "h0"),
+        color_flow_by_point=("1", "c0"),
+    )
+
+    assert elapsed == 0.25
+    assert _NativeRuntime.last_benchmark_options == {
+        "helicities": None,
+        "color_flows": None,
+        "precision": 16,
+        "helicity_by_point": (0, 0),
+        "color_flow_by_point": (0, 0),
+    }
+
+
+def test_native_profile_resolves_per_point_selectors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_native(monkeypatch)
+    from pyamplicol.runtime import load_runtime_backend
+
+    _NativeRuntime.physics_value = _native_physics("lc")
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+    payload = backend.profile_repeated(
+        ((), ()),
+        3,
+        helicity_by_point=("h0", "h0"),
+        color_flow_by_point=("1", "c0"),
+    )
+
+    assert payload == {"wall_time_s": 0.5}
+    assert _NativeRuntime.last_profile_options == {
+        "helicities": None,
+        "color_flows": None,
+        "precision": 16,
+        "include_values": False,
+        "helicity_by_point": (0, 0),
+        "color_flow_by_point": (0, 0),
+    }
 
 
 def test_adapter_maps_contracted_color_and_native_errors(

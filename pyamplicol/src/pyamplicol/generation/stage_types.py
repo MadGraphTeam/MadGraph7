@@ -40,9 +40,19 @@ class GenericStageOutputSlot:
     component_stop: int
     output_start: int
     output_stop: int
+    selector_domain_ids: tuple[int, ...] = field(
+        default=(),
+        repr=False,
+        compare=False,
+    )
+    color_selector_domain_ids: tuple[int, ...] = field(
+        default=(),
+        repr=False,
+        compare=False,
+    )
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "value_slot_id": self.value_slot_id,
             "current_id": self.current_id,
             "variant": self.variant,
@@ -51,6 +61,11 @@ class GenericStageOutputSlot:
             "output_start": self.output_start,
             "output_stop": self.output_stop,
         }
+        if self.color_selector_domain_ids:
+            result["color_selector_domain_ids"] = list(
+                self.color_selector_domain_ids
+            )
+        return result
 
 
 @dataclass(frozen=True)
@@ -82,6 +97,11 @@ class GenericCompiledStageBlueprint:
     fanout_chunk_size: int | None = None
     fanout_evaluation_occurrences_before: int | None = None
     fanout_evaluation_occurrences_after: int | None = None
+    selector_output_partitions: tuple[tuple[int, int], ...] = field(
+        default=(),
+        repr=False,
+        compare=False,
+    )
     parameter_symbols: tuple[Any, ...] = field(
         default=(),
         repr=False,

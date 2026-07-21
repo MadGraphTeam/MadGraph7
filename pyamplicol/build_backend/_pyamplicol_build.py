@@ -147,6 +147,7 @@ _INJECTION_ENVIRONMENT_NAMES = {
     "OBJC_INCLUDE_PATH",
     "PKG_CONFIG_PATH",
     "PYAMPLICOL_BUILD_OVERLAY",
+    "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP",
     "PYAMPLICOL_SDK_STAGING",
     "PYTHONHOME",
     "PYTHONPATH",
@@ -162,6 +163,42 @@ _INJECTION_ENVIRONMENT_PREFIXES = (
 )
 _Result = TypeVar("_Result")
 _delegation_depth = 0
+
+
+def _prepared_model_bootstrap(mode: str) -> bool:
+    """Return whether this non-publishable build only bootstraps pack creation."""
+
+    value = os.environ.get("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", "0")
+    if value not in {"0", "1"}:
+        raise RuntimeError(
+            "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP must be either '0' or '1'"
+        )
+    if value == "1" and mode != "candidate":
+        raise RuntimeError(
+            "prepared-model bootstrap is restricted to non-publishable candidate "
+            "builds"
+        )
+    return value == "1"
+
+
+def _strip_prepared_model_payloads(overlay: Path) -> None:
+    """Remove stale bundles from a candidate wheel used only to create replacements."""
+
+    root = overlay / "src" / "pyamplicol" / "assets" / "prepared_models"
+    if not root.is_dir() or root.is_symlink():
+        raise RuntimeError("prepared-model bootstrap input has no safe asset directory")
+    for path in root.iterdir():
+        if path.name == "__init__.py":
+            continue
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(
+                f"prepared-model bootstrap found an unsafe asset entry: {path.name}"
+            )
+        if path.suffix not in {".json", ".pyamplicol-model"}:
+            raise RuntimeError(
+                f"prepared-model bootstrap found an unexpected asset: {path.name}"
+            )
+        path.unlink()
 
 
 def _build_mode() -> str:
@@ -980,6 +1017,7 @@ def _from_overlay(
 ) -> _Result:
     with _delegating():
         mode = _build_mode()
+        prepared_model_bootstrap = _prepared_model_bootstrap(mode)
         _check_dependencies(mode)
         with _overlay(mode) as (overlay, target_dir):
             environment = {
@@ -997,7 +1035,10 @@ def _from_overlay(
                     _stage_packaged_examples(overlay)
                     _stage_python_stub(overlay)
                     _stage_runtime_resources(overlay)
-                    stage_packaged_prepared_models(overlay, mode)
+                    if prepared_model_bootstrap:
+                        _strip_prepared_model_payloads(overlay)
+                    else:
+                        stage_packaged_prepared_models(overlay, mode)
                     sdk = build_sdk(overlay, target_dir)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")

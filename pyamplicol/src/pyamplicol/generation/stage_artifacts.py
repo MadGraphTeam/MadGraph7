@@ -13,6 +13,7 @@ import numpy as np
 
 from .._internal.physics.parameters import ParamBuilder
 from .._internal.physics.symbols import symbols
+from .._internal.versions import COMPILED_RUNTIME_SELECTORS_CAPABILITY
 from ..evaluators.execution_schema import (
     aggregate_runtime_capabilities,
     evaluator_runtime_capabilities,
@@ -367,11 +368,18 @@ def _finalize_stage_evaluator_payload(
     evaluator_manifests = [
         _dict(payload["evaluator"]) for payload in (*stage_payloads, amplitude_payload)
     ]
+    required_runtime_capabilities = set(
+        aggregate_runtime_capabilities(evaluator_manifests)
+    )
+    if any(
+        slot.selector_domain_ids or slot.color_selector_domain_ids
+        for stage in (*blueprint.stages, blueprint.amplitude_stage)
+        for slot in stage.output_slots
+    ):
+        required_runtime_capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
     return {
         "kind": "generic-dag-stage-evaluator-artifacts",
-        "required_runtime_capabilities": list(
-            aggregate_runtime_capabilities(evaluator_manifests)
-        ),
+        "required_runtime_capabilities": sorted(required_runtime_capabilities),
         "runtime_available": True,
         "runtime_unavailable_message": None,
         "parameter_count": 0 if stage_local_layout else blueprint.parameter_count,
@@ -670,6 +678,7 @@ def _compile_default_stage_evaluator(
                 (function, arguments): body
                 for function, arguments, body in stage.symbolica_functions
             },
+            output_partitions=stage.selector_output_partitions,
         )
 
     autotune_timing: dict[str, float] = {}

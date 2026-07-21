@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import os
 from collections.abc import Iterable, Sequence
 from decimal import Decimal
@@ -190,7 +191,43 @@ def _selector_ids(
             raise TypeError(f"{name} selectors must be IDs or {expected_type.__name__}")
     if len(set(identifiers)) != len(identifiers):
         raise ValueError(f"{name} selectors must be unique")
-    return tuple(identifiers)
+    return tuple(identifiers) or None
+
+
+def _point_selector_ids(
+    values: Sequence[str | HelicityConfiguration | ColorFlow] | None,
+    *,
+    expected_type: type[HelicityConfiguration] | type[ColorFlow],
+    name: str,
+) -> tuple[str, ...] | None:
+    if values is None:
+        return None
+    identifiers: list[str] = []
+    for value in values:
+        if isinstance(value, str) and value:
+            identifiers.append(value)
+        elif isinstance(value, expected_type):
+            identifiers.append(value.id)
+        else:
+            raise TypeError(
+                f"{name} selectors must be IDs or {expected_type.__name__}"
+            )
+    return tuple(identifiers) or None
+
+
+def _accepts_keyword_arguments(operation: object, *names: str) -> bool:
+    if not callable(operation):
+        return False
+    try:
+        parameters = inspect.signature(operation).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    declared = {parameter.name for parameter in parameters}
+    accepts_arbitrary = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+    return accepts_arbitrary or all(name in declared for name in names)
 
 
 class Generator:
@@ -258,8 +295,18 @@ class Generator:
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
         process_set = _process_set(processes)
-        self._resolve_generation_resources()
         destination = Path(os.fspath(output)).expanduser().resolve(strict=False)
+        if destination.exists() and not destination.is_dir():
+            raise GenerationError(
+                f"artifact destination is not a directory: {destination}"
+            )
+        if mode == "error" and destination.exists():
+            raise FileExistsError(f"artifact already exists: {destination}")
+        if mode == "append" and not destination.is_dir():
+            raise FileNotFoundError(
+                f"cannot append to missing artifact: {destination}"
+            )
+        self._resolve_generation_resources()
         result = self._implementation().generate(
             process_set, destination, model=model, mode=mode
         )
@@ -317,6 +364,8 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
+        helicity_by_point: Sequence[str | HelicityConfiguration] | None = None,
+        color_flow_by_point: Sequence[str | ColorFlow] | None = None,
         precision: int = 16,
     ) -> tuple[complex | Decimal, ...]:
         """Return one fully summed matrix element for every input point.
@@ -326,21 +375,62 @@ class Runtime:
         use the retained high-precision evaluator state when available.
         """
 
-        precision = _validate_precision(precision)
-        values = self._backend.evaluate(
-            momenta,
-            helicities=_selector_ids(
-                helicities,
-                expected_type=HelicityConfiguration,
-                name="helicity",
-            ),
-            color_flows=_selector_ids(
-                color_flows,
-                expected_type=ColorFlow,
-                name="color-flow",
-            ),
-            precision=precision,
+        helicity_ids = _selector_ids(
+            helicities,
+            expected_type=HelicityConfiguration,
+            name="helicity",
         )
+        color_ids = _selector_ids(
+            color_flows,
+            expected_type=ColorFlow,
+            name="color-flow",
+        )
+        point_helicity_ids = _point_selector_ids(
+            helicity_by_point,
+            expected_type=HelicityConfiguration,
+            name="per-point helicity",
+        )
+        point_color_ids = _point_selector_ids(
+            color_flow_by_point,
+            expected_type=ColorFlow,
+            name="per-point color-flow",
+        )
+        if helicity_ids is not None and point_helicity_ids is not None:
+            raise ValueError(
+                "helicities and helicity_by_point are mutually exclusive"
+            )
+        if color_ids is not None and point_color_ids is not None:
+            raise ValueError(
+                "color_flows and color_flow_by_point are mutually exclusive"
+            )
+        precision = _validate_precision(precision)
+        if point_helicity_ids is None and point_color_ids is None:
+            values = self._backend.evaluate(
+                momenta,
+                helicities=helicity_ids,
+                color_flows=color_ids,
+                precision=precision,
+            )
+        else:
+            operation = self._backend.evaluate
+            if not _accepts_keyword_arguments(
+                operation,
+                "helicity_by_point",
+                "color_flow_by_point",
+            ):
+                raise EvaluationError(
+                    "runtime backend does not support per-point helicity/color-flow "
+                    "selectors; use batch-global selectors or install a "
+                    "selector-capable backend"
+                )
+            values = cast(Any, operation)(
+                momenta,
+                helicities=helicity_ids,
+                color_flows=color_ids,
+                helicity_by_point=point_helicity_ids,
+                color_flow_by_point=point_color_ids,
+                precision=precision,
+            )
         return tuple(
             value if isinstance(value, Decimal) else complex(value) for value in values
         )

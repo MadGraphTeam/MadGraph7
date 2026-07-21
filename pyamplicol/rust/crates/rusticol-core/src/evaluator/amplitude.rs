@@ -3,11 +3,40 @@
 use super::super::*;
 use super::*;
 
+fn remap_amplitude_outputs(
+    batch_size: usize,
+    evaluator_output_order: &[usize],
+    evaluator_outputs: &[Complex<f64>],
+    canonical_outputs: &mut Vec<Complex<f64>>,
+) -> RusticolResult<()> {
+    let output_length = evaluator_output_order.len();
+    let expected = batch_size
+        .checked_mul(output_length)
+        .ok_or_else(|| RusticolError::invalid_argument("amplitude output length overflows"))?;
+    if evaluator_outputs.len() != expected {
+        return Err(RusticolError::integrity(
+            "amplitude evaluator output mapping has an inconsistent buffer length",
+        ));
+    }
+    canonical_outputs.clear();
+    canonical_outputs.resize(expected, c64(0.0, 0.0));
+    for row in 0..batch_size {
+        let row_offset = row * output_length;
+        for (evaluator_output, canonical_output) in
+            evaluator_output_order.iter().copied().enumerate()
+        {
+            canonical_outputs[row_offset + canonical_output] =
+                evaluator_outputs[row_offset + evaluator_output];
+        }
+    }
+    Ok(())
+}
+
 impl AmplitudeRuntime {
     pub(crate) fn load(
         amplitude_stage: &GenericAmplitudeStageManifest,
         stage: &GenericSerializedStageEvaluatorManifest,
-        root: &Path,
+        payloads: &EvaluatorPayloadStore,
     ) -> RusticolResult<Self> {
         if stage.stage_kind != "amplitude-roots" {
             return Err(RusticolError::invalid_argument(
@@ -61,6 +90,54 @@ impl AmplitudeRuntime {
             } else {
                 (None, Vec::new())
             };
+        let mut evaluator_output_order = vec![usize::MAX; stage.output_length];
+        let mut canonical_outputs = vec![false; stage.output_length];
+        for slot in &stage.output_slots {
+            let output_len = slot
+                .output_stop
+                .checked_sub(slot.output_start)
+                .ok_or_else(|| {
+                    RusticolError::artifact("amplitude evaluator has an invalid output range")
+                })?;
+            let component_len = slot
+                .component_stop
+                .checked_sub(slot.component_start)
+                .ok_or_else(|| {
+                    RusticolError::artifact("amplitude evaluator has an invalid component range")
+                })?;
+            if output_len != component_len {
+                return Err(RusticolError::artifact(
+                    "amplitude evaluator output and component ranges disagree",
+                ));
+            }
+            for offset in 0..output_len {
+                let evaluator_output = slot.output_start + offset;
+                let canonical_output = slot.component_start + offset;
+                if evaluator_output >= stage.output_length
+                    || canonical_output >= stage.output_length
+                    || evaluator_output_order[evaluator_output] != usize::MAX
+                    || canonical_outputs[canonical_output]
+                {
+                    return Err(RusticolError::artifact(
+                        "amplitude evaluator output mapping is not a permutation",
+                    ));
+                }
+                evaluator_output_order[evaluator_output] = canonical_output;
+                canonical_outputs[canonical_output] = true;
+            }
+        }
+        if evaluator_output_order.contains(&usize::MAX)
+            || canonical_outputs.iter().any(|covered| !covered)
+        {
+            return Err(RusticolError::artifact(
+                "amplitude evaluator output mapping is incomplete",
+            ));
+        }
+        let evaluator_output_order = evaluator_output_order
+            .iter()
+            .enumerate()
+            .any(|(index, output)| index != *output)
+            .then_some(evaluator_output_order);
         Ok(Self {
             output_length: amplitude_stage.output_count,
             raw_sum_weights,
@@ -72,8 +149,10 @@ impl AmplitudeRuntime {
             input_components,
             input_spans,
             parameter_scratch_f64: Vec::new(),
+            evaluator_output_scratch_f64: Vec::new(),
             output_scratch_f64: Vec::new(),
-            evaluator: EvaluatorGroup::load(&stage.evaluator, root)?,
+            evaluator_output_order,
+            evaluator: EvaluatorGroup::load_from_store(&stage.evaluator, payloads)?,
         })
     }
 
@@ -109,17 +188,79 @@ impl AmplitudeRuntime {
             }
             let input_pack_s = pack_start.elapsed().as_secs_f64();
             let eval_start = Instant::now();
-            self.evaluator.evaluate_batch_into(
-                batch_size,
-                &self.parameter_scratch_f64,
-                &mut self.output_scratch_f64,
-            )?;
+            if let Some(order) = self.evaluator_output_order.as_deref() {
+                self.evaluator.evaluate_batch_into(
+                    batch_size,
+                    &self.parameter_scratch_f64,
+                    &mut self.evaluator_output_scratch_f64,
+                )?;
+                remap_amplitude_outputs(
+                    batch_size,
+                    order,
+                    &self.evaluator_output_scratch_f64,
+                    &mut self.output_scratch_f64,
+                )?;
+            } else {
+                self.evaluator.evaluate_batch_into(
+                    batch_size,
+                    &self.parameter_scratch_f64,
+                    &mut self.output_scratch_f64,
+                )?;
+            }
             return Ok((input_pack_s, eval_start.elapsed().as_secs_f64()));
         }
         let eval_start = Instant::now();
-        self.evaluator
-            .evaluate_batch_into(batch_size, state, &mut self.output_scratch_f64)?;
+        if let Some(order) = self.evaluator_output_order.as_deref() {
+            self.evaluator.evaluate_batch_into(
+                batch_size,
+                state,
+                &mut self.evaluator_output_scratch_f64,
+            )?;
+            remap_amplitude_outputs(
+                batch_size,
+                order,
+                &self.evaluator_output_scratch_f64,
+                &mut self.output_scratch_f64,
+            )?;
+        } else {
+            self.evaluator
+                .evaluate_batch_into(batch_size, state, &mut self.output_scratch_f64)?;
+        }
         Ok((0.0, eval_start.elapsed().as_secs_f64()))
+    }
+
+    pub(crate) fn evaluate_active_chunks_f64_into_scratch(
+        &mut self,
+        batch_size: usize,
+        state: &[Complex<f64>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<(f64, f64)> {
+        if let Some(order) = self.evaluator_output_order.as_deref() {
+            let timing = self.evaluator.evaluate_selected_chunks_f64_into_output(
+                batch_size,
+                state,
+                self.input_components.as_deref(),
+                &self.input_spans,
+                &mut self.evaluator_output_scratch_f64,
+                active_chunk_indices,
+            )?;
+            remap_amplitude_outputs(
+                batch_size,
+                order,
+                &self.evaluator_output_scratch_f64,
+                &mut self.output_scratch_f64,
+            )?;
+            Ok(timing)
+        } else {
+            self.evaluator.evaluate_selected_chunks_f64_into_output(
+                batch_size,
+                state,
+                self.input_components.as_deref(),
+                &self.input_spans,
+                &mut self.output_scratch_f64,
+                active_chunk_indices,
+            )
+        }
     }
 
     pub(crate) fn reduce_scratch_f64_into_selected(
@@ -229,7 +370,226 @@ impl AmplitudeRuntime {
         }
         let helicity_count = physics.manifest.helicities.len();
         let color_count = physics.manifest.color_components.len();
-        let mut full_values = vec![0.0; batch_size * helicity_count * color_count];
+        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let mut selected_helicity_positions = vec![None; helicity_count];
+        for (position, index) in helicity_indices.iter().copied().enumerate() {
+            selected_helicity_positions[index] = Some(position);
+        }
+        let mut selected_color_positions = vec![None; color_count];
+        for (position, index) in color_indices.iter().copied().enumerate() {
+            selected_color_positions[index] = Some(position);
+        }
+        let selected_component_count = helicity_indices
+            .len()
+            .checked_mul(color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        let mut values = vec![0.0; batch_size * selected_component_count];
+
+        if let Some(contraction) = self.color_contraction.as_mut() {
+            if color_count != 1 || !physics.has_contracted_color_axis() {
+                return Err(RusticolError::invalid_argument(
+                    "resolved NLC/full evaluation requires one contracted color component",
+                ));
+            }
+            if self.raw_sum_groups.len() != contraction.group_count {
+                return Err(RusticolError::invalid_argument(
+                    "colour contraction group count does not match coherent groups",
+                ));
+            }
+            let selected_contracted_color_position = selected_color_positions[0];
+            let mut selected_helicity_weights_by_entry =
+                Vec::with_capacity(contraction.entries.len());
+            for entry in &contraction.entries {
+                let left_group = &self.raw_sum_groups[entry.left_group_index];
+                let right_group = &self.raw_sum_groups[entry.right_group_index];
+                let left_reduction = physics
+                    .reduction_by_group_id
+                    .get(&left_group.id)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(format!(
+                            "resolved metadata is missing coherent group {}",
+                            left_group.id
+                        ))
+                    })?;
+                let right_reduction = physics
+                    .reduction_by_group_id
+                    .get(&right_group.id)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(format!(
+                            "resolved metadata is missing coherent group {}",
+                            right_group.id
+                        ))
+                    })?;
+                if left_reduction.physical_helicity_ids != right_reduction.physical_helicity_ids {
+                    return Err(RusticolError::invalid_argument(
+                        "colour contraction mixed distinct physical helicities",
+                    ));
+                }
+                let left_weights = physics.normalized_helicity_weights(left_reduction)?;
+                let right_weights = physics.normalized_helicity_weights(right_reduction)?;
+                if left_weights.len() != right_weights.len()
+                    || left_weights.iter().zip(&right_weights).any(
+                        |((left_index, left_weight), (right_index, right_weight))| {
+                            left_index != right_index
+                                || left_weight.to_bits() != right_weight.to_bits()
+                        },
+                    )
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "colour contraction groups have inconsistent helicity weights",
+                    ));
+                }
+                selected_helicity_weights_by_entry.push(
+                    left_weights
+                        .into_iter()
+                        .filter_map(|(helicity_index, weight)| {
+                            selected_helicity_positions[helicity_index]
+                                .map(|position| (position, weight))
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            }
+            contraction
+                .group_scratch_f64
+                .resize(batch_size * contraction.group_count, c64(0.0, 0.0));
+            for row in 0..batch_size {
+                let row_offset = row * self.output_length;
+                let group_row = row * contraction.group_count;
+                for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                    let mut sum = c64(0.0, 0.0);
+                    for index in &group.indices {
+                        sum += amplitudes[row_offset + *index];
+                    }
+                    contraction.group_scratch_f64[group_row + group_index] = sum;
+                }
+                for (entry, left_weights) in contraction
+                    .entries
+                    .iter()
+                    .zip(&selected_helicity_weights_by_entry)
+                {
+                    let left = contraction.group_scratch_f64[group_row + entry.left_group_index];
+                    let right = contraction.group_scratch_f64[group_row + entry.right_group_index];
+                    let product = left * right.conj();
+                    let contribution = normalization_factor
+                        * entry.symmetry_factor
+                        * (entry.weight_re * product.re - entry.weight_im * product.im);
+                    let Some(color_position) = selected_contracted_color_position else {
+                        continue;
+                    };
+                    for (helicity_position, weight) in left_weights {
+                        values[row * selected_component_count
+                            + *helicity_position * color_indices.len()
+                            + color_position] += contribution * weight;
+                    }
+                }
+            }
+        } else {
+            if !self.has_coherent_groups {
+                return Err(RusticolError::invalid_argument(
+                    "resolved evaluation requires coherent amplitude-group metadata",
+                ));
+            }
+            let mut selected_member_weights_by_group =
+                Vec::with_capacity(self.raw_sum_groups.len());
+            for group in &self.raw_sum_groups {
+                let reduction = physics
+                    .reduction_by_group_id
+                    .get(&group.id)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(format!(
+                            "resolved metadata is missing coherent group {}",
+                            group.id
+                        ))
+                    })?;
+                selected_member_weights_by_group.push(
+                    physics
+                        .normalized_member_weights(reduction)?
+                        .into_iter()
+                        .filter_map(|(helicity_index, color_index, weight)| {
+                            Some((
+                                selected_helicity_positions[helicity_index]?,
+                                selected_color_positions[color_index]?,
+                                weight,
+                            ))
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            }
+            for row in 0..batch_size {
+                let row_offset = row * self.output_length;
+                for (group, member_weights) in self
+                    .raw_sum_groups
+                    .iter()
+                    .zip(&selected_member_weights_by_group)
+                {
+                    let mut sum = c64(0.0, 0.0);
+                    for index in &group.indices {
+                        sum += amplitudes[row_offset + *index];
+                    }
+                    let contribution = normalization_factor
+                        * group.all_sector_weight
+                        * (sum.re * sum.re + sum.im * sum.im);
+                    for (helicity_position, color_position, weight) in member_weights {
+                        values[row * selected_component_count
+                            + *helicity_position * color_indices.len()
+                            + *color_position] += contribution * weight;
+                    }
+                }
+            }
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count: batch_size,
+            helicity_indices,
+            color_indices,
+        })
+    }
+
+    /// Reduce amplitudes evaluated for one physical runtime-helicity domain.
+    ///
+    /// The ordinary resolved reducer distributes one representative amplitude
+    /// over every proof-equivalent physical helicity.  A materialized
+    /// recurrence artifact instead reevaluates that representative with the
+    /// requested source states, so the selected helicity receives the full
+    /// contribution.  Colour symmetry weights remain distributed over their
+    /// physical components exactly as in the ordinary resolved contract.
+    pub(crate) fn reduce_scratch_f64_for_materialized_helicity(
+        &mut self,
+        batch_size: usize,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        helicity_index: usize,
+        root_factors: &[Option<Complex<f64>>],
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let amplitudes = &self.output_scratch_f64;
+        if amplitudes.len() != batch_size * self.output_length {
+            return Err(RusticolError::invalid_argument(format!(
+                "generic amplitude output buffer has length {}, expected {}",
+                amplitudes.len(),
+                batch_size * self.output_length
+            )));
+        }
+        if root_factors.len() != self.output_length {
+            return Err(RusticolError::integrity(format!(
+                "helicity recurrence route table has {} roots, expected {}",
+                root_factors.len(),
+                self.output_length
+            )));
+        }
+        let helicity = physics
+            .manifest
+            .helicities
+            .get(helicity_index)
+            .ok_or_else(|| {
+                RusticolError::selector(format!(
+                    "runtime helicity index {helicity_index} is out of range"
+                ))
+            })?;
+        let color_count = physics.manifest.color_components.len();
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let mut full_values = vec![0.0; batch_size * color_count];
 
         if let Some(contraction) = self.color_contraction.as_mut() {
             if color_count != 1 || !physics.has_contracted_color_axis() {
@@ -245,77 +605,260 @@ impl AmplitudeRuntime {
             contraction
                 .group_scratch_f64
                 .resize(batch_size * contraction.group_count, c64(0.0, 0.0));
-            for row in 0..batch_size {
+            let mut group_active = vec![false; contraction.group_count];
+            for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                let reduction = physics
+                    .reduction_by_group_id
+                    .get(&group.id)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(format!(
+                            "resolved metadata is missing coherent group {}",
+                            group.id
+                        ))
+                    })?;
+                group_active[group_index] = reduction
+                    .physical_helicity_ids
+                    .iter()
+                    .any(|id| id == &helicity.id)
+                    && group
+                        .indices
+                        .iter()
+                        .any(|index| root_factors[*index].is_some());
+            }
+            for (row, full_value) in full_values.iter_mut().enumerate().take(batch_size) {
                 let row_offset = row * self.output_length;
                 let group_row = row * contraction.group_count;
                 for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
                     let mut sum = c64(0.0, 0.0);
-                    for index in &group.indices {
-                        sum += amplitudes[row_offset + *index];
+                    if group_active[group_index] {
+                        for index in &group.indices {
+                            if let Some(factor) = root_factors[*index] {
+                                sum += amplitudes[row_offset + *index] * factor;
+                            }
+                        }
                     }
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
                 for entry in &contraction.entries {
-                    let left_group = &self.raw_sum_groups[entry.left_group_index];
-                    let right_group = &self.raw_sum_groups[entry.right_group_index];
-                    let left_reduction = physics
-                        .reduction_by_group_id
-                        .get(&left_group.id)
-                        .ok_or_else(|| {
-                            RusticolError::invalid_argument(format!(
-                                "resolved metadata is missing coherent group {}",
-                                left_group.id
-                            ))
-                        })?;
-                    let right_reduction = physics
-                        .reduction_by_group_id
-                        .get(&right_group.id)
-                        .ok_or_else(|| {
-                            RusticolError::invalid_argument(format!(
-                                "resolved metadata is missing coherent group {}",
-                                right_group.id
-                            ))
-                        })?;
-                    if left_reduction.physical_helicity_ids != right_reduction.physical_helicity_ids
+                    if !group_active[entry.left_group_index]
+                        || !group_active[entry.right_group_index]
                     {
-                        return Err(RusticolError::invalid_argument(
-                            "colour contraction mixed distinct physical helicities",
-                        ));
-                    }
-                    let left_weights = physics.normalized_helicity_weights(left_reduction)?;
-                    let right_weights = physics.normalized_helicity_weights(right_reduction)?;
-                    if left_weights.len() != right_weights.len()
-                        || left_weights.iter().zip(&right_weights).any(
-                            |((left_index, left_weight), (right_index, right_weight))| {
-                                left_index != right_index
-                                    || left_weight.to_bits() != right_weight.to_bits()
-                            },
-                        )
-                    {
-                        return Err(RusticolError::invalid_argument(
-                            "colour contraction groups have inconsistent helicity weights",
-                        ));
+                        continue;
                     }
                     let left = contraction.group_scratch_f64[group_row + entry.left_group_index];
                     let right = contraction.group_scratch_f64[group_row + entry.right_group_index];
                     let product = left * right.conj();
-                    let contribution = normalization_factor
+                    *full_value += normalization_factor
                         * entry.symmetry_factor
                         * (entry.weight_re * product.re - entry.weight_im * product.im);
-                    for (helicity_index, weight) in left_weights {
-                        full_values[(row * helicity_count + helicity_index) * color_count] +=
-                            contribution * weight;
-                    }
                 }
             }
         } else {
             if !self.has_coherent_groups {
                 return Err(RusticolError::invalid_argument(
-                    "resolved evaluation requires coherent amplitude-group metadata",
+                    "materialized helicity reduction requires coherent amplitude-group metadata",
+                ));
+            }
+            let mut active_groups = Vec::new();
+            for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                let reduction = physics
+                    .reduction_by_group_id
+                    .get(&group.id)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(format!(
+                            "resolved metadata is missing coherent group {}",
+                            group.id
+                        ))
+                    })?;
+                if !reduction
+                    .physical_helicity_ids
+                    .iter()
+                    .any(|id| id == &helicity.id)
+                    || !group
+                        .indices
+                        .iter()
+                        .any(|index| root_factors[*index].is_some())
+                {
+                    continue;
+                }
+                let mut color_weights = reduction
+                    .physical_color_ids
+                    .iter()
+                    .map(|id| {
+                        let index = *physics.color_index_by_id.get(id).ok_or_else(|| {
+                            RusticolError::artifact(format!(
+                                "resolved reduction group {} references unknown color {id:?}",
+                                group.id
+                            ))
+                        })?;
+                        Ok((
+                            index,
+                            physics.manifest.color_components[index].coefficient(),
+                        ))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let total_color_weight =
+                    color_weights.iter().map(|(_, weight)| *weight).sum::<f64>();
+                if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
+                    return Err(RusticolError::artifact(format!(
+                        "resolved reduction group {} has no positive color weight",
+                        group.id
+                    )));
+                }
+                for (_, weight) in &mut color_weights {
+                    *weight /= total_color_weight;
+                }
+                active_groups.push((group_index, color_weights));
+            }
+            for row in 0..batch_size {
+                let row_offset = row * self.output_length;
+                let color_row = row * color_count;
+                for (group_index, color_weights) in &active_groups {
+                    let group = &self.raw_sum_groups[*group_index];
+                    let mut sum = c64(0.0, 0.0);
+                    for index in &group.indices {
+                        if let Some(factor) = root_factors[*index] {
+                            sum += amplitudes[row_offset + *index] * factor;
+                        }
+                    }
+                    let contribution = normalization_factor
+                        * group.all_sector_weight
+                        * (sum.re * sum.re + sum.im * sum.im);
+                    for (color_index, weight) in color_weights {
+                        full_values[color_row + *color_index] += contribution * *weight;
+                    }
+                }
+            }
+        }
+
+        let mut values = Vec::with_capacity(batch_size * color_indices.len());
+        for row in 0..batch_size {
+            for color_index in &color_indices {
+                values.push(full_values[row * color_count + *color_index]);
+            }
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count: batch_size,
+            helicity_indices: vec![helicity_index],
+            color_indices,
+        })
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn evaluate_materialized_helicity_generic<T>(
+        &mut self,
+        batch_size: usize,
+        state: &[Complex<T>],
+        binary_precision: Option<u32>,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        helicity_index: usize,
+        root_factors: &[Option<Complex<f64>>],
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<(ResolvedValues<T>, f64, f64, f64)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let (amplitudes, input_pack_s, evaluator_call_s) =
+            self.evaluate_outputs_generic(batch_size, state, binary_precision)?;
+        let reduction_start = Instant::now();
+        if root_factors.len() != self.output_length {
+            return Err(RusticolError::integrity(format!(
+                "helicity recurrence route table has {} roots, expected {}",
+                root_factors.len(),
+                self.output_length
+            )));
+        }
+        let helicity = physics
+            .manifest
+            .helicities
+            .get(helicity_index)
+            .ok_or_else(|| {
+                RusticolError::selector(format!(
+                    "runtime helicity index {helicity_index} is out of range"
+                ))
+            })?;
+        let color_count = physics.manifest.color_components.len();
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let mut full_values = vec![T::new_zero(); batch_size * color_count];
+
+        if let Some(contraction) = self.color_contraction.as_ref() {
+            if color_count != 1 || !physics.has_contracted_color_axis() {
+                return Err(RusticolError::invalid_argument(
+                    "resolved NLC/full evaluation requires one contracted color component",
+                ));
+            }
+            if self.raw_sum_groups.len() != contraction.group_count {
+                return Err(RusticolError::invalid_argument(
+                    "colour contraction group count does not match coherent groups",
+                ));
+            }
+            let mut group_active = vec![false; contraction.group_count];
+            for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                let reduction = physics
+                    .reduction_by_group_id
+                    .get(&group.id)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(format!(
+                            "resolved metadata is missing coherent group {}",
+                            group.id
+                        ))
+                    })?;
+                group_active[group_index] = reduction
+                    .physical_helicity_ids
+                    .iter()
+                    .any(|id| id == &helicity.id)
+                    && group
+                        .indices
+                        .iter()
+                        .any(|index| root_factors[*index].is_some());
+            }
+            let mut group_values = vec![complex_zero::<T>(); batch_size * contraction.group_count];
+            for row in 0..batch_size {
+                let row_offset = row * self.output_length;
+                let group_row = row * contraction.group_count;
+                for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                    if !group_active[group_index] {
+                        continue;
+                    }
+                    let mut sum = complex_zero::<T>();
+                    for index in &group.indices {
+                        let Some(factor) = root_factors[*index] else {
+                            continue;
+                        };
+                        sum += amplitudes[row_offset + *index].clone()
+                            * c_generic(T::from(factor.re), T::from(factor.im));
+                    }
+                    group_values[group_row + group_index] = sum;
+                }
+                for entry in &contraction.entries {
+                    if !group_active[entry.left_group_index]
+                        || !group_active[entry.right_group_index]
+                    {
+                        continue;
+                    }
+                    let left = &group_values[group_row + entry.left_group_index];
+                    let right = &group_values[group_row + entry.right_group_index];
+                    let product_re =
+                        left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
+                    let product_im =
+                        left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
+                    full_values[row] += T::from(normalization_factor * entry.symmetry_factor)
+                        * (T::from(entry.weight_re) * product_re
+                            - T::from(entry.weight_im) * product_im);
+                }
+            }
+        } else {
+            if !self.has_coherent_groups {
+                return Err(RusticolError::invalid_argument(
+                    "materialized helicity reduction requires coherent amplitude-group metadata",
                 ));
             }
             for row in 0..batch_size {
                 let row_offset = row * self.output_length;
+                let color_row = row * color_count;
                 for group in &self.raw_sum_groups {
                     let reduction =
                         physics
@@ -327,43 +870,72 @@ impl AmplitudeRuntime {
                                     group.id
                                 ))
                             })?;
-                    let mut sum = c64(0.0, 0.0);
-                    for index in &group.indices {
-                        sum += amplitudes[row_offset + *index];
-                    }
-                    let contribution = normalization_factor
-                        * group.all_sector_weight
-                        * (sum.re * sum.re + sum.im * sum.im);
-                    for (helicity_index, color_index, weight) in
-                        physics.normalized_member_weights(reduction)?
+                    if !reduction
+                        .physical_helicity_ids
+                        .iter()
+                        .any(|id| id == &helicity.id)
                     {
-                        full_values[(row * helicity_count + helicity_index) * color_count
-                            + color_index] += contribution * weight;
+                        continue;
+                    }
+                    let mut sum = complex_zero::<T>();
+                    for index in &group.indices {
+                        let Some(factor) = root_factors[*index] else {
+                            continue;
+                        };
+                        sum += amplitudes[row_offset + *index].clone()
+                            * c_generic(T::from(factor.re), T::from(factor.im));
+                    }
+                    let color_weights = reduction
+                        .physical_color_ids
+                        .iter()
+                        .map(|id| {
+                            let index = *physics.color_index_by_id.get(id).ok_or_else(|| {
+                                RusticolError::artifact(format!(
+                                    "resolved reduction group {} references unknown color {id:?}",
+                                    group.id
+                                ))
+                            })?;
+                            Ok((
+                                index,
+                                physics.manifest.color_components[index].coefficient(),
+                            ))
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()?;
+                    let total_color_weight =
+                        color_weights.iter().map(|(_, weight)| *weight).sum::<f64>();
+                    if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
+                        return Err(RusticolError::artifact(format!(
+                            "resolved reduction group {} has no positive color weight",
+                            group.id
+                        )));
+                    }
+                    let contribution = T::from(normalization_factor * group.all_sector_weight)
+                        * (sum.re.clone() * sum.re + sum.im.clone() * sum.im);
+                    for (color_index, weight) in color_weights {
+                        full_values[color_row + color_index] +=
+                            contribution.clone() * T::from(weight / total_color_weight);
                     }
                 }
             }
         }
 
-        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
-        let color_indices = physics.selected_color_indices(selected_color_ids)?;
-        let mut values =
-            Vec::with_capacity(batch_size * helicity_indices.len() * color_indices.len());
+        let mut values = Vec::with_capacity(batch_size * color_indices.len());
         for row in 0..batch_size {
-            for helicity_index in &helicity_indices {
-                for color_index in &color_indices {
-                    values.push(
-                        full_values
-                            [(row * helicity_count + *helicity_index) * color_count + *color_index],
-                    );
-                }
+            for color_index in &color_indices {
+                values.push(full_values[row * color_count + *color_index].clone());
             }
         }
-        Ok(ResolvedValues {
-            values,
-            point_count: batch_size,
-            helicity_indices,
-            color_indices,
-        })
+        Ok((
+            ResolvedValues {
+                values,
+                point_count: batch_size,
+                helicity_indices: vec![helicity_index],
+                color_indices,
+            },
+            input_pack_s,
+            evaluator_call_s,
+            reduction_start.elapsed().as_secs_f64(),
+        ))
     }
 
     #[cfg(feature = "symbolica-runtime")]

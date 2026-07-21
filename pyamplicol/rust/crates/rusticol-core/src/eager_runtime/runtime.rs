@@ -2,7 +2,7 @@
 
 use super::execute::{
     copy_selected_tile_amplitudes, copy_tile_amplitudes, copy_tile_results, execute_closures,
-    execute_stage, initialize_tile, reduce_tile,
+    execute_stage, initialize_tile, reduce_selected_tile, reduce_tile,
 };
 use super::plan::{
     ClosureExecutionRows, ComponentRange, EagerExecutionPlan, EagerStagePlan, ScheduledClosure,
@@ -75,12 +75,106 @@ pub(super) struct ExecutionSchedule {
 struct SelectedExecution {
     active_groups: Vec<u32>,
     active_amplitude_indices: Vec<usize>,
+    active_reduction_group_indices: Vec<usize>,
+    active_reduction_group_ids: Vec<u32>,
+    active_reduction_entry_indices: Vec<usize>,
     stages: Vec<EagerStagePlan>,
     closures: Vec<ScheduledClosure>,
     direct_closures: Vec<ScheduledDirectClosure>,
     zero_amplitude_indices: Vec<usize>,
     active_zero_amplitude_indices: Vec<usize>,
     schedule: ExecutionSchedule,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PointSelectorWorkGroup {
+    execution_index: Option<usize>,
+    point_start: usize,
+    point_count: usize,
+}
+
+#[derive(Debug, Default)]
+struct PointSelectedExecution {
+    signature_offsets: Vec<usize>,
+    signature_groups: Vec<u32>,
+    point_work_group_ids: Vec<usize>,
+    grouped_point_indices: Vec<usize>,
+    work_group_cursors: Vec<usize>,
+    work_groups: Vec<PointSelectorWorkGroup>,
+    executions: Vec<SelectedExecution>,
+    gathered_initial_values: Vec<EagerComplex64>,
+    gathered_momenta: Vec<f64>,
+    gathered_group_weights: Vec<f64>,
+}
+
+#[allow(dead_code)]
+enum PointSelectorInput<'a> {
+    OneGroupPerPoint(&'a [u32]),
+    GroupSets {
+        offsets: &'a [usize],
+        groups: &'a [u32],
+    },
+}
+
+impl PointSelectorInput<'_> {
+    fn point_count(&self) -> usize {
+        match self {
+            Self::OneGroupPerPoint(groups) => groups.len(),
+            Self::GroupSets { offsets, .. } => offsets.len().saturating_sub(1),
+        }
+    }
+
+    fn groups_for_point(&self, point: usize) -> &[u32] {
+        match self {
+            Self::OneGroupPerPoint(groups) => &groups[point..point + 1],
+            Self::GroupSets { offsets, groups } => &groups[offsets[point]..offsets[point + 1]],
+        }
+    }
+
+    fn group_offset_for_point(&self, point: usize) -> usize {
+        match self {
+            Self::OneGroupPerPoint(_) => point,
+            Self::GroupSets { offsets, .. } => offsets[point],
+        }
+    }
+
+    fn group_entry_count(&self) -> usize {
+        match self {
+            Self::OneGroupPerPoint(groups) => groups.len(),
+            Self::GroupSets { groups, .. } => groups.len(),
+        }
+    }
+
+    fn matches_signature(&self, signature_offsets: &[usize], signature_groups: &[u32]) -> bool {
+        match self {
+            Self::OneGroupPerPoint(groups) => {
+                signature_groups == *groups
+                    && signature_offsets.len() == groups.len() + 1
+                    && signature_offsets.iter().copied().eq(0..=groups.len())
+            }
+            Self::GroupSets { offsets, groups } => {
+                signature_offsets == *offsets && signature_groups == *groups
+            }
+        }
+    }
+
+    fn store_signature(&self, offsets: &mut Vec<usize>, groups: &mut Vec<u32>) {
+        offsets.clear();
+        groups.clear();
+        match self {
+            Self::OneGroupPerPoint(selected) => {
+                offsets.extend(0..=selected.len());
+                groups.extend_from_slice(selected);
+            }
+            Self::GroupSets {
+                offsets: selected_offsets,
+                groups: selected_groups,
+            } => {
+                offsets.extend_from_slice(selected_offsets);
+                groups.extend_from_slice(selected_groups);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -103,6 +197,7 @@ pub struct EagerExecutionRuntime {
     workspace_bytes: usize,
     packet_budget: usize,
     selected: Option<SelectedExecution>,
+    point_selected: PointSelectedExecution,
 }
 
 impl EagerExecutionRuntime {
@@ -190,6 +285,7 @@ impl EagerExecutionRuntime {
             workspace_bytes,
             packet_budget,
             selected: None,
+            point_selected: PointSelectedExecution::default(),
         })
     }
 
@@ -217,6 +313,208 @@ impl EagerExecutionRuntime {
     pub fn selector_group_ids(&self) -> Option<Vec<u32>> {
         let domains = self.plan.selector_domains.as_ref()?;
         Some(domains.group_ids.clone())
+    }
+
+    /// Evaluates one already-resolved coherent selector group per logical point.
+    ///
+    /// This is an internal bridge for the native runtime selector planner. It
+    /// deliberately accepts coherent group IDs rather than public helicity or
+    /// colour labels; the engine resolves those labels before entering the
+    /// eager scheduler.
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub(crate) fn evaluate_point_selected_groups_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        groups_by_point: &[u32],
+        active_group_weights: &[f64],
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        reduced: &mut [f64],
+    ) -> RusticolResult<()> {
+        self.evaluate_point_selected_impl(
+            backend,
+            PointSelectorInput::OneGroupPerPoint(groups_by_point),
+            active_group_weights,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            reduced,
+        )
+    }
+
+    /// Evaluates one pre-resolved active coherent-group set per logical point.
+    ///
+    /// `group_offsets` has `point_count + 1` entries and slices
+    /// `active_groups`. Every non-empty set must be sorted and unique. Empty
+    /// sets are valid and represent a certified structural-zero selector.
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Retained as the order-preserving benchmark reference lane.
+    pub(crate) fn evaluate_point_selected_group_sets_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        group_offsets: &[usize],
+        active_groups: &[u32],
+        active_group_weights: &[f64],
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        reduced: &mut [f64],
+    ) -> RusticolResult<()> {
+        self.evaluate_point_selected_impl(
+            backend,
+            PointSelectorInput::GroupSets {
+                offsets: group_offsets,
+                groups: active_groups,
+            },
+            active_group_weights,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            reduced,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_point_selected_impl<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        selectors: PointSelectorInput<'_>,
+        active_group_weights: &[f64],
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        reduced: &mut [f64],
+    ) -> RusticolResult<()> {
+        validate_point_selected_execution_buffers(
+            &self.plan,
+            &selectors,
+            active_group_weights,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            reduced,
+        )?;
+        validate_model_parameters(model_parameters)?;
+        self.prepare_point_selected_execution(&selectors)?;
+        resolve_couplings(
+            &self.plan.couplings,
+            model_parameters,
+            &mut self.workspace.couplings,
+        );
+        reduced.fill(0.0);
+
+        let Self {
+            plan,
+            workspace,
+            point_selected,
+            ..
+        } = self;
+        let PointSelectedExecution {
+            grouped_point_indices,
+            work_groups,
+            executions,
+            gathered_initial_values,
+            gathered_momenta,
+            gathered_group_weights,
+            ..
+        } = point_selected;
+        let tile_capacity = workspace.tile_capacity;
+        for work_group in work_groups.iter().copied() {
+            let Some(execution_index) = work_group.execution_index else {
+                continue;
+            };
+            let execution = executions.get(execution_index).ok_or_else(|| {
+                RusticolError::internal("eager point selector lost its cached execution")
+            })?;
+            let point_stop = work_group
+                .point_start
+                .checked_add(work_group.point_count)
+                .ok_or_else(|| RusticolError::internal("eager point work range overflows"))?;
+            let points = grouped_point_indices
+                .get(work_group.point_start..point_stop)
+                .ok_or_else(|| RusticolError::internal("eager point work range is invalid"))?;
+            for point_tile in points.chunks(tile_capacity) {
+                gather_point_components(
+                    initial_values,
+                    plan.values.component_count,
+                    point_count,
+                    point_tile,
+                    gathered_initial_values,
+                )?;
+                gather_point_components(
+                    momenta,
+                    plan.momenta.component_count,
+                    point_count,
+                    point_tile,
+                    gathered_momenta,
+                )?;
+                let tile_points = point_tile.len();
+                gather_selected_group_weights(
+                    &selectors,
+                    active_group_weights,
+                    &execution.active_reduction_group_ids,
+                    point_tile,
+                    gathered_group_weights,
+                )?;
+                initialize_tile(
+                    plan,
+                    workspace,
+                    tile_points,
+                    0,
+                    tile_points,
+                    gathered_initial_values,
+                    &execution.active_zero_amplitude_indices,
+                );
+                for (stage, stage_schedule) in
+                    execution.stages.iter().zip(&execution.schedule.stages)
+                {
+                    execute_stage(
+                        stage,
+                        stage_schedule,
+                        &plan.kernels,
+                        workspace,
+                        backend,
+                        tile_points,
+                        0,
+                        tile_points,
+                        gathered_momenta,
+                        model_parameters,
+                    )?;
+                }
+                execute_closures(
+                    ClosureExecutionRows {
+                        closures: &execution.closures,
+                        direct_closures: &execution.direct_closures,
+                        kernels: &plan.kernels,
+                    },
+                    &execution.schedule.closure_packets,
+                    workspace,
+                    backend,
+                    tile_points,
+                    model_parameters,
+                )?;
+                reduce_selected_tile(
+                    plan,
+                    &execution.active_reduction_group_indices,
+                    &execution.active_reduction_entry_indices,
+                    gathered_group_weights,
+                    workspace,
+                    tile_points,
+                )?;
+                for (tile_point, original_point) in point_tile.iter().copied().enumerate() {
+                    reduced[original_point] = workspace.reduced[tile_point];
+                }
+            }
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -501,6 +799,121 @@ impl EagerExecutionRuntime {
             self.workspace.tile_capacity,
             self.packet_budget,
         )?);
+        Ok(())
+    }
+
+    fn prepare_point_selected_execution(
+        &mut self,
+        selectors: &PointSelectorInput<'_>,
+    ) -> RusticolResult<()> {
+        if selectors.matches_signature(
+            &self.point_selected.signature_offsets,
+            &self.point_selected.signature_groups,
+        ) {
+            return Ok(());
+        }
+        let selector_domains = self.plan.selector_domains.as_ref().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "eager per-point selectors require selector-domain metadata",
+            )
+        })?;
+
+        self.point_selected.point_work_group_ids.clear();
+        self.point_selected.work_groups.clear();
+        self.point_selected
+            .point_work_group_ids
+            .try_reserve(selectors.point_count())
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "could not reserve eager point selector work items: {error}"
+                ))
+            })?;
+
+        for point in 0..selectors.point_count() {
+            let groups = selectors.groups_for_point(point);
+            validate_point_group_set(groups, &selector_domains.group_ids, point)?;
+            let execution_index = if groups.is_empty() {
+                None
+            } else if let Some(index) = self
+                .point_selected
+                .executions
+                .iter()
+                .position(|execution| execution.active_groups == groups)
+            {
+                Some(index)
+            } else {
+                let execution = build_selected_execution(
+                    &self.plan,
+                    groups,
+                    self.workspace.tile_capacity,
+                    self.packet_budget,
+                )?;
+                self.point_selected.executions.push(execution);
+                Some(self.point_selected.executions.len() - 1)
+            };
+            let work_group_id = self
+                .point_selected
+                .work_groups
+                .iter()
+                .position(|work| work.execution_index == execution_index)
+                .unwrap_or_else(|| {
+                    self.point_selected
+                        .work_groups
+                        .push(PointSelectorWorkGroup {
+                            execution_index,
+                            point_start: 0,
+                            point_count: 0,
+                        });
+                    self.point_selected.work_groups.len() - 1
+                });
+            self.point_selected.work_groups[work_group_id].point_count += 1;
+            self.point_selected.point_work_group_ids.push(work_group_id);
+        }
+
+        let mut cursor = 0usize;
+        self.point_selected.work_group_cursors.clear();
+        self.point_selected
+            .work_group_cursors
+            .try_reserve(self.point_selected.work_groups.len())
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "could not reserve eager point selector cursors: {error}"
+                ))
+            })?;
+        for work in &mut self.point_selected.work_groups {
+            work.point_start = cursor;
+            cursor = cursor.checked_add(work.point_count).ok_or_else(|| {
+                RusticolError::invalid_argument("eager point selector work range overflows")
+            })?;
+            self.point_selected
+                .work_group_cursors
+                .push(work.point_start);
+        }
+        self.point_selected.grouped_point_indices.clear();
+        self.point_selected
+            .grouped_point_indices
+            .try_reserve(cursor)
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "could not reserve eager grouped point indices: {error}"
+                ))
+            })?;
+        self.point_selected.grouped_point_indices.resize(cursor, 0);
+        for (point, work_group_id) in self
+            .point_selected
+            .point_work_group_ids
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            let target = self.point_selected.work_group_cursors[work_group_id];
+            self.point_selected.grouped_point_indices[target] = point;
+            self.point_selected.work_group_cursors[work_group_id] += 1;
+        }
+        selectors.store_signature(
+            &mut self.point_selected.signature_offsets,
+            &mut self.point_selected.signature_groups,
+        );
         Ok(())
     }
 
@@ -935,6 +1348,33 @@ fn build_selected_execution(
         .collect::<Vec<_>>();
     active_amplitude_indices.sort_unstable();
     active_amplitude_indices.dedup();
+    let active_reduction_group_indices = plan
+        .reduction_groups
+        .iter()
+        .enumerate()
+        .filter_map(|(index, group)| {
+            active_groups
+                .binary_search(&group.coherent_group_id)
+                .is_ok()
+                .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    let active_reduction_entry_indices = plan
+        .reduction_entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| {
+            let left = entry.left_group_index as usize;
+            let right = entry.right_group_index as usize;
+            (active_reduction_group_indices.binary_search(&left).is_ok()
+                && active_reduction_group_indices.binary_search(&right).is_ok())
+            .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    let active_reduction_group_ids = active_reduction_group_indices
+        .iter()
+        .map(|index| plan.reduction_groups[*index].coherent_group_id)
+        .collect();
     let active_zero_amplitude_indices = zero_amplitude_indices
         .iter()
         .copied()
@@ -950,6 +1390,9 @@ fn build_selected_execution(
     Ok(SelectedExecution {
         active_groups: active_groups.to_vec(),
         active_amplitude_indices,
+        active_reduction_group_indices,
+        active_reduction_group_ids,
+        active_reduction_entry_indices,
         stages,
         closures,
         direct_closures,
@@ -1206,6 +1649,179 @@ fn zeroed_real_values(len: usize, name: &str) -> RusticolResult<Vec<f64>> {
     Ok(values)
 }
 
+fn validate_point_group_set(
+    groups: &[u32],
+    known_groups: &[u32],
+    point: usize,
+) -> RusticolResult<()> {
+    for pair in groups.windows(2) {
+        if pair[0] == pair[1] {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager per-point selector {point} duplicates coherent group {}",
+                pair[0]
+            )));
+        }
+        if pair[0] > pair[1] {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager per-point selector {point} groups must be sorted"
+            )));
+        }
+    }
+    if let Some(unknown) = groups
+        .iter()
+        .find(|group| known_groups.binary_search(group).is_err())
+    {
+        return Err(RusticolError::invalid_argument(format!(
+            "eager per-point selector {point} references unknown coherent group {unknown}"
+        )));
+    }
+    Ok(())
+}
+
+fn gather_point_components<T: Copy>(
+    source: &[T],
+    component_count: usize,
+    point_count: usize,
+    point_indices: &[usize],
+    target: &mut Vec<T>,
+) -> RusticolResult<()> {
+    let target_len = component_count
+        .checked_mul(point_indices.len())
+        .ok_or_else(|| RusticolError::invalid_argument("eager point gather length overflows"))?;
+    if target_len == 0 {
+        target.clear();
+        return Ok(());
+    }
+    let fill = source.first().copied().ok_or_else(|| {
+        RusticolError::internal("eager nonempty point gather has an empty source buffer")
+    })?;
+    target.resize(target_len, fill);
+    for component in 0..component_count {
+        let source_start = component * point_count;
+        let target_start = component * point_indices.len();
+        for (target_point, source_point) in point_indices.iter().copied().enumerate() {
+            target[target_start + target_point] = source[source_start + source_point];
+        }
+    }
+    Ok(())
+}
+
+fn gather_selected_group_weights(
+    selectors: &PointSelectorInput<'_>,
+    active_group_weights: &[f64],
+    execution_groups: &[u32],
+    point_indices: &[usize],
+    target: &mut Vec<f64>,
+) -> RusticolResult<()> {
+    let target_len = execution_groups
+        .len()
+        .checked_mul(point_indices.len())
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("eager selected group weight gather overflows")
+        })?;
+    target.resize(target_len, 0.0);
+    for (group_position, group_id) in execution_groups.iter().copied().enumerate() {
+        let target_start = group_position * point_indices.len();
+        for (target_point, source_point) in point_indices.iter().copied().enumerate() {
+            let groups = selectors.groups_for_point(source_point);
+            let source_position = groups.binary_search(&group_id).map_err(|_| {
+                RusticolError::integrity(
+                    "eager grouped selector point is missing an execution group",
+                )
+            })?;
+            let source_index = selectors.group_offset_for_point(source_point) + source_position;
+            target[target_start + target_point] = active_group_weights[source_index];
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_point_selected_execution_buffers(
+    plan: &EagerExecutionPlan,
+    selectors: &PointSelectorInput<'_>,
+    active_group_weights: &[f64],
+    point_count: usize,
+    initial_values: &[EagerComplex64],
+    momenta: &[f64],
+    model_parameters: &[EagerComplex64],
+    reduced: &[f64],
+) -> RusticolResult<()> {
+    if selectors.point_count() != point_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "eager per-point selector count is {}, expected {point_count}",
+            selectors.point_count()
+        )));
+    }
+    if active_group_weights.len() != selectors.group_entry_count() {
+        return Err(RusticolError::invalid_argument(format!(
+            "eager active group weight count is {}, expected {}",
+            active_group_weights.len(),
+            selectors.group_entry_count(),
+        )));
+    }
+    if active_group_weights
+        .iter()
+        .any(|weight| !weight.is_finite() || *weight < 0.0)
+    {
+        return Err(RusticolError::invalid_argument(
+            "eager active group weights must be nonnegative and finite",
+        ));
+    }
+    if let PointSelectorInput::GroupSets { offsets, groups } = selectors {
+        if offsets.len() != point_count + 1 {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager per-point selector offsets have length {}, expected {}",
+                offsets.len(),
+                point_count + 1
+            )));
+        }
+        if offsets.first().copied() != Some(0) {
+            return Err(RusticolError::invalid_argument(
+                "eager per-point selector offsets must start at zero",
+            ));
+        }
+        if offsets.windows(2).any(|pair| pair[0] > pair[1]) {
+            return Err(RusticolError::invalid_argument(
+                "eager per-point selector offsets must be nondecreasing",
+            ));
+        }
+        if offsets.last().copied() != Some(groups.len()) {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager per-point selector offsets end at {}, expected {}",
+                offsets.last().copied().unwrap_or(0),
+                groups.len()
+            )));
+        }
+    }
+    validate_buffer_len(
+        "initial value",
+        initial_values.len(),
+        plan.values.component_count,
+        point_count,
+    )?;
+    validate_buffer_len(
+        "momentum",
+        momenta.len(),
+        plan.momenta.component_count,
+        point_count,
+    )?;
+    if model_parameters.len() != plan.parameter_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "eager model parameter buffer has length {}, expected {}",
+            model_parameters.len(),
+            plan.parameter_count
+        )));
+    }
+    if reduced.len() != point_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "eager reduced output has length {}, expected {point_count}",
+            reduced.len()
+        )));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn validate_execution_buffers(
     plan: &EagerExecutionPlan,
@@ -1338,7 +1954,9 @@ mod tests {
         EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerDirectClosureSpec,
         EagerFinalizationRow, EagerInvocationRow, EagerKernelInput, EagerKernelRole,
         EagerPlanDefinition, EagerPlanDimensions, EagerPlanPayloads, EagerReductionEntry,
-        EagerReductionGroup, EagerStagePayload, MISSING_U32,
+        EagerReductionGroup, EagerSelectorDomainIdRow, EagerSelectorDomainRow,
+        EagerSelectorGroupRow, EagerSelectorPayloads, EagerSelectorStagePayload, EagerStagePayload,
+        MISSING_U32,
     };
 
     #[derive(Default)]
@@ -1357,6 +1975,283 @@ mod tests {
                 call.outputs[lane] = call.inputs[row] + call.inputs[row + 1] + call.inputs[row + 2];
             }
             Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingAddBackend {
+        lane_counts: Vec<usize>,
+    }
+
+    impl EagerKernelBackend for RecordingAddBackend {
+        fn evaluate_batch(
+            &mut self,
+            call: super::super::EagerKernelCall<'_>,
+        ) -> RusticolResult<()> {
+            assert_eq!(call.kernel_id, 7);
+            assert_eq!(call.input_component_count, 3);
+            assert_eq!(call.output_component_count, 1);
+            self.lane_counts.push(call.lane_count);
+            for lane in 0..call.lane_count {
+                let row = lane * call.input_component_count;
+                call.outputs[lane] = call.inputs[row] + call.inputs[row + 1] + call.inputs[row + 2];
+            }
+            Ok(())
+        }
+    }
+
+    fn selector_runtime() -> EagerExecutionRuntime {
+        let definition = EagerPlanDefinition {
+            dimensions: EagerPlanDimensions {
+                value_slot_component_counts: vec![1, 1, 1, 1],
+                momentum_slot_component_counts: vec![1],
+                current_component_counts: vec![1, 1],
+                parameter_count: 0,
+                amplitude_count: 2,
+            },
+            kernels: vec![EagerKernelSpec {
+                kernel_id: 7,
+                role: EagerKernelRole::Vertex,
+                inputs: vec![
+                    EagerKernelInput::FirstCurrentComponent(0),
+                    EagerKernelInput::SecondCurrentComponent(0),
+                    EagerKernelInput::FirstMomentumComponent(0),
+                ],
+                output_component_count: 1,
+                homogeneous_linear_first_current: false,
+                independent_block_size: 1,
+            }],
+            direct_closures: vec![
+                EagerDirectClosureSpec {
+                    closure_index: 0,
+                    coefficients: vec![EagerComplex64::new(1.0, 0.0)],
+                },
+                EagerDirectClosureSpec {
+                    closure_index: 1,
+                    coefficients: vec![EagerComplex64::new(1.0, 0.0)],
+                },
+            ],
+            reduction_groups: vec![
+                EagerReductionGroup {
+                    coherent_group_id: 10,
+                    amplitude_indices: vec![0],
+                },
+                EagerReductionGroup {
+                    coherent_group_id: 20,
+                    amplitude_indices: vec![1],
+                },
+            ],
+            reduction_entries: vec![
+                EagerReductionEntry {
+                    left_group_index: 0,
+                    right_group_index: 0,
+                    coefficient: EagerComplex64::new(2.0, 0.0),
+                },
+                EagerReductionEntry {
+                    left_group_index: 1,
+                    right_group_index: 1,
+                    coefficient: EagerComplex64::new(3.0, 0.0),
+                },
+            ],
+        };
+        let couplings = EagerCouplingRow::encode_table(&[EagerCouplingRow {
+            real_parameter_id: MISSING_U32,
+            imag_parameter_id: MISSING_U32,
+            constant_real: 1.0,
+            constant_imag: 0.0,
+        }])
+        .expect("coupling table");
+        let invocations = EagerInvocationRow::encode_table(&[
+            EagerInvocationRow {
+                kernel_id: 7,
+                left_value_slot_id: 0,
+                right_value_slot_id: 0,
+                left_momentum_slot_id: 0,
+                right_momentum_slot_id: 0,
+                coupling_slot_id: 0,
+                output_factor_source: crate::EAGER_OUTPUT_FACTOR_NONE,
+                attachment_start: 0,
+                attachment_count: 1,
+            },
+            EagerInvocationRow {
+                kernel_id: 7,
+                left_value_slot_id: 1,
+                right_value_slot_id: 1,
+                left_momentum_slot_id: 0,
+                right_momentum_slot_id: 0,
+                coupling_slot_id: 0,
+                output_factor_source: crate::EAGER_OUTPUT_FACTOR_NONE,
+                attachment_start: 1,
+                attachment_count: 1,
+            },
+        ])
+        .expect("invocation table");
+        let attachments = EagerAttachmentRow::encode_table(&[
+            EagerAttachmentRow {
+                result_current_id: 0,
+                factor_real: 1.0,
+                factor_imag: 0.0,
+            },
+            EagerAttachmentRow {
+                result_current_id: 1,
+                factor_real: 1.0,
+                factor_imag: 0.0,
+            },
+        ])
+        .expect("attachment table");
+        let finalizations = EagerFinalizationRow::encode_table(&[
+            EagerFinalizationRow {
+                kernel_id: MISSING_U32,
+                current_id: 0,
+                unpropagated_value_slot_id: 2,
+                propagated_value_slot_id: MISSING_U32,
+                momentum_slot_id: 0,
+            },
+            EagerFinalizationRow {
+                kernel_id: MISSING_U32,
+                current_id: 1,
+                unpropagated_value_slot_id: 3,
+                propagated_value_slot_id: MISSING_U32,
+                momentum_slot_id: 0,
+            },
+        ])
+        .expect("finalization table");
+        let closures = EagerClosureRow::encode_table(&[
+            EagerClosureRow {
+                kernel_id: MISSING_U32,
+                left_value_slot_id: 2,
+                right_value_slot_id: 0,
+                amplitude_index: 0,
+                coupling_slot_id: MISSING_U32,
+                output_factor_source: crate::EAGER_OUTPUT_FACTOR_NONE,
+                factor_real: 1.0,
+                factor_imag: 0.0,
+            },
+            EagerClosureRow {
+                kernel_id: MISSING_U32,
+                left_value_slot_id: 3,
+                right_value_slot_id: 0,
+                amplitude_index: 1,
+                coupling_slot_id: MISSING_U32,
+                output_factor_source: crate::EAGER_OUTPUT_FACTOR_NONE,
+                factor_real: 1.0,
+                factor_imag: 0.0,
+            },
+        ])
+        .expect("closure table");
+        let domains = EagerSelectorDomainRow::encode_table(&[
+            EagerSelectorDomainRow {
+                member_start: 0,
+                member_count: 0,
+            },
+            EagerSelectorDomainRow {
+                member_start: 0,
+                member_count: 1,
+            },
+            EagerSelectorDomainRow {
+                member_start: 1,
+                member_count: 1,
+            },
+        ])
+        .expect("selector domains");
+        let domain_group_ids = EagerSelectorGroupRow::encode_table(&[
+            EagerSelectorGroupRow {
+                coherent_group_id: 10,
+            },
+            EagerSelectorGroupRow {
+                coherent_group_id: 20,
+            },
+        ])
+        .expect("selector group ids");
+        let invocation_domains = EagerSelectorDomainIdRow::encode_table(&[
+            EagerSelectorDomainIdRow { domain_id: 1 },
+            EagerSelectorDomainIdRow { domain_id: 2 },
+        ])
+        .expect("invocation selector domains");
+        let attachment_domains = invocation_domains.clone();
+        let unpropagated_finalization_domains = invocation_domains.clone();
+        let propagated_finalization_domains = EagerSelectorDomainIdRow::encode_table(&[
+            EagerSelectorDomainIdRow { domain_id: 0 },
+            EagerSelectorDomainIdRow { domain_id: 0 },
+        ])
+        .expect("propagated selector domains");
+        let closure_domains = invocation_domains.clone();
+        let stage = EagerStagePayload {
+            stage_index: 1,
+            invocations: &invocations,
+            attachments: &attachments,
+            finalizations: &finalizations,
+        };
+        let selector_stage = EagerSelectorStagePayload {
+            stage_index: 1,
+            invocation_domains: &invocation_domains,
+            attachment_domains: &attachment_domains,
+            unpropagated_finalization_domains: &unpropagated_finalization_domains,
+            propagated_finalization_domains: &propagated_finalization_domains,
+        };
+        let plan = EagerExecutionPlan::from_payloads(
+            definition,
+            EagerPlanPayloads {
+                couplings: &couplings,
+                stages: &[stage],
+                closures: &closures,
+                selector_domains: Some(EagerSelectorPayloads {
+                    domains: &domains,
+                    domain_group_ids: &domain_group_ids,
+                    stages: &[selector_stage],
+                    closure_domains: &closure_domains,
+                }),
+            },
+        )
+        .expect("selector plan");
+        EagerExecutionRuntime::new(
+            plan,
+            EagerRuntimeOptions {
+                point_tile_size: 8,
+                workspace_bytes: 64 * 1024,
+            },
+        )
+        .expect("selector runtime")
+    }
+
+    fn selector_inputs() -> (Vec<EagerComplex64>, Vec<f64>) {
+        (
+            vec![
+                EagerComplex64::new(1.0, 0.0),
+                EagerComplex64::new(2.0, 0.0),
+                EagerComplex64::new(3.0, 0.0),
+                EagerComplex64::new(4.0, 0.0),
+                EagerComplex64::new(10.0, 0.0),
+                EagerComplex64::new(20.0, 0.0),
+                EagerComplex64::new(30.0, 0.0),
+                EagerComplex64::new(40.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+                EagerComplex64::new(0.0, 0.0),
+            ],
+            vec![0.5, 1.0, 1.5, 2.0],
+        )
+    }
+
+    fn expected_selector_value(group: u32, point: usize) -> f64 {
+        let x = (point + 1) as f64;
+        let momentum = 0.5 * (point + 1) as f64;
+        match group {
+            10 => {
+                let amplitude = (2.0 * x + momentum) * x;
+                2.0 * amplitude * amplitude
+            }
+            20 => {
+                let y = 10.0 * (point + 1) as f64;
+                let amplitude = (2.0 * y + momentum) * x;
+                3.0 * amplitude * amplitude
+            }
+            _ => unreachable!("test selector group"),
         }
     }
 
@@ -1523,6 +2418,257 @@ mod tests {
         assert!(!profile.reduction.is_zero());
         assert!(!profile.copy_out.is_zero());
         assert!(profile.accounted() <= profile.total);
+    }
+
+    #[test]
+    fn point_selectors_group_homogeneous_and_alternating_rows() {
+        let (initial_values, momenta) = selector_inputs();
+        let mut homogeneous = selector_runtime();
+        let mut homogeneous_backend = RecordingAddBackend::default();
+        let mut homogeneous_output = vec![0.0; 4];
+        homogeneous
+            .evaluate_point_selected_groups_into(
+                &mut homogeneous_backend,
+                &[10, 10, 10, 10],
+                &[1.0; 4],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut homogeneous_output,
+            )
+            .expect("homogeneous point-selected execution");
+        assert_eq!(homogeneous_backend.lane_counts, vec![4]);
+        assert_eq!(
+            homogeneous_output,
+            (0..4)
+                .map(|point| expected_selector_value(10, point))
+                .collect::<Vec<_>>()
+        );
+
+        let selectors = [10, 20, 10, 20];
+        let mut alternating = selector_runtime();
+        let mut alternating_backend = RecordingAddBackend::default();
+        let mut alternating_output = vec![0.0; 4];
+        alternating
+            .evaluate_point_selected_groups_into(
+                &mut alternating_backend,
+                &selectors,
+                &[1.0; 4],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut alternating_output,
+            )
+            .expect("alternating point-selected execution");
+        assert_eq!(alternating_backend.lane_counts, vec![2, 2]);
+        assert_eq!(
+            alternating_output,
+            selectors
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(point, group)| expected_selector_value(group, point))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            alternating
+                .point_selected
+                .executions
+                .iter()
+                .all(|execution| {
+                    execution.stages.len() == 1
+                        && execution.stages[0].invocations.len() == 1
+                        && execution.stages[0].finalization_copies.len() == 1
+                        && execution.direct_closures.len() == 1
+                })
+        );
+
+        let randomized_selectors = [20, 10, 10, 20];
+        let mut randomized = selector_runtime();
+        let mut randomized_backend = RecordingAddBackend::default();
+        let mut randomized_output = vec![0.0; 4];
+        randomized
+            .evaluate_point_selected_groups_into(
+                &mut randomized_backend,
+                &randomized_selectors,
+                &[1.0; 4],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut randomized_output,
+            )
+            .expect("randomized point-selected execution");
+        assert_eq!(randomized_backend.lane_counts, vec![2, 2]);
+        assert_eq!(
+            randomized_output,
+            randomized_selectors
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(point, group)| expected_selector_value(group, point))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn point_selector_sets_preserve_reduction_weights_and_structural_zeros() {
+        let (initial_values, momenta) = selector_inputs();
+        let mut runtime = selector_runtime();
+        let mut backend = RecordingAddBackend::default();
+        let mut output = vec![-1.0; 4];
+        let active_group_weights = [0.5, 1.0, 2.0, 0.25];
+        // point 0 selects group 10, point 1 is a certified structural zero,
+        // point 2 selects both groups, and point 3 selects group 20.
+        runtime
+            .evaluate_point_selected_group_sets_into(
+                &mut backend,
+                &[0, 1, 1, 3, 4],
+                &[10, 10, 20, 20],
+                &active_group_weights,
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut output,
+            )
+            .expect("point-selected active-set execution");
+        assert_eq!(output[0], 0.5 * expected_selector_value(10, 0));
+        assert_eq!(output[1], 0.0);
+        assert_eq!(
+            output[2],
+            expected_selector_value(10, 2) + 2.0 * expected_selector_value(20, 2)
+        );
+        assert_eq!(output[3], 0.25 * expected_selector_value(20, 3));
+        assert_eq!(backend.lane_counts, vec![1, 2, 1]);
+    }
+
+    #[test]
+    fn point_selector_validation_reports_lengths_unknown_groups_and_duplicates() {
+        let (initial_values, momenta) = selector_inputs();
+        let mut runtime = selector_runtime();
+        let mut backend = RecordingAddBackend::default();
+        let mut output = vec![0.0; 4];
+
+        let error = runtime
+            .evaluate_point_selected_groups_into(
+                &mut backend,
+                &[10, 20],
+                &[1.0; 4],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut output,
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("selector count is 2, expected 4")
+        );
+
+        let error = runtime
+            .evaluate_point_selected_group_sets_into(
+                &mut backend,
+                &[0, 1, 2, 3, 4],
+                &[10, 20, 99, 10],
+                &[1.0; 4],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut output,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("unknown coherent group 99"));
+
+        let error = runtime
+            .evaluate_point_selected_group_sets_into(
+                &mut backend,
+                &[0, 2, 2, 2, 2],
+                &[10, 10],
+                &[1.0; 2],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut output,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("duplicates coherent group 10"));
+    }
+
+    #[test]
+    fn warmed_point_selector_execution_reuses_plans_and_buffers() {
+        let (initial_values, momenta) = selector_inputs();
+        let selectors = [10, 20, 10, 20];
+        let mut runtime = selector_runtime();
+        let mut backend = RecordingAddBackend::default();
+        let mut output = vec![0.0; 4];
+        runtime
+            .evaluate_point_selected_groups_into(
+                &mut backend,
+                &selectors,
+                &[1.0; 4],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut output,
+            )
+            .expect("warm point selector caches");
+        let fingerprint = [
+            runtime.point_selected.executions.len(),
+            runtime.point_selected.work_groups.len(),
+            runtime.point_selected.signature_offsets.as_ptr() as usize,
+            runtime.point_selected.signature_offsets.capacity(),
+            runtime.point_selected.signature_groups.as_ptr() as usize,
+            runtime.point_selected.signature_groups.capacity(),
+            runtime.point_selected.point_work_group_ids.as_ptr() as usize,
+            runtime.point_selected.point_work_group_ids.capacity(),
+            runtime.point_selected.grouped_point_indices.as_ptr() as usize,
+            runtime.point_selected.grouped_point_indices.capacity(),
+            runtime.point_selected.gathered_initial_values.as_ptr() as usize,
+            runtime.point_selected.gathered_initial_values.capacity(),
+            runtime.point_selected.gathered_momenta.as_ptr() as usize,
+            runtime.point_selected.gathered_momenta.capacity(),
+        ];
+
+        backend.lane_counts.clear();
+        output.fill(0.0);
+        runtime
+            .evaluate_point_selected_groups_into(
+                &mut backend,
+                &selectors,
+                &[1.0; 4],
+                4,
+                &initial_values,
+                &momenta,
+                &[],
+                &mut output,
+            )
+            .expect("reuse warmed point selector caches");
+        let repeated = [
+            runtime.point_selected.executions.len(),
+            runtime.point_selected.work_groups.len(),
+            runtime.point_selected.signature_offsets.as_ptr() as usize,
+            runtime.point_selected.signature_offsets.capacity(),
+            runtime.point_selected.signature_groups.as_ptr() as usize,
+            runtime.point_selected.signature_groups.capacity(),
+            runtime.point_selected.point_work_group_ids.as_ptr() as usize,
+            runtime.point_selected.point_work_group_ids.capacity(),
+            runtime.point_selected.grouped_point_indices.as_ptr() as usize,
+            runtime.point_selected.grouped_point_indices.capacity(),
+            runtime.point_selected.gathered_initial_values.as_ptr() as usize,
+            runtime.point_selected.gathered_initial_values.capacity(),
+            runtime.point_selected.gathered_momenta.as_ptr() as usize,
+            runtime.point_selected.gathered_momenta.capacity(),
+        ];
+        assert_eq!(repeated, fingerprint);
+        assert_eq!(backend.lane_counts, vec![2, 2]);
     }
 
     #[test]

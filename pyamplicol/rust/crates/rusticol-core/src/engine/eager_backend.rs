@@ -19,6 +19,14 @@ impl PreparedEvaluatorBackend {
         pack: &PreparedKernelPackManifest,
         payload_root: &Path,
     ) -> RusticolResult<Self> {
+        let payloads = EvaluatorPayloadStore::directory(payload_root);
+        Self::load_from_store(pack, &payloads)
+    }
+
+    pub(super) fn load_from_store(
+        pack: &PreparedKernelPackManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
         let expected_capability = match pack.backend.as_str() {
             "jit" => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             "asm" => SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY,
@@ -52,7 +60,7 @@ impl PreparedEvaluatorBackend {
                     kernel.kernel_id, kernel.input_arity, kernel.output_arity
                 )));
             }
-            let evaluator = EvaluatorGroup::load(&evaluator_manifest, payload_root)?;
+            let evaluator = EvaluatorGroup::load_from_store(&evaluator_manifest, payloads)?;
             if kernels
                 .insert(
                     (kernel.kernel_id, 1),
@@ -88,7 +96,7 @@ impl PreparedEvaluatorBackend {
                     variant.base_kernel_id, variant.input_arity, variant.output_arity
                 )));
             }
-            let evaluator = EvaluatorGroup::load(&evaluator_manifest, payload_root)?;
+            let evaluator = EvaluatorGroup::load_from_store(&evaluator_manifest, payloads)?;
             if kernels
                 .insert(
                     (variant.base_kernel_id, variant.block_size),

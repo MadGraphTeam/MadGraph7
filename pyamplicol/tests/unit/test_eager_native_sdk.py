@@ -24,6 +24,20 @@ def test_native_sdk_wrappers_expose_the_runtime_execution_mode() -> None:
     assert "rusticol_runtime_execution_mode" in rust
 
 
+def test_native_sdk_wrappers_expose_per_point_runtime_selectors() -> None:
+    header = _read("rust/crates/rusticol-capi/include/rusticol.h")
+    cpp = _read("rust/crates/rusticol-capi/include/rusticol.hpp")
+    fortran = _read("rust/crates/rusticol-capi/fortran/rusticol.f90")
+    rust = _read("src/pyamplicol/_sdk/rust/rusticol.rs")
+
+    assert "rusticol_runtime_evaluate_selected_f64" in header
+    assert "evaluate_selected" in cpp
+    assert "procedure, public :: evaluate_selected" in fortran
+    assert "pub fn evaluate_selected_f64" in rust
+    assert "helicity_by_point: Option<&[u32]>" in rust
+    assert "color_flow_by_point: Option<&[u32]>" in rust
+
+
 def test_generated_native_drivers_share_total_and_resolved_entrypoints() -> None:
     templates = {
         "cpp": _read("src/pyamplicol/assets/api_templates/cpp/check_standalone.cpp"),

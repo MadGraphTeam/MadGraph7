@@ -3,13 +3,15 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import tempfile
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal
 
 from .manifest import (
     MANIFEST_NAME,
@@ -75,29 +77,41 @@ class ArtifactBuilder:
             raise RuntimeError("artifact builder is not active")
         return self.root
 
-    def add_bytes(
-        self,
-        relative: str,
-        content: bytes,
-        *,
-        role: str,
-        media_type: str,
-        executable: bool = False,
-        target: Mapping[str, object] | None = None,
-        process_id: str | None = None,
-    ) -> PayloadRecord:
+    def staged_path(self, relative: str, *, create_parent: bool = False) -> Path:
+        """Return a confined path in the private staging directory.
+
+        This is intended for producers that already provide their own atomic,
+        streaming writer.  Call :meth:`register_staged_file` after the file is
+        complete and independently validated.
+        """
+
         path_value = normalize_relative_path(relative)
         if path_value == MANIFEST_NAME:
             raise ValueError(f"{MANIFEST_NAME} is reserved for the artifact manifest")
         path = confined_path(self._root(), path_value, must_exist=False)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-        with temporary.open("wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        temporary.chmod(0o755 if executable else 0o644)
-        os.replace(temporary, path)
+        if create_parent:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def register_staged_file(
+        self,
+        relative: str,
+        *,
+        role: str,
+        media_type: str,
+        executable: bool | None = None,
+        target: Mapping[str, object] | None = None,
+        process_id: str | None = None,
+    ) -> PayloadRecord:
+        """Register a complete regular file already present in staging."""
+
+        path_value = normalize_relative_path(relative)
+        path = self.staged_path(path_value)
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"staged artifact payload must be a regular file: {path}")
+        if executable is not None:
+            path.chmod(0o755 if executable else 0o644)
+        fsync_file(path)
         record = PayloadRecord(
             path=path_value,
             role=role,
@@ -110,6 +124,95 @@ class ArtifactBuilder:
         )
         self._payloads[path_value] = record
         return record
+
+    def add_bytes(
+        self,
+        relative: str,
+        content: bytes,
+        *,
+        role: str,
+        media_type: str,
+        executable: bool = False,
+        target: Mapping[str, object] | None = None,
+        process_id: str | None = None,
+    ) -> PayloadRecord:
+        return self.add_stream(
+            relative,
+            io.BytesIO(content),
+            role=role,
+            media_type=media_type,
+            executable=executable,
+            target=target,
+            process_id=process_id,
+        )
+
+    def add_stream(
+        self,
+        relative: str,
+        source: BinaryIO,
+        *,
+        role: str,
+        media_type: str,
+        executable: bool = False,
+        target: Mapping[str, object] | None = None,
+        process_id: str | None = None,
+        chunk_size: int = 1024 * 1024,
+    ) -> PayloadRecord:
+        """Copy a binary stream into staging with bounded memory."""
+
+        if (
+            not isinstance(chunk_size, int)
+            or isinstance(chunk_size, bool)
+            or chunk_size <= 0
+        ):
+            raise ValueError("artifact stream chunk size must be a positive integer")
+        read = getattr(source, "read", None)
+        if not callable(read):
+            raise TypeError("artifact stream source must provide read()")
+        path_value = normalize_relative_path(relative)
+        path = self.staged_path(path_value, create_parent=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temporary = Path(temporary_name)
+        descriptor_open = True
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                descriptor_open = False
+                while True:
+                    chunk = source.read(chunk_size)
+                    if not isinstance(chunk, bytes | bytearray | memoryview):
+                        raise TypeError("artifact stream source must return bytes")
+                    if not chunk:
+                        break
+                    if len(chunk) > chunk_size:
+                        raise ValueError(
+                            "artifact stream source returned more bytes than requested"
+                        )
+                    view = memoryview(chunk)
+                    written = 0
+                    while written < len(view):
+                        count = stream.write(view[written:])
+                        if not isinstance(count, int) or count <= 0:
+                            raise OSError("short write while staging artifact payload")
+                        written += count
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.chmod(0o755 if executable else 0o644)
+            os.replace(temporary, path)
+        finally:
+            if descriptor_open:
+                os.close(descriptor)
+            with suppress(FileNotFoundError):
+                temporary.unlink()
+        return self.register_staged_file(
+            path_value,
+            role=role,
+            media_type=media_type,
+            executable=executable,
+            target=target,
+            process_id=process_id,
+        )
 
     def add_json(
         self,
@@ -149,20 +252,26 @@ class ArtifactBuilder:
         target: Mapping[str, object] | None = None,
         process_id: str | None = None,
     ) -> PayloadRecord:
-        source_path = Path(source).expanduser().resolve(strict=True)
-        if not source_path.is_file() or source_path.is_symlink():
+        requested_source = Path(source).expanduser()
+        if requested_source.is_symlink():
+            raise ValueError(
+                f"artifact source must be a regular file: {requested_source}"
+            )
+        source_path = requested_source.resolve(strict=True)
+        if not source_path.is_file():
             raise ValueError(f"artifact source must be a regular file: {source_path}")
-        return self.add_bytes(
-            relative,
-            source_path.read_bytes(),
-            role=role,
-            media_type=media_type,
-            executable=(
-                executable_bit(source_path) if executable is None else executable
-            ),
-            target=target,
-            process_id=process_id,
-        )
+        with source_path.open("rb") as stream:
+            return self.add_stream(
+                relative,
+                stream,
+                role=role,
+                media_type=media_type,
+                executable=(
+                    executable_bit(source_path) if executable is None else executable
+                ),
+                target=target,
+                process_id=process_id,
+            )
 
     def discard_payloads(self, relative: str, *, recursive: bool = False) -> None:
         """Remove an owned payload or payload subtree from the staging snapshot."""

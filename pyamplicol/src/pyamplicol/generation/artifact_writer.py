@@ -8,10 +8,11 @@ import importlib.metadata
 import json
 import os
 import re
+import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
 from pyamplicol.api.requests import ModelSource
 from pyamplicol.artifacts import ArtifactBuilder, ArtifactManifest, load_manifest
@@ -24,6 +25,11 @@ from pyamplicol.config import (
 )
 
 from .._internal.versions import (
+    COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
+    COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+    COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+    COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
     PROCESS_ARTIFACT_SCHEMA_VERSION,
     PYTHON_API_VERSION,
@@ -42,6 +48,13 @@ from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
 from .contracts import RuntimeExpressionSchema
 from .eager_lowering import EAGER_RUNTIME_KIND, EagerExecutionTables
 from .eager_tables import EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY
+from .evaluator_container import (
+    PacbinIndex,
+    PacbinMemberKind,
+    PacbinMemberSource,
+    PacbinReader,
+    write_pacbin_atomic,
+)
 from .validation import ValidationPointRecord, validation_point_map
 
 if TYPE_CHECKING:
@@ -59,9 +72,17 @@ _MODEL_PARAMETERS_PATH = "model/parameters.json"
 _EVALUATOR_SET_PATH = "processes/evaluators.json"
 _EAGER_KERNEL_PACK_PATH = "model/eager-kernel-pack.json"
 _EAGER_KERNEL_PAYLOAD_ROOT = "model/eager-kernels"
+_HELICITY_SUM_PAYLOAD_ROOT = "helicity-sum"
+_HELICITY_SELECTOR_UNION_PAYLOAD_ROOT = "helicity-selector-union"
+_COLOR_SELECTOR_PAYLOAD_ROOT = "color-selector"
 _EAGER_PACK_IDENTITY_EXTENSION = "eager_prepared_pack"
 _EAGER_PACK_IDENTITY_KIND = "pyamplicol-prepared-kernel-pack-identity"
 _EAGER_PACK_IDENTITY_SCHEMA_VERSION = 1
+_EVALUATOR_PAYLOAD_CONTAINER_EXTENSION = "evaluator_payload_container"
+_EVALUATOR_PAYLOAD_CONTAINER_PATH = "evaluators.pacbin"
+_EVALUATOR_PAYLOAD_CONTAINER_KIND = "pyamplicol-evaluator-payload-container"
+_EVALUATOR_PAYLOAD_CONTAINER_SCHEMA_VERSION = 1
+_EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI = "pacbin-v1"
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -70,6 +91,34 @@ _SUPPORTED_ARTIFACT_TARGETS = frozenset(
         "x86_64-unknown-linux-gnu",
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledExecutionArtifact:
+    runtime_schema: RuntimeExpressionSchema
+    stage_manifest: Mapping[str, object]
+    model_parameter_evaluator: Mapping[str, object] | None
+    dag_summary: Mapping[str, object]
+    evaluator_root: Path
+    color_selector_executions: tuple[
+        CompiledColorSelectorExecutionArtifact, ...
+    ] = ()
+    helicity_selector_executions: tuple[
+        CompiledHelicitySelectorExecutionArtifact, ...
+    ] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledColorSelectorExecutionArtifact:
+    materialized_sector_id: int
+    execution: CompiledExecutionArtifact
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledHelicitySelectorExecutionArtifact:
+    selector_domain_ids: tuple[int, ...]
+    execution: CompiledExecutionArtifact
+    schedule_mode: str = "parent-closure"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +135,13 @@ class CompiledProcessArtifact:
     evaluator_root: Path
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    helicity_sum_execution: CompiledExecutionArtifact | None = None
+    helicity_selector_executions: tuple[
+        CompiledHelicitySelectorExecutionArtifact, ...
+    ] = ()
+    color_selector_executions: tuple[
+        CompiledColorSelectorExecutionArtifact, ...
+    ] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +186,233 @@ class _GenerationConfigProvenance:
             return cls(config.requested, config.effective, config.clamps)
         effective = GenerationConfig() if config is None else config
         return cls(effective, effective)
+
+
+class _EvaluatorPayloadCollector:
+    """Collect evaluator payloads and publish one root pacbin container."""
+
+    def __init__(
+        self,
+        builder: ArtifactBuilder,
+        *,
+        existing: ArtifactManifest | None,
+        target: Mapping[str, object],
+    ) -> None:
+        self._builder = builder
+        self._existing = existing
+        self._target = dict(target)
+        self._new_sources: dict[str, PacbinMemberSource] = {}
+        self._staged_loose_paths: set[str] = set()
+        self._discarded_prefixes: set[str] = set()
+
+    def discard_prefix(self, prefix: str) -> None:
+        normalized = prefix.strip("/")
+        if not normalized:
+            raise ValueError("packed evaluator discard prefix must not be empty")
+        self._discarded_prefixes.add(normalized)
+        owned_prefix = normalized + "/"
+        self._new_sources = {
+            path: source
+            for path, source in self._new_sources.items()
+            if path != normalized and not path.startswith(owned_prefix)
+        }
+
+    def add_file(
+        self,
+        relative: str,
+        source: Path,
+        *,
+        process_id: str | None,
+    ) -> None:
+        kind = _packed_evaluator_member_kind(relative)
+        if kind is None:
+            self._builder.add_file(
+                relative,
+                source,
+                role="evaluator-state",
+                media_type=_media_type(source),
+                target=self._target,
+                process_id=process_id,
+            )
+            return
+        if source.is_symlink() or not source.is_file():
+            raise ValueError(f"evaluator payload must be a regular file: {source}")
+        # Evaluator builders may reuse their temporary output paths while
+        # materializing nested selector lanes.  Snapshot each payload when it
+        # is registered so a later write cannot silently change an earlier
+        # logical container member before publication.
+        self._builder.add_file(
+            relative,
+            source,
+            role="evaluator-state",
+            media_type=_media_type(source),
+            target=self._target,
+            process_id=process_id,
+        )
+        self._register_staged_source(relative, kind)
+
+    def add_bytes(
+        self,
+        relative: str,
+        content: bytes,
+        *,
+        process_id: str | None,
+        media_type: str | None = None,
+    ) -> None:
+        kind = _packed_evaluator_member_kind(relative)
+        if kind is None:
+            self._builder.add_bytes(
+                relative,
+                content,
+                role="evaluator-state",
+                media_type=media_type or _media_type(Path(relative)),
+                target=self._target,
+                process_id=process_id,
+            )
+            return
+        self._builder.add_bytes(
+            relative,
+            content,
+            role="evaluator-state",
+            media_type=media_type or _media_type(Path(relative)),
+            target=self._target,
+            process_id=process_id,
+        )
+        self._register_staged_source(relative, kind)
+
+    def add_stream(
+        self,
+        relative: str,
+        source: BinaryIO,
+        *,
+        process_id: str | None,
+        media_type: str | None = None,
+    ) -> None:
+        kind = _packed_evaluator_member_kind(relative)
+        self._builder.add_stream(
+            relative,
+            source,
+            role="evaluator-state",
+            media_type=media_type or _media_type(Path(relative)),
+            target=self._target,
+            process_id=process_id,
+        )
+        if kind is not None:
+            self._register_staged_source(relative, kind)
+
+    def publish(self) -> dict[str, object] | None:
+        existing_container = _existing_evaluator_container_path(self._existing)
+        if existing_container is None:
+            return self._publish_with_old_sources(())
+
+        container_path = self._builder.staged_path(existing_container)
+        with PacbinReader.open(container_path, verify_payloads=True) as reader:
+            old_sources = tuple(
+                PacbinMemberSource(
+                    member.logical_path,
+                    member.kind,
+                    cast("BinaryIO", reader.open_member_stream(member.logical_path)),
+                )
+                for member in reader.members
+                if not self._is_discarded(member.logical_path)
+                and member.logical_path not in self._new_sources
+            )
+            return self._publish_with_old_sources(old_sources)
+
+    def _publish_with_old_sources(
+        self,
+        old_container_sources: Sequence[PacbinMemberSource],
+    ) -> dict[str, object] | None:
+        combined = {source.logical_path: source for source in old_container_sources}
+        loose_paths: set[str] = set(self._staged_loose_paths)
+        if self._existing is not None:
+            for record in self._existing.payloads:
+                kind = _packed_evaluator_member_kind(record.path)
+                if kind is None or self._is_discarded(record.path):
+                    continue
+                path = self._builder.staged_path(record.path)
+                if not path.is_file() or path.is_symlink():
+                    continue
+                loose_paths.add(record.path)
+                combined[record.path] = PacbinMemberSource(
+                    record.path,
+                    kind,
+                    path,
+                )
+        combined.update(self._new_sources)
+        if not combined:
+            self._builder.discard_payloads(_EVALUATOR_PAYLOAD_CONTAINER_PATH)
+            return None
+
+        destination = self._builder.staged_path(
+            _EVALUATOR_PAYLOAD_CONTAINER_PATH,
+            create_parent=True,
+        )
+        written = write_pacbin_atomic(destination, combined.values())
+        with PacbinReader.open(destination, verify_payloads=True) as verified:
+            if verified.index != written:
+                raise ValueError("published evaluator container failed verification")
+            index = verified.index
+
+        for relative in sorted(loose_paths):
+            self._builder.discard_payloads(relative)
+        self._builder.register_staged_file(
+            _EVALUATOR_PAYLOAD_CONTAINER_PATH,
+            role="evaluator-state",
+            media_type="application/octet-stream",
+            target=self._target,
+            process_id=None,
+        )
+        return _evaluator_payload_container_extension(index)
+
+    def _register_staged_source(
+        self,
+        relative: str,
+        kind: PacbinMemberKind,
+    ) -> None:
+        path = self._builder.staged_path(relative)
+        self._new_sources[relative] = PacbinMemberSource(relative, kind, path)
+        self._staged_loose_paths.add(relative)
+
+    def _is_discarded(self, relative: str) -> bool:
+        return any(
+            relative == prefix or relative.startswith(prefix + "/")
+            for prefix in self._discarded_prefixes
+        )
+
+
+def _packed_evaluator_member_kind(relative: str) -> PacbinMemberKind | None:
+    if relative.endswith(".symjit"):
+        return PacbinMemberKind.SYMJIT_APPLICATION
+    if relative.endswith(".evaluator.bin"):
+        return PacbinMemberKind.SYMBOLICA_EXACT_STATE
+    return None
+
+
+def _existing_evaluator_container_path(
+    existing: ArtifactManifest | None,
+) -> str | None:
+    if existing is None:
+        return None
+    raw = existing.extensions.get(_EVALUATOR_PAYLOAD_CONTAINER_EXTENSION)
+    if raw is None:
+        return None
+    extension = _mapping(raw)
+    if str(extension.get("path")) != _EVALUATOR_PAYLOAD_CONTAINER_PATH:
+        raise ValueError("append artifact has an incompatible evaluator container path")
+    return _EVALUATOR_PAYLOAD_CONTAINER_PATH
+
+
+def _evaluator_payload_container_extension(index: PacbinIndex) -> dict[str, object]:
+    return {
+        "kind": _EVALUATOR_PAYLOAD_CONTAINER_KIND,
+        "schema_version": _EVALUATOR_PAYLOAD_CONTAINER_SCHEMA_VERSION,
+        "storage_abi": _EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI,
+        "path": _EVALUATOR_PAYLOAD_CONTAINER_PATH,
+        "member_count": len(index.members),
+        "unpacked_size_bytes": sum(member.length for member in index.members),
+        "index_sha256": index.index_sha256,
+    }
 
 
 def write_schema_v3_artifact(
@@ -215,6 +498,11 @@ def write_schema_v3_artifact(
         mode=write_mode,
         expected_artifact_id=(existing.artifact_id if existing is not None else None),
     ) as builder:
+        evaluator_payloads = _EvaluatorPayloadCollector(
+            builder,
+            existing=existing,
+            target=target,
+        )
         if existing is None:
             if progress_callback is not None:
                 progress_callback(
@@ -250,7 +538,7 @@ def write_schema_v3_artifact(
                 builder,
                 compiled_model,
                 kernel_ids=eager_kernel_ids,
-                target=target,
+                evaluator_payloads=evaluator_payloads,
             )
         for process_index, process in enumerate(processes, start=1):
             if progress_callback is not None:
@@ -265,7 +553,7 @@ def write_schema_v3_artifact(
             record, evaluator_entry, execution_sha256 = _write_process_payloads(
                 builder,
                 process,
-                target=target,
+                evaluator_payloads=evaluator_payloads,
             )
             process_records.append(record)
             evaluator_entries.append(evaluator_entry)
@@ -282,6 +570,7 @@ def write_schema_v3_artifact(
         )
         if bundle_requested and hook is not None:
             api_bundle_path = _call_api_bundle_hook(builder, hook, bundle_points)
+        evaluator_payload_container = evaluator_payloads.publish()
         extensions = _extensions(
             existing,
             processes=processes,
@@ -290,6 +579,7 @@ def write_schema_v3_artifact(
             api_bundle_path=api_bundle_path,
             eager_pack_identity=eager_pack_identity,
             execution_manifest_sha256_by_process=(execution_manifest_sha256_by_process),
+            evaluator_payload_container=evaluator_payload_container,
         )
         builder.finalize(
             kind=(
@@ -386,7 +676,7 @@ def _write_eager_kernel_pack(
     compiled_model: CompiledModel,
     *,
     kernel_ids: frozenset[int],
-    target: Mapping[str, object],
+    evaluator_payloads: _EvaluatorPayloadCollector,
 ) -> None:
     bundle = compiled_model.prepared_bundle
     if bundle is None:
@@ -406,6 +696,7 @@ def _write_eager_kernel_pack(
     )
     builder.discard_payloads(_EAGER_KERNEL_PACK_PATH)
     builder.discard_payloads(_EAGER_KERNEL_PAYLOAD_ROOT, recursive=True)
+    evaluator_payloads.discard_prefix(_EAGER_KERNEL_PAYLOAD_ROOT)
     pack_payload = bundle.kernel_pack.to_dict()
     pack_payload["eager_kernel_abi"] = EAGER_KERNEL_ABI
     pack_payload["kernels"] = [kernel.to_dict() for kernel in selected]
@@ -427,14 +718,15 @@ def _write_eager_kernel_pack(
         for record in (*selected, *selected_variants)
         for path in record.referenced_payload_paths
     }
-    for member_path in sorted(referenced_payloads):
-        builder.add_bytes(
-            f"{_EAGER_KERNEL_PAYLOAD_ROOT}/{member_path}",
-            bundle.read_payload(member_path),
-            role="evaluator-state",
-            media_type=_media_type(Path(member_path)),
-            target=target,
-        )
+    with zipfile.ZipFile(bundle.path, "r") as archive:
+        for member_path in sorted(referenced_payloads):
+            with archive.open(member_path, "r") as stream:
+                evaluator_payloads.add_stream(
+                    f"{_EAGER_KERNEL_PAYLOAD_ROOT}/{member_path}",
+                    cast("BinaryIO", stream),
+                    process_id=None,
+                    media_type=_media_type(Path(member_path)),
+                )
 
 
 def _eager_kernel_ids(
@@ -547,7 +839,7 @@ def _write_process_payloads(
     builder: ArtifactBuilder,
     process: ProcessArtifact,
     *,
-    target: Mapping[str, object],
+    evaluator_payloads: _EvaluatorPayloadCollector,
 ) -> tuple[dict[str, object], dict[str, object], str]:
     prefix = f"processes/{process.process_id}"
     physics_path = f"{prefix}/physics.json"
@@ -581,20 +873,42 @@ def _write_process_payloads(
     )
     if isinstance(process, EagerProcessArtifact):
         for relative, content in sorted(process.eager_tables.binary_payloads().items()):
-            builder.add_bytes(
+            evaluator_payloads.add_bytes(
                 f"{prefix}/{relative}",
                 content,
-                role="evaluator-state",
                 media_type="application/octet-stream",
-                target=target,
                 process_id=process.process_id,
             )
     else:
         _copy_evaluator_payloads(
-            builder,
+            evaluator_payloads,
             process.evaluator_root,
             prefix=prefix,
-            target=target,
+            process_id=process.process_id,
+        )
+        _copy_color_selector_evaluator_payloads(
+            evaluator_payloads,
+            process.color_selector_executions,
+            prefix=prefix,
+            process_id=process.process_id,
+        )
+        if process.helicity_sum_execution is not None:
+            _copy_evaluator_payloads(
+                evaluator_payloads,
+                process.helicity_sum_execution.evaluator_root,
+                prefix=f"{prefix}/{_HELICITY_SUM_PAYLOAD_ROOT}",
+                process_id=process.process_id,
+            )
+            _copy_color_selector_evaluator_payloads(
+                evaluator_payloads,
+                process.helicity_sum_execution.color_selector_executions,
+                prefix=f"{prefix}/{_HELICITY_SUM_PAYLOAD_ROOT}",
+                process_id=process.process_id,
+            )
+        _copy_helicity_selector_evaluator_payloads(
+            evaluator_payloads,
+            process.helicity_selector_executions,
+            prefix=prefix,
             process_id=process.process_id,
         )
     return (
@@ -633,10 +947,16 @@ def _execution_manifest(
     compiler_schema: Mapping[str, object],
 ) -> dict[str, object]:
     if isinstance(process, EagerProcessArtifact):
+        topology_replay = compiler_schema.get("lc_topology_replay")
+        required_runtime_capabilities = _eager_process_runtime_capabilities(process)
+        plan = process.eager_tables.to_metadata()
+        plan["required_runtime_capabilities"] = list(
+            required_runtime_capabilities
+        )
         return {
             "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
             "kind": EAGER_RUNTIME_KIND,
-            "required_runtime_capabilities": [EAGER_RUNTIME_CAPABILITY],
+            "required_runtime_capabilities": list(required_runtime_capabilities),
             "process": process.expression,
             "key": process.process_id,
             "color_accuracy": process.color_accuracy,
@@ -650,22 +970,76 @@ def _execution_manifest(
                 "point_tile_size": process.point_tile_size,
                 "workspace_mib": process.workspace_mib,
             },
-            "plan": process.eager_tables.to_metadata(),
+            "plan": plan,
             "dag_summary": _dag_summary(process.dag_summary),
             "runtime_schema": _execution_plan(compiler_schema),
+            **(
+                {}
+                if topology_replay is None
+                else {
+                    "lc_topology_replay": _plain_mapping(
+                        _mapping(topology_replay)
+                    )
+                }
+            ),
         }
-    model_parameter_evaluator = (
-        None
-        if process.model_parameter_evaluator is None
-        else _model_parameter_evaluator(process.model_parameter_evaluator)
+    primary = _compiled_execution_lane_manifest(
+        runtime_schema=compiler_schema,
+        stage_manifest=process.stage_manifest,
+        model_parameter_evaluator=process.model_parameter_evaluator,
+        dag_summary=process.dag_summary,
+        payload_prefix=None,
     )
-    stage_evaluators = _stage_evaluator_set(process.stage_manifest)
     required_runtime_capabilities = set(
-        _required_runtime_capabilities(stage_evaluators)
+        _required_runtime_capabilities(primary)
     )
-    if model_parameter_evaluator is not None:
+    color_selector_executions = _compiled_color_selector_execution_manifests(
+        process=process,
+        executions=process.color_selector_executions,
+        parent_payload_prefix=None,
+    )
+    if color_selector_executions:
+        required_runtime_capabilities.add(
+            COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY
+        )
+        required_runtime_capabilities.add(
+            COMPILED_RUNTIME_SELECTORS_CAPABILITY
+        )
+        for record in color_selector_executions:
+            required_runtime_capabilities.update(
+                _required_runtime_capabilities(_mapping(record["execution"]))
+            )
+    helicity_sum_execution = process.helicity_sum_execution
+    auxiliary: dict[str, object] | None = None
+    if helicity_sum_execution is not None:
+        auxiliary = _compiled_nested_execution_manifest(
+            process=process,
+            execution=helicity_sum_execution,
+            payload_prefix=_HELICITY_SUM_PAYLOAD_ROOT,
+        )
         required_runtime_capabilities.update(
-            _required_runtime_capabilities(model_parameter_evaluator)
+            _required_runtime_capabilities(auxiliary)
+        )
+        required_runtime_capabilities.add(
+            COMPILED_HELICITY_DUAL_LANE_CAPABILITY
+        )
+    helicity_selector_executions = (
+        _compiled_helicity_selector_execution_manifests(
+            process=process,
+            executions=process.helicity_selector_executions,
+            parent_payload_prefix=None,
+        )
+    )
+    if helicity_selector_executions:
+        for record in helicity_selector_executions:
+            required_runtime_capabilities.update(
+                _required_runtime_capabilities(_mapping(record["execution"]))
+            )
+        required_runtime_capabilities.add(
+            COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY
+        )
+        required_runtime_capabilities.add(
+            COMPILED_RUNTIME_SELECTORS_CAPABILITY
         )
     return {
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
@@ -675,16 +1049,274 @@ def _execution_manifest(
         "key": process.process_id,
         "color_accuracy": process.color_accuracy,
         "external_pdg_order": list(process.external_pdgs),
-        "compiled": {
-            "kind": "generic-dag-stage-blueprint",
-            "runtime_available": True,
-            "runtime_unavailable_message": None,
-            "model_parameter_evaluator": model_parameter_evaluator,
-            "stage_evaluators": stage_evaluators,
-        },
-        "dag_summary": _dag_summary(process.dag_summary),
-        "runtime_schema": _execution_plan(compiler_schema),
+        "compiled": primary["compiled"],
+        "dag_summary": primary["dag_summary"],
+        "runtime_schema": primary["runtime_schema"],
+        **(
+            {}
+            if auxiliary is None
+            else {"helicity_sum_execution": auxiliary}
+        ),
+        **(
+            {}
+            if not helicity_selector_executions
+            else {"helicity_selector_executions": helicity_selector_executions}
+        ),
+        **(
+            {}
+            if not color_selector_executions
+            else {"color_selector_executions": color_selector_executions}
+        ),
     }
+
+
+def _compiled_helicity_selector_execution_manifests(
+    *,
+    process: CompiledProcessArtifact,
+    executions: Sequence[CompiledHelicitySelectorExecutionArtifact],
+    parent_payload_prefix: str | None,
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for lane_index, record in enumerate(
+        _ordered_helicity_selector_executions(executions)
+    ):
+        execution = record.execution
+        if execution.color_selector_executions:
+            raise ValueError(
+                "compiled helicity-selector closure execution cannot contain "
+                "nested execution lanes"
+            )
+        lane_prefix = (
+            f"{_HELICITY_SELECTOR_UNION_PAYLOAD_ROOT}/class-{lane_index}"
+        )
+        payload_prefix = (
+            lane_prefix
+            if parent_payload_prefix is None
+            else f"{parent_payload_prefix.rstrip('/')}/{lane_prefix}"
+        )
+        manifest = _compiled_nested_execution_manifest(
+            process=process,
+            execution=execution,
+            payload_prefix=payload_prefix,
+        )
+        if (
+            record.schedule_mode == "parent-closure"
+            and COMPILED_RUNTIME_SELECTORS_CAPABILITY
+            in _required_runtime_capabilities(manifest)
+        ):
+            raise ValueError(
+                "compiled helicity-selector closure stage evaluators cannot require "
+                "runtime selectors"
+            )
+        result.append(
+            {
+                "selector_domain_ids": list(record.selector_domain_ids),
+                "schedule_mode": record.schedule_mode,
+                "execution": manifest,
+            }
+        )
+    return result
+
+
+def _compiled_nested_execution_manifest(
+    *,
+    process: CompiledProcessArtifact,
+    execution: CompiledExecutionArtifact,
+    payload_prefix: str,
+) -> dict[str, object]:
+    runtime_schema = _runtime_schema_mapping(execution.runtime_schema)
+    lane = _compiled_execution_lane_manifest(
+        runtime_schema=runtime_schema,
+        stage_manifest=execution.stage_manifest,
+        model_parameter_evaluator=execution.model_parameter_evaluator,
+        dag_summary=execution.dag_summary,
+        payload_prefix=payload_prefix,
+    )
+    color_selector_executions = _compiled_color_selector_execution_manifests(
+        process=process,
+        executions=execution.color_selector_executions,
+        parent_payload_prefix=payload_prefix,
+    )
+    required_runtime_capabilities = set(
+        _required_runtime_capabilities(lane)
+    )
+    helicity_selector_executions = (
+        _compiled_helicity_selector_execution_manifests(
+            process=process,
+            executions=execution.helicity_selector_executions,
+            parent_payload_prefix=payload_prefix,
+        )
+    )
+    if helicity_selector_executions:
+        required_runtime_capabilities.add(
+            COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY
+        )
+        required_runtime_capabilities.add(
+            COMPILED_RUNTIME_SELECTORS_CAPABILITY
+        )
+        for record in helicity_selector_executions:
+            required_runtime_capabilities.update(
+                _required_runtime_capabilities(_mapping(record["execution"]))
+            )
+    if color_selector_executions:
+        required_runtime_capabilities.add(
+            COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY
+        )
+        required_runtime_capabilities.add(
+            COMPILED_RUNTIME_SELECTORS_CAPABILITY
+        )
+        for record in color_selector_executions:
+            required_runtime_capabilities.update(
+                _required_runtime_capabilities(_mapping(record["execution"]))
+            )
+    return {
+        "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
+        "kind": "pyamplicol-runtime-execution",
+        "required_runtime_capabilities": sorted(required_runtime_capabilities),
+        "process": process.expression,
+        "key": process.process_id,
+        "color_accuracy": process.color_accuracy,
+        "external_pdg_order": list(process.external_pdgs),
+        "compiled": lane["compiled"],
+        "dag_summary": lane["dag_summary"],
+        "runtime_schema": lane["runtime_schema"],
+        "physics_reduction": _plain_mapping(
+            _mapping(_mapping(runtime_schema["physics"])["reduction"])
+        ),
+        **(
+            {}
+            if not color_selector_executions
+            else {"color_selector_executions": color_selector_executions}
+        ),
+        **(
+            {}
+            if not helicity_selector_executions
+            else {
+                "helicity_selector_executions": (
+                    helicity_selector_executions
+                )
+            }
+        ),
+    }
+
+
+def _compiled_color_selector_execution_manifests(
+    *,
+    process: CompiledProcessArtifact,
+    executions: Sequence[CompiledColorSelectorExecutionArtifact],
+    parent_payload_prefix: str | None,
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for record in _ordered_color_selector_executions(executions):
+        lane_prefix = _color_selector_payload_prefix(
+            record.materialized_sector_id
+        )
+        payload_prefix = (
+            lane_prefix
+            if parent_payload_prefix is None
+            else f"{parent_payload_prefix.rstrip('/')}/{lane_prefix}"
+        )
+        result.append(
+            {
+                "materialized_sector_id": record.materialized_sector_id,
+                "execution": _compiled_nested_execution_manifest(
+                    process=process,
+                    execution=record.execution,
+                    payload_prefix=payload_prefix,
+                ),
+            }
+        )
+    return result
+
+
+def _compiled_execution_lane_manifest(
+    *,
+    runtime_schema: Mapping[str, object],
+    stage_manifest: Mapping[str, object],
+    model_parameter_evaluator: Mapping[str, object] | None,
+    dag_summary: Mapping[str, object],
+    payload_prefix: str | None,
+) -> dict[str, object]:
+    serialized_model_parameters = (
+        None
+        if model_parameter_evaluator is None
+        else _model_parameter_evaluator(model_parameter_evaluator)
+    )
+    stage_evaluators = _stage_evaluator_set(stage_manifest)
+    if payload_prefix is not None:
+        stage_evaluators = _prefix_evaluator_payload_paths(
+            stage_evaluators,
+            payload_prefix,
+        )
+        if serialized_model_parameters is not None:
+            serialized_model_parameters = _prefix_evaluator_payload_paths(
+                serialized_model_parameters,
+                payload_prefix,
+            )
+    required_runtime_capabilities = set(
+        _required_runtime_capabilities(stage_evaluators)
+    )
+    if serialized_model_parameters is not None:
+        required_runtime_capabilities.update(
+            _required_runtime_capabilities(serialized_model_parameters)
+        )
+    compiled_manifest: dict[str, object] = {
+        "kind": "generic-dag-stage-blueprint",
+        "runtime_available": True,
+        "runtime_unavailable_message": None,
+        "model_parameter_evaluator": serialized_model_parameters,
+        "stage_evaluators": stage_evaluators,
+    }
+    topology_replay = runtime_schema.get("lc_topology_replay")
+    if topology_replay is not None:
+        compiled_manifest["lc_topology_replay"] = _plain_mapping(
+            _mapping(topology_replay)
+        )
+    helicity_recurrence = runtime_schema.get("helicity_recurrence")
+    if helicity_recurrence is not None:
+        compiled_manifest["helicity_recurrence"] = _plain_mapping(
+            _mapping(helicity_recurrence)
+        )
+    return {
+        "kind": "pyamplicol-runtime-compiled-execution",
+        "required_runtime_capabilities": sorted(required_runtime_capabilities),
+        "compiled": compiled_manifest,
+        "dag_summary": _dag_summary(dag_summary),
+        "runtime_schema": _execution_plan(runtime_schema),
+    }
+
+
+def _prefix_evaluator_payload_paths(
+    record: Mapping[str, object],
+    prefix: str,
+) -> dict[str, object]:
+    path_fields = {"application_path", "evaluator_state_path", "library_path"}
+
+    def visit(value: object, *, field: str | None = None) -> object:
+        if field in path_fields and value is not None:
+            if not isinstance(value, str):
+                raise TypeError(f"evaluator payload path {field!r} must be a string")
+            path = Path(value)
+            if path.is_absolute() or ".." in path.parts:
+                raise ValueError(
+                    f"evaluator payload path {value!r} is not artifact-relative"
+                )
+            return f"{prefix.rstrip('/')}/{path.as_posix()}"
+        if isinstance(value, Mapping):
+            return {
+                str(key): visit(item, field=str(key))
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [visit(item) for item in value]
+        if isinstance(value, tuple):
+            return [visit(item) for item in value]
+        return value
+
+    result = visit(record)
+    if not isinstance(result, dict):  # pragma: no cover - internal invariant
+        raise TypeError("compiled evaluator manifest must be an object")
+    return result
 
 
 def _execution_plan(schema: Mapping[str, object]) -> dict[str, object]:
@@ -792,6 +1424,15 @@ def _execution_plan(schema: Mapping[str, object]) -> dict[str, object]:
             _runtime_stage(_mapping(item)) for item in _sequence(schema["stages"])
         ],
         "amplitude_stage": _amplitude_stage(_mapping(schema["amplitude_stage"])),
+        **(
+            {}
+            if schema.get("helicity_recurrence") is None
+            else {
+                "helicity_recurrence": _plain_mapping(
+                    _mapping(schema["helicity_recurrence"])
+                )
+            }
+        ),
     }
 
 
@@ -1012,7 +1653,11 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
             }
         )
     )
-    if actual != _required_runtime_capabilities(result):
+    declared = set(_required_runtime_capabilities(result))
+    evaluator_capabilities = declared - {
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY
+    }
+    if set(actual) != evaluator_capabilities:
         raise ValueError(
             "stage evaluator runtime capabilities do not match evaluator payloads"
         )
@@ -1206,11 +1851,10 @@ def _sequence(value: object) -> Sequence[object]:
 
 
 def _copy_evaluator_payloads(
-    builder: ArtifactBuilder,
+    evaluator_payloads: _EvaluatorPayloadCollector,
     root: Path,
     *,
     prefix: str,
-    target: Mapping[str, object],
     process_id: str,
 ) -> None:
     source_root = root.expanduser().resolve(strict=True)
@@ -1218,14 +1862,134 @@ def _copy_evaluator_payloads(
         if not path.is_file():
             continue
         relative = path.relative_to(source_root).as_posix()
-        builder.add_file(
+        evaluator_payloads.add_file(
             f"{prefix}/{relative}",
             path,
-            role="evaluator-state",
-            media_type=_media_type(path),
-            target=target,
             process_id=process_id,
         )
+
+
+def _copy_color_selector_evaluator_payloads(
+    evaluator_payloads: _EvaluatorPayloadCollector,
+    executions: Sequence[CompiledColorSelectorExecutionArtifact],
+    *,
+    prefix: str,
+    process_id: str,
+) -> None:
+    for record in _ordered_color_selector_executions(executions):
+        _copy_evaluator_payloads(
+            evaluator_payloads,
+            record.execution.evaluator_root,
+            prefix=(
+                f"{prefix}/{_color_selector_payload_prefix(record.materialized_sector_id)}"
+            ),
+            process_id=process_id,
+        )
+
+
+def _copy_helicity_selector_evaluator_payloads(
+    evaluator_payloads: _EvaluatorPayloadCollector,
+    executions: Sequence[CompiledHelicitySelectorExecutionArtifact],
+    *,
+    prefix: str,
+    process_id: str,
+) -> None:
+    for lane_index, record in enumerate(
+        _ordered_helicity_selector_executions(executions)
+    ):
+        lane_prefix = (
+            f"{prefix}/{_HELICITY_SELECTOR_UNION_PAYLOAD_ROOT}/"
+            f"class-{lane_index}"
+        )
+        _copy_evaluator_payloads(
+            evaluator_payloads,
+            record.execution.evaluator_root,
+            prefix=lane_prefix,
+            process_id=process_id,
+        )
+        _copy_helicity_selector_evaluator_payloads(
+            evaluator_payloads,
+            record.execution.helicity_selector_executions,
+            prefix=lane_prefix,
+            process_id=process_id,
+        )
+
+
+def _color_selector_payload_prefix(materialized_sector_id: int) -> str:
+    if materialized_sector_id < 0:
+        raise ValueError("materialized colour-sector ids must be non-negative")
+    return (
+        f"{_COLOR_SELECTOR_PAYLOAD_ROOT}/sector-{materialized_sector_id}"
+    )
+
+
+def _ordered_color_selector_executions(
+    executions: Sequence[CompiledColorSelectorExecutionArtifact],
+) -> tuple[CompiledColorSelectorExecutionArtifact, ...]:
+    ordered = tuple(
+        sorted(executions, key=lambda record: record.materialized_sector_id)
+    )
+    sector_ids = tuple(record.materialized_sector_id for record in ordered)
+    if len(sector_ids) != len(set(sector_ids)):
+        raise ValueError("compiled colour-selector lane ids must be unique")
+    for record in ordered:
+        if record.materialized_sector_id < 0:
+            raise ValueError("materialized colour-sector ids must be non-negative")
+        if record.execution.color_selector_executions:
+            raise ValueError(
+                "compiled colour-selector execution lanes cannot nest"
+            )
+    return ordered
+
+
+def _ordered_helicity_selector_executions(
+    executions: Sequence[CompiledHelicitySelectorExecutionArtifact],
+) -> tuple[CompiledHelicitySelectorExecutionArtifact, ...]:
+    ordered = tuple(
+        sorted(executions, key=lambda record: record.selector_domain_ids)
+    )
+    seen: set[int] = set()
+    for record in ordered:
+        domain_ids = tuple(sorted(set(record.selector_domain_ids)))
+        if not domain_ids or domain_ids != record.selector_domain_ids:
+            raise ValueError(
+                "compiled helicity-selector domain ids must be non-empty, "
+                "sorted, and unique"
+            )
+        overlap = seen.intersection(domain_ids)
+        if overlap:
+            raise ValueError(
+                "compiled helicity-selector lanes overlap selector domains: "
+                + ", ".join(str(item) for item in sorted(overlap))
+            )
+        seen.update(domain_ids)
+        if record.schedule_mode not in {"parent-closure", "nested-runtime"}:
+            raise ValueError(
+                "compiled helicity-selector schedule mode must be "
+                "'parent-closure' or 'nested-runtime'"
+            )
+        if record.execution.color_selector_executions:
+            raise ValueError(
+                "compiled helicity-selector execution lanes cannot nest"
+            )
+        children = record.execution.helicity_selector_executions
+        if children:
+            if record.schedule_mode != "nested-runtime":
+                raise ValueError(
+                    "only a nested-runtime helicity-selector execution may "
+                    "contain closure lanes"
+                )
+            for child in _ordered_helicity_selector_executions(children):
+                if (
+                    child.schedule_mode != "parent-closure"
+                    or child.execution.helicity_selector_executions
+                    or child.execution.color_selector_executions
+                ):
+                    raise ValueError(
+                        "nested helicity-selector closure lanes must be "
+                        "terminal parent-closure executions"
+                    )
+    return ordered
 
 
 def build_api_validation_points(
@@ -1560,6 +2324,61 @@ def _compiled_process_runtime_capabilities(
         capabilities.update(
             _required_runtime_capabilities(process.model_parameter_evaluator)
         )
+    if process.color_selector_executions:
+        capabilities.add(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY)
+        capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
+        for record in _ordered_color_selector_executions(
+            process.color_selector_executions
+        ):
+            capabilities.update(
+                _compiled_execution_runtime_capabilities(record.execution)
+            )
+    auxiliary = process.helicity_sum_execution
+    if auxiliary is not None:
+        capabilities.add(COMPILED_HELICITY_DUAL_LANE_CAPABILITY)
+        capabilities.update(_compiled_execution_runtime_capabilities(auxiliary))
+    selector_lanes = _ordered_helicity_selector_executions(
+        process.helicity_selector_executions
+    )
+    if selector_lanes:
+        capabilities.add(COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY)
+        capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
+        for record in selector_lanes:
+            capabilities.update(
+                _compiled_execution_runtime_capabilities(record.execution)
+            )
+    return tuple(sorted(capabilities))
+
+
+def _compiled_execution_runtime_capabilities(
+    execution: CompiledExecutionArtifact,
+) -> tuple[str, ...]:
+    capabilities = set(
+        _required_runtime_capabilities(execution.stage_manifest)
+    )
+    if execution.model_parameter_evaluator is not None:
+        capabilities.update(
+            _required_runtime_capabilities(execution.model_parameter_evaluator)
+        )
+    if execution.color_selector_executions:
+        capabilities.add(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY)
+        capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
+        for record in _ordered_color_selector_executions(
+            execution.color_selector_executions
+        ):
+            capabilities.update(
+                _compiled_execution_runtime_capabilities(record.execution)
+            )
+    selector_lanes = _ordered_helicity_selector_executions(
+        execution.helicity_selector_executions
+    )
+    if selector_lanes:
+        capabilities.add(COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY)
+        capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
+        for record in selector_lanes:
+            capabilities.update(
+                _compiled_execution_runtime_capabilities(record.execution)
+            )
     return tuple(sorted(capabilities))
 
 
@@ -1567,8 +2386,18 @@ def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
     if isinstance(process, EagerProcessArtifact):
-        return (EAGER_RUNTIME_CAPABILITY,)
+        return _eager_process_runtime_capabilities(process)
     return _compiled_process_runtime_capabilities(process)
+
+
+def _eager_process_runtime_capabilities(
+    process: EagerProcessArtifact,
+) -> tuple[str, ...]:
+    capabilities = {EAGER_RUNTIME_CAPABILITY}
+    runtime_schema = _runtime_schema_mapping(process.runtime_schema)
+    if runtime_schema.get("lc_topology_replay") is not None:
+        capabilities.add(EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY)
+    return tuple(sorted(capabilities))
 
 
 def _required_runtime_capabilities(
@@ -1597,6 +2426,7 @@ def _extensions(
     api_bundle_path: str | None,
     eager_pack_identity: Mapping[str, object] | None,
     execution_manifest_sha256_by_process: Mapping[str, str],
+    evaluator_payload_container: Mapping[str, object] | None,
 ) -> dict[str, object]:
     result = {} if existing is None else _plain_mapping(existing.extensions)
     previous = result.get("generation")
@@ -1618,6 +2448,17 @@ def _extensions(
             ]
         else:
             record["runtime_schema_sha256"] = process.runtime_schema.sha256
+            if process.helicity_sum_execution is not None:
+                record["helicity_sum_runtime_schema_sha256"] = (
+                    process.helicity_sum_execution.runtime_schema.sha256
+                )
+            if process.helicity_selector_executions:
+                record["helicity_selector_runtime_schema_sha256s"] = [
+                    lane.execution.runtime_schema.sha256
+                    for lane in _ordered_helicity_selector_executions(
+                        process.helicity_selector_executions
+                    )
+                ]
         process_records.append(record)
     generation.update(
         {
@@ -1637,6 +2478,12 @@ def _extensions(
     result["generation"] = generation
     if eager_pack_identity is not None:
         result[_EAGER_PACK_IDENTITY_EXTENSION] = _plain_mapping(eager_pack_identity)
+    if evaluator_payload_container is None:
+        result.pop(_EVALUATOR_PAYLOAD_CONTAINER_EXTENSION, None)
+    else:
+        result[_EVALUATOR_PAYLOAD_CONTAINER_EXTENSION] = _plain_mapping(
+            evaluator_payload_container
+        )
     return result
 
 
@@ -1667,6 +2514,7 @@ def _call_api_bundle_hook(
 
 def _validate_artifact_references(manifest: ArtifactManifest) -> None:
     declared = {record.path for record in manifest.payloads}
+    _validate_evaluator_payload_container(manifest)
     required = {
         str(manifest.configuration["requested_path"]),
         str(manifest.configuration["effective_path"]),
@@ -1696,6 +2544,66 @@ def _validate_artifact_references(manifest: ArtifactManifest) -> None:
     if undeclared:
         raise ValueError(
             "artifact contains undeclared files: " + ", ".join(sorted(undeclared))
+        )
+
+
+def _validate_evaluator_payload_container(manifest: ArtifactManifest) -> None:
+    raw = manifest.extensions.get(_EVALUATOR_PAYLOAD_CONTAINER_EXTENSION)
+    if raw is None:
+        return
+    extension = _mapping(raw)
+    expected_fields = {
+        "kind",
+        "schema_version",
+        "storage_abi",
+        "path",
+        "member_count",
+        "unpacked_size_bytes",
+        "index_sha256",
+    }
+    if set(extension) != expected_fields:
+        raise ValueError("evaluator payload container extension fields are invalid")
+    if extension != {
+        **extension,
+        "kind": _EVALUATOR_PAYLOAD_CONTAINER_KIND,
+        "schema_version": _EVALUATOR_PAYLOAD_CONTAINER_SCHEMA_VERSION,
+        "storage_abi": _EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI,
+        "path": _EVALUATOR_PAYLOAD_CONTAINER_PATH,
+    }:
+        raise ValueError("evaluator payload container extension contract is invalid")
+    records = {
+        record.path: record
+        for record in manifest.payloads
+        if record.path == _EVALUATOR_PAYLOAD_CONTAINER_PATH
+    }
+    if len(records) != 1:
+        raise ValueError("evaluator payload container is not a declared payload")
+    record = records[_EVALUATOR_PAYLOAD_CONTAINER_PATH]
+    if (
+        record.role != "evaluator-state"
+        or record.media_type != "application/octet-stream"
+        or record.process_id is not None
+        or record.target != manifest.producer["target"]
+    ):
+        raise ValueError("evaluator payload container manifest record is invalid")
+    loose = sorted(
+        payload.path
+        for payload in manifest.payloads
+        if payload.path != _EVALUATOR_PAYLOAD_CONTAINER_PATH
+        and _packed_evaluator_member_kind(payload.path) is not None
+    )
+    if loose:
+        raise ValueError(
+            "artifact declares loose packed evaluator payloads: " + ", ".join(loose)
+        )
+    with PacbinReader.open(
+        manifest.root / _EVALUATOR_PAYLOAD_CONTAINER_PATH,
+        verify_payloads=False,
+    ) as reader:
+        expected = _evaluator_payload_container_extension(reader.index)
+    if extension != expected:
+        raise ValueError(
+            "evaluator payload container metadata does not match its index"
         )
 
 
@@ -1831,6 +2739,7 @@ def _deep_plain(value: Mapping[str, object]) -> dict[str, object]:
 __all__ = [
     "ApiBundleHook",
     "ArtifactWriteResult",
+    "CompiledExecutionArtifact",
     "CompiledProcessArtifact",
     "EagerProcessArtifact",
     "ProcessArtifact",

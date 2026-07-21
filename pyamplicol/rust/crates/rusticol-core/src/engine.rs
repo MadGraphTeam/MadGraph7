@@ -7,6 +7,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 #[cfg(feature = "symbolica-runtime")]
 use symbolica::evaluate::JITCompiledEvaluator;
@@ -16,6 +17,9 @@ use symbolica::prelude::{
     JITCompilationSettings, Rational, Real, RealLike,
 };
 
+#[cfg(feature = "symbolica-runtime")]
+use crate::artifact::EvaluatorPayloadSource;
+use crate::artifact::EvaluatorPayloadStore;
 use crate::{
     ColorComponent as PhysicsColorComponentV1, PROCESS_ARTIFACT_SCHEMA_VERSION, PayloadRole,
     ProcessPhysics as ProcessPhysicsV1, RusticolError, RusticolResult, VerifiedArtifact,
@@ -23,9 +27,45 @@ use crate::{
 
 const MAX_LC_TOPOLOGY_REPLAY_EXPANDED_POINTS: usize = 8192;
 const LC_SECTOR_SELECTOR_PARAMETER: &str = "runtime.lc_sector_id";
+const HELICITY_RECURRENCE_CONTRACT_VERSION: u32 = 1;
+const HELICITY_RECURRENCE_KIND: &str = "pyamplicol-helicity-recurrence";
+const HELICITY_RECURRENCE_PROOF_ALGORITHM: &str = "canonical-source-transition-dependency-shape-v1";
+const HELICITY_MATERIALIZATION_CONTRACT_VERSION: u32 = 1;
+const HELICITY_MATERIALIZATION_KIND: &str = "pyamplicol-helicity-recurrence-materialization";
 
 type LcTopologyReplayMappings = Vec<Vec<(usize, usize)>>;
-type LcTopologyReplayData = (LcTopologyReplayMappings, Vec<f64>);
+
+#[derive(Clone, Debug, Default)]
+struct LcTopologyReplayData {
+    mappings: LcTopologyReplayMappings,
+    routes: Vec<Vec<LcTopologyReplaySectorRoute>>,
+    materialized_sector_ids: BTreeSet<i64>,
+}
+
+#[derive(Clone, Debug)]
+struct LcTopologyReplaySectorRoute {
+    physical_sector_id: i64,
+    materialized_sector_id: i64,
+    weight: f64,
+    sign: i8,
+    amplitude_factor: [f64; 2],
+    residual: bool,
+}
+
+impl LcTopologyReplaySectorRoute {
+    fn squared_reduction_weight(&self) -> f64 {
+        // The replay sign is an amplitude-level relation.  LC resolved output
+        // is diagonal in the physical flow, so sign^2 = 1.  Multiplying the
+        // signed factor by the sign retains that convention explicitly.
+        self.amplitude_factor[0] * f64::from(self.sign)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LcMaterializedSector {
+    color_index: usize,
+    reduction_weight: f64,
+}
 
 #[derive(Clone, Debug)]
 struct LcResolvedReplayRoute {
@@ -41,9 +81,47 @@ struct LcResolvedReplayEntry {
 
 #[derive(Clone, Debug)]
 struct LcResolvedReplayPlan {
+    #[cfg(test)]
     entries: Vec<LcResolvedReplayEntry>,
-    helicity_count: usize,
+    routes_by_target: Vec<Vec<LcResolvedReplayTargetRoute>>,
     color_count: usize,
+}
+
+#[derive(Clone, Debug)]
+struct LcResolvedReplayTargetRoute {
+    mapping_index: usize,
+    source_index: usize,
+    weight: f64,
+}
+
+#[derive(Clone, Debug)]
+struct LcResolvedReplaySelection {
+    #[cfg(test)]
+    mapping_indices: Vec<usize>,
+    #[cfg(test)]
+    entries: Vec<LcResolvedReplayEntry>,
+    #[cfg(test)]
+    source_helicity_indices: Vec<Vec<usize>>,
+    #[cfg(test)]
+    source_color_indices: Vec<Vec<usize>>,
+    source_groups: Vec<LcResolvedReplaySourceGroup>,
+    helicity_indices: Vec<usize>,
+    color_indices: Vec<usize>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct LcResolvedReplaySelectionKey {
+    helicity_indices: Option<Vec<usize>>,
+    color_indices: Option<Vec<usize>>,
+}
+
+#[derive(Clone, Debug)]
+struct LcResolvedReplaySourceGroup {
+    mapping_indices: Vec<usize>,
+    entries: Vec<LcResolvedReplayEntry>,
+    helicity_ids: BTreeSet<String>,
+    color_ids: BTreeSet<String>,
+    source_component_count: usize,
 }
 
 pub const SYMJIT_APPLICATION_RUNTIME_CAPABILITY: &str = "symjit.application.complex-f64.v1";
@@ -52,6 +130,14 @@ pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
 pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-cpp.complex-f64.v1";
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
 pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
+pub const EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY: &str =
+    crate::EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY;
+pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
+pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
+pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
+    "rusticol.compiled.helicity-selector-union.v1";
+pub const COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY: &str =
+    "rusticol.compiled.color-topology-lanes.v1";
 #[cfg(feature = "f64-symjit")]
 pub const SYMJIT_APPLICATION_STORAGE_ABI: &str = "symjit-application-storage-v3";
 
@@ -79,7 +165,12 @@ pub fn preflight_prepared_kernel_pack(
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {
+    CompiledColorTopologyLanesV1,
+    CompiledHelicityDualLaneV1,
+    CompiledHelicitySelectorUnionV1,
+    CompiledRuntimeSelectorsV1,
     EagerDagComplexF64V1,
+    EagerLcTopologyReplayComplexF64V1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -89,7 +180,12 @@ pub enum RuntimeCapability {
 impl RuntimeCapability {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::CompiledColorTopologyLanesV1 => COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
+            Self::CompiledHelicityDualLaneV1 => COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+            Self::CompiledHelicitySelectorUnionV1 => COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+            Self::CompiledRuntimeSelectorsV1 => COMPILED_RUNTIME_SELECTORS_CAPABILITY,
             Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
+            Self::EagerLcTopologyReplayComplexF64V1 => EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -103,7 +199,17 @@ impl RuntimeCapability {
 pub fn supported_runtime_capabilities() -> Vec<&'static str> {
     let mut capabilities = vec![
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_DAG_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
         SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         #[cfg(feature = "symbolica-runtime")]
@@ -183,19 +289,83 @@ struct ExecutionManifest {
     compiled: EvaluatorSetManifest,
     dag_summary: ExecutionSummary,
     runtime_schema: ExecutionPlan,
+    #[serde(default)]
+    physics_reduction: Option<crate::Reduction>,
+    #[serde(default)]
+    helicity_sum_execution: Option<Box<ExecutionManifest>>,
+    #[serde(default)]
+    helicity_selector_executions: Vec<HelicitySelectorExecutionManifest>,
+    #[serde(default)]
+    color_selector_executions: Vec<ColorSelectorExecutionManifest>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct HelicitySelectorExecutionManifest {
+    selector_domain_ids: Vec<usize>,
+    #[serde(default)]
+    schedule_mode: HelicitySelectorScheduleMode,
+    execution: Box<ExecutionManifest>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum HelicitySelectorScheduleMode {
+    #[default]
+    ParentClosure,
+    NestedRuntime,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ColorSelectorExecutionManifest {
+    materialized_sector_id: i64,
+    execution: Box<ExecutionManifest>,
+}
+
+#[derive(Clone, Debug)]
 struct EvaluatorSetManifest {
+    kind: String,
+    runtime_available: bool,
+    runtime_unavailable_message: Option<String>,
+    lc_topology_replay: Option<LcTopologyReplayManifest>,
+    model_parameter_evaluator: Option<GenericModelParameterEvaluatorManifest>,
+    stage_evaluators: Option<GenericStageEvaluatorArtifactsManifest>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvaluatorSetManifestWire {
     kind: String,
     runtime_available: bool,
     runtime_unavailable_message: Option<String>,
     #[serde(default)]
     lc_topology_replay: Option<LcTopologyReplayManifest>,
+    // Current Python artifacts mirror this additive contract under `compiled`.
+    // Runtime loading uses the authoritative runtime_schema copy below.
+    #[serde(default)]
+    helicity_recurrence: Option<HelicityRecurrenceManifest>,
     #[serde(default)]
     model_parameter_evaluator: Option<GenericModelParameterEvaluatorManifest>,
     stage_evaluators: Option<GenericStageEvaluatorArtifactsManifest>,
+}
+
+impl<'de> Deserialize<'de> for EvaluatorSetManifest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = EvaluatorSetManifestWire::deserialize(deserializer)?;
+        let _validated_additive_mirror = wire.helicity_recurrence;
+        Ok(Self {
+            kind: wire.kind,
+            runtime_available: wire.runtime_available,
+            runtime_unavailable_message: wire.runtime_unavailable_message,
+            lc_topology_replay: wire.lc_topology_replay,
+            model_parameter_evaluator: wire.model_parameter_evaluator,
+            stage_evaluators: wire.stage_evaluators,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -226,7 +396,15 @@ struct LcTopologyReplayManifest {
     #[serde(default)]
     mode: String,
     #[serde(default)]
+    contract_version: Option<u32>,
+    #[serde(default)]
+    physical_sector_count: Option<usize>,
+    #[serde(default)]
     replayed_sector_count: usize,
+    #[serde(default)]
+    materialized_sector_ids: Vec<i64>,
+    #[serde(default)]
+    residual_sector_ids: Vec<i64>,
     #[serde(default)]
     groups: Vec<LcTopologyReplayGroupManifest>,
 }
@@ -239,7 +417,20 @@ struct LcTopologyReplayGroupManifest {
     #[serde(default)]
     active_sector_ids: Vec<i64>,
     #[serde(default)]
+    proof: Option<LcTopologyReplayProofManifest>,
+    #[serde(default)]
     sector_permutations: Vec<LcTopologyReplaySectorPermutationManifest>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LcTopologyReplayProofManifest {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    algorithm: Option<String>,
+    #[serde(default)]
+    digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -248,6 +439,10 @@ struct LcTopologyReplaySectorPermutationManifest {
     sector_id: i64,
     #[serde(default = "default_lc_topology_replay_weight")]
     weight: f64,
+    #[serde(default = "default_lc_topology_replay_sign")]
+    sign: i8,
+    #[serde(default)]
+    factor: Option<Vec<f64>>,
     #[serde(default)]
     label_permutation: Vec<LcTopologyReplayLabelPermutationManifest>,
 }
@@ -261,6 +456,299 @@ struct LcTopologyReplayLabelPermutationManifest {
 
 fn default_lc_topology_replay_weight() -> f64 {
     1.0
+}
+
+fn default_lc_topology_replay_sign() -> i8 {
+    1
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityRecurrenceManifest {
+    kind: String,
+    contract_version: u32,
+    proof_algorithm: String,
+    current_count: usize,
+    amplitude_root_count: usize,
+    proof_counts: HelicityRecurrenceProofCountsManifest,
+    selector_domains: Vec<HelicitySelectorDomainManifest>,
+    source_state_mappings: Vec<HelicitySourceStateMappingManifest>,
+    recurrence_classes: Vec<HelicityRecurrenceClassManifest>,
+    amplitude_classes: Vec<HelicityAmplitudeReplayClassManifest>,
+    residual_current_ids: Vec<usize>,
+    residual_root_ids: Vec<usize>,
+    structural_zero_selector_domain_ids: Vec<usize>,
+    diagnostics: Vec<String>,
+    #[serde(default)]
+    materialization: Option<HelicityRecurrenceMaterializationManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityRecurrenceProofCountsManifest {
+    recurrence_class_count: usize,
+    optimized_recurrence_class_count: usize,
+    optimized_current_count: usize,
+    residual_current_count: usize,
+    amplitude_class_count: usize,
+    optimized_amplitude_class_count: usize,
+    residual_amplitude_count: usize,
+    source_state_mapping_count: usize,
+    physical_helicity_count: usize,
+    structural_zero_helicity_count: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicitySelectorDomainManifest {
+    id: usize,
+    complete: bool,
+    source_states: Vec<HelicitySelectorSourceStateManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(deny_unknown_fields)]
+struct HelicitySelectorSourceStateManifest {
+    external_label: usize,
+    helicity: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityCurrentReplayMemberManifest {
+    current_id: usize,
+    selector_domain_id: usize,
+    factor: [f64; 2],
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityRecurrenceClassManifest {
+    class_id: String,
+    representative_current_id: usize,
+    external_labels: Vec<usize>,
+    source_class: bool,
+    members: Vec<HelicityCurrentReplayMemberManifest>,
+    proof: HelicityRecurrenceProofManifest,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityRecurrenceProofManifest {
+    status: String,
+    algorithm: String,
+    digest: String,
+    transition_contract_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicitySourceStateMappingManifest {
+    current_id: usize,
+    external_label: usize,
+    helicity: i32,
+    chirality: i32,
+    spin_state: GenericSourceSpinStateManifest,
+    declared_state_index: usize,
+    selector_domain_id: usize,
+    recurrence_class_id: String,
+    representative_current_id: usize,
+    source_contract_digest: String,
+    factor: [f64; 2],
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityAmplitudeReplayMemberManifest {
+    root_id: usize,
+    selector_domain_ids: Vec<usize>,
+    factor: [f64; 2],
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityAmplitudeReplayClassManifest {
+    class_id: String,
+    representative_root_id: usize,
+    members: Vec<HelicityAmplitudeReplayMemberManifest>,
+    proof: HelicityRecurrenceProofManifest,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityRecurrenceMaterializationManifest {
+    kind: String,
+    contract_version: u32,
+    #[serde(default)]
+    strategy: HelicityMaterializationStrategy,
+    proof_current_count: usize,
+    proof_root_count: usize,
+    materialized_current_count: usize,
+    materialized_root_count: usize,
+    proof_to_materialized_current: Vec<usize>,
+    source_routes: Vec<HelicityMaterializedSourceRouteManifest>,
+    amplitude_routes: Vec<HelicityMaterializedAmplitudeRouteManifest>,
+    selector_schedules: Vec<HelicityMaterializedSelectorScheduleManifest>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum HelicityMaterializationStrategy {
+    #[default]
+    Quotient,
+    RetainedProofGraph,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityMaterializedSourceRouteManifest {
+    materialized_current_id: usize,
+    external_label: usize,
+    helicity: i32,
+    chirality: i32,
+    spin_state: GenericSourceSpinStateManifest,
+    declared_state_index: usize,
+    selector_domain_id: usize,
+    factor: [f64; 2],
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityMaterializedAmplitudeRouteManifest {
+    materialized_root_id: usize,
+    selector_domain_ids: Vec<usize>,
+    factor: [f64; 2],
+    residual: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct HelicityMaterializedSelectorScheduleManifest {
+    selector_domain_id: usize,
+    active_current_ids: Vec<usize>,
+    active_root_ids: Vec<usize>,
+    structural_zero: bool,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityRecurrenceRuntime {
+    selector_domains: Vec<HelicitySelectorDomainRuntime>,
+    source_state_mappings: Vec<HelicitySourceStateMappingRuntime>,
+    recurrence_classes: Vec<HelicityRecurrenceClassRuntime>,
+    amplitude_classes: Vec<HelicityAmplitudeReplayClassRuntime>,
+    residual_current_ids: Vec<usize>,
+    residual_root_ids: Vec<usize>,
+    structural_zero_selector_domain_ids: Vec<usize>,
+    materialization: Option<HelicityRecurrenceMaterializationRuntime>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicitySelectorDomainRuntime {
+    complete: bool,
+    source_states: Vec<(usize, i32)>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityCurrentReplayMemberRuntime {
+    current_id: usize,
+    selector_domain_id: usize,
+    factor: [f64; 2],
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityRecurrenceClassRuntime {
+    representative_current_id: usize,
+    external_labels: Vec<usize>,
+    source_class: bool,
+    members: Vec<HelicityCurrentReplayMemberRuntime>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicitySourceStateMappingRuntime {
+    current_id: usize,
+    external_index: usize,
+    helicity: i32,
+    chirality: i32,
+    spin_state: GenericSourceSpinStateManifest,
+    declared_state_index: usize,
+    selector_domain_id: usize,
+    recurrence_class_index: usize,
+    representative_current_id: usize,
+    factor: [f64; 2],
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityAmplitudeReplayMemberRuntime {
+    root_id: usize,
+    selector_domain_ids: Vec<usize>,
+    factor: [f64; 2],
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityAmplitudeReplayClassRuntime {
+    representative_root_id: usize,
+    members: Vec<HelicityAmplitudeReplayMemberRuntime>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityRecurrenceMaterializationRuntime {
+    strategy: HelicityMaterializationStrategy,
+    proof_to_materialized_current: Vec<usize>,
+    source_routes: Vec<HelicityMaterializedSourceRouteRuntime>,
+    amplitude_routes: Vec<HelicityMaterializedAmplitudeRouteRuntime>,
+    selector_schedules: Vec<HelicityMaterializedSelectorScheduleRuntime>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityMaterializedSourceRouteRuntime {
+    materialized_current_id: usize,
+    external_index: usize,
+    helicity: i32,
+    chirality: i32,
+    spin_state: GenericSourceSpinStateManifest,
+    declared_state_index: usize,
+    selector_domain_id: usize,
+    factor: [f64; 2],
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityMaterializedAmplitudeRouteRuntime {
+    materialized_root_id: usize,
+    selector_domain_ids: Vec<usize>,
+    factor: [f64; 2],
+    residual: bool,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct HelicityMaterializedSelectorScheduleRuntime {
+    selector_domain_id: usize,
+    active_current_ids: Vec<usize>,
+    active_root_ids: Vec<usize>,
+    active_stage_chunk_indices: Vec<Vec<usize>>,
+    active_amplitude_chunk_indices: Vec<usize>,
+    structural_zero: bool,
+}
+
+#[derive(Clone, Debug)]
+struct CompiledColorSelectorSchedule {
+    active_stage_chunk_indices: Vec<Vec<usize>>,
+    active_amplitude_chunk_indices: Vec<usize>,
+}
+
+#[derive(Clone, Debug)]
+struct CompiledColorExecutionPlan {
+    schedules_by_materialized_sector: BTreeMap<i64, Arc<CompiledColorSelectorSchedule>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -335,6 +823,8 @@ struct GenericStageOutputSlotManifest {
     component_stop: usize,
     output_start: usize,
     output_stop: usize,
+    #[serde(default)]
+    color_selector_domain_ids: Vec<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -368,6 +858,8 @@ struct ExecutionPlan {
     momentum_slots: Vec<GenericMomentumSlotManifest>,
     stages: Vec<GenericStageManifest>,
     amplitude_stage: GenericAmplitudeStageManifest,
+    #[serde(default)]
+    helicity_recurrence: Option<HelicityRecurrenceManifest>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1095,6 +1587,70 @@ impl EvaluatorManifest {
             }
         }
     }
+
+    fn leaf_input_indices(&self) -> RusticolResult<Vec<Vec<usize>>> {
+        fn append_leaf_inputs(
+            evaluator: &EvaluatorManifest,
+            parent_inputs: &[usize],
+            leaf_inputs: &mut Vec<Vec<usize>>,
+        ) -> RusticolResult<()> {
+            match evaluator {
+                EvaluatorManifest::Chunked {
+                    input_len,
+                    chunk_input_indices,
+                    chunks,
+                    ..
+                } => {
+                    evaluator.io_len()?;
+                    if let Some(input_len) = input_len
+                        && *input_len != parent_inputs.len()
+                    {
+                        return Err(RusticolError::artifact(
+                            "chunked evaluator parent input mapping has an inconsistent length",
+                        ));
+                    }
+                    match chunk_input_indices {
+                        Some(chunk_inputs) => {
+                            for (chunk, indices) in chunks.iter().zip(chunk_inputs) {
+                                let mapped = indices
+                                    .iter()
+                                    .map(|index| {
+                                        parent_inputs.get(*index).copied().ok_or_else(|| {
+                                            RusticolError::artifact(
+                                                "chunked evaluator input map references an absent parent input",
+                                            )
+                                        })
+                                    })
+                                    .collect::<RusticolResult<Vec<_>>>()?;
+                                append_leaf_inputs(chunk, &mapped, leaf_inputs)?;
+                            }
+                        }
+                        None => {
+                            for chunk in chunks {
+                                append_leaf_inputs(chunk, parent_inputs, leaf_inputs)?;
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    let input_len = evaluator.io_len()?.0;
+                    if input_len != parent_inputs.len() {
+                        return Err(RusticolError::artifact(
+                            "evaluator leaf input mapping has an inconsistent length",
+                        ));
+                    }
+                    leaf_inputs.push(parent_inputs.to_vec());
+                }
+            }
+            Ok(())
+        }
+
+        let root_input_len = self.io_len()?.0;
+        let root_inputs = (0..root_input_len).collect::<Vec<_>>();
+        let mut leaf_inputs = Vec::new();
+        append_leaf_inputs(self, &root_inputs, &mut leaf_inputs)?;
+        Ok(leaf_inputs)
+    }
 }
 
 struct EvaluatorGroup {
@@ -1121,7 +1677,7 @@ struct LoadedEvaluator {
     #[cfg(feature = "symbolica-runtime")]
     exact_eval: Option<ExpressionEvaluator<Complex<Rational>>>,
     #[cfg(feature = "symbolica-runtime")]
-    exact_eval_path: Option<PathBuf>,
+    exact_eval_source: Option<EvaluatorPayloadSource>,
     #[cfg(feature = "symbolica-runtime")]
     double_eval: Option<ExpressionEvaluator<Complex<DoubleFloat>>>,
     #[cfg(feature = "symbolica-runtime")]
@@ -1260,6 +1816,15 @@ struct RuntimeProfile {
     eager_copy_out_s: f64,
 }
 
+// Saved SymJIT applications are native payloads and do not currently guarantee
+// Rust's AArch64 callee-saved FP registers. Keep elapsed values integer-backed
+// until the payload has returned, then use an opaque conversion boundary so
+// LLVM cannot retain an f64 across that call.
+#[inline(never)]
+fn profile_duration_seconds(duration: Duration) -> f64 {
+    std::hint::black_box(duration).as_secs_f64()
+}
+
 impl RuntimeProfile {
     fn add_sector(&mut self, sector: &RuntimeProfile) {
         self.source_fill_s += sector.source_fill_s;
@@ -1320,9 +1885,25 @@ struct ExecutionRuntime {
     stage_count: usize,
     amplitude_output_count: usize,
     lc_topology_replay_enabled: bool,
-    lc_topology_replay_mappings: LcTopologyReplayMappings,
+    lc_topology_replay_mappings: Arc<LcTopologyReplayMappings>,
     lc_topology_replay_public_mappings: LcTopologyReplayMappings,
-    lc_topology_replay_weights: Vec<f64>,
+    lc_topology_replay_routes: Vec<Vec<LcTopologyReplaySectorRoute>>,
+    lc_topology_replay_materialized_sector_ids: BTreeSet<i64>,
+    lc_resolved_replay_plan: Option<Arc<LcResolvedReplayPlan>>,
+    lc_resolved_replay_selection_cache:
+        Option<(LcResolvedReplaySelectionKey, Arc<LcResolvedReplaySelection>)>,
+    #[allow(dead_code)] // Loaded now and consumed by the subsequent selector-execution milestone.
+    helicity_recurrence: Option<HelicityRecurrenceRuntime>,
+    compiled_helicity_execution_plan: Option<CompiledHelicityExecutionPlan>,
+    compiled_color_execution_plan: Option<CompiledColorExecutionPlan>,
+    helicity_sum_runtime: Option<Box<ExecutionRuntime>>,
+    // Lane runtimes are large recursive owners; boxing keeps their addresses stable and avoids
+    // moving them when this selector index grows.
+    #[allow(clippy::vec_box)]
+    helicity_selector_runtimes: Vec<Box<ExecutionRuntime>>,
+    helicity_selector_runtime_schedule_modes: Vec<HelicitySelectorScheduleMode>,
+    helicity_selector_lane_by_domain: BTreeMap<usize, usize>,
+    color_selector_runtimes: BTreeMap<i64, Box<ExecutionRuntime>>,
     runtime_unavailable_message: Option<String>,
     sources: Vec<GenericSourceRecordManifest>,
     momentum_slots: Vec<GenericMomentumSlotManifest>,
@@ -1340,10 +1921,12 @@ struct ExecutionRuntime {
     model_parameter_runtime_slots: BTreeMap<String, RuntimeParameterSlots>,
     model_parameter_values_f64: Vec<f64>,
     model_parameter_evaluator: Option<ModelParameterEvaluatorRuntime>,
-    physics: Option<PhysicsRuntime>,
+    physics_reduction_override: Option<crate::Reduction>,
+    physics: Option<Arc<PhysicsRuntime>>,
     stages: Option<Vec<StageRuntime>>,
     amplitude_stage: Option<AmplitudeRuntime>,
     state_scratch_f64: Vec<Complex<f64>>,
+    state_scratch_f64_requires_clear: bool,
     values_scratch_f64: Vec<f64>,
 }
 
@@ -1411,6 +1994,14 @@ pub struct NativeRuntimeProfile {
     pub eager_closure_s: f64,
     pub eager_reduction_s: f64,
     pub eager_copy_out_s: f64,
+    pub selector_planner_s: f64,
+    pub selector_gather_s: f64,
+    pub selector_scatter_s: f64,
+    pub selector_plan_kind: String,
+    pub selector_group_sizes: Vec<usize>,
+    pub selector_reordered_point_count: usize,
+    pub selector_simd_lane_width: usize,
+    pub selector_simd_occupancy: f64,
 }
 
 impl From<RuntimeProfile> for NativeRuntimeProfile {
@@ -1439,7 +2030,106 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             eager_closure_s: profile.eager_closure_s,
             eager_reduction_s: profile.eager_reduction_s,
             eager_copy_out_s: profile.eager_copy_out_s,
+            selector_planner_s: 0.0,
+            selector_gather_s: 0.0,
+            selector_scatter_s: 0.0,
+            selector_plan_kind: "none".to_string(),
+            selector_group_sizes: Vec::new(),
+            selector_reordered_point_count: 0,
+            selector_simd_lane_width: 1,
+            selector_simd_occupancy: 1.0,
         }
+    }
+}
+
+impl NativeRuntimeProfile {
+    fn validate_eager_top_level_accounting(&self) -> RusticolResult<()> {
+        let phases = [
+            ("source fill", self.source_fill_s),
+            ("momentum setup", self.momentum_setup_s),
+            ("inclusive eager execution", self.stage_evaluator_call_s),
+            ("selector planning", self.selector_planner_s),
+            ("selector gather", self.selector_gather_s),
+            ("selector scatter", self.selector_scatter_s),
+        ];
+        if !self.total_s.is_finite() || self.total_s < 0.0 {
+            return Err(RusticolError::internal(format!(
+                "native eager profile has invalid wall time {:.9e}s",
+                self.total_s
+            )));
+        }
+        for (label, value) in phases {
+            if !value.is_finite() || value < 0.0 {
+                return Err(RusticolError::internal(format!(
+                    "native eager profile has invalid {label} time {value:.9e}s"
+                )));
+            }
+        }
+        let accounted = phases.iter().map(|(_, value)| value).sum::<f64>();
+        let tolerance = 1.0e-9_f64.max(self.total_s * 1.0e-12);
+        if accounted > self.total_s + tolerance {
+            return Err(RusticolError::internal(format!(
+                "native eager profile exclusive top-level phases account for {accounted:.9e}s, exceeding wall time {wall:.9e}s",
+                wall = self.total_s,
+            )));
+        }
+        Ok(())
+    }
+
+    fn accumulate(&mut self, other: &Self) {
+        self.source_fill_s += other.source_fill_s;
+        self.momentum_setup_s += other.momentum_setup_s;
+        self.stage_input_pack_s += other.stage_input_pack_s;
+        self.stage_evaluator_call_s += other.stage_evaluator_call_s;
+        self.stage_evaluator_s += other.stage_evaluator_s;
+        self.output_assign_s += other.output_assign_s;
+        self.amplitude_input_pack_s += other.amplitude_input_pack_s;
+        self.amplitude_evaluator_call_s += other.amplitude_evaluator_call_s;
+        self.amplitude_evaluator_s += other.amplitude_evaluator_s;
+        self.reduction_s += other.reduction_s;
+        self.total_s += other.total_s;
+        accumulate_profile_stages(
+            &mut self.stage_input_pack_by_stage_s,
+            &other.stage_input_pack_by_stage_s,
+        );
+        accumulate_profile_stages(
+            &mut self.stage_evaluator_call_by_stage_s,
+            &other.stage_evaluator_call_by_stage_s,
+        );
+        accumulate_profile_stages(
+            &mut self.stage_output_assign_by_stage_s,
+            &other.stage_output_assign_by_stage_s,
+        );
+        self.eager_initialize_s += other.eager_initialize_s;
+        self.eager_gather_s += other.eager_gather_s;
+        self.eager_kernel_call_s += other.eager_kernel_call_s;
+        self.eager_invocation_scatter_s += other.eager_invocation_scatter_s;
+        self.eager_finalization_s += other.eager_finalization_s;
+        self.eager_scatter_finalization_s += other.eager_scatter_finalization_s;
+        self.eager_closure_s += other.eager_closure_s;
+        self.eager_reduction_s += other.eager_reduction_s;
+        self.eager_copy_out_s += other.eager_copy_out_s;
+        self.selector_planner_s += other.selector_planner_s;
+        self.selector_gather_s += other.selector_gather_s;
+        self.selector_scatter_s += other.selector_scatter_s;
+        if self.selector_plan_kind == "none" && other.selector_plan_kind != "none" {
+            self.selector_plan_kind
+                .clone_from(&other.selector_plan_kind);
+            self.selector_group_sizes
+                .clone_from(&other.selector_group_sizes);
+            self.selector_reordered_point_count = other.selector_reordered_point_count;
+            self.selector_simd_lane_width = other.selector_simd_lane_width;
+            self.selector_simd_occupancy = other.selector_simd_occupancy;
+        }
+    }
+}
+
+fn accumulate_profile_stages(target: &mut Vec<f64>, source: &[f64]) {
+    if target.len() < source.len() {
+        target.resize(source.len(), 0.0);
+    }
+    for (target, source) in target.iter_mut().zip(source) {
+        *target += source;
     }
 }
 
@@ -1566,6 +2256,8 @@ pub struct NativeRuntime {
     warnings_muted: bool,
     warned_kinds: BTreeSet<String>,
     pending_warnings: Vec<String>,
+    point_selector_scratch: PointSelectorExecutionScratch,
+    selector_simd_lane_width: usize,
 }
 
 enum NativeExecutionLane {
@@ -1575,7 +2267,6 @@ enum NativeExecutionLane {
 }
 
 impl NativeExecutionLane {
-    #[cfg(feature = "symbolica-runtime")]
     fn is_eager(&self) -> bool {
         match self {
             Self::Compiled => false,
@@ -1620,7 +2311,9 @@ struct AmplitudeRuntime {
     input_components: Option<Vec<usize>>,
     input_spans: Vec<(usize, usize, usize)>,
     parameter_scratch_f64: Vec<Complex<f64>>,
+    evaluator_output_scratch_f64: Vec<Complex<f64>>,
     output_scratch_f64: Vec<Complex<f64>>,
+    evaluator_output_order: Option<Vec<usize>>,
     evaluator: EvaluatorGroup,
 }
 
@@ -1631,6 +2324,8 @@ mod model_parameters;
 use model_parameters::*;
 
 mod evaluation;
+mod helicity_lane;
+use helicity_lane::*;
 mod sources;
 
 mod validation;
@@ -1662,6 +2357,9 @@ mod eager_lane;
 use eager_lane::*;
 
 mod physics;
+
+mod point_selectors;
+use point_selectors::*;
 
 #[path = "evaluator.rs"]
 mod evaluator;

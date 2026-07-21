@@ -31,6 +31,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
 COMPARISON_MODULE = "tools.developer.eager_artifact_compare"
+SELECTOR_PROFILE_MODULE = "tools.developer.runtime_selector_profile"
 DEFAULT_GENERATION_TIMEOUT = 300.0
 DEFAULT_SUITE_TIMEOUT = 300.0
 DEFAULT_MEMORY_LIMIT_GIB = 30.0
@@ -40,6 +41,7 @@ DEFAULT_COLORS = ("lc", "nlc", "full")
 HARD_GENERATION_SPEEDUP = 7.0
 SOFT_GENERATION_SPEEDUP = 10.0
 SOFT_RUNTIME_RATIO = 1.5
+HARD_REUSABLE_RUNTIME_RATIO = 1.25
 _TOPOLOGY_FIELDS = (
     "physical_helicities",
     "computed_helicities",
@@ -418,6 +420,36 @@ def _profile_command(
     return tuple(command)
 
 
+def _selector_profile_command(
+    python: Path,
+    *,
+    artifact: Path,
+    process_id: str,
+    batch_size: int,
+    target_runtime: float,
+    minimum_samples: int,
+    seed: int,
+) -> tuple[str, ...]:
+    return (
+        str(python),
+        "-m",
+        SELECTOR_PROFILE_MODULE,
+        str(artifact),
+        "--process",
+        process_id,
+        "--axis",
+        "both",
+        "--batch-size",
+        str(batch_size),
+        "--target-runtime",
+        str(target_runtime),
+        "--minimum-samples",
+        str(minimum_samples),
+        "--seed",
+        str(seed),
+    )
+
+
 def _comparison_command(
     python: Path,
     *,
@@ -492,6 +524,24 @@ def _generation_assessment(
         and all(value >= SOFT_GENERATION_SPEEDUP for value in geometric_means),
     }
     return hard_gates, soft_targets
+
+
+def _reusable_runtime_gate(records: Sequence[Mapping[str, Any]]) -> bool:
+    """Apply the reusable/specialized bound only to n=4 and n=5 profiles."""
+
+    ratios = tuple(
+        float(ratio)
+        for record in records
+        if int(record["case"]["n_final"]) in {4, 5}
+        for workload in record["workloads"]
+        for profile in workload["profiles"]
+        if int(profile["batch_size"]) in {128, 1024}
+        for ratio in [profile["compiled_reusable_over_specialized_wall"]]
+        if ratio is not None
+    )
+    return bool(ratios) and all(
+        ratio <= HARD_REUSABLE_RUNTIME_RATIO for ratio in ratios
+    )
 
 
 def _scope_gate(arguments: argparse.Namespace, cases: Sequence[ProcessCase]) -> bool:
@@ -864,6 +914,11 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                                     if baseline_name == "compiled_specialized"
                                     else None
                                 ),
+                                "compiled_reusable_over_specialized_wall": (
+                                    compiled_complete_wall / baseline_wall
+                                    if baseline_name == "compiled_specialized"
+                                    else None
+                                ),
                                 "batch_1024_soft_target_passes": (
                                     batch_size != 1024
                                     or eager_wall
@@ -883,6 +938,31 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                             "profiles": profiles,
                         }
                     )
+                selector_pattern_profiles: dict[str, Any] | None = None
+                if color == "lc" and 1024 in arguments.batch_sizes:
+                    selector_pattern_profiles = {}
+                    for mode in ("compiled", "eager"):
+                        payload, profile_elapsed, _ = _run_json(
+                            _selector_profile_command(
+                                arguments.python,
+                                artifact=artifacts[mode],
+                                process_id=process_id,
+                                batch_size=1024,
+                                target_runtime=arguments.selector_target_runtime,
+                                minimum_samples=arguments.minimum_samples,
+                                seed=arguments.selector_seed,
+                            ),
+                            timeout=max(
+                                120.0,
+                                arguments.selector_target_runtime * 40.0,
+                            ),
+                            memory_limit_gib=arguments.memory_limit_gib,
+                            environment=environment,
+                        )
+                        selector_pattern_profiles[mode] = {
+                            "command_elapsed_seconds": profile_elapsed,
+                            "result": payload,
+                        }
                 compiled_generation = generation["compiled"]["elapsed_seconds"]
                 eager_generation = generation["eager"]["elapsed_seconds"]
                 compiled_core = generation["compiled"]["core_phase_seconds"]
@@ -905,6 +985,7 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
                             compiled_generation <= arguments.generation_timeout
                         ),
                         "workloads": workload_results,
+                        "selector_pattern_profiles": selector_pattern_profiles,
                     }
                 )
                 partial = {
@@ -923,6 +1004,7 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
         for workload in record["workloads"]
         for profile in workload["profiles"]
     )
+    reusable_runtime_gate = _reusable_runtime_gate(records)
     gates = {
         "matrix_scope_complete": _scope_gate(arguments, cases),
         "correctness": all(
@@ -930,11 +1012,22 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
             for record in records
             for workload in record["workloads"]
         ),
+        "per_point_selector_patterns": all(
+            record["selector_pattern_profiles"] is None
+            or all(
+                bool(mode_profile["result"]["passes"])
+                for mode_profile in record["selector_pattern_profiles"].values()
+            )
+            for record in records
+        ),
         "builtin_ufo_topology_parity": _topology_gate(
             records, require_ufo=arguments.suite == "milestone"
         ),
         "smoke_under_five_minutes": (
             arguments.suite != "smoke" or elapsed <= DEFAULT_SUITE_TIMEOUT
+        ),
+        "n4_n5_reusable_compiled_at_most_1_25x_specialized": (
+            reusable_runtime_gate
         ),
         **generation_gates,
     }
@@ -954,6 +1047,8 @@ def run_matrix(arguments: argparse.Namespace) -> dict[str, Any]:
             "memory_limit_gib": arguments.memory_limit_gib,
             "minimum_samples": arguments.minimum_samples,
             "target_runtime": arguments.target_runtime,
+            "selector_target_runtime": arguments.selector_target_runtime,
+            "selector_seed": arguments.selector_seed,
         },
         "gates": gates,
         "soft_targets": {
@@ -1000,6 +1095,13 @@ def parser() -> argparse.ArgumentParser:
         "--generation-timeout", type=_positive_float, default=DEFAULT_GENERATION_TIMEOUT
     )
     result.add_argument("--target-runtime", type=_positive_float, default=5.0)
+    result.add_argument(
+        "--selector-target-runtime",
+        type=_positive_float,
+        default=1.0,
+        help="target time for each per-point selector-pattern profile",
+    )
+    result.add_argument("--selector-seed", type=int, default=0xC0FFEE)
     result.add_argument("--minimum-samples", type=_positive_int, default=5)
     result.add_argument(
         "--memory-limit-gib", type=_positive_float, default=DEFAULT_MEMORY_LIMIT_GIB

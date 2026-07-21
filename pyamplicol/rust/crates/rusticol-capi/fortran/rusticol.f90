@@ -55,6 +55,7 @@ module rusticol
     procedure, public :: colors => rusticol_colors
     procedure, public :: model_parameters => rusticol_model_parameters
     procedure, public :: evaluate => rusticol_evaluate
+    procedure, public :: evaluate_selected => rusticol_evaluate_selected
     procedure, public :: evaluate_resolved => rusticol_evaluate_resolved
     procedure, public :: set_model_parameter => rusticol_set_model_parameter
     procedure, public :: set_model_parameters => rusticol_set_model_parameters
@@ -261,6 +262,21 @@ module rusticol
       integer(c_size_t), value :: momentum_count, point_count, output_capacity
       integer(c_int) :: status
     end function c_rusticol_runtime_evaluate_f64
+
+    function c_rusticol_runtime_evaluate_selected_f64(handle, momenta, momentum_count, &
+        point_count, helicity_ids, helicity_count, color_ids, color_count, &
+        helicity_by_point, helicity_by_point_count, color_flow_by_point, &
+        color_flow_by_point_count, &
+        output, output_capacity) bind(C, name="rusticol_runtime_evaluate_selected_f64") &
+        result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, momenta, helicity_ids, color_ids
+      type(c_ptr), value :: helicity_by_point, color_flow_by_point, output
+      integer(c_size_t), value :: momentum_count, point_count, helicity_count, color_count
+      integer(c_size_t), value :: helicity_by_point_count, color_flow_by_point_count
+      integer(c_size_t), value :: output_capacity
+      integer(c_int) :: status
+    end function c_rusticol_runtime_evaluate_selected_f64
 
     function c_rusticol_runtime_evaluate_resolved_f64(handle, momenta, momentum_count, &
         point_count, helicity_ids, helicity_count, color_ids, color_count, output, &
@@ -704,6 +720,103 @@ contains
         c_loc(values(1)), size(values, kind=c_size_t))
     if (.not. status_ok(status, ierr)) values = 0.0_c_double
   end subroutine rusticol_evaluate
+
+  subroutine rusticol_evaluate_selected(self, momenta, point_count, values, helicity_ids, &
+      color_ids, helicity_by_point, color_flow_by_point, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    real(c_double), intent(in), target :: momenta(:)
+    integer(c_size_t), intent(in) :: point_count
+    real(c_double), allocatable, intent(out), target :: values(:)
+    character(len=*), intent(in), optional :: helicity_ids(:), color_ids(:)
+    integer(c_int32_t), intent(in), optional, target :: helicity_by_point(:)
+    integer(c_int32_t), intent(in), optional, target :: color_flow_by_point(:)
+    integer(c_int), intent(out), optional :: ierr
+    character(kind=c_char), allocatable, target :: helicity_storage(:, :), color_storage(:, :)
+    type(c_ptr), allocatable, target :: helicity_pointers(:), color_pointers(:)
+    type(c_ptr) :: helicity_pointer, color_pointer
+    type(c_ptr) :: helicity_by_point_pointer, color_flow_by_point_pointer
+    integer(c_size_t) :: helicity_by_point_count, color_flow_by_point_count
+    logical :: has_helicity_ids, has_color_ids
+    integer(c_int) :: status
+
+    if (.not. argument_ok(point_count > 0_c_size_t .and. size(momenta) > 0, &
+        "Rusticol selected evaluation requires positive point and momentum counts", ierr)) then
+      allocate(values(0))
+      return
+    end if
+    has_helicity_ids = .false.
+    if (present(helicity_ids)) has_helicity_ids = size(helicity_ids) > 0
+    has_color_ids = .false.
+    if (present(color_ids)) has_color_ids = size(color_ids) > 0
+
+    helicity_by_point_count = 0_c_size_t
+    helicity_by_point_pointer = c_null_ptr
+    if (present(helicity_by_point)) then
+      helicity_by_point_count = size(helicity_by_point, kind=c_size_t)
+      if (.not. argument_ok(helicity_by_point_count == 0_c_size_t .or. &
+          helicity_by_point_count == point_count, &
+          "helicity_by_point must contain one zero-based selector per point", ierr)) then
+        allocate(values(0))
+        return
+      end if
+      if (.not. argument_ok(helicity_by_point_count == 0_c_size_t .or. &
+          all(helicity_by_point >= 0_c_int32_t), &
+          "helicity_by_point selectors must be nonnegative", ierr)) then
+        allocate(values(0))
+        return
+      end if
+      if (helicity_by_point_count > 0) helicity_by_point_pointer = c_loc(helicity_by_point(1))
+    end if
+
+    color_flow_by_point_count = 0_c_size_t
+    color_flow_by_point_pointer = c_null_ptr
+    if (present(color_flow_by_point)) then
+      color_flow_by_point_count = size(color_flow_by_point, kind=c_size_t)
+      if (.not. argument_ok(color_flow_by_point_count == 0_c_size_t .or. &
+          color_flow_by_point_count == point_count, &
+          "color_flow_by_point must contain one zero-based selector per point", ierr)) then
+        allocate(values(0))
+        return
+      end if
+      if (.not. argument_ok(color_flow_by_point_count == 0_c_size_t .or. &
+          all(color_flow_by_point >= 0_c_int32_t), &
+          "color_flow_by_point selectors must be nonnegative", ierr)) then
+        allocate(values(0))
+        return
+      end if
+      if (color_flow_by_point_count > 0) then
+        color_flow_by_point_pointer = c_loc(color_flow_by_point(1))
+      end if
+    end if
+
+    if (.not. argument_ok(.not. (has_helicity_ids .and. helicity_by_point_count > 0), &
+        "helicity_ids and helicity_by_point are mutually exclusive", ierr)) then
+      allocate(values(0))
+      return
+    end if
+    if (.not. argument_ok(.not. (has_color_ids .and. color_flow_by_point_count > 0), &
+        "color_ids and color_flow_by_point are mutually exclusive", ierr)) then
+      allocate(values(0))
+      return
+    end if
+
+    call build_c_string_array(helicity_ids, helicity_storage, helicity_pointers)
+    call build_c_string_array(color_ids, color_storage, color_pointers)
+    helicity_pointer = c_null_ptr
+    if (size(helicity_pointers) > 0) helicity_pointer = c_loc(helicity_pointers(1))
+    color_pointer = c_null_ptr
+    if (size(color_pointers) > 0) color_pointer = c_loc(color_pointers(1))
+
+    allocate(values(point_count))
+    status = c_rusticol_runtime_evaluate_selected_f64( &
+        self%handle, c_loc(momenta(1)), size(momenta, kind=c_size_t), point_count, &
+        helicity_pointer, size(helicity_pointers, kind=c_size_t), color_pointer, &
+        size(color_pointers, kind=c_size_t), helicity_by_point_pointer, &
+        helicity_by_point_count, color_flow_by_point_pointer, &
+        color_flow_by_point_count, &
+        c_loc(values(1)), size(values, kind=c_size_t))
+    if (.not. status_ok(status, ierr)) values = 0.0_c_double
+  end subroutine rusticol_evaluate_selected
 
   subroutine rusticol_evaluate_resolved(self, momenta, point_count, values, helicity_ids, &
       color_ids, ierr)

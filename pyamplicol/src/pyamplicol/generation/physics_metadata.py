@@ -9,6 +9,11 @@ from itertools import product
 
 from ..models.base import Model
 from .dag_types import GenericDAG
+from .helicity_replay import (
+    HELICITY_RECURRENCE_CONTRACT_VERSION,
+    HELICITY_RECURRENCE_PROOF_ALGORITHM,
+    RUNTIME_SELECTOR_PROVENANCE,
+)
 
 _HELICITY_WEIGHT_TOLERANCE = 1.0e-12
 _NORMALIZATION_EXTENSION_KEYS = (
@@ -40,6 +45,7 @@ def build_resolved_physics_payload(
         dag,
         model,
         coherent_groups,
+        _mapping_sequence(amplitude_stage.get("roots", ())),
     )
     color_components, group_colors = _color_metadata(dag, coherent_groups)
     helicity_ids = {
@@ -56,6 +62,7 @@ def build_resolved_physics_payload(
     )
     lc_color_complete = (
         dag.color_coverage == "complete"
+        and not dag.selected_color_sector_ids
         and not dag.color_plan.truncated
         and len(color_components) == _expected_lc_physical_color_count(dag)
     )
@@ -98,15 +105,120 @@ def build_resolved_physics_payload(
                 str(label): helicity
                 for label, helicity in dag.selected_source_helicities
             },
+            **(
+                {}
+                if dag.lc_topology_replay is None
+                else {"lc_topology_replay": dag.lc_topology_replay.to_json_dict()}
+            ),
+            **_runtime_selector_extension(dag),
         },
     }
+
+
+def _runtime_selector_extension(dag: GenericDAG) -> dict[str, object]:
+    """Emit independent runtime contracts for both selector axes."""
+
+    recurrence = dag.helicity_recurrence
+    helicity_complete = (
+        dag.helicity_coverage == "complete" and not dag.selected_source_helicities
+    )
+    recurrence_payload: dict[str, object] | None
+    if not helicity_complete:
+        recurrence_payload = None
+    elif recurrence is None:
+        recurrence_payload = {
+            "contract_version": HELICITY_RECURRENCE_CONTRACT_VERSION,
+            "proof_algorithm": HELICITY_RECURRENCE_PROOF_ALGORITHM,
+            "status": "unavailable",
+            "proof_counts": {},
+        }
+    else:
+        recurrence_payload = {
+            "contract_version": HELICITY_RECURRENCE_CONTRACT_VERSION,
+            "proof_algorithm": HELICITY_RECURRENCE_PROOF_ALGORITHM,
+            "status": "available",
+            "proof_counts": recurrence.proof_counts(),
+            **(
+                {}
+                if dag.helicity_materialization is None
+                else {
+                    "execution": (
+                        "materialized-recurrence-retained-proof-graph"
+                        if dag.helicity_materialization.strategy
+                        == "retained-proof-graph"
+                        else "materialized-recurrence-quotient"
+                    ),
+                    "materialization_strategy": (
+                        dag.helicity_materialization.strategy
+                    ),
+                    "proof_current_count": (
+                        dag.helicity_materialization.proof_current_count
+                    ),
+                    "proof_amplitude_count": (
+                        dag.helicity_materialization.proof_root_count
+                    ),
+                    "materialized_current_count": (
+                        dag.helicity_materialization.materialized_current_count
+                    ),
+                    "materialized_amplitude_count": (
+                        dag.helicity_materialization.materialized_root_count
+                    ),
+                }
+            ),
+        }
+    is_lc = dag.process.color_accuracy == "lc"
+    color_complete = (
+        is_lc and dag.color_coverage == "complete" and not dag.selected_color_sector_ids
+    )
+    specialized_axes = [
+        *([] if helicity_complete else ["helicity"]),
+        *([] if not is_lc or color_complete else ["color_flow"]),
+    ]
+    selector_payload: dict[str, object] = {
+        "kind": "pyamplicol-runtime-selectors",
+        "contract_version": 1,
+        "provenance": RUNTIME_SELECTOR_PROVENANCE,
+        "axes": {
+            "helicity": {
+                "generation_coverage": dag.helicity_coverage,
+                "generation_selection": {
+                    str(label): int(helicity)
+                    for label, helicity in dag.selected_source_helicities
+                },
+                "runtime_contract": (
+                    "complete-reusable"
+                    if helicity_complete
+                    else "generation-specialized"
+                ),
+            },
+            "color_flow": {
+                "generation_coverage": (dag.color_coverage if is_lc else "contracted"),
+                "generation_selection": list(dag.selected_color_sector_ids),
+                "runtime_contract": (
+                    "complete-reusable"
+                    if color_complete
+                    else "generation-specialized"
+                    if is_lc
+                    else "contracted-color"
+                ),
+            },
+        },
+        "generation_specialized_axes": specialized_axes,
+    }
+    if recurrence_payload is not None:
+        selector_payload["helicity_recurrence"] = recurrence_payload
+    return {"runtime_selectors": selector_payload}
 
 
 def _helicity_metadata(
     dag: GenericDAG,
     model: Model,
     groups: Sequence[Mapping[str, object]],
+    roots: Sequence[Mapping[str, object]],
 ) -> tuple[list[dict[str, object]], dict[int, tuple[tuple[int, ...], ...]], int]:
+    if dag.helicity_materialization is not None:
+        return _materialized_helicity_metadata(dag, model, groups, roots)
+
     represented: dict[tuple[int, ...], tuple[tuple[int, ...], bool]] = {}
     group_members: dict[int, tuple[tuple[int, ...], ...]] = {}
     for group in groups:
@@ -157,6 +269,113 @@ def _helicity_metadata(
                 "structural_zero": structural_zero,
                 "representative_id": identifiers[representative],
                 "coefficient": 0.0 if structural_zero else 1.0,
+            }
+        )
+    return records, group_members, len(structural_zeros)
+
+
+def _materialized_helicity_metadata(
+    dag: GenericDAG,
+    model: Model,
+    groups: Sequence[Mapping[str, object]],
+    roots: Sequence[Mapping[str, object]],
+) -> tuple[list[dict[str, object]], dict[int, tuple[tuple[int, ...], ...]], int]:
+    materialization = dag.helicity_materialization
+    recurrence = dag.helicity_recurrence
+    if materialization is None or recurrence is None:
+        raise ValueError("materialized helicity metadata requires its proof")
+
+    group_by_root_id = {
+        _integer(root["dag_root_id"]): _integer(root["coherent_group_id"])
+        for root in roots
+    }
+    domain_by_id = {domain.id: domain for domain in recurrence.selector_domains}
+    route_vectors_by_group: dict[int, set[tuple[int, ...]]] = {
+        _integer(group["group_id"]): set() for group in groups
+    }
+    route_coefficients: dict[tuple[int, ...], float] = {}
+    for route in materialization.amplitude_routes:
+        group_id = group_by_root_id.get(route.materialized_root_id)
+        if group_id is None:
+            raise ValueError(
+                "helicity route refers to an absent materialized amplitude root"
+            )
+        coefficient = route.factor[0] ** 2 + route.factor[1] ** 2
+        for domain_id in route.selector_domain_ids:
+            domain = domain_by_id.get(domain_id)
+            if domain is None or not domain.complete:
+                raise ValueError(
+                    "amplitude route refers to a non-complete selector domain"
+                )
+            by_label = dict(domain.source_states)
+            vector = tuple(by_label.get(int(leg.label), 0) for leg in dag.process.legs)
+            route_vectors_by_group[group_id].add(vector)
+            previous = route_coefficients.setdefault(vector, coefficient)
+            if not math.isclose(
+                previous,
+                coefficient,
+                rel_tol=_HELICITY_WEIGHT_TOLERANCE,
+                abs_tol=_HELICITY_WEIGHT_TOLERANCE,
+            ):
+                raise ValueError(
+                    f"inconsistent recurrence factor for physical helicity {vector}"
+                )
+
+    represented: dict[tuple[int, ...], tuple[tuple[int, ...], bool, float]] = {}
+    group_members: dict[int, tuple[tuple[int, ...], ...]] = {}
+    for group in groups:
+        group_id = _integer(group["group_id"])
+        representative = tuple(
+            _integer(value) for value in _sequence(group["helicities"])
+        )
+        members = tuple(sorted(route_vectors_by_group[group_id]))
+        if not members:
+            raise ValueError(
+                f"materialized helicity group {group_id} has no physical routes"
+            )
+        group_members[group_id] = members
+        for member in members:
+            candidate = (
+                representative,
+                member == representative,
+                route_coefficients[member],
+            )
+            previous = represented.setdefault(member, candidate)
+            if previous != candidate:
+                raise ValueError(
+                    f"inconsistent helicity representative for physical state {member}"
+                )
+
+    possible = _possible_helicity_vectors(dag, model)
+    structural_zeros = sorted(set(possible) - represented.keys())
+    expected_zero_domains = {
+        tuple(
+            dict(domain_by_id[domain_id].source_states).get(int(leg.label), 0)
+            for leg in dag.process.legs
+        )
+        for domain_id in recurrence.structural_zero_selector_domain_ids
+    }
+    if set(structural_zeros) != expected_zero_domains:
+        raise ValueError(
+            "materialized helicity routes do not match certified structural zeros"
+        )
+    for vector in structural_zeros:
+        represented[vector] = (vector, False, 0.0)
+
+    identifiers = {vector: _helicity_id(vector) for vector in represented}
+    records: list[dict[str, object]] = []
+    for index, vector in enumerate(sorted(represented)):
+        representative, computed, coefficient = represented[vector]
+        structural_zero = vector in structural_zeros
+        records.append(
+            {
+                "id": identifiers[vector],
+                "index": index,
+                "values": list(vector),
+                "computed": computed and not structural_zero,
+                "structural_zero": structural_zero,
+                "representative_id": identifiers[representative],
+                "coefficient": 0.0 if structural_zero else coefficient,
             }
         )
     return records, group_members, len(structural_zeros)
@@ -246,10 +465,66 @@ def _color_metadata(
                     },
                 )
         members_by_group[group_id] = tuple(members)
+    if dag.lc_topology_replay is not None:
+        _add_replayed_lc_color_components(dag, records)
     components = [records[key] for key in sorted(records)]
     for index, component in enumerate(components):
         component["index"] = index
     return components, members_by_group
+
+
+def _add_replayed_lc_color_components(
+    dag: GenericDAG,
+    records: dict[str, dict[str, object]],
+) -> None:
+    replay = dag.lc_topology_replay
+    if replay is None:
+        return
+    materialized = set(replay.materialized_sector_ids)
+    for sector in dag.color_plan.sectors:
+        word = tuple(sector.word_labels or sector.color_words[0])
+        identifier = _color_id(word)
+        representative = dag.color_plan.sector(replay.representative_for(sector.id))
+        if representative is None:
+            raise ValueError(
+                f"LC replay representative for sector {sector.id} is missing"
+            )
+        representative_word = tuple(
+            representative.word_labels or representative.color_words[0]
+        )
+        representative_id = _color_id(representative_word)
+        records.setdefault(
+            identifier,
+            {
+                "kind": "lc-flow",
+                "id": identifier,
+                "word": list(word),
+                "computed": int(sector.id) in materialized,
+                "representative_id": representative_id,
+                "coefficient": 1.0,
+            },
+        )
+        if not (
+            dag.color_plan.trace_reflections_folded
+            and sector.kind == "single-trace"
+            and len(sector.trace_labels) > 2
+        ):
+            continue
+        reflected = (word[0], *reversed(word[1:]))
+        reflected_id = _color_id(reflected)
+        if reflected_id == identifier:
+            continue
+        records.setdefault(
+            reflected_id,
+            {
+                "kind": "lc-flow",
+                "id": reflected_id,
+                "word": list(reflected),
+                "computed": False,
+                "representative_id": representative_id,
+                "coefficient": 1.0,
+            },
+        )
 
 
 def _reduction_groups(

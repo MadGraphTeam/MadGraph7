@@ -12,6 +12,7 @@ from typing import Any
 from ..models.base import Model
 from .contracts import StageCompilationInput
 from .dag_types import GenericDAG
+from .helicity_materialization import _compiled_representative_dependencies
 from .stage_expressions import (
     _compile_amplitude_stage_blueprint,
     _compile_current_stage_blueprint,
@@ -164,6 +165,10 @@ def build_generic_stage_compiler_blueprint(
             global_real_valued_inputs=global_real_valued_inputs,
             stage_local_parameter_layout=stage_local_parameter_layout,
         )
+        compiled_stage = _stage_with_selector_domain_memberships(
+            compiled_stage,
+            dag,
+        )
         if stage_consumer is not None:
             stage_consumer(compiled_stage, stage_index - 1, len(stage_records))
         if release_consumed_expressions and stage_consumer is not None:
@@ -189,6 +194,10 @@ def build_generic_stage_compiler_blueprint(
         global_model_parameter_symbols=model_parameter_symbols_by_name,
         global_real_valued_inputs=global_real_valued_inputs,
         stage_local_parameter_layout=stage_local_parameter_layout,
+    )
+    amplitude_stage = _stage_with_selector_domain_memberships(
+        amplitude_stage,
+        dag,
     )
     if stage_consumer is not None:
         stage_consumer(amplitude_stage, len(stage_records), len(stage_records))
@@ -481,40 +490,191 @@ def _fanout_aware_current_order(
     return candidate_order, before, after
 
 
+def _stage_with_selector_domain_memberships(
+    stage: GenericCompiledStageBlueprint,
+    dag: GenericDAG,
+) -> GenericCompiledStageBlueprint:
+    materialization = dag.helicity_materialization
+    replay = dag.lc_topology_replay
+    if materialization is None and replay is None:
+        return stage
+    domains_by_current: dict[int, list[int]] = {}
+    domains_by_root: dict[int, list[int]] = {}
+    if materialization is not None:
+        for schedule in materialization.selector_schedules:
+            if schedule.structural_zero:
+                continue
+            for current_id in schedule.active_current_ids:
+                domains_by_current.setdefault(int(current_id), []).append(
+                    int(schedule.selector_domain_id)
+                )
+            for root_id in schedule.active_root_ids:
+                domains_by_root.setdefault(int(root_id), []).append(
+                    int(schedule.selector_domain_id)
+                )
+    color_domains_by_current, color_domains_by_root = (
+        _lc_materialized_sector_memberships(dag)
+    )
+    output_slots = []
+    for slot in stage.output_slots:
+        owner_id = (
+            int(slot.component_start)
+            if str(stage.stage_kind).startswith("amplitude")
+            else int(slot.current_id)
+        )
+        domains = (
+            domains_by_root.get(owner_id, ())
+            if str(stage.stage_kind).startswith("amplitude")
+            else domains_by_current.get(owner_id, ())
+        )
+        output_slots.append(
+            replace(
+                slot,
+                selector_domain_ids=tuple(sorted(set(domains))),
+                color_selector_domain_ids=(
+                    color_domains_by_root.get(owner_id, ())
+                    if str(stage.stage_kind).startswith("amplitude")
+                    else color_domains_by_current.get(owner_id, ())
+                ),
+            )
+        )
+    return replace(stage, output_slots=tuple(output_slots))
+
+
+def _lc_materialized_sector_memberships(
+    dag: GenericDAG,
+) -> tuple[dict[int, tuple[int, ...]], dict[int, tuple[int, ...]]]:
+    if dag.process.color_accuracy != "lc" or dag.color_coverage != "complete":
+        return {}, {}
+    replay = dag.lc_topology_replay
+    materialized_sector_ids = (
+        {int(sector.id) for sector in dag.color_plan.sectors}
+        if replay is None
+        else set(replay.materialized_sector_ids)
+    )
+    roots_by_sector: dict[int, list[int]] = {
+        sector_id: [] for sector_id in materialized_sector_ids
+    }
+    root_by_id = {int(root.id): root for root in dag.amplitude_roots}
+    for root in dag.amplitude_roots:
+        sector_id = (
+            int(root.color_sector_id)
+            if root.color_sector_id is not None
+            else int(dag.currents[root.left_id].index.color_state.sector_id)
+        )
+        if sector_id in roots_by_sector:
+            roots_by_sector[sector_id].append(int(root.id))
+
+    interactions_by_result: dict[int, list[tuple[int, int]]] = {}
+    for interaction in dag.interactions:
+        interactions_by_result.setdefault(int(interaction.result_id), []).append(
+            (int(interaction.left_id), int(interaction.right_id))
+        )
+    compiled_dependencies = _compiled_representative_dependencies(dag)
+
+    sectors_by_current: dict[int, set[int]] = {}
+    sectors_by_root: dict[int, set[int]] = {}
+    for sector_id, root_ids in roots_by_sector.items():
+        if not root_ids:
+            raise ValueError(
+                "LC topology replay materialized sector "
+                f"{sector_id} has no amplitude root"
+            )
+        active_currents: set[int] = set()
+        pending: list[int] = []
+        for root_id in root_ids:
+            root = root_by_id[root_id]
+            sectors_by_root.setdefault(root_id, set()).add(sector_id)
+            pending.extend((int(root.left_id), int(root.right_id)))
+        while pending:
+            current_id = pending.pop()
+            if current_id in active_currents:
+                continue
+            active_currents.add(current_id)
+            for left_id, right_id in interactions_by_result.get(current_id, ()):
+                pending.extend((left_id, right_id))
+            pending.extend(compiled_dependencies.get(current_id, ()))
+        for current_id in active_currents:
+            sectors_by_current.setdefault(current_id, set()).add(sector_id)
+
+    return (
+        {
+            current_id: tuple(sorted(sector_ids))
+            for current_id, sector_ids in sectors_by_current.items()
+        },
+        {
+            root_id: tuple(sorted(sector_ids))
+            for root_id, sector_ids in sectors_by_root.items()
+        },
+    )
+
+
 def _stage_with_fanout_aware_output_order(
     stage: GenericCompiledStageBlueprint,
     *,
     chunk_size: int | None,
 ) -> GenericCompiledStageBlueprint:
-    if (
-        chunk_size is None
-        or int(chunk_size) < 1
-        or not stage.evaluation_groups_by_current
-        or not stage.output_slots
-        or str(stage.stage_kind).startswith("amplitude")
-    ):
+    if not stage.output_slots:
         return stage
 
-    slots_by_current: dict[int, list[GenericStageOutputSlot]] = {}
-    for slot in stage.output_slots:
-        slots_by_current.setdefault(slot.current_id, []).append(slot)
-    natural_order = tuple(slots_by_current)
-    output_size_by_current = {
-        current_id: sum(slot.output_stop - slot.output_start for slot in slots)
-        for current_id, slots in slots_by_current.items()
+    amplitude_stage = str(stage.stage_kind).startswith("amplitude")
+    slots_by_owner: dict[int, list[GenericStageOutputSlot]] = {}
+    for slot_index, slot in enumerate(stage.output_slots):
+        owner_id = slot_index if amplitude_stage else int(slot.current_id)
+        slots_by_owner.setdefault(owner_id, []).append(slot)
+    natural_order = tuple(slots_by_owner)
+    output_size_by_owner = {
+        owner_id: sum(slot.output_stop - slot.output_start for slot in slots)
+        for owner_id, slots in slots_by_owner.items()
     }
     groups_by_current = {
         int(current_id): frozenset(int(group_id) for group_id in group_ids)
         for current_id, group_ids in stage.evaluation_groups_by_current
-        if current_id in slots_by_current
+        if current_id in slots_by_owner
     }
-    current_order, before, after = _fanout_aware_current_order(
-        natural_order,
-        output_size_by_current=output_size_by_current,
-        evaluation_groups_by_current=groups_by_current,
-        chunk_size=int(chunk_size),
+    signature_by_owner = {
+        owner_id: (
+            slots[0].selector_domain_ids,
+            slots[0].color_selector_domain_ids,
+        )
+        for owner_id, slots in slots_by_owner.items()
+    }
+    selector_partitioning = any(
+        helicity_ids or color_ids
+        for helicity_ids, color_ids in signature_by_owner.values()
     )
-    if current_order == natural_order:
+    owners_by_signature: dict[
+        tuple[tuple[int, ...], tuple[int, ...]], list[int]
+    ] = {}
+    for owner_id in natural_order:
+        owners_by_signature.setdefault(
+            signature_by_owner[owner_id], []
+        ).append(owner_id)
+
+    owner_order: list[int] = []
+    before = 0
+    after = 0
+    for signature_owners in owners_by_signature.values():
+        ordered = tuple(signature_owners)
+        if (
+            not amplitude_stage
+            and chunk_size is not None
+            and int(chunk_size) > 0
+            and groups_by_current
+        ):
+            ordered, group_before, group_after = _fanout_aware_current_order(
+                ordered,
+                output_size_by_current=output_size_by_owner,
+                evaluation_groups_by_current=groups_by_current,
+                chunk_size=int(chunk_size),
+            )
+            before += group_before
+            after += group_after
+        owner_order.extend(ordered)
+
+    if not selector_partitioning and tuple(owner_order) == natural_order:
+        if chunk_size is None or int(chunk_size) < 1 or amplitude_stage:
+            return stage
         return replace(
             stage,
             fanout_chunk_size=int(chunk_size),
@@ -524,8 +684,18 @@ def _stage_with_fanout_aware_output_order(
 
     outputs: list[Any] = []
     output_slots: list[GenericStageOutputSlot] = []
-    for current_id in current_order:
-        for slot in slots_by_current[current_id]:
+    selector_output_partitions: list[tuple[int, int]] = []
+    active_signature: tuple[tuple[int, ...], tuple[int, ...]] | None = None
+    partition_start = 0
+    for owner_id in owner_order:
+        signature = signature_by_owner[owner_id]
+        if active_signature is None:
+            active_signature = signature
+        elif signature != active_signature:
+            selector_output_partitions.append((partition_start, len(outputs)))
+            partition_start = len(outputs)
+            active_signature = signature
+        for slot in slots_by_owner[owner_id]:
             components = stage.output_expressions[slot.output_start : slot.output_stop]
             start = len(outputs)
             outputs.extend(components)
@@ -536,6 +706,8 @@ def _stage_with_fanout_aware_output_order(
                     output_stop=len(outputs),
                 )
             )
+    if selector_partitioning:
+        selector_output_partitions.append((partition_start, len(outputs)))
     if len(outputs) != len(stage.output_expressions):
         raise ValueError("fan-out output ordering lost stage expressions")
     return replace(
@@ -543,9 +715,10 @@ def _stage_with_fanout_aware_output_order(
         output_slots=tuple(output_slots),
         first_output_previews=_expression_previews(outputs),
         output_expressions=tuple(outputs),
-        fanout_chunk_size=int(chunk_size),
-        fanout_evaluation_occurrences_before=before,
-        fanout_evaluation_occurrences_after=after,
+        fanout_chunk_size=(None if chunk_size is None else int(chunk_size)),
+        fanout_evaluation_occurrences_before=(before or None),
+        fanout_evaluation_occurrences_after=(after or None),
+        selector_output_partitions=tuple(selector_output_partitions),
     )
 
 

@@ -911,6 +911,8 @@ def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
         helicity_coverage=dag.helicity_coverage,
         color_coverage=dag.color_coverage,
         selected_source_helicities=dag.selected_source_helicities,
+        selected_color_sector_ids=dag.selected_color_sector_ids,
+        lc_topology_replay=dag.lc_topology_replay,
     )
 
 
@@ -971,6 +973,8 @@ def prune_global_helicity_flip_equivalent_roots(
             helicity_coverage=dag.helicity_coverage,
             color_coverage=dag.color_coverage,
             selected_source_helicities=dag.selected_source_helicities,
+            selected_color_sector_ids=dag.selected_color_sector_ids,
+            lc_topology_replay=dag.lc_topology_replay,
         )
     )
 
@@ -1435,6 +1439,8 @@ def filter_dag_to_color_sectors(
             helicity_coverage=dag.helicity_coverage,
             color_coverage="selected",
             selected_source_helicities=dag.selected_source_helicities,
+            selected_color_sector_ids=tuple(sorted(selected)),
+            lc_topology_replay=None,
         )
 
     selected_roots = tuple(
@@ -1454,6 +1460,8 @@ def filter_dag_to_color_sectors(
             helicity_coverage=dag.helicity_coverage,
             color_coverage="selected",
             selected_source_helicities=dag.selected_source_helicities,
+            selected_color_sector_ids=tuple(sorted(selected)),
+            lc_topology_replay=None,
         )
 
     interactions_by_result: dict[int, list[InteractionNode]] = {}
@@ -1562,6 +1570,8 @@ def filter_dag_to_color_sectors(
         helicity_coverage=dag.helicity_coverage,
         color_coverage="selected",
         selected_source_helicities=dag.selected_source_helicities,
+        selected_color_sector_ids=tuple(sorted(selected)),
+        lc_topology_replay=None,
     )
 
 
@@ -1600,5 +1610,7 @@ def filter_dag_to_source_helicities(
             selected_source_helicities=tuple(
                 sorted({**dict(dag.selected_source_helicities), **requested}.items())
             ),
+            selected_color_sector_ids=dag.selected_color_sector_ids,
+            lc_topology_replay=dag.lc_topology_replay,
         )
     )

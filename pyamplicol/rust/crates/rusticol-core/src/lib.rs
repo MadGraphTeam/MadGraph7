@@ -16,6 +16,7 @@ mod eager_tables;
 mod engine;
 mod error;
 mod metadata;
+pub mod pacbin;
 
 pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,
@@ -31,11 +32,11 @@ pub use eager_runtime::{
     EagerRuntimeOptions, EagerSelectorPayloads, EagerSelectorStagePayload, EagerStagePayload,
 };
 pub use eager_tables::{
-    EAGER_KERNEL_ABI, EAGER_OUTPUT_FACTOR_COUPLING_IMAG, EAGER_OUTPUT_FACTOR_COUPLING_REAL,
-    EAGER_OUTPUT_FACTOR_NONE, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY, EAGER_SELECTOR_DOMAINS_ABI,
-    EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerFinalizationRow,
-    EagerInvocationRow, EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow,
-    MISSING_U32,
+    EAGER_KERNEL_ABI, EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
+    EAGER_OUTPUT_FACTOR_COUPLING_IMAG, EAGER_OUTPUT_FACTOR_COUPLING_REAL, EAGER_OUTPUT_FACTOR_NONE,
+    EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY, EAGER_SELECTOR_DOMAINS_ABI, EagerAttachmentRow,
+    EagerClosureRow, EagerCouplingRow, EagerFinalizationRow, EagerInvocationRow,
+    EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow, MISSING_U32,
 };
 pub use engine::{
     NativeColorComponent, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,

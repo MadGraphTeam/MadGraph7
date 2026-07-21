@@ -10,7 +10,10 @@ from decimal import Decimal
 from pathlib import Path, PurePosixPath
 from typing import Protocol, TypeVar, cast
 
-from pyamplicol._internal.versions import PROCESS_ARTIFACT_SCHEMA_VERSION
+from pyamplicol._internal.versions import (
+    EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
+    PROCESS_ARTIFACT_SCHEMA_VERSION,
+)
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.artifacts.manifest import ArtifactManifest, PayloadRecord
 from pyamplicol.artifacts.security import confined_path, normalize_relative_path
@@ -25,6 +28,7 @@ from pyamplicol.generation.eager_tables import (
     unpack_rows,
 )
 from pyamplicol.models.prepared import PreparedKernelRecord
+from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime.symbolica_exact import (
     _ComplexDecimal,
     _decimal,
@@ -234,6 +238,29 @@ def _default_kernel_loader(
     )
 
 
+def _artifact_kernel_loader(
+    resolver: ExactEvaluatorPayloadResolver,
+    payload_root_name: str,
+) -> _KernelLoader:
+    def load(
+        record: PreparedKernelRecord,
+        payload_root: Path,
+    ) -> _KernelEvaluator:
+        return _ExactEvaluator.load(
+            {
+                "evaluator_state_path": record.exact_evaluator_state_path,
+                "input_len": record.input_arity,
+            },
+            payload_root,
+            state_loader=lambda relative: resolver.read_exact_state(
+                _joined_payload_path(payload_root_name, relative),
+                process_id=None,
+            ),
+        )
+
+    return load
+
+
 @dataclass(slots=True)
 class _LazyExactKernel:
     record: PreparedKernelRecord
@@ -409,6 +436,9 @@ def _validate_execution_header(execution: Mapping[str, object]) -> None:
     if plan.get("process_key") != execution.get("key"):
         raise ArtifactError("eager plan process key does not match execution key")
     expected_capabilities = [EAGER_RUNTIME_CAPABILITY]
+    if execution.get("lc_topology_replay") is not None:
+        expected_capabilities.append(EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY)
+    expected_capabilities.sort()
     if execution.get("required_runtime_capabilities") != expected_capabilities:
         raise CompatibilityError("unsupported eager runtime capability contract")
     if plan.get("required_runtime_capabilities") != expected_capabilities:

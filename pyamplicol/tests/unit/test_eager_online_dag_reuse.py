@@ -310,5 +310,8 @@ def test_generation_service_enables_online_reuse_only_for_eager_mode(
 
     compiled, _coverage = backend._compile_concrete_process(process_ir, model)
 
-    assert compiled is reference
+    assert compiled.currents == reference.currents
+    assert compiled.interactions == reference.interactions
+    assert compiled.amplitude_roots == reference.amplitude_roots
+    assert compiled.lc_topology_replay is not None
     assert observed == [expected_online_reuse]

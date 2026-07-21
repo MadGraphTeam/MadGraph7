@@ -3,6 +3,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Mapping
+from dataclasses import replace
+from typing import TYPE_CHECKING
+
 from ..processes.ir import CanonicalProcessIR
 from .plan_build import _ordered_open_line_blocks
 from .plan_types import (
@@ -10,7 +16,13 @@ from .plan_types import (
     LCColorSector,
     LCColorSectorReplayPartition,
     LCColorSectorTopologyGroup,
+    LCColorTopologyReplayPlan,
 )
+
+if TYPE_CHECKING:
+    from ..models.base import Model
+
+_LC_REPLAY_PROOF_ALGORITHM = "canonical-model-contract-label-equivariance-v1"
 
 
 def _sector_topology_groups(
@@ -256,6 +268,320 @@ def lc_topology_replay_partitions(
                 )
             )
     return tuple(partitions)
+
+
+def build_lc_topology_replay_plan(
+    color_plan: GenericColorPlan,
+    model: Model,
+) -> LCColorTopologyReplayPlan | None:
+    """Build independently proof-gated replay classes for a complete LC plan.
+
+    Candidate topology partitions are cheap structural orbits.  This second
+    pass certifies each orbit against canonical source/kernel contracts and
+    exact relabelled colour structures.  A failed orbit becomes residual
+    materialization without disabling any independently proven orbit.
+    """
+
+    if (
+        color_plan.color_accuracy != "lc"
+        or color_plan.truncated
+        or len(color_plan.sectors) < 2
+    ):
+        return None
+    physical_sector_ids = tuple(sorted(int(sector.id) for sector in color_plan.sectors))
+    try:
+        model_contract_digest = _canonical_contract_digest(
+            _canonical_model_replay_contract(model)
+        )
+    except Exception:
+        return None
+    residual: set[int] = set(physical_sector_ids)
+    proven: list[LCColorSectorReplayPartition] = []
+    diagnostics: list[str] = []
+    for candidate in lc_topology_replay_partitions(color_plan):
+        if len(candidate.active_sector_ids) < 2:
+            continue
+        try:
+            proof = _prove_lc_topology_replay_partition(
+                color_plan,
+                candidate,
+                model,
+                model_contract_digest=model_contract_digest,
+            )
+        except Exception as exc:
+            proof = None
+            diagnostics.append(
+                "LC replay partition "
+                f"{candidate.representative_sector_id} proof failed closed: {exc}"
+            )
+        if proof is None:
+            diagnostics.append(
+                "LC replay partition "
+                f"{candidate.representative_sector_id} remains materialized"
+            )
+            continue
+        proof_digest, replay_signs = proof
+        partition = replace(
+            candidate,
+            materialized_sector_id=candidate.representative_sector_id,
+            replay_signs=replay_signs,
+            proof_algorithm=_LC_REPLAY_PROOF_ALGORITHM,
+            proof_digest=proof_digest,
+        )
+        proven.append(partition)
+        residual.difference_update(partition.active_sector_ids)
+    if not proven:
+        return None
+    return LCColorTopologyReplayPlan(
+        physical_sector_ids=physical_sector_ids,
+        partitions=tuple(proven),
+        residual_sector_ids=tuple(sorted(residual)),
+        diagnostics=tuple(diagnostics),
+    )
+
+
+def _prove_lc_topology_replay_partition(
+    color_plan: GenericColorPlan,
+    partition: LCColorSectorReplayPartition,
+    model: Model,
+    *,
+    model_contract_digest: str,
+) -> tuple[str, tuple[int, ...]] | None:
+    """Certify label equivariance for one local replay partition.
+
+    External UFO tensors have already been canonized by the model compiler;
+    their exact oriented-kernel expressions and proof digests are included in
+    the contract below.  Built-in models contribute the same model-generic
+    source/lowering/evaluation contracts.  No process name or SM particle list
+    participates in this proof.
+    """
+
+    representative = color_plan.sector(partition.representative_sector_id)
+    if representative is None:
+        return None
+    labels = tuple(sorted(int(leg.label) for leg in color_plan.process.legs))
+    initial_labels = frozenset(
+        int(leg.label) for leg in color_plan.process.initial_legs
+    )
+    leg_by_label = {int(leg.label): leg for leg in color_plan.process.legs}
+    source_contracts = {
+        label: _canonical_source_contract(model, leg_by_label[label])
+        for label in labels
+    }
+    replay_signs: list[int] = []
+    mapping_contracts: list[dict[str, object]] = []
+    for sector_id, permutation, weight in zip(
+        partition.active_sector_ids,
+        partition.label_permutations,
+        partition.weights,
+        strict=True,
+    ):
+        sector = color_plan.sector(sector_id)
+        if sector is None:
+            return None
+        explicit_mapping = {int(left): int(right) for left, right in permutation}
+        if set(explicit_mapping) != set(explicit_mapping.values()):
+            return None
+        if not set(explicit_mapping).issubset(labels):
+            return None
+        mapping = {
+            label: explicit_mapping.get(label, label)
+            for label in labels
+        }
+        if set(mapping.values()) != set(labels):
+            return None
+        if {mapping[label] for label in initial_labels} != set(initial_labels):
+            return None
+        if _remapped_sector_contract(representative, mapping) != _sector_contract(
+            sector
+        ):
+            return None
+        for source_label, target_label in mapping.items():
+            if source_contracts[source_label] != source_contracts[target_label]:
+                return None
+        sign = _external_fermion_permutation_sign(
+            labels,
+            mapping,
+            source_contracts,
+        )
+        replay_signs.append(sign)
+        mapping_contracts.append(
+            {
+                "sector_id": int(sector_id),
+                "weight": float(weight),
+                "sign": sign,
+                "label_permutation": [
+                    list(item) for item in sorted(explicit_mapping.items())
+                ],
+                "sector_contract": _sector_contract(sector),
+            }
+        )
+    proof_payload = {
+        "algorithm": _LC_REPLAY_PROOF_ALGORITHM,
+        "process": {
+            "initial_labels": sorted(initial_labels),
+            "external_source_contracts": [
+                [label, source_contracts[label]] for label in labels
+            ],
+        },
+        "representative_sector_id": partition.representative_sector_id,
+        "representative_sector_contract": _sector_contract(representative),
+        "mappings": mapping_contracts,
+        "model_contract_digest": model_contract_digest,
+    }
+    return _canonical_contract_digest(proof_payload), tuple(replay_signs)
+
+
+def _canonical_contract_digest(payload: Mapping[str, object]) -> str:
+    canonical = json.dumps(
+        payload,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _canonical_source_contract(model: Model, leg: object) -> dict[str, object]:
+    outgoing_pdg = getattr(leg, "outgoing_pdg", None)
+    if outgoing_pdg is None:
+        raise ValueError("LC replay source has no outgoing particle identity")
+    source = model._source_ir(int(outgoing_pdg))
+    return {
+        "role": "initial" if bool(getattr(leg, "is_initial", False)) else "final",
+        "source": source.to_json_dict(),
+    }
+
+
+def _canonical_model_replay_contract(model: Model) -> dict[str, object]:
+    oriented_kernels: list[object] = []
+    compiled = getattr(model, "compiled", None)
+    ir = getattr(compiled, "ir", None)
+    for kernel in getattr(ir, "oriented_kernels", ()):
+        serializer = getattr(kernel, "to_dict", None)
+        if callable(serializer):
+            oriented_kernels.append(serializer())
+    vertices = []
+    seen_kinds: set[int] = set()
+    for vertex in sorted(
+        model.vertices,
+        key=lambda item: (int(item.kind), tuple(item.particles), tuple(item.coupling)),
+    ):
+        kind = int(vertex.kind)
+        if kind in seen_kinds:
+            continue
+        seen_kinds.add(kind)
+        vertices.append(
+            {
+                "kind": kind,
+                "lowering": model.vertex_lowering_rule(kind).to_json_dict(),
+                "evaluation_equivalence": (
+                    model.vertex_evaluation_equivalence(kind).to_json_dict()
+                ),
+            }
+        )
+    certificates = getattr(model, "_symmetry_certificates", None)
+    certificate_contract = None
+    if certificates is not None:
+        certificate_contract = {
+            name: _json_contract_value(getattr(certificates, name))
+            for name in getattr(certificates, "__dataclass_fields__", {})
+        }
+    return {
+        "model_type": f"{type(model).__module__}.{type(model).__qualname__}",
+        "vertices": vertices,
+        "oriented_kernels": oriented_kernels,
+        "external_symmetry_certificates": certificate_contract,
+    }
+
+
+def _json_contract_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_contract_value(item)
+            for key, item in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, frozenset | set):
+        return sorted(_json_contract_value(item) for item in value)
+    if isinstance(value, tuple | list):
+        return [_json_contract_value(item) for item in value]
+    return value
+
+
+def _sector_contract(sector: LCColorSector) -> dict[str, object]:
+    return {
+        "kind": sector.kind,
+        "open_color_lines": sorted(
+            (
+                int(line.fundamental_label),
+                int(line.antifundamental_label),
+                tuple(int(label) for label in line.adjoint_labels),
+                tuple(int(label) for label in line.singlet_labels),
+            )
+            for line in sector.open_color_lines
+        ),
+        "trace_labels": tuple(int(label) for label in sector.trace_labels),
+        "singlet_labels": tuple(int(label) for label in sector.singlet_labels),
+        "word_labels": tuple(int(label) for label in sector.word_labels),
+    }
+
+
+def _remapped_sector_contract(
+    sector: LCColorSector,
+    mapping: Mapping[int, int],
+) -> dict[str, object]:
+    def mapped(labels: tuple[int, ...]) -> tuple[int, ...]:
+        return tuple(mapping[int(label)] for label in labels)
+
+    return {
+        "kind": sector.kind,
+        "open_color_lines": sorted(
+            (
+                mapping[int(line.fundamental_label)],
+                mapping[int(line.antifundamental_label)],
+                mapped(line.adjoint_labels),
+                mapped(line.singlet_labels),
+            )
+            for line in sector.open_color_lines
+        ),
+        "trace_labels": mapped(sector.trace_labels),
+        "singlet_labels": mapped(sector.singlet_labels),
+        "word_labels": mapped(sector.word_labels),
+    }
+
+
+def _external_fermion_permutation_sign(
+    labels: tuple[int, ...],
+    mapping: Mapping[int, int],
+    source_contracts: Mapping[int, Mapping[str, object]],
+) -> int:
+    classes: dict[tuple[str, str], list[int]] = {}
+    for label in labels:
+        contract = source_contracts[label]
+        source = contract["source"]
+        if not isinstance(source, Mapping) or source.get("statistics") != "fermion":
+            continue
+        identity = source.get("identity")
+        if not isinstance(identity, Mapping):
+            raise ValueError("fermion source identity contract is missing")
+        classes.setdefault(
+            (str(contract["role"]), str(identity["canonical_id"])),
+            [],
+        ).append(label)
+    sign = 1
+    for class_labels in classes.values():
+        ordered = sorted(class_labels)
+        positions = {label: index for index, label in enumerate(ordered)}
+        permutation = [positions[mapping[label]] for label in ordered]
+        inversions = sum(
+            permutation[left] > permutation[right]
+            for left in range(len(permutation))
+            for right in range(left + 1, len(permutation))
+        )
+        if inversions % 2:
+            sign = -sign
+    return sign
 
 
 def _lc_topology_replay_sector_weight(

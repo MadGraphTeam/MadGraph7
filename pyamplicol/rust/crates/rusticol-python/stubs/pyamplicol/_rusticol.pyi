@@ -209,6 +209,8 @@ class Runtime:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[int] | None = None,
+        color_flow_by_point: Sequence[int] | None = None,
         precision: Literal[16] = 16,
     ) -> list[float]:
         """Return one fully summed matrix element for every input point."""
@@ -220,6 +222,8 @@ class Runtime:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[int] | None = None,
+        color_flow_by_point: Sequence[int] | None = None,
         precision: Literal[16] = 16,
     ) -> float: ...
     def profile(
@@ -228,6 +232,20 @@ class Runtime:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[int] | None = None,
+        color_flow_by_point: Sequence[int] | None = None,
+        precision: Literal[16] = 16,
+        include_values: bool = False,
+    ) -> RuntimeProfile: ...
+    def profile_repeated(
+        self,
+        momenta: Momenta,
+        repetitions: int,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[int] | None = None,
+        color_flow_by_point: Sequence[int] | None = None,
         precision: Literal[16] = 16,
         include_values: bool = False,
     ) -> RuntimeProfile: ...
@@ -237,6 +255,8 @@ class Runtime:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        helicity_by_point: Sequence[int] | None = None,
+        color_flow_by_point: Sequence[int] | None = None,
         precision: Literal[16] = 16,
         include_values: bool = False,
     ) -> RuntimeProfile: ...

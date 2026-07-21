@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import permutations
@@ -179,16 +180,213 @@ class LCColorSectorReplayPartition:
     active_sector_ids: tuple[int, ...]
     label_permutations: tuple[tuple[tuple[int, int], ...], ...]
     replay_weights: tuple[float, ...] = ()
+    replay_signs: tuple[int, ...] = ()
+    materialized_sector_id: int | None = None
+    proof_algorithm: str | None = None
+    proof_digest: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.materialized_sector_id is None:
+            object.__setattr__(
+                self,
+                "materialized_sector_id",
+                int(self.representative_sector_id),
+            )
+        count = len(self.active_sector_ids)
+        if len(self.label_permutations) != count:
+            raise ValueError(
+                "LC replay partition permutations do not match active sectors"
+            )
+        if self.replay_weights and len(self.replay_weights) != count:
+            raise ValueError("LC replay partition weights do not match active sectors")
+        if self.replay_signs and len(self.replay_signs) != count:
+            raise ValueError("LC replay partition signs do not match active sectors")
+        if any(not math.isfinite(weight) or weight <= 0.0 for weight in self.weights):
+            raise ValueError("LC replay partition weights must be positive and finite")
+        if any(sign not in {-1, 1} for sign in self.signs):
+            raise ValueError("LC replay partition signs must be -1 or 1")
+        if self.representative_sector_id not in self.active_sector_ids:
+            raise ValueError("LC replay partition does not contain its representative")
+        if self.materialized_sector_id != self.representative_sector_id:
+            raise ValueError(
+                "LC replay currently materializes the partition representative"
+            )
+        if (self.proof_algorithm is None) != (self.proof_digest is None):
+            raise ValueError(
+                "LC replay proof algorithm and digest must be present together"
+            )
+        if self.proof_digest is not None and (
+            len(self.proof_digest) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.proof_digest
+            )
+        ):
+            raise ValueError("LC replay proof digest must be a lowercase SHA-256")
+
+    @property
+    def weights(self) -> tuple[float, ...]:
+        return self.replay_weights or (1.0,) * len(self.active_sector_ids)
+
+    @property
+    def signs(self) -> tuple[int, ...]:
+        return self.replay_signs or (1,) * len(self.active_sector_ids)
 
     def to_json_dict(self) -> dict[str, object]:
         return {
             "representative_sector_id": self.representative_sector_id,
+            "materialized_sector_id": self.materialized_sector_id,
             "active_sector_ids": list(self.active_sector_ids),
             "label_permutations": [
                 [[left, right] for left, right in permutation]
                 for permutation in self.label_permutations
             ],
-            "replay_weights": list(self.replay_weights),
+            "replay_weights": list(self.weights),
+            "replay_signs": list(self.signs),
+            "proof": (
+                None
+                if self.proof_digest is None
+                else {
+                    "status": "proven",
+                    "algorithm": self.proof_algorithm,
+                    "digest": self.proof_digest,
+                }
+            ),
+        }
+
+    def to_runtime_manifest(self) -> dict[str, object]:
+        """Return the additive compiled-runtime replay group contract."""
+
+        return {
+            "representative_sector_id": self.representative_sector_id,
+            "materialized_sector_id": self.materialized_sector_id,
+            "active_sector_ids": list(self.active_sector_ids),
+            "proof": {
+                "status": "proven",
+                "algorithm": self.proof_algorithm,
+                "digest": self.proof_digest,
+            },
+            "sector_permutations": [
+                {
+                    "sector_id": sector_id,
+                    "weight": weight,
+                    "sign": sign,
+                    "factor": [weight * sign, 0.0],
+                    "label_permutation": [
+                        {
+                            "representative_label": representative_label,
+                            "sector_label": sector_label,
+                        }
+                        for representative_label, sector_label in permutation
+                    ],
+                }
+                for sector_id, permutation, weight, sign in zip(
+                    self.active_sector_ids,
+                    self.label_permutations,
+                    self.weights,
+                    self.signs,
+                    strict=True,
+                )
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class LCColorTopologyReplayPlan:
+    """Proof-gated replay classes plus independently materialized residuals."""
+
+    physical_sector_ids: tuple[int, ...]
+    partitions: tuple[LCColorSectorReplayPartition, ...]
+    residual_sector_ids: tuple[int, ...]
+    diagnostics: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        physical = tuple(sorted(int(value) for value in self.physical_sector_ids))
+        residual = tuple(sorted(int(value) for value in self.residual_sector_ids))
+        object.__setattr__(self, "physical_sector_ids", physical)
+        object.__setattr__(self, "residual_sector_ids", residual)
+        if len(set(physical)) != len(physical):
+            raise ValueError("LC replay physical sectors contain duplicates")
+        if len(set(residual)) != len(residual):
+            raise ValueError("LC replay residual sectors contain duplicates")
+        if any(
+            partition.proof_algorithm is None or partition.proof_digest is None
+            for partition in self.partitions
+        ):
+            raise ValueError("LC replay plan contains an unproven partition")
+        replayed = tuple(
+            sector_id
+            for partition in self.partitions
+            for sector_id in partition.active_sector_ids
+        )
+        if len(set(replayed)) != len(replayed):
+            raise ValueError("LC replay partitions overlap")
+        if set(replayed) & set(residual):
+            raise ValueError("LC replay sectors overlap residual coverage")
+        if set(replayed) | set(residual) != set(physical):
+            raise ValueError("LC replay plan does not cover every physical sector")
+
+    @property
+    def replayed_sector_count(self) -> int:
+        return sum(len(partition.active_sector_ids) for partition in self.partitions)
+
+    @property
+    def materialized_sector_ids(self) -> tuple[int, ...]:
+        return tuple(
+            sorted(
+                {
+                    *(
+                        int(partition.materialized_sector_id)
+                        for partition in self.partitions
+                    ),
+                    *self.residual_sector_ids,
+                }
+            )
+        )
+
+    @property
+    def optimized(self) -> bool:
+        return any(
+            len(partition.active_sector_ids) > 1
+            for partition in self.partitions
+        )
+
+    def representative_for(self, sector_id: int) -> int:
+        sector_id = int(sector_id)
+        for partition in self.partitions:
+            if sector_id in partition.active_sector_ids:
+                return int(partition.materialized_sector_id)
+        if sector_id in self.residual_sector_ids:
+            return sector_id
+        raise KeyError(f"LC replay plan has no physical sector {sector_id}")
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "kind": "pyamplicol-lc-topology-replay-plan",
+            "mode": "external-label-permutation",
+            "physical_sector_ids": list(self.physical_sector_ids),
+            "materialized_sector_ids": list(self.materialized_sector_ids),
+            "residual_sector_ids": list(self.residual_sector_ids),
+            "replayed_sector_count": self.replayed_sector_count,
+            "partitions": [
+                partition.to_json_dict() for partition in self.partitions
+            ],
+            "diagnostics": list(self.diagnostics),
+        }
+
+    def to_runtime_manifest(self) -> dict[str, object]:
+        return {
+            "enabled": self.optimized,
+            "mode": "external-label-permutation",
+            "contract_version": 2,
+            "physical_sector_count": len(self.physical_sector_ids),
+            "replayed_sector_count": self.replayed_sector_count,
+            "materialized_sector_ids": list(self.materialized_sector_ids),
+            "residual_sector_ids": list(self.residual_sector_ids),
+            "groups": [
+                partition.to_runtime_manifest() for partition in self.partitions
+            ],
         }
 
 

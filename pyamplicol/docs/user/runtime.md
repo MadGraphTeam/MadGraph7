@@ -24,6 +24,12 @@ JSON:
 pyamplicol inspect artifacts/pp_zjj --format json
 ```
 
+JIT artifacts store evaluator state in a single indexed
+`evaluators.pacbin` container. The terminal inventory therefore distinguishes
+the physical file count and on-disk size from the number and unpacked size of
+logical evaluator members. Inspection reads the index and does not expand the
+container or print one path per evaluator.
+
 For eager artifacts the inventory also reports the prepared backend, kernel
 and invocation counts, aliases, finalizations, closures, fanout, selector
 dependency domains, configured workspace, and effective point-tile capacity.
@@ -129,10 +135,41 @@ selected = runtime.evaluate(
 )
 ```
 
+If flow or helicity coverage was left complete during generation, one physical
+selector may also be supplied for every phase-space point:
+
+```python
+mixed = runtime.evaluate(
+    momenta,
+    color_flow_by_point=[
+        runtime.physics.color_flow_ids[index % 2]
+        for index in range(len(momenta))
+    ],
+    helicity_by_point=[
+        runtime.physics.helicity_ids[(index // 2) % 2]
+        for index in range(len(momenta))
+    ],
+)
+```
+
+Rusticol stably groups mixed selectors to preserve contiguous SIMD work. An
+already pooled sequence is detected and left in place, so callers that organize
+their own batches do not pay for a second reorder. Batch-global selectors and
+per-point selectors are mutually exclusive on the same axis. Per-point
+selection returns one total per original input point; rectangular
+`evaluate_resolved()` continues to use batch-global axes.
+
 Color-flow selection is available only for LC artifacts. NLC/full accept
 helicity selectors and reject color-flow selectors. CLI users may pass either
 the stable ID or its one-based advertised position; for example,
 `--color-flow 1` selects the first physical LC flow.
+
+An omitted generation-time selector means reusable complete coverage, not a
+copy of every complete recurrence for every physical selector. Compiled mode
+stores certified recurrence replay classes and localized residual lanes; eager
+mode stores selector domains over prepared-kernel invocations. An explicit
+generation-time selector remains available when a deliberately specialized
+artifact is preferable.
 
 ## Precision And Capabilities
 

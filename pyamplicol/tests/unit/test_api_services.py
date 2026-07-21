@@ -11,6 +11,7 @@ from pyamplicol.api import (
     BenchmarkResult,
     BenchmarkStatistics,
     ColorFlow,
+    EvaluationError,
     Generator,
     HelicityConfiguration,
     PhysicsReduction,
@@ -91,6 +92,24 @@ class _RuntimeBackend:
         self.muted = False
 
 
+class _PreSelectorRuntimeBackend(_RuntimeBackend):
+    def evaluate(
+        self,
+        momenta: object,
+        *,
+        helicities: tuple[str, ...] | None = None,
+        color_flows: tuple[str, ...] | None = None,
+        precision: int = 16,
+    ) -> tuple[complex, ...]:
+        del momenta
+        self.selectors = {
+            "helicities": helicities,
+            "color_flows": color_flows,
+            "precision": precision,
+        }
+        return (3.0 + 0j,)
+
+
 class _BenchmarkBackend:
     def run(self, target: object, *, points: object = None) -> BenchmarkResult:
         del target, points
@@ -122,6 +141,24 @@ def test_generator_backend_is_created_only_on_first_operation(
     plan = generator.plan("d d~ > z g")
     assert len(calls) == 1
     assert plan.concrete_processes[0].expression == "d d~ > z g"
+
+
+def test_generator_rejects_existing_output_before_backend_construction(
+    monkeypatch: object, tmp_path: Path
+) -> None:
+    destination = tmp_path / "artifact"
+    destination.mkdir()
+    calls: list[object] = []
+
+    def factory(config: object, progress: object) -> _GeneratorBackend:
+        calls.append((config, progress))
+        return _GeneratorBackend()
+
+    monkeypatch.setattr(service_module, "_generator_factory", factory)  # type: ignore[attr-defined]
+    generator = Generator(GenerationConfig())
+    with pytest.raises(FileExistsError, match="artifact already exists"):
+        generator.generate("d d~ > z g", destination)
+    assert calls == []
 
 
 def test_runtime_and_benchmark_facades_use_typed_backends(
@@ -169,6 +206,68 @@ def test_runtime_accepts_typed_physics_selectors(
     )
     assert backend.selectors["helicities"] == ("h0",)
     assert backend.selectors["color_flows"] == ("c0",)
+
+
+def test_runtime_accepts_typed_per_point_selectors() -> None:
+    backend = _RuntimeBackend()
+    runtime = Runtime(backend)
+    physics = runtime.physics
+
+    runtime.evaluate(
+        [[[[1.0, 0.0, 0.0, 1.0]]]],
+        helicity_by_point=(physics.helicities[0],),
+        color_flow_by_point=(physics.color_flows[0],),
+    )
+
+    assert backend.selectors["helicity_by_point"] == ("h0",)
+    assert backend.selectors["color_flow_by_point"] == ("c0",)
+
+
+def test_runtime_preserves_pre_selector_backend_compatibility() -> None:
+    backend = _PreSelectorRuntimeBackend()
+    runtime = Runtime(backend)
+
+    assert runtime.evaluate([], helicities=("h0",)) == (3.0 + 0j,)
+    assert backend.selectors == {
+        "helicities": ("h0",),
+        "color_flows": None,
+        "precision": 16,
+    }
+    assert runtime.evaluate([], helicity_by_point=()) == (3.0 + 0j,)
+
+    with pytest.raises(EvaluationError, match="does not support per-point"):
+        runtime.evaluate([[]], helicity_by_point=("h0",))
+
+
+def test_runtime_normalizes_empty_selector_sequences_to_omitted_axes() -> None:
+    backend = _RuntimeBackend()
+    runtime = Runtime(backend)
+
+    runtime.evaluate(
+        [],
+        helicities=(),
+        color_flows=(),
+        helicity_by_point=(),
+        color_flow_by_point=(),
+    )
+
+    assert backend.selectors == {
+        "helicities": None,
+        "color_flows": None,
+        "precision": 16,
+    }
+
+    runtime.evaluate([], helicities=(), helicity_by_point=("h0",))
+    assert backend.selectors["helicity_by_point"] == ("h0",)
+
+
+def test_runtime_rejects_global_and_per_point_selector_on_same_axis() -> None:
+    runtime = Runtime(_RuntimeBackend())
+
+    with pytest.raises(ValueError, match="helicities and helicity_by_point"):
+        runtime.evaluate([], helicities=("h0",), helicity_by_point=("h0",))
+    with pytest.raises(ValueError, match="color_flows and color_flow_by_point"):
+        runtime.evaluate([], color_flows=("c0",), color_flow_by_point=("c0",))
 
 
 @pytest.mark.parametrize("precision", (True, False, 1.5, "32"))

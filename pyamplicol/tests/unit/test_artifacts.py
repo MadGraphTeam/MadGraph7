@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
 import pytest
 
 import pyamplicol.artifacts.manifest as manifest_module
+import pyamplicol.generation.artifact_writer as generation_artifact_writer
 from pyamplicol import ArtifactError, CompatibilityError
 from pyamplicol.artifacts import (
     ArtifactBuilder,
@@ -14,6 +16,7 @@ from pyamplicol.artifacts import (
     load_manifest,
     normalize_relative_path,
 )
+from pyamplicol.generation.evaluator_container import PacbinReader
 
 
 def _producer(
@@ -124,6 +127,57 @@ def test_builder_writes_compact_machine_json(tmp_path: Path) -> None:
     assert (root / "physics/process.json").read_text(encoding="utf-8") == (
         '{"alpha":true,"beta":[1,2]}\n'
     )
+
+
+def test_builder_streams_files_and_registers_staged_payloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "artifact"
+    source = tmp_path / "large.bin"
+    source.write_bytes(b"streamed" * 4096)
+    original_read_bytes = Path.read_bytes
+
+    def guarded_read_bytes(path: Path) -> bytes:
+        if path == source:
+            raise AssertionError("ArtifactBuilder.add_file must not call read_bytes")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+    with ArtifactBuilder(root) as builder:
+        builder.add_file(
+            "payloads/streamed.bin",
+            source,
+            role="runtime-physics",
+            media_type="application/octet-stream",
+        )
+        staged = builder.staged_path("payloads/registered.bin", create_parent=True)
+        staged.write_bytes(b"registered")
+        builder.register_staged_file(
+            "payloads/registered.bin",
+            role="runtime-physics",
+            media_type="application/octet-stream",
+        )
+        builder.add_stream(
+            "physics/process.json",
+            io.BytesIO(b'{}\n'),
+            role="runtime-physics",
+            media_type="application/json",
+            process_id="dd_to_z",
+            chunk_size=2,
+        )
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=_producer(),
+            model=_model(),
+            configuration=_configuration(),
+            processes=[_process()],
+            default_process_id="dd_to_z",
+            runtime=_runtime(),
+        )
+
+    assert (root / "payloads/streamed.bin").stat().st_size == source.stat().st_size
+    assert (root / "payloads/registered.bin").read_bytes() == b"registered"
 
 
 def test_builder_round_trip_and_tamper_detection(tmp_path: Path) -> None:
@@ -328,6 +382,239 @@ def test_builder_append_retains_declared_payloads_and_adds_new_ones(
         "physics/process.json",
     ]
     assert (destination / "physics/process.json").is_file()
+
+
+def test_evaluator_container_append_migrates_loose_and_reuses_old_members(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "artifact"
+    target = _producer()["target"]
+    with ArtifactBuilder(destination) as builder:
+        builder.add_json(
+            "physics/process.json",
+            {"schema_version": 1},
+            role="runtime-physics",
+            process_id="dd_to_z",
+        )
+        for relative, content in (
+            ("processes/old/application.symjit", b"old-application"),
+            ("processes/old/state.evaluator.bin", b"old-state"),
+            ("processes/old/library.dylib", b"native-library"),
+        ):
+            builder.add_bytes(
+                relative,
+                content,
+                role="evaluator-state",
+                media_type="application/octet-stream",
+                target=target,
+                process_id="dd_to_z",
+            )
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=_producer(),
+            model=_model(),
+            configuration=_configuration(),
+            processes=[_process()],
+            default_process_id="dd_to_z",
+            runtime=_runtime(),
+        )
+
+    replacement = tmp_path / "replacement.symjit"
+    replacement.write_bytes(b"replacement-application")
+    added = tmp_path / "added.evaluator.bin"
+    added.write_bytes(b"added-state")
+    existing = load_manifest(destination)
+    with ArtifactBuilder(
+        destination,
+        mode="append",
+        expected_artifact_id=existing.artifact_id,
+    ) as builder:
+        collector = generation_artifact_writer._EvaluatorPayloadCollector(
+            builder,
+            existing=existing,
+            target=target,
+        )
+        collector.add_file(
+            "processes/old/application.symjit",
+            replacement,
+            process_id="dd_to_z",
+        )
+        collector.add_file(
+            "processes/new/state.evaluator.bin",
+            added,
+            process_id="dd_to_z",
+        )
+        extension = collector.publish()
+        assert extension is not None
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=existing.producer,
+            model=existing.model,
+            configuration=existing.configuration,
+            processes=existing.processes,
+            default_process_id=existing.default_process_id,
+            runtime=existing.runtime,
+            dependencies=existing.dependencies,
+            extensions={"evaluator_payload_container": extension},
+        )
+
+    migrated = load_manifest(destination)
+    declared = {record.path for record in migrated.payloads}
+    assert "evaluators.pacbin" in declared
+    assert "processes/old/library.dylib" in declared
+    assert "processes/old/application.symjit" not in declared
+    assert "processes/old/state.evaluator.bin" not in declared
+    with PacbinReader.open(destination / "evaluators.pacbin") as container:
+        assert container.read_member(
+            "processes/old/application.symjit",
+            length=len(b"replacement-application"),
+        ) == b"replacement-application"
+        assert container.read_member(
+            "processes/old/state.evaluator.bin",
+            length=len(b"old-state"),
+        ) == b"old-state"
+        assert container.read_member(
+            "processes/new/state.evaluator.bin",
+            length=len(b"added-state"),
+        ) == b"added-state"
+
+    second = tmp_path / "second.symjit"
+    second.write_bytes(b"second-application")
+    existing = load_manifest(destination)
+    with ArtifactBuilder(
+        destination,
+        mode="append",
+        expected_artifact_id=existing.artifact_id,
+    ) as builder:
+        collector = generation_artifact_writer._EvaluatorPayloadCollector(
+            builder,
+            existing=existing,
+            target=target,
+        )
+        collector.add_file(
+            "processes/second/application.symjit",
+            second,
+            process_id="dd_to_z",
+        )
+        extension = collector.publish()
+        assert extension is not None
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=existing.producer,
+            model=existing.model,
+            configuration=existing.configuration,
+            processes=existing.processes,
+            default_process_id=existing.default_process_id,
+            runtime=existing.runtime,
+            dependencies=existing.dependencies,
+            extensions={"evaluator_payload_container": extension},
+        )
+    with PacbinReader.open(destination / "evaluators.pacbin") as container:
+        assert {member.logical_path for member in container.members} == {
+            "processes/new/state.evaluator.bin",
+            "processes/old/application.symjit",
+            "processes/old/state.evaluator.bin",
+            "processes/second/application.symjit",
+        }
+
+
+def test_evaluator_container_failed_repack_preserves_published_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "artifact"
+    _build(destination)
+    before = {
+        path.relative_to(destination).as_posix(): path.read_bytes()
+        for path in destination.rglob("*")
+        if path.is_file()
+    }
+    source = tmp_path / "application.symjit"
+    source.write_bytes(b"application")
+    existing = load_manifest(destination)
+
+    def fail_after_partial_write(path: Path, *_args: object, **_kwargs: object) -> None:
+        path.write_bytes(b"malformed-partial-container")
+        raise RuntimeError("injected container interruption")
+
+    monkeypatch.setattr(
+        generation_artifact_writer,
+        "write_pacbin_atomic",
+        fail_after_partial_write,
+    )
+    with (
+        pytest.raises(RuntimeError, match="injected container interruption"),
+        ArtifactBuilder(
+            destination,
+            mode="append",
+            expected_artifact_id=existing.artifact_id,
+        ) as builder,
+    ):
+        collector = generation_artifact_writer._EvaluatorPayloadCollector(
+            builder,
+            existing=existing,
+            target=existing.producer["target"],
+        )
+        collector.add_file(
+            "processes/new/application.symjit",
+            source,
+            process_id="dd_to_z",
+        )
+        collector.publish()
+
+    after = {
+        path.relative_to(destination).as_posix(): path.read_bytes()
+        for path in destination.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_evaluator_container_snapshots_registered_files(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    source = tmp_path / "reused.symjit"
+    source.write_bytes(b"first-application")
+    target = _producer()["target"]
+
+    with ArtifactBuilder(destination) as builder:
+        collector = generation_artifact_writer._EvaluatorPayloadCollector(
+            builder,
+            existing=None,
+            target=target,
+        )
+        collector.add_file(
+            "processes/first/application.symjit",
+            source,
+            process_id="dd_to_z",
+        )
+        source.write_bytes(b"second-application")
+        collector.add_file(
+            "processes/second/application.symjit",
+            source,
+            process_id="dd_to_z",
+        )
+        extension = collector.publish()
+        assert extension is not None
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=_producer(),
+            model=_model(),
+            configuration=_configuration(),
+            processes=[_process()],
+            default_process_id="dd_to_z",
+            runtime=_runtime(),
+            extensions={"evaluator_payload_container": extension},
+        )
+
+    with PacbinReader.open(destination / "evaluators.pacbin") as container:
+        assert container.read_member(
+            "processes/first/application.symjit",
+            length=len(b"first-application"),
+        ) == b"first-application"
+        assert container.read_member(
+            "processes/second/application.symjit",
+            length=len(b"second-application"),
+        ) == b"second-application"
 
 
 def test_manifest_rejects_unknown_nested_fields(tmp_path: Path) -> None:

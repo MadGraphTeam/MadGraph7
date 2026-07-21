@@ -220,6 +220,27 @@ unsafe fn read_f64_slice<'a>(
     Ok(unsafe { slice::from_raw_parts(values, count) })
 }
 
+unsafe fn read_optional_u32_slice<'a>(
+    values: *const u32,
+    count: size_t,
+    expected_count: usize,
+    name: &str,
+) -> AbiResult<Option<&'a [u32]>> {
+    if count == 0 {
+        return Ok(None);
+    }
+    if values.is_null() {
+        return Err(invalid(format!("{name} is null")));
+    }
+    if count != expected_count {
+        return Err(invalid(format!(
+            "{name} has length {count}, expected {expected_count} (one selector per point)"
+        )));
+    }
+    // SAFETY: The caller supplies count readable u32 values.
+    Ok(Some(unsafe { slice::from_raw_parts(values, count) }))
+}
+
 unsafe fn write_f64_slice(
     values: &[f64],
     output: *mut c_double,
@@ -884,6 +905,88 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_f64(
     })
 }
 
+/// Evaluates total f64 matrix elements with optional global or per-point selectors.
+///
+/// Global selector arrays contain physical helicity/color string IDs and retain subset/sum
+/// semantics. Per-point selector arrays contain zero-based physical-axis indices and must contain
+/// exactly one selector for every input point. Global and per-point selectors are mutually
+/// exclusive on the same axis. An omitted axis is summed over every component retained by the
+/// artifact.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call. `momenta` must
+/// reference `momentum_count` readable `f64` values and `output` must reference `output_capacity`
+/// writable `f64` values; those regions must not overlap. For each nonzero global selector count,
+/// the corresponding pointer must reference that many readable string pointers and each string
+/// must be NUL-terminated. For each nonzero per-point selector count, the corresponding pointer
+/// must reference exactly `point_count` readable `u32` values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_evaluate_selected_f64(
+    handle: *mut RusticolRuntimeHandle,
+    momenta: *const c_double,
+    momentum_count: size_t,
+    point_count: size_t,
+    helicity_ids: *const *const c_char,
+    helicity_count: size_t,
+    color_ids: *const *const c_char,
+    color_count: size_t,
+    helicity_by_point: *const u32,
+    helicity_by_point_count: size_t,
+    color_flow_by_point: *const u32,
+    color_flow_by_point_count: size_t,
+    output: *mut c_double,
+    output_capacity: size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate all pointers and arrays.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        if point_count == 0 {
+            return Err(invalid("point_count must be positive"));
+        }
+        let momenta = unsafe { read_f64_slice(momenta, momentum_count, "momenta") }?;
+        let helicities =
+            unsafe { read_selector_ids(helicity_ids, helicity_count, "helicity ids") }?;
+        let colors = unsafe { read_selector_ids(color_ids, color_count, "color ids") }?;
+        let helicity_by_point = unsafe {
+            read_optional_u32_slice(
+                helicity_by_point,
+                helicity_by_point_count,
+                point_count,
+                "helicity_by_point",
+            )
+        }?;
+        let color_flow_by_point = unsafe {
+            read_optional_u32_slice(
+                color_flow_by_point,
+                color_flow_by_point_count,
+                point_count,
+                "color_flow_by_point",
+            )
+        }?;
+        if helicities.is_some() && helicity_by_point.is_some() {
+            return Err(invalid(
+                "helicity ids and helicity_by_point are mutually exclusive",
+            ));
+        }
+        if colors.is_some() && color_flow_by_point.is_some() {
+            return Err(invalid(
+                "color ids and color_flow_by_point are mutually exclusive",
+            ));
+        }
+        validate_f64_output(output, output_capacity, point_count, "total output")?;
+        let values = handle.runtime.evaluate_f64_with_selectors(
+            momenta,
+            point_count,
+            helicities.as_deref(),
+            colors.as_deref(),
+            helicity_by_point,
+            color_flow_by_point,
+        )?;
+        unsafe { write_f64_slice(&values, output, output_capacity, "total output") }
+    })
+}
+
 /// Evaluates resolved f64 matrix elements for a batch of momentum points.
 ///
 /// # Safety
@@ -1188,7 +1291,12 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Vec<String>>(json).unwrap(),
             vec![
+                "rusticol.compiled.color-topology-lanes.v1".to_string(),
+                "rusticol.compiled.helicity-dual-lane.v1".to_string(),
+                "rusticol.compiled.helicity-selector-union.v1".to_string(),
+                "rusticol.compiled.runtime-selectors.v1".to_string(),
                 "rusticol.eager-dag.complex-f64.v1".to_string(),
+                "rusticol.eager-dag.lc-topology-replay.v1".to_string(),
                 "symbolica.compiled-asm.complex-f64.v1".to_string(),
                 "symbolica.compiled-cpp.complex-f64.v1".to_string(),
                 "symjit.application.complex-f64.v1".to_string(),

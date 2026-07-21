@@ -337,6 +337,31 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     os.replace(temporary, path)
 
 
+def _write_source_ready_candidate_asset(
+    bundle: Path,
+    output_directory: Path,
+    *,
+    architecture: str,
+) -> tuple[Path, Path]:
+    build_backend = _ROOT / "build_backend"
+    inserted = False
+    if str(build_backend) not in sys.path:
+        sys.path.insert(0, str(build_backend))
+        inserted = True
+    try:
+        from prepared_models import write_candidate_packaged_prepared_model_asset
+
+        return write_candidate_packaged_prepared_model_asset(
+            _ROOT,
+            bundle,
+            output_directory,
+            architecture=architecture,
+        )
+    finally:
+        if inserted:
+            sys.path.remove(str(build_backend))
+
+
 def _preflight_all_prepared_applications(bundle: Path) -> int:
     from pyamplicol import _rusticol
 
@@ -409,21 +434,35 @@ def produce_transfer(
         if any(output.iterdir()):
             raise PortabilityError(f"producer output directory is not empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
-    bundle = output / DEFAULT_BUNDLE_NAME
     contracts = _runtime_contracts()
     environment = _command_environment()
 
-    _run(_model_compile_command(python, bundle), environment=environment)
-    audit = audit_architecture_jit_bundle(
-        bundle,
-        contracts=contracts,
-        expected_architecture_class=actual_architecture,
-    )
-    if audit["producer_version"] != contracts.package_version:
-        raise PortabilityError(
-            "prepared bundle producer version differs from the installed package"
+    with tempfile.TemporaryDirectory(
+        prefix="pyamplicol-eager-portability-pack-",
+        dir=output.parent,
+    ) as raw_bundle:
+        generated_bundle = Path(raw_bundle) / DEFAULT_BUNDLE_NAME
+        _run(
+            _model_compile_command(python, generated_bundle),
+            environment=environment,
         )
-    audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(bundle)
+        audit = audit_architecture_jit_bundle(
+            generated_bundle,
+            contracts=contracts,
+            expected_architecture_class=actual_architecture,
+        )
+        if audit["producer_version"] != contracts.package_version:
+            raise PortabilityError(
+                "prepared bundle producer version differs from the installed package"
+            )
+        audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(
+            generated_bundle
+        )
+        metadata_path, bundle = _write_source_ready_candidate_asset(
+            generated_bundle,
+            output,
+            architecture=actual_architecture,
+        )
 
     with tempfile.TemporaryDirectory(
         prefix="pyamplicol-eager-portability-producer-"
@@ -498,6 +537,7 @@ def produce_transfer(
         "expected": {"real": expected_value.real, "imaginary": expected_value.imag},
         "fixture": str(fixture_path),
         "kernel_count": audit["kernel_count"],
+        "metadata": str(metadata_path),
         "architecture_class": actual_architecture,
     }
 

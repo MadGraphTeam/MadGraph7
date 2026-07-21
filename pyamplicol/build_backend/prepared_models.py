@@ -137,6 +137,174 @@ def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
         )
 
 
+def write_candidate_packaged_prepared_model_asset(
+    overlay: Path,
+    bundle_path: Path,
+    output_directory: Path,
+    *,
+    architecture: str,
+) -> tuple[Path, Path]:
+    """Write one source-ready architecture pack and its derived metadata."""
+
+    if architecture not in _EXPECTED_ARCHITECTURES:
+        raise RuntimeError(f"unsupported prepared-model architecture: {architecture}")
+    package_root = overlay / "src" / "pyamplicol"
+    contributor_path = overlay / "dependencies" / "contributor-lock.toml"
+    release_path = overlay / "dependencies" / "release-lock.toml"
+    with contributor_path.open("rb") as stream:
+        contributor = tomllib.load(stream)
+    with release_path.open("rb") as stream:
+        release = tomllib.load(stream)
+
+    contract = _load_prepared_contract(package_root / "models" / "prepared.py")
+    source_bundle = bundle_path.resolve(strict=True)
+    bundle_bytes = source_bundle.read_bytes()
+    try:
+        bundle = contract.load_prepared_model_bundle(source_bundle)
+    except Exception as error:
+        raise RuntimeError(f"prepared-model bundle is invalid: {error}") from error
+    pack = bundle.kernel_pack
+    expected_target = {
+        "portable": False,
+        "word_bits": 64,
+        "endianness": "little",
+        "target_triple": f"symjit-storage-v3-{architecture}",
+        "cpu_features": [],
+    }
+    if _plain_json(pack.target) != expected_target:
+        raise RuntimeError("prepared-model bundle target does not match architecture")
+    if bundle.backend != "jit" or pack.backend != "jit":
+        raise RuntimeError("packaged built-in prepared model must use JIT")
+    optimization = dict(pack.optimization_settings)
+    if optimization.get("jit_optimization_level") != 3:
+        raise RuntimeError("packaged built-in prepared model must use JIT O3")
+
+    compiled = dict(bundle.compiled_model)
+    compiled_producer = _mapping(
+        compiled.get("producer"), "compiled_model.producer"
+    )
+    compiled_source = _mapping(compiled.get("source"), "compiled_model.source")
+    package_version = _required_string(
+        compiled_producer.get("pyamplicol"), "compiled_model producer version"
+    )
+    marker = "+candidate."
+    if marker not in package_version:
+        raise RuntimeError("source-ready prepared assets require a candidate bundle")
+    candidate_fingerprint = package_version.rsplit(marker, maxsplit=1)[1]
+    if len(candidate_fingerprint) != 12 or any(
+        character not in "0123456789abcdef" for character in candidate_fingerprint
+    ):
+        raise RuntimeError("prepared bundle has an invalid candidate fingerprint")
+    if pack.producer.get("version") != package_version:
+        raise RuntimeError("prepared kernel-pack package version is inconsistent")
+
+    compiled_schema = _literal_assignment(
+        package_root / "_internal" / "versions.py",
+        "COMPILED_MODEL_SCHEMA_VERSION",
+    )
+    model_compiler_version = _literal_assignment(
+        package_root / "models" / "loading.py", "MODEL_COMPILER_VERSION"
+    )
+    model_compiler_digest = _model_compiler_digest(package_root)
+    prepared_pack_compiler_digest = _prepared_pack_compiler_digest(package_root)
+    source_digest = _built_in_source_digest(package_root)
+    expected_compiled = {
+        "compiled_model_schema_version": compiled_schema,
+        "model_compiler_version": model_compiler_version,
+        "model_compiler_sha256": model_compiler_digest,
+    }
+    for key, expected in expected_compiled.items():
+        if compiled_producer.get(key) != expected:
+            raise RuntimeError(f"prepared compiled-model producer {key} is stale")
+    if compiled_source.get("kind") != "built-in-sm":
+        raise RuntimeError("prepared bundle does not contain the built-in SM")
+    if compiled_source.get("digest") != source_digest:
+        raise RuntimeError("prepared built-in model source digest is stale")
+
+    dependencies = {
+        "symbolica_serialization_abi": _literal_assignment(
+            package_root / "_internal" / "versions.py",
+            "SYMBOLICA_SERIALIZATION_ABI",
+        ),
+        "symbolica_version": release["symbolica"]["python_version"],
+        "symjit_application_abi": _literal_assignment(
+            package_root / "_internal" / "versions.py",
+            "SYMJIT_APPLICATION_ABI",
+        ),
+        "symjit_version": contributor["symjit"]["candidate_version"],
+        "ufo_model_loader_version": release["ufo_model_loader"][
+            "required_version"
+        ],
+    }
+    expected_pack_dependencies = {
+        "symbolica_serialization": dependencies["symbolica_serialization_abi"],
+        "symbolica_version": dependencies["symbolica_version"],
+        "symjit_application": dependencies["symjit_application_abi"],
+    }
+    for key, expected in expected_pack_dependencies.items():
+        if pack.dependency_abis.get(key) != expected:
+            raise RuntimeError(f"prepared kernel-pack dependency {key} is stale")
+
+    metadata_name, bundle_name = _asset_names(architecture)
+    metadata: dict[str, object] = {
+        "backend": "jit",
+        "build_contract": {
+            "candidate_fingerprint": candidate_fingerprint,
+            "mode": "candidate",
+            "sources": {
+                "symbolica": contributor["symbolica"]["candidate_revision"],
+                "symbolica-community": contributor["symbolica"][
+                    "community_revision"
+                ],
+                "symjit": contributor["symjit"]["candidate_revision"],
+            },
+        },
+        "bundle": bundle_name,
+        "bundle_sha256": hashlib.sha256(bundle_bytes).hexdigest(),
+        "bundle_size": len(bundle_bytes),
+        "dependencies": dependencies,
+        "eager_kernel_abi": _literal_assignment(
+            package_root / "models" / "prepared.py", "EAGER_KERNEL_ABI"
+        ),
+        "id": _EXPECTED_ID,
+        "jit_optimization_level": 3,
+        "kernel_count": len(pack.kernels),
+        "model": "built-in-sm",
+        "prepared_model_bundle_schema": _literal_assignment(
+            package_root / "models" / "prepared.py",
+            "PREPARED_MODEL_BUNDLE_SCHEMA_VERSION",
+        ),
+        "producer": {
+            "compiled_model_schema": compiled_schema,
+            "model_compiler_sha256": model_compiler_digest,
+            "model_compiler_version": model_compiler_version,
+            "model_source_digest": source_digest,
+            "package_version": package_version,
+            "prepared_pack_compiler_sha256": prepared_pack_compiler_digest,
+        },
+        "schema_version": 1,
+        "target": expected_target,
+    }
+
+    destination = output_directory.resolve(strict=False)
+    destination.mkdir(parents=True, exist_ok=True)
+    output_bundle = destination / bundle_name
+    output_metadata = destination / metadata_name
+    for path in (output_bundle, output_metadata):
+        if path.exists():
+            raise RuntimeError(f"source-ready prepared asset already exists: {path}")
+    temporary_bundle = output_bundle.with_name(f".{output_bundle.name}.tmp")
+    temporary_metadata = output_metadata.with_name(f".{output_metadata.name}.tmp")
+    temporary_bundle.write_bytes(bundle_bytes)
+    temporary_metadata.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary_bundle.replace(output_bundle)
+    temporary_metadata.replace(output_metadata)
+    return output_metadata, output_bundle
+
+
 def _validate_bundle(
     bundle: Any,
     *,
@@ -486,4 +654,7 @@ def _plain_json(value: object) -> object:
     return value
 
 
-__all__ = ["stage_packaged_prepared_models"]
+__all__ = [
+    "stage_packaged_prepared_models",
+    "write_candidate_packaged_prepared_model_asset",
+]

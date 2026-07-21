@@ -219,7 +219,14 @@ class GenericDAGCompiler:
         selected_source_helicities = tuple(
             sorted((self.selected_source_helicities or {}).items())
         )
-        color_coverage = "selected" if color_plan.truncated else "complete"
+        selected_color_sector_ids = tuple(
+            sorted(self.selected_color_sector_ids or ())
+        )
+        color_coverage = (
+            "selected"
+            if color_plan.truncated or self.selected_color_sector_ids is not None
+            else "complete"
+        )
         if (
             self.max_quark_pairs is not None
             and process_ir.color_endpoints.pair_count > self.max_quark_pairs
@@ -235,13 +242,17 @@ class GenericDAGCompiler:
                 helicity_coverage=helicity_coverage,
                 color_coverage=color_coverage,
                 selected_source_helicities=selected_source_helicities,
+                selected_color_sector_ids=selected_color_sector_ids,
             )
         complete_sector_ids = {sector.id for sector in color_plan.sectors}
         color_plan, _missing_sector_ids = _restrict_color_plan(
             color_plan,
             self.selected_color_sector_ids,
         )
-        if {sector.id for sector in color_plan.sectors} != complete_sector_ids:
+        if (
+            self.selected_color_sector_ids is not None
+            or {sector.id for sector in color_plan.sectors} != complete_sector_ids
+        ):
             color_coverage = "selected"
         color_engine = ColorEngine(
             color_plan,
@@ -439,6 +450,7 @@ class GenericDAGCompiler:
                 helicity_coverage=helicity_coverage,
                 color_coverage=color_coverage,
                 selected_source_helicities=selected_source_helicities,
+                selected_color_sector_ids=selected_color_sector_ids,
             )
 
         if live_state_plan is not None:
@@ -874,6 +886,9 @@ class GenericDAGCompiler:
                                     left_all_adjoint=left_reflection_reusable,
                                     right_all_adjoint=right_reflection_reusable,
                                     result_reflection_proven=(result_reflection_proven),
+                                    fold_result_reflections=(
+                                        color_coverage == "complete"
+                                    ),
                                 ):
                                     projected = (
                                         color_engine.shared_lc_ordered_proposed_labels(
@@ -1122,6 +1137,9 @@ class GenericDAGCompiler:
                                                 selected_source_helicities=(
                                                     selected_source_helicities
                                                 ),
+                                                selected_color_sector_ids=(
+                                                    selected_color_sector_ids
+                                                ),
                                             )
 
             if reuse_tracker is not None:
@@ -1161,6 +1179,7 @@ class GenericDAGCompiler:
             helicity_coverage=helicity_coverage,
             color_coverage=color_coverage,
             selected_source_helicities=selected_source_helicities,
+            selected_color_sector_ids=selected_color_sector_ids,
         )
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)
@@ -1456,6 +1475,9 @@ class GenericDAGCompiler:
             helicity_coverage=helicity_coverage,
             color_coverage=color_coverage,
             selected_source_helicities=selected_source_helicities,
+            selected_color_sector_ids=tuple(
+                sorted(self.selected_color_sector_ids or ())
+            ),
         )
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)

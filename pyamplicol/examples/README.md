@@ -32,8 +32,10 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
 | `benchmark.toml` | Short benchmark of the same selected subprocess |
-| `benchmark_z6g_single_flow_helicity_sum.toml` | Reproduce the compiled JIT O3 Z-ladder single-flow, helicity-sum workload for `u u~ > Z + 6g` |
-| `benchmark_z6g_all_flows_single_helicity.toml` | Reproduce the compiled JIT O3 Z-ladder all-flows, single-helicity workload for `u u~ > Z + 6g` |
+| `benchmark_z6g_single_flow_helicity_sum.toml` | Profile reusable compiled JIT O3 runtime flow selection with a helicity sum for `u u~ > Z + 6g` |
+| `benchmark_z6g_all_flows_single_helicity.toml` | Profile reusable compiled JIT O3 runtime helicity selection with an all-flow sum for `u u~ > Z + 6g` |
+| `benchmark_z6g_generation_specialized_flow_helicity_sum.toml` | Generation-specialized flow baseline for the reusable-selector comparison |
+| `benchmark_z6g_generation_specialized_all_flows_single_helicity.toml` | Generation-specialized helicity baseline for the reusable-selector comparison |
 | `process_set_mixed_multiplicity.toml` | Named UFO-SM 2-to-2 and 2-to-3 requests |
 | `external_ufo_sm.toml` | Trusted UFO execution path |
 | `external_json_scalars.toml` | Scalar contact model and repeated particles |
@@ -46,10 +48,13 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 
 ## Reproduce The Z-Ladder Workloads
 
-The Z performance ladder uses two separately generated compiled-mode artifacts.
-The first retains one physical LC flow and sums all helicities; the second
-retains every physical LC flow at one fixed source-helicity assignment. Generate
-and profile them independently:
+These acceptance cards use two separately generated compiled-mode artifacts so
+their generation and profile logs remain independent. Both artifacts retain all
+physical LC flows and all physical helicities. The first selects flow ordinal
+`1` only at profile time and sums all helicities; the second sums all flows and
+selects one stable helicity ID only at profile time. Either artifact can select
+any retained flow or helicity globally or per point at runtime. Generate and
+profile them independently:
 
 ```console
 pyamplicol generate --card benchmark_z6g_single_flow_helicity_sum.toml
@@ -65,6 +70,22 @@ warmups, at least five samples, and a twenty-second target. The cards use
 `d d~ > Z + (n-1)g`, so replace `u u~` with `d d~` when reproducing that exact
 row rather than the equivalent up-quark topology.
 
+The runtime selector can be changed without regenerating. For example:
+
+```console
+pyamplicol profile \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --color-flow 2
+
+pyamplicol profile \
+  --card benchmark_z6g_all_flows_single_helicity.toml \
+  --helicity h:-1,+1,-1,+1,+1,-1,+1,-1,+1
+```
+
+Python's `Runtime.evaluate(..., color_flow_by_point=..., helicity_by_point=...)`
+accepts one physical selector per phase-space point. Homogeneous, alternating,
+and randomized selector batches all use the same complete artifact.
+
 The execution mode can be overridden directly at invocation time. Use a
 different output so the eager artifact cannot collide with the compiled one:
 
@@ -75,10 +96,9 @@ pyamplicol generate \
   --set generation.output=artifacts/uubar_z6g_single_flow_helicity_sum_eager
 ```
 
-This command preserves the selected-flow specialization encoded by that card.
-The eager-DAG row in the PDF uses a different contract: it generates one
-complete eager LC artifact and applies the flow and helicity selectors at
-runtime, allowing both workloads to share one generation.
+The eager override keeps the same complete reusable-selector contract. Eager
+generation and execution apply flow and helicity choices through Rusticol's
+selector schedule rather than generation-time specialization.
 
 `examples copy` also materializes wheel-owned `sm`, `scalars`, and
 `scalar_gravity` resources into `models/`. The included

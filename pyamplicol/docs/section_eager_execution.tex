@@ -209,12 +209,14 @@ or any supported subset at runtime.  The flow identifier, for example
 hard-wired during process generation.  A deliberately selected-coverage eager
 artifact remains limited to the components that were generated.
 
-By contrast, the report's compiled ``single-flow, helicity-sum'' workload is a
-separately generated, process-specialized artifact.  Comparing that artifact
-with a selector-complete eager artifact measures a real reuse-versus-
-specialization tradeoff; it does not establish a universal runtime speedup or
-slowdown.  The eager acceptance suite consequently checks correctness and
-reports both complete-compiled and specialized-compiled timing references.
+Compiled mode now exposes the same complete-coverage runtime contract.  For a
+fair AmpliCol comparison, ``single-flow, helicity-sum'' uses a complete compiled
+artifact and selects the benchmark flow at runtime; ``all-flows,
+single-helicity'' selects the benchmark helicity at runtime.  Either artifact
+can choose any retained flow or helicity without regeneration.  Deliberately
+specialized compiled artifacts remain useful as an optimization baseline, but
+are reported separately and are not the denominator for the reusable eager
+comparison.
 
 \subsection{Artifact, precision, and portability contracts}
 
@@ -226,6 +228,14 @@ and 64-bit offsets/counts.  The current contracts are runtime kind
 \texttt{rusticol.eager-dag.complex-f64.v1}.  The loader rejects malformed
 offsets, unknown kernel identifiers, incompatible ABIs, and target mismatches
 before entering native evaluation.
+
+SymJIT applications and their exact evaluator-state companions are stored as
+indexed members of one artifact-root 	exttt{evaluators.pacbin} container.
+Rusticol validates the outer artifact digest, memory-maps the container
+read-only, and loads member slices without extracting them.  This keeps the
+logical evaluator decomposition while replacing thousands of filesystem
+entries by one physical payload.  Exact Python execution reads the same index.
+Target-native C++ and ASM libraries remain separate files.
 
 JIT packs store SymJIT application state rather than final machine code.  With
 the current SymJIT storage v3 contract, register-allocation state is scoped to
@@ -284,6 +294,14 @@ compiled stage can still be faster for some selectors.  Fusing whole
 recurrence regions would remove more dispatch, but would recreate the compiled
 mode's process-specific applications and is intentionally outside the eager
 design.
+
+The hard reusable-versus-specialized wall-time ratio is applied to
+phenomenologically relevant (n=4) and (n=5) workloads at batch sizes 128
+and 1024.  The (u\bar u\to Z+6g) ((n=7)) cards remain a mandatory
+correctness, memory, SIMD-occupancy, and timing-integrity stress test, including
+homogeneous, pre-pooled, alternating, and random per-point selectors.  Their
+runtime ratio is reported diagnostically rather than used as a release-blocking
+target.
 
 An additional 30 GiB-guarded LC scaling study used the selector-complete
 process family \(g g\to t\bar t+(n-2)g\).  The numbers below are process

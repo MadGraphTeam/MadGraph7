@@ -6,6 +6,7 @@ import struct
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -22,10 +23,14 @@ from pyamplicol.generation.artifact_writer import (
 )
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.eager_lowering import (
+    EAGER_RUNTIME_KIND,
+    EagerExecutionTables,
     MappingEagerKernelResolver,
     lower_eager_execution_tables,
 )
+from pyamplicol.generation.evaluator_container import PacbinReader
 from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
+from pyamplicol.generation.service import GenerationBackend
 from pyamplicol.generation.validation import build_validation_point
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
@@ -79,13 +84,15 @@ def _prepared_model(
             ),
             output_layout=("output",),
             exact_expressions=("pyamplicol::input",),
-            exact_evaluator_state_path=f"kernels/{kernel_id}/exact.bin",
+            exact_evaluator_state_path=f"kernels/{kernel_id}/exact.evaluator.bin",
             f64_evaluator_manifest={
                 "kind": "symjit-application-evaluator",
                 "input_len": 1,
                 "output_len": 1,
                 "application_path": f"kernels/{kernel_id}/application.symjit",
-                "evaluator_state_path": f"kernels/{kernel_id}/exact.bin",
+                "evaluator_state_path": (
+                    f"kernels/{kernel_id}/exact.evaluator.bin"
+                ),
             },
         )
         for kernel_id in kernel_ids
@@ -134,7 +141,8 @@ def _prepared_model(
                     "independent-block-4/application.symjit"
                 ),
                 "evaluator_state_path": (
-                    f"kernels/{kernel.kernel_id}/variants/independent-block-4/exact.bin"
+                    f"kernels/{kernel.kernel_id}/variants/independent-block-4/"
+                    "exact.evaluator.bin"
                 ),
             },
         )
@@ -347,6 +355,13 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         "manifest_path": "model/eager-kernel-pack.json",
         "payload_root": "model/eager-kernels",
     }
+    assert "lc_topology_replay" not in execution
+    assert execution["required_runtime_capabilities"] == [
+        "rusticol.eager-dag.complex-f64.v1"
+    ]
+    assert execution["plan"]["required_runtime_capabilities"] == [
+        "rusticol.eager-dag.complex-f64.v1"
+    ]
     assert manifest.runtime["required_runtime_capabilities"] == (
         "rusticol.eager-dag.complex-f64.v1",
     )
@@ -385,9 +400,22 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     assert len(pack_identity["identity_sha256"]) == 64
     declared = {payload.path for payload in manifest.payloads}
     assert "model/eager-kernel-pack.json" in declared
+    assert "evaluators.pacbin" in declared
+    container_record = next(
+        payload for payload in manifest.payloads if payload.path == "evaluators.pacbin"
+    )
+    assert container_record.role == "evaluator-state"
+    assert container_record.media_type == "application/octet-stream"
+    assert container_record.process_id is None
+    assert container_record.target == manifest.producer["target"]
+    assert not any(
+        path.endswith((".symjit", ".evaluator.bin")) for path in declared
+    )
     assert "processes/gg_gg/eager/couplings.bin" in declared
     assert "processes/gg_gg/eager/closures.bin" in declared
     assert "processes/gg_gg/eager/selector-domains.bin" in declared
+
+
     assert "processes/gg_gg/eager/selector-domain-group-ids.bin" in declared
     assert "processes/gg_gg/eager/closure-domains.bin" in declared
     emitted_pack = json.loads(
@@ -400,14 +428,30 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     assert {
         variant["base_kernel_id"] for variant in emitted_pack["kernel_variants"]
     } == {selected_variant_kernel_id}
-    for kernel in compiled_model.prepared_bundle.kernel_pack.kernels:
-        for path in kernel.referenced_payload_paths:
-            emitted = f"model/eager-kernels/{path}" in declared
-            assert emitted is (kernel.kernel_id in tables.referenced_kernel_ids)
-    for variant in compiled_model.prepared_bundle.kernel_pack.kernel_variants:
-        for path in variant.referenced_payload_paths:
-            emitted = f"model/eager-kernels/{path}" in declared
-            assert emitted is (variant.base_kernel_id in tables.referenced_kernel_ids)
+    with PacbinReader.open(output / "evaluators.pacbin") as container:
+        members = {member.logical_path for member in container.members}
+        extension = manifest.extensions["evaluator_payload_container"]
+        assert extension == {
+            "kind": "pyamplicol-evaluator-payload-container",
+            "schema_version": 1,
+            "storage_abi": "pacbin-v1",
+            "path": "evaluators.pacbin",
+            "member_count": len(container.members),
+            "unpacked_size_bytes": sum(
+                member.length for member in container.members
+            ),
+            "index_sha256": container.index.index_sha256,
+        }
+        for kernel in compiled_model.prepared_bundle.kernel_pack.kernels:
+            for path in kernel.referenced_payload_paths:
+                emitted = f"model/eager-kernels/{path}" in members
+                assert emitted is (kernel.kernel_id in tables.referenced_kernel_ids)
+        for variant in compiled_model.prepared_bundle.kernel_pack.kernel_variants:
+            for path in variant.referenced_payload_paths:
+                emitted = f"model/eager-kernels/{path}" in members
+                assert emitted is (
+                    variant.base_kernel_id in tables.referenced_kernel_ids
+                )
 
     execution_path = output / "processes/gg_gg/execution.json"
     closure_domains_path = output / "processes/gg_gg/eager/closure-domains.bin"
@@ -476,10 +520,13 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
     appended_payloads = {payload.path for payload in appended_manifest.payloads}
     assert stale_path not in appended_payloads
     assert not (output / stale_path).exists()
-    for kernel in compiled_model.prepared_bundle.kernel_pack.kernels:
-        for path in kernel.referenced_payload_paths:
-            emitted = f"model/eager-kernels/{path}" in appended_payloads
-            assert emitted is (kernel.kernel_id in expected_kernel_ids)
+    with PacbinReader.open(output / "evaluators.pacbin") as container:
+        appended_members = {member.logical_path for member in container.members}
+        assert stale_path not in appended_members
+        for kernel in compiled_model.prepared_bundle.kernel_pack.kernels:
+            for path in kernel.referenced_payload_paths:
+                emitted = f"model/eager-kernels/{path}" in appended_members
+                assert emitted is (kernel.kernel_id in expected_kernel_ids)
 
     ordered_kernel_ids = tuple(
         kernel.kernel_id
@@ -532,3 +579,73 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         )
     assert _tree_snapshot(output) == before_failed_append
     assert not tuple(tmp_path.glob(".artifact.staging-*"))
+
+
+class _EagerTablesMetadataStub:
+    def to_metadata(self) -> dict[str, object]:
+        return {
+            "kind": EAGER_RUNTIME_KIND,
+            "required_runtime_capabilities": [
+                "rusticol.eager-dag.complex-f64.v1"
+            ],
+        }
+
+
+def test_eager_execution_manifest_carries_lc_replay_capability() -> None:
+    model = BuiltinSMModel()
+    process_ir = build_process_ir("d d~ > z g g")
+    backend = GenerationBackend(
+        RunConfig(
+            action=Action.GENERATE,
+            evaluator=EvaluatorConfig(execution_mode="eager"),
+        ),
+        None,
+    )
+    dag, _coverage = backend._compile_concrete_process(process_ir, model)
+    runtime_schema = build_runtime_expression_schema(dag, model)
+    process = EagerProcessArtifact(
+        process_id=process_ir.key,
+        expression=process_ir.process,
+        color_accuracy="lc",
+        external_pdgs=(*process_ir.initial_pdgs, *process_ir.final_pdgs),
+        aliases=(),
+        runtime_schema=runtime_schema,
+        eager_tables=cast(EagerExecutionTables, _EagerTablesMetadataStub()),
+        point_tile_size=1024,
+        workspace_mib=256,
+        dag_summary={
+            "current_count": len(dag.currents),
+            "source_count": len(dag.sources),
+            "interaction_count": len(dag.interactions),
+            "amplitude_root_count": len(dag.amplitude_roots),
+            "truncated": dag.truncated,
+        },
+        validation_point=build_validation_point(
+            dag,
+            model,
+            process_id=process_ir.key,
+            seed=7,
+        ),
+        generation_filters={},
+    )
+
+    execution = artifact_writer._execution_manifest(
+        process,
+        runtime_schema.to_mapping(),
+    )
+    expected_capabilities = [
+        "rusticol.eager-dag.complex-f64.v1",
+        "rusticol.eager-dag.lc-topology-replay.v1",
+    ]
+
+    assert execution["required_runtime_capabilities"] == expected_capabilities
+    assert execution["plan"]["required_runtime_capabilities"] == (
+        expected_capabilities
+    )
+    assert artifact_writer._process_runtime_capabilities(process) == tuple(
+        expected_capabilities
+    )
+    assert execution["lc_topology_replay"] == (
+        runtime_schema.to_mapping()["lc_topology_replay"]
+    )
+    assert execution["lc_topology_replay"]["materialized_sector_ids"] == [0]

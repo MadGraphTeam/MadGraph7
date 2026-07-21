@@ -549,6 +549,7 @@ def test_portability_workflow_transfers_matching_architecture_packs() -> None:
     assert "publish-pypi" not in workflow
     assert "gh-action-pypi-publish" not in workflow
     assert "PYAMPLICOL_BUILD_MODE: candidate" in workflow
+    assert workflow.count('PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP: "1"') == 2
     assert (
         "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0" in workflow
     )

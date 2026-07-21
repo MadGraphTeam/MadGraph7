@@ -157,16 +157,17 @@ impl PhysicsRuntime {
     pub(super) fn lc_resolved_replay_plan(
         &self,
         mappings: &LcTopologyReplayMappings,
-        replay_weights: &[f64],
+        sector_routes: &[Vec<LcTopologyReplaySectorRoute>],
+        materialized_sector_by_id: &BTreeMap<i64, LcMaterializedSector>,
     ) -> RusticolResult<LcResolvedReplayPlan> {
         if self.manifest.color_accuracy.as_str() != "lc" {
             return Err(RusticolError::artifact(
                 "LC topology replay requires LC resolved physics metadata",
             ));
         }
-        if mappings.len() != replay_weights.len() {
+        if mappings.len() != sector_routes.len() {
             return Err(RusticolError::artifact(
-                "LC topology replay mappings and weights have inconsistent lengths",
+                "LC topology replay mappings and sector routes have inconsistent lengths",
             ));
         }
 
@@ -218,7 +219,8 @@ impl PhysicsRuntime {
         }
 
         let mut entries = Vec::with_capacity(mappings.len());
-        for (mapping, replay_weight) in mappings.iter().zip(replay_weights.iter().copied()) {
+        let mut target_sector_by_color = BTreeMap::new();
+        for (mapping, mapping_routes) in mappings.iter().zip(sector_routes) {
             validate_public_label_permutation(mapping, self.manifest.external_particles.len())?;
             let mut helicity_targets = BTreeMap::new();
             for source_index in &relevant_helicities {
@@ -239,15 +241,37 @@ impl PhysicsRuntime {
                 helicity_targets.insert(*source_index, target_index);
             }
 
-            let mut color_targets = BTreeMap::new();
-            for source_index in &relevant_colors {
+            let mut routes = Vec::new();
+            for sector_route in mapping_routes {
+                let source_sector = *materialized_sector_by_id
+                    .get(&sector_route.materialized_sector_id)
+                    .ok_or_else(|| {
+                        RusticolError::artifact(format!(
+                            "LC topology replay materialized sector {} has no computed physics component",
+                            sector_route.materialized_sector_id
+                        ))
+                    })?;
+                let source_index = source_sector.color_index;
                 let PhysicsColorComponentV1::LcFlow(source) =
-                    &self.manifest.color_components[*source_index]
+                    &self.manifest.color_components[source_index]
                 else {
-                    unreachable!("LC color axes checked above");
+                    return Err(RusticolError::artifact(
+                        "LC topology replay encountered a contracted materialized color component",
+                    ));
                 };
+                if !source.computed || source.representative_id != source.id {
+                    return Err(RusticolError::artifact(format!(
+                        "LC topology replay sector {} is not bound to a self-representing computed color component",
+                        sector_route.materialized_sector_id
+                    )));
+                }
                 let target_word = permute_public_color_word(&source.word, mapping);
-                let target_words = replay_public_color_words(&target_word, replay_weight)?;
+                let reduction_weight = if sector_route.residual {
+                    source_sector.reduction_weight
+                } else {
+                    sector_route.squared_reduction_weight()
+                };
+                let target_words = replay_public_color_words(&target_word, reduction_weight)?;
                 let mut target_coefficients = BTreeMap::new();
                 for word in target_words {
                     let target_index = *color_index_by_word.get(&word).ok_or_else(|| {
@@ -262,6 +286,29 @@ impl PhysicsRuntime {
                             self.manifest.color_components[target_index].id()
                         )));
                     }
+                    let PhysicsColorComponentV1::LcFlow(target) =
+                        &self.manifest.color_components[target_index]
+                    else {
+                        unreachable!("LC color axes checked above");
+                    };
+                    if target.representative_id != source.id {
+                        return Err(RusticolError::artifact(format!(
+                            "LC topology replay physical sector {} targets color {} represented by {}, expected {}",
+                            sector_route.physical_sector_id,
+                            target.id,
+                            target.representative_id,
+                            source.id
+                        )));
+                    }
+                    if let Some(previous_sector) =
+                        target_sector_by_color.insert(target_index, sector_route.physical_sector_id)
+                        && previous_sector != sector_route.physical_sector_id
+                    {
+                        return Err(RusticolError::artifact(format!(
+                            "LC topology replay physical sectors {previous_sector} and {} overlap color {}",
+                            sector_route.physical_sector_id, target.id
+                        )));
+                    }
                     target_coefficients
                         .entry(target_index)
                         .or_insert(coefficient);
@@ -272,47 +319,420 @@ impl PhysicsRuntime {
                         "LC topology replay has no positive public-flow reduction weight",
                     ));
                 }
-                color_targets.insert(
-                    *source_index,
-                    target_coefficients
-                        .into_iter()
-                        .map(|(target_index, coefficient)| {
-                            (target_index, replay_weight * coefficient / total)
-                        })
-                        .collect::<Vec<_>>(),
-                );
-            }
-
-            let mut routes = Vec::new();
-            for (source_helicity, target_helicity) in &helicity_targets {
-                for source_color in &relevant_colors {
-                    for (target_color, weight) in &color_targets[source_color] {
+                for (source_helicity, target_helicity) in &helicity_targets {
+                    for (target_color, coefficient) in &target_coefficients {
                         routes.push(LcResolvedReplayRoute {
-                            source_index: source_helicity * color_count + source_color,
+                            source_index: source_helicity * color_count + source_index,
                             target_index: target_helicity * color_count + target_color,
-                            weight: *weight,
+                            weight: reduction_weight * coefficient / total,
                         });
                     }
                 }
             }
+            if routes.is_empty() {
+                return Err(RusticolError::artifact(
+                    "LC topology replay mapping contains no resolved component routes",
+                ));
+            }
             entries.push(LcResolvedReplayEntry { routes });
         }
+        if target_sector_by_color.len() != color_count {
+            return Err(RusticolError::artifact(format!(
+                "LC topology replay covers {} of {color_count} physical color components",
+                target_sector_by_color.len()
+            )));
+        }
+        let mut routes_by_target = vec![Vec::new(); helicity_count * color_count];
+        for (mapping_index, entry) in entries.iter().enumerate() {
+            for route in &entry.routes {
+                routes_by_target[route.target_index].push(LcResolvedReplayTargetRoute {
+                    mapping_index,
+                    source_index: route.source_index,
+                    weight: route.weight,
+                });
+            }
+        }
         Ok(LcResolvedReplayPlan {
+            #[cfg(test)]
             entries,
-            helicity_count,
+            routes_by_target,
             color_count,
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn select_lc_resolved_replay_plan(
+        &self,
+        plan: &LcResolvedReplayPlan,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<LcResolvedReplaySelection> {
+        let key =
+            self.lc_resolved_replay_selection_key(selected_helicity_ids, selected_color_ids)?;
+        self.select_lc_resolved_replay_plan_for_key(plan, &key)
+    }
+
+    pub(super) fn lc_resolved_replay_selection_key(
+        &self,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<LcResolvedReplaySelectionKey> {
+        Ok(LcResolvedReplaySelectionKey {
+            helicity_indices: selected_helicity_ids
+                .map(|ids| self.selected_helicity_indices(Some(ids)))
+                .transpose()?,
+            color_indices: selected_color_ids
+                .map(|ids| self.selected_color_indices(Some(ids)))
+                .transpose()?,
+        })
+    }
+
+    pub(super) fn select_lc_resolved_replay_plan_for_key(
+        &self,
+        plan: &LcResolvedReplayPlan,
+        key: &LcResolvedReplaySelectionKey,
+    ) -> RusticolResult<LcResolvedReplaySelection> {
+        let helicity_indices = key
+            .helicity_indices
+            .clone()
+            .unwrap_or_else(|| (0..self.manifest.helicities.len()).collect());
+        let color_indices = key
+            .color_indices
+            .clone()
+            .unwrap_or_else(|| (0..self.manifest.color_components.len()).collect());
+        let mut compact_target_by_full = BTreeMap::new();
+        for (helicity_position, helicity_index) in helicity_indices.iter().enumerate() {
+            for (color_position, color_index) in color_indices.iter().enumerate() {
+                compact_target_by_full.insert(
+                    helicity_index * plan.color_count + color_index,
+                    helicity_position * color_indices.len() + color_position,
+                );
+            }
+        }
+
+        let mut routes_by_mapping = BTreeMap::<usize, Vec<LcResolvedReplayRoute>>::new();
+        for (target_full_index, target_compact_index) in &compact_target_by_full {
+            let routes = plan
+                .routes_by_target
+                .get(*target_full_index)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "LC topology replay target index is outside its route index",
+                    )
+                })?;
+            for route in routes {
+                routes_by_mapping
+                    .entry(route.mapping_index)
+                    .or_default()
+                    .push(LcResolvedReplayRoute {
+                        source_index: route.source_index,
+                        target_index: *target_compact_index,
+                        weight: route.weight,
+                    });
+            }
+        }
+
+        let mut mapping_indices = Vec::with_capacity(routes_by_mapping.len());
+        let mut entries = Vec::with_capacity(routes_by_mapping.len());
+        let mut source_helicity_indices = Vec::new();
+        let mut source_color_indices = Vec::new();
+        for (mapping_index, selected_routes) in routes_by_mapping {
+            let source_helicities = selected_routes
+                .iter()
+                .map(|route| route.source_index / plan.color_count)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let source_colors = selected_routes
+                .iter()
+                .map(|route| route.source_index % plan.color_count)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let compact_helicity = source_helicities
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(position, index)| (index, position))
+                .collect::<BTreeMap<_, _>>();
+            let compact_color = source_colors
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(position, index)| (index, position))
+                .collect::<BTreeMap<_, _>>();
+            let routes = selected_routes
+                .into_iter()
+                .map(|route| {
+                    let source_helicity = route.source_index / plan.color_count;
+                    let source_color = route.source_index % plan.color_count;
+                    LcResolvedReplayRoute {
+                        source_index: compact_helicity[&source_helicity] * source_colors.len()
+                            + compact_color[&source_color],
+                        target_index: route.target_index,
+                        weight: route.weight,
+                    }
+                })
+                .collect();
+            mapping_indices.push(mapping_index);
+            entries.push(LcResolvedReplayEntry { routes });
+            source_helicity_indices.push(source_helicities);
+            source_color_indices.push(source_colors);
+        }
+        if entries.len() != mapping_indices.len()
+            || entries.len() != source_helicity_indices.len()
+            || entries.len() != source_color_indices.len()
+        {
+            return Err(RusticolError::integrity(
+                "LC topology replay selection has inconsistent mappings and entries",
+            ));
+        }
+        let mut entry_indices_by_source = BTreeMap::<(Vec<usize>, Vec<usize>), Vec<usize>>::new();
+        for entry_index in 0..entries.len() {
+            entry_indices_by_source
+                .entry((
+                    source_helicity_indices[entry_index].clone(),
+                    source_color_indices[entry_index].clone(),
+                ))
+                .or_default()
+                .push(entry_index);
+        }
+        let source_groups = entry_indices_by_source
+            .into_iter()
+            .map(|((helicity_indices, color_indices), entry_indices)| {
+                let helicity_ids = helicity_indices
+                    .iter()
+                    .map(|index| self.manifest.helicities[*index].id.clone())
+                    .collect();
+                let color_ids = color_indices
+                    .iter()
+                    .map(|index| self.manifest.color_components[*index].id().to_string())
+                    .collect();
+                LcResolvedReplaySourceGroup {
+                    mapping_indices: entry_indices
+                        .iter()
+                        .map(|entry_index| mapping_indices[*entry_index])
+                        .collect(),
+                    entries: entry_indices
+                        .iter()
+                        .map(|entry_index| entries[*entry_index].clone())
+                        .collect(),
+                    helicity_ids,
+                    color_ids,
+                    source_component_count: helicity_indices.len() * color_indices.len(),
+                }
+            })
+            .collect();
+        Ok(LcResolvedReplaySelection {
+            #[cfg(test)]
+            mapping_indices,
+            #[cfg(test)]
+            entries,
+            #[cfg(test)]
+            source_helicity_indices,
+            #[cfg(test)]
+            source_color_indices,
+            source_groups,
+            helicity_indices,
+            color_indices,
         })
     }
 }
 
 impl ExecutionRuntime {
+    pub(super) fn set_external_pdg_order_recursive(&mut self, pdgs: &[i32]) {
+        self.external_pdg_order = pdgs.to_vec();
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
+            sum_runtime.set_external_pdg_order_recursive(pdgs);
+        }
+        for selector_runtime in &mut self.helicity_selector_runtimes {
+            selector_runtime.set_external_pdg_order_recursive(pdgs);
+        }
+        for selector_runtime in self.color_selector_runtimes.values_mut() {
+            selector_runtime.set_external_pdg_order_recursive(pdgs);
+        }
+    }
+
+    pub(super) fn attach_physics(&mut self, physics: Arc<PhysicsRuntime>) -> RusticolResult<()> {
+        self.physics = Some(Arc::clone(&physics));
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
+            let sum_physics =
+                if let Some(reduction) = sum_runtime.physics_reduction_override.as_ref() {
+                    let mut manifest = physics.manifest.clone();
+                    manifest.reduction = reduction.clone();
+                    Arc::new(PhysicsRuntime::new(manifest)?)
+                } else {
+                    Arc::clone(&physics)
+                };
+            sum_runtime.attach_physics(sum_physics)?;
+        }
+        for selector_runtime in &mut self.helicity_selector_runtimes {
+            let selector_physics =
+                if let Some(reduction) = selector_runtime.physics_reduction_override.as_ref() {
+                    let mut manifest = physics.manifest.clone();
+                    manifest.reduction = reduction.clone();
+                    Arc::new(PhysicsRuntime::new(manifest)?)
+                } else {
+                    Arc::clone(&physics)
+                };
+            selector_runtime.attach_physics(selector_physics)?;
+        }
+        for selector_runtime in self.color_selector_runtimes.values_mut() {
+            let selector_physics =
+                if let Some(reduction) = selector_runtime.physics_reduction_override.as_ref() {
+                    let mut manifest = physics.manifest.clone();
+                    manifest.reduction = reduction.clone();
+                    Arc::new(PhysicsRuntime::new(manifest)?)
+                } else {
+                    Arc::clone(&physics)
+                };
+            selector_runtime.attach_physics(selector_physics)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn cached_lc_resolved_replay_plan(
+        &mut self,
+        physics: &PhysicsRuntime,
+    ) -> RusticolResult<Arc<LcResolvedReplayPlan>> {
+        if let Some(plan) = &self.lc_resolved_replay_plan {
+            return Ok(Arc::clone(plan));
+        }
+        let materialized_sector_by_id = self.lc_materialized_sectors_by_id(physics)?;
+        let plan = Arc::new(physics.lc_resolved_replay_plan(
+            &self.lc_topology_replay_public_mappings,
+            &self.lc_topology_replay_routes,
+            &materialized_sector_by_id,
+        )?);
+        self.lc_resolved_replay_plan = Some(Arc::clone(&plan));
+        Ok(plan)
+    }
+
+    pub(super) fn cached_lc_resolved_replay_selection(
+        &mut self,
+        physics: &PhysicsRuntime,
+        plan: &LcResolvedReplayPlan,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<Arc<LcResolvedReplaySelection>> {
+        let key =
+            physics.lc_resolved_replay_selection_key(selected_helicity_ids, selected_color_ids)?;
+        if let Some((cached_key, selection)) = &self.lc_resolved_replay_selection_cache
+            && cached_key == &key
+        {
+            return Ok(Arc::clone(selection));
+        }
+        let selection = Arc::new(physics.select_lc_resolved_replay_plan_for_key(plan, &key)?);
+        self.lc_resolved_replay_selection_cache = Some((key, Arc::clone(&selection)));
+        Ok(selection)
+    }
+
+    pub(super) fn lc_materialized_sectors_by_id(
+        &self,
+        physics: &PhysicsRuntime,
+    ) -> RusticolResult<BTreeMap<i64, LcMaterializedSector>> {
+        let amplitude = self.amplitude_stage.as_ref().ok_or_else(|| {
+            RusticolError::artifact("LC topology replay requires a loaded compiled amplitude stage")
+        })?;
+        self.lc_materialized_sectors_by_id_from_groups(physics, &amplitude.raw_sum_groups)
+    }
+
+    pub(super) fn lc_materialized_sector_ids_for_color_ids(
+        &self,
+        physics: &PhysicsRuntime,
+        color_ids: &BTreeSet<String>,
+    ) -> RusticolResult<BTreeSet<i64>> {
+        let sectors_by_id = self.lc_materialized_sectors_by_id(physics)?;
+        let sector_by_color_index = sectors_by_id
+            .iter()
+            .map(|(sector_id, sector)| (sector.color_index, *sector_id))
+            .collect::<BTreeMap<_, _>>();
+        color_ids
+            .iter()
+            .map(|color_id| {
+                let color_index = physics.color_index_by_id.get(color_id).ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "LC topology replay selected unknown materialized color {color_id:?}"
+                    ))
+                })?;
+                sector_by_color_index
+                    .get(color_index)
+                    .copied()
+                    .ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "LC topology replay color {color_id:?} has no materialized sector"
+                        ))
+                    })
+            })
+            .collect()
+    }
+
+    pub(super) fn lc_materialized_sectors_by_id_from_groups(
+        &self,
+        physics: &PhysicsRuntime,
+        groups: &[RawSumGroup],
+    ) -> RusticolResult<BTreeMap<i64, LcMaterializedSector>> {
+        let mut result = BTreeMap::new();
+        for group in groups {
+            if group.sector_ids.is_empty() {
+                continue;
+            }
+            let reduction = physics
+                .reduction_by_group_id
+                .get(&group.id)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "LC topology replay is missing physics reduction group {}",
+                        group.id
+                    ))
+                })?;
+            let computed = reduction
+                .physical_color_ids
+                .iter()
+                .map(|id| physics.color_index_by_id[id])
+                .filter(|index| physics.color_is_computed(*index))
+                .collect::<BTreeSet<_>>();
+            if computed.len() != 1 {
+                return Err(RusticolError::artifact(format!(
+                    "LC topology replay coherent group {} has {} computed color representatives, expected one",
+                    group.id,
+                    computed.len()
+                )));
+            }
+            let color_index = *computed.iter().next().expect("one computed color checked");
+            let sector = LcMaterializedSector {
+                color_index,
+                // all_sector_weight folds independent helicity and color
+                // multiplicities. Resolved public-flow expansion must only
+                // distribute the color factor; helicity replay is handled by
+                // its own selector/reduction axis.
+                reduction_weight: lc_color_replay_weight(group)?,
+            };
+            for sector_id in &group.sector_ids {
+                if let Some(previous) = result.insert(*sector_id, sector)
+                    && (previous.color_index != sector.color_index
+                        || previous.reduction_weight.to_bits() != sector.reduction_weight.to_bits())
+                {
+                    return Err(RusticolError::artifact(format!(
+                        "LC topology replay materialized sector {sector_id} maps to inconsistent computed colors or weights"
+                    )));
+                }
+            }
+        }
+        for sector_id in &self.lc_topology_replay_materialized_sector_ids {
+            if !result.contains_key(sector_id) {
+                return Err(RusticolError::artifact(format!(
+                    "LC topology replay materialized sector {sector_id} is absent from the amplitude groups"
+                )));
+            }
+        }
+        Ok(result)
+    }
+
     pub(super) fn remap_lc_topology_replay_public_labels(
         &mut self,
         representative_to_public: &[usize],
     ) -> RusticolResult<()> {
-        if !self.lc_topology_replay_enabled {
-            return Ok(());
-        }
         if representative_to_public.len() != self.external_count
             || representative_to_public
                 .iter()
@@ -323,6 +743,15 @@ impl ExecutionRuntime {
             return Err(RusticolError::artifact(
                 "process alias has an invalid public-label permutation for LC topology replay",
             ));
+        }
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
+            sum_runtime.remap_lc_topology_replay_public_labels(representative_to_public)?;
+        }
+        for selector_runtime in &mut self.helicity_selector_runtimes {
+            selector_runtime.remap_lc_topology_replay_public_labels(representative_to_public)?;
+        }
+        if !self.lc_topology_replay_enabled {
+            return Ok(());
         }
         self.lc_topology_replay_public_mappings = self
             .lc_topology_replay_mappings
@@ -339,8 +768,31 @@ impl ExecutionRuntime {
                     .collect()
             })
             .collect();
+        self.lc_resolved_replay_plan = None;
+        self.lc_resolved_replay_selection_cache = None;
         Ok(())
     }
+}
+
+fn lc_color_replay_weight(group: &RawSumGroup) -> RusticolResult<f64> {
+    if !group.weight.is_finite()
+        || group.weight <= 0.0
+        || !group.all_sector_weight.is_finite()
+        || group.all_sector_weight <= 0.0
+    {
+        return Err(RusticolError::artifact(format!(
+            "LC topology replay coherent group {} has no positive helicity/color weight",
+            group.id
+        )));
+    }
+    let color_replay_weight = group.all_sector_weight / group.weight;
+    if !color_replay_weight.is_finite() || color_replay_weight <= 0.0 {
+        return Err(RusticolError::artifact(format!(
+            "LC topology replay coherent group {} has no positive color-only weight",
+            group.id
+        )));
+    }
+    Ok(color_replay_weight)
 }
 
 fn validate_public_label_permutation(
@@ -413,5 +865,36 @@ fn replay_public_color_words(
         Ok(vec![word.to_vec()])
     } else {
         Ok(vec![word.to_vec(), reflected])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_replay_weight_excludes_helicity_multiplicity() {
+        let group = RawSumGroup {
+            id: 7,
+            indices: vec![0],
+            weight: 2.0,
+            all_sector_weight: 4.0,
+            sector_ids: vec![0],
+        };
+
+        assert_eq!(lc_color_replay_weight(&group).unwrap(), 2.0);
+    }
+
+    #[test]
+    fn color_replay_weight_rejects_invalid_axes() {
+        let group = RawSumGroup {
+            id: 7,
+            indices: vec![0],
+            weight: 0.0,
+            all_sector_weight: 2.0,
+            sector_ids: vec![0],
+        };
+
+        assert!(lc_color_replay_weight(&group).is_err());
     }
 }

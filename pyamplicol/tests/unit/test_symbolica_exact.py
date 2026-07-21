@@ -1,16 +1,24 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import copy
+import json
 from decimal import ROUND_UP, Decimal, localcontext
+from types import MethodType
 
 import pytest
 
-from pyamplicol.api.errors import CompatibilityError
+from pyamplicol.api.errors import ArtifactError, CompatibilityError
 from pyamplicol.runtime.symbolica_exact import (
+    SymbolicaExactExecutor,
     _apply_lc_replay_input_mapping,
     _apply_lc_replay_resolved,
+    _exact_helicity_plan,
     _ExactEvaluator,
+    _ExactRuntimeSourceState,
+    _fill_sources_with_states,
     _lc_replay_plan,
+    _reduce_materialized_helicity,
     _upcast_decimal,
     _working_precision,
 )
@@ -245,6 +253,31 @@ def test_exact_lc_replay_routes_public_flows_and_selectors() -> None:
     )
 
 
+def test_exact_lc_replay_accepts_eager_execution_contract() -> None:
+    execution, physics = _replay_metadata()
+    compiled = execution.pop("compiled")
+    assert isinstance(compiled, dict)
+    execution["lc_topology_replay"] = compiled["lc_topology_replay"]
+
+    plan = _lc_replay_plan(execution, physics, None)
+
+    assert plan is not None
+    assert len(plan.entries) == 2
+
+
+def test_exact_lc_replay_rejects_disagreeing_execution_lane_mirrors() -> None:
+    execution, physics = _replay_metadata()
+    compiled = execution["compiled"]
+    assert isinstance(compiled, dict)
+    execution["lc_topology_replay"] = {
+        **compiled["lc_topology_replay"],
+        "mode": "different-mode",
+    }
+
+    with pytest.raises(ArtifactError, match="disagrees between execution lanes"):
+        _lc_replay_plan(execution, physics, None)
+
+
 def test_exact_lc_replay_rejects_missing_public_flow_reduction() -> None:
     execution, physics = _replay_metadata()
     colors = list(physics["color_components"])  # type: ignore[arg-type]
@@ -253,3 +286,640 @@ def test_exact_lc_replay_rejects_missing_public_flow_reduction() -> None:
 
     with pytest.raises(CompatibilityError, match="missing replayed LC flow word"):
         _lc_replay_plan(execution, physics, None)
+
+
+def _six_flow_replay_metadata() -> tuple[dict[str, object], dict[str, object]]:
+    words = (
+        (1, 2, 3, 4),
+        (1, 2, 4, 3),
+        (1, 3, 2, 4),
+        (1, 3, 4, 2),
+        (1, 4, 2, 3),
+        (1, 4, 3, 2),
+    )
+    representative_words = (words[0], words[0], words[2], words[0], words[2], words[0])
+
+    def flow(index: int) -> dict[str, object]:
+        word = words[index]
+        representative = representative_words[index]
+        return {
+            "id": "flow:" + ",".join(map(str, word)),
+            "index": index,
+            "kind": "lc-flow",
+            "word": list(word),
+            "computed": index in {0, 2},
+            "representative_id": "flow:" + ",".join(map(str, representative)),
+            "coefficient": 1.0,
+        }
+
+    identity = [
+        {"representative_label": label, "sector_label": label} for label in range(1, 5)
+    ]
+    swap = [
+        {"representative_label": 1, "sector_label": 1},
+        {"representative_label": 2, "sector_label": 2},
+        {"representative_label": 3, "sector_label": 4},
+        {"representative_label": 4, "sector_label": 3},
+    ]
+    execution: dict[str, object] = {
+        "compiled": {
+            "lc_topology_replay": {
+                "contract_version": 2,
+                "enabled": True,
+                "mode": "external-label-permutation",
+                "physical_sector_count": 3,
+                "replayed_sector_count": 2,
+                "materialized_sector_ids": [0, 2],
+                "residual_sector_ids": [2],
+                "groups": [
+                    {
+                        "active_sector_ids": [0, 1],
+                        "materialized_sector_id": 0,
+                        "representative_sector_id": 0,
+                        "proof": {
+                            "status": "proven",
+                            "algorithm": "canonical-test-proof-v1",
+                            "digest": "a" * 64,
+                        },
+                        "sector_permutations": [
+                            {
+                                "sector_id": 0,
+                                "label_permutation": identity,
+                                "weight": 2.0,
+                                "sign": 1,
+                                "factor": [2.0, 0.0],
+                            },
+                            {
+                                "sector_id": 1,
+                                "label_permutation": swap,
+                                "weight": 2.0,
+                                "sign": 1,
+                                "factor": [2.0, 0.0],
+                            },
+                        ],
+                    }
+                ],
+            }
+        },
+        "runtime_schema": {
+            "amplitude_stage": {
+                "roots": [
+                    {
+                        "root_id": 0,
+                        "output_index": 0,
+                        "coherent_group_id": 0,
+                        "color_sector_id": 0,
+                        "all_sector_weight": 2.0,
+                    },
+                    {
+                        "root_id": 1,
+                        "output_index": 1,
+                        "coherent_group_id": 1,
+                        "color_sector_id": 2,
+                        "all_sector_weight": 2.0,
+                    },
+                ]
+            }
+        },
+    }
+    color_ids = [str(flow(index)["id"]) for index in range(6)]
+    physics: dict[str, object] = {
+        "color_accuracy": "lc",
+        "external_particles": [{}, {}, {}, {}],
+        "helicities": [
+            {
+                "id": "h:+1,-1,+1,+1",
+                "values": [1, -1, 1, 1],
+                "coefficient": 1.0,
+            }
+        ],
+        "color_components": [flow(index) for index in range(6)],
+        "reduction": {
+            "groups": [
+                {
+                    "id": "reduction:0",
+                    "representative_helicity_id": "h:+1,-1,+1,+1",
+                    "representative_color_id": color_ids[0],
+                    "physical_helicity_ids": ["h:+1,-1,+1,+1"],
+                    "physical_color_ids": [color_ids[0], color_ids[5]],
+                },
+                {
+                    "id": "reduction:1",
+                    "representative_helicity_id": "h:+1,-1,+1,+1",
+                    "representative_color_id": color_ids[2],
+                    "physical_helicity_ids": ["h:+1,-1,+1,+1"],
+                    "physical_color_ids": [color_ids[2], color_ids[4]],
+                },
+            ]
+        },
+    }
+    return execution, physics
+
+
+def test_exact_lc_replay_routes_residual_folded_sector_once() -> None:
+    execution, physics = _six_flow_replay_metadata()
+    plan = _lc_replay_plan(execution, physics, None)
+    assert plan is not None
+    assert len(plan.entries) == 2
+    target_indices = [
+        route.target_index for entry in plan.entries for route in entry.routes
+    ]
+    assert sorted(target_indices) == list(range(6))
+    assert {route.weight for entry in plan.entries for route in entry.routes} == {
+        Decimal(1)
+    }
+
+    identity = (
+        (
+            Decimal(3),
+            Decimal(300),
+            Decimal(5),
+            Decimal(700),
+            Decimal(500),
+            Decimal(900),
+        ),
+    )
+    swapped = (
+        (
+            Decimal(7),
+            Decimal(301),
+            Decimal(999),
+            Decimal(701),
+            Decimal(501),
+            Decimal(901),
+        ),
+    )
+    full, helicities, colors = _apply_lc_replay_resolved(
+        (identity, swapped),
+        plan,
+        1,
+        ("h:+1,-1,+1,+1",),
+        tuple(str(record["id"]) for record in physics["color_components"]),
+        None,
+        None,
+    )
+    assert full == (
+        ((Decimal(3), Decimal(7), Decimal(5), Decimal(7), Decimal(5), Decimal(3)),),
+    )
+    assert helicities == ("h:+1,-1,+1,+1",)
+    assert len(colors) == 6
+
+    selected, selected_helicities, selected_colors = _apply_lc_replay_resolved(
+        (identity, swapped),
+        plan,
+        1,
+        ("h:+1,-1,+1,+1",),
+        tuple(str(record["id"]) for record in physics["color_components"]),
+        ("h:+1,-1,+1,+1",),
+        (colors[4],),
+    )
+    assert selected == (((Decimal(5),),),)
+    assert selected_helicities == ("h:+1,-1,+1,+1",)
+    assert selected_colors == (colors[4],)
+
+
+def test_exact_lc_replay_rejects_incorrect_residual_folded_weight() -> None:
+    execution, physics = _six_flow_replay_metadata()
+    execution["runtime_schema"]["amplitude_stage"]["roots"][1]["all_sector_weight"] = (
+        1.0
+    )
+
+    with pytest.raises(ArtifactError, match="covers 5 of 6 public color components"):
+        _lc_replay_plan(execution, physics, None)
+
+
+def _quotient_metadata() -> tuple[dict[str, object], dict[str, object]]:
+    source = {
+        "current_id": 0,
+        "source_id": 0,
+        "leg_label": 1,
+        "source_helicity": -1,
+        "chirality": 0,
+        "spin_state": -1,
+        "side": "final",
+        "particle_id": 1,
+        "anti_particle_id": 1,
+        "source_orientation": "self-conjugate",
+        "wavefunction_kind": "scalar",
+        "dimension": 1,
+        "source_basis": "scalar",
+        "crossing": "identity",
+        "value_slot": {
+            "component_start": 0,
+            "component_stop": 1,
+        },
+        "source_ir": {
+            "basis": "scalar",
+            "component_dimension": 1,
+            "wavefunction_family": "scalar",
+            "identity": {
+                "pdg_label": 1,
+                "anti_pdg_label": 1,
+                "orientation": "self-conjugate",
+            },
+            "crossing": {
+                "momentum_transform": "identity",
+                "helicity_factor": 1,
+                "chirality_factor": 1,
+                "spin_state_factor": 1,
+                "phase": [1.0, 0.0],
+            },
+            "states": [
+                {"helicity": -1, "chirality": 0, "spin_state": -1},
+                {"helicity": 1, "chirality": 0, "spin_state": 1},
+            ],
+        },
+        "applied_crossing": {
+            "momentum_transform": "identity",
+            "helicity_factor": 1,
+            "chirality_factor": 1,
+            "spin_state_factor": 1,
+            "phase": [1.0, 0.0],
+        },
+    }
+    materialization = {
+        "kind": "pyamplicol-helicity-recurrence-materialization",
+        "contract_version": 1,
+        "materialized_current_count": 1,
+        "materialized_root_count": 1,
+        "proof_current_count": 2,
+        "proof_root_count": 2,
+        "proof_to_materialized_current": [0, 0],
+        "selector_schedules": [
+            {
+                "selector_domain_id": 0,
+                "structural_zero": False,
+                "active_current_ids": [0],
+                "active_root_ids": [0],
+            },
+            {
+                "selector_domain_id": 1,
+                "structural_zero": True,
+                "active_current_ids": [],
+                "active_root_ids": [],
+            },
+            {
+                "selector_domain_id": 2,
+                "structural_zero": False,
+                "active_current_ids": [0],
+                "active_root_ids": [0],
+            },
+        ],
+        "source_routes": [
+            {
+                "materialized_current_id": 0,
+                "external_label": 1,
+                "helicity": -1,
+                "chirality": 0,
+                "spin_state": -1,
+                "declared_state_index": 0,
+                "selector_domain_id": 3,
+                "factor": [2.0, 0.0],
+            },
+            {
+                "materialized_current_id": 0,
+                "external_label": 1,
+                "helicity": 1,
+                "chirality": 0,
+                "spin_state": 1,
+                "declared_state_index": 1,
+                "selector_domain_id": 4,
+                "factor": [3.0, 0.0],
+            },
+        ],
+        "amplitude_routes": [
+            {
+                "materialized_root_id": 0,
+                "selector_domain_ids": [0],
+                "factor": [1.0, 0.0],
+                "residual": False,
+            },
+            {
+                "materialized_root_id": 0,
+                "selector_domain_ids": [2],
+                "factor": [0.0, 1.0],
+                "residual": False,
+            },
+        ],
+    }
+    execution: dict[str, object] = {
+        "compiled": {},
+        "runtime_schema": {
+            "source_fill": {"sources": [source]},
+            "amplitude_stage": {
+                "roots": [
+                    {
+                        "root_id": 0,
+                        "output_index": 0,
+                        "coherent_group_id": 0,
+                        "all_sector_weight": 1.0,
+                        "helicity_weight": 1.0,
+                    }
+                ],
+                "color_contraction": None,
+            },
+            "helicity_recurrence": {
+                "contract_version": 1,
+                "selector_domains": [
+                    {
+                        "id": 0,
+                        "complete": True,
+                        "source_states": [{"external_label": 1, "helicity": -1}],
+                    },
+                    {
+                        "id": 1,
+                        "complete": True,
+                        "source_states": [{"external_label": 1, "helicity": 0}],
+                    },
+                    {
+                        "id": 2,
+                        "complete": True,
+                        "source_states": [{"external_label": 1, "helicity": 1}],
+                    },
+                    {
+                        "id": 3,
+                        "complete": False,
+                        "source_states": [{"external_label": 1, "helicity": -1}],
+                    },
+                    {
+                        "id": 4,
+                        "complete": False,
+                        "source_states": [{"external_label": 1, "helicity": 1}],
+                    },
+                ],
+                "materialization": materialization,
+            },
+        },
+    }
+    physics: dict[str, object] = {
+        "color_accuracy": "lc",
+        "external_particles": [{}],
+        "helicities": [
+            {
+                "id": "h:-1",
+                "values": [-1],
+                "coefficient": 1.0,
+                "structural_zero": False,
+            },
+            {
+                "id": "h:+0",
+                "values": [0],
+                "coefficient": 0.0,
+                "structural_zero": True,
+            },
+            {
+                "id": "h:+1",
+                "values": [1],
+                "coefficient": 1.0,
+                "structural_zero": False,
+            },
+        ],
+        "color_components": [{"id": "flow:1", "kind": "lc-flow", "coefficient": 1.0}],
+        "reduction": {
+            "groups": [
+                {
+                    "id": "reduction:0",
+                    "physical_helicity_ids": ["h:-1", "h:+1"],
+                    "physical_color_ids": ["flow:1"],
+                }
+            ]
+        },
+    }
+    return execution, physics
+
+
+class _ExactRuntimeState:
+    def _exact_runtime_state_json(self) -> str:
+        return json.dumps({"model_parameter_values": [], "normalization_factor": 2.0})
+
+
+def _synthetic_quotient_executor() -> SymbolicaExactExecutor:
+    execution, physics = _quotient_metadata()
+    executor = object.__new__(SymbolicaExactExecutor)
+    executor._execution = execution
+    executor._physics = physics
+    executor._native_runtime = _ExactRuntimeState()
+    executor._permutation = None
+    executor._lc_replay = None
+    executor._helicity_plan = _exact_helicity_plan(execution, physics, None)
+    executor._stage_evaluators = ()
+    executor._amplitude_evaluator = None
+    executor._load_evaluators = MethodType(lambda _self: None, executor)
+
+    def evaluate_point(
+        _self: SymbolicaExactExecutor,
+        _point: object,
+        _parameters: object,
+        _precision: int,
+        source_states: object = None,
+    ) -> tuple[tuple[Decimal, Decimal], ...]:
+        assert isinstance(source_states, tuple)
+        state = source_states[0]
+        assert isinstance(state, _ExactRuntimeSourceState)
+        return (state.factor,)
+
+    executor._evaluate_point = MethodType(evaluate_point, executor)
+    return executor
+
+
+def test_exact_executor_replays_physical_helicities_and_selectors() -> None:
+    executor = _synthetic_quotient_executor()
+    result = executor.evaluate_resolved(
+        (((1.0, 0.0, 0.0, 0.0),),),
+        helicities=None,
+        color_flows=None,
+        precision=40,
+    )
+
+    assert result.helicity_ids == ("h:-1", "h:+0", "h:+1")
+    assert result.color_ids == ("flow:1",)
+    assert result.values == (
+        (
+            (Decimal(8),),
+            (Decimal(0),),
+            (Decimal(18),),
+        ),
+    )
+    selected = executor.evaluate_resolved(
+        (((1.0, 0.0, 0.0, 0.0),),),
+        helicities=("h:+1",),
+        color_flows=("flow:1",),
+        precision=40,
+    )
+    assert selected.helicity_ids == ("h:+1",)
+    assert selected.values == (((Decimal(18),),),)
+
+
+def test_exact_materialized_source_fill_applies_route_factor() -> None:
+    execution, _physics = _quotient_metadata()
+    schema = execution["runtime_schema"]
+    assert isinstance(schema, dict)
+    state = [(Decimal(0), Decimal(0))]
+    _fill_sources_with_states(
+        state,
+        ((Decimal(1), Decimal(0), Decimal(0), Decimal(0)),),
+        schema,
+        (),
+        (_ExactRuntimeSourceState(1, 0, 1, (Decimal(2), Decimal(3))),),
+    )
+    assert state == [(Decimal(2), Decimal(3))]
+
+
+def test_exact_helicity_plan_uses_selected_source_route_in_active_closure() -> None:
+    execution, physics = _quotient_metadata()
+    plan = _exact_helicity_plan(execution, physics, None)
+
+    assert plan is not None
+    state = plan.schedules[2].source_states[0]
+    assert state == _ExactRuntimeSourceState(
+        helicity=1,
+        chirality=0,
+        spin_state=1,
+        factor=(Decimal(3), Decimal(0)),
+    )
+
+
+def test_exact_helicity_plan_recovers_globally_flipped_anchor_from_source_ir() -> None:
+    execution, physics = _quotient_metadata()
+    recurrence = execution["runtime_schema"]["helicity_recurrence"]
+    recurrence["materialization"]["source_routes"] = recurrence["materialization"][
+        "source_routes"
+    ][:1]
+
+    plan = _exact_helicity_plan(execution, physics, None)
+
+    assert plan is not None
+    assert plan.schedules[2].source_states[0] == _ExactRuntimeSourceState(
+        helicity=1,
+        chirality=0,
+        spin_state=1,
+        factor=(Decimal(1), Decimal(0)),
+    )
+
+
+def test_exact_materialized_helicity_distributes_lc_color_weights() -> None:
+    execution, physics = _quotient_metadata()
+    physics["color_components"] = [
+        {"id": "flow:a", "kind": "lc-flow", "coefficient": 1.0},
+        {"id": "flow:b", "kind": "lc-flow", "coefficient": 3.0},
+    ]
+    physics["reduction"] = {
+        "groups": [
+            {
+                "id": "reduction:0",
+                "physical_helicity_ids": ["h:-1"],
+                "physical_color_ids": ["flow:a", "flow:b"],
+            }
+        ]
+    }
+    value = _reduce_materialized_helicity(
+        ((Decimal(2), Decimal(0)),),
+        execution,
+        physics,
+        Decimal(2),
+        0,
+        ((Decimal(1), Decimal(0)),),
+    )
+    assert value == (Decimal(2), Decimal(6))
+
+
+@pytest.mark.parametrize("accuracy", ["nlc", "full"])
+def test_exact_materialized_helicity_applies_color_contraction(
+    accuracy: str,
+) -> None:
+    execution, physics = _quotient_metadata()
+    physics["color_accuracy"] = accuracy
+    physics["color_components"] = [{"id": "contracted", "kind": "contracted"}]
+    physics["reduction"] = {
+        "groups": [
+            {
+                "id": "reduction:0",
+                "physical_helicity_ids": ["h:-1"],
+                "physical_color_ids": ["contracted"],
+            },
+            {
+                "id": "reduction:1",
+                "physical_helicity_ids": ["h:-1"],
+                "physical_color_ids": ["contracted"],
+            },
+        ]
+    }
+    runtime_schema = execution["runtime_schema"]
+    assert isinstance(runtime_schema, dict)
+    amplitude = runtime_schema["amplitude_stage"]
+    assert isinstance(amplitude, dict)
+    amplitude["roots"] = [
+        {
+            "root_id": 0,
+            "output_index": 0,
+            "coherent_group_id": 0,
+            "all_sector_weight": 1.0,
+            "helicity_weight": 1.0,
+        },
+        {
+            "root_id": 1,
+            "output_index": 1,
+            "coherent_group_id": 1,
+            "all_sector_weight": 1.0,
+            "helicity_weight": 1.0,
+        },
+    ]
+    amplitude["color_contraction"] = {
+        "entries": [
+            {
+                "left_group_id": 0,
+                "right_group_id": 1,
+                "weight": [2.0, 0.0],
+                "symmetry_factor": 0.5,
+            }
+        ]
+    }
+    value = _reduce_materialized_helicity(
+        ((Decimal(2), Decimal(1)), (Decimal(3), Decimal(-1))),
+        execution,
+        physics,
+        Decimal(4),
+        0,
+        ((Decimal(1), Decimal(0)), (Decimal(0), Decimal(1))),
+    )
+    assert value == (Decimal(20),)
+
+
+def test_exact_helicity_plan_fails_closed_on_inconsistent_routes() -> None:
+    execution, physics = _quotient_metadata()
+    malformed = copy.deepcopy(execution)
+    recurrence = malformed["runtime_schema"]["helicity_recurrence"]
+    recurrence["materialization"]["amplitude_routes"][0]["selector_domain_ids"] = [2]
+
+    with pytest.raises(ArtifactError, match="do not match active roots"):
+        _exact_helicity_plan(malformed, physics, None)
+
+
+def test_exact_helicity_plan_wraps_malformed_scalar_metadata() -> None:
+    execution, physics = _quotient_metadata()
+    malformed = copy.deepcopy(execution)
+    recurrence = malformed["runtime_schema"]["helicity_recurrence"]
+    recurrence["materialization"]["source_routes"][0].pop("helicity")
+
+    with pytest.raises(ArtifactError, match="malformed helicity recurrence"):
+        _exact_helicity_plan(malformed, physics, None)
+
+
+def test_exact_helicity_plan_leaves_legacy_artifacts_unchanged() -> None:
+    _execution, physics = _quotient_metadata()
+    assert _exact_helicity_plan({"runtime_schema": {}}, physics, None) is None
+    assert (
+        _exact_helicity_plan(
+            {
+                "runtime_schema": {
+                    "helicity_recurrence": {
+                        "contract_version": 1,
+                        "selector_domains": [],
+                    }
+                }
+            },
+            physics,
+            None,
+        )
+        is None
+    )

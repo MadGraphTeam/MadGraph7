@@ -1,0 +1,612 @@
+// SPDX-License-Identifier: 0BSD
+
+use super::*;
+use crate::RusticolErrorKind;
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+const PYTHON_GOLDEN_HEX: &str = concat!(
+    "50414342494e000001004000000000004000000000000000c000000000000000",
+    "0200000000000000000000000000000000000000000000000000000000000000",
+    "6a69742d76310000000000000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "65786163742d7374617465000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "5041434944580000010020000000000002000000000000000000000000000000",
+    "0c0000000100000040000000000000000600000000000000e9a628134c31e4a5",
+    "7771ecd7a1dd51c5c5bc7daca10a2553c83f8af1652d2587612f6a69742e7379",
+    "6d6a6974000000000b0000000200000080000000000000000b00000000000000",
+    "a9f46d72eb6f1c7e5d62e97d3d8e67b80605aeba2df022a8a25b51ca3fc89805",
+    "7a2f65786163742e62696e0000000000504143454e4400000100400000000000",
+    "c0000000000000000200000000000000263b30eb85e5b2a82600201822438767",
+    "c5f66d9eecf2e08a0202383aafe0e3c1",
+);
+
+#[derive(Clone)]
+struct TestMember<'a> {
+    path: &'a str,
+    kind: PacbinMemberKind,
+    payload: &'a [u8],
+}
+
+fn decode_hex(value: &str) -> Vec<u8> {
+    assert_eq!(value.len() % 2, 0);
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let text = std::str::from_utf8(pair).expect("ASCII hex pair");
+            u8::from_str_radix(text, 16).expect("valid hex pair")
+        })
+        .collect()
+}
+
+fn put_u16(bytes: &mut [u8], offset: usize, value: u16) {
+    bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_u32(bytes: &mut [u8], offset: usize, value: u32) {
+    bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_u64(bytes: &mut [u8], offset: usize, value: u64) {
+    bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+}
+
+fn align(bytes: &mut Vec<u8>, alignment: usize) {
+    let padding = (alignment - bytes.len() % alignment) % alignment;
+    bytes.resize(bytes.len() + padding, 0);
+}
+
+fn build_container(members: &[TestMember<'_>]) -> Vec<u8> {
+    let mut bytes = vec![0; HEADER_SIZE];
+    let mut records = Vec::new();
+    for member in members {
+        align(&mut bytes, PACBIN_ALIGNMENT as usize);
+        let offset = bytes.len() as u64;
+        bytes.extend_from_slice(member.payload);
+        records.push((member, offset, Sha256::digest(member.payload)));
+    }
+    align(&mut bytes, PACBIN_ALIGNMENT as usize);
+    let index_offset = bytes.len() as u64;
+    bytes.extend_from_slice(INDEX_MAGIC);
+    bytes.extend_from_slice(&PACBIN_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&(INDEX_HEADER_SIZE as u16).to_le_bytes());
+    bytes.extend_from_slice(&SUPPORTED_FLAGS.to_le_bytes());
+    bytes.extend_from_slice(&(records.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&0_u64.to_le_bytes());
+    for (member, offset, digest) in records {
+        let path = member.path.as_bytes();
+        bytes.extend_from_slice(&(path.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&(member.kind as u16).to_le_bytes());
+        bytes.extend_from_slice(&0_u16.to_le_bytes());
+        bytes.extend_from_slice(&offset.to_le_bytes());
+        bytes.extend_from_slice(&(member.payload.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&digest);
+        bytes.extend_from_slice(path);
+        align(&mut bytes, INDEX_ALIGNMENT as usize);
+    }
+    let index_digest = Sha256::digest(&bytes[index_offset as usize..]);
+    bytes.extend_from_slice(FOOTER_MAGIC);
+    bytes.extend_from_slice(&PACBIN_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&(FOOTER_SIZE as u16).to_le_bytes());
+    bytes.extend_from_slice(&SUPPORTED_FLAGS.to_le_bytes());
+    bytes.extend_from_slice(&index_offset.to_le_bytes());
+    bytes.extend_from_slice(&(members.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&index_digest);
+
+    bytes[0..8].copy_from_slice(HEADER_MAGIC);
+    put_u16(&mut bytes, 8, PACBIN_VERSION);
+    put_u16(&mut bytes, 10, HEADER_SIZE as u16);
+    put_u32(&mut bytes, 12, SUPPORTED_FLAGS);
+    put_u32(&mut bytes, 16, PACBIN_ALIGNMENT);
+    put_u32(&mut bytes, 20, 0);
+    put_u64(&mut bytes, 24, index_offset);
+    put_u64(&mut bytes, 32, members.len() as u64);
+    bytes
+}
+
+fn index_offset(bytes: &[u8]) -> usize {
+    u64_at(bytes, 24, "test index offset").expect("index offset") as usize
+}
+
+fn footer_offset(bytes: &[u8]) -> usize {
+    bytes.len() - FOOTER_SIZE
+}
+
+fn entry_offsets(bytes: &[u8]) -> Vec<usize> {
+    let index = index_offset(bytes);
+    let footer = footer_offset(bytes);
+    let count = u64_at(bytes, 32, "test member count").expect("member count");
+    let mut cursor = index + INDEX_HEADER_SIZE;
+    let mut offsets = Vec::new();
+    for _ in 0..count {
+        offsets.push(cursor);
+        let path_length = u32_at(bytes, cursor, "test path length").expect("path length");
+        let record = INDEX_ENTRY_SIZE as u64 + u64::from(path_length);
+        cursor += (record + padding_length(record, INDEX_ALIGNMENT)) as usize;
+    }
+    assert!(cursor <= footer);
+    offsets
+}
+
+fn rewrite_index_digest(bytes: &mut [u8]) {
+    let index = index_offset(bytes);
+    let footer = footer_offset(bytes);
+    let digest = Sha256::digest(&bytes[index..footer]);
+    bytes[footer + 32..footer + 64].copy_from_slice(&digest);
+}
+
+fn error(bytes: Vec<u8>) -> (RusticolErrorKind, String) {
+    let error = PacbinReader::from_bytes(bytes).expect_err("container must be rejected");
+    (error.kind(), error.to_string())
+}
+
+fn assert_error(bytes: Vec<u8>, kind: RusticolErrorKind, message: &str) {
+    let (actual_kind, actual_message) = error(bytes);
+    assert_eq!(actual_kind, kind);
+    assert!(
+        actual_message.contains(message),
+        "expected {actual_message:?} to contain {message:?}"
+    );
+}
+
+#[test]
+fn python_golden_round_trips_and_supports_indexed_borrowed_ranges() {
+    let bytes = decode_hex(PYTHON_GOLDEN_HEX);
+    let reader = PacbinReader::from_bytes(bytes).expect("Python pacbin-v1 golden container");
+    assert_eq!(reader.index().version(), 1);
+    assert_eq!(reader.index().index_offset(), 192);
+    assert_eq!(reader.index().file_size(), 432);
+    assert_eq!(reader.container_size(), 432);
+    assert_eq!(reader.members().len(), 2);
+    assert_eq!(
+        reader.member("a//./jit.symjit").unwrap().kind(),
+        PacbinMemberKind::SymjitApplication
+    );
+    assert_eq!(reader.member_bytes("a/jit.symjit").unwrap(), b"jit-v1");
+    assert_eq!(reader.member_range("z/exact.bin", 2, 5).unwrap(), b"act-s");
+    reader.verify_payloads().unwrap();
+
+    let missing = reader.member("missing.bin").unwrap_err();
+    assert_eq!(missing.kind(), RusticolErrorKind::InvalidArgument);
+    assert_eq!(missing.to_string(), "unknown pacbin member: missing.bin");
+    let out_of_bounds = reader.member_range("a/jit.symjit", 5, 2).unwrap_err();
+    assert_eq!(out_of_bounds.kind(), RusticolErrorKind::InvalidArgument);
+    assert_eq!(
+        out_of_bounds.to_string(),
+        "member read exceeds indexed payload bounds"
+    );
+}
+
+#[test]
+fn open_keeps_one_immutable_mapping_after_atomic_source_replacement() {
+    static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "rusticol-pacbin-{}-{}.pacbin",
+        std::process::id(),
+        NEXT_PATH.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&path, decode_hex(PYTHON_GOLDEN_HEX)).unwrap();
+    let reader = PacbinReader::open(&path).unwrap();
+    let replacement = path.with_extension("replacement");
+    fs::write(&replacement, b"replaced after open").unwrap();
+    fs::rename(&replacement, &path).unwrap();
+    assert_eq!(reader.member_bytes("a/jit.symjit").unwrap(), b"jit-v1");
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn empty_and_zero_length_members_are_valid() {
+    let empty = PacbinReader::from_bytes(build_container(&[])).unwrap();
+    assert!(empty.members().is_empty());
+
+    let zero = build_container(&[
+        TestMember {
+            path: "a.empty",
+            kind: PacbinMemberKind::SymjitApplication,
+            payload: b"",
+        },
+        TestMember {
+            path: "b.empty",
+            kind: PacbinMemberKind::SymbolicaExactState,
+            payload: b"",
+        },
+    ]);
+    let zero = PacbinReader::from_bytes(zero).unwrap();
+    assert_eq!(zero.members()[0].offset(), zero.members()[1].offset());
+    assert_eq!(zero.member_bytes("b.empty").unwrap(), b"");
+}
+
+#[test]
+fn header_footer_and_index_contracts_are_strict() {
+    let golden = decode_hex(PYTHON_GOLDEN_HEX);
+    for (offset, replacement, kind, message) in [
+        (0, vec![b'X'], RusticolErrorKind::Integrity, "header magic"),
+        (
+            8,
+            2_u16.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "header version",
+        ),
+        (
+            10,
+            1_u16.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "header size",
+        ),
+        (
+            12,
+            1_u32.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "header flags",
+        ),
+        (
+            16,
+            32_u32.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "payload alignment",
+        ),
+        (
+            20,
+            1_u32.to_le_bytes().to_vec(),
+            RusticolErrorKind::Integrity,
+            "reserved fields",
+        ),
+    ] {
+        let mut bytes = golden.clone();
+        bytes[offset..offset + replacement.len()].copy_from_slice(&replacement);
+        assert_error(bytes, kind, message);
+    }
+    let mut reserved = golden.clone();
+    reserved[63] = 1;
+    assert_error(reserved, RusticolErrorKind::Integrity, "reserved fields");
+    let mut unaligned_index = golden.clone();
+    put_u64(&mut unaligned_index, 24, 193);
+    assert_error(
+        unaligned_index,
+        RusticolErrorKind::Integrity,
+        "index offset is not payload-aligned",
+    );
+    let mut out_of_bounds_index = golden.clone();
+    put_u64(&mut out_of_bounds_index, 24, 0);
+    let footer = footer_offset(&out_of_bounds_index);
+    put_u64(&mut out_of_bounds_index, footer + 16, 0);
+    assert_error(
+        out_of_bounds_index,
+        RusticolErrorKind::Integrity,
+        "index offset is out of bounds",
+    );
+
+    let footer = footer_offset(&golden);
+    for (offset, replacement, kind, message) in [
+        (
+            footer,
+            vec![b'X'],
+            RusticolErrorKind::Integrity,
+            "footer magic",
+        ),
+        (
+            footer + 8,
+            2_u16.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "footer version",
+        ),
+        (
+            footer + 10,
+            1_u16.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "footer size",
+        ),
+        (
+            footer + 12,
+            1_u32.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "footer flags",
+        ),
+        (
+            footer + 16,
+            0_u64.to_le_bytes().to_vec(),
+            RusticolErrorKind::Integrity,
+            "offset disagrees",
+        ),
+        (
+            footer + 24,
+            99_u64.to_le_bytes().to_vec(),
+            RusticolErrorKind::Integrity,
+            "count disagrees",
+        ),
+    ] {
+        let mut bytes = golden.clone();
+        bytes[offset..offset + replacement.len()].copy_from_slice(&replacement);
+        assert_error(bytes, kind, message);
+    }
+    let index = index_offset(&golden);
+    let mut index_count = golden.clone();
+    put_u64(&mut index_count, index + 16, 1);
+    rewrite_index_digest(&mut index_count);
+    assert_error(
+        index_count,
+        RusticolErrorKind::Integrity,
+        "index member count disagrees with header",
+    );
+
+    for (offset, replacement, kind, message) in [
+        (
+            index,
+            vec![b'X'],
+            RusticolErrorKind::Integrity,
+            "index magic",
+        ),
+        (
+            index + 8,
+            2_u16.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "index version",
+        ),
+        (
+            index + 10,
+            1_u16.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "index size",
+        ),
+        (
+            index + 12,
+            1_u32.to_le_bytes().to_vec(),
+            RusticolErrorKind::Compatibility,
+            "index flags",
+        ),
+        (
+            index + 24,
+            1_u64.to_le_bytes().to_vec(),
+            RusticolErrorKind::Integrity,
+            "reserved field",
+        ),
+    ] {
+        let mut bytes = golden.clone();
+        bytes[offset..offset + replacement.len()].copy_from_slice(&replacement);
+        rewrite_index_digest(&mut bytes);
+        assert_error(bytes, kind, message);
+    }
+}
+
+#[test]
+fn count_and_index_size_bounds_fail_before_allocation() {
+    assert_error(
+        {
+            let mut bytes = decode_hex(PYTHON_GOLDEN_HEX);
+            put_u64(&mut bytes, 32, PACBIN_MAX_MEMBERS + 1);
+            let footer = footer_offset(&bytes);
+            put_u64(&mut bytes, footer + 24, PACBIN_MAX_MEMBERS + 1);
+            bytes
+        },
+        RusticolErrorKind::Integrity,
+        "member count exceeds limit",
+    );
+    let oversized = validate_index_bounds(0, PACBIN_MAX_INDEX_BYTES + 1).unwrap_err();
+    assert_eq!(oversized.kind(), RusticolErrorKind::Integrity);
+    assert_eq!(
+        oversized.to_string(),
+        format!(
+            "pacbin index exceeds size limit: {} bytes",
+            PACBIN_MAX_INDEX_BYTES + 1
+        )
+    );
+    let impossible = validate_index_bounds(2, 64).unwrap_err();
+    assert_eq!(
+        impossible.to_string(),
+        "pacbin member count cannot fit in index"
+    );
+}
+
+#[test]
+fn member_contract_path_bounds_and_utf8_are_strict() {
+    let golden = decode_hex(PYTHON_GOLDEN_HEX);
+    let entry = entry_offsets(&golden)[0];
+    let mut kind = golden.clone();
+    put_u16(&mut kind, entry + 4, 99);
+    rewrite_index_digest(&mut kind);
+    assert_error(kind, RusticolErrorKind::Compatibility, "member kind");
+
+    let mut flags = golden.clone();
+    put_u16(&mut flags, entry + 6, 1);
+    rewrite_index_digest(&mut flags);
+    assert_error(flags, RusticolErrorKind::Compatibility, "member flags");
+
+    let mut path_bound = golden.clone();
+    put_u32(&mut path_bound, entry, PACBIN_MAX_PATH_BYTES + 1);
+    rewrite_index_digest(&mut path_bound);
+    assert_error(
+        path_bound,
+        RusticolErrorKind::Integrity,
+        "path exceeds size limit",
+    );
+
+    let mut utf8 = golden.clone();
+    utf8[entry + INDEX_ENTRY_SIZE] = 0xff;
+    rewrite_index_digest(&mut utf8);
+    assert_error(utf8, RusticolErrorKind::Integrity, "not valid UTF-8");
+
+    let unicode = build_container(&[TestMember {
+        path: "café/state.bin",
+        kind: PacbinMemberKind::SymbolicaExactState,
+        payload: b"state",
+    }]);
+    assert_error(unicode, RusticolErrorKind::Integrity, "portable ASCII");
+}
+
+#[test]
+fn paths_must_be_canonical_unique_case_distinct_and_sorted() {
+    for (members, message) in [
+        (
+            vec![
+                TestMember {
+                    path: "same.bin",
+                    kind: PacbinMemberKind::SymjitApplication,
+                    payload: b"a",
+                },
+                TestMember {
+                    path: "same.bin",
+                    kind: PacbinMemberKind::NativeLibrary,
+                    payload: b"b",
+                },
+            ],
+            "duplicate",
+        ),
+        (
+            vec![
+                TestMember {
+                    path: "Case.bin",
+                    kind: PacbinMemberKind::SymjitApplication,
+                    payload: b"a",
+                },
+                TestMember {
+                    path: "case.bin",
+                    kind: PacbinMemberKind::NativeLibrary,
+                    payload: b"b",
+                },
+            ],
+            "case-colliding",
+        ),
+        (
+            vec![
+                TestMember {
+                    path: "z.bin",
+                    kind: PacbinMemberKind::SymjitApplication,
+                    payload: b"a",
+                },
+                TestMember {
+                    path: "a.bin",
+                    kind: PacbinMemberKind::NativeLibrary,
+                    payload: b"b",
+                },
+            ],
+            "strictly sorted",
+        ),
+    ] {
+        assert_error(
+            build_container(&members),
+            RusticolErrorKind::Integrity,
+            message,
+        );
+    }
+
+    let noncanonical = build_container(&[TestMember {
+        path: "../escape.bin",
+        kind: PacbinMemberKind::SymjitApplication,
+        payload: b"payload",
+    }]);
+    assert_error(
+        noncanonical,
+        RusticolErrorKind::Integrity,
+        "must not contain '..'",
+    );
+}
+
+#[test]
+fn index_padding_and_exact_coverage_are_enforced() {
+    let mut padding = decode_hex(PYTHON_GOLDEN_HEX);
+    let first = entry_offsets(&padding)[0];
+    let path_length = u32_at(&padding, first, "path length").unwrap() as usize;
+    padding[first + INDEX_ENTRY_SIZE + path_length] = 1;
+    rewrite_index_digest(&mut padding);
+    assert_error(padding, RusticolErrorKind::Integrity, "index padding");
+
+    let mut trailing = decode_hex(PYTHON_GOLDEN_HEX);
+    let footer = footer_offset(&trailing);
+    trailing.splice(footer..footer, [0_u8; 8]);
+    rewrite_index_digest(&mut trailing);
+    assert_error(
+        trailing,
+        RusticolErrorKind::Integrity,
+        "trailing or missing bytes",
+    );
+}
+
+#[test]
+fn payload_layout_rejects_overlap_gap_bounds_overflow_and_nonzero_padding() {
+    let golden = decode_hex(PYTHON_GOLDEN_HEX);
+    let entries = entry_offsets(&golden);
+    let first_offset = u64_at(&golden, entries[0] + 8, "first offset").unwrap();
+
+    let mut overlap = golden.clone();
+    put_u64(&mut overlap, entries[1] + 8, first_offset);
+    rewrite_index_digest(&mut overlap);
+    assert_error(overlap, RusticolErrorKind::Integrity, "overlapping");
+
+    let mut gap = golden.clone();
+    put_u64(&mut gap, entries[1] + 8, 192);
+    rewrite_index_digest(&mut gap);
+    assert_error(
+        gap,
+        RusticolErrorKind::Integrity,
+        "non-canonical pacbin member gap",
+    );
+
+    let mut out_of_bounds = golden.clone();
+    put_u64(&mut out_of_bounds, entries[0] + 16, 192);
+    rewrite_index_digest(&mut out_of_bounds);
+    assert_error(out_of_bounds, RusticolErrorKind::Integrity, "out of bounds");
+
+    let mut overflow = golden.clone();
+    put_u64(&mut overflow, entries[0] + 16, u64::MAX);
+    rewrite_index_digest(&mut overflow);
+    assert_error(overflow, RusticolErrorKind::Integrity, "overflows u64");
+
+    let mut padding = golden.clone();
+    padding[70] = 1;
+    assert_error(padding, RusticolErrorKind::Integrity, "payload padding");
+
+    let mut trailing_gap = golden.clone();
+    let old_index = index_offset(&trailing_gap);
+    trailing_gap.splice(old_index..old_index, [0_u8; PACBIN_ALIGNMENT as usize]);
+    let new_index = old_index as u64 + u64::from(PACBIN_ALIGNMENT);
+    put_u64(&mut trailing_gap, 24, new_index);
+    let footer = footer_offset(&trailing_gap);
+    put_u64(&mut trailing_gap, footer + 16, new_index);
+    rewrite_index_digest(&mut trailing_gap);
+    assert_error(
+        trailing_gap,
+        RusticolErrorKind::Integrity,
+        "non-canonical trailing gap",
+    );
+}
+
+#[test]
+fn payload_and_index_authentication_reject_corruption_and_truncation() {
+    let mut payload = decode_hex(PYTHON_GOLDEN_HEX);
+    payload[64] ^= 1;
+    assert_error(
+        payload,
+        RusticolErrorKind::Integrity,
+        "member digest mismatch",
+    );
+
+    let mut index = decode_hex(PYTHON_GOLDEN_HEX);
+    let footer = footer_offset(&index);
+    index[footer + 63] ^= 1;
+    assert_error(index, RusticolErrorKind::Integrity, "index digest mismatch");
+
+    let mut truncated = decode_hex(PYTHON_GOLDEN_HEX);
+    truncated.truncate(truncated.len() - 17);
+    let (_, message) = error(truncated);
+    assert!(message.contains("footer") || message.contains("truncated"));
+}
+
+#[test]
+fn normalization_follows_portable_python_posix_rules() {
+    assert_eq!(normalize_logical_path("a//./b.bin").unwrap(), "a/b.bin");
+    for (path, message) in [
+        ("", "non-empty"),
+        (".", "name a member"),
+        ("/absolute", "relative"),
+        ("safe/../escape", "must not contain"),
+        ("windows\\path", "POSIX"),
+        ("bad\0path", "NUL"),
+    ] {
+        let error = normalize_logical_path(path).unwrap_err();
+        assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+        assert!(error.to_string().contains(message));
+    }
+}

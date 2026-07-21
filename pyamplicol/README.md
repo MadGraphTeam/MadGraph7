@@ -330,6 +330,25 @@ At NLC/full, color is contracted and the final dimension has length one.
 Selectors use stable IDs from `runtime.physics`; color-flow selection is valid
 only for leading-color artifacts. CLI `--color-flow` also accepts a one-based
 ordinal, so `--color-flow 1` selects the first flow advertised by the artifact.
+When an axis was not fixed during generation, the same artifact supports a
+different physical selector for every point. Rusticol stably groups mixed
+selectors before evaluator dispatch, leaves already pooled input in place, and
+scatters results back to caller order:
+
+```python
+mixed = runtime.evaluate(
+    momenta,
+    color_flow_by_point=[
+        runtime.physics.color_flow_ids[index % 2]
+        for index in range(len(momenta))
+    ],
+)
+```
+
+`helicity_by_point` follows the same contract. A batch-global selector and a
+per-point selector are mutually exclusive on the same axis. Artifacts generated
+with an explicit flow or helicity specialization remain limited to that
+generated coverage.
 
 At f64 precision, Rusticol executes either the default direct SymJIT
 application or a target-compatible ASM/C++ compiled evaluator without importing
@@ -341,6 +360,11 @@ other than 16 use retained Symbolica evaluator state. Native APIs are f64-only.
 Process artifacts are executable inputs. Manifest hashes detect accidental
 modification but do not establish who produced an artifact. Generate artifacts
 yourself or load them only from a trusted source.
+
+JIT evaluator state is stored in one indexed `evaluators.pacbin` file. Artifact
+inspection reports physical files, total on-disk size, and logical evaluator
+member count separately; Rusticol maps members directly from the container
+instead of materializing thousands of small files.
 
 ## Generated APIs
 

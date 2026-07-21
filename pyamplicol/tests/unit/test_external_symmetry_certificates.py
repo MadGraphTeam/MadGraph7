@@ -506,8 +506,8 @@ def test_external_sm_derives_fundamental_fierz_auxiliary(external_sm) -> None:
 @pytest.mark.parametrize(
     ("process", "topology", "forbidden_order"),
     (
-        ("g g > t t~", (36, 44, 36, 32), (2, 1)),
-        ("d d~ > z g g", (117, 242, 210, 48), (5, 4)),
+        ("g g > t t~", (36, 36, 36, 32), (2, 1)),
+        ("d d~ > z g g", (117, 210, 210, 48), (5, 4)),
     ),
 )
 def test_external_sm_recovers_builtin_lc_current_reuse(

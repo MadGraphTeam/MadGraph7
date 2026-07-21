@@ -27,9 +27,11 @@ from pyamplicol.models.prepared import (
     PreparedKernelRecord,
     PreparedModelBundleError,
 )
+from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime.eager_exact._contracts import (
     _PREPARED_CATALOG_ABI,
     _SUPPORTED_PREPARED_BACKENDS,
+    _artifact_kernel_loader,
     _component_slots,
     _ComponentSlot,
     _direct_coefficients,
@@ -181,7 +183,8 @@ class _EagerExactPlan:
         process_id: str,
         execution: Mapping[str, object],
         manifest: ArtifactManifest,
-        kernel_loader: _KernelLoader,
+        kernel_loader: _KernelLoader | None,
+        exact_payloads: ExactEvaluatorPayloadResolver,
     ) -> _EagerExactPlan:
         _validate_execution_header(execution)
         payloads = _PayloadIndex.from_manifest(manifest)
@@ -214,13 +217,20 @@ class _EagerExactPlan:
         if pack.resolver_manifest.get("abi") != _PREPARED_CATALOG_ABI:
             raise CompatibilityError("unsupported prepared eager kernel catalog ABI")
         payload_root = artifact_root / payload_root_name
-        if not payload_root.is_dir() or payload_root.is_symlink():
-            raise ArtifactError("eager kernel payload root is missing or invalid")
+        if payload_root.exists() and (
+            not payload_root.is_dir() or payload_root.is_symlink()
+        ):
+            raise ArtifactError("eager kernel payload root is invalid")
         for kernel in pack.kernels:
             exact_path = _joined_payload_path(
                 payload_root_name, kernel.exact_evaluator_state_path
             )
-            payloads.require(exact_path, role="evaluator-state", process_id=None)
+            exact_payloads.require_exact_state(exact_path, process_id=None)
+
+        effective_kernel_loader = kernel_loader or _artifact_kernel_loader(
+            exact_payloads,
+            payload_root_name,
+        )
 
         runtime_schema = _mapping(execution.get("runtime_schema"), "runtime_schema")
         layout = _mapping(runtime_schema.get("parameter_layout"), "parameter_layout")
@@ -268,7 +278,11 @@ class _EagerExactPlan:
             context="current slots",
         )
         kernel_map = {
-            kernel.kernel_id: _LazyExactKernel(kernel, payload_root, kernel_loader)
+            kernel.kernel_id: _LazyExactKernel(
+                kernel,
+                payload_root,
+                effective_kernel_loader,
+            )
             for kernel in pack.kernels
             if kernel.contract_kind != "model-parameter"
         }
@@ -282,7 +296,7 @@ class _EagerExactPlan:
             runtime_schema,
             parameter_projection,
             payload_root,
-            kernel_loader,
+            effective_kernel_loader,
         )
         plan_record = _mapping(execution.get("plan"), "plan")
         process_prefix = f"processes/{process_id}"

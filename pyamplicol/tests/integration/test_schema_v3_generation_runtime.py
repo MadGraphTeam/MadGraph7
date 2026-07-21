@@ -77,31 +77,80 @@ EXTERNAL_SM_PROCESS_IDS = (
     "sm_gg_ttbar",
     "sm_ddbar_zgg",
 )
-# These cases intentionally use the current shared-ordering DAG rather than
-# the larger topology retained in the independent pre-optimization fixture.
-# Numerical expectations still come exclusively from that fixture.
-CURRENT_BUILTIN_TOPOLOGY = {
-    f"case:sm_gg_ttbar:{accuracy}": {
-        "currents": 36,
-        "interactions": 44,
-        "reduction_groups": 32,
-        "roots": 32,
-    }
-    for accuracy in ("nlc", "full")
-} | {
-    f"case:sm_ddbar_zgg:{accuracy}": {
-        "currents": 117,
-        "interactions": 242,
-        "reduction_groups": 48,
-        "roots": 48,
-    }
-    for accuracy in ("nlc", "full")
-}
 NAMED_CASE_IDS = {
     "builtin_sm_ddbar_zg_lc": "case:sm_ddbar_zg:lc",
     "scalars_2to2_lc": "case:scalars_2to2:lc",
     "scalar_gravity_2to2_lc": "case:scalar_gravity_2to2:lc",
 }
+
+
+def _assert_reusable_helicity_topology(
+    execution: dict[str, Any],
+    *,
+    current_count: int | None = None,
+    interaction_count: int | None = None,
+    amplitude_root_count: int | None = None,
+) -> None:
+    """Check both the compact selector lane and the summed recurrence."""
+
+    primary = execution["dag_summary"]
+    summed = execution["helicity_sum_execution"]["dag_summary"]
+    materialization = execution["runtime_schema"]["helicity_recurrence"][
+        "materialization"
+    ]
+
+    assert materialization["strategy"] == "quotient"
+    assert primary["current_count"] == materialization["materialized_current_count"]
+    assert primary["amplitude_root_count"] == (
+        materialization["materialized_root_count"]
+    )
+    assert summed["current_count"] == materialization["proof_current_count"]
+    assert summed["amplitude_root_count"] == materialization["proof_root_count"]
+    assert primary["current_count"] <= summed["current_count"]
+    assert primary["interaction_count"] <= summed["interaction_count"]
+    assert primary["amplitude_root_count"] <= summed["amplitude_root_count"]
+    if current_count is not None:
+        assert summed["current_count"] == current_count
+    if interaction_count is not None:
+        assert summed["interaction_count"] == interaction_count
+    if amplitude_root_count is not None:
+        assert summed["amplitude_root_count"] == amplitude_root_count
+
+
+def _assert_reusable_reduction_coverage(
+    execution: dict[str, Any],
+    physics: dict[str, Any],
+) -> None:
+    groups = physics["reduction"]["groups"]
+    assert len(groups) == execution["dag_summary"]["amplitude_root_count"]
+
+    nonzero_helicities = {
+        item["id"] for item in physics["helicities"] if not item["structural_zero"]
+    }
+    represented_helicities = {
+        helicity_id
+        for group in groups
+        for helicity_id in group["physical_helicity_ids"]
+    }
+    assert represented_helicities == nonzero_helicities
+
+    represented_colors = {
+        color_id for group in groups for color_id in group["physical_color_ids"]
+    }
+    available_colors = {
+        component["id"] for component in physics["color_components"]
+    }
+    computed_colors = {
+        component["id"]
+        for component in physics["color_components"]
+        if component.get("computed", True)
+    }
+    assert computed_colors <= represented_colors <= available_colors
+    for group in groups:
+        assert group["representative_helicity_id"] in group[
+            "physical_helicity_ids"
+        ]
+        assert group["representative_color_id"] in group["physical_color_ids"]
 
 
 @pytest.fixture(autouse=True)
@@ -216,22 +265,13 @@ def test_current_source_generates_and_evaluates_schema_v3(
         parameter["name"] != "runtime.lc_sector_id"
         for parameter in execution["runtime_schema"]["model_parameters"]
     )
-    assert (
-        execution["dag_summary"]["current_count"]
-        == reference["topology"]["current_count"]
+    _assert_reusable_helicity_topology(
+        execution,
+        current_count=reference["topology"]["current_count"],
+        interaction_count=reference["topology"]["interaction_count"],
+        amplitude_root_count=reference["topology"]["amplitude_root_count"],
     )
-    assert (
-        execution["dag_summary"]["interaction_count"]
-        == reference["topology"]["interaction_count"]
-    )
-    assert (
-        execution["dag_summary"]["amplitude_root_count"]
-        == reference["topology"]["amplitude_root_count"]
-    )
-    assert (
-        len(physics["reduction"]["groups"])
-        == reference["topology"]["reduction_group_count"]
-    )
+    _assert_reusable_reduction_coverage(execution, physics)
 
     runtime = Runtime.load(artifact)
     momenta = tuple(
@@ -268,6 +308,29 @@ def test_current_source_generates_and_evaluates_schema_v3(
             "runtime_core_repeated_wall_time"
         )
         assert benchmark.timing_breakdown is not None
+        breakdown = benchmark.timing_breakdown
+        assert breakdown.wall_time is not None
+        accounted_components = (
+            breakdown.source_fill_time,
+            breakdown.momentum_setup_time,
+            breakdown.stage_input_pack_time,
+            breakdown.stage_evaluator_call_time,
+            breakdown.output_assign_time,
+            breakdown.amplitude_input_pack_time,
+            breakdown.amplitude_evaluator_call_time,
+            breakdown.reduction_time,
+        )
+        accounted = sum(
+            component.mean_seconds_per_point
+            for component in accounted_components
+            if component is not None
+        )
+        wall = breakdown.wall_time.mean_seconds_per_point
+        assert accounted <= wall * (1.0 + 1.0e-12)
+        if breakdown.other_core_time is not None:
+            assert accounted + breakdown.other_core_time.mean_seconds_per_point == (
+                pytest.approx(wall, rel=1.0e-12, abs=1.0e-18)
+            )
 
     exact = runtime.evaluate_resolved(momenta, precision=32)
     assert exact.helicity_ids == resolved.helicity_ids
@@ -329,13 +392,30 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
             artifact / "processes" / "g_g_to_t_tbar_g" / "execution.json"
         ).read_text(encoding="utf-8")
     )
+    # Runtime-selected helicities use the quotient lane; the summed workload
+    # retains the proof recurrence as a separate execution lane. Exact
+    # reflection/permutation equivalences remove duplicate current values from
+    # both forms without changing the sector-local NLC result checked below.
     assert execution["dag_summary"] == {
+        "amplitude_root_count": 6,
+        "current_count": 35,
+        "interaction_count": 66,
+        "source_count": 5,
+        "truncated": False,
+    }
+    assert execution["helicity_sum_execution"]["dag_summary"] == {
         "amplitude_root_count": 192,
         "current_count": 250,
         "interaction_count": 624,
         "source_count": 10,
         "truncated": False,
     }
+    _assert_reusable_helicity_topology(
+        execution,
+        current_count=250,
+        interaction_count=624,
+        amplitude_root_count=192,
+    )
 
     runtime = Runtime.load(artifact)
     momenta = runtime._backend.validation_momenta()
@@ -693,11 +773,8 @@ def test_current_source_external_sm_matches_builtin_reference(
                 encoding="utf-8"
             )
         )
-        topology = CURRENT_BUILTIN_TOPOLOGY.get(case["id"], case["topology"])
-        assert execution["dag_summary"]["current_count"] == topology["currents"]
-        assert execution["dag_summary"]["interaction_count"] == topology["interactions"]
-        assert execution["dag_summary"]["amplitude_root_count"] == topology["roots"]
-        assert len(physics["reduction"]["groups"]) == topology["reduction_groups"]
+        _assert_reusable_helicity_topology(execution)
+        _assert_reusable_reduction_coverage(execution, physics)
 
         runtime = Runtime.load(artifact, process=process_id)
         assert runtime.physics.helicity_coverage == "complete"
@@ -775,15 +852,13 @@ def test_external_sm_color_dummy_relabeling_preserves_resolved_runtime(
             encoding="utf-8"
         )
     )
-    assert execution["dag_summary"]["current_count"] == reference["topology"][
-        "current_count"
-    ]
-    assert execution["dag_summary"]["interaction_count"] == reference["topology"][
-        "interaction_count"
-    ]
-    assert execution["dag_summary"]["amplitude_root_count"] == reference["topology"][
-        "amplitude_root_count"
-    ]
+    physics = json.loads(
+        (artifact / "processes" / process_id / "physics.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    _assert_reusable_helicity_topology(execution)
+    _assert_reusable_reduction_coverage(execution, physics)
 
     runtime_momenta = tuple(
         tuple(tuple(float(component) for component in vector) for vector in point)

@@ -494,13 +494,19 @@ class ColorEngine:
             compatible_sector_ids = self._shared_lc_compatible_sector_ids(
                 ordered_external_labels
             )
-            track_sector_support = (
-                inherited_support is not None or creates_fierz_projection
-            )
             if inherited_support is not None:
                 compatible_sector_ids.intersection_update(inherited_support)
             if not compatible_sector_ids:
                 return ()
+            all_sector_ids = set(self._sector_by_id)
+            track_sector_support = (
+                inherited_support is not None
+                or creates_fierz_projection
+                or (
+                    self.color_plan.color_accuracy == "lc"
+                    and compatible_sector_ids != all_sector_ids
+                )
+            )
 
             candidates: list[tuple[set[str], tuple[float, float], set[int]]] = []
             if creates_fierz_projection:
@@ -524,7 +530,6 @@ class ColorEngine:
                 candidates.append((set(basis), (1.0, 0.0), compatible_sector_ids))
 
             projections: list[tuple[tuple[str, ...], tuple[float, float]]] = []
-            all_sector_ids = set(self._sector_by_id)
             for candidate_basis, weight, support in candidates:
                 if track_sector_support and support != all_sector_ids:
                     candidate_basis.add(_lc_sector_support_key(support))

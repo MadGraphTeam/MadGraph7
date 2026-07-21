@@ -64,6 +64,24 @@ class ArtifactProcessInspection:
     helicity_coverage: str
     color_coverage: str
     aliases: tuple[ArtifactAliasInspection, ...]
+    selector_provenance: str | None = None
+    helicity_runtime_contract: str | None = None
+    color_flow_runtime_contract: str | None = None
+    generation_specialized_axes: tuple[str, ...] = ()
+    selected_source_helicities: tuple[tuple[int, int], ...] = ()
+    selected_color_sector_ids: tuple[int, ...] = ()
+    helicity_recurrence_status: str | None = None
+    helicity_optimized_class_count: int | None = None
+    helicity_optimized_current_count: int | None = None
+    helicity_residual_current_count: int | None = None
+    helicity_optimized_amplitude_class_count: int | None = None
+    helicity_residual_amplitude_count: int | None = None
+    helicity_materialized_current_count: int | None = None
+    helicity_materialized_amplitude_count: int | None = None
+    lc_physical_sector_count: int | None = None
+    lc_materialized_sector_count: int | None = None
+    lc_replayed_sector_count: int | None = None
+    lc_residual_sector_count: int | None = None
     execution_mode: str = "compiled"
     prepared_backend: str | None = None
     prepared_kernel_count: int | None = None
@@ -114,6 +132,11 @@ class ArtifactInspection:
     integrity: str
     processes: tuple[ArtifactProcessInspection, ...]
     dependencies: tuple[ArtifactDependencyInspection, ...]
+    physical_file_count: int | None = None
+    evaluator_container_path: str | None = None
+    evaluator_container_abi: str | None = None
+    evaluator_container_member_count: int | None = None
+    evaluator_container_unpacked_size_bytes: int | None = None
 
 
 def _mapping(value: object, context: str) -> Mapping[str, object]:
@@ -238,6 +261,34 @@ class _ExecutionInspection:
     workspace_limit_bytes: int | None = None
     workspace_bytes: int | None = None
     native_profile_phases: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _PhysicsInspection:
+    physical_helicities: int
+    computed_helicities: int
+    physical_color_components: int
+    computed_color_components: int
+    helicity_coverage: str
+    color_coverage: str
+    selector_provenance: str | None = None
+    helicity_runtime_contract: str | None = None
+    color_flow_runtime_contract: str | None = None
+    generation_specialized_axes: tuple[str, ...] = ()
+    selected_source_helicities: tuple[tuple[int, int], ...] = ()
+    selected_color_sector_ids: tuple[int, ...] = ()
+    helicity_recurrence_status: str | None = None
+    helicity_optimized_class_count: int | None = None
+    helicity_optimized_current_count: int | None = None
+    helicity_residual_current_count: int | None = None
+    helicity_optimized_amplitude_class_count: int | None = None
+    helicity_residual_amplitude_count: int | None = None
+    helicity_materialized_current_count: int | None = None
+    helicity_materialized_amplitude_count: int | None = None
+    lc_physical_sector_count: int | None = None
+    lc_materialized_sector_count: int | None = None
+    lc_replayed_sector_count: int | None = None
+    lc_residual_sector_count: int | None = None
 
 
 def _table_record(
@@ -769,10 +820,54 @@ def _execution_inspection(
     raise ArtifactError(f"unsupported process execution kind {kind!r}")
 
 
-def _physics_counts(
+def _optional_nonnegative_integer(
+    value: object,
+    context: str,
+) -> int | None:
+    if value is None:
+        return None
+    return _integer(value, context, minimum=0)
+
+
+def _source_helicity_selection(
+    value: object,
+    context: str,
+) -> tuple[tuple[int, int], ...]:
+    selection = _mapping(value, context)
+    result: list[tuple[int, int]] = []
+    for raw_label, raw_helicity in selection.items():
+        try:
+            label = int(raw_label)
+        except (TypeError, ValueError) as exc:
+            raise ArtifactError(f"{context} has a non-integer source label") from exc
+        if str(label) != str(raw_label) or label < 1:
+            raise ArtifactError(f"{context} has an invalid source label {raw_label!r}")
+        if isinstance(raw_helicity, bool) or not isinstance(raw_helicity, int):
+            raise ArtifactError(f"{context}[{raw_label!r}] must be an integer")
+        result.append((label, raw_helicity))
+    result.sort()
+    if len({label for label, _helicity in result}) != len(result):
+        raise ArtifactError(f"{context} repeats a source label")
+    return tuple(result)
+
+
+def _color_sector_selection(
+    value: object,
+    context: str,
+) -> tuple[int, ...]:
+    result = tuple(
+        _integer(item, f"{context}[{index}]")
+        for index, item in enumerate(_sequence(value, context))
+    )
+    if result != tuple(sorted(set(result))):
+        raise ArtifactError(f"{context} must contain unique sorted sector IDs")
+    return result
+
+
+def _physics_inspection(
     manifest: ArtifactManifest,
     process: Mapping[str, object],
-) -> tuple[int, int, int, int, str, str]:
+) -> _PhysicsInspection:
     relative = str(process["physics_path"])
     path = manifest.root / relative
     try:
@@ -799,13 +894,241 @@ def _physics_counts(
         _computed(item, f"{relative}.color_components[{index}]")
         for index, item in enumerate(colors)
     )
-    return (
-        len(helicities),
-        computed_helicities,
-        len(colors),
-        computed_colors,
-        str(coverage.get("helicities", "unknown")),
-        str(coverage.get("color", "unknown")),
+    selector_fields: dict[str, object] = {}
+    extensions_raw = physics.get("extensions")
+    extensions = (
+        {}
+        if extensions_raw is None
+        else _mapping(extensions_raw, f"{relative}.extensions")
+    )
+    selectors_raw = extensions.get("runtime_selectors")
+    if selectors_raw is not None:
+        selectors = _mapping(selectors_raw, f"{relative}.extensions.runtime_selectors")
+        if selectors.get("kind") != "pyamplicol-runtime-selectors":
+            raise ArtifactError(
+                f"{relative}.extensions.runtime_selectors.kind is unsupported"
+            )
+        if selectors.get("contract_version") != 1:
+            raise ArtifactError(
+                f"{relative}.extensions.runtime_selectors.contract_version "
+                "must be 1"
+            )
+        selector_fields["selector_provenance"] = _string(
+            selectors.get("provenance"),
+            f"{relative}.extensions.runtime_selectors.provenance",
+        )
+        axes = _mapping(
+            selectors.get("axes"),
+            f"{relative}.extensions.runtime_selectors.axes",
+        )
+        helicity_axis = _mapping(
+            axes.get("helicity"),
+            f"{relative}.extensions.runtime_selectors.axes.helicity",
+        )
+        color_axis = _mapping(
+            axes.get("color_flow"),
+            f"{relative}.extensions.runtime_selectors.axes.color_flow",
+        )
+        helicity_generation_coverage = _string(
+            helicity_axis.get("generation_coverage"),
+            f"{relative}.extensions.runtime_selectors.axes.helicity."
+            "generation_coverage",
+        )
+        color_generation_coverage = _string(
+            color_axis.get("generation_coverage"),
+            f"{relative}.extensions.runtime_selectors.axes.color_flow."
+            "generation_coverage",
+        )
+        helicity_selection = _source_helicity_selection(
+            helicity_axis.get("generation_selection"),
+            f"{relative}.extensions.runtime_selectors.axes.helicity."
+            "generation_selection",
+        )
+        color_selection = _color_sector_selection(
+            color_axis.get("generation_selection"),
+            f"{relative}.extensions.runtime_selectors.axes.color_flow."
+            "generation_selection",
+        )
+        selector_fields["selected_source_helicities"] = helicity_selection
+        selector_fields["selected_color_sector_ids"] = color_selection
+        selector_fields["helicity_runtime_contract"] = _string(
+            helicity_axis.get("runtime_contract"),
+            f"{relative}.extensions.runtime_selectors.axes.helicity.runtime_contract",
+        )
+        selector_fields["color_flow_runtime_contract"] = _string(
+            color_axis.get("runtime_contract"),
+            f"{relative}.extensions.runtime_selectors.axes.color_flow.runtime_contract",
+        )
+        selector_fields["generation_specialized_axes"] = tuple(
+            _string(
+                value,
+                f"{relative}.extensions.runtime_selectors."
+                f"generation_specialized_axes[{index}]",
+            )
+            for index, value in enumerate(
+                _sequence(
+                    selectors.get("generation_specialized_axes"),
+                    f"{relative}.extensions.runtime_selectors."
+                    "generation_specialized_axes",
+                )
+            )
+        )
+        helicity_contract = cast(str, selector_fields["helicity_runtime_contract"])
+        color_contract = cast(str, selector_fields["color_flow_runtime_contract"])
+        specialized_axes = cast(
+            tuple[str, ...], selector_fields["generation_specialized_axes"]
+        )
+        expected_specialized_axes = (
+            *(("helicity",) if helicity_contract == "generation-specialized" else ()),
+            *(("color_flow",) if color_contract == "generation-specialized" else ()),
+        )
+        if helicity_contract not in {
+            "complete-reusable",
+            "generation-specialized",
+        }:
+            raise ArtifactError("unsupported helicity runtime-selector contract")
+        if color_contract not in {
+            "complete-reusable",
+            "generation-specialized",
+            "contracted-color",
+        }:
+            raise ArtifactError("unsupported color-flow runtime-selector contract")
+        if helicity_generation_coverage != str(coverage.get("helicities")):
+            raise ArtifactError(
+                "helicity selector generation coverage disagrees with physics coverage"
+            )
+        if color_generation_coverage != str(coverage.get("color")):
+            raise ArtifactError(
+                "color-flow selector generation coverage disagrees with "
+                "physics coverage"
+            )
+        if specialized_axes != expected_specialized_axes:
+            raise ArtifactError(
+                "runtime-selector specialized axes disagree with axis contracts"
+            )
+        if (helicity_contract == "complete-reusable") != (
+            helicity_generation_coverage == "complete" and not helicity_selection
+        ):
+            raise ArtifactError(
+                "helicity runtime contract disagrees with generation selection"
+            )
+        if color_contract == "complete-reusable" and (
+            color_generation_coverage != "complete" or color_selection
+        ):
+            raise ArtifactError(
+                "color-flow reusable contract carries a generation specialization"
+            )
+        if color_contract == "generation-specialized" and (
+            color_generation_coverage != "selected" or not color_selection
+        ):
+            raise ArtifactError(
+                "color-flow specialized contract lacks an exact sector selection"
+            )
+        if color_contract == "contracted-color" and (
+            color_generation_coverage != "contracted" or color_selection
+        ):
+            raise ArtifactError(
+                "contracted-color runtime contract carries LC selection metadata"
+            )
+        legacy_helicity_selection = _source_helicity_selection(
+            extensions.get("selected_source_helicities", {}),
+            f"{relative}.extensions.selected_source_helicities",
+        )
+        if legacy_helicity_selection != helicity_selection:
+            raise ArtifactError(
+                "runtime-selector helicity selection disagrees with physics provenance"
+            )
+        recurrence_raw = selectors.get("helicity_recurrence")
+        if recurrence_raw is not None:
+            recurrence = _mapping(
+                recurrence_raw,
+                f"{relative}.extensions.runtime_selectors.helicity_recurrence",
+            )
+            selector_fields["helicity_recurrence_status"] = _string(
+                recurrence.get("status"),
+                f"{relative}.extensions.runtime_selectors."
+                "helicity_recurrence.status",
+            )
+            proof_counts = _mapping(
+                recurrence.get("proof_counts"),
+                f"{relative}.extensions.runtime_selectors."
+                "helicity_recurrence.proof_counts",
+            )
+            count_fields = {
+                "helicity_optimized_class_count": (
+                    "optimized_recurrence_class_count"
+                ),
+                "helicity_optimized_current_count": "optimized_current_count",
+                "helicity_residual_current_count": "residual_current_count",
+                "helicity_optimized_amplitude_class_count": (
+                    "optimized_amplitude_class_count"
+                ),
+                "helicity_residual_amplitude_count": "residual_amplitude_count",
+            }
+            for field, key in count_fields.items():
+                selector_fields[field] = _optional_nonnegative_integer(
+                    proof_counts.get(key),
+                    f"{relative}.extensions.runtime_selectors."
+                    f"helicity_recurrence.proof_counts.{key}",
+                )
+            selector_fields["helicity_materialized_current_count"] = (
+                _optional_nonnegative_integer(
+                    recurrence.get("materialized_current_count"),
+                    f"{relative}.extensions.runtime_selectors."
+                    "helicity_recurrence.materialized_current_count",
+                )
+            )
+            selector_fields["helicity_materialized_amplitude_count"] = (
+                _optional_nonnegative_integer(
+                    recurrence.get("materialized_amplitude_count"),
+                    f"{relative}.extensions.runtime_selectors."
+                    "helicity_recurrence.materialized_amplitude_count",
+                )
+            )
+
+    replay_raw = extensions.get("lc_topology_replay")
+    if replay_raw is not None:
+        replay = _mapping(replay_raw, f"{relative}.extensions.lc_topology_replay")
+        selector_fields.update(
+            {
+                "lc_physical_sector_count": len(
+                    _sequence(
+                        replay.get("physical_sector_ids"),
+                        f"{relative}.extensions.lc_topology_replay."
+                        "physical_sector_ids",
+                    )
+                ),
+                "lc_materialized_sector_count": len(
+                    _sequence(
+                        replay.get("materialized_sector_ids"),
+                        f"{relative}.extensions.lc_topology_replay."
+                        "materialized_sector_ids",
+                    )
+                ),
+                "lc_replayed_sector_count": _integer(
+                    replay.get("replayed_sector_count"),
+                    f"{relative}.extensions.lc_topology_replay."
+                    "replayed_sector_count",
+                    minimum=0,
+                ),
+                "lc_residual_sector_count": len(
+                    _sequence(
+                        replay.get("residual_sector_ids"),
+                        f"{relative}.extensions.lc_topology_replay."
+                        "residual_sector_ids",
+                    )
+                ),
+            }
+        )
+
+    return _PhysicsInspection(
+        physical_helicities=len(helicities),
+        computed_helicities=computed_helicities,
+        physical_color_components=len(colors),
+        computed_color_components=computed_colors,
+        helicity_coverage=str(coverage.get("helicities", "unknown")),
+        color_coverage=str(coverage.get("color", "unknown")),
+        **selector_fields,
     )
 
 
@@ -834,14 +1157,7 @@ def _process_inspection(
                 ),
             )
         )
-    (
-        physical_helicities,
-        computed_helicities,
-        physical_colors,
-        computed_colors,
-        helicity_coverage,
-        color_coverage,
-    ) = _physics_counts(manifest, process)
+    physics = _physics_inspection(manifest, process)
     return ArtifactProcessInspection(
         id=process_id,
         expression=str(process["expression"]),
@@ -853,13 +1169,39 @@ def _process_inspection(
             )
         ),
         default=process_id == manifest.default_process_id,
-        physical_helicities=physical_helicities,
-        computed_helicities=computed_helicities,
-        physical_color_components=physical_colors,
-        computed_color_components=computed_colors,
-        helicity_coverage=helicity_coverage,
-        color_coverage=color_coverage,
+        physical_helicities=physics.physical_helicities,
+        computed_helicities=physics.computed_helicities,
+        physical_color_components=physics.physical_color_components,
+        computed_color_components=physics.computed_color_components,
+        helicity_coverage=physics.helicity_coverage,
+        color_coverage=physics.color_coverage,
         aliases=tuple(aliases),
+        selector_provenance=physics.selector_provenance,
+        helicity_runtime_contract=physics.helicity_runtime_contract,
+        color_flow_runtime_contract=physics.color_flow_runtime_contract,
+        generation_specialized_axes=physics.generation_specialized_axes,
+        selected_source_helicities=physics.selected_source_helicities,
+        selected_color_sector_ids=physics.selected_color_sector_ids,
+        helicity_recurrence_status=physics.helicity_recurrence_status,
+        helicity_optimized_class_count=physics.helicity_optimized_class_count,
+        helicity_optimized_current_count=physics.helicity_optimized_current_count,
+        helicity_residual_current_count=physics.helicity_residual_current_count,
+        helicity_optimized_amplitude_class_count=(
+            physics.helicity_optimized_amplitude_class_count
+        ),
+        helicity_residual_amplitude_count=(
+            physics.helicity_residual_amplitude_count
+        ),
+        helicity_materialized_current_count=(
+            physics.helicity_materialized_current_count
+        ),
+        helicity_materialized_amplitude_count=(
+            physics.helicity_materialized_amplitude_count
+        ),
+        lc_physical_sector_count=physics.lc_physical_sector_count,
+        lc_materialized_sector_count=physics.lc_materialized_sector_count,
+        lc_replayed_sector_count=physics.lc_replayed_sector_count,
+        lc_residual_sector_count=physics.lc_residual_sector_count,
         execution_mode=execution.execution_mode,
         prepared_backend=execution.prepared_backend,
         prepared_kernel_count=execution.prepared_kernel_count,
@@ -914,6 +1256,49 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
         for dependency in manifest.dependencies
     )
     restriction = model.get("restriction")
+    container_path: str | None = None
+    container_abi: str | None = None
+    container_member_count: int | None = None
+    container_unpacked_size: int | None = None
+    container_raw = manifest.extensions.get("evaluator_payload_container")
+    if container_raw is not None:
+        container = _mapping(
+            container_raw,
+            "extensions.evaluator_payload_container",
+        )
+        if (
+            container.get("kind")
+            != "pyamplicol-evaluator-payload-container"
+            or container.get("schema_version") != 1
+            or container.get("storage_abi") != "pacbin-v1"
+        ):
+            raise ArtifactError("unsupported evaluator payload container contract")
+        container_path = _string(
+            container.get("path"),
+            "extensions.evaluator_payload_container.path",
+        )
+        container_abi = _string(
+            container.get("storage_abi"),
+            "extensions.evaluator_payload_container.storage_abi",
+        )
+        container_member_count = _integer(
+            container.get("member_count"),
+            "extensions.evaluator_payload_container.member_count",
+            minimum=0,
+        )
+        container_unpacked_size = _integer(
+            container.get("unpacked_size_bytes"),
+            "extensions.evaluator_payload_container.unpacked_size_bytes",
+            minimum=0,
+        )
+        matching = tuple(
+            payload for payload in manifest.payloads if payload.path == container_path
+        )
+        if len(matching) != 1 or matching[0].role != "evaluator-state":
+            raise ArtifactError(
+                "evaluator payload container is not one declared "
+                "evaluator-state payload"
+            )
     return ArtifactInspection(
         kind="pyamplicol-artifact-inspection",
         path=manifest.root,
@@ -946,6 +1331,11 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
         integrity="verified",
         processes=processes,
         dependencies=dependencies,
+        physical_file_count=len(manifest.payloads) + 1,
+        evaluator_container_path=container_path,
+        evaluator_container_abi=container_abi,
+        evaluator_container_member_count=container_member_count,
+        evaluator_container_unpacked_size_bytes=container_unpacked_size,
     )
 
 

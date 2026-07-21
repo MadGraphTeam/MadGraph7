@@ -393,6 +393,15 @@ pub(super) fn validate_evaluator_payload_references(
         }
         validate_evaluator_reference(artifact, relative_root, &stages.amplitude_stage.evaluator)?;
     }
+    if let Some(sum_manifest) = manifest.helicity_sum_execution.as_deref() {
+        validate_evaluator_payload_references(artifact, evaluator_root, sum_manifest)?;
+    }
+    for record in &manifest.helicity_selector_executions {
+        validate_evaluator_payload_references(artifact, evaluator_root, record.execution.as_ref())?;
+    }
+    for record in &manifest.color_selector_executions {
+        validate_evaluator_payload_references(artifact, evaluator_root, record.execution.as_ref())?;
+    }
     Ok(())
 }
 
@@ -446,15 +455,13 @@ pub(super) fn validate_evaluator_state_path(
     let path = path
         .to_str()
         .ok_or_else(|| RusticolError::security("evaluator-state path is not valid UTF-8"))?;
-    let payload = artifact.payload(path)?;
-    if payload.role != PayloadRole::EvaluatorState {
-        return Err(RusticolError::security(format!(
-            "evaluator reference {path:?} has payload role {:?}, expected evaluator-state",
-            payload.role
-        )));
+    if artifact.has_evaluator_payload(path)? {
+        Ok(())
+    } else {
+        Err(RusticolError::security(format!(
+            "evaluator reference {path:?} is not a declared loose or packed evaluator payload"
+        )))
     }
-    artifact.payload_path(path)?;
-    Ok(())
 }
 
 pub(super) fn confined_internal_path<'a>(

@@ -27,28 +27,28 @@ _DENSE_SELECTOR_REFERENCE_SHA256 = {
         "aeb63db345168a2b73755639d5ef055da5834cb4aab10e68c64ae64903a85a71"
     ),
     "eager/selector-domain-group-ids.bin": (
-        "c761c72ec6f32bfbb0242ab8c3684c05101f0cf249d0b5bc4e21dee9e3c90b50"
+        "ac9cd69c0f607e6a99b3a5d3187d9e235a3e4d350d91a6bd9469660da4a0c32b"
     ),
     "eager/selector-domains.bin": (
-        "87d7a7cb2993e150da210f03f026a179b04695e8e7787d4af352ac9141627d0c"
+        "e10e71b9645279ffd97999c95de7514efbfadb61556319aa237653efb0a2f72c"
     ),
     "eager/stage-1-attachment-domains.bin": (
-        "39d36afc0e641c6905ac6beac1d90756f4ed104df673f1ea0008943f9c27bb60"
+        "8975ddf06e863c02f1bfac68fb526de9ffdd716a666b64744554805d4b299f03"
     ),
     "eager/stage-1-invocation-domains.bin": (
-        "39d36afc0e641c6905ac6beac1d90756f4ed104df673f1ea0008943f9c27bb60"
+        "8975ddf06e863c02f1bfac68fb526de9ffdd716a666b64744554805d4b299f03"
     ),
     "eager/stage-1-propagated-finalization-domains.bin": (
-        "78553a9c5708642fdb81c04dbe7f7a2a8a01866c11469449f8bfea63691e9abc"
+        "6c3df7e594cc851fcf5f660b141ccfa6f2c371e551c8cf19fc23a230b7fd7c4c"
     ),
     "eager/stage-1-unpropagated-finalization-domains.bin": (
-        "76fa30b3c21b8dff3bd594d5d6828d50d8ce9ef615023afe1a965bf536a304ad"
+        "c51eeab8ffdfb8f66fc63ee241cca7300e47c86bd8f20379cb2daafd343521b5"
     ),
     "eager/stage-2-attachment-domains.bin": (
-        "c28307734b193e63c063eba022eb8543553de0bd6413cc4195f813049f835ca6"
+        "364d8c0d41ca46cbe4017fffbce33beb0a861c3e549a7047eca4cba6cb2bebed"
     ),
     "eager/stage-2-invocation-domains.bin": (
-        "db265e919a58f5c211185a07050ec3040c978cf2164dd9c126ee6bac9a56ea1c"
+        "1f71b6e4dfe37562558da3f029d99f82d5cd97998dcc1e30baa514e887f05f03"
     ),
     "eager/stage-2-propagated-finalization-domains.bin": (
         "2ea9ab9198d1638007400cd2c3bef1cc745b864b76011a0e1bc52180ac6452d4"

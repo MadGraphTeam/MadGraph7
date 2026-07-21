@@ -292,6 +292,28 @@ def test_generation_assessment_rejects_partial_matrix_and_reports_soft_miss() ->
     }
 
 
+def test_reusable_runtime_gate_is_hard_only_for_n4_and_n5() -> None:
+    def record(n_final: int, ratio: float) -> dict[str, object]:
+        return {
+            "case": {"n_final": n_final},
+            "workloads": [
+                {
+                    "profiles": [
+                        {
+                            "batch_size": batch_size,
+                            "compiled_reusable_over_specialized_wall": ratio,
+                        }
+                        for batch_size in (128, 1024)
+                    ]
+                }
+            ],
+        }
+
+    assert matrix._reusable_runtime_gate([record(4, 1.24), record(5, 1.25)])
+    assert not matrix._reusable_runtime_gate([record(4, 1.251)])
+    assert matrix._reusable_runtime_gate([record(5, 1.20), record(7, 4.0)])
+
+
 def test_core_generation_excludes_model_loading_and_process_expansion() -> None:
     assert (
         matrix._core_generation_seconds(

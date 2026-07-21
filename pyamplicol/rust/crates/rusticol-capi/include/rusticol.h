@@ -174,6 +174,29 @@ int rusticol_runtime_evaluate_f64(
     size_t output_capacity
 );
 
+/*
+ * Evaluate one total per point with optional selectors. Global selectors are
+ * physical string IDs. Per-point selectors are zero-based physical indices and
+ * must have length point_count. Global and per-point selectors are mutually
+ * exclusive on the same axis. A null pointer with zero length omits that axis.
+ */
+int rusticol_runtime_evaluate_selected_f64(
+    RusticolRuntimeHandle *handle,
+    const double *momenta,
+    size_t momentum_count,
+    size_t point_count,
+    const char *const *helicity_ids,
+    size_t helicity_count,
+    const char *const *color_ids,
+    size_t color_count,
+    const uint32_t *helicity_by_point,
+    size_t helicity_by_point_count,
+    const uint32_t *color_flow_by_point,
+    size_t color_flow_by_point_count,
+    double *output,
+    size_t output_capacity
+);
+
 /* Resolved output uses [point][helicity][color]. */
 int rusticol_runtime_evaluate_resolved_f64(
     RusticolRuntimeHandle *handle,

@@ -561,6 +561,40 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
     assert_eq!(selected.shape(), (1, 1, 1));
     assert!(selected.values[0].is_finite());
 
+    let selector_point_count = 4;
+    let selector_momenta = momenta.repeat(selector_point_count);
+    let all_components = runtime
+        .evaluate_resolved_f64(&selector_momenta, selector_point_count, None, None)
+        .expect("resolve eager selector fixture");
+    let helicity_count = all_components.helicity_ids.len();
+    let color_count = all_components.color_ids.len();
+    assert!(helicity_count >= 2, "selector fixture needs two helicities");
+    assert!(
+        color_count >= 1,
+        "selector fixture needs one color component"
+    );
+    let helicity_by_point = [0_u32, 1, 0, 1];
+    let color_by_point = [0_u32; 4];
+    let selected_by_point = runtime
+        .evaluate_f64_with_selectors(
+            &selector_momenta,
+            selector_point_count,
+            None,
+            None,
+            Some(&helicity_by_point),
+            Some(&color_by_point),
+        )
+        .expect("evaluate eager per-point selectors");
+    for point_index in 0..selector_point_count {
+        let expected_index =
+            (point_index * helicity_count + helicity_by_point[point_index] as usize) * color_count;
+        assert_close_f64(
+            selected_by_point[point_index],
+            all_components.values[expected_index],
+            "eager per-point selector",
+        );
+    }
+
     if let Some(compiled_root) = std::env::var_os("RUSTICOL_COMPILED_ARTIFACT") {
         let mut compiled = NativeRuntime::load(PathBuf::from(compiled_root), None, None)
             .expect("load matching compiled artifact");
@@ -755,12 +789,13 @@ fn generated_filtered_pack_and_binary_plan_execute_when_fixture_is_supplied() {
     );
     let mut common = ExecutionRuntime::from_manifest(execution.compiled_metadata_manifest())
         .expect("load shared source and physics execution metadata");
+    let kernel_payloads = EvaluatorPayloadStore::directory(&root.join("model/eager-kernels"));
     let (parameter_projection, couplings, model_parameter_evaluator) =
         prepare_eager_parameter_state(
             &pack,
             &execution.runtime_schema.model_parameters,
             &coupling_bytes,
-            &root.join("model/eager-kernels"),
+            &kernel_payloads,
         )
         .expect("prepare eager model-parameter projection");
     common.model_parameter_evaluator = model_parameter_evaluator;

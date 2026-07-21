@@ -5,12 +5,20 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from ..color.plan import GenericColorPlan, LCColorSector
+from ..color.plan import (
+    GenericColorPlan,
+    LCColorSector,
+    LCColorTopologyReplayPlan,
+)
 from ..models._physics_ir import ContractionIR
 from ..models.base import QuantumNumberFlow
 from ..processes.ir import CanonicalProcessIR
+
+if TYPE_CHECKING:
+    from .helicity_materialization import HelicityMaterialization
+    from .helicity_replay import HelicityRecurrencePlan
 
 ColorAccuracy = Literal["lc", "nlc", "full"]
 
@@ -389,12 +397,69 @@ class GenericDAG:
     helicity_coverage: str = "complete"
     color_coverage: str = "complete"
     selected_source_helicities: tuple[tuple[int, int], ...] = ()
+    selected_color_sector_ids: tuple[int, ...] = ()
+    lc_topology_replay: LCColorTopologyReplayPlan | None = None
+    helicity_recurrence: HelicityRecurrencePlan | None = None
+    helicity_materialization: HelicityMaterialization | None = None
 
     def __post_init__(self) -> None:
         if self.helicity_coverage not in {"complete", "selected"}:
             raise ValueError("DAG helicity coverage must be complete or selected")
         if self.color_coverage not in {"complete", "selected"}:
             raise ValueError("DAG color coverage must be complete or selected")
+        selected_color_sector_ids = tuple(
+            sorted({int(sector_id) for sector_id in self.selected_color_sector_ids})
+        )
+        object.__setattr__(
+            self,
+            "selected_color_sector_ids",
+            selected_color_sector_ids,
+        )
+        if selected_color_sector_ids and self.process.color_accuracy != "lc":
+            raise ValueError("selected color-sector provenance requires LC accuracy")
+        known_sector_ids = {int(sector.id) for sector in self.color_plan.sectors}
+        if not set(selected_color_sector_ids) <= known_sector_ids:
+            raise ValueError(
+                "selected color-sector provenance references an absent LC sector"
+            )
+        if self.lc_topology_replay is not None:
+            if self.process.color_accuracy != "lc":
+                raise ValueError("LC topology replay requires LC color accuracy")
+            if self.color_coverage != "complete":
+                raise ValueError("LC topology replay requires complete color coverage")
+            if selected_color_sector_ids:
+                raise ValueError(
+                    "LC topology replay cannot carry generation-specialized color "
+                    "sectors"
+                )
+            if set(self.lc_topology_replay.physical_sector_ids) != {
+                int(sector.id) for sector in self.color_plan.sectors
+            }:
+                raise ValueError(
+                    "LC topology replay physical sectors do not match the color plan"
+                )
+        if self.helicity_recurrence is not None and (
+            self.helicity_coverage != "complete"
+            or bool(self.selected_source_helicities)
+        ):
+            raise ValueError(
+                "helicity recurrence metadata requires complete helicity coverage"
+            )
+        if self.helicity_materialization is not None:
+            if self.helicity_recurrence is None:
+                raise ValueError("helicity materialization requires a recurrence proof")
+            if self.helicity_materialization.dag is not self:
+                # The materialization object owns the same immutable payload but
+                # cannot hold the final self-reference after dataclass creation.
+                materialized = self.helicity_materialization.dag
+                if (
+                    materialized.currents != self.currents
+                    or materialized.interactions != self.interactions
+                    or materialized.amplitude_roots != self.amplitude_roots
+                ):
+                    raise ValueError(
+                        "helicity materialization does not describe this DAG"
+                    )
 
     @property
     def has_amplitudes(self) -> bool:
@@ -465,6 +530,36 @@ class GenericDAG:
                 str(label): helicity
                 for label, helicity in self.selected_source_helicities
             },
+            **(
+                {}
+                if not self.selected_color_sector_ids
+                else {"selected_color_sector_ids": list(self.selected_color_sector_ids)}
+            ),
+            **(
+                {}
+                if self.lc_topology_replay is None
+                else {"lc_topology_replay": self.lc_topology_replay.to_json_dict()}
+            ),
+            **(
+                {}
+                if self.helicity_recurrence is None
+                else {
+                    "helicity_recurrence": (
+                        {
+                            **self.helicity_recurrence.to_json_dict(),
+                            **(
+                                {}
+                                if self.helicity_materialization is None
+                                else {
+                                    "materialization": (
+                                        self.helicity_materialization.to_runtime_manifest()
+                                    )
+                                }
+                            ),
+                        }
+                    )
+                }
+            ),
             "interaction_count": len(self.interactions),
             "interaction_evaluation_count": self.interaction_evaluation_count,
             "interaction_fanout_histogram": [

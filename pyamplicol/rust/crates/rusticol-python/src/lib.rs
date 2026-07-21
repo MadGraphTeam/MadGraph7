@@ -395,6 +395,8 @@ struct Runtime {
     runtime: NativeRuntime,
 }
 
+// These signatures intentionally mirror the keyword-rich public Python ABI.
+#[allow(clippy::too_many_arguments)]
 #[pymethods]
 impl Runtime {
     #[new]
@@ -464,67 +466,70 @@ impl Runtime {
             .map_err(python_error)
     }
 
-    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16))]
+    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, helicity_by_point=None, color_flow_by_point=None, precision=16))]
     fn evaluate(
         &mut self,
         py: Python<'_>,
         momenta: &Bound<'_, PyAny>,
         helicities: Option<Vec<String>>,
         color_flows: Option<Vec<String>>,
+        helicity_by_point: Option<Vec<u32>>,
+        color_flow_by_point: Option<Vec<u32>>,
         precision: u32,
     ) -> PyResult<Py<PyAny>> {
         require_raw_f64_precision(precision).map_err(python_error)?;
-        let selectors = helicities.is_some() || color_flows.is_some();
         let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
-        let values = if selectors {
-            self.runtime
-                .evaluate_resolved_f64(
-                    &values,
-                    point_count,
-                    helicities.as_deref(),
-                    color_flows.as_deref(),
-                )
-                .map_err(python_error)?
-                .totals()
-        } else {
-            self.runtime
-                .evaluate_f64(&values, point_count)
-                .map_err(python_error)?
-        };
+        let values = self
+            .runtime
+            .evaluate_f64_with_selectors(
+                &values,
+                point_count,
+                helicities.as_deref(),
+                color_flows.as_deref(),
+                helicity_by_point.as_deref(),
+                color_flow_by_point.as_deref(),
+            )
+            .map_err(python_error)?;
         let result = PyList::new(py, values)?.into_any().unbind();
         self.emit_warnings(py)?;
         Ok(result)
     }
 
-    #[pyo3(signature=(momenta, repetitions, *, helicities=None, color_flows=None, precision=16))]
+    #[pyo3(signature=(momenta, repetitions, *, helicities=None, color_flows=None, helicity_by_point=None, color_flow_by_point=None, precision=16))]
     fn _benchmark_f64_wall_time(
         &mut self,
         momenta: &Bound<'_, PyAny>,
         repetitions: usize,
         helicities: Option<Vec<String>>,
         color_flows: Option<Vec<String>>,
+        helicity_by_point: Option<Vec<u32>>,
+        color_flow_by_point: Option<Vec<u32>>,
         precision: u32,
     ) -> PyResult<f64> {
         require_raw_f64_precision(precision).map_err(python_error)?;
         let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
         self.runtime
-            .benchmark_f64_wall_time(
+            .benchmark_f64_wall_time_with_selectors(
                 &values,
                 point_count,
                 repetitions,
                 helicities.as_deref(),
                 color_flows.as_deref(),
+                helicity_by_point.as_deref(),
+                color_flow_by_point.as_deref(),
             )
             .map_err(python_error)
     }
 
-    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16, include_values=false))]
+    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, helicity_by_point=None, color_flow_by_point=None, precision=16, include_values=false))]
     fn profile(
         &mut self,
         py: Python<'_>,
         momenta: &Bound<'_, PyAny>,
         helicities: Option<Vec<String>>,
         color_flows: Option<Vec<String>>,
+        helicity_by_point: Option<Vec<u32>>,
+        color_flow_by_point: Option<Vec<u32>>,
         precision: u32,
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
@@ -532,11 +537,13 @@ impl Runtime {
         let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
         let profiled = self
             .runtime
-            .evaluate_f64_profile(
+            .evaluate_f64_profile_with_selectors(
                 &values,
                 point_count,
                 helicities.as_deref(),
                 color_flows.as_deref(),
+                helicity_by_point.as_deref(),
+                color_flow_by_point.as_deref(),
             )
             .map_err(python_error)?;
         let result = runtime_profile_to_python(py, &profiled.profile, point_count)?;
@@ -547,13 +554,53 @@ impl Runtime {
         Ok(result.into_any().unbind())
     }
 
-    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16, include_values=false))]
+    #[pyo3(signature=(momenta, repetitions, *, helicities=None, color_flows=None, helicity_by_point=None, color_flow_by_point=None, precision=16, include_values=false))]
+    fn profile_repeated(
+        &mut self,
+        py: Python<'_>,
+        momenta: &Bound<'_, PyAny>,
+        repetitions: usize,
+        helicities: Option<Vec<String>>,
+        color_flows: Option<Vec<String>>,
+        helicity_by_point: Option<Vec<u32>>,
+        color_flow_by_point: Option<Vec<u32>>,
+        precision: u32,
+        include_values: bool,
+    ) -> PyResult<Py<PyAny>> {
+        require_raw_f64_precision(precision).map_err(python_error)?;
+        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let profiled = self
+            .runtime
+            .evaluate_f64_profile_repeated_with_selectors(
+                &values,
+                point_count,
+                repetitions,
+                helicities.as_deref(),
+                color_flows.as_deref(),
+                helicity_by_point.as_deref(),
+                color_flow_by_point.as_deref(),
+            )
+            .map_err(python_error)?;
+        let measured_points = point_count
+            .checked_mul(repetitions)
+            .ok_or_else(|| PyValueError::new_err("profile point count overflowed"))?;
+        let result = runtime_profile_to_python(py, &profiled.profile, measured_points)?;
+        if include_values {
+            result.set_item("values", PyList::new(py, profiled.values)?)?;
+        }
+        self.emit_warnings(py)?;
+        Ok(result.into_any().unbind())
+    }
+
+    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, helicity_by_point=None, color_flow_by_point=None, precision=16, include_values=false))]
     fn evaluate_profile(
         &mut self,
         py: Python<'_>,
         momenta: &Bound<'_, PyAny>,
         helicities: Option<Vec<String>>,
         color_flows: Option<Vec<String>>,
+        helicity_by_point: Option<Vec<u32>>,
+        color_flow_by_point: Option<Vec<u32>>,
         precision: u32,
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
@@ -562,6 +609,8 @@ impl Runtime {
             momenta,
             helicities,
             color_flows,
+            helicity_by_point,
+            color_flow_by_point,
             precision,
             include_values,
         )
@@ -599,7 +648,7 @@ impl Runtime {
         momenta: &Bound<'_, PyAny>,
         decimal_digit_precision: u32,
     ) -> PyResult<Py<PyAny>> {
-        self.evaluate(py, momenta, None, None, decimal_digit_precision)
+        self.evaluate(py, momenta, None, None, None, None, decimal_digit_precision)
     }
 
     #[pyo3(signature=(momenta, decimal_digit_precision, helicities=None, color_flows=None))]
@@ -896,6 +945,17 @@ fn runtime_profile_to_python<'py>(
     payload.set_item("eager_closure_time_s", profile.eager_closure_s)?;
     payload.set_item("eager_reduction_time_s", profile.eager_reduction_s)?;
     payload.set_item("eager_copy_out_time_s", profile.eager_copy_out_s)?;
+    payload.set_item("selector_planner_time_s", profile.selector_planner_s)?;
+    payload.set_item("selector_gather_time_s", profile.selector_gather_s)?;
+    payload.set_item("selector_scatter_time_s", profile.selector_scatter_s)?;
+    payload.set_item("selector_plan_kind", &profile.selector_plan_kind)?;
+    payload.set_item("selector_group_sizes", profile.selector_group_sizes.clone())?;
+    payload.set_item(
+        "selector_reordered_point_count",
+        profile.selector_reordered_point_count,
+    )?;
+    payload.set_item("selector_simd_lane_width", profile.selector_simd_lane_width)?;
+    payload.set_item("selector_simd_occupancy", profile.selector_simd_occupancy)?;
     Ok(payload)
 }
 

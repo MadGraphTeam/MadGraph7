@@ -258,6 +258,14 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--force",
+        dest="generation.mode",
+        action="store_const",
+        const="replace",
+        default=argparse.SUPPRESS,
+        help="atomically replace an existing output artifact",
+    )
+    parser.add_argument(
         "--workers",
         dest="generation.workers",
         type=_auto_int,

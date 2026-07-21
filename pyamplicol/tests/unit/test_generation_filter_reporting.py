@@ -4,12 +4,15 @@ from __future__ import annotations
 import pyamplicol.generation.service as service_module
 from pyamplicol.api import ProcessRequest
 from pyamplicol.config import GenerationConfig, GenerationValidationConfig
+from pyamplicol.generation.helicity_replay import (
+    HELICITY_RECURRENCE_CONTRACT_VERSION,
+)
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
-def test_generation_reports_only_structural_reduction() -> None:
+def test_generation_reports_structural_reduction_and_helicity_recurrence() -> None:
     model = BuiltinSMModel()
     backend = service_module.GenerationBackend(GenerationConfig(), None)
     process_ir = build_process_ir("d d~ > z", color_accuracy="lc")
@@ -34,10 +37,17 @@ def test_generation_reports_only_structural_reduction() -> None:
         phase=PhaseHandle("test", None, 1),
     )
 
-    assert set(prepared.filters) == {"structural_helicity_reduction"}
+    assert set(prepared.filters) == {
+        "structural_helicity_reduction",
+        "helicity_recurrence",
+    }
     structural = prepared.filters["structural_helicity_reduction"]
     assert isinstance(structural, dict)
     assert structural["mode"] == "proven global-helicity-flip equivalence"
+    recurrence = prepared.filters["helicity_recurrence"]
+    assert isinstance(recurrence, dict)
+    assert recurrence["contract_version"] == HELICITY_RECURRENCE_CONTRACT_VERSION
+    assert recurrence["residual_current_count"] == 0
     assert len(prepared.validation_points) == 10
     assert [point.seed for point in prepared.validation_points] == list(
         range(12345, 12355)

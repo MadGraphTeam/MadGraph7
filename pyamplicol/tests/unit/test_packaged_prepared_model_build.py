@@ -11,7 +11,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "build_backend"))
 
-from prepared_models import stage_packaged_prepared_models  # noqa: E402
+from prepared_models import (  # noqa: E402
+    stage_packaged_prepared_models,
+    write_candidate_packaged_prepared_model_asset,
+)
 
 
 def _overlay(tmp_path: Path) -> Path:
@@ -59,6 +62,28 @@ def _overlay(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return overlay
+
+
+def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
+    tmp_path: Path,
+) -> None:
+    asset_root = ROOT / "src/pyamplicol/assets/prepared_models"
+    source_bundle = asset_root / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
+    expected_metadata = json.loads(
+        (asset_root / "built-in-sm-jit-o3-aarch64.metadata.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    metadata_path, bundle_path = write_candidate_packaged_prepared_model_asset(
+        ROOT,
+        source_bundle,
+        tmp_path / "prepared",
+        architecture="aarch64",
+    )
+
+    assert json.loads(metadata_path.read_text(encoding="utf-8")) == expected_metadata
+    assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 
 def test_candidate_wheel_staging_accepts_exact_packaged_model(

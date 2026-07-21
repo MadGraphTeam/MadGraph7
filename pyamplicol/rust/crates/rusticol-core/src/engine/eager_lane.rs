@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 
+use super::evaluation::accumulate_selected_lc_replay_resolved_f64;
 use super::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -15,12 +16,18 @@ pub(super) struct EagerParameterProjection {
     pub(super) entries: Vec<EagerParameterProjectionEntry>,
 }
 
+#[allow(dead_code)] // Includes the order-preserving per-point benchmark reference buffers.
 pub(super) struct EagerNativeRuntime {
     scheduler: crate::EagerExecutionRuntime,
     backend: PreparedEvaluatorBackend,
     backend_name: String,
     parameter_projection: EagerParameterProjection,
     raw_sum_groups: Vec<RawSumGroup>,
+    lc_resolved_replay_plan: Option<Arc<LcResolvedReplayPlan>>,
+    lc_resolved_replay_selection_cache:
+        Option<(LcResolvedReplaySelectionKey, Arc<LcResolvedReplaySelection>)>,
+    lc_replay_expanded_batch: Vec<Vec<[f64; 4]>>,
+    lc_replay_seen_labels: Vec<bool>,
     color_contraction: Option<ColorContractionRuntime>,
     initial_values: Vec<crate::EagerComplex64>,
     momenta: Vec<f64>,
@@ -29,6 +36,11 @@ pub(super) struct EagerNativeRuntime {
     color_group_scratch: Vec<crate::EagerComplex64>,
     reduced: Vec<f64>,
     selected_groups: Vec<u32>,
+    point_selector_offsets: Vec<usize>,
+    point_selector_groups: Vec<u32>,
+    point_selector_group_weights: Vec<f64>,
+    point_selector_members: Option<Vec<Vec<(usize, usize, f64)>>>,
+    point_selector_pairs: Vec<(u32, f64)>,
     source_schedule: Option<EagerSourceSchedule>,
     source_wavefunction_scratch: Vec<Complex<f64>>,
 }
@@ -77,6 +89,10 @@ impl EagerNativeRuntime {
             backend_name,
             parameter_projection,
             raw_sum_groups,
+            lc_resolved_replay_plan: None,
+            lc_resolved_replay_selection_cache: None,
+            lc_replay_expanded_batch: Vec::new(),
+            lc_replay_seen_labels: Vec::new(),
             color_contraction,
             initial_values: Vec::new(),
             momenta: Vec::new(),
@@ -85,6 +101,11 @@ impl EagerNativeRuntime {
             color_group_scratch: Vec::new(),
             reduced: Vec::new(),
             selected_groups: Vec::new(),
+            point_selector_offsets: Vec::new(),
+            point_selector_groups: Vec::new(),
+            point_selector_group_weights: Vec::new(),
+            point_selector_members: None,
+            point_selector_pairs: Vec::new(),
             source_schedule: None,
             source_wavefunction_scratch: Vec::new(),
         }
@@ -107,6 +128,11 @@ impl EagerNativeRuntime {
         common: &mut ExecutionRuntime,
         batch: &[Vec<[f64; 4]>],
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if common.lc_topology_replay_enabled {
+            let (resolved, profile) =
+                self.run_resolved_f64_with_lc_topology_replay(common, batch, None, None, false)?;
+            return Ok((sum_eager_resolved(&resolved), profile));
+        }
         if batch.is_empty() {
             return Err(RusticolError::invalid_argument(
                 "eager evaluation requires at least one point",
@@ -114,7 +140,7 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+        let (source_fill, momentum_setup) = prepare_eager_inputs(
             common,
             batch,
             &mut self.initial_values,
@@ -152,8 +178,8 @@ impl EagerNativeRuntime {
         Ok((
             values,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill),
+                momentum_setup_s: profile_duration_seconds(momentum_setup),
                 stage_evaluator_call_s: execute_s,
                 stage_evaluator_s: execute_s,
                 total_s: total_start.elapsed().as_secs_f64(),
@@ -162,11 +188,142 @@ impl EagerNativeRuntime {
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Retained as the order-preserving benchmark reference lane.
+    pub(super) fn run_f64_by_point_selectors(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+    ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if common.lc_topology_replay_enabled {
+            return Err(RusticolError::integrity(
+                "eager topology-replay per-point selectors must use the shared partition planner",
+            ));
+        }
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("per-point eager selection requires physics metadata")
+        })?;
+        if self.point_selector_members.is_none() {
+            self.point_selector_members = Some(build_eager_selector_members(
+                &self.raw_sum_groups,
+                self.color_contraction.is_some(),
+                &physics,
+            )?);
+        }
+        fill_eager_group_sets_by_point(
+            &self.raw_sum_groups,
+            self.point_selector_members
+                .as_deref()
+                .expect("selector members initialized"),
+            &physics,
+            batch.len(),
+            selected_helicity_ids,
+            selected_color_ids,
+            helicity_by_point,
+            color_by_point,
+            &mut self.point_selector_offsets,
+            &mut self.point_selector_groups,
+            &mut self.point_selector_group_weights,
+            &mut self.point_selector_pairs,
+        )?;
+        let offsets = std::mem::take(&mut self.point_selector_offsets);
+        let groups = std::mem::take(&mut self.point_selector_groups);
+        let group_weights = std::mem::take(&mut self.point_selector_group_weights);
+        let mut reduced = std::mem::take(&mut self.reduced);
+        reduced.resize(batch.len(), 0.0);
+        let result = self.run_coherent_group_sets_by_point_f64_into(
+            common,
+            batch,
+            &offsets,
+            &groups,
+            &group_weights,
+            &mut reduced,
+        );
+        self.point_selector_offsets = offsets;
+        self.point_selector_groups = groups;
+        self.point_selector_group_weights = group_weights;
+        self.reduced = reduced;
+        let profile = result?;
+        Ok((self.reduced.clone(), profile))
+    }
+
+    #[allow(dead_code)] // Retained as the order-preserving benchmark reference lane.
+    pub(super) fn run_coherent_group_sets_by_point_f64_into(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: &[Vec<[f64; 4]>],
+        group_offsets: &[usize],
+        active_groups: &[u32],
+        active_group_weights: &[f64],
+        reduced: &mut [f64],
+    ) -> RusticolResult<RuntimeProfile> {
+        if batch.is_empty() {
+            return Err(RusticolError::invalid_argument(
+                "eager evaluation requires at least one point",
+            ));
+        }
+        if reduced.len() != batch.len() {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager per-point selector output has length {}, expected {}",
+                reduced.len(),
+                batch.len()
+            )));
+        }
+        let total_start = Instant::now();
+        let point_count = batch.len();
+        let (source_fill, momentum_setup) = prepare_eager_inputs(
+            common,
+            batch,
+            &mut self.initial_values,
+            &mut self.momenta,
+            &mut self.source_schedule,
+            &mut self.source_wavefunction_scratch,
+        )?;
+        project_model_parameters(
+            &self.parameter_projection,
+            &common.model_parameter_values_f64,
+            &mut self.model_parameters,
+        )?;
+        let execute_start = Instant::now();
+        self.scheduler.evaluate_point_selected_group_sets_into(
+            &mut self.backend,
+            group_offsets,
+            active_groups,
+            active_group_weights,
+            point_count,
+            &self.initial_values,
+            &self.momenta,
+            &self.model_parameters,
+            reduced,
+        )?;
+        let execute_s = execute_start.elapsed().as_secs_f64();
+        for value in reduced {
+            *value *= common.normalization_factor;
+        }
+        Ok(RuntimeProfile {
+            source_fill_s: profile_duration_seconds(source_fill),
+            momentum_setup_s: profile_duration_seconds(momentum_setup),
+            stage_evaluator_call_s: execute_s,
+            stage_evaluator_s: execute_s,
+            total_s: total_start.elapsed().as_secs_f64(),
+            ..RuntimeProfile::default()
+        })
+    }
+
     pub(super) fn run_f64_profile(
         &mut self,
         common: &mut ExecutionRuntime,
         batch: &[Vec<[f64; 4]>],
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if common.lc_topology_replay_enabled {
+            let (resolved, profile) =
+                self.run_resolved_f64_with_lc_topology_replay(common, batch, None, None, true)?;
+            return Ok((sum_eager_resolved(&resolved), profile));
+        }
         if batch.is_empty() {
             return Err(RusticolError::invalid_argument(
                 "eager evaluation requires at least one point",
@@ -174,7 +331,7 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+        let (source_fill, momentum_setup) = prepare_eager_inputs(
             common,
             batch,
             &mut self.initial_values,
@@ -211,8 +368,8 @@ impl EagerNativeRuntime {
         Ok((
             values,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill),
+                momentum_setup_s: profile_duration_seconds(momentum_setup),
                 stage_evaluator_call_s: eager.total.as_secs_f64(),
                 stage_evaluator_s: eager.total.as_secs_f64(),
                 reduction_s: eager.reduction.as_secs_f64(),
@@ -239,6 +396,25 @@ impl EagerNativeRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        if common.lc_topology_replay_enabled {
+            return self.run_resolved_f64_with_lc_topology_replay(
+                common,
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                false,
+            );
+        }
+        self.run_resolved_f64_materialized(common, batch, selected_helicity_ids, selected_color_ids)
+    }
+
+    fn run_resolved_f64_materialized(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
         if batch.is_empty() {
             return Err(RusticolError::invalid_argument(
                 "eager evaluation requires at least one point",
@@ -246,7 +422,7 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+        let (source_fill, momentum_setup) = prepare_eager_inputs(
             common,
             batch,
             &mut self.initial_values,
@@ -322,8 +498,8 @@ impl EagerNativeRuntime {
         Ok((
             resolved,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s,
+                source_fill_s: profile_duration_seconds(source_fill),
+                momentum_setup_s: profile_duration_seconds(momentum_setup),
                 stage_evaluator_call_s: execute_s,
                 stage_evaluator_s: execute_s,
                 reduction_s,
@@ -340,6 +516,30 @@ impl EagerNativeRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        if common.lc_topology_replay_enabled {
+            return self.run_resolved_f64_with_lc_topology_replay(
+                common,
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                true,
+            );
+        }
+        self.run_resolved_f64_profile_materialized(
+            common,
+            batch,
+            selected_helicity_ids,
+            selected_color_ids,
+        )
+    }
+
+    fn run_resolved_f64_profile_materialized(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
         if batch.is_empty() {
             return Err(RusticolError::invalid_argument(
                 "eager evaluation requires at least one point",
@@ -347,7 +547,7 @@ impl EagerNativeRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
-        let (source_fill_s, momentum_setup_s) = prepare_eager_inputs(
+        let (source_fill, momentum_setup) = prepare_eager_inputs(
             common,
             batch,
             &mut self.initial_values,
@@ -418,16 +618,17 @@ impl EagerNativeRuntime {
             selected_helicity_ids,
             selected_color_ids,
         )?;
-        let resolved_reduction_s = reduction_start.elapsed().as_secs_f64();
-        let reduction_s = eager.reduction.as_secs_f64() + resolved_reduction_s;
+        let resolved_reduction = reduction_start.elapsed();
+        let eager_execution = eager.total + resolved_reduction;
+        let reduction = eager.reduction + resolved_reduction;
         Ok((
             resolved,
             RuntimeProfile {
-                source_fill_s,
-                momentum_setup_s,
-                stage_evaluator_call_s: eager.total.as_secs_f64(),
-                stage_evaluator_s: eager.total.as_secs_f64(),
-                reduction_s,
+                source_fill_s: profile_duration_seconds(source_fill),
+                momentum_setup_s: profile_duration_seconds(momentum_setup),
+                stage_evaluator_call_s: eager_execution.as_secs_f64(),
+                stage_evaluator_s: eager_execution.as_secs_f64(),
+                reduction_s: reduction.as_secs_f64(),
                 total_s: total_start.elapsed().as_secs_f64(),
                 eager_initialize_s: eager.initialize.as_secs_f64(),
                 eager_gather_s: eager.gather.as_secs_f64(),
@@ -437,12 +638,213 @@ impl EagerNativeRuntime {
                 eager_scatter_finalization_s: (eager.invocation_scatter + eager.finalization)
                     .as_secs_f64(),
                 eager_closure_s: eager.closure.as_secs_f64(),
-                eager_reduction_s: reduction_s,
+                eager_reduction_s: reduction.as_secs_f64(),
                 eager_copy_out_s: eager.copy_out.as_secs_f64(),
                 ..RuntimeProfile::default()
             },
         ))
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_resolved_f64_with_lc_topology_replay(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        profiled: bool,
+    ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        if batch.is_empty() {
+            return Err(RusticolError::invalid_argument(
+                "eager evaluation requires at least one point",
+            ));
+        }
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("eager LC topology replay requires resolved physics metadata")
+        })?;
+        let replay_plan = if let Some(plan) = &self.lc_resolved_replay_plan {
+            Arc::clone(plan)
+        } else {
+            let materialized_sector_by_id =
+                common.lc_materialized_sectors_by_id_from_groups(&physics, &self.raw_sum_groups)?;
+            let plan = Arc::new(physics.lc_resolved_replay_plan(
+                &common.lc_topology_replay_public_mappings,
+                &common.lc_topology_replay_routes,
+                &materialized_sector_by_id,
+            )?);
+            self.lc_resolved_replay_plan = Some(Arc::clone(&plan));
+            plan
+        };
+        let selection_key =
+            physics.lc_resolved_replay_selection_key(selected_helicity_ids, selected_color_ids)?;
+        let selection = if let Some((key, selection)) = &self.lc_resolved_replay_selection_cache
+            && key == &selection_key
+        {
+            Arc::clone(selection)
+        } else {
+            let selection = Arc::new(
+                physics
+                    .select_lc_resolved_replay_plan_for_key(replay_plan.as_ref(), &selection_key)?,
+            );
+            self.lc_resolved_replay_selection_cache = Some((selection_key, Arc::clone(&selection)));
+            selection
+        };
+        let total_start = Instant::now();
+        let point_count = batch.len();
+        let component_count = selection.helicity_indices.len() * selection.color_indices.len();
+        let mut values = vec![0.0; point_count * component_count];
+        // Saved SymJIT applications do not currently guarantee Rust's AArch64
+        // callee-saved FP registers. Keep profile state produced by one call
+        // in memory until all calls have completed instead of retaining f64
+        // accumulators across the next kernel invocation.
+        let mut sector_profiles = Vec::new();
+        let mappings = common.lc_topology_replay_mappings.clone();
+        let mappings_per_chunk = replay_mappings_per_expanded_batch(point_count);
+        let mut expanded_batch = std::mem::take(&mut self.lc_replay_expanded_batch);
+        let mut seen_labels = std::mem::take(&mut self.lc_replay_seen_labels);
+        let result = (|| {
+            for source_group in &selection.source_groups {
+                for chunk_start in
+                    (0..source_group.mapping_indices.len()).step_by(mappings_per_chunk)
+                {
+                    let chunk_end = usize::min(
+                        chunk_start + mappings_per_chunk,
+                        source_group.mapping_indices.len(),
+                    );
+                    let mapping_indices = &source_group.mapping_indices[chunk_start..chunk_end];
+                    let entry_chunk = &source_group.entries[chunk_start..chunk_end];
+                    let identity_mapping =
+                        mapping_indices.len() == 1 && mappings[mapping_indices[0]].is_empty();
+                    let evaluation_batch = if identity_mapping {
+                        batch
+                    } else {
+                        let expanded_len = fill_lc_replay_expanded_batch(
+                            &mut expanded_batch,
+                            &mut seen_labels,
+                            batch,
+                            common.external_count,
+                            mapping_indices,
+                            &mappings,
+                        )?;
+                        &expanded_batch[..expanded_len]
+                    };
+                    let (materialized, sector_profile) = if profiled {
+                        self.run_resolved_f64_profile_materialized(
+                            common,
+                            evaluation_batch,
+                            Some(&source_group.helicity_ids),
+                            Some(&source_group.color_ids),
+                        )?
+                    } else {
+                        self.run_resolved_f64_materialized(
+                            common,
+                            evaluation_batch,
+                            Some(&source_group.helicity_ids),
+                            Some(&source_group.color_ids),
+                        )?
+                    };
+                    let reduction_start = Instant::now();
+                    accumulate_selected_lc_replay_resolved_f64(
+                        &mut values,
+                        point_count,
+                        &materialized,
+                        entry_chunk,
+                        source_group.source_component_count,
+                        component_count,
+                    )?;
+                    sector_profiles.push((sector_profile, reduction_start.elapsed()));
+                }
+            }
+            let mut profile = RuntimeProfile::default();
+            for (sector_profile, replay_reduction) in &sector_profiles {
+                profile.add_sector(sector_profile);
+                let replay_reduction_s = profile_duration_seconds(*replay_reduction);
+                profile.stage_evaluator_call_s += replay_reduction_s;
+                profile.stage_evaluator_s += replay_reduction_s;
+                profile.reduction_s += replay_reduction_s;
+                profile.eager_reduction_s += replay_reduction_s;
+            }
+            profile.total_s = total_start.elapsed().as_secs_f64();
+            Ok((
+                ResolvedValues {
+                    values,
+                    point_count,
+                    helicity_indices: selection.helicity_indices.clone(),
+                    color_indices: selection.color_indices.clone(),
+                },
+                profile,
+            ))
+        })();
+        self.lc_replay_expanded_batch = expanded_batch;
+        self.lc_replay_seen_labels = seen_labels;
+        result
+    }
+}
+
+fn fill_lc_replay_expanded_batch(
+    target: &mut Vec<Vec<[f64; 4]>>,
+    seen_labels: &mut Vec<bool>,
+    batch: &[Vec<[f64; 4]>],
+    expected_legs: usize,
+    mapping_indices: &[usize],
+    mappings: &[Vec<(usize, usize)>],
+) -> RusticolResult<usize> {
+    let required_rows = batch
+        .len()
+        .checked_mul(mapping_indices.len())
+        .ok_or_else(|| RusticolError::invalid_argument("LC topology replay batch overflows"))?;
+    if target.len() < required_rows {
+        target.resize_with(required_rows, Vec::new);
+    }
+    seen_labels.resize(expected_legs, false);
+    let mut target_row = 0;
+    for mapping_index in mapping_indices {
+        let mapping = mappings.get(*mapping_index).ok_or_else(|| {
+            RusticolError::integrity("LC topology replay references an unknown mapping")
+        })?;
+        seen_labels.fill(false);
+        for (representative_index, sector_index) in mapping {
+            if *representative_index >= expected_legs || *sector_index >= expected_legs {
+                return Err(RusticolError::invalid_argument(
+                    "LC topology replay label permutation references an out-of-range external leg",
+                ));
+            }
+            if seen_labels[*representative_index] {
+                return Err(RusticolError::invalid_argument(
+                    "LC topology replay label permutation contains a duplicate representative label",
+                ));
+            }
+            seen_labels[*representative_index] = true;
+        }
+        for point in batch {
+            if point.len() != expected_legs {
+                return Err(RusticolError::invalid_argument(format!(
+                    "LC topology replay point has {} external legs, expected {expected_legs}",
+                    point.len(),
+                )));
+            }
+            let mapped = &mut target[target_row];
+            mapped.clear();
+            mapped.extend_from_slice(point);
+            for (representative_index, sector_index) in mapping {
+                mapped[*representative_index] = point[*sector_index];
+            }
+            target_row += 1;
+        }
+    }
+    Ok(required_rows)
+}
+
+fn sum_eager_resolved(resolved: &ResolvedValues<f64>) -> Vec<f64> {
+    let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+    if component_count == 0 {
+        return vec![0.0; resolved.point_count];
+    }
+    resolved
+        .values
+        .chunks_exact(component_count)
+        .map(|components| components.iter().sum())
+        .collect()
 }
 
 fn fill_selected_eager_group_ids(
@@ -484,6 +886,128 @@ fn fill_selected_eager_group_ids(
     }
     active.sort_unstable();
     active.dedup();
+    Ok(())
+}
+
+#[allow(dead_code)] // Used by the order-preserving benchmark reference lane.
+fn build_eager_selector_members(
+    groups: &[RawSumGroup],
+    contracted_color: bool,
+    physics: &PhysicsRuntime,
+) -> RusticolResult<Vec<Vec<(usize, usize, f64)>>> {
+    groups
+        .iter()
+        .map(|group| {
+            let reduction = physics
+                .reduction_by_group_id
+                .get(&group.id)
+                .ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "resolved eager metadata is missing coherent group {}",
+                        group.id
+                    ))
+                })?;
+            if contracted_color {
+                physics
+                    .normalized_helicity_weights(reduction)
+                    .map(|members| {
+                        members
+                            .into_iter()
+                            .map(|(helicity, weight)| (helicity, 0, weight))
+                            .collect()
+                    })
+            } else {
+                physics.normalized_member_weights(reduction)
+            }
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // Used by the order-preserving benchmark reference lane.
+fn fill_eager_group_sets_by_point(
+    groups: &[RawSumGroup],
+    selector_members: &[Vec<(usize, usize, f64)>],
+    physics: &PhysicsRuntime,
+    point_count: usize,
+    selected_helicity_ids: Option<&BTreeSet<String>>,
+    selected_color_ids: Option<&BTreeSet<String>>,
+    helicity_by_point: Option<&[u32]>,
+    color_by_point: Option<&[u32]>,
+    offsets: &mut Vec<usize>,
+    active_groups: &mut Vec<u32>,
+    active_group_weights: &mut Vec<f64>,
+    point_pairs: &mut Vec<(u32, f64)>,
+) -> RusticolResult<()> {
+    if selector_members.len() != groups.len() {
+        return Err(RusticolError::integrity(
+            "eager selector memberships do not match coherent groups",
+        ));
+    }
+    let selected_helicities = physics
+        .selected_helicity_indices(selected_helicity_ids)?
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let selected_colors = physics
+        .selected_color_indices(selected_color_ids)?
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let helicity_matches = |index: usize, point: usize| {
+        helicity_by_point
+            .map(|values| values[point] as usize == index)
+            .unwrap_or_else(|| selected_helicities.contains(&index))
+    };
+    let color_matches = |index: usize, point: usize| {
+        color_by_point
+            .map(|values| values[point] as usize == index)
+            .unwrap_or_else(|| selected_colors.contains(&index))
+    };
+
+    offsets.clear();
+    active_groups.clear();
+    active_group_weights.clear();
+    offsets.try_reserve(point_count + 1).map_err(|error| {
+        RusticolError::invalid_argument(format!(
+            "could not reserve eager selector offsets: {error}"
+        ))
+    })?;
+    offsets.push(0);
+    point_pairs.try_reserve(groups.len()).map_err(|error| {
+        RusticolError::invalid_argument(format!(
+            "could not reserve eager selector group scratch: {error}"
+        ))
+    })?;
+    for point in 0..point_count {
+        point_pairs.clear();
+        for (group, members) in groups.iter().zip(selector_members) {
+            let weight = members
+                .iter()
+                .filter(|(helicity, color, _)| {
+                    helicity_matches(*helicity, point) && color_matches(*color, point)
+                })
+                .map(|(_, _, weight)| *weight)
+                .sum::<f64>();
+            if weight == 0.0 {
+                continue;
+            }
+            let group_id = u32::try_from(group.id).map_err(|_| {
+                RusticolError::integrity(format!(
+                    "eager coherent group {} does not fit the selector-domain ABI",
+                    group.id
+                ))
+            })?;
+            point_pairs.push((group_id, weight));
+        }
+        point_pairs.sort_unstable_by_key(|(group_id, _)| *group_id);
+        if point_pairs.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+            return Err(RusticolError::integrity(
+                "eager physical selector maps duplicate coherent groups",
+            ));
+        }
+        active_groups.extend(point_pairs.iter().map(|(group_id, _)| *group_id));
+        active_group_weights.extend(point_pairs.iter().map(|(_, weight)| *weight));
+        offsets.push(active_groups.len());
+    }
     Ok(())
 }
 
@@ -733,7 +1257,7 @@ fn prepare_eager_inputs(
     momenta: &mut Vec<f64>,
     source_schedule: &mut Option<EagerSourceSchedule>,
     source_wavefunction_scratch: &mut Vec<Complex<f64>>,
-) -> RusticolResult<(f64, f64)> {
+) -> RusticolResult<(Duration, Duration)> {
     let point_count = batch.len();
     let value_len = point_count
         .checked_mul(common.value_parameter_count)
@@ -775,7 +1299,7 @@ fn prepare_eager_inputs(
             }
         }
     }
-    let source_fill_s = source_started.elapsed().as_secs_f64();
+    let source_fill = source_started.elapsed();
 
     let momentum_started = Instant::now();
     for (point_index, point) in batch.iter().enumerate() {
@@ -813,7 +1337,7 @@ fn prepare_eager_inputs(
             }
         }
     }
-    Ok((source_fill_s, momentum_started.elapsed().as_secs_f64()))
+    Ok((source_fill, momentum_started.elapsed()))
 }
 
 fn build_eager_source_schedule(

@@ -2,10 +2,6 @@
 
 use super::super::*;
 
-pub(crate) fn artifact_path(root: &Path, value: &str) -> RusticolResult<PathBuf> {
-    Ok(root.join(confined_internal_path(value, "evaluator artifact path")?))
-}
-
 pub(crate) fn apply_input_crossing_map(
     batch: Vec<Vec<[f64; 4]>>,
     expected_legs: usize,

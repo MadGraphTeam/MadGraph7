@@ -2,12 +2,12 @@
 
 use super::*;
 
-pub(super) fn load_execution_manifest(
+pub(super) fn load_execution_manifest_with_store(
     manifest: ExecutionManifest,
-    root: &Path,
+    payloads: &EvaluatorPayloadStore,
 ) -> RusticolResult<ExecutionRuntime> {
     validate_execution_manifest(&manifest)?;
-    ExecutionRuntime::load_from_manifest(manifest, root)
+    ExecutionRuntime::load_from_manifest_with_store(manifest, payloads)
 }
 
 fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<()> {
@@ -86,6 +86,78 @@ fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<(
     validate_generic_amplitudes(manifest)?;
     validate_generic_stage_evaluators(manifest)?;
     validate_lc_topology_replay(manifest)?;
+    if let Some(sum_manifest) = manifest.helicity_sum_execution.as_deref() {
+        if sum_manifest.helicity_sum_execution.is_some()
+            || !sum_manifest.helicity_selector_executions.is_empty()
+        {
+            return Err(RusticolError::integrity(
+                "compiled helicity-sum execution contains a recursively nested auxiliary execution",
+            ));
+        }
+        validate_execution_manifest(sum_manifest)?;
+    }
+    let mut helicity_selector_domain_ids = BTreeSet::new();
+    for record in &manifest.helicity_selector_executions {
+        for selector_domain_id in &record.selector_domain_ids {
+            if !helicity_selector_domain_ids.insert(*selector_domain_id) {
+                return Err(RusticolError::integrity(format!(
+                    "compiled helicity-selector executions contain duplicate selector domain {selector_domain_id}"
+                )));
+            }
+        }
+        let selector_manifest = record.execution.as_ref();
+        if selector_manifest.helicity_sum_execution.is_some()
+            || !selector_manifest.color_selector_executions.is_empty()
+        {
+            return Err(RusticolError::integrity(
+                "compiled helicity-selector execution contains an unsupported auxiliary execution",
+            ));
+        }
+        if !selector_manifest.helicity_selector_executions.is_empty()
+            && record.schedule_mode != HelicitySelectorScheduleMode::NestedRuntime
+        {
+            return Err(RusticolError::integrity(
+                "only a nested-runtime helicity-selector execution may contain closure lanes",
+            ));
+        }
+        let has_materialization = selector_manifest
+            .runtime_schema
+            .helicity_recurrence
+            .as_ref()
+            .is_some_and(|recurrence| recurrence.materialization.is_some());
+        match record.schedule_mode {
+            HelicitySelectorScheduleMode::ParentClosure if has_materialization => {
+                return Err(RusticolError::integrity(
+                    "parent-closure helicity-selector execution cannot contain helicity materialization",
+                ));
+            }
+            HelicitySelectorScheduleMode::NestedRuntime if !has_materialization => {
+                return Err(RusticolError::integrity(
+                    "nested-runtime helicity-selector execution requires helicity materialization",
+                ));
+            }
+            _ => {}
+        }
+        validate_execution_manifest(selector_manifest)?;
+    }
+    let mut color_sector_ids = BTreeSet::new();
+    for lane in &manifest.color_selector_executions {
+        if !color_sector_ids.insert(lane.materialized_sector_id) {
+            return Err(RusticolError::integrity(format!(
+                "compiled color-selector executions contain duplicate materialized sector {}",
+                lane.materialized_sector_id
+            )));
+        }
+        if lane.execution.helicity_sum_execution.is_some()
+            || !lane.execution.helicity_selector_executions.is_empty()
+            || !lane.execution.color_selector_executions.is_empty()
+        {
+            return Err(RusticolError::integrity(
+                "compiled color-selector execution cannot contain auxiliary executions",
+            ));
+        }
+        validate_execution_manifest(lane.execution.as_ref())?;
+    }
     Ok(())
 }
 
@@ -972,12 +1044,6 @@ fn validate_generic_stages(manifest: &ExecutionManifest) -> RusticolResult<()> {
                 )));
             }
             for interaction_id in &stage.interaction_ids {
-                if *interaction_id >= manifest.dag_summary.interaction_count {
-                    return Err(RusticolError::artifact(format!(
-                        "generic compact stage {} references invalid interaction {interaction_id}",
-                        stage.stage_index
-                    )));
-                }
                 if !seen_interaction_ids.insert(*interaction_id) {
                     return Err(RusticolError::artifact(format!(
                         "generic compact stage {} repeats interaction {interaction_id}",

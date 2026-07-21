@@ -138,6 +138,102 @@ fn source_record(
 }
 
 #[test]
+fn runtime_source_state_selects_declared_helicity_and_applies_factor() {
+    let mut value = source_value(21, 21, "self-conjugate", "vector", 4);
+    value["source_ir"]["states"] = json!([
+        {"helicity": 1, "chirality": 0, "spin_state": 1},
+        {"helicity": -1, "chirality": 0, "spin_state": -1},
+    ]);
+    let source: GenericSourceRecordManifest =
+        serde_json::from_value(value).expect("runtime-selectable vector source");
+    let runtime_state = ExecutionRuntime::runtime_source_state(&source, 1, c64(0.0, 1.0))
+        .expect("declared runtime source state");
+    assert_eq!(runtime_state.state.helicity, -1);
+
+    let point = [[10.0, 2.0, 1.0, 9.746_794_344_808_963]];
+    let masses = BTreeMap::new();
+    let mut raw = vec![c64(0.0, 0.0); 4];
+    ExecutionRuntime::write_source_wavefunction_with_state(
+        &source,
+        &runtime_state.state,
+        1,
+        &masses,
+        &point,
+        &mut raw,
+    )
+    .expect("raw selected source");
+    let mut factored = vec![c64(0.0, 0.0); 4];
+    ExecutionRuntime::fill_sources_row_with_states(
+        std::slice::from_ref(&source),
+        std::slice::from_ref(&runtime_state),
+        1,
+        &masses,
+        &mut factored,
+        &point,
+    )
+    .expect("factored selected source");
+    for (raw_component, factored_component) in raw.iter().zip(&factored) {
+        assert_eq!(*factored_component, *raw_component * c64(0.0, 1.0));
+    }
+}
+
+#[test]
+fn inactive_runtime_source_state_zero_fills_its_slot() {
+    let source = source_record(21, 21, "self-conjugate", "vector", 4);
+    let runtime_state = ExecutionRuntime::inactive_runtime_source_state(&source)
+        .expect("inactive runtime source state");
+    let point = [[10.0, 2.0, 1.0, 9.746_794_344_808_963]];
+    let masses = BTreeMap::new();
+    let mut row = vec![c64(7.0, -3.0); 4];
+    ExecutionRuntime::fill_sources_row_with_states(
+        std::slice::from_ref(&source),
+        std::slice::from_ref(&runtime_state),
+        1,
+        &masses,
+        &mut row,
+        &point,
+    )
+    .expect("zero-filled inactive source");
+    assert!(row.iter().all(|value| *value == c64(0.0, 0.0)));
+}
+
+#[test]
+fn runtime_source_helicity_lookup_is_exact_and_rejects_ambiguity() {
+    let mut value = source_value(21, 21, "self-conjugate", "vector", 4);
+    value["source_ir"]["states"] = json!([
+        {"helicity": 1, "chirality": 0, "spin_state": 1},
+        {"helicity": -1, "chirality": 0, "spin_state": -1},
+    ]);
+    let source: GenericSourceRecordManifest =
+        serde_json::from_value(value.clone()).expect("runtime-selectable vector source");
+    assert_eq!(
+        ExecutionRuntime::runtime_source_state_index_for_helicity(&source, 1).unwrap(),
+        Some(0)
+    );
+    assert_eq!(
+        ExecutionRuntime::runtime_source_state_index_for_helicity(&source, -1).unwrap(),
+        Some(1)
+    );
+    assert_eq!(
+        ExecutionRuntime::runtime_source_state_index_for_helicity(&source, 0).unwrap(),
+        None
+    );
+
+    value["source_ir"]["states"] = json!([
+        {"helicity": 1, "chirality": -1, "spin_state": -1},
+        {"helicity": 1, "chirality": 1, "spin_state": 1},
+    ]);
+    let ambiguous: GenericSourceRecordManifest =
+        serde_json::from_value(value).expect("same-helicity source states");
+    assert!(
+        ExecutionRuntime::runtime_source_state_index_for_helicity(&ambiguous, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("multiple runtime states")
+    );
+}
+
+#[test]
 fn source_manifest_requires_typed_source_and_crossing_records() {
     for field in ["source_ir", "applied_crossing"] {
         let mut missing = source_value(810_001, -810_001, "particle", "fermion", 2);

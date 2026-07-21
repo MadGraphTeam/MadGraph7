@@ -7,6 +7,24 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEST_ARTIFACT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(feature = "f64-symjit")]
+const PYTHON_PACBIN_GOLDEN_HEX: &str = concat!(
+    "50414342494e000001004000000000004000000000000000c000000000000000",
+    "0200000000000000000000000000000000000000000000000000000000000000",
+    "6a69742d76310000000000000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "65786163742d7374617465000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "5041434944580000010020000000000002000000000000000000000000000000",
+    "0c0000000100000040000000000000000600000000000000e9a628134c31e4a5",
+    "7771ecd7a1dd51c5c5bc7daca10a2553c83f8af1652d2587612f6a69742e7379",
+    "6d6a6974000000000b0000000200000080000000000000000b00000000000000",
+    "a9f46d72eb6f1c7e5d62e97d3d8e67b80605aeba2df022a8a25b51ca3fc89805",
+    "7a2f65786163742e62696e0000000000504143454e4400000100400000000000",
+    "c0000000000000000200000000000000263b30eb85e5b2a82600201822438767",
+    "c5f66d9eecf2e08a0202383aafe0e3c1",
+);
+
 #[test]
 fn distribution_version_normalization_is_narrow() {
     assert_eq!(
@@ -153,6 +171,19 @@ fn sha256(bytes: &[u8]) -> String {
 }
 
 #[cfg(feature = "f64-symjit")]
+fn decode_hex(value: &str) -> Vec<u8> {
+    assert_eq!(value.len() % 2, 0);
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let text = std::str::from_utf8(pair).expect("ASCII hex pair");
+            u8::from_str_radix(text, 16).expect("valid hex pair")
+        })
+        .collect()
+}
+
+#[cfg(feature = "f64-symjit")]
 fn add_test_payload(
     artifact: &mut TestArtifact,
     path: &str,
@@ -188,6 +219,42 @@ fn add_test_payload(
 }
 
 #[cfg(feature = "f64-symjit")]
+fn replace_test_payload(artifact: &mut TestArtifact, path: &str, bytes: &[u8]) {
+    fs::write(artifact.root.join(path), bytes).expect("replace test payload");
+    let payload = artifact.manifest["payloads"]
+        .as_array_mut()
+        .expect("payload array")
+        .iter_mut()
+        .find(|payload| payload["path"] == path)
+        .expect("declared test payload");
+    payload["size_bytes"] = json!(bytes.len());
+    payload["sha256"] = json!(sha256(bytes));
+}
+
+#[cfg(feature = "f64-symjit")]
+fn add_test_evaluator_container(artifact: &mut TestArtifact) {
+    let bytes = decode_hex(PYTHON_PACBIN_GOLDEN_HEX);
+    add_test_payload(
+        artifact,
+        "evaluators.pacbin",
+        "evaluator-state",
+        &bytes,
+        None,
+        true,
+    );
+    artifact.manifest["extensions"]["evaluator_payload_container"] = json!({
+        "kind": "pyamplicol-evaluator-payload-container",
+        "schema_version": 1,
+        "storage_abi": "pacbin-v1",
+        "path": "evaluators.pacbin",
+        "member_count": 2,
+        "unpacked_size_bytes": 17,
+        "index_sha256": "263b30eb85e5b2a82600201822438767c5f66d9eecf2e08a0202383aafe0e3c1",
+    });
+    artifact.write_manifest();
+}
+
+#[cfg(feature = "f64-symjit")]
 fn direct_symjit_application_bytes(input_len: usize) -> Vec<u8> {
     use symjit::{Compiler, CompilerType, Config, Storage};
 
@@ -209,7 +276,11 @@ fn direct_symjit_application_bytes(input_len: usize) -> Vec<u8> {
 }
 
 #[cfg(feature = "f64-symjit")]
-fn minimal_runtime_physics(process_id: &str, process: &str, final_particle: &str) -> Value {
+pub(crate) fn minimal_runtime_physics(
+    process_id: &str,
+    process: &str,
+    final_particle: &str,
+) -> Value {
     json!({
         "schema_version": RUNTIME_PHYSICS_SCHEMA_VERSION,
         "kind": "pyamplicol-resolved-physics",
@@ -290,7 +361,7 @@ fn minimal_runtime_physics(process_id: &str, process: &str, final_particle: &str
 }
 
 #[cfg(feature = "f64-symjit")]
-fn direct_evaluator_manifest(application_path: &str) -> Value {
+pub(crate) fn direct_evaluator_manifest(application_path: &str) -> Value {
     json!({
         "kind": "symjit-application-evaluator",
         "runtime_capability": "symjit.application.complex-f64.v1",
@@ -326,7 +397,7 @@ fn compiled_evaluator_manifest(library_path: &str, runtime_capability: &str) -> 
 }
 
 #[cfg(feature = "f64-symjit")]
-fn minimal_execution_manifest(
+pub(crate) fn minimal_execution_manifest(
     process_id: &str,
     process: &str,
     capability: &str,
@@ -633,6 +704,385 @@ fn minimal_execution_manifest(
 }
 
 #[cfg(feature = "f64-symjit")]
+pub(crate) fn mock_helicity_materialization() -> Value {
+    json!({
+        "kind": "pyamplicol-helicity-recurrence",
+        "contract_version": 1,
+        "proof_algorithm": "canonical-source-transition-dependency-shape-v1",
+        "current_count": 2,
+        "amplitude_root_count": 1,
+        "proof_counts": {
+            "recurrence_class_count": 0,
+            "optimized_recurrence_class_count": 0,
+            "optimized_current_count": 0,
+            "residual_current_count": 2,
+            "amplitude_class_count": 0,
+            "optimized_amplitude_class_count": 0,
+            "residual_amplitude_count": 1,
+            "source_state_mapping_count": 0,
+            "physical_helicity_count": 2,
+            "structural_zero_helicity_count": 0,
+        },
+        "selector_domains": [
+            {"id": 0, "complete": true, "source_states": []},
+            {"id": 1, "complete": true, "source_states": []},
+        ],
+        "source_state_mappings": [],
+        "recurrence_classes": [],
+        "amplitude_classes": [],
+        "residual_current_ids": [0, 1],
+        "residual_root_ids": [0],
+        "structural_zero_selector_domain_ids": [],
+        "diagnostics": [],
+        "materialization": {
+            "kind": "pyamplicol-helicity-recurrence-materialization",
+            "contract_version": 1,
+            "strategy": "quotient",
+            "proof_current_count": 2,
+            "proof_root_count": 1,
+            "materialized_current_count": 2,
+            "materialized_root_count": 1,
+            "proof_to_materialized_current": [0, 1],
+            "source_routes": [],
+            "amplitude_routes": [],
+            "selector_schedules": [],
+        },
+    })
+}
+
+#[cfg(feature = "f64-symjit")]
+pub(crate) fn minimal_helicity_selector_lane_execution() -> Value {
+    const DIRECT: &str = "symjit.application.complex-f64.v1";
+    let mut execution = minimal_execution_manifest(
+        "p0",
+        "a b > c",
+        DIRECT,
+        direct_evaluator_manifest("evaluators/direct.symjit"),
+    );
+    let mut lane = execution.clone();
+    lane["physics_reduction"] = minimal_runtime_physics("p0", "a b > c", "c")["reduction"].clone();
+    execution["runtime_schema"]["helicity_recurrence"] = mock_helicity_materialization();
+    execution["required_runtime_capabilities"] = json!([
+        crate::engine::COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+        crate::engine::COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        DIRECT,
+    ]);
+    execution["helicity_selector_executions"] = json!([{
+        "selector_domain_ids": [0, 1],
+        "execution": lane,
+    }]);
+    execution
+}
+
+#[cfg(feature = "f64-symjit")]
+fn helicity_selector_lane_artifact(execution: Value) -> TestArtifact {
+    const DIRECT: &str = "symjit.application.complex-f64.v1";
+    let mut artifact = TestArtifact::new();
+    let capabilities = json!([
+        crate::engine::COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+        crate::engine::COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        DIRECT,
+    ]);
+    artifact.manifest["processes"][0]["required_runtime_capabilities"] = capabilities.clone();
+    artifact.manifest["runtime"]["required_runtime_capabilities"] = capabilities;
+    replace_test_payload(
+        &mut artifact,
+        "evaluator.json",
+        &serde_json::to_vec(&execution).expect("serialize execution fixture"),
+    );
+    replace_test_payload(
+        &mut artifact,
+        "physics.json",
+        &serde_json::to_vec(&minimal_runtime_physics("p0", "a b > c", "c"))
+            .expect("serialize physics fixture"),
+    );
+    add_test_payload(
+        &mut artifact,
+        "evaluators/direct.symjit",
+        "evaluator-state",
+        &direct_symjit_application_bytes(14),
+        Some("p0"),
+        true,
+    );
+    artifact.write_manifest();
+    artifact
+}
+
+#[cfg(feature = "f64-symjit")]
+fn helicity_selector_lane_load_error(execution: Value) -> crate::RusticolError {
+    let artifact = helicity_selector_lane_artifact(execution);
+    match crate::NativeRuntime::load(&artifact.root, Some("p0"), None) {
+        Ok(_) => panic!("invalid compiled helicity selector lane unexpectedly loaded"),
+        Err(error) => error,
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_helicity_selector_lanes_reject_duplicate_domains() {
+    let mut execution = minimal_helicity_selector_lane_execution();
+    let mut duplicate = execution["helicity_selector_executions"][0].clone();
+    duplicate["selector_domain_ids"] = json!([1]);
+    execution["helicity_selector_executions"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate);
+
+    let error = helicity_selector_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+    assert!(
+        error.to_string().contains("duplicate selector domain 1"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_helicity_selector_lanes_reject_unknown_domains() {
+    let mut execution = minimal_helicity_selector_lane_execution();
+    execution["helicity_selector_executions"][0]["selector_domain_ids"] = json!([2]);
+
+    let error = helicity_selector_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+    assert!(
+        error.to_string().contains("unknown selector domain 2"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_helicity_selector_lanes_reject_nested_auxiliaries() {
+    for nested_field in ["helicity_sum_execution", "color_selector_executions"] {
+        let mut execution = minimal_helicity_selector_lane_execution();
+        let lane = &mut execution["helicity_selector_executions"][0]["execution"];
+        let nested = lane.clone();
+        lane[nested_field] = match nested_field {
+            "helicity_sum_execution" => nested,
+            _ => json!([{"materialized_sector_id": 0, "execution": nested}]),
+        };
+
+        let error = helicity_selector_lane_load_error(execution);
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+        assert!(
+            error.to_string().contains(
+                "helicity-selector execution contains an unsupported auxiliary execution"
+            ),
+            "{nested_field}: {error}"
+        );
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn parent_closure_helicity_selector_lane_rejects_nested_closure() {
+    let mut execution = minimal_helicity_selector_lane_execution();
+    let lane = &mut execution["helicity_selector_executions"][0]["execution"];
+    let nested = lane.clone();
+    lane["helicity_selector_executions"] =
+        json!([{"selector_domain_ids": [0], "execution": nested}]);
+
+    let error = helicity_selector_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("only a nested-runtime helicity-selector execution"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_helicity_selector_lanes_reject_nested_materialization() {
+    let mut execution = minimal_helicity_selector_lane_execution();
+    execution["helicity_selector_executions"][0]["execution"]["runtime_schema"]["helicity_recurrence"] =
+        mock_helicity_materialization();
+
+    let error = helicity_selector_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("cannot contain helicity materialization"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn nested_runtime_helicity_selector_lane_requires_materialization() {
+    let mut execution = minimal_helicity_selector_lane_execution();
+    execution["helicity_selector_executions"][0]["schedule_mode"] = json!("nested-runtime");
+
+    let error = helicity_selector_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+    assert!(
+        error.to_string().contains(
+            "nested-runtime helicity-selector execution requires helicity materialization"
+        ),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_helicity_selector_lanes_verify_nested_payloads() {
+    let mut execution = minimal_helicity_selector_lane_execution();
+    execution["helicity_selector_executions"][0]["execution"]["compiled"]["stage_evaluators"]["amplitude_stage"]
+        ["evaluator"]["application_path"] = json!("evaluators/undeclared-selector-lane.symjit");
+
+    let error = helicity_selector_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Security, "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("undeclared-selector-lane.symjit"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+fn minimal_color_topology_lane_execution() -> Value {
+    const DIRECT: &str = "symjit.application.complex-f64.v1";
+    let mut execution = minimal_execution_manifest(
+        "p0",
+        "a b > c",
+        DIRECT,
+        direct_evaluator_manifest("evaluators/direct.symjit"),
+    );
+    let mut lane = execution.clone();
+    lane["physics_reduction"] = minimal_runtime_physics("p0", "a b > c", "c")["reduction"].clone();
+    execution["required_runtime_capabilities"] = json!([
+        crate::engine::COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
+        crate::engine::COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        DIRECT,
+    ]);
+    execution["color_selector_executions"] = json!([{
+        "materialized_sector_id": 0,
+        "execution": lane,
+    }]);
+    execution
+}
+
+#[cfg(feature = "f64-symjit")]
+fn color_topology_lane_artifact(execution: Value) -> TestArtifact {
+    const DIRECT: &str = "symjit.application.complex-f64.v1";
+    let mut artifact = TestArtifact::new();
+    let capabilities = json!([
+        crate::engine::COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
+        crate::engine::COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        DIRECT,
+    ]);
+    artifact.manifest["processes"][0]["required_runtime_capabilities"] = capabilities.clone();
+    artifact.manifest["runtime"]["required_runtime_capabilities"] = capabilities;
+    replace_test_payload(
+        &mut artifact,
+        "evaluator.json",
+        &serde_json::to_vec(&execution).expect("serialize execution fixture"),
+    );
+    replace_test_payload(
+        &mut artifact,
+        "physics.json",
+        &serde_json::to_vec(&minimal_runtime_physics("p0", "a b > c", "c"))
+            .expect("serialize physics fixture"),
+    );
+    add_test_payload(
+        &mut artifact,
+        "evaluators/direct.symjit",
+        "evaluator-state",
+        &direct_symjit_application_bytes(14),
+        Some("p0"),
+        true,
+    );
+    artifact.write_manifest();
+    artifact
+}
+
+#[cfg(feature = "f64-symjit")]
+fn color_topology_lane_load_error(execution: Value) -> crate::RusticolError {
+    let artifact = color_topology_lane_artifact(execution);
+    match crate::NativeRuntime::load(&artifact.root, Some("p0"), None) {
+        Ok(_) => panic!("invalid compiled color topology lane unexpectedly loaded"),
+        Err(error) => error,
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_color_topology_lane_rejects_duplicate_materialized_sector_ids() {
+    let mut execution = minimal_color_topology_lane_execution();
+    let duplicate = execution["color_selector_executions"][0].clone();
+    execution["color_selector_executions"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate);
+
+    let error = color_topology_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate materialized sector 0")
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_color_topology_lane_rejects_recursive_auxiliary_executions() {
+    for nested_field in [
+        "helicity_sum_execution",
+        "helicity_selector_executions",
+        "color_selector_executions",
+    ] {
+        let mut execution = minimal_color_topology_lane_execution();
+        let lane = &mut execution["color_selector_executions"][0]["execution"];
+        let nested = lane.clone();
+        lane[nested_field] = match nested_field {
+            "helicity_sum_execution" => nested,
+            "helicity_selector_executions" => {
+                json!([{"selector_domain_ids": [0], "execution": nested}])
+            }
+            _ => json!([{"materialized_sector_id": 1, "execution": nested}]),
+        };
+
+        let error = color_topology_lane_load_error(execution);
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("color-selector execution cannot contain auxiliary executions"),
+            "{nested_field}: {error}"
+        );
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn compiled_color_topology_lane_verifies_nested_evaluator_payloads() {
+    let mut execution = minimal_color_topology_lane_execution();
+    execution["color_selector_executions"][0]["execution"]["compiled"]["stage_evaluators"]["amplitude_stage"]
+        ["evaluator"]["application_path"] = json!("evaluators/undeclared-lane.symjit");
+
+    let error = color_topology_lane_load_error(execution);
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Security, "{error}");
+    assert!(
+        error.to_string().contains("undeclared-lane.symjit"),
+        "{error}"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
 fn mixed_backend_runtime_artifact() -> TestArtifact {
     const DIRECT: &str = "symjit.application.complex-f64.v1";
     const ASM: &str = "symbolica.compiled-asm.complex-f64.v1";
@@ -831,6 +1281,67 @@ fn valid_manifest_verifies_all_payloads() {
             .expect("select process by case- and whitespace-normalized expression")
             .requested_id,
         "p0"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn verified_artifact_resolves_packed_evaluator_payloads() {
+    let mut artifact = TestArtifact::new();
+    add_test_evaluator_container(&mut artifact);
+
+    let verified = VerifiedArtifact::open(&artifact.root).expect("packed artifact");
+    assert!(verified.has_evaluator_payload("a/jit.symjit").unwrap());
+    assert!(verified.has_evaluator_payload("z/exact.bin").unwrap());
+    assert!(!verified.has_evaluator_payload("missing.symjit").unwrap());
+
+    let store = verified
+        .evaluator_payload_store(verified.root())
+        .expect("root evaluator store");
+    let application = store
+        .source("a/jit.symjit")
+        .expect("packed application source");
+    assert_eq!(application.read().unwrap().as_ref(), b"jit-v1");
+    assert_eq!(application.display_name(), "evaluators.pacbin:a/jit.symjit");
+    assert_eq!(
+        store
+            .source("z/exact.bin")
+            .expect("packed exact source")
+            .read()
+            .unwrap()
+            .as_ref(),
+        b"exact-state"
+    );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn packed_evaluator_metadata_and_physical_collisions_are_rejected() {
+    let mut count_mismatch = TestArtifact::new();
+    add_test_evaluator_container(&mut count_mismatch);
+    count_mismatch.manifest["extensions"]["evaluator_payload_container"]["member_count"] = json!(3);
+    count_mismatch.write_manifest();
+    let error = VerifiedArtifact::open(&count_mismatch.root).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("metadata disagrees"));
+
+    let mut collision = TestArtifact::new();
+    add_test_evaluator_container(&mut collision);
+    add_test_payload(
+        &mut collision,
+        "a/jit.symjit",
+        "evaluator-state",
+        b"physical collision",
+        Some("p0"),
+        true,
+    );
+    collision.write_manifest();
+    let error = VerifiedArtifact::open(&collision.root).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(
+        error
+            .to_string()
+            .contains("invalid packed evaluator member")
     );
 }
 

@@ -22,6 +22,7 @@ from pyamplicol.config import (
     ProcessEntry,
     RunConfig,
 )
+from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.licensing import SymbolicaLicenseState
 
 
@@ -151,7 +152,11 @@ def test_symbolica_materialization_is_process_wide_serialized(
         _model: object,
         _temporary_root: Path,
         _phase: object,
+        _progress: object,
+        *,
+        backend: str,
     ) -> object:
+        assert backend == "JIT"
         nonlocal active, peak_active
         with state_lock:
             active += 1
@@ -164,7 +169,14 @@ def test_symbolica_materialization_is_process_wide_serialized(
                 active -= 1
 
     monkeypatch.setattr(backend, "_materialize_evaluator_unlocked", materialize)
-    processes = (object(), object(), object())
+    processes = tuple(
+        SimpleNamespace(
+            compiled=SimpleNamespace(
+                expanded=SimpleNamespace(request=SimpleNamespace(name=f"process-{index}"))
+            )
+        )
+        for index in range(3)
+    )
     with ThreadPoolExecutor(max_workers=3) as executor:
         results = tuple(
             executor.map(
@@ -172,7 +184,7 @@ def test_symbolica_materialization_is_process_wide_serialized(
                     process,  # type: ignore[arg-type]
                     object(),  # type: ignore[arg-type]
                     tmp_path,
-                    SimpleNamespace(),  # type: ignore[arg-type]
+                    PhaseHandle("test", None, None),
                 ),
                 processes,
             )
@@ -292,6 +304,9 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
         lambda process, _model, _phase: SimpleNamespace(
             compiled=process,
             runtime_schema=schema,
+            helicity_sum_runtime_schema=None,
+            helicity_selector_lanes=(),
+            color_selector_lanes=(),
         ),
     )
     generation_thread = get_ident()

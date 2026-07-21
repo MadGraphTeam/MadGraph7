@@ -105,16 +105,20 @@ def _benchmark_result() -> BenchmarkResult:
     wall_uncertainty = BenchmarkStatistics(0.2e-6, 0.05e-6, 0.02)
     evaluator_uncertainty = BenchmarkStatistics(0.1e-6, 0.025e-6, 0.0125)
     component = BenchmarkComponentTiming(0.5e-6, evaluator_uncertainty, 8)
+    wall_component = BenchmarkComponentTiming(2.5e-6, wall_uncertainty, 8)
+    evaluator_component = BenchmarkComponentTiming(
+        2.0e-6, evaluator_uncertainty, 8
+    )
     breakdown = BenchmarkTimingBreakdown(
         sample_count=8,
-        wall_time=component,
+        wall_time=wall_component,
         source_fill_time=component,
         momentum_setup_time=component,
         stage_input_pack_time=component,
-        stage_evaluator_call_time=component,
+        stage_evaluator_call_time=evaluator_component,
         output_assign_time=component,
         amplitude_input_pack_time=component,
-        amplitude_evaluator_call_time=component,
+        amplitude_evaluator_call_time=None,
         reduction_time=component,
         other_core_time=component,
         stages=(BenchmarkStageTiming(1, component, component, component),),
@@ -130,11 +134,17 @@ def _benchmark_result() -> BenchmarkResult:
             "target": "/tmp/artifact",
             "elapsed_seconds": 1.01,
             "platform": "test-platform",
-            "wall_time_source": "runtime_evaluate_wall_time",
+            "wall_time_source": "runtime_core_repeated_wall_time",
+            "wall_time_sample_pass": "runtime.profile_repeated",
             "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            "evaluator_time_sample_pass": "runtime.profile_repeated",
             "execution_mode": "compiled",
             "color_workload": "all 1 generated physical LC flows",
             "helicity_workload": "all 24 generated helicity configurations",
+            "timing_sample_contract": "shared_native_repeated_profile_v1",
+            "evaluator_sample_count": 8,
+            "native_profile_repetitions_per_sample": 50,
+            "native_profile_points_per_sample": 1600,
         },
         repetitions_per_sample=50,
         evaluator_uncertainty=evaluator_uncertainty,
@@ -162,6 +172,58 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "Other Rusticol core" in rendered
     assert "Rusticol Stage Detail" in rendered
     assert "evaluator call" in rendered
+    assert "one shared native pass" in rendered
+    assert "wall, evaluator, and breakdown" in rendered
+    assert "use the same blocks" in rendered
+    assert "Profile wall (headline)" in rendered
+
+
+def test_separate_breakdown_samples_are_labeled_explicitly() -> None:
+    result = _benchmark_result()
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    environment = {
+        **result.environment,
+        "timing_sample_contract": "separate_native_profile_diagnostic_v1",
+        "wall_time_sample_pass": "runtime._benchmark_f64_wall_time",
+        "evaluator_time_sample_pass": "runtime.profile",
+        "evaluator_sample_count": 3,
+        "native_profile_repetitions_per_sample": 1,
+        "native_profile_points_per_sample": 32,
+        "evaluator_elapsed_seconds": 0.25,
+    }
+    rendered = render_summary(
+        replace(
+            result,
+            environment=environment,
+            timing_breakdown=replace(breakdown, sample_count=3),
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    assert "Rusticol Timing Breakdown (separate diagnostic samples)" in rendered
+    assert "diagnostic evaluator" in rendered
+    assert "separate passes" in rendered
+    assert "headline wall 8 blocks x 50 repetitions x 32 points" in rendered
+    assert "evaluator and breakdown 3" in rendered
+    assert "diagnostic blocks x 1 repetitions" in rendered
+    assert "Profile wall (diagnostic pass)" in rendered
+
+
+def test_separate_evaluator_uncertainty_uses_diagnostic_sample_count() -> None:
+    result = _benchmark_result()
+    environment = {
+        **result.environment,
+        "timing_sample_contract": "separate_native_profile_diagnostic_v1",
+        "evaluator_sample_count": 1,
+    }
+
+    rendered = render_summary(replace(result, environment=environment), color=False)
+
+    assert rendered is not None
+    assert "diagnostic evaluator" in rendered
+    assert "uncertainty needs at least 2 blocks" in rendered
 
 
 def test_benchmark_profile_table_color_is_optional() -> None:
@@ -199,13 +261,14 @@ def test_eager_benchmark_uses_eager_phase_labels() -> None:
 
     assert rendered is not None
     assert "Rusticol Eager Timing Breakdown" in rendered
-    assert "Initialize" in rendered
-    assert "Gather" in rendered
-    assert "Kernel calls" in rendered
-    assert "Invocation scatter" in rendered
-    assert "Current finalization" in rendered
-    assert "Amplitude closure" in rendered
-    assert "Amplitude copy-out" in rendered
+    assert "Initialize (exclusive)" in rendered
+    assert "Gather (exclusive)" in rendered
+    assert "Kernel calls (exclusive)" in rendered
+    assert "Invocation scatter (exclusive)" in rendered
+    assert "Current finalization (exclusive)" in rendered
+    assert "Amplitude closure (exclusive)" in rendered
+    assert "Amplitude copy-out (exclusive)" in rendered
+    assert "Eager execution (inclusive)" in rendered
     assert "Rusticol Stage Detail" not in rendered
 
 
@@ -229,7 +292,7 @@ def test_eager_benchmark_labels_aggregate_until_native_phases_exist() -> None:
     )
 
     assert rendered is not None
-    assert "Eager execution (aggregate)" in rendered
+    assert "Eager execution (inclusive)" in rendered
     assert "Stage input pack" not in rendered
     assert "Output assign" not in rendered
 
@@ -323,7 +386,9 @@ def test_eager_artifact_inspection_reports_execution_contract() -> None:
         maximum_fanout=4,
         finalization_count=30,
         closure_count=12,
-        selector_closure_available=False,
+        selector_closure_available=True,
+        selector_domain_count=12,
+        selector_domain_membership_count=160,
         requested_point_tile_size=1024,
         effective_point_tile_size=None,
         workspace_limit_bytes=256 * 1024 * 1024,
@@ -343,9 +408,48 @@ def test_eager_artifact_inspection_reports_execution_contract() -> None:
     assert "eager (jit)" in rendered
     assert "12 in pack; 9 referenced" in rendered
     assert "80 canonical; 100 attachments; 20 reused aliases; max fanout 4" in rendered
-    assert "not emitted" in rendered
+    assert "12 domains; 160 memberships" in rendered
     assert "1024 / available after runtime load" in rendered
     assert "256.00 MiB / available after runtime load" in rendered
+
+
+def test_artifact_inspection_reports_runtime_selector_proofs() -> None:
+    inspection = _artifact_inspection()
+    reusable_process = replace(
+        inspection.processes[0],
+        selector_provenance="pyamplicol-runtime-selectors-v1",
+        helicity_runtime_contract="complete-reusable",
+        color_flow_runtime_contract="complete-reusable",
+        generation_specialized_axes=(),
+        selected_source_helicities=(),
+        selected_color_sector_ids=(),
+        helicity_recurrence_status="available",
+        helicity_optimized_class_count=14,
+        helicity_optimized_current_count=72,
+        helicity_residual_current_count=0,
+        helicity_optimized_amplitude_class_count=4,
+        helicity_residual_amplitude_count=0,
+        helicity_materialized_current_count=40,
+        helicity_materialized_amplitude_count=6,
+        lc_physical_sector_count=6,
+        lc_materialized_sector_count=2,
+        lc_replayed_sector_count=6,
+        lc_residual_sector_count=0,
+    )
+
+    rendered = render_summary(
+        replace(inspection, processes=(reusable_process,)), color=False
+    )
+
+    assert rendered is not None
+    assert "helicity complete-reusable; color flow complete-reusable" in rendered
+    assert "generation specialization" in rendered
+    assert "generation selection" in rendered
+    assert "pyamplicol-runtime-selectors-v1" in rendered
+    assert "6 physical; 2 materialized; 6 replayed; 0 residual" in rendered
+    assert "72 optimized currents in 14 classes; 0 residual" in rendered
+    assert "amplitude classes; 0 residual roots" in rendered
+    assert "materialized 40 currents / 6 roots" in rendered
 
 
 def test_artifact_inspection_color_is_optional() -> None:

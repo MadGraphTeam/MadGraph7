@@ -31,11 +31,13 @@ pub(super) fn validate_eager_payload_references(
 pub(super) fn load_eager_native_runtime(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
+    _evaluator_payloads: &EvaluatorPayloadStore,
     manifest: &EagerExecutionManifest,
     common: &mut ExecutionRuntime,
 ) -> RusticolResult<EagerNativeRuntime> {
     validate_eager_payload_references(artifact, evaluator_root, manifest)?;
     let (pack, payload_root) = load_prepared_kernel_pack(artifact, manifest)?;
+    let kernel_payloads = artifact.evaluator_payload_store(&payload_root)?;
     let coupling_bytes = read_eager_table(
         artifact,
         evaluator_root,
@@ -47,7 +49,7 @@ pub(super) fn load_eager_native_runtime(
             &pack,
             &manifest.runtime_schema.model_parameters,
             &coupling_bytes,
-            &payload_root,
+            &kernel_payloads,
         )?;
     common.model_parameter_evaluator = model_parameter_evaluator;
     common.refresh_derived_model_parameters()?;
@@ -139,7 +141,7 @@ pub(super) fn load_eager_native_runtime(
     )?;
     let options = manifest.runtime_options.validate()?;
     let scheduler = crate::EagerExecutionRuntime::new(plan, options)?;
-    let backend = PreparedEvaluatorBackend::load(&pack, &payload_root)?;
+    let backend = PreparedEvaluatorBackend::load_from_store(&pack, &kernel_payloads)?;
     let (raw_sum_groups, color_contraction) = manifest.raw_reduction_runtime()?;
     if let Some(selector_group_ids) = scheduler.selector_group_ids() {
         let known_group_ids = raw_sum_groups
@@ -182,7 +184,7 @@ pub(super) fn prepare_eager_parameter_state(
     pack: &PreparedKernelPackManifest,
     runtime_parameters: &[GenericRuntimeModelParameterManifest],
     coupling_bytes: &[u8],
-    payload_root: &Path,
+    payloads: &EvaluatorPayloadStore,
 ) -> RusticolResult<(
     EagerParameterProjection,
     Vec<u8>,
@@ -252,7 +254,7 @@ pub(super) fn prepare_eager_parameter_state(
         pack,
         runtime_parameters,
         &logical_slots,
-        payload_root,
+        payloads,
     )?;
     Ok((
         EagerParameterProjection {
@@ -365,7 +367,7 @@ fn load_prepared_model_parameter_evaluator(
     pack: &PreparedKernelPackManifest,
     runtime_parameters: &[GenericRuntimeModelParameterManifest],
     logical_slots: &BTreeMap<String, RuntimeLogicalParameterSlots>,
-    payload_root: &Path,
+    payloads: &EvaluatorPayloadStore,
 ) -> RusticolResult<Option<ModelParameterEvaluatorRuntime>> {
     let mut kernels = pack
         .kernels
@@ -447,7 +449,7 @@ fn load_prepared_model_parameter_evaluator(
         });
     }
     let evaluator_manifest = kernel.runtime_evaluator_manifest()?;
-    let evaluator = EvaluatorGroup::load(&evaluator_manifest, payload_root)?;
+    let evaluator = EvaluatorGroup::load_from_store(&evaluator_manifest, payloads)?;
     Ok(Some(ModelParameterEvaluatorRuntime {
         input_parameter_indices,
         outputs,

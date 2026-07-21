@@ -13,8 +13,8 @@ from pyamplicol.api.protocols import Momenta
 from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path
+from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime.eager_exact._contracts import (
-    _default_kernel_loader,
     _KernelLoader,
     _PayloadIndex,
     _read_json,
@@ -48,6 +48,7 @@ class EagerExactExecutor:
         self._artifact = Path(artifact).expanduser().resolve(strict=True)
         self._native_runtime = native_runtime
         manifest = load_manifest(self._artifact)
+        exact_payloads = ExactEvaluatorPayloadResolver(manifest)
         process, permutation = _selected_process(manifest.processes, process_id)
         representative_id = str(process["id"])
         execution_records = tuple(
@@ -86,7 +87,8 @@ class EagerExactExecutor:
             process_id=representative_id,
             execution=execution,
             manifest=manifest,
-            kernel_loader=kernel_loader or _default_kernel_loader,
+            kernel_loader=kernel_loader,
+            exact_payloads=exact_payloads,
         )
 
     def evaluate_resolved(

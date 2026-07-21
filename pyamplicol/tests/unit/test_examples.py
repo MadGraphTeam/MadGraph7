@@ -127,7 +127,7 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert resolve_config(EXAMPLES / "benchmark.toml").effective.action == "benchmark"
 
 
-def test_z6g_benchmark_examples_encode_the_report_specializations() -> None:
+def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:
     selected = resolve_config(
         EXAMPLES / "benchmark_z6g_single_flow_helicity_sum.toml"
     ).effective
@@ -150,23 +150,19 @@ def test_z6g_benchmark_examples_encode_the_report_specializations() -> None:
         assert config.benchmark.warmup_runs == 2
         assert config.benchmark.minimum_samples == 5
 
-    assert selected.process.reference_color_order == (2, 4, 5, 6, 7, 8, 9, 1, 3)
-    assert selected.process.selected_color_sector_ids == (0,)
+    assert selected.process.reference_color_order == ()
+    assert selected.process.selected_color_sector_ids == ()
     assert selected.process.selected_source_helicities == {}
+    assert selected.benchmark.color_flow_ids == ("1",)
+    assert selected.benchmark.helicity_ids == ()
 
     assert all_flows.process.reference_color_order == ()
     assert all_flows.process.selected_color_sector_ids == ()
-    assert all_flows.process.selected_source_helicities == {
-        "1": -1,
-        "2": 1,
-        "3": -1,
-        "4": 1,
-        "5": -1,
-        "6": 1,
-        "7": -1,
-        "8": 1,
-        "9": -1,
-    }
+    assert all_flows.process.selected_source_helicities == {}
+    assert all_flows.benchmark.color_flow_ids == ()
+    assert all_flows.benchmark.helicity_ids == (
+        "h:-1,+1,-1,+1,-1,+1,-1,+1,-1",
+    )
 
 
 def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:

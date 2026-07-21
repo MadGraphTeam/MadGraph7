@@ -38,6 +38,7 @@ def _compile_symbolica_outputs(
     jit_compile: bool = True,
     label: str = "symbolica",
     progress_callback: ProgressCallback | None = None,
+    output_partitions: Sequence[tuple[int, int]] = (),
 ) -> Any:
     if not outputs:
         raise NativeEvaluationError("cannot build evaluator with zero outputs")
@@ -53,7 +54,12 @@ def _compile_symbolica_outputs(
     outputs = tuple(_prepare_symbolica_output(output, settings) for output in outputs)
     output_prepare_s = time.perf_counter() - prepare_started
     chunk_size = settings.compiled_output_chunk_size
-    if chunk_size is not None and len(outputs) > chunk_size:
+    chunk_ranges = _partitioned_output_chunk_ranges(
+        len(outputs),
+        chunk_size=chunk_size,
+        output_partitions=output_partitions,
+    )
+    if len(chunk_ranges) > 1:
         chunk_output_dir = (
             None
             if settings.compiled_output_dir is None
@@ -65,13 +71,11 @@ def _compile_symbolica_outputs(
                 unchunked_settings,
                 compiled_output_dir=chunk_output_dir,
             )
-        chunk_ranges = tuple(enumerate(range(0, len(outputs), chunk_size)))
-
         def compile_chunk(
             chunk_index: int,
             start: int,
+            stop: int,
         ) -> tuple[Any, tuple[int, ...]]:
-            stop = min(start + chunk_size, len(outputs))
             chunk_outputs = outputs[start:stop]
             chunk_input_indices = _chunk_parameter_indices(
                 chunk_outputs,
@@ -107,6 +111,7 @@ def _compile_symbolica_outputs(
                     jit_compile=jit_compile,
                     label=f"{label}_chunk_{chunk_index}",
                     progress_callback=progress_callback,
+                    output_partitions=(),
                 ),
                 chunk_input_indices,
             )
@@ -114,13 +119,14 @@ def _compile_symbolica_outputs(
         workers = min(settings.compiled_chunk_compile_workers, len(chunk_ranges))
         if workers <= 1:
             compiled_chunks = [
-                compile_chunk(chunk_index, start) for chunk_index, start in chunk_ranges
+                compile_chunk(chunk_index, start, stop)
+                for chunk_index, (start, stop) in enumerate(chunk_ranges)
             ]
         else:
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = [
-                    executor.submit(compile_chunk, chunk_index, start)
-                    for chunk_index, start in chunk_ranges
+                    executor.submit(compile_chunk, chunk_index, start, stop)
+                    for chunk_index, (start, stop) in enumerate(chunk_ranges)
                 ]
                 compiled_chunks = [future.result() for future in futures]
         chunks, chunk_input_indices = zip(*compiled_chunks, strict=True)
@@ -334,6 +340,39 @@ def _compile_symbolica_outputs(
         },
     )
     return adapter
+
+
+def _partitioned_output_chunk_ranges(
+    output_count: int,
+    *,
+    chunk_size: int | None,
+    output_partitions: Sequence[tuple[int, int]],
+) -> tuple[tuple[int, int], ...]:
+    if output_count < 1:
+        raise NativeEvaluationError("cannot partition zero evaluator outputs")
+    partitions = tuple(output_partitions) or ((0, output_count),)
+    expected_start = 0
+    for start, stop in partitions:
+        if start != expected_start or stop <= start or stop > output_count:
+            raise NativeEvaluationError(
+                "evaluator output partitions must be contiguous and exhaustive"
+            )
+        expected_start = stop
+    if expected_start != output_count:
+        raise NativeEvaluationError(
+            "evaluator output partitions must cover every output"
+        )
+
+    ranges: list[tuple[int, int]] = []
+    for start, stop in partitions:
+        if chunk_size is None:
+            ranges.append((start, stop))
+            continue
+        if chunk_size < 1:
+            raise NativeEvaluationError("evaluator output chunk size must be positive")
+        for chunk_start in range(start, stop, chunk_size):
+            ranges.append((chunk_start, min(chunk_start + chunk_size, stop)))
+    return tuple(ranges)
 
 
 def _chunk_parameter_indices(

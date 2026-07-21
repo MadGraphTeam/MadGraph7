@@ -39,29 +39,38 @@ pub(crate) struct SymjitApplicationMetadata<'a> {
 }
 
 impl SymjitApplicationEvaluator {
+    #[cfg(test)]
     pub(crate) fn load(
         path: &Path,
         metadata: SymjitApplicationMetadata<'_>,
     ) -> RusticolResult<Self> {
-        validate_manifest_metadata(&metadata)?;
-
         let bytes = fs::read(path).map_err(|error| {
             RusticolError::artifact(format!(
                 "could not read SymJIT application {}: {error}",
                 path.display()
             ))
         })?;
+        Self::load_bytes(&bytes, path.to_path_buf(), metadata)
+    }
+
+    pub(crate) fn load_bytes(
+        bytes: &[u8],
+        display_path: PathBuf,
+        metadata: SymjitApplicationMetadata<'_>,
+    ) -> RusticolResult<Self> {
+        validate_manifest_metadata(&metadata)?;
 
         // This is the same trusted-input path used by Symbolica's
         // JITCompiledEvaluator::load.
         let mut loader_config = Config::default();
         loader_config.set_defuns(Defuns::new());
+        let mut input = bytes;
         let application = guard_symjit_panic(
-            || Application::load(&mut bytes.as_slice(), &loader_config),
+            || Application::load(&mut input, &loader_config),
             |detail| {
                 RusticolError::compatibility(format!(
                     "SymJIT panicked while loading application {} with ABI {}: {detail}",
-                    path.display(),
+                    display_path.display(),
                     SYMJIT_APPLICATION_STORAGE_ABI
                 ))
             },
@@ -69,29 +78,29 @@ impl SymjitApplicationEvaluator {
         .map_err(|error| {
             RusticolError::compatibility(format!(
                 "could not load SymJIT application {} with ABI {}: {error}",
-                path.display(),
+                display_path.display(),
                 SYMJIT_APPLICATION_STORAGE_ABI
             ))
         })?;
-        validate_loaded_application(path, &application, &metadata)?;
+        validate_loaded_application(&display_path, &application, &metadata)?;
         let applet = guard_symjit_panic(
             || application.seal(),
             |detail| {
                 RusticolError::compatibility(format!(
                     "SymJIT panicked while sealing application {}: {detail}",
-                    path.display()
+                    display_path.display()
                 ))
             },
         )?
         .map_err(|error| {
             RusticolError::evaluation(format!(
                 "could not seal SymJIT application {}: {error}",
-                path.display()
+                display_path.display()
             ))
         })?;
         Ok(Self {
             applet,
-            application_path: path.to_path_buf(),
+            application_path: display_path,
             input_len: metadata.input_len,
             output_len: metadata.output_len,
         })

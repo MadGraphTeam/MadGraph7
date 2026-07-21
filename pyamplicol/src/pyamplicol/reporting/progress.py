@@ -8,7 +8,7 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from threading import Event, RLock, Thread
 from types import MappingProxyType
@@ -365,10 +365,14 @@ class _Dashboard:
     ) -> None:
         progressbar: Any = importlib.import_module("progressbar")
 
-        class _RefreshableMultiBar(progressbar.MultiBar):
+        class _RefreshableMultiBar(progressbar.MultiBar):  # type: ignore[misc]
             # progressbar2 4.5 omits ``yield from`` for already-started bars.
-            def _render_bar(self, bar: Any, now: float, expired: float | None):
-                def update(force: bool = True, write: bool = True):
+            def _render_bar(
+                self, bar: Any, now: float, expired: float | None
+            ) -> Iterator[str]:
+                def update(
+                    force: bool = True, write: bool = True
+                ) -> Iterator[str]:
                     self._label_bar(bar)
                     bar.update(force=force)
                     if write:

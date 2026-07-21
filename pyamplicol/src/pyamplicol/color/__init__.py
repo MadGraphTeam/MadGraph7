@@ -12,8 +12,10 @@ from .plan import (
     LCColorSector,
     LCColorSectorReplayPartition,
     LCColorSectorTopologyGroup,
+    LCColorTopologyReplayPlan,
     LCOpenColorLine,
     build_color_plan,
+    build_lc_topology_replay_plan,
 )
 
 __all__ = [
@@ -24,9 +26,11 @@ __all__ = [
     "LCColorSector",
     "LCColorSectorReplayPartition",
     "LCColorSectorTopologyGroup",
+    "LCColorTopologyReplayPlan",
     "LCOpenColorLine",
     "build_color_contraction_plan",
     "build_color_plan",
+    "build_lc_topology_replay_plan",
     "color_contraction_factor",
     "color_contraction_factors",
 ]

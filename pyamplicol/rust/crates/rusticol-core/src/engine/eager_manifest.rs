@@ -32,6 +32,8 @@ pub(super) struct EagerExecutionManifest {
     pub(super) eager_plan_abi: String,
     pub(super) kernel_pack: EagerKernelPackReferenceManifest,
     pub(super) runtime_options: EagerRuntimeOptionsManifest,
+    #[serde(default)]
+    pub(super) lc_topology_replay: Option<LcTopologyReplayManifest>,
     pub(super) plan: EagerPlanManifest,
     pub(super) dag_summary: ExecutionSummary,
     pub(super) runtime_schema: ExecutionPlan,
@@ -248,10 +250,18 @@ impl EagerExecutionManifest {
             &self.plan.required_runtime_capabilities,
             "eager execution and plan",
         )?;
-        if self.required_runtime_capabilities != [EAGER_DAG_RUNTIME_CAPABILITY.to_string()] {
-            return Err(RusticolError::compatibility(format!(
-                "eager execution requires exactly {EAGER_DAG_RUNTIME_CAPABILITY:?}"
-            )));
+        let expected_capabilities = if self.lc_topology_replay.is_some() {
+            vec![
+                EAGER_DAG_RUNTIME_CAPABILITY.to_string(),
+                EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY.to_string(),
+            ]
+        } else {
+            vec![EAGER_DAG_RUNTIME_CAPABILITY.to_string()]
+        };
+        if self.required_runtime_capabilities != expected_capabilities {
+            return Err(RusticolError::compatibility(
+                "eager execution runtime capabilities do not match its topology-replay contract",
+            ));
         }
         self.runtime_options.validate()?;
         Ok(())
@@ -270,12 +280,16 @@ impl EagerExecutionManifest {
                 kind: "eager-runtime-metadata".to_string(),
                 runtime_available: true,
                 runtime_unavailable_message: None,
-                lc_topology_replay: None,
+                lc_topology_replay: self.lc_topology_replay.clone(),
                 model_parameter_evaluator: None,
                 stage_evaluators: None,
             },
             dag_summary: self.dag_summary.clone(),
             runtime_schema: self.runtime_schema.clone(),
+            physics_reduction: None,
+            helicity_sum_execution: None,
+            helicity_selector_executions: Vec::new(),
+            color_selector_executions: Vec::new(),
         }
     }
 

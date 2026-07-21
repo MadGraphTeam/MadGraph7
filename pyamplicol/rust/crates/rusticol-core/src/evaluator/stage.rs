@@ -5,9 +5,9 @@ use super::super::*;
 impl StageRuntime {
     pub(crate) fn load(
         stage: &GenericSerializedStageEvaluatorManifest,
-        root: &Path,
+        payloads: &EvaluatorPayloadStore,
     ) -> RusticolResult<Self> {
-        let evaluator = EvaluatorGroup::load(&stage.evaluator, root)?;
+        let evaluator = EvaluatorGroup::load_from_store(&stage.evaluator, payloads)?;
         let mut outputs = Vec::new();
         for slot in &stage.output_slots {
             let output_len = slot
@@ -148,6 +148,26 @@ impl StageRuntime {
             evaluator_s,
             assign_start.elapsed().as_secs_f64(),
         ))
+    }
+
+    #[allow(dead_code)] // Called by the compiled selector lane after closure planning.
+    pub(crate) fn evaluate_active_chunks_f64_into_state(
+        &mut self,
+        batch_size: usize,
+        parameter_count: usize,
+        state: &mut [Complex<f64>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<(f64, f64, f64)> {
+        self.evaluator.evaluate_selected_chunks_f64_into_state(
+            batch_size,
+            parameter_count,
+            state,
+            self.input_components.as_deref(),
+            &self.input_spans,
+            &self.chunk_outputs,
+            &self.chunk_output_spans,
+            active_chunk_indices,
+        )
     }
 
     #[cfg(feature = "symbolica-runtime")]
@@ -356,6 +376,17 @@ pub(crate) fn contiguous_output_spans(outputs: &[(usize, usize)]) -> Vec<(usize,
 mod tests {
     use super::*;
 
+    #[cfg(all(
+        feature = "f64-compiled",
+        any(target_os = "linux", target_os = "macos")
+    ))]
+    use std::process::Command;
+    #[cfg(all(
+        feature = "f64-compiled",
+        any(target_os = "linux", target_os = "macos")
+    ))]
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     #[test]
     fn chunk_output_layouts_are_localized_without_losing_state_offsets() {
         let outputs = vec![(0, 10), (1, 11), (2, 20), (3, 22), (4, 23)];
@@ -384,5 +415,209 @@ mod tests {
                 .to_string()
                 .contains("columns are not contiguous")
         );
+    }
+
+    #[cfg(all(
+        feature = "f64-compiled",
+        any(target_os = "linux", target_os = "macos")
+    ))]
+    #[test]
+    fn alternating_selected_stage_chunks_cannot_leak_inactive_prior_state() {
+        let (directory, library, marker) = selective_stage_fixture();
+        let library_name = library.file_name().unwrap().to_str().unwrap().to_string();
+        let leaf = |function_name: &str| EvaluatorManifest::CompiledComplex {
+            runtime_capability: SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY.to_string(),
+            function_name: function_name.to_string(),
+            input_len: 1,
+            output_len: 1,
+            library_path: library_name.clone(),
+            evaluator_state_path: None,
+            number_type: "complex".to_string(),
+        };
+        let evaluator = EvaluatorGroup::load(
+            &EvaluatorManifest::Chunked {
+                required_runtime_capabilities: vec![
+                    SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY.to_string(),
+                ],
+                input_len: Some(2),
+                chunk_input_indices: Some(vec![vec![0], vec![1]]),
+                chunks: vec![leaf("stage_chunk_0"), leaf("stage_chunk_1")],
+            },
+            &directory,
+        )
+        .unwrap();
+        let outputs = vec![(0, 1), (1, 3)];
+        let mut stage = StageRuntime {
+            output_spans: contiguous_output_spans(&outputs),
+            outputs,
+            chunk_outputs: vec![vec![(0, 1)], vec![(0, 3)]],
+            chunk_output_spans: vec![Vec::new(), Vec::new()],
+            input_components: Some(vec![2, 0]),
+            input_spans: Vec::new(),
+            parameter_scratch_f64: Vec::new(),
+            output_scratch_f64: Vec::new(),
+            evaluator,
+        };
+
+        let sentinel = c64(-99.0, 0.0);
+        let mut selected_state = vec![c64(3.0, 0.0), sentinel, c64(7.0, 0.0), sentinel];
+        stage
+            .evaluate_active_chunks_f64_into_state(1, 4, &mut selected_state, &[1])
+            .unwrap();
+        assert_eq!(selected_state[1], sentinel, "inactive output was assigned");
+        assert_eq!(selected_state[3], c64(203.0, 0.0));
+        assert_eq!(fs::read_to_string(&marker).unwrap(), "1");
+
+        let parameter_capacity = stage.evaluator.chunk_parameter_scratch_f64.capacity();
+        let output_capacity = stage.evaluator.chunk_scratch_f64.capacity();
+        selected_state[3] = sentinel;
+        stage
+            .evaluate_active_chunks_f64_into_state(1, 4, &mut selected_state, &[1])
+            .unwrap();
+        assert_eq!(
+            stage.evaluator.chunk_parameter_scratch_f64.capacity(),
+            parameter_capacity
+        );
+        assert_eq!(
+            stage.evaluator.chunk_scratch_f64.capacity(),
+            output_capacity
+        );
+
+        let marker_before_invalid = fs::read_to_string(&marker).unwrap();
+        for invalid in [&[1, 1][..], &[1, 0][..], &[2][..]] {
+            assert!(
+                stage
+                    .evaluate_active_chunks_f64_into_state(1, 4, &mut selected_state, invalid)
+                    .is_err()
+            );
+        }
+        assert_eq!(fs::read_to_string(&marker).unwrap(), marker_before_invalid);
+
+        fs::write(&marker, "").unwrap();
+        let mut full_state = vec![c64(3.0, 0.0), sentinel, c64(7.0, 0.0), sentinel];
+        stage
+            .evaluate_f64_into_state(1, 4, &mut full_state)
+            .unwrap();
+        assert_eq!(full_state[1], c64(107.0, 0.0));
+        assert_eq!(full_state[3], c64(203.0, 0.0));
+        assert_eq!(fs::read_to_string(&marker).unwrap(), "01");
+
+        // The execution runtime clears its reusable state before every
+        // selector-pruned schedule. Alternate schedules on the same backing
+        // allocation to ensure inactive outputs cannot retain a prior value.
+        for chunk_index in [0, 1, 0, 1] {
+            selected_state.fill(c64(0.0, 0.0));
+            selected_state[0] = c64(3.0, 0.0);
+            selected_state[2] = c64(7.0, 0.0);
+            stage
+                .evaluate_active_chunks_f64_into_state(1, 4, &mut selected_state, &[chunk_index])
+                .unwrap();
+            if chunk_index == 0 {
+                assert_eq!(selected_state[1], c64(107.0, 0.0));
+                assert_eq!(selected_state[3], c64(0.0, 0.0));
+            } else {
+                assert_eq!(selected_state[1], c64(0.0, 0.0));
+                assert_eq!(selected_state[3], c64(203.0, 0.0));
+            }
+        }
+
+        let parent_inputs = [c64(7.0, 0.0), c64(3.0, 0.0)];
+        let mut selected_outputs = vec![sentinel; 2];
+        for chunk_index in [0, 1, 0, 1] {
+            stage
+                .evaluator
+                .evaluate_selected_chunks_f64_into_output(
+                    1,
+                    &parent_inputs,
+                    None,
+                    &[],
+                    &mut selected_outputs,
+                    &[chunk_index],
+                )
+                .unwrap();
+            if chunk_index == 0 {
+                assert_eq!(selected_outputs, vec![c64(107.0, 0.0), c64(0.0, 0.0)]);
+            } else {
+                assert_eq!(selected_outputs, vec![c64(0.0, 0.0), c64(203.0, 0.0)]);
+            }
+        }
+
+        drop(stage);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(all(
+        feature = "f64-compiled",
+        any(target_os = "linux", target_os = "macos")
+    ))]
+    fn selective_stage_fixture() -> (PathBuf, PathBuf, PathBuf) {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "rusticol-selective-stage-test-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("fixture.cpp");
+        let marker = directory.join("calls.txt");
+        fs::write(&marker, "").unwrap();
+        let library = directory.join(if cfg!(target_os = "macos") {
+            "libfixture.dylib"
+        } else {
+            "libfixture.so"
+        });
+        let marker_literal = marker.to_string_lossy().replace('\\', "\\\\");
+        fs::write(
+            &source,
+            format!(
+                r#"#include <complex>
+#include <cstdio>
+static void mark(const char* value) {{
+    std::FILE* file = std::fopen("{marker_literal}", "a");
+    std::fputs(value, file);
+    std::fclose(file);
+}}
+extern "C" unsigned long stage_chunk_0_complexf64_get_buffer_len() {{ return 1; }}
+extern "C" void stage_chunk_0_complexf64(
+    std::complex<double>* params,
+    std::complex<double>*,
+    std::complex<double>* out) {{
+    mark("0");
+    out[0] = params[0] + std::complex<double>(100.0, 0.0);
+}}
+extern "C" unsigned long stage_chunk_1_complexf64_get_buffer_len() {{ return 1; }}
+extern "C" void stage_chunk_1_complexf64(
+    std::complex<double>* params,
+    std::complex<double>*,
+    std::complex<double>* out) {{
+    mark("1");
+    out[0] = params[0] + std::complex<double>(200.0, 0.0);
+}}
+"#
+            ),
+        )
+        .unwrap();
+        let compiler = std::env::var("CXX").unwrap_or_else(|_| "c++".to_string());
+        let mut command = Command::new(compiler);
+        command.arg("-std=c++17");
+        if cfg!(target_os = "macos") {
+            command.arg("-dynamiclib");
+        } else {
+            command.args(["-shared", "-fPIC"]);
+        }
+        let output = command
+            .arg(&source)
+            .arg("-o")
+            .arg(&library)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "could not compile selective stage fixture: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        (directory, library, marker)
     }
 }

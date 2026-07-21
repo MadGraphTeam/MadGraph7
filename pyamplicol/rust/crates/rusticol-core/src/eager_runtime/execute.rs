@@ -1851,6 +1851,73 @@ pub(super) fn reduce_tile(
     }
 }
 
+pub(super) fn reduce_selected_tile(
+    plan: &EagerExecutionPlan,
+    active_group_indices: &[usize],
+    active_entry_indices: &[usize],
+    selected_group_weights: &[f64],
+    workspace: &mut EagerWorkspace,
+    tile_points: usize,
+) -> RusticolResult<()> {
+    if selected_group_weights.len() != active_group_indices.len() * tile_points {
+        return Err(RusticolError::invalid_argument(
+            "eager selected reduction group weights have an inconsistent shape",
+        ));
+    }
+    workspace.reduced[..tile_points].fill(0.0);
+    for group_index in active_group_indices {
+        let group = &plan.reduction_groups[*group_index];
+        let target = *group_index * workspace.tile_capacity;
+        let (first_amplitude, remaining_amplitudes) = group
+            .amplitude_indices
+            .split_first()
+            .expect("validated eager reduction group is nonempty");
+        let first_source = *first_amplitude as usize * workspace.tile_capacity;
+        workspace.reduction_groups[target..target + tile_points]
+            .copy_from_slice(&workspace.amplitudes[first_source..first_source + tile_points]);
+        for amplitude_index in remaining_amplitudes {
+            let source = *amplitude_index as usize * workspace.tile_capacity;
+            for point in 0..tile_points {
+                workspace.reduction_groups[target + point] += workspace.amplitudes[source + point];
+            }
+        }
+    }
+    for entry_index in active_entry_indices {
+        let entry = &plan.reduction_entries[*entry_index];
+        let left_group_index = entry.left_group_index as usize;
+        let right_group_index = entry.right_group_index as usize;
+        let left = left_group_index * workspace.tile_capacity;
+        let right = entry.right_group_index as usize * workspace.tile_capacity;
+        let left_position = active_group_indices
+            .binary_search(&left_group_index)
+            .map_err(|_| {
+                RusticolError::integrity(
+                    "eager selected reduction entry references an inactive left group",
+                )
+            })?;
+        let right_position = active_group_indices
+            .binary_search(&right_group_index)
+            .map_err(|_| {
+                RusticolError::integrity(
+                    "eager selected reduction entry references an inactive right group",
+                )
+            })?;
+        for point in 0..tile_points {
+            let weight = selected_group_weights[left_position * tile_points + point];
+            let right_weight = selected_group_weights[right_position * tile_points + point];
+            if weight.to_bits() != right_weight.to_bits() {
+                return Err(RusticolError::integrity(
+                    "eager selected contraction groups have inconsistent physical weights",
+                ));
+            }
+            let product = workspace.reduction_groups[left + point]
+                * workspace.reduction_groups[right + point].conj();
+            workspace.reduced[point] += weight * (entry.coefficient * product).re;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn copy_tile_results(
     plan: &EagerExecutionPlan,

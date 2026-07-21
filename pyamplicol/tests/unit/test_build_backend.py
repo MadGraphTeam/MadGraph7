@@ -20,6 +20,44 @@ import _pyamplicol_build as backend  # noqa: E402
 import sdk  # noqa: E402
 
 
+def test_prepared_model_bootstrap_is_candidate_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", "1")
+
+    assert backend._prepared_model_bootstrap("candidate") is True
+    with pytest.raises(RuntimeError, match="non-publishable candidate"):
+        backend._prepared_model_bootstrap("release")
+
+
+def test_prepared_model_bootstrap_rejects_ambiguous_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", "true")
+
+    with pytest.raises(RuntimeError, match="must be either '0' or '1'"):
+        backend._prepared_model_bootstrap("candidate")
+
+
+def test_prepared_model_bootstrap_strips_only_generated_payloads(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "src/pyamplicol/assets/prepared_models"
+    root.mkdir(parents=True)
+    package = root / "__init__.py"
+    package.write_text("# package\n", encoding="utf-8")
+    metadata = root / "built-in-sm-jit-o3-aarch64.metadata.json"
+    metadata.write_text("{}\n", encoding="utf-8")
+    bundle = root / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
+    bundle.write_bytes(b"bundle")
+
+    backend._strip_prepared_model_payloads(tmp_path)
+
+    assert package.is_file()
+    assert not metadata.exists()
+    assert not bundle.exists()
+
+
 def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     candidate_lock = tmp_path / "Cargo.lock"
     candidate_config = tmp_path / "config.toml"

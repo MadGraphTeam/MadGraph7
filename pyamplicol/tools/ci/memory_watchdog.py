@@ -11,11 +11,14 @@ process group and descendants that create another process group.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import ctypes.util
 import math
 import os
 import platform
 import shlex
 import signal
+import struct
 import subprocess
 import sys
 import threading
@@ -175,6 +178,97 @@ def _ps_snapshot() -> dict[int, ProcessInfo]:
     return records
 
 
+def _parse_darwin_bsdinfo(text: bytes) -> tuple[int, int, int]:
+    """Return ``(pid, ppid, pgid)`` from Darwin ``proc_bsdinfo`` bytes."""
+
+    # These stable fields precede variable-size names in libproc.h.  pbi_pgid
+    # follows pbi_nfiles after the two fixed 16/32-byte name buffers.
+    if len(text) < 104:
+        raise ValueError("incomplete Darwin proc_bsdinfo record")
+    pid = struct.unpack_from("=I", text, 12)[0]
+    ppid = struct.unpack_from("=I", text, 16)[0]
+    pgid = struct.unpack_from("=I", text, 100)[0]
+    return pid, ppid, pgid
+
+
+def _parse_darwin_taskinfo_rss(text: bytes) -> int:
+    """Return resident bytes from Darwin ``proc_taskinfo`` bytes."""
+
+    if len(text) < 16:
+        raise ValueError("incomplete Darwin proc_taskinfo record")
+    return struct.unpack_from("=Q", text, 8)[0]
+
+
+def _darwin_libproc_snapshot() -> dict[int, ProcessInfo]:
+    """Collect a Darwin snapshot through libproc when ``ps`` is unavailable."""
+
+    library_name = ctypes.util.find_library("proc") or "/usr/lib/libproc.dylib"
+    try:
+        library = ctypes.CDLL(library_name)
+    except OSError as error:
+        raise ProbeError(f"cannot load Darwin libproc: {error}") from error
+
+    library.proc_listallpids.argtypes = (ctypes.c_void_p, ctypes.c_int)
+    library.proc_listallpids.restype = ctypes.c_int
+    library.proc_pidinfo.argtypes = (
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint64,
+        ctypes.c_void_p,
+        ctypes.c_int,
+    )
+    library.proc_pidinfo.restype = ctypes.c_int
+
+    estimated_count = library.proc_listallpids(None, 0)
+    if estimated_count <= 0:
+        raise ProbeError("Darwin libproc process enumeration failed")
+    capacity = estimated_count + 1024
+    pid_buffer = (ctypes.c_int * capacity)()
+    listed_count = library.proc_listallpids(pid_buffer, ctypes.sizeof(pid_buffer))
+    if listed_count <= 0:
+        raise ProbeError("Darwin libproc process enumeration yielded no records")
+
+    # PROC_PIDTBSDINFO and PROC_PIDTASKINFO are stable public libproc flavours.
+    proc_pidtbsdinfo = 3
+    proc_pidtaskinfo = 4
+    bsd_buffer = ctypes.create_string_buffer(256)
+    task_buffer = ctypes.create_string_buffer(256)
+    records: dict[int, ProcessInfo] = {}
+    for raw_pid in pid_buffer[: min(listed_count, capacity)]:
+        pid = int(raw_pid)
+        if pid <= 0:
+            continue
+        bsd_size = library.proc_pidinfo(
+            pid,
+            proc_pidtbsdinfo,
+            0,
+            bsd_buffer,
+            len(bsd_buffer),
+        )
+        task_size = library.proc_pidinfo(
+            pid,
+            proc_pidtaskinfo,
+            0,
+            task_buffer,
+            len(task_buffer),
+        )
+        if bsd_size < 104 or task_size < 16:
+            continue
+        try:
+            record_pid, ppid, pgid = _parse_darwin_bsdinfo(
+                bsd_buffer.raw[:bsd_size]
+            )
+            rss_bytes = _parse_darwin_taskinfo_rss(task_buffer.raw[:task_size])
+        except ValueError:
+            continue
+        if record_pid != pid:
+            continue
+        records[pid] = ProcessInfo(pid, ppid, pgid, rss_bytes)
+    if not records:
+        raise ProbeError("Darwin libproc process probe yielded no records")
+    return records
+
+
 def process_snapshot(system: str | None = None) -> dict[int, ProcessInfo]:
     """Collect one process snapshot on supported macOS and Linux hosts."""
 
@@ -185,7 +279,10 @@ def process_snapshot(system: str | None = None) -> dict[int, ProcessInfo]:
         except ProbeError:
             return _ps_snapshot()
     if host == "Darwin":
-        return _ps_snapshot()
+        try:
+            return _ps_snapshot()
+        except ProbeError:
+            return _darwin_libproc_snapshot()
     raise ProbeError(f"unsupported host for RSS monitoring: {host or '<unknown>'}")
 
 

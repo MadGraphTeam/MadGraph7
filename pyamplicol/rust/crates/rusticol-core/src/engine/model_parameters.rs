@@ -2,6 +2,15 @@
 
 use super::*;
 
+struct RuntimeParameterStateSnapshot {
+    values: Vec<f64>,
+    particle_masses: BTreeMap<i32, f64>,
+    normalization_factor: f64,
+    helicity_sum: Option<Box<RuntimeParameterStateSnapshot>>,
+    helicity_selectors: Vec<RuntimeParameterStateSnapshot>,
+    color_selectors: BTreeMap<i64, RuntimeParameterStateSnapshot>,
+}
+
 pub(super) fn parse_complex_parameter_overrides(
     text: &str,
     path: &Path,
@@ -52,6 +61,81 @@ pub(super) fn parse_complex_parameter_overrides(
 
 impl ExecutionRuntime {
     pub(super) fn apply_model_parameter_overrides(
+        &mut self,
+        overrides: &BTreeMap<String, (f64, f64)>,
+    ) -> RusticolResult<()> {
+        let snapshot = self.parameter_state_snapshot();
+        if let Err(error) = self.apply_model_parameter_overrides_recursive(overrides) {
+            self.restore_parameter_state(snapshot);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn apply_model_parameter_overrides_recursive(
+        &mut self,
+        overrides: &BTreeMap<String, (f64, f64)>,
+    ) -> RusticolResult<()> {
+        self.apply_model_parameter_overrides_local(overrides)?;
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
+            sum_runtime.apply_model_parameter_overrides_recursive(overrides)?;
+        }
+        for selector_runtime in &mut self.helicity_selector_runtimes {
+            selector_runtime.apply_model_parameter_overrides_recursive(overrides)?;
+        }
+        for selector_runtime in self.color_selector_runtimes.values_mut() {
+            selector_runtime.apply_model_parameter_overrides_recursive(overrides)?;
+        }
+        Ok(())
+    }
+
+    fn parameter_state_snapshot(&self) -> RuntimeParameterStateSnapshot {
+        RuntimeParameterStateSnapshot {
+            values: self.model_parameter_values_f64.clone(),
+            particle_masses: self.particle_masses.clone(),
+            normalization_factor: self.normalization_factor,
+            helicity_sum: self
+                .helicity_sum_runtime
+                .as_deref()
+                .map(ExecutionRuntime::parameter_state_snapshot)
+                .map(Box::new),
+            helicity_selectors: self
+                .helicity_selector_runtimes
+                .iter()
+                .map(|runtime| runtime.parameter_state_snapshot())
+                .collect(),
+            color_selectors: self
+                .color_selector_runtimes
+                .iter()
+                .map(|(sector_id, runtime)| (*sector_id, runtime.parameter_state_snapshot()))
+                .collect(),
+        }
+    }
+
+    fn restore_parameter_state(&mut self, snapshot: RuntimeParameterStateSnapshot) {
+        self.model_parameter_values_f64 = snapshot.values;
+        self.particle_masses = snapshot.particle_masses;
+        self.normalization_factor = snapshot.normalization_factor;
+        if let (Some(runtime), Some(snapshot)) =
+            (self.helicity_sum_runtime.as_mut(), snapshot.helicity_sum)
+        {
+            runtime.restore_parameter_state(*snapshot);
+        }
+        for (runtime, lane_snapshot) in self
+            .helicity_selector_runtimes
+            .iter_mut()
+            .zip(snapshot.helicity_selectors)
+        {
+            runtime.restore_parameter_state(lane_snapshot);
+        }
+        for (sector_id, lane_snapshot) in snapshot.color_selectors {
+            if let Some(runtime) = self.color_selector_runtimes.get_mut(&sector_id) {
+                runtime.restore_parameter_state(lane_snapshot);
+            }
+        }
+    }
+
+    fn apply_model_parameter_overrides_local(
         &mut self,
         overrides: &BTreeMap<String, (f64, f64)>,
     ) -> RusticolResult<()> {

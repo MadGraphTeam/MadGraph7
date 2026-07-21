@@ -202,6 +202,34 @@ public:
         return values;
     }
 
+    std::vector<double> evaluate_selected(
+        const std::vector<double> &momenta,
+        std::size_t point_count,
+        const std::vector<std::string> &helicity_ids = {},
+        const std::vector<std::string> &color_ids = {},
+        const std::vector<std::uint32_t> &helicity_by_point = {},
+        const std::vector<std::uint32_t> &color_flow_by_point = {}) {
+        const auto helicity_ptrs = c_string_pointers(helicity_ids);
+        const auto color_ptrs = c_string_pointers(color_ids);
+        std::vector<double> values(point_count);
+        check(rusticol_runtime_evaluate_selected_f64(
+            handle_,
+            momenta.data(),
+            momenta.size(),
+            point_count,
+            helicity_ptrs.empty() ? nullptr : helicity_ptrs.data(),
+            helicity_ptrs.size(),
+            color_ptrs.empty() ? nullptr : color_ptrs.data(),
+            color_ptrs.size(),
+            helicity_by_point.empty() ? nullptr : helicity_by_point.data(),
+            helicity_by_point.size(),
+            color_flow_by_point.empty() ? nullptr : color_flow_by_point.data(),
+            color_flow_by_point.size(),
+            values.data(),
+            values.size()));
+        return values;
+    }
+
     ResolvedEvaluation evaluate_resolved(
         const std::vector<double> &momenta,
         std::size_t point_count,

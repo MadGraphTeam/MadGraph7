@@ -164,6 +164,24 @@ def _benchmark_summary(
         else None
     )
     evaluator_source = str(environment.get("evaluator_time_source", "unavailable"))
+    timing_sample_contract = str(
+        environment.get("timing_sample_contract", "unavailable")
+    )
+    shared_timing_samples = timing_sample_contract in {
+        "shared_native_repeated_profile_v1",
+        "shared_native_single_profile_v1",
+    }
+    separate_timing_samples = (
+        timing_sample_contract == "separate_native_profile_diagnostic_v1"
+    )
+    evaluator_sample_value = environment.get("evaluator_sample_count")
+    evaluator_sample_count = (
+        int(evaluator_sample_value)
+        if isinstance(evaluator_sample_value, int)
+        and not isinstance(evaluator_sample_value, bool)
+        and evaluator_sample_value > 0
+        else result.sample_count
+    )
     evaluator_text = "N/A"
     if result.evaluator_time_per_point is not None:
         if result.evaluator_uncertainty is None:
@@ -172,7 +190,7 @@ def _benchmark_summary(
             evaluator_text = _benchmark_timing_text(
                 result.evaluator_time_per_point,
                 result.evaluator_uncertainty,
-                sample_count=result.sample_count,
+                sample_count=evaluator_sample_count,
             )
 
     relative_error = result.uncertainty.relative_standard_error
@@ -187,6 +205,27 @@ def _benchmark_summary(
         if result.interrupted
         else "complete"
     )
+    breakdown = result.timing_breakdown
+    profile_repetitions_value = environment.get(
+        "native_profile_repetitions_per_sample"
+    )
+    profile_repetitions = (
+        int(profile_repetitions_value)
+        if isinstance(profile_repetitions_value, int)
+        and not isinstance(profile_repetitions_value, bool)
+        and profile_repetitions_value > 0
+        else (result.repetitions_per_sample if shared_timing_samples else 1)
+    )
+    profile_points_value = environment.get("native_profile_points_per_sample")
+    profile_points = (
+        int(profile_points_value)
+        if isinstance(profile_points_value, int)
+        and not isinstance(profile_points_value, bool)
+        and profile_points_value > 0
+        else profile_repetitions * result.effective_config.batch_size
+    )
+    wall_pass = _value_text(environment.get("wall_time_sample_pass"))
+    evaluator_pass = _value_text(environment.get("evaluator_time_sample_pass"))
     rows: list[tuple[str, str, str | None]] = [
         ("process", process, None),
         ("artifact", _value_text(environment.get("target")), None),
@@ -207,7 +246,11 @@ def _benchmark_summary(
             ),
             "GREEN",
         ),
-        ("evaluator time", evaluator_text, "CYAN"),
+        (
+            "diagnostic evaluator" if separate_timing_samples else "evaluator time",
+            evaluator_text,
+            "CYAN",
+        ),
         (
             "wall variability",
             (
@@ -244,10 +287,36 @@ def _benchmark_summary(
         (
             "timing sources",
             (
-                f"wall={environment.get('wall_time_source', 'unavailable')}; "
-                f"evaluator={evaluator_source}"
+                f"wall={environment.get('wall_time_source', 'unavailable')} "
+                f"via {wall_pass}; evaluator={evaluator_source} via {evaluator_pass}"
             ),
             None,
+        ),
+        (
+            "sample provenance",
+            (
+                (
+                    f"one shared native pass: {result.sample_count} blocks x "
+                    f"{profile_repetitions} repetitions x "
+                    f"{result.effective_config.batch_size} points; wall, evaluator, "
+                    "and breakdown use the same blocks"
+                )
+                if shared_timing_samples
+                else (
+                    f"separate passes: headline wall {result.sample_count} blocks x "
+                    f"{result.repetitions_per_sample} repetitions x "
+                    f"{result.effective_config.batch_size} points; evaluator and "
+                    f"breakdown {breakdown.sample_count} diagnostic blocks x "
+                    f"{profile_repetitions} repetitions "
+                    f"({profile_points} points/block)"
+                    if timing_sample_contract == "separate_native_profile_diagnostic_v1"
+                    and breakdown is not None
+                    else "no native timing breakdown available"
+                )
+            ),
+            "YELLOW"
+            if timing_sample_contract == "separate_native_profile_diagnostic_v1"
+            else None,
         ),
         ("platform", _value_text(environment.get("platform")), None),
     ]
@@ -269,7 +338,6 @@ def _benchmark_summary(
             )
         )
     sections = [cast(str, table.get_string())]
-    breakdown = result.timing_breakdown
     if breakdown is None:
         return sections[0]
 
@@ -277,10 +345,15 @@ def _benchmark_summary(
         ("component", "mean +/- standard error", "relative standard error")
     )
     eager_profile = breakdown.execution_mode == "eager"
-    component_table.title = _paint(
+    breakdown_title = (
         "Rusticol Eager Timing Breakdown"
         if eager_profile
-        else "Rusticol Timing Breakdown",
+        else "Rusticol Timing Breakdown"
+    )
+    if separate_timing_samples:
+        breakdown_title += " (separate diagnostic samples)"
+    component_table.title = _paint(
+        breakdown_title,
         "CYAN",
         enabled=color,
     )
@@ -301,53 +374,70 @@ def _benchmark_summary(
             breakdown.eager_copy_out_time,
         )
     )
-    component_rows: tuple[
-        tuple[str, BenchmarkComponentTiming | None], ...
-    ]
+    component_rows: tuple[tuple[str, BenchmarkComponentTiming | None], ...]
     if detailed_eager_profile:
-        eager_phase_rows: tuple[
-            tuple[str, BenchmarkComponentTiming | None], ...
-        ]
+        eager_phase_rows: tuple[tuple[str, BenchmarkComponentTiming | None], ...]
         if (
             breakdown.eager_invocation_scatter_time is not None
             or breakdown.eager_finalization_time is not None
         ):
             eager_phase_rows = (
-                ("Invocation scatter", breakdown.eager_invocation_scatter_time),
-                ("Current finalization", breakdown.eager_finalization_time),
+                (
+                    "Invocation scatter (exclusive)",
+                    breakdown.eager_invocation_scatter_time,
+                ),
+                (
+                    "Current finalization (exclusive)",
+                    breakdown.eager_finalization_time,
+                ),
             )
         else:
             eager_phase_rows = (
                 (
-                    "Scatter / finalization",
+                    "Scatter / finalization (exclusive)",
                     breakdown.eager_scatter_finalization_time,
                 ),
             )
         component_rows = (
-            ("Profile wall", breakdown.wall_time),
-            ("Source fill", breakdown.source_fill_time),
-            ("Momentum setup", breakdown.momentum_setup_time),
-            ("Eager execution (aggregate)", breakdown.eager_execution_time),
-            ("Initialize", breakdown.eager_initialize_time),
-            ("Gather", breakdown.eager_gather_time),
-            ("Kernel calls", breakdown.eager_kernel_call_time),
+            (
+                "Profile wall (headline)"
+                if shared_timing_samples
+                else "Profile wall (diagnostic pass)",
+                breakdown.wall_time,
+            ),
+            ("Source fill (exclusive)", breakdown.source_fill_time),
+            ("Momentum setup (exclusive)", breakdown.momentum_setup_time),
+            ("Eager execution (inclusive)", breakdown.eager_execution_time),
+            ("Initialize (exclusive)", breakdown.eager_initialize_time),
+            ("Gather (exclusive)", breakdown.eager_gather_time),
+            ("Kernel calls (exclusive)", breakdown.eager_kernel_call_time),
             *eager_phase_rows,
-            ("Amplitude closure", breakdown.eager_closure_time),
-            ("Amplitude copy-out", breakdown.eager_copy_out_time),
-            ("Reduction", breakdown.reduction_time),
-            ("Other Rusticol core", breakdown.other_core_time),
+            ("Amplitude closure (exclusive)", breakdown.eager_closure_time),
+            ("Amplitude copy-out (exclusive)", breakdown.eager_copy_out_time),
+            ("Reduction (exclusive)", breakdown.reduction_time),
+            ("Other Rusticol core (exclusive)", breakdown.other_core_time),
         )
     elif eager_profile:
         component_rows = (
-            ("Profile wall", breakdown.wall_time),
-            ("Source fill", breakdown.source_fill_time),
-            ("Momentum setup", breakdown.momentum_setup_time),
-            ("Eager execution (aggregate)", breakdown.eager_execution_time),
-            ("Other Rusticol core", breakdown.other_core_time),
+            (
+                "Profile wall (headline)"
+                if shared_timing_samples
+                else "Profile wall (diagnostic pass)",
+                breakdown.wall_time,
+            ),
+            ("Source fill (exclusive)", breakdown.source_fill_time),
+            ("Momentum setup (exclusive)", breakdown.momentum_setup_time),
+            ("Eager execution (inclusive)", breakdown.eager_execution_time),
+            ("Other Rusticol core (exclusive)", breakdown.other_core_time),
         )
     else:
         component_rows = (
-            ("Profile wall", breakdown.wall_time),
+            (
+                "Profile wall (headline)"
+                if shared_timing_samples
+                else "Profile wall (diagnostic pass)",
+                breakdown.wall_time,
+            ),
             ("Source fill", breakdown.source_fill_time),
             ("Momentum setup", breakdown.momentum_setup_time),
             ("Stage input pack", breakdown.stage_input_pack_time),
@@ -368,8 +458,8 @@ def _benchmark_summary(
         if label in {
             "Stage evaluator calls",
             "Amplitude evaluator call",
-            "Eager execution (aggregate)",
-            "Kernel calls",
+            "Eager execution (inclusive)",
+            "Kernel calls (exclusive)",
         }:
             value = _paint(value, "CYAN", enabled=color)
         component_table.add_row((label, value, relative))
@@ -412,6 +502,7 @@ def _generation_summary(
         raise TypeError("generation summary requires a GenerationResult")
     file_count = len(result.files)
     total_size: int | None = None
+    container: Mapping[str, object] | None = None
     try:
         from pyamplicol.artifacts import load_manifest
 
@@ -420,6 +511,11 @@ def _generation_summary(
         file_count = len(manifest.payloads) + 1
         total_size = sum(payload.size_bytes for payload in manifest.payloads)
         total_size += manifest_path.stat().st_size
+        raw_container = getattr(manifest, "extensions", {}).get(
+            "evaluator_payload_container"
+        )
+        if isinstance(raw_container, Mapping):
+            container = raw_container
     except (OSError, RuntimeError, ValueError):
         existing = tuple(path for path in result.files if path.is_file())
         if existing:
@@ -427,6 +523,14 @@ def _generation_summary(
     files = f"{file_count} files"
     if total_size is not None:
         files += f"; {_byte_size(total_size)} total"
+    if container is not None:
+        member_count = container.get("member_count")
+        unpacked = container.get("unpacked_size_bytes")
+        if isinstance(member_count, int) and isinstance(unpacked, int):
+            files += (
+                f"; {member_count} indexed evaluator payloads "
+                f"({_byte_size(unpacked)} unpacked)"
+            )
     rows = (
         ("output", str(result.output)),
         ("processes", _value_text(_plain(result.processes))),
@@ -478,6 +582,24 @@ def _artifact_inspection_summary(
     summary.max_width["field"] = 24
     summary.max_width["value"] = 88
     summary.hrules = prettytable.HRuleStyle.HEADER
+    physical_file_count = plain.get("physical_file_count")
+    if not isinstance(physical_file_count, int):
+        payload_count = plain["payload_count"]
+        if isinstance(payload_count, bool) or not isinstance(payload_count, int):
+            raise ValueError("artifact payload count must be an integer")
+        physical_file_count = payload_count + 1
+    payload_text = (
+        f"{physical_file_count} physical files; "
+        f"{_byte_size(plain['payload_size_bytes'])}"
+    )
+    container_members = plain.get("evaluator_container_member_count")
+    container_unpacked = plain.get("evaluator_container_unpacked_size_bytes")
+    if isinstance(container_members, int) and isinstance(container_unpacked, int):
+        payload_text += (
+            f"; {container_members} indexed evaluators "
+            f"({_byte_size(container_unpacked)} unpacked; "
+            f"{plain.get('evaluator_container_abi')})"
+        )
     summary_rows = (
         ("path", plain["path"]),
         ("artifact type", str(plain["artifact_kind"]).removeprefix("pyamplicol-")),
@@ -496,13 +618,7 @@ def _artifact_inspection_summary(
             "capabilities",
             ", ".join(str(value) for value in runtime_capabilities),
         ),
-        (
-            "payloads",
-            (
-                f"{plain['payload_count']} files; "
-                f"{_byte_size(plain['payload_size_bytes'])}"
-            ),
-        ),
+        ("payloads", payload_text),
         ("integrity", plain["integrity"]),
     )
     for key, value in summary_rows:
@@ -584,6 +700,100 @@ def _artifact_inspection_summary(
                 ", ".join(str(phase) for phase in phases) or "unavailable",
             )
         )
+        selector_provenance = process.get("selector_provenance")
+        if selector_provenance is not None:
+            execution_table.add_row(
+                (
+                    process_id,
+                    "runtime selectors",
+                    (
+                        f"helicity {process.get('helicity_runtime_contract')}; "
+                        "color flow "
+                        f"{process.get('color_flow_runtime_contract')}"
+                    ),
+                )
+            )
+            specialized_axes = cast(
+                Sequence[object], process.get("generation_specialized_axes", ())
+            )
+            execution_table.add_row(
+                (
+                    process_id,
+                    "generation specialization",
+                    ", ".join(str(axis) for axis in specialized_axes) or "none",
+                )
+            )
+            source_helicities = cast(
+                Sequence[Sequence[object]],
+                process.get("selected_source_helicities", ()),
+            )
+            color_sectors = cast(
+                Sequence[object], process.get("selected_color_sector_ids", ())
+            )
+            selection_parts = []
+            if source_helicities:
+                selection_parts.append(
+                    "helicities "
+                    + ", ".join(
+                        f"{pair[0]}:{pair[1]}" for pair in source_helicities
+                    )
+                )
+            if color_sectors:
+                selection_parts.append(
+                    "color sectors " + ", ".join(str(value) for value in color_sectors)
+                )
+            execution_table.add_row(
+                (
+                    process_id,
+                    "generation selection",
+                    "; ".join(selection_parts) or "none",
+                )
+            )
+            execution_table.add_row(
+                (process_id, "selector provenance", selector_provenance)
+            )
+        if process.get("lc_physical_sector_count") is not None:
+            execution_table.add_row(
+                (
+                    process_id,
+                    "LC replay sectors",
+                    (
+                        f"{process.get('lc_physical_sector_count')} physical; "
+                        f"{process.get('lc_materialized_sector_count')} materialized; "
+                        f"{process.get('lc_replayed_sector_count')} replayed; "
+                        f"{process.get('lc_residual_sector_count')} residual"
+                    ),
+                )
+            )
+        helicity_status = process.get("helicity_recurrence_status")
+        if helicity_status is not None:
+            recurrence = str(helicity_status)
+            optimized_currents = process.get("helicity_optimized_current_count")
+            if optimized_currents is not None:
+                recurrence += (
+                    f"; {optimized_currents} optimized currents in "
+                    f"{process.get('helicity_optimized_class_count')} classes; "
+                    f"{process.get('helicity_residual_current_count')} residual"
+                )
+            optimized_amplitude_classes = process.get(
+                "helicity_optimized_amplitude_class_count"
+            )
+            if optimized_amplitude_classes is not None:
+                recurrence += (
+                    f"; {optimized_amplitude_classes} optimized amplitude classes; "
+                    f"{process.get('helicity_residual_amplitude_count')} residual roots"
+                )
+            materialized_currents = process.get(
+                "helicity_materialized_current_count"
+            )
+            if materialized_currents is not None:
+                recurrence += (
+                    f"; materialized {materialized_currents} currents / "
+                    f"{process.get('helicity_materialized_amplitude_count')} roots"
+                )
+            execution_table.add_row(
+                (process_id, "helicity recurrence", recurrence)
+            )
         if mode != "eager":
             continue
         pack_kernels = process.get("prepared_kernel_count")
@@ -624,7 +834,11 @@ def _artifact_inspection_summary(
                 process_id,
                 "selector closures",
                 (
-                    "available"
+                    (
+                        f"{process.get('selector_domain_count')} domains; "
+                        f"{process.get('selector_domain_membership_count')} "
+                        "memberships"
+                    )
                     if bool(process.get("selector_closure_available"))
                     else "not emitted"
                 ),

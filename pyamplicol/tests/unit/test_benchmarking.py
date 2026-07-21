@@ -107,6 +107,11 @@ class _RuntimeWithUnavailableProfile(_Runtime):
     def profile(self, _momenta: object, **_kwargs: object) -> dict[str, object]:
         raise AssertionError("unavailable native profiler must not be called")
 
+    def profile_repeated(
+        self, _momenta: object, _repetitions: int, **_kwargs: object
+    ) -> dict[str, object]:
+        raise AssertionError("unavailable repeated native profiler must not be called")
+
 
 class _RuntimeWithPerStageProfile(_RuntimeWithProfile):
     def profile(self, momenta: object, **kwargs: object) -> dict[str, object]:
@@ -119,10 +124,11 @@ class _RuntimeWithPerStageProfile(_RuntimeWithProfile):
 class _RuntimeWithEagerProfile(_RuntimeWithProfile):
     def profile(self, momenta: object, **kwargs: object) -> dict[str, object]:
         profile = super().profile(momenta, **kwargs)
+        profile["wall_time_s"] = 100.0e-6
         profile["stage_input_pack_by_stage_time_s"] = []
         profile["stage_evaluator_call_by_stage_time_s"] = []
         profile["stage_output_assign_by_stage_time_s"] = []
-        profile["stage_evaluator_call_time_s"] = 40.0e-6
+        profile["stage_evaluator_call_time_s"] = 80.0e-6
         profile["amplitude_evaluator_call_time_s"] = 0.0
         return profile
 
@@ -209,6 +215,30 @@ class _TimedRuntimeWithNativeWall(_TimedRuntimeWithProfile):
         assert precision == 16
         self.native_wall_calls += 1
         return repetitions * 0.5e-3
+
+
+class _TimedRuntimeWithRepeatedProfile(_TimedRuntimeWithNativeWall):
+    repeated_profile_calls = 0
+
+    def profile_repeated(
+        self,
+        momenta: object,
+        repetitions: int,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        assert kwargs["helicities"] is None
+        assert kwargs["color_flows"] is None
+        assert kwargs["precision"] == 16
+        assert kwargs["include_values"] is False
+        self.repeated_profile_calls += 1
+        points = len(momenta) * repetitions  # type: ignore[arg-type]
+        return {
+            "points": points,
+            "wall_time_s": points * 4.0e-6,
+            "stage_evaluator_call_time_s": points * 2.0e-6,
+            "amplitude_evaluator_call_time_s": points * 0.5e-6,
+            "reduction_time_s": points * 0.5e-6,
+        }
 
 
 def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
@@ -318,8 +348,11 @@ def test_native_profile_calls_are_capped_for_long_target_runtime(
     assert result.sample_count == 80
     assert result.environment["native_profile_sample_count"] == 5
     assert result.environment["native_profile_sample_limit"] == 5
-    assert result.environment["native_profile_calls_per_block"] == pytest.approx(
-        5 / 80
+    assert result.environment["native_profile_calls_per_block"] == pytest.approx(5 / 80)
+    assert result.environment["native_profile_repetitions_per_sample"] == 1
+    assert result.environment["native_profile_points_per_sample"] == 2
+    assert result.environment["timing_sample_contract"] == (
+        "separate_native_profile_diagnostic_v1"
     )
     assert runtime.profile_calls == config.warmup_runs + 5
 
@@ -346,6 +379,60 @@ def test_benchmark_uses_repeated_native_rusticol_wall_timer(
     assert result.environment["wall_time_source"] == ("runtime_core_repeated_wall_time")
     assert result.environment["elapsed_seconds"] == pytest.approx(0.1)
     assert runtime.native_wall_calls >= result.sample_count
+    assert result.environment["timing_sample_contract"] == (
+        "separate_native_profile_diagnostic_v1"
+    )
+    assert result.environment["wall_time_sample_pass"] == (
+        "runtime._benchmark_f64_wall_time"
+    )
+    assert result.environment["evaluator_time_sample_pass"] == "runtime.profile"
+    assert result.environment["native_profile_repetitions_per_sample"] == 1
+    assert result.repetitions_per_sample > 1
+
+
+def test_repeated_native_profile_supplies_headline_and_breakdown_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithRepeatedProfile(clock)
+    runtime.repeated_profile_calls = 0
+    config = BenchmarkConfig(
+        target_runtime=0.1,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=4,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert runtime.repeated_profile_calls == result.sample_count
+    assert result.wall_time_per_point == pytest.approx(4.0e-6)
+    assert result.evaluator_time_per_point == pytest.approx(2.5e-6)
+    assert result.timing_breakdown is not None
+    assert result.timing_breakdown.wall_time is not None
+    assert result.timing_breakdown.wall_time.mean_seconds_per_point == pytest.approx(
+        result.wall_time_per_point
+    )
+    assert result.timing_breakdown.wall_time.uncertainty == result.uncertainty
+    assert result.timing_breakdown.sample_count == result.sample_count
+    assert result.environment["native_profile_sample_count"] == result.sample_count
+    assert result.environment["native_profile_repetitions_per_sample"] == (
+        result.repetitions_per_sample
+    )
+    assert result.environment["native_profile_points_per_sample"] == (
+        result.repetitions_per_sample * config.batch_size
+    )
+    assert result.environment["wall_time_sample_pass"] == "runtime.profile_repeated"
+    assert result.environment["evaluator_time_sample_pass"] == (
+        "runtime.profile_repeated"
+    )
+    assert result.environment["timing_sample_contract"] == (
+        "shared_native_repeated_profile_v1"
+    )
 
 
 def test_keyboard_interrupt_returns_statistics_for_complete_samples(
@@ -431,16 +518,19 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
     assert result.wall_time_per_point == pytest.approx(3.0e-6)
     assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
     assert result.environment["wall_time_source"] == "runtime_profile_core_wall_time"
+    assert result.environment["wall_time_sample_pass"] == "runtime.profile"
     assert (
         result.environment["evaluator_time_source"]
         == "runtime_profile_core_evaluator_call_time"
     )
     assert result.environment["evaluator_sample_count"] == 3
+    assert result.environment["timing_sample_contract"] == (
+        "shared_native_single_profile_v1"
+    )
+    assert result.environment["native_profile_repetitions_per_sample"] == 1
     assert result.environment["precision"] == 16
     assert result.environment["execution_mode"] == "compiled"
-    assert result.environment["color_workload"] == (
-        "all 1 generated physical LC flows"
-    )
+    assert result.environment["color_workload"] == ("all 1 generated physical LC flows")
     assert result.environment["helicity_workload"] == "selected 1/1 helicities: h0"
     assert result.evaluator_uncertainty is not None
     assert result.process_id == "test"
@@ -471,6 +561,77 @@ def test_native_profile_reports_unaccounted_rusticol_core_time() -> None:
     sample = benchmark_module._native_profile_sample(profile, fallback_points=2)
 
     assert sample.other_core_time == pytest.approx(2.0e-6)
+
+
+def test_native_eager_profile_rejects_overlapping_top_level_phases() -> None:
+    profile = {
+        "execution_mode": "eager",
+        "points": 4,
+        "wall_time_s": 10.0e-6,
+        "source_fill_time_s": 8.0e-6,
+        "momentum_setup_time_s": 1.0e-6,
+        "stage_evaluator_call_time_s": 4.0e-6,
+        "amplitude_evaluator_call_time_s": 0.0,
+        "stage_input_pack_by_stage_time_s": [],
+        "stage_evaluator_call_by_stage_time_s": [],
+        "stage_output_assign_by_stage_time_s": [],
+    }
+
+    with pytest.raises(EvaluationError, match="exclusive top-level phases"):
+        benchmark_module._native_profile_sample(profile, fallback_points=4)
+
+
+def test_native_eager_profile_rejects_children_exceeding_inclusive_execution() -> None:
+    profile = {
+        "execution_mode": "eager",
+        "points": 1,
+        "wall_time_s": 20.0e-6,
+        "source_fill_time_s": 1.0e-6,
+        "momentum_setup_time_s": 1.0e-6,
+        "stage_evaluator_call_time_s": 10.0e-6,
+        "amplitude_evaluator_call_time_s": 0.0,
+        "eager_kernel_call_time_s": 11.0e-6,
+        "stage_input_pack_by_stage_time_s": [],
+        "stage_evaluator_call_by_stage_time_s": [],
+        "stage_output_assign_by_stage_time_s": [],
+    }
+
+    with pytest.raises(EvaluationError, match="exclusive execution phases"):
+        benchmark_module._native_profile_sample(profile, fallback_points=1)
+
+
+def test_native_eager_shared_samples_partition_wall_time() -> None:
+    samples = []
+    for source_fill in (1.0e-6, 1.5e-6, 2.0e-6):
+        sample = benchmark_module._native_profile_sample(
+            {
+                "execution_mode": "eager",
+                "points": 1,
+                "wall_time_s": 12.0e-6,
+                "source_fill_time_s": source_fill,
+                "momentum_setup_time_s": 1.0e-6,
+                "stage_evaluator_call_time_s": 8.0e-6,
+                "amplitude_evaluator_call_time_s": 0.0,
+                "stage_input_pack_by_stage_time_s": [],
+                "stage_evaluator_call_by_stage_time_s": [],
+                "stage_output_assign_by_stage_time_s": [],
+            },
+            fallback_points=1,
+        )
+        assert sample.other_core_time is not None
+        assert sample.source_fill_time is not None
+        assert sample.momentum_setup_time is not None
+        assert (
+            sample.source_fill_time
+            + sample.momentum_setup_time
+            + sample.stage_evaluator_call_time
+            + sample.other_core_time
+        ) == pytest.approx(sample.wall_time)
+        samples.append(sample)
+
+    breakdown = benchmark_module._timing_breakdown(samples)
+    assert breakdown.source_fill_time is not None
+    assert breakdown.source_fill_time.uncertainty.standard_deviation > 0.0
 
 
 def test_benchmark_falls_back_to_valid_per_stage_native_timings() -> None:
@@ -506,13 +667,13 @@ def test_eager_profile_uses_nonzero_aggregate_when_stage_vectors_are_empty() -> 
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
 
-    assert result.evaluator_time_per_point == pytest.approx(10.0e-6)
+    assert result.evaluator_time_per_point == pytest.approx(20.0e-6)
     assert result.timing_breakdown is not None
     assert result.timing_breakdown.execution_mode == "eager"
     assert result.timing_breakdown.stage_evaluator_call_time is None
     aggregate = result.timing_breakdown.eager_execution_time
     assert aggregate is not None
-    assert aggregate.mean_seconds_per_point == pytest.approx(10.0e-6)
+    assert aggregate.mean_seconds_per_point == pytest.approx(20.0e-6)
     assert result.timing_breakdown.stage_input_pack_time is None
     assert result.timing_breakdown.output_assign_time is None
     assert result.timing_breakdown.amplitude_input_pack_time is None
@@ -559,9 +720,7 @@ def test_eager_profile_preserves_detailed_native_phase_timings() -> None:
     assert breakdown.eager_scatter_finalization_time is not None
     assert breakdown.eager_closure_time is not None
     assert breakdown.eager_copy_out_time is not None
-    assert breakdown.eager_copy_out_time.mean_seconds_per_point == pytest.approx(
-        1.5e-6
-    )
+    assert breakdown.eager_copy_out_time.mean_seconds_per_point == pytest.approx(1.5e-6)
 
 
 def test_empty_stage_vectors_do_not_relabel_compiled_amplitude_only_profile() -> None:

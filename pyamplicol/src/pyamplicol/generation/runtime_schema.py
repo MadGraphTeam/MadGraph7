@@ -211,6 +211,23 @@ def build_runtime_schema_layout(
         "stages": stages,
         "amplitude_stage": amplitude_stage,
     }
+    if dag.lc_topology_replay is not None:
+        runtime_schema["lc_topology_replay"] = (
+            dag.lc_topology_replay.to_runtime_manifest()
+        )
+    if dag.helicity_recurrence is not None:
+        runtime_schema["helicity_recurrence"] = {
+            **dag.helicity_recurrence.to_runtime_manifest(),
+            **(
+                {}
+                if dag.helicity_materialization is None
+                else {
+                    "materialization": (
+                        dag.helicity_materialization.to_runtime_manifest()
+                    )
+                }
+            ),
+        }
     return RuntimeSchemaLayout(
         runtime_schema=runtime_schema,
         current_slots=current_slots,

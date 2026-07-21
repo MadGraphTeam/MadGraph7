@@ -120,9 +120,13 @@ class BenchmarkBackend:
             _resolve_color_flow_ordinals(physics, self._config.color_flow_ids) or None
         )
         profiler = _native_profiler(runtime) if self._config.precision == 16 else None
+        repeated_profiler = (
+            _native_repeated_profiler(runtime) if self._config.precision == 16 else None
+        )
         native_wall_timer = (
             _native_wall_timer(runtime) if self._config.precision == 16 else None
         )
+
         def evaluate_once() -> object:
             return runtime.evaluate(
                 batch,
@@ -148,9 +152,11 @@ class BenchmarkBackend:
         warmup_elapsed = 0.0
         calibration: _Calibration | None = None
         samples: list[float] = []
-        evaluator_samples: list[float] | None = [] if profiler else None
+        evaluator_samples: list[float] | None = (
+            [] if profiler is not None or repeated_profiler is not None else None
+        )
         native_profile_samples: list[_NativeProfileSample] | None = (
-            [] if profiler else None
+            [] if profiler is not None or repeated_profiler is not None else None
         )
         elapsed = 0.0
         evaluator_elapsed = 0.0
@@ -214,23 +220,51 @@ class BenchmarkBackend:
                 )
             active_task_id = task_id
             repetitions = calibration.repetitions_per_sample
-            native_profile_sample_limit = min(
-                calibration.sample_count,
-                max(
-                    1,
-                    min(
-                        self._config.minimum_samples,
-                        _MAX_NATIVE_PROFILE_SAMPLES,
+            native_profile_sample_limit = (
+                calibration.sample_count
+                if repeated_profiler is not None
+                else min(
+                    calibration.sample_count,
+                    max(
+                        1,
+                        min(
+                            self._config.minimum_samples,
+                            _MAX_NATIVE_PROFILE_SAMPLES,
+                        ),
                     ),
-                ),
+                )
             )
             try:
                 for sample_index in range(calibration.sample_count):
-                    duration = measure_repetitions(repetitions)
                     native_sample: _NativeProfileSample | None = None
                     profile_duration = 0.0
+                    if repeated_profiler is not None:
+                        profile_started = time.perf_counter()
+                        profile = repeated_profiler(
+                            batch,
+                            repetitions,
+                            helicities=helicities,
+                            color_flows=color_flows,
+                            precision=self._config.precision,
+                            include_values=False,
+                        )
+                        profile_duration = time.perf_counter() - profile_started
+                        native_sample = _native_profile_sample(
+                            profile,
+                            len(batch) * repetitions,
+                        )
+                        if native_sample.wall_time is None:
+                            raise EvaluationError(
+                                "repeated native profile did not report core wall time"
+                            )
+                        duration = _profile_float(profile, "wall_time_s")
+                        sample_seconds_per_point = native_sample.wall_time
+                    else:
+                        duration = measure_repetitions(repetitions)
+                        sample_seconds_per_point = duration / (repetitions * len(batch))
                     if (
-                        profiler is not None
+                        repeated_profiler is None
+                        and profiler is not None
                         and evaluator_samples is not None
                         and native_profile_samples is not None
                         and sample_index < native_profile_sample_limit
@@ -246,7 +280,7 @@ class BenchmarkBackend:
                         profile_duration = time.perf_counter() - profile_started
                         native_sample = _native_profile_sample(profile, len(batch))
 
-                    samples.append(duration / (repetitions * len(batch)))
+                    samples.append(sample_seconds_per_point)
                     elapsed += duration
                     if native_sample is not None:
                         assert evaluator_samples is not None
@@ -314,18 +348,40 @@ class BenchmarkBackend:
         wall_samples = samples
         wall_time_source = (
             "runtime_core_repeated_wall_time"
-            if native_wall_timer is not None
+            if native_wall_timer is not None or repeated_profiler is not None
             else "runtime_evaluate_wall_time"
         )
-        if native_wall_timer is None and native_profile_samples is not None:
+        wall_sample_pass = (
+            "runtime.profile_repeated"
+            if repeated_profiler is not None
+            else (
+                "runtime._benchmark_f64_wall_time"
+                if native_wall_timer is not None
+                else "runtime.evaluate"
+            )
+        )
+        timing_sample_contract = (
+            "shared_native_repeated_profile_v1"
+            if repeated_profiler is not None
+            else "separate_native_profile_diagnostic_v1"
+        )
+        if (
+            repeated_profiler is None
+            and native_wall_timer is None
+            and native_profile_samples is not None
+            and len(native_profile_samples) == len(samples)
+            and calibration.repetitions_per_sample == 1
+        ):
             native_wall_samples = [
                 sample.wall_time
                 for sample in native_profile_samples
                 if sample.wall_time is not None
             ]
-            if len(native_wall_samples) == len(native_profile_samples):
+            if len(native_wall_samples) == len(samples):
                 wall_samples = native_wall_samples
                 wall_time_source = "runtime_profile_core_wall_time"
+                wall_sample_pass = "runtime.profile"
+                timing_sample_contract = "shared_native_single_profile_v1"
         mean, deviation, error, relative_error = _sample_statistics(wall_samples)
         uncertainty = BenchmarkStatistics(deviation, error, relative_error)
         if evaluator_samples is None:
@@ -334,7 +390,9 @@ class BenchmarkBackend:
             timing_breakdown = None
             evaluator_environment: dict[str, object] = {
                 "wall_time_source": wall_time_source,
+                "wall_time_sample_pass": wall_sample_pass,
                 "evaluator_time_source": "runtime_evaluate_wall_time",
+                "timing_sample_contract": "headline_only_no_breakdown_v1",
                 "native_profile_unavailable_reason": (
                     "non_f64_precision" if self._config.precision != 16 else None
                 ),
@@ -353,20 +411,46 @@ class BenchmarkBackend:
             )
             assert native_profile_samples is not None
             timing_breakdown = _timing_breakdown(native_profile_samples)
+            native_profile_repetitions = (
+                calibration.repetitions_per_sample
+                if repeated_profiler is not None
+                else 1
+            )
+            native_profile_warmup_calls = (
+                self._config.warmup_runs if profiler is not None else 0
+            )
             evaluator_environment = {
                 "wall_time_source": wall_time_source,
+                "wall_time_sample_pass": wall_sample_pass,
                 "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+                "evaluator_time_sample_pass": (
+                    "runtime.profile_repeated"
+                    if repeated_profiler is not None
+                    else "runtime.profile"
+                ),
+                "timing_breakdown_sample_pass": (
+                    "runtime.profile_repeated"
+                    if repeated_profiler is not None
+                    else "runtime.profile"
+                ),
                 "evaluator_sample_count": len(evaluator_samples),
                 "evaluator_elapsed_seconds": evaluator_elapsed,
                 "native_profile_sample_count": len(evaluator_samples),
                 "native_profile_sample_limit": native_profile_sample_limit,
+                "native_profile_repetitions_per_sample": (
+                    native_profile_repetitions
+                ),
+                "native_profile_points_per_sample": (
+                    native_profile_repetitions * len(batch)
+                ),
                 "native_profile_calls_per_block": (
                     len(evaluator_samples) / len(samples) if samples else 0.0
                 ),
-                "native_profile_warmup_call_count": self._config.warmup_runs,
+                "native_profile_warmup_call_count": native_profile_warmup_calls,
                 "native_profile_total_call_count": (
-                    self._config.warmup_runs + len(evaluator_samples)
+                    native_profile_warmup_calls + len(evaluator_samples)
                 ),
+                "timing_sample_contract": timing_sample_contract,
                 "evaluator_standard_deviation_seconds_per_point": (evaluator_deviation),
                 "evaluator_standard_error_seconds_per_point": evaluator_error,
                 "evaluator_relative_standard_error": evaluator_relative,
@@ -664,6 +748,19 @@ def _native_profiler(
     return None
 
 
+def _native_repeated_profiler(
+    runtime: RuntimeBackend,
+) -> Callable[..., Mapping[str, object]] | None:
+    if getattr(runtime, "supports_profiling", None) is False:
+        return None
+    profiler = getattr(runtime, "profile_repeated", None)
+    return (
+        cast(Callable[..., Mapping[str, object]], profiler)
+        if callable(profiler)
+        else None
+    )
+
+
 def _native_wall_timer(runtime: RuntimeBackend) -> Callable[..., float] | None:
     timer = getattr(runtime, "_benchmark_f64_wall_time", None)
     return timer if callable(timer) else None
@@ -840,9 +937,7 @@ def _native_profile_sample(
         else output_assign_total * per_point
     )
     amplitude_input_pack_time = (
-        None
-        if execution_mode == "eager"
-        else normalized("amplitude_input_pack_time_s")
+        None if execution_mode == "eager" else normalized("amplitude_input_pack_time_s")
     )
     amplitude_evaluator_call_time = (
         None
@@ -857,6 +952,18 @@ def _native_profile_sample(
     eager_execution_time = (
         stage_evaluator_call_time if execution_mode == "eager" else None
     )
+    eager_initialize_time = normalized("eager_initialize_time_s")
+    eager_gather_time = normalized("eager_gather_time_s")
+    eager_kernel_call_time = normalized("eager_kernel_call_time_s")
+    eager_invocation_scatter_time = normalized(
+        "eager_invocation_scatter_time_s"
+    )
+    eager_finalization_time = normalized("eager_finalization_time_s")
+    eager_scatter_finalization_time = normalized(
+        "eager_scatter_finalization_time_s"
+    )
+    eager_closure_time = normalized("eager_closure_time_s")
+    eager_copy_out_time = normalized("eager_copy_out_time_s")
     accounted = (
         source_fill_time,
         momentum_setup_time,
@@ -867,10 +974,49 @@ def _native_profile_sample(
         None if execution_mode == "eager" else amplitude_evaluator_call_time,
         None if execution_mode == "eager" else reduction_time,
     )
+    accounted_total = sum(value or 0.0 for value in accounted)
+    accounting_tolerance = (
+        1.0e-12 if wall_time is None else max(1.0e-12, wall_time * 1.0e-12)
+    )
+    if (
+        execution_mode == "eager"
+        and wall_time is not None
+        and accounted_total > wall_time + accounting_tolerance
+    ):
+        raise EvaluationError(
+            "native eager profile exclusive top-level phases account for "
+            f"{accounted_total:.9e}s/point, exceeding wall time "
+            f"{wall_time:.9e}s/point"
+        )
+    if execution_mode == "eager" and eager_execution_time is not None:
+        scatter_phases = (
+            (eager_invocation_scatter_time, eager_finalization_time)
+            if eager_invocation_scatter_time is not None
+            or eager_finalization_time is not None
+            else (eager_scatter_finalization_time,)
+        )
+        exclusive_eager_phases = (
+            eager_initialize_time,
+            eager_gather_time,
+            eager_kernel_call_time,
+            *scatter_phases,
+            eager_closure_time,
+            reduction_time,
+            eager_copy_out_time,
+        )
+        exclusive_eager_total = sum(
+            value or 0.0 for value in exclusive_eager_phases
+        )
+        if exclusive_eager_total > eager_execution_time + accounting_tolerance:
+            raise EvaluationError(
+                "native eager profile exclusive execution phases account for "
+                f"{exclusive_eager_total:.9e}s/point, exceeding the inclusive "
+                f"eager execution time {eager_execution_time:.9e}s/point"
+            )
     other_core_time = (
         None
         if wall_time is None
-        else max(wall_time - sum(value or 0.0 for value in accounted), 0.0)
+        else max(wall_time - accounted_total, 0.0)
     )
 
     return _NativeProfileSample(
@@ -888,18 +1034,14 @@ def _native_profile_sample(
         stage_input_pack_times=normalized_sequence(stage_input_pack),
         stage_evaluator_call_times=normalized_sequence(stage_evaluator_call),
         stage_output_assign_times=normalized_sequence(stage_output_assign),
-        eager_initialize_time=normalized("eager_initialize_time_s"),
-        eager_gather_time=normalized("eager_gather_time_s"),
-        eager_kernel_call_time=normalized("eager_kernel_call_time_s"),
-        eager_invocation_scatter_time=normalized(
-            "eager_invocation_scatter_time_s"
-        ),
-        eager_finalization_time=normalized("eager_finalization_time_s"),
-        eager_scatter_finalization_time=normalized(
-            "eager_scatter_finalization_time_s"
-        ),
-        eager_closure_time=normalized("eager_closure_time_s"),
-        eager_copy_out_time=normalized("eager_copy_out_time_s"),
+        eager_initialize_time=eager_initialize_time,
+        eager_gather_time=eager_gather_time,
+        eager_kernel_call_time=eager_kernel_call_time,
+        eager_invocation_scatter_time=eager_invocation_scatter_time,
+        eager_finalization_time=eager_finalization_time,
+        eager_scatter_finalization_time=eager_scatter_finalization_time,
+        eager_closure_time=eager_closure_time,
+        eager_copy_out_time=eager_copy_out_time,
     )
 
 
@@ -974,9 +1116,7 @@ def _timing_breakdown(
             )
 
     execution_modes = {
-        sample.execution_mode
-        for sample in samples
-        if sample.execution_mode is not None
+        sample.execution_mode for sample in samples if sample.execution_mode is not None
     }
     if len(execution_modes) > 1:
         raise EvaluationError("native runtime profile changed execution mode")

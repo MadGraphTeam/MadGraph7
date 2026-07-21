@@ -84,6 +84,7 @@ jobs:
             pack_architecture: aarch64
     env:
       PYAMPLICOL_BUILD_MODE: candidate
+      PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       SYMBOLICA_HIDE_BANNER: "1"
     steps:
@@ -145,6 +146,7 @@ jobs:
             pack_architecture: aarch64
     env:
       PYAMPLICOL_BUILD_MODE: candidate
+      PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       SYMBOLICA_HIDE_BANNER: "1"
     steps:

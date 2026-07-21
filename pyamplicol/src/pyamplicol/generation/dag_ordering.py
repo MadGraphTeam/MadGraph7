@@ -181,6 +181,7 @@ def _lc_all_adjoint_symmetry_order_variants(
     left_all_adjoint: bool,
     right_all_adjoint: bool,
     result_reflection_proven: bool,
+    fold_result_reflections: bool = True,
 ) -> tuple[tuple[tuple[int, ...], tuple[float, float]], ...]:
     """Return signed pure-adjoint LC symmetry variants."""
 
@@ -205,8 +206,10 @@ def _lc_all_adjoint_symmetry_order_variants(
                     first = tuple(reversed(right)) if invert & 1 else right
                     second = tuple(reversed(left)) if invert & 2 else left
                 proposed = (*first, *second)
-                if result_reflection_proven and not _lc_all_adjoint_symmetry_order_kept(
-                    proposed
+                if (
+                    result_reflection_proven
+                    and fold_result_reflections
+                    and not _lc_all_adjoint_symmetry_order_kept(proposed)
                 ):
                     continue
                 negative = (

@@ -2,6 +2,80 @@
 
 use super::*;
 
+fn resolved_totals(resolved: &ResolvedValues<f64>) -> Vec<f64> {
+    let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+    if component_count == 0 {
+        return vec![0.0; resolved.point_count];
+    }
+    resolved
+        .values
+        .chunks(component_count)
+        .map(|point| point.iter().sum())
+        .collect()
+}
+
+fn attach_point_selector_profile(
+    profile: &mut NativeRuntimeProfile,
+    plan: &PointSelectorPlanProfile,
+    planner: Duration,
+    gather: Duration,
+    scatter: Duration,
+) {
+    profile.selector_planner_s = profile_duration_seconds(planner);
+    profile.selector_gather_s = profile_duration_seconds(gather);
+    profile.selector_scatter_s = profile_duration_seconds(scatter);
+    profile.selector_plan_kind = plan.kind.to_string();
+    profile.selector_group_sizes.clone_from(&plan.group_sizes);
+    profile.selector_reordered_point_count = plan.reordered_point_count;
+    profile.selector_simd_lane_width = plan.simd_lane_width;
+    profile.selector_simd_occupancy = plan.simd_occupancy;
+}
+
+fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
+    runtime
+        .stages
+        .as_ref()
+        .is_some_and(|stages| stages.iter().any(|stage| stage.evaluator.uses_simd_jit()))
+        || runtime
+            .amplitude_stage
+            .as_ref()
+            .is_some_and(|stage| stage.evaluator.uses_simd_jit())
+        || runtime
+            .helicity_sum_runtime
+            .as_deref()
+            .is_some_and(execution_uses_simd_jit)
+        || runtime
+            .helicity_selector_runtimes
+            .iter()
+            .any(|lane| execution_uses_simd_jit(lane))
+        || runtime
+            .color_selector_runtimes
+            .values()
+            .any(|lane| execution_uses_simd_jit(lane))
+}
+
+fn native_f64_simd_lane_width() -> usize {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx512f") {
+            return 8;
+        }
+        if std::is_x86_feature_detected!("avx2") {
+            return 4;
+        }
+        if std::is_x86_feature_detected!("sse2") {
+            return 2;
+        }
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        if std::arch::is_aarch64_feature_detected!("neon") {
+            return 2;
+        }
+    }
+    1
+}
+
 impl NativeRuntime {
     pub const ABI_VERSION: u32 = crate::C_ABI_VERSION;
 
@@ -22,6 +96,7 @@ impl NativeRuntime {
         })?;
         let selection = artifact.select_process(process_id)?;
         let (manifest, evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
+        let evaluator_payloads = artifact.evaluator_payload_store(&evaluator_root)?;
         let physics_bytes = artifact.read_payload(&selection.process.physics_path)?;
         let mut physics_v1 =
             ProcessPhysicsV1::from_json(&physics_bytes, &selection.process.physics_path)?;
@@ -44,7 +119,8 @@ impl NativeRuntime {
                 LoadedExecutionManifest::Compiled(manifest) => {
                     let representative_process = manifest.process.clone();
                     let representative_key = manifest.key.clone();
-                    let runtime = load_execution_manifest(*manifest, &evaluator_root)?;
+                    let runtime =
+                        load_execution_manifest_with_store(*manifest, &evaluator_payloads)?;
                     (
                         representative_process,
                         representative_key,
@@ -61,6 +137,7 @@ impl NativeRuntime {
                     let eager = load_eager_native_runtime(
                         &artifact,
                         &evaluator_root,
+                        &evaluator_payloads,
                         &manifest,
                         &mut runtime,
                     )?;
@@ -81,7 +158,7 @@ impl NativeRuntime {
         let input_crossing_map = if let Some(alias) = &selection.alias {
             runtime.remap_lc_topology_replay_public_labels(&alias.external_permutation)?;
             physics_v1 = apply_final_state_alias_metadata(physics_v1, alias)?;
-            runtime.external_pdg_order = alias.external_pdgs.clone();
+            runtime.set_external_pdg_order_recursive(&alias.external_pdgs);
             Some(
                 alias
                     .external_permutation
@@ -98,7 +175,27 @@ impl NativeRuntime {
         } else {
             None
         };
-        runtime.physics = Some(PhysicsRuntime::new(physics_v1.clone())?);
+        runtime.attach_physics(Arc::new(PhysicsRuntime::new(physics_v1.clone())?))?;
+        if matches!(&execution_lane, NativeExecutionLane::Compiled) {
+            runtime.initialize_compiled_helicity_execution_plan(
+                selection
+                    .alias
+                    .as_ref()
+                    .map(|alias| alias.external_permutation.as_slice()),
+            )?;
+        }
+        let selector_simd_lane_width = {
+            let uses_simd_jit = match &execution_lane {
+                NativeExecutionLane::Compiled => execution_uses_simd_jit(&runtime),
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Eager(runtime) => runtime.backend_name() == "jit",
+            };
+            if uses_simd_jit {
+                native_f64_simd_lane_width()
+            } else {
+                1
+            }
+        };
         let mut loaded = Self {
             root: artifact.root().to_path_buf(),
             runtime,
@@ -111,6 +208,8 @@ impl NativeRuntime {
             warnings_muted: false,
             warned_kinds: BTreeSet::new(),
             pending_warnings: Vec::new(),
+            point_selector_scratch: PointSelectorExecutionScratch::default(),
+            selector_simd_lane_width,
         };
         if let Some(path) = model_parameters_path {
             loaded.set_model_parameters_json(path)?;
@@ -155,6 +254,10 @@ impl NativeRuntime {
             stage_count: self.runtime.stage_count,
             amplitude_output_count: self.runtime.amplitude_output_count,
         }
+    }
+
+    fn selector_simd_lane_width(&self) -> usize {
+        self.selector_simd_lane_width
     }
 
     pub fn metadata_json(&self) -> Result<String, RusticolError> {
@@ -309,7 +412,7 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<(usize, usize), RusticolError> {
-        self.validate_selector_capabilities(helicity_ids, color_ids)?;
+        self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
         let selected_colors = selector_set(color_ids, "color component")?;
         let physics = self.runtime.physics.as_ref().ok_or_else(|| {
@@ -333,16 +436,185 @@ impl NativeRuntime {
         momenta: &[f64],
         point_count: usize,
     ) -> Result<Vec<f64>, RusticolError> {
+        self.evaluate_f64_with_selectors(momenta, point_count, None, None, None, None)
+    }
+
+    /// Evaluate one total per point with optional global or per-point selectors.
+    ///
+    /// Global selectors retain the existing subset semantics. Per-point
+    /// selectors are resolved physical-axis indices and contain exactly one
+    /// selector for every input point. The two forms are mutually exclusive on
+    /// the same axis. An omitted axis is summed over all components retained by
+    /// the artifact.
+    pub fn evaluate_f64_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+    ) -> Result<Vec<f64>, RusticolError> {
+        if helicity_ids.is_some() && helicity_by_point.is_some() {
+            return Err(RusticolError::selector(
+                "helicities and helicity_by_point are mutually exclusive",
+            ));
+        }
+        if color_ids.is_some() && color_by_point.is_some() {
+            return Err(RusticolError::selector(
+                "color_flows and color_flow_by_point are mutually exclusive",
+            ));
+        }
+        self.validate_selector_capabilities(
+            helicity_ids.is_some() || helicity_by_point.is_some(),
+            color_ids.is_some() || color_by_point.is_some(),
+        )?;
+        let selected_helicities = selector_set(helicity_ids, "helicity")?;
+        let selected_colors = selector_set(color_ids, "color component")?;
         let batch = self.prepare_f64_batch(momenta, point_count)?;
+        let physics = self.runtime.physics.clone().ok_or_else(|| {
+            RusticolError::artifact(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
+        let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
+        let result = (|| {
+            let plan = selector_scratch.planner.build(
+                point_count,
+                helicity_by_point,
+                color_by_point,
+                physics.manifest.helicities.len(),
+                physics.manifest.color_components.len(),
+            )?;
+            if plan == PointSelectorPlan::None {
+                if selected_helicities.is_some() || selected_colors.is_some() {
+                    let (resolved, _profile) = self.run_resolved_f64_batch(
+                        &batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                    )?;
+                    return Ok(resolved_totals(&resolved));
+                }
+                return match &mut self.execution_lane {
+                    NativeExecutionLane::Compiled => self
+                        .runtime
+                        .run_f64(&batch)
+                        .map(|(values, _profile)| values),
+                    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                    NativeExecutionLane::Eager(runtime) => runtime
+                        .run_f64(&mut self.runtime, &batch)
+                        .map(|(values, _profile)| values),
+                };
+            }
+
+            self.record_resolved_warnings(helicity_ids, color_ids)?;
+            if let PointSelectorPlan::Homogeneous(key) = plan {
+                let point_helicities = key
+                    .helicity_index
+                    .map(|index| BTreeSet::from([physics.manifest.helicities[index].id.clone()]));
+                let point_colors = key.color_index.map(|index| {
+                    BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
+                });
+                let effective_helicities =
+                    point_helicities.as_ref().or(selected_helicities.as_ref());
+                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
+                let (resolved, _profile) =
+                    self.run_resolved_f64_batch(&batch, effective_helicities, effective_colors)?;
+                return Ok(resolved_totals(&resolved));
+            }
+
+            let mut values = vec![0.0; point_count];
+            let partition_count = selector_scratch.planner.partitions().len();
+            for partition_index in 0..partition_count {
+                let partition = selector_scratch.planner.partitions()[partition_index];
+                let point_helicities = partition
+                    .key
+                    .helicity_index
+                    .map(|index| BTreeSet::from([physics.manifest.helicities[index].id.clone()]));
+                let point_colors = partition.key.color_index.map(|index| {
+                    BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
+                });
+                let effective_helicities =
+                    point_helicities.as_ref().or(selected_helicities.as_ref());
+                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
+                let (resolved, _profile) = match partition.rows {
+                    PointSelectorRows::Contiguous { start, end } => self.run_resolved_f64_batch(
+                        &batch[start..end],
+                        effective_helicities,
+                        effective_colors,
+                    )?,
+                    rows @ PointSelectorRows::Gathered { .. } => {
+                        let point_indices = selector_scratch.planner.gathered_rows(rows);
+                        let gathered_batch = fill_gathered_batch(
+                            &mut selector_scratch.gathered_batch,
+                            &batch,
+                            point_indices,
+                        );
+                        self.run_resolved_f64_batch(
+                            gathered_batch,
+                            effective_helicities,
+                            effective_colors,
+                        )?
+                    }
+                };
+                write_partition_totals(&mut selector_scratch.partition_totals, &resolved);
+                if selector_scratch.partition_totals.len() != partition.rows.len() {
+                    return Err(RusticolError::integrity(
+                        "per-point selector partition returned the wrong number of values",
+                    ));
+                }
+                scatter_partition_totals(
+                    &mut values,
+                    &selector_scratch.partition_totals,
+                    partition.rows,
+                    &selector_scratch.planner,
+                );
+            }
+            Ok(values)
+        })();
+        self.point_selector_scratch = selector_scratch;
+        result
+    }
+
+    fn run_resolved_f64_batch(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+    ) -> Result<(ResolvedValues<f64>, RuntimeProfile), RusticolError> {
         match &mut self.execution_lane {
-            NativeExecutionLane::Compiled => self
-                .runtime
-                .run_f64(&batch)
-                .map(|(values, _profile)| values),
+            NativeExecutionLane::Compiled => {
+                self.runtime
+                    .run_resolved_f64(batch, selected_helicities, selected_colors)
+            }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => runtime
-                .run_f64(&mut self.runtime, &batch)
-                .map(|(values, _profile)| values),
+            NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64(
+                &mut self.runtime,
+                batch,
+                selected_helicities,
+                selected_colors,
+            ),
+        }
+    }
+
+    fn run_resolved_f64_batch_profile(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+    ) -> Result<(ResolvedValues<f64>, RuntimeProfile), RusticolError> {
+        match &mut self.execution_lane {
+            NativeExecutionLane::Compiled => {
+                self.runtime
+                    .run_resolved_f64(batch, selected_helicities, selected_colors)
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64_profile(
+                &mut self.runtime,
+                batch,
+                selected_helicities,
+                selected_colors,
+            ),
         }
     }
 
@@ -354,6 +626,28 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<f64, RusticolError> {
+        self.benchmark_f64_wall_time_with_selectors(
+            momenta,
+            point_count,
+            repetitions,
+            helicity_ids,
+            color_ids,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn benchmark_f64_wall_time_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        repetitions: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+    ) -> Result<f64, RusticolError> {
         if repetitions == 0 {
             return Err(RusticolError::invalid_argument(
                 "benchmark repetitions must be positive",
@@ -361,12 +655,14 @@ impl NativeRuntime {
         }
         let started = Instant::now();
         for _ in 0..repetitions {
-            let values = if helicity_ids.is_some() || color_ids.is_some() {
-                self.evaluate_resolved_f64(momenta, point_count, helicity_ids, color_ids)?
-                    .totals()
-            } else {
-                self.evaluate_f64(momenta, point_count)?
-            };
+            let values = self.evaluate_f64_with_selectors(
+                momenta,
+                point_count,
+                helicity_ids,
+                color_ids,
+                helicity_by_point,
+                color_by_point,
+            )?;
             std::hint::black_box(values);
         }
         Ok(started.elapsed().as_secs_f64())
@@ -382,7 +678,7 @@ impl NativeRuntime {
         let total_start = Instant::now();
         let batch = self.prepare_f64_batch(momenta, point_count)?;
         let (values, profile) = if helicity_ids.is_some() || color_ids.is_some() {
-            self.validate_selector_capabilities(helicity_ids, color_ids)?;
+            self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
             self.record_resolved_warnings(helicity_ids, color_ids)?;
             let selected_helicities = selector_set(helicity_ids, "helicity")?;
             let selected_colors = selector_set(color_ids, "color component")?;
@@ -427,6 +723,231 @@ impl NativeRuntime {
         };
         let mut profile: NativeRuntimeProfile = profile.into();
         profile.total_s = total_start.elapsed().as_secs_f64();
+        if self.execution_lane.is_eager() {
+            profile.validate_eager_top_level_accounting()?;
+        }
+        Ok(NativeProfiledEvaluation { values, profile })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_f64_profile_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        if helicity_by_point.is_none() && color_by_point.is_none() {
+            return self.evaluate_f64_profile(momenta, point_count, helicity_ids, color_ids);
+        }
+        if helicity_ids.is_some() && helicity_by_point.is_some() {
+            return Err(RusticolError::selector(
+                "helicities and helicity_by_point are mutually exclusive",
+            ));
+        }
+        if color_ids.is_some() && color_by_point.is_some() {
+            return Err(RusticolError::selector(
+                "color_flows and color_flow_by_point are mutually exclusive",
+            ));
+        }
+        self.validate_selector_capabilities(
+            helicity_ids.is_some() || helicity_by_point.is_some(),
+            color_ids.is_some() || color_by_point.is_some(),
+        )?;
+        let total_start = Instant::now();
+        let selected_helicities = selector_set(helicity_ids, "helicity")?;
+        let selected_colors = selector_set(color_ids, "color component")?;
+        let batch = self.prepare_f64_batch(momenta, point_count)?;
+        let physics = self.runtime.physics.clone().ok_or_else(|| {
+            RusticolError::artifact(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
+        let selector_simd_lane_width = self.selector_simd_lane_width();
+        let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
+        let result = (|| {
+            let planner_started = Instant::now();
+            let plan = selector_scratch.planner.build(
+                point_count,
+                helicity_by_point,
+                color_by_point,
+                physics.manifest.helicities.len(),
+                physics.manifest.color_components.len(),
+            )?;
+            let plan_profile =
+                selector_scratch
+                    .planner
+                    .profile(plan, point_count, selector_simd_lane_width);
+            let planner = planner_started.elapsed();
+            self.record_resolved_warnings(helicity_ids, color_ids)?;
+
+            if let PointSelectorPlan::Homogeneous(key) = plan {
+                let point_helicities = key
+                    .helicity_index
+                    .map(|index| BTreeSet::from([physics.manifest.helicities[index].id.clone()]));
+                let point_colors = key.color_index.map(|index| {
+                    BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
+                });
+                let effective_helicities =
+                    point_helicities.as_ref().or(selected_helicities.as_ref());
+                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
+                let (resolved, runtime_profile) = self.run_resolved_f64_batch_profile(
+                    &batch,
+                    effective_helicities,
+                    effective_colors,
+                )?;
+                let mut profile: NativeRuntimeProfile = runtime_profile.into();
+                attach_point_selector_profile(
+                    &mut profile,
+                    &plan_profile,
+                    planner,
+                    Duration::ZERO,
+                    Duration::ZERO,
+                );
+                profile.total_s = total_start.elapsed().as_secs_f64();
+                if self.execution_lane.is_eager() {
+                    profile.validate_eager_top_level_accounting()?;
+                }
+                return Ok(NativeProfiledEvaluation {
+                    values: resolved_totals(&resolved),
+                    profile,
+                });
+            }
+
+            let mut values = vec![0.0; point_count];
+            let mut partition_profiles = Vec::new();
+            let mut gather = Duration::ZERO;
+            let mut scatter = Duration::ZERO;
+            let partition_count = selector_scratch.planner.partitions().len();
+            for partition_index in 0..partition_count {
+                let partition = selector_scratch.planner.partitions()[partition_index];
+                let point_helicities = partition
+                    .key
+                    .helicity_index
+                    .map(|index| BTreeSet::from([physics.manifest.helicities[index].id.clone()]));
+                let point_colors = partition.key.color_index.map(|index| {
+                    BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
+                });
+                let effective_helicities =
+                    point_helicities.as_ref().or(selected_helicities.as_ref());
+                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
+                let (resolved, partition_profile) = match partition.rows {
+                    PointSelectorRows::Contiguous { start, end } => self
+                        .run_resolved_f64_batch_profile(
+                            &batch[start..end],
+                            effective_helicities,
+                            effective_colors,
+                        )?,
+                    rows @ PointSelectorRows::Gathered { .. } => {
+                        let gather_started = Instant::now();
+                        let point_indices = selector_scratch.planner.gathered_rows(rows);
+                        let gathered_batch = fill_gathered_batch(
+                            &mut selector_scratch.gathered_batch,
+                            &batch,
+                            point_indices,
+                        );
+                        gather += gather_started.elapsed();
+                        self.run_resolved_f64_batch_profile(
+                            gathered_batch,
+                            effective_helicities,
+                            effective_colors,
+                        )?
+                    }
+                };
+                let scatter_started = Instant::now();
+                write_partition_totals(&mut selector_scratch.partition_totals, &resolved);
+                if selector_scratch.partition_totals.len() != partition.rows.len() {
+                    return Err(RusticolError::integrity(
+                        "per-point selector partition returned the wrong number of values",
+                    ));
+                }
+                scatter_partition_totals(
+                    &mut values,
+                    &selector_scratch.partition_totals,
+                    partition.rows,
+                    &selector_scratch.planner,
+                );
+                scatter += scatter_started.elapsed();
+                partition_profiles.push(partition_profile);
+            }
+            let mut runtime_profile = RuntimeProfile::default();
+            for partition_profile in &partition_profiles {
+                runtime_profile.add_sector(partition_profile);
+            }
+            let mut profile: NativeRuntimeProfile = runtime_profile.into();
+            attach_point_selector_profile(&mut profile, &plan_profile, planner, gather, scatter);
+            profile.total_s = total_start.elapsed().as_secs_f64();
+            if self.execution_lane.is_eager() {
+                profile.validate_eager_top_level_accounting()?;
+            }
+            Ok(NativeProfiledEvaluation { values, profile })
+        })();
+        self.point_selector_scratch = selector_scratch;
+        result
+    }
+
+    pub fn evaluate_f64_profile_repeated(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        repetitions: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        self.evaluate_f64_profile_repeated_with_selectors(
+            momenta,
+            point_count,
+            repetitions,
+            helicity_ids,
+            color_ids,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_f64_profile_repeated_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        repetitions: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        if repetitions == 0 {
+            return Err(RusticolError::invalid_argument(
+                "profile repetitions must be positive",
+            ));
+        }
+        let started = Instant::now();
+        let mut profiles = Vec::with_capacity(repetitions);
+        let mut values = Vec::new();
+        for _ in 0..repetitions {
+            let profiled = self.evaluate_f64_profile_with_selectors(
+                momenta,
+                point_count,
+                helicity_ids,
+                color_ids,
+                helicity_by_point,
+                color_by_point,
+            )?;
+            std::hint::black_box(&profiled.values);
+            values = profiled.values;
+            profiles.push(profiled.profile);
+        }
+        let mut profiles = profiles.into_iter();
+        let mut profile = profiles.next().expect("positive repetitions checked");
+        for repeated_profile in profiles {
+            profile.accumulate(&repeated_profile);
+        }
+        profile.total_s = started.elapsed().as_secs_f64();
+        if self.execution_lane.is_eager() {
+            profile.validate_eager_top_level_accounting()?;
+        }
         Ok(NativeProfiledEvaluation { values, profile })
     }
 
@@ -437,7 +958,7 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<NativeResolvedEvaluation, RusticolError> {
-        self.validate_selector_capabilities(helicity_ids, color_ids)?;
+        self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         self.record_resolved_warnings(helicity_ids, color_ids)?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
         let selected_colors = selector_set(color_ids, "color component")?;
@@ -542,7 +1063,7 @@ impl NativeRuntime {
                 "precision must be a positive number of decimal digits",
             ));
         }
-        self.validate_selector_capabilities(helicity_ids, color_ids)?;
+        self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         if self.execution_lane.is_eager() {
             return Err(eager_parity_pending("resolved higher-precision evaluation"));
         }
@@ -840,15 +1361,15 @@ impl NativeRuntime {
 
     fn validate_selector_capabilities(
         &self,
-        helicity_ids: Option<&[String]>,
-        color_ids: Option<&[String]>,
+        helicity_requested: bool,
+        color_requested: bool,
     ) -> Result<(), RusticolError> {
-        if helicity_ids.is_some() && !self.physics_v1.selectors.helicity {
+        if helicity_requested && !self.physics_v1.selectors.helicity {
             return Err(RusticolError::selector(
                 "this artifact does not support physical helicity selection",
             ));
         }
-        if color_ids.is_some() {
+        if color_requested {
             if self.runtime.color_accuracy != "lc" {
                 return Err(RusticolError::selector(
                     "LC color-flow selection is unavailable for NLC/full artifacts; their resolved color axis is contracted",

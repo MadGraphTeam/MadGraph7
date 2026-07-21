@@ -43,6 +43,22 @@ def test_generate_accepts_eager_execution_mode_override() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.EAGER
 
 
+def test_generate_force_is_an_alias_for_atomic_replace(tmp_path: Path) -> None:
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "d d~ > z g",
+                str(tmp_path / "artifact"),
+                "--force",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert str(config.generation.mode) == "replace"
+
+
 def test_card_can_be_invoked_as_the_first_argument(tmp_path: Path) -> None:
     card = tmp_path / "evaluate.toml"
     card.write_text(

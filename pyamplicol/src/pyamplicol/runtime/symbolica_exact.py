@@ -9,7 +9,7 @@ decode or reinterpret Symbolica's serialization format.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from itertools import pairwise
@@ -25,6 +25,8 @@ from pyamplicol.api.errors import (
 from pyamplicol.api.protocols import Momenta
 from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
+from pyamplicol.artifacts.security import normalize_relative_path
+from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _ZERO = Decimal(0)
@@ -57,6 +59,42 @@ class _LcReplayPlan:
     entries: tuple[_LcReplayEntry, ...]
     helicity_count: int
     color_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _LcMaterializedSector:
+    color_index: int
+    reduction_weight: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class _LcReplaySectorRoute:
+    physical_sector_id: int
+    materialized_sector_id: int
+    reduction_weight: Decimal
+    residual: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactRuntimeSourceState:
+    helicity: int
+    chirality: int
+    spin_state: int
+    factor: _ComplexDecimal
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactHelicitySchedule:
+    physical_helicity_index: int
+    selector_domain_id: int
+    structural_zero: bool
+    source_states: tuple[_ExactRuntimeSourceState | None, ...]
+    root_factors: tuple[_ComplexDecimal | None, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactHelicityPlan:
+    schedules: tuple[_ExactHelicitySchedule, ...]
 
 
 def _json_integer(value: object) -> int:
@@ -142,7 +180,13 @@ class _ExactEvaluator:
     chunk_input_indices: tuple[tuple[int, ...], ...] = ()
 
     @classmethod
-    def load(cls, manifest: Mapping[str, object], root: Path) -> _ExactEvaluator:
+    def load(
+        cls,
+        manifest: Mapping[str, object],
+        root: Path,
+        *,
+        state_loader: Callable[[str], bytes] | None = None,
+    ) -> _ExactEvaluator:
         kind = str(manifest.get("kind", ""))
         if kind == "chunked-symbolica-evaluator":
             raw_chunks = manifest.get("chunks")
@@ -154,7 +198,9 @@ class _ExactEvaluator:
             for raw_chunk in raw_chunks:
                 if not isinstance(raw_chunk, Mapping):
                     raise ArtifactError("chunked evaluator entry is not an object")
-                evaluators.append(cls.load(raw_chunk, root))
+                evaluators.append(
+                    cls.load(raw_chunk, root, state_loader=state_loader)
+                )
             if not evaluators:
                 raise ArtifactError("chunked evaluator has no evaluators")
             raw_input_len = manifest.get("input_len")
@@ -169,10 +215,11 @@ class _ExactEvaluator:
                 input_indices = tuple(
                     tuple(range(input_len)) for _evaluator in evaluators
                 )
-            elif isinstance(raw_input_len, int) and not isinstance(
-                raw_input_len, bool
-            ) and isinstance(raw_input_indices, Sequence) and not isinstance(
-                raw_input_indices, str | bytes
+            elif (
+                isinstance(raw_input_len, int)
+                and not isinstance(raw_input_len, bool)
+                and isinstance(raw_input_indices, Sequence)
+                and not isinstance(raw_input_indices, str | bytes)
             ):
                 input_len = raw_input_len
                 input_indices = tuple(
@@ -202,13 +249,17 @@ class _ExactEvaluator:
                 "higher-precision evaluation requires retained Symbolica evaluator "
                 "state; regenerate this process artifact with the JIT backend"
             )
-        path = (root / state_path).resolve(strict=False)
-        try:
-            path.relative_to(root.resolve(strict=True))
-        except ValueError as exc:
-            raise ArtifactError(
-                "Symbolica evaluator state escapes the process root"
-            ) from exc
+        if state_loader is None:
+            path = (root / state_path).resolve(strict=False)
+            try:
+                path.relative_to(root.resolve(strict=True))
+            except ValueError as exc:
+                raise ArtifactError(
+                    "Symbolica evaluator state escapes the process root"
+                ) from exc
+        else:
+            normalized_state_path = normalize_relative_path(state_path)
+            path = root / normalized_state_path
         try:
             from symbolica import Evaluator
         except ImportError as exc:
@@ -216,12 +267,16 @@ class _ExactEvaluator:
                 "precision above 16 requires the Symbolica Python package; "
                 "f64 SymJIT evaluation remains Symbolica-independent"
             ) from exc
-        try:
-            state = path.read_bytes()
-        except OSError as exc:
-            raise CompatibilityError(
-                f"could not read retained Symbolica evaluator state {path}: {exc}"
-            ) from exc
+        if state_loader is None:
+            try:
+                state = path.read_bytes()
+            except OSError as exc:
+                raise CompatibilityError(
+                    f"could not read retained Symbolica evaluator state {path}: "
+                    f"{exc}"
+                ) from exc
+        else:
+            state = state_loader(state_path)
         try:
             raw_leaf_input_len = manifest.get("input_len")
             if isinstance(raw_leaf_input_len, bool) or not isinstance(
@@ -312,8 +367,10 @@ class SymbolicaExactExecutor:
         self._artifact = artifact
         self._native_runtime = native_runtime
         manifest = load_manifest(artifact)
+        self._payloads = ExactEvaluatorPayloadResolver(manifest)
         process, permutation = _selected_process(manifest.processes, process_id)
         representative_id = str(process["id"])
+        self._representative_id = representative_id
         records = tuple(
             record
             for record in manifest.payloads
@@ -325,6 +382,9 @@ class SymbolicaExactExecutor:
                 f"process {representative_id!r} must declare one evaluator manifest"
             )
         self._process_root = artifact / "processes" / representative_id
+        self._process_prefix = normalize_relative_path(
+            f"processes/{representative_id}"
+        )
         try:
             self._execution = json.loads(
                 (artifact / records[0].path).read_text(encoding="utf-8")
@@ -338,6 +398,11 @@ class SymbolicaExactExecutor:
             raise ArtifactError("exact-runtime metadata is not an object")
         self._permutation = permutation
         self._lc_replay = _lc_replay_plan(
+            self._execution,
+            self._physics,
+            permutation,
+        )
+        self._helicity_plan = _exact_helicity_plan(
             self._execution,
             self._physics,
             permutation,
@@ -384,18 +449,28 @@ class SymbolicaExactExecutor:
                     for point in points
                 )
             )
-            amplitudes = tuple(
-                self._evaluate_point(point, parameters, working_precision)
-                for point in evaluation_points
-            )
-            values, helicity_ids, color_ids = _reduce_resolved(
-                amplitudes,
-                self._execution,
-                self._physics,
-                normalization,
-                helicities if self._lc_replay is None else None,
-                color_flows if self._lc_replay is None else None,
-            )
+            if self._helicity_plan is None:
+                amplitudes = tuple(
+                    self._evaluate_point(point, parameters, working_precision)
+                    for point in evaluation_points
+                )
+                values, helicity_ids, color_ids = _reduce_resolved(
+                    amplitudes,
+                    self._execution,
+                    self._physics,
+                    normalization,
+                    helicities if self._lc_replay is None else None,
+                    color_flows if self._lc_replay is None else None,
+                )
+            else:
+                values, helicity_ids, color_ids = self._evaluate_helicity_quotient(
+                    evaluation_points,
+                    parameters,
+                    normalization,
+                    working_precision,
+                    helicities if self._lc_replay is None else None,
+                    color_flows if self._lc_replay is None else None,
+                )
             if self._lc_replay is not None:
                 values, helicity_ids, color_ids = _apply_lc_replay_resolved(
                     values,
@@ -438,11 +513,26 @@ class SymbolicaExactExecutor:
         if not isinstance(amplitude, Mapping):
             raise ArtifactError("execution amplitude evaluator is invalid")
         self._stage_evaluators = tuple(
-            _ExactEvaluator.load(_evaluator_manifest(stage), self._process_root)
+            _ExactEvaluator.load(
+                _evaluator_manifest(stage),
+                self._process_root,
+                state_loader=self._load_exact_state,
+            )
             for stage in raw_stages
         )
         self._amplitude_evaluator = _ExactEvaluator.load(
-            _evaluator_manifest(amplitude), self._process_root
+            _evaluator_manifest(amplitude),
+            self._process_root,
+            state_loader=self._load_exact_state,
+        )
+
+    def _load_exact_state(self, relative: str) -> bytes:
+        logical_path = normalize_relative_path(
+            f"{self._process_prefix}/{normalize_relative_path(relative)}"
+        )
+        return self._payloads.read_exact_state(
+            logical_path,
+            process_id=self._representative_id,
         )
 
     def _evaluate_point(
@@ -450,6 +540,7 @@ class SymbolicaExactExecutor:
         point: tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...],
         model_parameters: tuple[Decimal, ...],
         precision: int,
+        source_states: Sequence[_ExactRuntimeSourceState | None] | None = None,
     ) -> tuple[_ComplexDecimal, ...]:
         runtime_schema = cast(Mapping[str, object], self._execution["runtime_schema"])
         layout = cast(Mapping[str, object], runtime_schema["parameter_layout"])
@@ -461,7 +552,16 @@ class SymbolicaExactExecutor:
             model_start + len(model_parameters),
         )
         state = [_complex_zero() for _ in range(parameter_count)]
-        _fill_sources(state, point, runtime_schema, model_parameters)
+        if source_states is None:
+            _fill_sources(state, point, runtime_schema, model_parameters)
+        else:
+            _fill_sources_with_states(
+                state,
+                point,
+                runtime_schema,
+                model_parameters,
+                source_states,
+            )
         _fill_momenta(state, point, runtime_schema)
         for index, value in enumerate(model_parameters):
             state[model_start + index] = (value, _ZERO)
@@ -486,6 +586,67 @@ class SymbolicaExactExecutor:
             _pack_stage_inputs(state, amplitude), precision
         )
 
+    def _evaluate_helicity_quotient(
+        self,
+        points: Sequence[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...]],
+        model_parameters: tuple[Decimal, ...],
+        normalization: Decimal,
+        precision: int,
+        selected_helicities: Sequence[str] | None,
+        selected_colors: Sequence[str] | None,
+    ) -> tuple[
+        tuple[tuple[tuple[Decimal, ...], ...], ...],
+        tuple[str, ...],
+        tuple[str, ...],
+    ]:
+        assert self._helicity_plan is not None
+        helicities = cast(Sequence[Mapping[str, object]], self._physics["helicities"])
+        colors = cast(Sequence[Mapping[str, object]], self._physics["color_components"])
+        helicity_ids = tuple(str(item["id"]) for item in helicities)
+        color_ids = tuple(str(item["id"]) for item in colors)
+        selected_h = _selected_indices(helicity_ids, selected_helicities, "helicity")
+        selected_c = _selected_indices(color_ids, selected_colors, "color component")
+        if str(self._physics["color_accuracy"]) != "lc" and selected_colors is not None:
+            raise EvaluationError(
+                "LC color-flow selection is unavailable for NLC/full artifacts"
+            )
+
+        requested_helicities = set(selected_h)
+        full_points: list[tuple[tuple[Decimal, ...], ...]] = []
+        for point in points:
+            full = [[_ZERO for _color in color_ids] for _helicity in helicity_ids]
+            for schedule in self._helicity_plan.schedules:
+                helicity_index = schedule.physical_helicity_index
+                if (
+                    helicity_index not in requested_helicities
+                    or schedule.structural_zero
+                ):
+                    continue
+                amplitudes = self._evaluate_point(
+                    point,
+                    model_parameters,
+                    precision,
+                    schedule.source_states,
+                )
+                full[helicity_index] = list(
+                    _reduce_materialized_helicity(
+                        amplitudes,
+                        self._execution,
+                        self._physics,
+                        normalization,
+                        helicity_index,
+                        schedule.root_factors,
+                    )
+                )
+            full_points.append(
+                tuple(tuple(full[h][c] for c in selected_c) for h in selected_h)
+            )
+        return (
+            tuple(full_points),
+            tuple(helicity_ids[index] for index in selected_h),
+            tuple(color_ids[index] for index in selected_c),
+        )
+
 
 def _selected_process(
     processes: Sequence[Mapping[str, object]],
@@ -505,15 +666,570 @@ def _selected_process(
     raise ArtifactError(f"selected process {selected_id!r} is absent from artifact")
 
 
+def _exact_helicity_plan(
+    execution: Mapping[str, object],
+    physics: Mapping[str, object],
+    public_permutation: tuple[int, ...] | None,
+) -> _ExactHelicityPlan | None:
+    try:
+        return _parse_exact_helicity_plan(execution, physics, public_permutation)
+    except (ArtifactError, CompatibilityError, EvaluationError):
+        raise
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise ArtifactError(
+            f"malformed helicity recurrence materialization: {exc}"
+        ) from exc
+
+
+def _parse_exact_helicity_plan(
+    execution: Mapping[str, object],
+    physics: Mapping[str, object],
+    public_permutation: tuple[int, ...] | None,
+) -> _ExactHelicityPlan | None:
+    runtime_schema = execution.get("runtime_schema")
+    if not isinstance(runtime_schema, Mapping):
+        raise ArtifactError("execution metadata has no runtime schema")
+    recurrence = runtime_schema.get("helicity_recurrence")
+    if recurrence is None:
+        return None
+    if not isinstance(recurrence, Mapping):
+        raise ArtifactError("helicity recurrence metadata is not an object")
+    materialization = recurrence.get("materialization")
+    if materialization is None:
+        # Pre-quotient artifacts may carry proof metadata while retaining the
+        # complete DAG. Their exact execution remains unchanged.
+        return None
+    if not isinstance(materialization, Mapping):
+        raise ArtifactError("helicity recurrence materialization is not an object")
+    if _json_integer(recurrence.get("contract_version", 0)) != 1:
+        raise CompatibilityError("unsupported helicity recurrence contract version")
+    if (
+        materialization.get("kind") != "pyamplicol-helicity-recurrence-materialization"
+        or _json_integer(materialization.get("contract_version", 0)) != 1
+    ):
+        raise CompatibilityError(
+            "unsupported helicity recurrence materialization contract"
+        )
+
+    helicities = physics.get("helicities")
+    particles = physics.get("external_particles")
+    if (
+        isinstance(helicities, str | bytes)
+        or not isinstance(helicities, Sequence)
+        or isinstance(particles, str | bytes)
+        or not isinstance(particles, Sequence)
+        or not helicities
+    ):
+        raise ArtifactError("helicity recurrence requires physical helicity metadata")
+    physical = cast(Sequence[Mapping[str, object]], helicities)
+    external_count = len(particles)
+    physical_by_values: dict[tuple[int, ...], int] = {}
+    for index, helicity in enumerate(physical):
+        values = _integer_vector(
+            helicity.get("values"),
+            external_count,
+            "physical helicity vector",
+        )
+        if values in physical_by_values:
+            raise ArtifactError("physical helicity metadata contains duplicate vectors")
+        if not isinstance(helicity.get("structural_zero"), bool):
+            raise ArtifactError("physical helicity structural-zero flag is not boolean")
+        physical_by_values[values] = index
+    if public_permutation is not None and (
+        len(public_permutation) != external_count
+        or set(public_permutation) != set(range(external_count))
+    ):
+        raise ArtifactError(
+            "process alias has an invalid public-label permutation for "
+            "helicity recurrence"
+        )
+
+    raw_domains = recurrence.get("selector_domains")
+    if isinstance(raw_domains, str | bytes) or not isinstance(raw_domains, Sequence):
+        raise ArtifactError("helicity recurrence selector domains are invalid")
+    domains: dict[int, tuple[bool, frozenset[tuple[int, int]]]] = {}
+    for raw_domain in raw_domains:
+        if not isinstance(raw_domain, Mapping):
+            raise ArtifactError("helicity recurrence selector domain is not an object")
+        domain_id = _strict_nonnegative_integer(
+            raw_domain.get("id"), "helicity selector domain ID"
+        )
+        complete = raw_domain.get("complete")
+        if not isinstance(complete, bool):
+            raise ArtifactError("helicity selector domain completeness is not boolean")
+        raw_states = raw_domain.get("source_states")
+        if isinstance(raw_states, str | bytes) or not isinstance(raw_states, Sequence):
+            raise ArtifactError("helicity selector domain source states are invalid")
+        domain_states: set[tuple[int, int]] = set()
+        for raw_state in raw_states:
+            if not isinstance(raw_state, Mapping):
+                raise ArtifactError("helicity selector source state is not an object")
+            label = _strict_nonnegative_integer(
+                raw_state.get("external_label"), "helicity source external label"
+            )
+            if not 1 <= label <= external_count:
+                raise ArtifactError("helicity source external label is out of range")
+            state = (label - 1, _json_integer(raw_state.get("helicity")))
+            if state in domain_states or any(
+                existing[0] == state[0] for existing in domain_states
+            ):
+                raise ArtifactError(
+                    "helicity selector domain repeats an external label"
+                )
+            domain_states.add(state)
+        if complete and len(domain_states) != external_count:
+            raise ArtifactError("complete helicity selector domain is incomplete")
+        if domain_id in domains:
+            raise ArtifactError("helicity recurrence repeats a selector domain ID")
+        domains[domain_id] = (complete, frozenset(domain_states))
+
+    source_fill = runtime_schema.get("source_fill")
+    amplitude_stage = runtime_schema.get("amplitude_stage")
+    if not isinstance(source_fill, Mapping) or not isinstance(amplitude_stage, Mapping):
+        raise ArtifactError("helicity materialization has incomplete runtime metadata")
+    raw_sources = source_fill.get("sources")
+    raw_roots = amplitude_stage.get("roots")
+    if (
+        isinstance(raw_sources, str | bytes)
+        or not isinstance(raw_sources, Sequence)
+        or isinstance(raw_roots, str | bytes)
+        or not isinstance(raw_roots, Sequence)
+    ):
+        raise ArtifactError("helicity materialization source/root metadata is invalid")
+    sources = cast(Sequence[Mapping[str, object]], raw_sources)
+    roots = cast(Sequence[Mapping[str, object]], raw_roots)
+    if _json_integer(materialization.get("materialized_root_count", -1)) != len(roots):
+        raise ArtifactError("helicity materialization root count is inconsistent")
+    for index, root in enumerate(roots):
+        if (
+            _strict_nonnegative_integer(root.get("root_id"), "amplitude root ID")
+            != index
+            or _strict_nonnegative_integer(
+                root.get("output_index"), "amplitude root output index"
+            )
+            != index
+        ):
+            raise ArtifactError(
+                "helicity materialization requires contiguous root/output identifiers"
+            )
+
+    source_routes = _exact_source_routes(materialization, domains, sources)
+    amplitude_routes = _exact_amplitude_routes(materialization, domains, len(roots))
+    raw_schedules = materialization.get("selector_schedules")
+    if isinstance(raw_schedules, str | bytes) or not isinstance(
+        raw_schedules, Sequence
+    ):
+        raise ArtifactError("helicity materialization selector schedules are invalid")
+    schedules_by_physical: dict[int, _ExactHelicitySchedule] = {}
+    for raw_schedule in raw_schedules:
+        if not isinstance(raw_schedule, Mapping):
+            raise ArtifactError("helicity materialization schedule is not an object")
+        domain_id = _strict_nonnegative_integer(
+            raw_schedule.get("selector_domain_id"), "helicity schedule domain ID"
+        )
+        domain = domains.get(domain_id)
+        if domain is None or not domain[0]:
+            raise ArtifactError(
+                "helicity schedule does not reference a complete domain"
+            )
+        representative_values = _complete_domain_values(domain[1], external_count)
+        public_values = (
+            representative_values
+            if public_permutation is None
+            else _permute_helicity_to_public_alias(
+                representative_values, public_permutation
+            )
+        )
+        physical_index = physical_by_values.get(public_values)
+        if physical_index is None:
+            raise ArtifactError(
+                f"helicity selector domain {public_values!r} has no physical entry"
+            )
+        if physical_index in schedules_by_physical:
+            raise ArtifactError("physical helicity has multiple recurrence schedules")
+        structural_zero = raw_schedule.get("structural_zero")
+        if not isinstance(structural_zero, bool):
+            raise ArtifactError("helicity schedule structural-zero flag is not boolean")
+        if bool(physical[physical_index].get("structural_zero")) != structural_zero:
+            raise ArtifactError(
+                "helicity schedule structural-zero flag disagrees with physics metadata"
+            )
+        active_roots = frozenset(
+            _strict_integer_sequence(
+                raw_schedule.get("active_root_ids"),
+                len(roots),
+                "helicity schedule active roots",
+            )
+        )
+        active_currents = _strict_integer_sequence(
+            raw_schedule.get("active_current_ids"),
+            _json_integer(materialization.get("materialized_current_count", -1)),
+            "helicity schedule active currents",
+        )
+        if structural_zero and (active_currents or active_roots):
+            raise ArtifactError(
+                "structural-zero helicity schedule has an active closure"
+            )
+        schedule_source_states = (
+            ()
+            if structural_zero
+            else _source_states_for_active_closure(
+                sources,
+                source_routes,
+                active_currents,
+                domain[1],
+            )
+        )
+        factors: list[_ComplexDecimal | None] = [None] * len(roots)
+        for root_id, route_domain_ids, factor in amplitude_routes:
+            if domain_id not in route_domain_ids:
+                continue
+            if factors[root_id] is not None:
+                raise ArtifactError(
+                    "helicity schedule routes one materialized root more than once"
+                )
+            factors[root_id] = factor
+        routed = frozenset(
+            index for index, factor in enumerate(factors) if factor is not None
+        )
+        if routed != active_roots:
+            raise ArtifactError(
+                "helicity schedule amplitude routes do not match active roots"
+            )
+        schedules_by_physical[physical_index] = _ExactHelicitySchedule(
+            physical_helicity_index=physical_index,
+            selector_domain_id=domain_id,
+            structural_zero=structural_zero,
+            source_states=schedule_source_states,
+            root_factors=tuple(factors),
+        )
+    if set(schedules_by_physical) != set(range(len(physical))):
+        raise ArtifactError(
+            "helicity materialization does not cover every physical helicity"
+        )
+    return _ExactHelicityPlan(
+        schedules=tuple(schedules_by_physical[index] for index in range(len(physical)))
+    )
+
+
+def _exact_source_routes(
+    materialization: Mapping[str, object],
+    domains: Mapping[int, tuple[bool, frozenset[tuple[int, int]]]],
+    sources: Sequence[Mapping[str, object]],
+) -> tuple[tuple[int, int, int, int, _ExactRuntimeSourceState], ...]:
+    raw_routes = materialization.get("source_routes")
+    if isinstance(raw_routes, str | bytes) or not isinstance(raw_routes, Sequence):
+        raise ArtifactError("helicity materialization source routes are invalid")
+    source_by_current = {
+        _strict_nonnegative_integer(
+            source.get("current_id"), "source current ID"
+        ): source
+        for source in sources
+    }
+    if len(source_by_current) != len(sources):
+        raise ArtifactError("runtime source currents are not unique")
+    parsed = []
+    for raw_route in raw_routes:
+        if not isinstance(raw_route, Mapping):
+            raise ArtifactError(
+                "helicity materialization source route is not an object"
+            )
+        current_id = _strict_nonnegative_integer(
+            raw_route.get("materialized_current_id"), "source-route current ID"
+        )
+        source = source_by_current.get(current_id)
+        if source is None:
+            raise ArtifactError(
+                "source route references an unknown materialized current"
+            )
+        external_label = _strict_nonnegative_integer(
+            raw_route.get("external_label"), "source-route external label"
+        )
+        if external_label != _json_integer(source.get("leg_label")):
+            raise ArtifactError("source route external label disagrees with its source")
+        domain_id = _strict_nonnegative_integer(
+            raw_route.get("selector_domain_id"), "source-route selector domain"
+        )
+        if domain_id not in domains:
+            raise ArtifactError("source route references an unknown selector domain")
+        declared_index = _strict_nonnegative_integer(
+            raw_route.get("declared_state_index"), "source-route declared state"
+        )
+        helicity, chirality, spin_state = _transformed_declared_source_state(
+            source, declared_index
+        )
+        if (
+            _json_integer(raw_route.get("helicity")) != helicity
+            or _json_integer(raw_route.get("chirality")) != chirality
+            or _json_integer(raw_route.get("spin_state")) != spin_state
+        ):
+            raise ArtifactError(
+                "source route disagrees with its declared transformed state"
+            )
+        factor = _complex_decimal_pair(raw_route.get("factor"), "source-route factor")
+        if (external_label - 1, helicity) not in domains[domain_id][1]:
+            raise ArtifactError(
+                "source route selector domain does not contain its source state"
+            )
+        parsed.append(
+            (
+                current_id,
+                external_label - 1,
+                helicity,
+                domain_id,
+                _ExactRuntimeSourceState(helicity, chirality, spin_state, factor),
+            )
+        )
+    return tuple(parsed)
+
+
+def _exact_amplitude_routes(
+    materialization: Mapping[str, object],
+    domains: Mapping[int, tuple[bool, frozenset[tuple[int, int]]]],
+    root_count: int,
+) -> tuple[tuple[int, frozenset[int], _ComplexDecimal], ...]:
+    raw_routes = materialization.get("amplitude_routes")
+    if isinstance(raw_routes, str | bytes) or not isinstance(raw_routes, Sequence):
+        raise ArtifactError("helicity materialization amplitude routes are invalid")
+    parsed = []
+    for raw_route in raw_routes:
+        if not isinstance(raw_route, Mapping):
+            raise ArtifactError(
+                "helicity materialization amplitude route is not an object"
+            )
+        root_id = _strict_nonnegative_integer(
+            raw_route.get("materialized_root_id"), "amplitude-route root ID"
+        )
+        if root_id >= root_count:
+            raise ArtifactError("amplitude route references an unknown root")
+        domain_ids = frozenset(
+            _strict_integer_sequence(
+                raw_route.get("selector_domain_ids"),
+                max(domains, default=-1) + 1,
+                "amplitude-route selector domains",
+            )
+        )
+        if not domain_ids or any(domain_id not in domains for domain_id in domain_ids):
+            raise ArtifactError("amplitude route references an unknown selector domain")
+        parsed.append(
+            (
+                root_id,
+                domain_ids,
+                _complex_decimal_pair(
+                    raw_route.get("factor"), "amplitude-route factor"
+                ),
+            )
+        )
+    return tuple(parsed)
+
+
+def _source_states_for_active_closure(
+    sources: Sequence[Mapping[str, object]],
+    routes: Sequence[tuple[int, int, int, int, _ExactRuntimeSourceState]],
+    active_current_ids: Sequence[int],
+    complete_states: frozenset[tuple[int, int]],
+) -> tuple[_ExactRuntimeSourceState | None, ...]:
+    active = frozenset(active_current_ids)
+    active_labels = {
+        _json_integer(source.get("leg_label")) - 1
+        for source in sources
+        if _json_integer(source.get("current_id")) in active
+    }
+    expected_labels = {external for external, _helicity in complete_states}
+    if active_labels != expected_labels:
+        raise ArtifactError(
+            "helicity selector source-label coverage disagrees with its complete domain"
+        )
+    result: list[_ExactRuntimeSourceState | None] = []
+    state_by_external = dict(complete_states)
+    for source in sources:
+        current_id = _json_integer(source.get("current_id"))
+        if current_id not in active:
+            result.append(None)
+            continue
+        external = _json_integer(source.get("leg_label")) - 1
+        try:
+            selected_helicity = state_by_external[external]
+        except KeyError as exc:
+            raise ArtifactError(
+                "active materialized source has no state in its complete domain"
+            ) from exc
+        matching = [
+            state
+            for route_current, route_external, helicity, _domain_id, state in routes
+            if route_current == current_id
+            and route_external == external
+            and helicity == selected_helicity
+        ]
+        if len(matching) > 1:
+            raise ArtifactError(
+                "active materialized source has multiple routes for its "
+                "selected helicity"
+            )
+        result.append(
+            matching[0]
+            if matching
+            else _declared_source_state_for_helicity(source, selected_helicity)
+        )
+    return tuple(result)
+
+
+def _declared_source_state_for_helicity(
+    source: Mapping[str, object], helicity: int
+) -> _ExactRuntimeSourceState:
+    source_ir, _identity, _crossing = _validated_source_ir(source)
+    raw_states = source_ir.get("states")
+    if isinstance(raw_states, str | bytes) or not isinstance(raw_states, Sequence):
+        raise ArtifactError("source IR declared states are invalid")
+    matching = []
+    for declared_index in range(len(raw_states)):
+        runtime_helicity, chirality, spin_state = _transformed_declared_source_state(
+            source, declared_index
+        )
+        if runtime_helicity == helicity:
+            matching.append(
+                _ExactRuntimeSourceState(
+                    helicity=runtime_helicity,
+                    chirality=chirality,
+                    spin_state=spin_state,
+                    factor=(_ONE, _ZERO),
+                )
+            )
+    if len(matching) != 1:
+        raise ArtifactError(
+            "active materialized source does not declare exactly one state "
+            f"for helicity {helicity}"
+        )
+    return matching[0]
+
+
+def _transformed_declared_source_state(
+    source: Mapping[str, object], declared_index: int
+) -> tuple[int, int, int]:
+    source_ir, _identity, crossing = _validated_source_ir(source)
+    raw_states = source_ir.get("states")
+    if isinstance(raw_states, str | bytes) or not isinstance(raw_states, Sequence):
+        raise ArtifactError("source IR declared states are invalid")
+    try:
+        state = raw_states[declared_index]
+    except IndexError as exc:
+        raise ArtifactError("source route has a stale declared state index") from exc
+    if not isinstance(state, Mapping):
+        raise ArtifactError("source IR declared state is not an object")
+    return (
+        _json_integer(state.get("helicity"))
+        * _json_integer(crossing.get("helicity_factor")),
+        _json_integer(state.get("chirality"))
+        * _json_integer(crossing.get("chirality_factor")),
+        _json_integer(state.get("spin_state"))
+        * _json_integer(crossing.get("spin_state_factor")),
+    )
+
+
+def _complete_domain_values(
+    states: frozenset[tuple[int, int]], external_count: int
+) -> tuple[int, ...]:
+    values: list[int | None] = [None] * external_count
+    for external_index, helicity in states:
+        values[external_index] = helicity
+    if any(value is None for value in values):
+        raise ArtifactError("complete helicity selector domain is incomplete")
+    return tuple(cast(int, value) for value in values)
+
+
+def _permute_helicity_to_public_alias(
+    representative: tuple[int, ...], permutation: tuple[int, ...]
+) -> tuple[int, ...]:
+    public = [0] * len(representative)
+    for representative_index, public_index in enumerate(permutation):
+        public[public_index] = representative[representative_index]
+    return tuple(public)
+
+
+def _integer_vector(value: object, length: int, context: str) -> tuple[int, ...]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ArtifactError(f"{context} is invalid")
+    result = tuple(_json_integer(item) for item in value)
+    if len(result) != length:
+        raise ArtifactError(f"{context} has an inconsistent length")
+    return result
+
+
+def _external_label_word(
+    value: object,
+    external_count: int,
+    context: str,
+    *,
+    expected_labels: frozenset[int] | None = None,
+) -> tuple[int, ...]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ArtifactError(f"{context} is invalid")
+    result = tuple(_json_integer(item) for item in value)
+    labels = frozenset(result)
+    if (
+        not result
+        or len(labels) != len(result)
+        or any(label < 1 or label > external_count for label in result)
+        or (expected_labels is not None and labels != expected_labels)
+    ):
+        raise ArtifactError(f"{context} has inconsistent external labels")
+    return result
+
+
+def _strict_nonnegative_integer(value: object, context: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ArtifactError(f"{context} is not a non-negative integer")
+    return value
+
+
+def _strict_integer_sequence(
+    value: object, upper_bound: int, context: str
+) -> tuple[int, ...]:
+    if (
+        upper_bound < 0
+        or isinstance(value, str | bytes)
+        or not isinstance(value, Sequence)
+    ):
+        raise ArtifactError(f"{context} are invalid")
+    result = tuple(
+        _strict_nonnegative_integer(item, f"{context} entry") for item in value
+    )
+    if len(set(result)) != len(result) or any(item >= upper_bound for item in result):
+        raise ArtifactError(f"{context} are invalid")
+    return result
+
+
+def _complex_decimal_pair(value: object, context: str) -> _ComplexDecimal:
+    if (
+        isinstance(value, str | bytes)
+        or not isinstance(value, Sequence)
+        or len(value) != 2
+    ):
+        raise ArtifactError(f"{context} is not a complex pair")
+    return (_decimal(value[0], context), _decimal(value[1], context))
+
+
 def _lc_replay_plan(
     execution: Mapping[str, object],
     physics: Mapping[str, object],
     public_permutation: tuple[int, ...] | None,
 ) -> _LcReplayPlan | None:
     compiled = execution.get("compiled")
-    if not isinstance(compiled, Mapping):
-        return None
-    raw_replay = compiled.get("lc_topology_replay")
+    compiled_replay = (
+        compiled.get("lc_topology_replay")
+        if isinstance(compiled, Mapping)
+        else None
+    )
+    eager_replay = execution.get("lc_topology_replay")
+    if (
+        compiled_replay is not None
+        and eager_replay is not None
+        and compiled_replay != eager_replay
+    ):
+        raise ArtifactError(
+            "LC topology replay metadata disagrees between execution lanes"
+        )
+    raw_replay = compiled_replay if compiled_replay is not None else eager_replay
     if raw_replay is None:
         return None
     if not isinstance(raw_replay, Mapping):
@@ -535,6 +1251,19 @@ def _lc_replay_plan(
         raise ArtifactError(
             "process alias has an invalid public-label permutation for LC "
             "topology replay"
+        )
+    contract_version = _json_integer(raw_replay.get("contract_version", 1))
+    if contract_version == 2:
+        return _lc_replay_plan_v2(
+            execution,
+            physics,
+            raw_replay,
+            public_permutation,
+            external_count,
+        )
+    if contract_version != 1:
+        raise CompatibilityError(
+            f"unsupported LC topology replay contract version {contract_version}"
         )
 
     raw_groups = raw_replay.get("groups")
@@ -736,6 +1465,518 @@ def _lc_replay_plan(
         helicity_count=len(helicities),
         color_count=color_count,
     )
+
+
+def _lc_replay_plan_v2(
+    execution: Mapping[str, object],
+    physics: Mapping[str, object],
+    replay: Mapping[str, object],
+    public_permutation: tuple[int, ...] | None,
+    external_count: int,
+) -> _LcReplayPlan:
+    if str(physics.get("color_accuracy")) != "lc":
+        raise ArtifactError("LC topology replay requires LC resolved physics metadata")
+    helicities = _mapping_records(physics, "helicities", "resolved physics helicities")
+    colors = _mapping_records(
+        physics, "color_components", "resolved physics color components"
+    )
+    helicity_ids = tuple(str(record.get("id")) for record in helicities)
+    color_ids = tuple(str(record.get("id")) for record in colors)
+    if len(set(helicity_ids)) != len(helicity_ids):
+        raise ArtifactError("resolved physics contains duplicate helicity IDs")
+    if len(set(color_ids)) != len(color_ids):
+        raise ArtifactError("resolved physics contains duplicate color IDs")
+    helicity_index = {
+        identifier: index for index, identifier in enumerate(helicity_ids)
+    }
+    color_index = {identifier: index for index, identifier in enumerate(color_ids)}
+    helicity_by_values: dict[tuple[int, ...], int] = {}
+    for index, record in enumerate(helicities):
+        values = _integer_vector(
+            record.get("values"), external_count, "resolved helicity vector"
+        )
+        if values in helicity_by_values:
+            raise ArtifactError("resolved physics contains duplicate helicity vectors")
+        helicity_by_values[values] = index
+    color_by_word: dict[tuple[int, ...], int] = {}
+    color_labels: frozenset[int] | None = None
+    for index, record in enumerate(colors):
+        if record.get("kind") != "lc-flow":
+            raise ArtifactError(
+                "LC topology replay encountered a contracted color component"
+            )
+        word = _external_label_word(
+            record.get("word"),
+            external_count,
+            "LC flow word",
+            expected_labels=color_labels,
+        )
+        if color_labels is None:
+            color_labels = frozenset(word)
+        if word in color_by_word:
+            raise ArtifactError("resolved physics contains duplicate LC flow words")
+        color_by_word[word] = index
+
+    reductions = _lc_reductions(physics, helicity_index, color_index)
+    relevant_helicities = {
+        helicity_index[identifier]
+        for reduction in reductions.values()
+        for identifier in _string_members(
+            reduction, "physical_helicity_ids", "reduction physical helicities"
+        )
+    }
+    if not relevant_helicities:
+        raise ArtifactError("LC topology replay has no materialized helicities")
+    materialized = _lc_materialized_sectors(
+        execution,
+        colors,
+        color_index,
+        reductions,
+    )
+
+    raw_groups = _mapping_records(replay, "groups", "LC topology replay groups")
+    routes_by_mapping: dict[
+        tuple[tuple[int, int], ...],
+        tuple[tuple[tuple[int, int], ...], list[_LcReplaySectorRoute]],
+    ] = {}
+    replayed_sector_ids: set[int] = set()
+    group_materialized_sector_ids: set[int] = set()
+    for group in raw_groups:
+        _validate_lc_replay_proof(group.get("proof"))
+        representative_sector_id = _strict_nonnegative_integer(
+            group.get("representative_sector_id"), "LC representative sector ID"
+        )
+        materialized_sector_id = _strict_nonnegative_integer(
+            group.get("materialized_sector_id"), "LC materialized sector ID"
+        )
+        if materialized_sector_id != representative_sector_id:
+            raise ArtifactError(
+                "LC replay materialized sector is not its representative sector"
+            )
+        if materialized_sector_id in group_materialized_sector_ids:
+            raise ArtifactError(
+                "LC replay groups reuse a materialized representative sector"
+            )
+        group_materialized_sector_ids.add(materialized_sector_id)
+        active_sector_ids = set(
+            _nonnegative_integer_members(
+                group,
+                "active_sector_ids",
+                "LC replay active sector IDs",
+            )
+        )
+        if representative_sector_id not in active_sector_ids:
+            raise ArtifactError(
+                "LC replay active sectors omit the representative sector"
+            )
+        if replayed_sector_ids & active_sector_ids:
+            raise ArtifactError("LC replay groups overlap physical sector coverage")
+        replayed_sector_ids.update(active_sector_ids)
+        raw_permutations = _mapping_records(
+            group,
+            "sector_permutations",
+            "LC topology replay sector permutations",
+        )
+        seen_sector_ids: set[int] = set()
+        for permutation in raw_permutations:
+            sector_id = _strict_nonnegative_integer(
+                permutation.get("sector_id"), "LC replay physical sector ID"
+            )
+            if sector_id not in active_sector_ids or sector_id in seen_sector_ids:
+                raise ArtifactError(
+                    "LC replay permutations do not uniquely cover active sectors"
+                )
+            seen_sector_ids.add(sector_id)
+            mapping = _lc_v2_label_mapping(
+                permutation.get("label_permutation"), external_count
+            )
+            public_mapping = (
+                mapping
+                if public_permutation is None
+                else tuple(
+                    (public_permutation[representative], public_permutation[sector])
+                    for representative, sector in mapping
+                )
+            )
+            weight = _decimal(permutation.get("weight"), "LC replay sector weight")
+            sign = _json_integer(permutation.get("sign"))
+            if weight <= 0 or sign not in {-1, 1}:
+                raise ArtifactError(
+                    "LC replay sector weight/sign must be positive and +/-1"
+                )
+            factor = _complex_decimal_pair(
+                permutation.get("factor"), "LC replay signed factor"
+            )
+            if factor != (weight * sign, _ZERO):
+                raise ArtifactError(
+                    "LC replay signed factor does not match its weight and sign"
+                )
+            stored_public, mapping_routes = routes_by_mapping.setdefault(
+                mapping, (public_mapping, [])
+            )
+            if stored_public != public_mapping:
+                raise ArtifactError("LC replay has inconsistent public label mappings")
+            mapping_routes.append(
+                _LcReplaySectorRoute(
+                    physical_sector_id=sector_id,
+                    materialized_sector_id=materialized_sector_id,
+                    reduction_weight=weight,
+                    residual=False,
+                )
+            )
+        if seen_sector_ids != active_sector_ids:
+            raise ArtifactError(
+                "LC replay permutations do not exactly cover active sectors"
+            )
+
+    declared_replayed = _strict_nonnegative_integer(
+        replay.get("replayed_sector_count"), "LC replayed sector count"
+    )
+    if declared_replayed != len(replayed_sector_ids):
+        raise ArtifactError("LC replayed sector count is inconsistent")
+    residual_sector_ids = set(
+        _nonnegative_integer_members(
+            replay,
+            "residual_sector_ids",
+            "LC replay residual sector IDs",
+        )
+    )
+    if replayed_sector_ids & residual_sector_ids:
+        raise ArtifactError("LC replay residual and replayed sectors overlap")
+    identity_public: tuple[tuple[int, int], ...] = ()
+    stored_public, identity_routes = routes_by_mapping.setdefault(
+        (), (identity_public, [])
+    )
+    if stored_public != identity_public:
+        raise ArtifactError("LC replay identity mapping is inconsistent")
+    for sector_id in sorted(residual_sector_ids):
+        sector = materialized.get(sector_id)
+        if sector is None:
+            raise ArtifactError(
+                f"LC replay residual sector {sector_id} is not materialized"
+            )
+        identity_routes.append(
+            _LcReplaySectorRoute(
+                physical_sector_id=sector_id,
+                materialized_sector_id=sector_id,
+                reduction_weight=sector.reduction_weight,
+                residual=True,
+            )
+        )
+
+    declared_materialized = set(
+        _nonnegative_integer_members(
+            replay,
+            "materialized_sector_ids",
+            "LC replay materialized sector IDs",
+        )
+    )
+    expected_materialized = group_materialized_sector_ids | residual_sector_ids
+    if declared_materialized != expected_materialized:
+        raise ArtifactError("LC replay materialized sector coverage is inconsistent")
+    physical_sector_count = _strict_nonnegative_integer(
+        replay.get("physical_sector_count"), "LC physical sector count"
+    )
+    if replayed_sector_ids | residual_sector_ids != set(range(physical_sector_count)):
+        raise ArtifactError(
+            "LC replay does not cover every physical sector exactly once"
+        )
+    if not declared_materialized.issubset(materialized):
+        raise ArtifactError("LC replay declares an absent materialized sector")
+
+    entries: list[_LcReplayEntry] = []
+    target_sector_by_color: dict[int, int] = {}
+    color_count = len(colors)
+    for input_mapping in sorted(routes_by_mapping):
+        public_mapping, sector_routes = routes_by_mapping[input_mapping]
+        helicity_targets: dict[int, int] = {}
+        for source_index in sorted(relevant_helicities):
+            source = helicities[source_index]
+            source_values = _integer_vector(
+                source.get("values"), external_count, "resolved helicity vector"
+            )
+            target_values = _permute_lc_helicity(source_values, public_mapping)
+            target_index = helicity_by_values.get(target_values)
+            if target_index is None:
+                raise CompatibilityError(
+                    "resolved physics is missing replayed helicity vector "
+                    f"{target_values!r}; regenerate the artifact with complete "
+                    "topology-replay reductions"
+                )
+            if _decimal(source.get("coefficient"), "helicity coefficient") != _decimal(
+                helicities[target_index].get("coefficient"),
+                "helicity coefficient",
+            ):
+                raise ArtifactError(
+                    "LC topology replay maps helicities with different coefficients"
+                )
+            helicity_targets[source_index] = target_index
+
+        resolved_routes: list[_LcReplayRoute] = []
+        for sector_route in sorted(
+            sector_routes, key=lambda route: route.physical_sector_id
+        ):
+            source_sector = materialized.get(sector_route.materialized_sector_id)
+            if source_sector is None:
+                raise ArtifactError(
+                    "LC replay route references an absent materialized sector"
+                )
+            source_index = source_sector.color_index
+            source = colors[source_index]
+            source_id = str(source.get("id"))
+            if (
+                source.get("computed") is not True
+                or source.get("representative_id") != source_id
+            ):
+                raise ArtifactError(
+                    "LC replay materialized sector is not a computed representative"
+                )
+            source_word = _external_label_word(
+                source.get("word"),
+                external_count,
+                "materialized LC flow word",
+                expected_labels=color_labels,
+            )
+            target_word = _permute_lc_color_word(source_word, public_mapping)
+            target_words = _lc_replay_public_words(
+                target_word, sector_route.reduction_weight
+            )
+            target_coefficients: dict[int, Decimal] = {}
+            for word in target_words:
+                target_index = color_by_word.get(word)
+                if target_index is None:
+                    raise CompatibilityError(
+                        "resolved physics is missing replayed LC flow word "
+                        f"{word!r}; regenerate the artifact with "
+                        "replay-to-public-flow reductions"
+                    )
+                target = colors[target_index]
+                if target.get("representative_id") != source_id:
+                    raise ArtifactError(
+                        "LC replay target flow has the wrong representative"
+                    )
+                previous_sector = target_sector_by_color.setdefault(
+                    target_index, sector_route.physical_sector_id
+                )
+                if previous_sector != sector_route.physical_sector_id:
+                    raise ArtifactError(
+                        "LC replay physical sectors overlap a public color flow"
+                    )
+                coefficient = _decimal(
+                    target.get("coefficient", 1), "color coefficient"
+                )
+                if coefficient <= 0:
+                    raise ArtifactError(
+                        "replayed LC flow has no positive reduction coefficient"
+                    )
+                target_coefficients.setdefault(target_index, coefficient)
+            total = sum(target_coefficients.values(), _ZERO)
+            if total <= 0:
+                raise ArtifactError(
+                    "LC topology replay has no positive public-flow weight"
+                )
+            for source_helicity, target_helicity in sorted(helicity_targets.items()):
+                for target_color, coefficient in sorted(target_coefficients.items()):
+                    resolved_routes.append(
+                        _LcReplayRoute(
+                            source_index=source_helicity * color_count + source_index,
+                            target_index=target_helicity * color_count + target_color,
+                            weight=(
+                                sector_route.reduction_weight * coefficient / total
+                            ),
+                        )
+                    )
+        if not resolved_routes:
+            raise ArtifactError("LC topology replay mapping has no resolved routes")
+        entries.append(
+            _LcReplayEntry(
+                input_mapping=input_mapping,
+                routes=tuple(resolved_routes),
+            )
+        )
+    if set(target_sector_by_color) != set(range(color_count)):
+        raise ArtifactError(
+            f"LC topology replay covers {len(target_sector_by_color)} of "
+            f"{color_count} public color components"
+        )
+    return _LcReplayPlan(
+        entries=tuple(entries),
+        helicity_count=len(helicities),
+        color_count=color_count,
+    )
+
+
+def _lc_reductions(
+    physics: Mapping[str, object],
+    helicity_index: Mapping[str, int],
+    color_index: Mapping[str, int],
+) -> dict[int, Mapping[str, object]]:
+    reduction = physics.get("reduction")
+    if not isinstance(reduction, Mapping):
+        raise ArtifactError("resolved physics has no reduction metadata")
+    records = _mapping_records(reduction, "groups", "resolved physics reduction groups")
+    result: dict[int, Mapping[str, object]] = {}
+    for record in records:
+        identifier = str(record.get("id", ""))
+        if not identifier.startswith("reduction:"):
+            raise ArtifactError("resolved reduction group has an invalid ID")
+        try:
+            group_id = int(identifier.removeprefix("reduction:"))
+        except ValueError as exc:
+            raise ArtifactError("resolved reduction group has an invalid ID") from exc
+        if group_id < 0 or group_id in result:
+            raise ArtifactError("resolved reduction group IDs are invalid")
+        helicity_ids = _string_members(
+            record, "physical_helicity_ids", "reduction physical helicities"
+        )
+        color_ids = _string_members(
+            record, "physical_color_ids", "reduction physical colors"
+        )
+        if not helicity_ids or any(
+            value not in helicity_index for value in helicity_ids
+        ):
+            raise ArtifactError("reduction references an unknown physical helicity")
+        if not color_ids or any(value not in color_index for value in color_ids):
+            raise ArtifactError("reduction references an unknown physical color")
+        result[group_id] = record
+    return result
+
+
+def _lc_materialized_sectors(
+    execution: Mapping[str, object],
+    colors: Sequence[Mapping[str, object]],
+    color_index: Mapping[str, int],
+    reductions: Mapping[int, Mapping[str, object]],
+) -> dict[int, _LcMaterializedSector]:
+    runtime_schema = execution.get("runtime_schema")
+    if not isinstance(runtime_schema, Mapping):
+        raise ArtifactError("execution metadata has no runtime schema")
+    amplitude_stage = runtime_schema.get("amplitude_stage")
+    if not isinstance(amplitude_stage, Mapping):
+        raise ArtifactError("runtime schema has no amplitude stage")
+    roots = _mapping_records(amplitude_stage, "roots", "runtime amplitude roots")
+    result: dict[int, _LcMaterializedSector] = {}
+    for root in roots:
+        sector_id = _strict_nonnegative_integer(
+            root.get("color_sector_id"), "materialized root color sector ID"
+        )
+        group_id = _strict_nonnegative_integer(
+            root.get("coherent_group_id"), "materialized coherent group ID"
+        )
+        reduction = reductions.get(group_id)
+        if reduction is None:
+            raise ArtifactError(
+                "materialized LC sector is missing its physics reduction group"
+            )
+        computed = {
+            color_index[identifier]
+            for identifier in _string_members(
+                reduction, "physical_color_ids", "reduction physical colors"
+            )
+            if colors[color_index[identifier]].get("computed") is True
+        }
+        if len(computed) != 1:
+            raise ArtifactError(
+                "materialized LC sector does not have one computed representative"
+            )
+        color = next(iter(computed))
+        record = colors[color]
+        if record.get("representative_id") != record.get("id"):
+            raise ArtifactError(
+                "computed LC materialized color does not represent itself"
+            )
+        weight = _decimal(
+            root.get("all_sector_weight"), "materialized LC sector weight"
+        )
+        if weight <= 0:
+            raise ArtifactError("materialized LC sector weight must be positive")
+        sector = _LcMaterializedSector(color, weight)
+        previous = result.setdefault(sector_id, sector)
+        if previous != sector:
+            raise ArtifactError(
+                "materialized LC sector maps to inconsistent colors or weights"
+            )
+    return result
+
+
+def _validate_lc_replay_proof(value: object) -> None:
+    if not isinstance(value, Mapping):
+        raise ArtifactError("LC replay contract v2 group has no proof metadata")
+    algorithm = value.get("algorithm")
+    digest = value.get("digest")
+    if (
+        value.get("status") != "proven"
+        or not isinstance(algorithm, str)
+        or not algorithm
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ArtifactError("LC replay contract v2 proof metadata is invalid")
+
+
+def _lc_v2_label_mapping(
+    value: object, external_count: int
+) -> tuple[tuple[int, int], ...]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ArtifactError("LC replay label permutation is invalid")
+    mapping = []
+    for raw_item in value:
+        if not isinstance(raw_item, Mapping):
+            raise ArtifactError("LC replay label permutation entry is not an object")
+        representative = _strict_nonnegative_integer(
+            raw_item.get("representative_label"), "LC representative label"
+        )
+        sector = _strict_nonnegative_integer(
+            raw_item.get("sector_label"), "LC sector label"
+        )
+        if (
+            not 1 <= representative <= external_count
+            or not 1 <= sector <= external_count
+        ):
+            raise ArtifactError("LC replay label permutation is out of range")
+        if representative != sector:
+            mapping.append((representative - 1, sector - 1))
+    result = tuple(sorted(mapping))
+    _validate_lc_public_mapping(result, external_count)
+    return result
+
+
+def _mapping_records(
+    mapping: Mapping[str, object], key: str, context: str
+) -> tuple[Mapping[str, object], ...]:
+    value = mapping.get(key)
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ArtifactError(f"{context} are invalid")
+    if any(not isinstance(record, Mapping) for record in value):
+        raise ArtifactError(f"{context} contain a non-object entry")
+    return cast(tuple[Mapping[str, object], ...], tuple(value))
+
+
+def _string_members(
+    mapping: Mapping[str, object], key: str, context: str
+) -> tuple[str, ...]:
+    value = mapping.get(key)
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ArtifactError(f"{context} are invalid")
+    result = tuple(str(item) for item in value)
+    if len(set(result)) != len(result):
+        raise ArtifactError(f"{context} contain duplicates")
+    return result
+
+
+def _nonnegative_integer_members(
+    mapping: Mapping[str, object], key: str, context: str
+) -> tuple[int, ...]:
+    value = mapping.get(key)
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ArtifactError(f"{context} are invalid")
+    result = tuple(
+        _strict_nonnegative_integer(item, f"{context} entry") for item in value
+    )
+    if len(set(result)) != len(result):
+        raise ArtifactError(f"{context} contain duplicates")
+    return result
 
 
 def _validate_lc_public_mapping(
@@ -1028,6 +2269,43 @@ def _fill_sources(
         slot = cast(Mapping[str, object], raw_source["value_slot"])
         start = _json_integer(slot["component_start"])
         stop = _json_integer(slot["component_stop"])
+        if stop - start != len(wave):
+            raise ArtifactError("source wavefunction does not match its value slot")
+        state[start:stop] = wave
+
+
+def _fill_sources_with_states(
+    state: list[_ComplexDecimal],
+    point: Sequence[tuple[Decimal, Decimal, Decimal, Decimal]],
+    schema: Mapping[str, object],
+    model_parameters: Sequence[Decimal],
+    source_states: Sequence[_ExactRuntimeSourceState | None],
+) -> None:
+    source_fill = cast(Mapping[str, object], schema["source_fill"])
+    raw_sources = cast(Sequence[Mapping[str, object]], source_fill["sources"])
+    if len(source_states) != len(raw_sources):
+        raise ArtifactError(
+            "helicity recurrence source-state count does not match runtime sources"
+        )
+    for raw_source, runtime_state in zip(raw_sources, source_states, strict=True):
+        slot = cast(Mapping[str, object], raw_source["value_slot"])
+        start = _json_integer(slot["component_start"])
+        stop = _json_integer(slot["component_stop"])
+        if not 0 <= start <= stop <= len(state):
+            raise ArtifactError("source value slot is out of range")
+        if runtime_state is None:
+            state[start:stop] = [_complex_zero() for _ in range(stop - start)]
+            continue
+        source = dict(raw_source)
+        source["source_helicity"] = runtime_state.helicity
+        source["chirality"] = runtime_state.chirality
+        source["spin_state"] = runtime_state.spin_state
+        wave = tuple(
+            _complex_mul(component, runtime_state.factor)
+            for component in _source_wavefunction(
+                source, point, schema, model_parameters
+            )
+        )
         if stop - start != len(wave):
             raise ArtifactError("source wavefunction does not match its value slot")
         state[start:stop] = wave
@@ -1568,6 +2846,195 @@ def _spin2_sum(
         imaginary = sum((weight * tensor[index][1] for tensor, weight in terms), _ZERO)
         values.append((real, imaginary))
     return tuple(values)
+
+
+def _reduce_materialized_helicity(
+    amplitudes: Sequence[_ComplexDecimal],
+    execution: Mapping[str, object],
+    physics: Mapping[str, object],
+    normalization: Decimal,
+    helicity_index: int,
+    root_factors: Sequence[_ComplexDecimal | None],
+) -> tuple[Decimal, ...]:
+    helicities = cast(Sequence[Mapping[str, object]], physics["helicities"])
+    colors = cast(Sequence[Mapping[str, object]], physics["color_components"])
+    try:
+        helicity_id = str(helicities[helicity_index]["id"])
+    except IndexError as exc:
+        raise ArtifactError(
+            "helicity recurrence selected an absent physical helicity"
+        ) from exc
+    runtime_schema = execution.get("runtime_schema")
+    if not isinstance(runtime_schema, Mapping):
+        raise ArtifactError("execution metadata has no runtime schema")
+    amplitude_stage = runtime_schema.get("amplitude_stage")
+    if not isinstance(amplitude_stage, Mapping):
+        raise ArtifactError("runtime schema has no amplitude stage")
+    raw_roots = amplitude_stage.get("roots")
+    if isinstance(raw_roots, str | bytes) or not isinstance(raw_roots, Sequence):
+        raise ArtifactError("amplitude roots are invalid")
+    roots = cast(Sequence[Mapping[str, object]], raw_roots)
+    if len(amplitudes) != len(roots) or len(root_factors) != len(roots):
+        raise ArtifactError(
+            "helicity recurrence amplitude output width is inconsistent"
+        )
+
+    groups: dict[int, list[int]] = {}
+    all_sector_weights: dict[int, Decimal] = {}
+    for index, root in enumerate(roots):
+        output_index = _strict_nonnegative_integer(
+            root.get("output_index"), "amplitude root output index"
+        )
+        if output_index != index:
+            raise ArtifactError("amplitude root outputs are not contiguous")
+        group_id = _json_integer(root.get("coherent_group_id"))
+        groups.setdefault(group_id, []).append(output_index)
+        weight = _decimal(
+            root.get("all_sector_weight", root.get("helicity_weight")),
+            "all-sector weight",
+        )
+        previous = all_sector_weights.setdefault(group_id, weight)
+        if previous != weight:
+            raise ArtifactError("coherent amplitude group has inconsistent weights")
+
+    reduction_metadata = physics.get("reduction")
+    if not isinstance(reduction_metadata, Mapping):
+        raise ArtifactError("resolved physics has no reduction metadata")
+    raw_reductions = reduction_metadata.get("groups")
+    if isinstance(raw_reductions, str | bytes) or not isinstance(
+        raw_reductions, Sequence
+    ):
+        raise ArtifactError("resolved physics reduction groups are invalid")
+    reductions: dict[int, Mapping[str, object]] = {}
+    for raw_reduction in raw_reductions:
+        if not isinstance(raw_reduction, Mapping):
+            raise ArtifactError("resolved physics reduction group is invalid")
+        identifier = str(raw_reduction.get("id", ""))
+        if not identifier.startswith("reduction:"):
+            raise ArtifactError("resolved reduction group has an invalid ID")
+        try:
+            group_id = int(identifier.removeprefix("reduction:"))
+        except ValueError as exc:
+            raise ArtifactError("resolved reduction group has an invalid ID") from exc
+        if group_id in reductions:
+            raise ArtifactError("resolved physics repeats a reduction group")
+        reductions[group_id] = raw_reduction
+    if set(groups) - set(reductions):
+        raise ArtifactError("resolved physics is missing an amplitude reduction group")
+
+    coherent: dict[int, _ComplexDecimal] = {}
+    active_groups: set[int] = set()
+    for group_id, indices in groups.items():
+        reduction = reductions[group_id]
+        members = tuple(
+            str(value)
+            for value in _mapping_sequence(
+                reduction,
+                "physical_helicity_ids",
+                "reduction physical helicities",
+            )
+        )
+        if helicity_id not in members:
+            continue
+        values = [
+            _complex_mul(amplitudes[index], factor)
+            for index in indices
+            if (factor := root_factors[index]) is not None
+        ]
+        if not values:
+            continue
+        coherent[group_id] = (
+            sum((value[0] for value in values), _ZERO),
+            sum((value[1] for value in values), _ZERO),
+        )
+        active_groups.add(group_id)
+
+    contraction = amplitude_stage.get("color_contraction")
+    if isinstance(contraction, Mapping):
+        if (
+            len(colors) != 1
+            or str(physics.get("color_accuracy")) == "lc"
+            or colors[0].get("kind") == "lc-flow"
+        ):
+            raise ArtifactError("contracted color reduction requires one color axis")
+        entries = _mapping_sequence(contraction, "entries", "color contraction entries")
+        total = _ZERO
+        for raw_entry in entries:
+            if not isinstance(raw_entry, Mapping):
+                raise ArtifactError("color contraction entry is not an object")
+            left_id = _json_integer(raw_entry.get("left_group_id"))
+            right_id = _json_integer(raw_entry.get("right_group_id"))
+            if left_id not in groups or right_id not in groups:
+                raise ArtifactError(
+                    "color contraction references an unknown coherent group"
+                )
+            if left_id not in active_groups or right_id not in active_groups:
+                continue
+            left = coherent[left_id]
+            right = coherent[right_id]
+            product_re = left[0] * right[0] + left[1] * right[1]
+            product_im = left[1] * right[0] - left[0] * right[1]
+            contraction_weight = _complex_decimal_pair(
+                raw_entry.get("weight"), "color contraction weight"
+            )
+            total += (
+                normalization
+                * _decimal(raw_entry.get("symmetry_factor", 1), "color symmetry factor")
+                * (
+                    contraction_weight[0] * product_re
+                    - contraction_weight[1] * product_im
+                )
+            )
+        return (total,)
+    if contraction is not None:
+        raise ArtifactError("color contraction metadata is not an object")
+
+    color_index = {str(color["id"]): index for index, color in enumerate(colors)}
+    if len(color_index) != len(colors):
+        raise ArtifactError("resolved physics contains duplicate color IDs")
+    full = [_ZERO for _ in colors]
+    for group_id in active_groups:
+        value = coherent[group_id]
+        reduction = reductions[group_id]
+        member_ids = tuple(
+            str(value)
+            for value in _mapping_sequence(
+                reduction, "physical_color_ids", "reduction physical colors"
+            )
+        )
+        member_weights: list[tuple[int, Decimal]] = []
+        for identifier in member_ids:
+            color_slot = color_index.get(identifier)
+            if color_slot is None:
+                raise ArtifactError(
+                    f"reduction references unknown color component {identifier!r}"
+                )
+            weight = _decimal(
+                colors[color_slot].get("coefficient", 1), "color coefficient"
+            )
+            if weight <= 0:
+                raise ArtifactError("reduction color coefficient must be positive")
+            member_weights.append((color_slot, weight))
+        total_weight = sum((weight for _index, weight in member_weights), _ZERO)
+        if total_weight <= 0:
+            raise ArtifactError("reduction group has no positive color weight")
+        contribution = (
+            normalization
+            * all_sector_weights[group_id]
+            * (value[0] * value[0] + value[1] * value[1])
+        )
+        for index, weight in member_weights:
+            full[index] += contribution * weight / total_weight
+    return tuple(full)
+
+
+def _mapping_sequence(
+    mapping: Mapping[str, object], key: str, context: str
+) -> Sequence[object]:
+    value = mapping.get(key)
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ArtifactError(f"{context} are invalid")
+    return value
 
 
 def _reduce_resolved(

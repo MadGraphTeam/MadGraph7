@@ -98,6 +98,19 @@ artifact, so native callers do not need the prepared model bundle used during
 generation. Flow and helicity selectors are resolved by Rusticol before it
 executes the eager dependency closure.
 
+The C, C++, Fortran, and Rust total-evaluation entry points also accept optional
+zero-based `u32`/`uint32_t` selector arrays with one entry per point. These map
+to the physical helicity and LC-flow ordering exposed by runtime metadata.
+Global string-ID subsets and per-point selectors are mutually exclusive on the
+same axis. Rusticol performs stable grouping internally, preserves caller order
+on output, and uses the same selector planner for compiled and eager artifacts.
+Resolved rectangular evaluation remains batch-global.
+
+SymJIT evaluator payloads are indexed members of the artifact-root
+`evaluators.pacbin` container. Native loaders validate the outer artifact hash,
+memory-map the container read-only, and pass member slices directly to SymJIT.
+C++/ASM shared libraries remain ordinary target-native files.
+
 ## Rust 2021 f64
 
 The wheel's `rust/rusticol.rs` is a dependency-free safe Rust 2021 wrapper over

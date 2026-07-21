@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import struct
 import subprocess
 import sys
 import time
@@ -63,6 +64,22 @@ def test_ps_parser_and_tree_sampler_include_group_and_escaped_descendants() -> N
 
     assert tuple(member.pid for member in sample.members) == (100, 101, 102, 103)
     assert sample.rss_bytes == (1024 + 2048 + 4096 + 512) * 1024
+
+
+def test_darwin_libproc_parsers_extract_identity_and_rss() -> None:
+    bsd = bytearray(136)
+    struct.pack_into("=I", bsd, 12, 123)
+    struct.pack_into("=I", bsd, 16, 45)
+    struct.pack_into("=I", bsd, 100, 67)
+    task = bytearray(96)
+    struct.pack_into("=Q", task, 8, 987_654_321)
+
+    assert watchdog._parse_darwin_bsdinfo(bytes(bsd)) == (123, 45, 67)
+    assert watchdog._parse_darwin_taskinfo_rss(bytes(task)) == 987_654_321
+    with pytest.raises(ValueError, match="incomplete Darwin proc_bsdinfo"):
+        watchdog._parse_darwin_bsdinfo(b"short")
+    with pytest.raises(ValueError, match="incomplete Darwin proc_taskinfo"):
+        watchdog._parse_darwin_taskinfo_rss(b"short")
 
 
 def test_platform_probe_rejects_unsupported_hosts() -> None:

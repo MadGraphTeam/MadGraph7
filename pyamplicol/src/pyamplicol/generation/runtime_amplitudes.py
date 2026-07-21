@@ -141,6 +141,7 @@ def _amplitude_groups(
         bit > 0 and bit & (bit - 1) == 0 for bit in source_by_ancestry
     )
     physical_sources_cache: dict[int, tuple[object, ...]] = {}
+    materialized_source_keys = _materialized_root_source_keys(dag)
 
     def physical_sources(ancestry: int) -> tuple[object, ...]:
         cached = physical_sources_cache.get(ancestry)
@@ -171,7 +172,7 @@ def _amplitude_groups(
         left = dag.currents[root.left_id].index
         right = dag.currents[root.right_id].index
         ancestry = int(left.helicity_ancestry | right.helicity_ancestry)
-        source_key = physical_sources(ancestry)
+        source_key = materialized_source_keys.get(root.id) or physical_sources(ancestry)
         sector_id = _root_color_sector_id(dag, root)
         sector = dag.color_plan.sector(sector_id)
         word = (
@@ -203,6 +204,43 @@ def _amplitude_groups(
             ),
         )
     return result, tuple(descriptors[index] for index in sorted(descriptors))
+
+
+def _materialized_root_source_keys(
+    dag: GenericDAG,
+) -> dict[int, tuple[object, ...]]:
+    materialization = dag.helicity_materialization
+    recurrence = dag.helicity_recurrence
+    if materialization is None or recurrence is None:
+        return {}
+    if materialization.strategy == "retained-proof-graph":
+        # The retained graph keeps the original physical roots and their
+        # ancestry. Preserve the established coherent grouping so selector
+        # metadata cannot change cancellations in the summed workload.
+        return {}
+    domain_by_id = {domain.id: domain for domain in recurrence.selector_domains}
+    routes_by_root: dict[int, list[object]] = {}
+    for route in materialization.amplitude_routes:
+        routes_by_root.setdefault(route.materialized_root_id, []).append(route)
+    result: dict[int, tuple[object, ...]] = {}
+    for root_id, routes in routes_by_root.items():
+        first_domain_id = next(
+            (domain_id for route in routes for domain_id in route.selector_domain_ids),
+            None,
+        )
+        if first_domain_id is None:
+            raise ValueError(
+                f"materialized amplitude root {root_id} has no selector domain"
+            )
+        domain = domain_by_id.get(first_domain_id)
+        if domain is None or not domain.complete:
+            raise ValueError(
+                f"materialized amplitude root {root_id} has an invalid selector domain"
+            )
+        result[root_id] = tuple(
+            (label, 0, 0, 0, helicity) for label, helicity in domain.source_states
+        )
+    return result
 
 
 def _helicity_vector(

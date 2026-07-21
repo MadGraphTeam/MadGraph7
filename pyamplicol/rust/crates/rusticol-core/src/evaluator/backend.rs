@@ -5,13 +5,21 @@ use super::*;
 
 impl EvaluatorGroup {
     pub(crate) fn load(manifest: &EvaluatorManifest, root: &Path) -> RusticolResult<Self> {
+        let payloads = EvaluatorPayloadStore::directory(root);
+        Self::load_from_store(manifest, &payloads)
+    }
+
+    pub(crate) fn load_from_store(
+        manifest: &EvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
         ensure_evaluator_capabilities_supported(manifest)?;
         let (input_len, _) = manifest.io_len()?;
         let mut evaluators = Vec::new();
         let mut input_mappings = Vec::new();
         flatten_evaluators_with_mappings(
             manifest,
-            root,
+            payloads,
             None,
             input_len,
             &mut evaluators,
@@ -36,6 +44,19 @@ impl EvaluatorGroup {
             chunk_parameter_scratch_f64: Vec::new(),
             chunk_scratch_f64: Vec::new(),
         })
+    }
+
+    pub(crate) fn uses_simd_jit(&self) -> bool {
+        self.evaluators
+            .iter()
+            .any(|evaluator| match &evaluator.eval {
+                #[cfg(feature = "f64-symjit")]
+                F64Evaluator::SymjitApplication(_) => true,
+                #[cfg(feature = "symbolica-runtime")]
+                F64Evaluator::Jit(_) => true,
+                #[cfg(feature = "f64-compiled")]
+                F64Evaluator::Compiled(_) => false,
+            })
     }
 
     pub(crate) fn evaluate_batch(
@@ -155,6 +176,236 @@ impl EvaluatorGroup {
         Ok((
             evaluator_elapsed.as_secs_f64(),
             assign_elapsed.as_secs_f64(),
+        ))
+    }
+
+    // The explicit slices avoid constructing a descriptor in this selector hot path.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_selected_chunks_f64_into_state(
+        &mut self,
+        batch_size: usize,
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<(f64, f64, f64)> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "stage input-component map has length {}, expected {}",
+                        components.len(),
+                        self.input_len
+                    )));
+                }
+                if components
+                    .iter()
+                    .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "stage input-component map references state outside the parameter layout",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match stage state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+
+        let mut input_pack_elapsed = Duration::ZERO;
+        let mut evaluator_elapsed = Duration::ZERO;
+        let mut assign_elapsed = Duration::ZERO;
+        for &chunk_index in active_chunk_indices {
+            let input_pack_start = Instant::now();
+            let evaluator_params = selected_chunk_f64_parameters(
+                state,
+                batch_size,
+                state_parameter_count,
+                self.input_len,
+                parent_input_components,
+                parent_input_spans,
+                self.input_mappings[chunk_index].as_deref(),
+                &self.input_mapping_spans[chunk_index],
+                &mut self.chunk_parameter_scratch_f64,
+            )?;
+            input_pack_elapsed += input_pack_start.elapsed();
+
+            let evaluator = &mut self.evaluators[chunk_index];
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let scratch_len = batch_size
+                .checked_mul(evaluator.output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("stage chunk output length overflows usize")
+                })?;
+            self.chunk_scratch_f64.resize(scratch_len, c64(0.0, 0.0));
+            let eval_start = Instant::now();
+            evaluator.evaluate_f64_batch(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            evaluator_elapsed += eval_start.elapsed();
+
+            let assign_start = Instant::now();
+            let outputs = &chunk_outputs[chunk_index];
+            let spans = &chunk_output_spans[chunk_index];
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+            assign_elapsed += assign_start.elapsed();
+        }
+        Ok((
+            input_pack_elapsed.as_secs_f64(),
+            evaluator_elapsed.as_secs_f64(),
+            assign_elapsed.as_secs_f64(),
+        ))
+    }
+
+    pub(crate) fn evaluate_selected_chunks_f64_into_output(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        out: &mut Vec<Complex<f64>>,
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<(f64, f64)> {
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        if batch_size == 0 || params.len() % batch_size != 0 {
+            return Err(RusticolError::invalid_argument(
+                "amplitude evaluator parameter buffer has an inconsistent batch size",
+            ));
+        }
+        let state_parameter_count = params.len() / batch_size;
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len
+                    || components
+                        .iter()
+                        .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "amplitude input-component map is inconsistent with runtime state",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match amplitude state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+        let output_len = batch_size
+            .checked_mul(self.output_len)
+            .ok_or_else(|| RusticolError::invalid_argument("amplitude output length overflows"))?;
+        out.resize(output_len, c64(0.0, 0.0));
+        out.fill(c64(0.0, 0.0));
+
+        let mut chunk_output_starts = Vec::with_capacity(self.evaluators.len());
+        let mut output_start = 0usize;
+        for evaluator in &self.evaluators {
+            chunk_output_starts.push(output_start);
+            output_start = output_start
+                .checked_add(evaluator.output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("amplitude chunk output range overflows")
+                })?;
+        }
+        if output_start != self.output_len {
+            return Err(RusticolError::integrity(
+                "amplitude evaluator chunk outputs do not cover the declared output length",
+            ));
+        }
+
+        let mut input_pack_elapsed = Duration::ZERO;
+        let mut evaluator_elapsed = Duration::ZERO;
+        for &chunk_index in active_chunk_indices {
+            let input_pack_start = Instant::now();
+            let evaluator_params = selected_chunk_f64_parameters(
+                params,
+                batch_size,
+                state_parameter_count,
+                self.input_len,
+                parent_input_components,
+                parent_input_spans,
+                self.input_mappings[chunk_index].as_deref(),
+                &self.input_mapping_spans[chunk_index],
+                &mut self.chunk_parameter_scratch_f64,
+            )?;
+            input_pack_elapsed += input_pack_start.elapsed();
+
+            let evaluator = &mut self.evaluators[chunk_index];
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            self.chunk_scratch_f64.resize(
+                batch_size
+                    .checked_mul(evaluator.output_len)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(
+                            "amplitude chunk output length overflows usize",
+                        )
+                    })?,
+                c64(0.0, 0.0),
+            );
+            let eval_start = Instant::now();
+            evaluator.evaluate_f64_batch(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            let chunk_output_start = chunk_output_starts[chunk_index];
+            for row in 0..batch_size {
+                let source_start = row * evaluator.output_len;
+                let target_start = row * self.output_len + chunk_output_start;
+                out[target_start..target_start + evaluator.output_len].copy_from_slice(
+                    &self.chunk_scratch_f64[source_start..source_start + evaluator.output_len],
+                );
+            }
+            evaluator_elapsed += eval_start.elapsed();
+        }
+        Ok((
+            input_pack_elapsed.as_secs_f64(),
+            evaluator_elapsed.as_secs_f64(),
         ))
     }
 
@@ -310,6 +561,78 @@ fn mapped_f64_parameters<'a>(
     scratch
 }
 
+#[allow(clippy::too_many_arguments, dead_code)]
+fn selected_chunk_f64_parameters<'a>(
+    state: &'a [Complex<f64>],
+    batch_size: usize,
+    state_parameter_count: usize,
+    parent_input_len: usize,
+    parent_input_components: Option<&[usize]>,
+    parent_input_spans: &[(usize, usize, usize)],
+    input_mapping: Option<&[usize]>,
+    input_mapping_spans: &[(usize, usize, usize)],
+    scratch: &'a mut Vec<Complex<f64>>,
+) -> RusticolResult<&'a [Complex<f64>]> {
+    let Some(parent_components) = parent_input_components else {
+        return Ok(mapped_f64_parameters(
+            state,
+            batch_size,
+            state_parameter_count,
+            input_mapping,
+            input_mapping_spans,
+            scratch,
+        ));
+    };
+    let mapped_input_len = input_mapping.map_or(parent_input_len, <[usize]>::len);
+    let scratch_len = batch_size.checked_mul(mapped_input_len).ok_or_else(|| {
+        RusticolError::invalid_argument("selected stage input length overflows usize")
+    })?;
+    scratch.resize(scratch_len, c64(0.0, 0.0));
+    for row in 0..batch_size {
+        let source_start = row * state_parameter_count;
+        let target_start = row * mapped_input_len;
+        if let Some(indices) = input_mapping {
+            for (local_index, parent_index) in indices.iter().copied().enumerate() {
+                scratch[target_start + local_index] =
+                    state[source_start + parent_components[parent_index]];
+            }
+        } else if parent_input_spans.is_empty() {
+            for (local_index, global_index) in parent_components.iter().copied().enumerate() {
+                scratch[target_start + local_index] = state[source_start + global_index];
+            }
+        } else {
+            for (local_start, global_start, len) in parent_input_spans {
+                let target = target_start + *local_start;
+                let source = source_start + *global_start;
+                scratch[target..target + *len].copy_from_slice(&state[source..source + *len]);
+            }
+        }
+    }
+    Ok(scratch)
+}
+
+#[allow(dead_code)]
+fn validate_active_chunk_indices(
+    active_chunk_indices: &[usize],
+    chunk_count: usize,
+) -> RusticolResult<()> {
+    let mut previous = None;
+    for &chunk_index in active_chunk_indices {
+        if chunk_index >= chunk_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "active evaluator chunk index {chunk_index} is outside chunk count {chunk_count}",
+            )));
+        }
+        if previous.is_some_and(|previous| previous >= chunk_index) {
+            return Err(RusticolError::invalid_argument(
+                "active evaluator chunk indices must be strictly increasing",
+            ));
+        }
+        previous = Some(chunk_index);
+    }
+    Ok(())
+}
+
 fn validate_leaf_parameter_length(
     evaluator: &LoadedEvaluator,
     batch_size: usize,
@@ -331,12 +654,12 @@ impl LoadedEvaluator {
         &mut self,
     ) -> RusticolResult<&ExpressionEvaluator<Complex<Rational>>> {
         if self.exact_eval.is_none() {
-            let path = self.exact_eval_path.as_ref().ok_or_else(|| {
+            let source = self.exact_eval_source.as_ref().ok_or_else(|| {
                 RusticolError::invalid_argument(
                     "high-precision evaluation requires an evaluator-state artifact, but this process artifact has no evaluator_state_path for one or more chunks",
                 )
             })?;
-            self.exact_eval = Some(load_evaluator_state(path)?.1);
+            self.exact_eval = Some(load_evaluator_state_source(source)?.1);
         }
         Ok(self
             .exact_eval
@@ -380,7 +703,7 @@ impl LoadedEvaluator {
 
 fn flatten_evaluators_with_mappings(
     manifest: &EvaluatorManifest,
-    root: &Path,
+    payloads: &EvaluatorPayloadStore,
     inherited_mapping: Option<&[usize]>,
     root_input_len: usize,
     output: &mut Vec<LoadedEvaluator>,
@@ -399,7 +722,7 @@ fn flatten_evaluators_with_mappings(
                 for chunk in chunks {
                     flatten_evaluators_with_mappings(
                         chunk,
-                        root,
+                        payloads,
                         inherited_mapping,
                         root_input_len,
                         output,
@@ -413,7 +736,7 @@ fn flatten_evaluators_with_mappings(
                         compose_input_mapping(inherited_mapping, indices, root_input_len);
                     flatten_evaluators_with_mappings(
                         chunk,
-                        root,
+                        payloads,
                         composed.as_deref(),
                         root_input_len,
                         output,
@@ -447,7 +770,7 @@ fn flatten_evaluators_with_mappings(
             Some(indices)
         }
     });
-    flatten_evaluators(manifest, root, output)?;
+    flatten_evaluators_from_store(manifest, payloads, output)?;
     input_mappings.push(normalized);
     Ok(())
 }
@@ -476,9 +799,9 @@ fn compose_input_mapping(
     }
 }
 
-pub(crate) fn flatten_evaluators(
+pub(crate) fn flatten_evaluators_from_store(
     manifest: &EvaluatorManifest,
-    root: &Path,
+    payloads: &EvaluatorPayloadStore,
     output: &mut Vec<LoadedEvaluator>,
 ) -> RusticolResult<()> {
     match manifest {
@@ -501,8 +824,11 @@ pub(crate) fn flatten_evaluators(
         } => {
             #[cfg(feature = "f64-symjit")]
             {
-                let eval = SymjitApplicationEvaluator::load(
-                    &artifact_path(root, application_path)?,
+                let application_source = payloads.source(application_path)?;
+                let application_bytes = application_source.read()?;
+                let eval = SymjitApplicationEvaluator::load_bytes(
+                    application_bytes.as_ref(),
+                    PathBuf::from(application_source.display_name()),
                     SymjitApplicationMetadata {
                         runtime_capability,
                         application_abi,
@@ -519,7 +845,7 @@ pub(crate) fn flatten_evaluators(
                     },
                 )?;
                 #[cfg(feature = "symbolica-runtime")]
-                let exact_eval_path = match evaluator_state_path {
+                let exact_eval_source = match evaluator_state_path {
                     Some(state_path) => {
                         if evaluator_state_runtime_capability.as_deref()
                             != Some(SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY)
@@ -529,7 +855,7 @@ pub(crate) fn flatten_evaluators(
                                 state_path, SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
                             )));
                         }
-                        Some(artifact_path(root, state_path)?)
+                        Some(payloads.source(state_path)?)
                     }
                     None => None,
                 };
@@ -540,7 +866,7 @@ pub(crate) fn flatten_evaluators(
                     #[cfg(feature = "symbolica-runtime")]
                     exact_eval: None,
                     #[cfg(feature = "symbolica-runtime")]
-                    exact_eval_path,
+                    exact_eval_source,
                     #[cfg(feature = "symbolica-runtime")]
                     double_eval: None,
                     #[cfg(feature = "symbolica-runtime")]
@@ -581,7 +907,7 @@ pub(crate) fn flatten_evaluators(
             {
                 let _ = runtime_capability;
                 let (jit_settings, exact_eval, jit_eval) =
-                    load_evaluator_state(&artifact_path(root, evaluator_state_path)?)?;
+                    load_evaluator_state_source(&payloads.source(evaluator_state_path)?)?;
                 let eval = F64Evaluator::Jit(match jit_eval {
                     Some(eval) => eval,
                     None => exact_eval
@@ -596,7 +922,7 @@ pub(crate) fn flatten_evaluators(
                 output.push(LoadedEvaluator {
                     eval,
                     exact_eval: Some(exact_eval),
-                    exact_eval_path: None,
+                    exact_eval_source: None,
                     double_eval: None,
                     arb_eval: None,
                     input_len: *input_len,
@@ -627,7 +953,7 @@ pub(crate) fn flatten_evaluators(
                         "rusticol currently supports compiled complex evaluators, got {number_type}"
                     )));
                 }
-                let library = artifact_path(root, library_path)?;
+                let library = payloads.physical_path(library_path)?;
                 let eval = CompiledComplexF64Evaluator::load(
                     &library,
                     function_name,
@@ -635,9 +961,9 @@ pub(crate) fn flatten_evaluators(
                     *output_len,
                 )?;
                 #[cfg(feature = "symbolica-runtime")]
-                let exact_eval_path = evaluator_state_path
+                let exact_eval_source = evaluator_state_path
                     .as_deref()
-                    .map(|state_path| artifact_path(root, state_path))
+                    .map(|state_path| payloads.source(state_path))
                     .transpose()?;
                 #[cfg(not(feature = "symbolica-runtime"))]
                 let _ = evaluator_state_path;
@@ -646,7 +972,7 @@ pub(crate) fn flatten_evaluators(
                     #[cfg(feature = "symbolica-runtime")]
                     exact_eval: None,
                     #[cfg(feature = "symbolica-runtime")]
-                    exact_eval_path,
+                    exact_eval_source,
                     #[cfg(feature = "symbolica-runtime")]
                     double_eval: None,
                     #[cfg(feature = "symbolica-runtime")]
@@ -671,7 +997,7 @@ pub(crate) fn flatten_evaluators(
         }
         EvaluatorManifest::Chunked { chunks, .. } => {
             for chunk in chunks {
-                flatten_evaluators(chunk, root, output)?;
+                flatten_evaluators_from_store(chunk, payloads, output)?;
             }
             Ok(())
         }
@@ -777,8 +1103,21 @@ fn unsupported_capability(capability: &str) -> RusticolError {
 }
 
 #[cfg(feature = "symbolica-runtime")]
-pub(crate) fn load_evaluator_state(
-    path: &Path,
+fn load_evaluator_state_source(
+    source: &EvaluatorPayloadSource,
+) -> RusticolResult<(
+    JITCompilationSettings,
+    ExpressionEvaluator<Complex<Rational>>,
+    Option<JITCompiledEvaluator<Complex<f64>>>,
+)> {
+    let bytes = source.read()?;
+    load_evaluator_state_bytes(bytes.as_ref(), &source.display_name())
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn load_evaluator_state_bytes(
+    bytes: &[u8],
+    display_name: &str,
 ) -> RusticolResult<(
     JITCompilationSettings,
     ExpressionEvaluator<Complex<Rational>>,
@@ -792,28 +1131,22 @@ pub(crate) fn load_evaluator_state(
         Option<JITCompiledEvaluator<Complex<f64>>>,
     );
 
-    let bytes = fs::read(path).map_err(|err| {
-        RusticolError::artifact(format!(
-            "could not read evaluator state {}: {err}",
-            path.display()
-        ))
-    })?;
     let ((_, settings, evaluator, _, jit_complex), consumed) =
-        bincode::decode_from_slice::<SavedEvaluator, _>(&bytes, bincode::config::standard())
+        bincode::decode_from_slice::<SavedEvaluator, _>(bytes, bincode::config::standard())
             .map_err(|error| {
                 RusticolError::compatibility(format!(
                     "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
-                    path.display(),
+                    display_name,
                     crate::SYMBOLICA_SERIALIZATION_ABI
                 ))
             })?;
-    ensure_evaluator_state_consumed(path, bytes.len(), consumed)?;
+    ensure_evaluator_state_consumed(display_name, bytes.len(), consumed)?;
     Ok((settings, evaluator, jit_complex))
 }
 
 #[cfg(feature = "symbolica-runtime")]
 fn ensure_evaluator_state_consumed(
-    path: &Path,
+    display_name: &str,
     encoded_len: usize,
     consumed: usize,
 ) -> RusticolResult<()> {
@@ -822,7 +1155,7 @@ fn ensure_evaluator_state_consumed(
     }
     Err(RusticolError::integrity(format!(
         "evaluator state {} contains {} trailing bytes",
-        path.display(),
+        display_name,
         encoded_len - consumed
     )))
 }

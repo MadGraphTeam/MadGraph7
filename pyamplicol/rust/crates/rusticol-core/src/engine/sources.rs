@@ -2,7 +2,174 @@
 
 use super::*;
 
+#[derive(Clone, Debug)]
+pub(super) struct RuntimeSourceState {
+    pub(super) state: GenericSourceStateIrManifest,
+    pub(super) factor: Complex<f64>,
+}
+
 impl ExecutionRuntime {
+    pub(super) fn fill_sources_row_with_states(
+        sources: &[GenericSourceRecordManifest],
+        source_states: &[RuntimeSourceState],
+        external_count: usize,
+        particle_masses: &BTreeMap<i32, f64>,
+        row: &mut [Complex<f64>],
+        point: &[[f64; 4]],
+    ) -> RusticolResult<()> {
+        if source_states.len() != sources.len() {
+            return Err(RusticolError::invalid_argument(format!(
+                "runtime source-state count {} does not match source count {}",
+                source_states.len(),
+                sources.len()
+            )));
+        }
+        for (source, runtime_state) in sources.iter().zip(source_states) {
+            let start = source.value_slot.component_start;
+            let stop = source.value_slot.component_stop;
+            if stop > row.len() || stop < start {
+                return Err(RusticolError::invalid_argument(format!(
+                    "generic source {} has an invalid value-slot range",
+                    source.source_id
+                )));
+            }
+            if runtime_state.factor == c64(0.0, 0.0) {
+                row[start..stop].fill(c64(0.0, 0.0));
+                continue;
+            }
+            Self::write_source_wavefunction_with_state(
+                source,
+                &runtime_state.state,
+                external_count,
+                particle_masses,
+                point,
+                &mut row[start..stop],
+            )?;
+            if runtime_state.factor != c64(1.0, 0.0) {
+                for component in &mut row[start..stop] {
+                    *component *= runtime_state.factor;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(super) fn fill_sources_row_generic_with_states<T>(
+        sources: &[GenericSourceRecordManifest],
+        source_states: &[RuntimeSourceState],
+        external_count: usize,
+        particle_masses: &BTreeMap<i32, f64>,
+        row: &mut [Complex<T>],
+        point: &[[T; 4]],
+    ) -> RusticolResult<()>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if source_states.len() != sources.len() {
+            return Err(RusticolError::invalid_argument(format!(
+                "runtime source-state count {} does not match source count {}",
+                source_states.len(),
+                sources.len()
+            )));
+        }
+        for (source, runtime_state) in sources.iter().zip(source_states) {
+            let start = source.value_slot.component_start;
+            let stop = source.value_slot.component_stop;
+            if stop > row.len() || stop < start {
+                return Err(RusticolError::invalid_argument(format!(
+                    "generic source {} has an invalid value-slot range",
+                    source.source_id
+                )));
+            }
+            if runtime_state.factor == c64(0.0, 0.0) {
+                row[start..stop].fill(complex_zero::<T>());
+                continue;
+            }
+            Self::write_source_wavefunction_generic_with_state(
+                source,
+                &runtime_state.state,
+                external_count,
+                particle_masses,
+                point,
+                &mut row[start..stop],
+            )?;
+            if runtime_state.factor != c64(1.0, 0.0) {
+                let factor = c_generic(
+                    T::from(runtime_state.factor.re),
+                    T::from(runtime_state.factor.im),
+                );
+                for component in &mut row[start..stop] {
+                    *component *= factor.clone();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn runtime_source_state(
+        source: &GenericSourceRecordManifest,
+        declared_state_index: usize,
+        factor: Complex<f64>,
+    ) -> RusticolResult<RuntimeSourceState> {
+        let declared = source
+            .source_ir
+            .states
+            .get(declared_state_index)
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(format!(
+                    "generic source {} has no declared state {}",
+                    source.source_id, declared_state_index
+                ))
+            })?;
+        let state = declared
+            .transformed(&source.applied_crossing)
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "generic source {} runtime state is invalid: {error}",
+                    source.source_id
+                ))
+            })?;
+        Ok(RuntimeSourceState { state, factor })
+    }
+
+    pub(super) fn runtime_source_state_index_for_helicity(
+        source: &GenericSourceRecordManifest,
+        helicity: i32,
+    ) -> RusticolResult<Option<usize>> {
+        let mut matching =
+            source
+                .source_ir
+                .states
+                .iter()
+                .enumerate()
+                .filter_map(|(index, state)| {
+                    state
+                        .transformed(&source.applied_crossing)
+                        .ok()
+                        .filter(|state| state.helicity == helicity)
+                        .map(|_| index)
+                });
+        let result = matching.next();
+        if matching.next().is_some() {
+            return Err(RusticolError::artifact(format!(
+                "generic source {} declares multiple runtime states for helicity {}",
+                source.source_id, helicity
+            )));
+        }
+        Ok(result)
+    }
+
+    pub(super) fn inactive_runtime_source_state(
+        source: &GenericSourceRecordManifest,
+    ) -> RusticolResult<RuntimeSourceState> {
+        Ok(RuntimeSourceState {
+            state: default_source_state(source)?,
+            factor: c64(0.0, 0.0),
+        })
+    }
+
     pub(super) fn fill_sources_row(
         sources: &[GenericSourceRecordManifest],
         external_count: usize,
@@ -202,8 +369,28 @@ impl ExecutionRuntime {
         point: &[[f64; 4]],
         out: &mut [Complex<f64>],
     ) -> RusticolResult<()> {
+        let state = default_source_state(source)?;
+        Self::write_source_wavefunction_with_state(
+            source,
+            &state,
+            external_count,
+            particle_masses,
+            point,
+            out,
+        )
+    }
+
+    pub(super) fn write_source_wavefunction_with_state(
+        source: &GenericSourceRecordManifest,
+        state: &GenericSourceStateIrManifest,
+        external_count: usize,
+        particle_masses: &BTreeMap<i32, f64>,
+        point: &[[f64; 4]],
+        out: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
         Self::write_source_wavefunction_unphased(
             source,
+            state,
             external_count,
             particle_masses,
             point,
@@ -215,6 +402,7 @@ impl ExecutionRuntime {
 
     fn write_source_wavefunction_unphased(
         source: &GenericSourceRecordManifest,
+        state: &GenericSourceStateIrManifest,
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
         point: &[[f64; 4]],
@@ -262,11 +450,11 @@ impl ExecutionRuntime {
                     out.len()
                 )));
             }
-            let chirality = source.chirality;
+            let chirality = state.chirality;
             let wave = if source_is_antiparticle(source)? {
-                ext_antiquark_weyl_array(momentum, source.source_helicity, chirality)
+                ext_antiquark_weyl_array(momentum, state.helicity, chirality)
             } else {
-                ext_quark_weyl_array(momentum, source.source_helicity, chirality)
+                ext_quark_weyl_array(momentum, state.helicity, chirality)
             };
             out.copy_from_slice(&wave);
             return Ok(());
@@ -286,9 +474,9 @@ impl ExecutionRuntime {
                     identity.anti_pdg_label,
                 );
                 if source_is_antiparticle(source)? {
-                    ext_antiquark_dirac_massive(momentum, source.source_helicity, mass)
+                    ext_antiquark_dirac_massive(momentum, state.helicity, mass)
                 } else {
-                    ext_quark_dirac_massive(momentum, source.source_helicity, mass)
+                    ext_quark_dirac_massive(momentum, state.helicity, mass)
                 }
             } else if family == GenericWavefunctionFamilyManifest::Vector {
                 let mass = particle_mass_from_map(
@@ -297,9 +485,9 @@ impl ExecutionRuntime {
                     identity.anti_pdg_label,
                 );
                 if mass == 0.0 {
-                    ext_gluon(momentum, source.source_helicity)
+                    ext_gluon(momentum, state.helicity)
                 } else {
-                    ext_massive_vector(momentum, source.source_helicity, mass)
+                    ext_massive_vector(momentum, state.helicity, mass)
                 }
             } else {
                 return Err(unsupported_source_wavefunction(source));
@@ -317,7 +505,7 @@ impl ExecutionRuntime {
             }
             let wave = ext_spin2(
                 momentum,
-                source.source_helicity,
+                state.helicity,
                 particle_mass_from_map(
                     particle_masses,
                     identity.pdg_label,
@@ -346,8 +534,33 @@ impl ExecutionRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        let state = default_source_state(source)?;
+        Self::write_source_wavefunction_generic_with_state(
+            source,
+            &state,
+            external_count,
+            particle_masses,
+            point,
+            out,
+        )
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(super) fn write_source_wavefunction_generic_with_state<T>(
+        source: &GenericSourceRecordManifest,
+        state: &GenericSourceStateIrManifest,
+        external_count: usize,
+        particle_masses: &BTreeMap<i32, f64>,
+        point: &[[T; 4]],
+        out: &mut [Complex<T>],
+    ) -> RusticolResult<()>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
         Self::write_source_wavefunction_generic_unphased(
             source,
+            state,
             external_count,
             particle_masses,
             point,
@@ -360,6 +573,7 @@ impl ExecutionRuntime {
     #[cfg(feature = "symbolica-runtime")]
     fn write_source_wavefunction_generic_unphased<T>(
         source: &GenericSourceRecordManifest,
+        state: &GenericSourceStateIrManifest,
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
         point: &[[T; 4]],
@@ -411,11 +625,11 @@ impl ExecutionRuntime {
                     out.len()
                 )));
             }
-            let chirality = source.chirality;
+            let chirality = state.chirality;
             let wave = if source_is_antiparticle(source)? {
-                ext_antiquark_weyl_generic(&momentum, source.source_helicity, chirality)
+                ext_antiquark_weyl_generic(&momentum, state.helicity, chirality)
             } else {
-                ext_quark_weyl_generic(&momentum, source.source_helicity, chirality)
+                ext_quark_weyl_generic(&momentum, state.helicity, chirality)
             };
             out.clone_from_slice(&wave);
             return Ok(());
@@ -440,9 +654,9 @@ impl ExecutionRuntime {
                     ));
                 }
                 if source_is_antiparticle(source)? {
-                    ext_antiquark_dirac_generic(&momentum, source.source_helicity)
+                    ext_antiquark_dirac_generic(&momentum, state.helicity)
                 } else {
-                    ext_quark_dirac_generic(&momentum, source.source_helicity)
+                    ext_quark_dirac_generic(&momentum, state.helicity)
                 }
             } else if family == GenericWavefunctionFamilyManifest::Vector {
                 let mass = particle_mass_from_map(
@@ -451,9 +665,9 @@ impl ExecutionRuntime {
                     identity.anti_pdg_label,
                 );
                 if mass == 0.0 {
-                    ext_gluon_generic(&momentum, source.source_helicity)
+                    ext_gluon_generic(&momentum, state.helicity)
                 } else {
-                    ext_massive_vector_generic(&momentum, source.source_helicity, T::from(mass))
+                    ext_massive_vector_generic(&momentum, state.helicity, T::from(mass))
                 }
             } else {
                 return Err(unsupported_source_wavefunction(source));
@@ -471,7 +685,7 @@ impl ExecutionRuntime {
             }
             let wave = ext_spin2_generic(
                 &momentum,
-                source.source_helicity,
+                state.helicity,
                 T::from(particle_mass_from_map(
                     particle_masses,
                     identity.pdg_label,
@@ -487,6 +701,25 @@ impl ExecutionRuntime {
             dimension
         )))
     }
+}
+
+fn default_source_state(
+    source: &GenericSourceRecordManifest,
+) -> RusticolResult<GenericSourceStateIrManifest> {
+    source
+        .source_ir
+        .states
+        .iter()
+        .filter_map(|state| state.transformed(&source.applied_crossing).ok())
+        .find(|state| {
+            state.helicity == source.source_helicity && state.chirality == source.chirality
+        })
+        .ok_or_else(|| {
+            RusticolError::invalid_argument(format!(
+                "generic source {} default state is absent from its SourceIR",
+                source.source_id
+            ))
+        })
 }
 
 fn apply_source_phase_f64(crossing: &GenericCrossingIrManifest, out: &mut [Complex<f64>]) {

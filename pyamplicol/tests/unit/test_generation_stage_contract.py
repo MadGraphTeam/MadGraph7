@@ -6,11 +6,21 @@ import pickle
 
 import pytest
 
+from pyamplicol.evaluators.symbolica_compile import (
+    _partitioned_output_chunk_ranges,
+)
 from pyamplicol.generation.contracts import RuntimeExpressionSchema
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.stage_compiler import (
     _fanout_aware_current_order,
     build_generic_stage_compiler_blueprint,
+)
+from pyamplicol.generation.stage_planning import (
+    _stage_with_fanout_aware_output_order,
+)
+from pyamplicol.generation.stage_types import (
+    GenericCompiledStageBlueprint,
+    GenericStageOutputSlot,
 )
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
@@ -168,3 +178,76 @@ def test_generation_fanout_order_preserves_evaluation_reuse() -> None:
     )
     assert order in {(0, 2, 1, 3), (1, 3, 0, 2)}
     assert (before, after) == (8, 6)
+
+
+def _selector_partition_stage(
+    *, amplitude: bool = False, color_domains: bool = False
+) -> GenericCompiledStageBlueprint:
+    signatures = ((3, 23), (10, 18), (3, 23))
+    slots = tuple(
+        GenericStageOutputSlot(
+            value_slot_id=-1 if amplitude else index,
+            current_id=-1 if amplitude else index,
+            variant="amplitude-root" if amplitude else "propagated",
+            component_start=index,
+            component_stop=index + 1,
+            output_start=index,
+            output_stop=index + 1,
+            selector_domain_ids=signature,
+            color_selector_domain_ids=(
+                ((0, 2) if index != 1 else (1,)) if color_domains else ()
+            ),
+        )
+        for index, signature in enumerate(signatures)
+    )
+    return GenericCompiledStageBlueprint(
+        stage_index=0 if amplitude else 1,
+        stage_kind="amplitude-roots" if amplitude else "current-combine",
+        subset_size=None if amplitude else 2,
+        evaluator_label="selector-partition-test",
+        parameter_layout="stage-local-value-momentum",
+        output_length=3,
+        output_slots=slots,
+        input_value_slot_ids=(),
+        output_value_slot_ids=(),
+        interaction_ids=(),
+        input_components=(),
+        parameter_count=0,
+        value_parameter_count=0,
+        momentum_parameter_count=0,
+        model_parameter_count=0,
+        real_valued_inputs=(),
+        expression_ready=True,
+        blockers=(),
+        first_output_previews=("a", "b", "c"),
+        output_expressions=("a", "b", "c"),
+    )
+
+
+@pytest.mark.parametrize("amplitude", (False, True))
+@pytest.mark.parametrize("color_domains", (False, True))
+def test_selector_domains_define_evaluator_chunk_boundaries(
+    amplitude: bool, color_domains: bool
+) -> None:
+    stage = _stage_with_fanout_aware_output_order(
+        _selector_partition_stage(
+            amplitude=amplitude,
+            color_domains=color_domains,
+        ),
+        chunk_size=512,
+    )
+
+    assert stage.output_expressions == ("a", "c", "b")
+    assert stage.selector_output_partitions == ((0, 2), (2, 3))
+    if amplitude:
+        assert tuple(slot.component_start for slot in stage.output_slots) == (0, 2, 1)
+    else:
+        assert tuple(slot.current_id for slot in stage.output_slots) == (0, 2, 1)
+
+
+def test_selector_partitions_are_subdivided_without_crossing_domains() -> None:
+    assert _partitioned_output_chunk_ranges(
+        10,
+        chunk_size=4,
+        output_partitions=((0, 3), (3, 10)),
+    ) == ((0, 3), (3, 7), (7, 10))

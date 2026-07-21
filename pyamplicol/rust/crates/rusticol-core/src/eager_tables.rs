@@ -7,6 +7,8 @@ pub const EAGER_PLAN_ABI: &str = "pyamplicol-eager-plan-v2";
 pub const EAGER_KERNEL_ABI: &str = "pyamplicol-eager-kernel-v1";
 pub const EAGER_SELECTOR_DOMAINS_ABI: &str = "pyamplicol-eager-selector-domains-v1";
 pub const EAGER_RUNTIME_CAPABILITY: &str = "rusticol.eager-dag.complex-f64.v1";
+pub const EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY: &str =
+    "rusticol.eager-dag.lc-topology-replay.v1";
 pub const MISSING_U32: u32 = u32::MAX;
 pub const EAGER_OUTPUT_FACTOR_NONE: u32 = 0;
 pub const EAGER_OUTPUT_FACTOR_COUPLING_REAL: u32 = 1;

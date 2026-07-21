@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 
+use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::{
     ARTIFACT_MANIFEST_FILE, C_ABI_VERSION, COMPILED_MODEL_SCHEMA_VERSION,
     PROCESS_ARTIFACT_SCHEMA_VERSION, PYTHON_API_VERSION, RUNTIME_PHYSICS_SCHEMA_VERSION,
@@ -9,14 +10,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(test)]
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
+const EVALUATOR_PAYLOAD_CONTAINER_EXTENSION: &str = "evaluator_payload_container";
+const EVALUATOR_PAYLOAD_CONTAINER_KIND: &str = "pyamplicol-evaluator-payload-container";
+const EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI: &str = "pacbin-v1";
 const SUPPORTED_ARTIFACT_TARGETS: [&str; 3] = [
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -208,6 +214,97 @@ pub struct VerifiedArtifact {
     manifest_path: PathBuf,
     manifest: ArtifactManifest,
     payloads: BTreeMap<String, Payload>,
+    evaluator_payload_container: Option<Arc<PacbinReader>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvaluatorPayloadContainerExtension {
+    kind: String,
+    schema_version: u32,
+    storage_abi: String,
+    path: String,
+    member_count: u64,
+    unpacked_size_bytes: u64,
+    index_sha256: String,
+}
+
+/// One evaluator payload resolved from a legacy loose file or a packed member.
+#[derive(Clone, Debug)]
+pub(crate) enum EvaluatorPayloadSource {
+    File(PathBuf),
+    Packed {
+        container: Arc<PacbinReader>,
+        logical_path: String,
+    },
+}
+
+impl EvaluatorPayloadSource {
+    pub(crate) fn read(&self) -> RusticolResult<Cow<'_, [u8]>> {
+        match self {
+            Self::File(path) => fs::read(path).map(Cow::Owned).map_err(|error| {
+                RusticolError::artifact(format!(
+                    "could not read evaluator payload {}: {error}",
+                    path.display()
+                ))
+            }),
+            Self::Packed {
+                container,
+                logical_path,
+            } => container.member_bytes(logical_path).map(Cow::Borrowed),
+        }
+    }
+
+    pub(crate) fn display_name(&self) -> String {
+        match self {
+            Self::File(path) => path.display().to_string(),
+            Self::Packed { logical_path, .. } => format!("evaluators.pacbin:{logical_path}"),
+        }
+    }
+}
+
+/// A path-scoped resolver shared by compiled and eager evaluator loaders.
+#[derive(Clone, Debug)]
+pub(crate) struct EvaluatorPayloadStore {
+    artifact_root: PathBuf,
+    relative_root: PathBuf,
+    container: Option<Arc<PacbinReader>>,
+}
+
+impl EvaluatorPayloadStore {
+    pub(crate) fn directory(root: &Path) -> Self {
+        Self {
+            artifact_root: root.to_path_buf(),
+            relative_root: root.to_path_buf(),
+            container: None,
+        }
+    }
+
+    pub(crate) fn source(&self, value: &str) -> RusticolResult<EvaluatorPayloadSource> {
+        let relative = confined_evaluator_path(value)?;
+        let path = self.relative_root.join(relative);
+        let logical_path = artifact_logical_path(&self.artifact_root, &path)?;
+        if let Some(container) = &self.container
+            && container.member(&logical_path).is_ok()
+        {
+            return Ok(EvaluatorPayloadSource::Packed {
+                container: container.clone(),
+                logical_path,
+            });
+        }
+        Ok(EvaluatorPayloadSource::File(path))
+    }
+
+    pub(crate) fn physical_path(&self, value: &str) -> RusticolResult<PathBuf> {
+        match self.source(value)? {
+            EvaluatorPayloadSource::File(path) => Ok(path),
+            EvaluatorPayloadSource::Packed { logical_path, .. } => {
+                Err(RusticolError::compatibility(format!(
+                    "native evaluator library {logical_path:?} cannot be loaded from pacbin storage"
+                )))
+            }
+        }
+    }
 }
 
 impl VerifiedArtifact {
@@ -313,11 +410,14 @@ impl VerifiedArtifact {
         for payload in payloads.values() {
             validate_payload(&root, payload)?;
         }
+        let evaluator_payload_container =
+            load_evaluator_payload_container(&root, &manifest, &payloads)?;
         Ok(Self {
             root,
             manifest_path,
             manifest,
             payloads,
+            evaluator_payload_container,
         })
     }
 
@@ -356,6 +456,150 @@ impl VerifiedArtifact {
         validate_payload(&self.root, payload)?;
         Ok(self.root.join(path))
     }
+
+    pub(crate) fn evaluator_payload_store(
+        &self,
+        relative_root: &Path,
+    ) -> RusticolResult<EvaluatorPayloadStore> {
+        if !relative_root.starts_with(&self.root) {
+            return Err(RusticolError::security(
+                "evaluator payload root escapes the artifact root",
+            ));
+        }
+        Ok(EvaluatorPayloadStore {
+            artifact_root: self.root.clone(),
+            relative_root: relative_root.to_path_buf(),
+            container: self.evaluator_payload_container.clone(),
+        })
+    }
+
+    pub(crate) fn has_evaluator_payload(&self, path: &str) -> RusticolResult<bool> {
+        if let Some(payload) = self.payloads.get(path) {
+            return Ok(payload.role == PayloadRole::EvaluatorState);
+        }
+        Ok(self
+            .evaluator_payload_container
+            .as_ref()
+            .is_some_and(|container| container.member(path).is_ok()))
+    }
+}
+
+fn load_evaluator_payload_container(
+    root: &Path,
+    manifest: &ArtifactManifest,
+    payloads: &BTreeMap<String, Payload>,
+) -> RusticolResult<Option<Arc<PacbinReader>>> {
+    let Some(raw) = manifest
+        .extensions
+        .get(EVALUATOR_PAYLOAD_CONTAINER_EXTENSION)
+    else {
+        return Ok(None);
+    };
+    let extension: EvaluatorPayloadContainerExtension = serde_json::from_value(raw.clone())
+        .map_err(|error| {
+            RusticolError::artifact(format!(
+                "artifact extension {EVALUATOR_PAYLOAD_CONTAINER_EXTENSION:?} is invalid: {error}"
+            ))
+        })?;
+    if extension.kind != EVALUATOR_PAYLOAD_CONTAINER_KIND
+        || extension.schema_version != 1
+        || extension.storage_abi != EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI
+    {
+        return Err(RusticolError::compatibility(format!(
+            "unsupported evaluator payload container kind/version/ABI: {:?}/{}/{}",
+            extension.kind, extension.schema_version, extension.storage_abi
+        )));
+    }
+    validate_relative_path(&extension.path, "evaluator payload container path")?;
+    validate_sha256(
+        &extension.index_sha256,
+        "evaluator payload container index_sha256",
+    )?;
+    let payload = payloads.get(&extension.path).ok_or_else(|| {
+        RusticolError::security(format!(
+            "evaluator payload container {:?} is not a declared payload",
+            extension.path
+        ))
+    })?;
+    if payload.role != PayloadRole::EvaluatorState
+        || payload.media_type != "application/octet-stream"
+        || payload.process_id.is_some()
+    {
+        return Err(RusticolError::artifact(
+            "evaluator payload container must be a root evaluator-state octet-stream payload",
+        ));
+    }
+    let reader = PacbinReader::open_trusted(root.join(&extension.path))?;
+    let index = reader.index();
+    if index.version() != 1
+        || u64::try_from(index.members().len()).unwrap_or(u64::MAX) != extension.member_count
+        || hex_digest(index.index_sha256()) != extension.index_sha256
+    {
+        return Err(RusticolError::integrity(
+            "evaluator payload container metadata disagrees with its authenticated index",
+        ));
+    }
+    let unpacked_size = index.members().iter().try_fold(0_u64, |total, member| {
+        total
+            .checked_add(member.length())
+            .ok_or_else(|| RusticolError::integrity("packed evaluator size exceeds u64"))
+    })?;
+    if unpacked_size != extension.unpacked_size_bytes {
+        return Err(RusticolError::integrity(
+            "evaluator payload container unpacked size disagrees with its index",
+        ));
+    }
+    for member in index.members() {
+        validate_relative_path(member.logical_path(), "packed evaluator logical path")?;
+        if payloads.contains_key(member.logical_path())
+            || member.logical_path() == extension.path
+            || !matches!(
+                member.kind(),
+                PacbinMemberKind::SymjitApplication | PacbinMemberKind::SymbolicaExactState
+            )
+        {
+            return Err(RusticolError::integrity(format!(
+                "invalid packed evaluator member {:?}",
+                member.logical_path()
+            )));
+        }
+    }
+    Ok(Some(Arc::new(reader)))
+}
+
+fn confined_evaluator_path(value: &str) -> RusticolResult<&Path> {
+    let path = Path::new(value);
+    if value.is_empty()
+        || value.contains('\\')
+        || path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(RusticolError::security(format!(
+            "evaluator payload path {value:?} is not a confined relative path"
+        )));
+    }
+    Ok(path)
+}
+
+fn artifact_logical_path(root: &Path, path: &Path) -> RusticolResult<String> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| RusticolError::security("evaluator payload path escapes the artifact root"))?;
+    let logical = relative
+        .to_str()
+        .ok_or_else(|| RusticolError::security("evaluator payload path is not valid UTF-8"))?;
+    Ok(logical.replace(std::path::MAIN_SEPARATOR, "/"))
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    let mut result = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(result, "{byte:02x}");
+    }
+    result
 }
 
 impl ArtifactManifest {
@@ -1325,7 +1569,12 @@ fn validate_runtime_capabilities(
         )));
     }
     let known = [
+        RuntimeCapability::CompiledColorTopologyLanesV1,
+        RuntimeCapability::CompiledHelicityDualLaneV1,
+        RuntimeCapability::CompiledHelicitySelectorUnionV1,
+        RuntimeCapability::CompiledRuntimeSelectorsV1,
         RuntimeCapability::EagerDagComplexF64V1,
+        RuntimeCapability::EagerLcTopologyReplayComplexF64V1,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,
@@ -1590,4 +1839,4 @@ fn detected_cpu_features() -> Vec<String> {
 
 #[cfg(test)]
 #[path = "artifact_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -240,11 +240,52 @@ fn replay_test_physics() -> PhysicsRuntime {
 fn lc_replay_routes_materialized_cells_to_public_axes_and_selectors() {
     let physics = replay_test_physics();
     let mappings = vec![Vec::new(), vec![(2, 3), (3, 2)]];
+    let routes = vec![
+        vec![LcTopologyReplaySectorRoute {
+            physical_sector_id: 0,
+            materialized_sector_id: 0,
+            weight: 2.0,
+            sign: 1,
+            amplitude_factor: [2.0, 0.0],
+            residual: false,
+        }],
+        vec![LcTopologyReplaySectorRoute {
+            physical_sector_id: 1,
+            materialized_sector_id: 0,
+            weight: 1.0,
+            sign: -1,
+            amplitude_factor: [-1.0, 0.0],
+            residual: false,
+        }],
+    ];
     let plan = physics
-        .lc_resolved_replay_plan(&mappings, &[2.0, 1.0])
+        .lc_resolved_replay_plan(
+            &mappings,
+            &routes,
+            &BTreeMap::from([(
+                0,
+                LcMaterializedSector {
+                    color_index: 0,
+                    reduction_weight: 2.0,
+                },
+            )]),
+        )
         .unwrap();
-    assert_eq!(plan.helicity_count, 2);
     assert_eq!(plan.color_count, 3);
+    let replay_selection = physics
+        .select_lc_resolved_replay_plan(
+            &plan,
+            Some(&BTreeSet::from(["h:+1,-1,-1,+1".to_string()])),
+            Some(&BTreeSet::from(["flow:1,2,4,3".to_string()])),
+        )
+        .unwrap();
+    assert_eq!(replay_selection.mapping_indices, vec![1]);
+    assert_eq!(replay_selection.entries.len(), 1);
+    assert_eq!(replay_selection.entries[0].routes.len(), 1);
+    assert_eq!(replay_selection.entries[0].routes[0].source_index, 0);
+    assert_eq!(replay_selection.entries[0].routes[0].target_index, 0);
+    assert_eq!(replay_selection.source_helicity_indices, vec![vec![0]]);
+    assert_eq!(replay_selection.source_color_indices, vec![vec![0]]);
 
     let materialized = ResolvedValues {
         values: vec![
@@ -302,10 +343,151 @@ fn lc_replay_requires_every_public_flow_reduction_member() {
     let physics = PhysicsRuntime::new(manifest).unwrap();
 
     let error = physics
-        .lc_resolved_replay_plan(&vec![Vec::new()], &[2.0])
+        .lc_resolved_replay_plan(
+            &vec![Vec::new()],
+            &[vec![LcTopologyReplaySectorRoute {
+                physical_sector_id: 0,
+                materialized_sector_id: 0,
+                weight: 2.0,
+                sign: 1,
+                amplitude_factor: [2.0, 0.0],
+                residual: false,
+            }]],
+            &BTreeMap::from([(
+                0,
+                LcMaterializedSector {
+                    color_index: 0,
+                    reduction_weight: 2.0,
+                },
+            )]),
+        )
         .unwrap_err();
 
     assert!(error.to_string().contains("missing replayed LC flow word"));
+}
+
+#[test]
+fn lc_replay_expands_trace_reflection_for_residual_sectors() {
+    fn flow(
+        index: usize,
+        word: &[usize],
+        computed: bool,
+        representative: &[usize],
+    ) -> crate::ColorComponent {
+        let id = format!(
+            "flow:{}",
+            word.iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let representative_id = format!(
+            "flow:{}",
+            representative
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        crate::ColorComponent::LcFlow(crate::LcColorFlow {
+            id,
+            index,
+            word: word.to_vec(),
+            computed,
+            representative_id,
+            coefficient: 1.0,
+        })
+    }
+
+    let mut manifest = replay_test_physics().manifest;
+    manifest.color_components = vec![
+        flow(0, &[1, 2, 3, 4], true, &[1, 2, 3, 4]),
+        flow(1, &[1, 2, 4, 3], false, &[1, 2, 3, 4]),
+        flow(2, &[1, 3, 2, 4], true, &[1, 3, 2, 4]),
+        flow(3, &[1, 3, 4, 2], false, &[1, 2, 3, 4]),
+        flow(4, &[1, 4, 2, 3], false, &[1, 3, 2, 4]),
+        flow(5, &[1, 4, 3, 2], false, &[1, 2, 3, 4]),
+    ];
+    manifest.reduction.groups = vec![
+        crate::ReductionGroup {
+            id: "reduction:0".to_string(),
+            representative_helicity_id: "h:+1,-1,+1,-1".to_string(),
+            representative_color_id: "flow:1,2,3,4".to_string(),
+            physical_helicity_ids: vec!["h:+1,-1,+1,-1".to_string()],
+            physical_color_ids: vec!["flow:1,2,3,4".to_string(), "flow:1,4,3,2".to_string()],
+        },
+        crate::ReductionGroup {
+            id: "reduction:1".to_string(),
+            representative_helicity_id: "h:+1,-1,+1,-1".to_string(),
+            representative_color_id: "flow:1,3,2,4".to_string(),
+            physical_helicity_ids: vec!["h:+1,-1,+1,-1".to_string()],
+            physical_color_ids: vec!["flow:1,3,2,4".to_string(), "flow:1,4,2,3".to_string()],
+        },
+    ];
+    let physics = PhysicsRuntime::new(manifest).unwrap();
+    let mappings = vec![Vec::new(), vec![(2, 3), (3, 2)]];
+    let routes = vec![
+        vec![
+            LcTopologyReplaySectorRoute {
+                physical_sector_id: 0,
+                materialized_sector_id: 0,
+                weight: 2.0,
+                sign: 1,
+                amplitude_factor: [2.0, 0.0],
+                residual: false,
+            },
+            LcTopologyReplaySectorRoute {
+                physical_sector_id: 2,
+                materialized_sector_id: 2,
+                weight: 1.0,
+                sign: 1,
+                amplitude_factor: [1.0, 0.0],
+                residual: true,
+            },
+        ],
+        vec![LcTopologyReplaySectorRoute {
+            physical_sector_id: 1,
+            materialized_sector_id: 0,
+            weight: 2.0,
+            sign: 1,
+            amplitude_factor: [2.0, 0.0],
+            residual: false,
+        }],
+    ];
+    let materialized = BTreeMap::from([
+        (
+            0,
+            LcMaterializedSector {
+                color_index: 0,
+                reduction_weight: 2.0,
+            },
+        ),
+        (
+            2,
+            LcMaterializedSector {
+                color_index: 2,
+                reduction_weight: 2.0,
+            },
+        ),
+    ]);
+
+    let plan = physics
+        .lc_resolved_replay_plan(&mappings, &routes, &materialized)
+        .unwrap();
+    let target_colors = plan
+        .entries
+        .iter()
+        .flat_map(|entry| entry.routes.iter())
+        .map(|route| route.target_index % plan.color_count)
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(target_colors, (0..6).collect());
+    assert!(
+        plan.entries
+            .iter()
+            .flat_map(|entry| entry.routes.iter())
+            .all(|route| route.weight.to_bits() == 1.0f64.to_bits())
+    );
 }
 
 fn alias_test_physics(color_accuracy: &str) -> ProcessPhysicsV1 {
@@ -553,7 +735,7 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
     let mut execution = empty_generic_runtime();
     execution.external_pdg_order = alias.external_pdgs.clone();
     execution.external_count = 5;
-    execution.physics = Some(alias_physics);
+    execution.physics = Some(Arc::new(alias_physics));
     let runtime = NativeRuntime {
         root: PathBuf::new(),
         runtime: execution,
@@ -566,6 +748,8 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         warnings_muted: false,
         warned_kinds: BTreeSet::new(),
         pending_warnings: Vec::new(),
+        point_selector_scratch: PointSelectorExecutionScratch::default(),
+        selector_simd_lane_width: 1,
     };
     assert_eq!(
         runtime.metadata().external_pdg_order,
@@ -660,7 +844,9 @@ fn test_amplitude_runtime(
         input_components: None,
         input_spans: Vec::new(),
         parameter_scratch_f64: Vec::new(),
+        evaluator_output_scratch_f64: Vec::new(),
         output_scratch_f64: outputs,
+        evaluator_output_order: None,
         evaluator: empty_evaluator_group(),
     }
 }
@@ -722,7 +908,7 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
         let physics_v1 = physics.manifest.clone();
         let mut execution = empty_generic_runtime();
         execution.color_accuracy = color_accuracy.to_string();
-        execution.physics = Some(physics);
+        execution.physics = Some(Arc::new(physics));
         let mut runtime = NativeRuntime {
             root: PathBuf::new(),
             runtime: execution,
@@ -735,6 +921,8 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
             warnings_muted: false,
             warned_kinds: BTreeSet::new(),
             pending_warnings: Vec::new(),
+            point_selector_scratch: PointSelectorExecutionScratch::default(),
+            selector_simd_lane_width: 1,
         };
 
         runtime.record_resolved_warnings(None, None).unwrap();
@@ -769,9 +957,20 @@ fn empty_generic_runtime() -> ExecutionRuntime {
         stage_count: 0,
         amplitude_output_count: 0,
         lc_topology_replay_enabled: false,
-        lc_topology_replay_mappings: Vec::new(),
+        lc_topology_replay_mappings: Arc::new(Vec::new()),
         lc_topology_replay_public_mappings: Vec::new(),
-        lc_topology_replay_weights: Vec::new(),
+        lc_topology_replay_routes: Vec::new(),
+        lc_topology_replay_materialized_sector_ids: BTreeSet::new(),
+        lc_resolved_replay_plan: None,
+        lc_resolved_replay_selection_cache: None,
+        helicity_recurrence: None,
+        compiled_helicity_execution_plan: None,
+        compiled_color_execution_plan: None,
+        helicity_sum_runtime: None,
+        helicity_selector_runtimes: Vec::new(),
+        helicity_selector_runtime_schedule_modes: Vec::new(),
+        helicity_selector_lane_by_domain: BTreeMap::new(),
+        color_selector_runtimes: BTreeMap::new(),
         runtime_unavailable_message: None,
         sources: Vec::new(),
         momentum_slots: Vec::new(),
@@ -789,10 +988,12 @@ fn empty_generic_runtime() -> ExecutionRuntime {
         model_parameter_runtime_slots: BTreeMap::new(),
         model_parameter_values_f64: vec![0.118],
         model_parameter_evaluator: None,
+        physics_reduction_override: None,
         physics: None,
         stages: None,
         amplitude_stage: None,
         state_scratch_f64: Vec::new(),
+        state_scratch_f64_requires_clear: false,
         values_scratch_f64: Vec::new(),
     }
 }
@@ -825,6 +1026,195 @@ fn model_parameter_override_batch_is_atomic() {
 }
 
 #[test]
+fn model_parameter_overrides_are_atomic_across_helicity_lanes() {
+    let mut runtime = empty_generic_runtime();
+    runtime.model_parameter_runtime_slots.insert(
+        "alpha_s".to_string(),
+        RuntimeParameterSlots {
+            real: 0,
+            imaginary: None,
+        },
+    );
+    let mut sum_runtime = empty_generic_runtime();
+    sum_runtime.model_parameter_runtime_slots.insert(
+        "alpha_s".to_string(),
+        RuntimeParameterSlots {
+            real: 0,
+            imaginary: None,
+        },
+    );
+    runtime.helicity_sum_runtime = Some(Box::new(sum_runtime));
+
+    runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("alpha_s".to_string(), (0.101, 0.0))]))
+        .unwrap();
+
+    assert_eq!(runtime.model_parameter_values_f64, vec![0.101]);
+    assert_eq!(
+        runtime
+            .helicity_sum_runtime
+            .as_ref()
+            .unwrap()
+            .model_parameter_values_f64,
+        vec![0.101]
+    );
+
+    runtime
+        .helicity_sum_runtime
+        .as_mut()
+        .unwrap()
+        .model_parameter_runtime_slots
+        .clear();
+    let error = runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("alpha_s".to_string(), (0.089, 0.0))]))
+        .unwrap_err();
+
+    assert!(error.to_string().contains("alpha_s"));
+    assert_eq!(runtime.model_parameter_values_f64, vec![0.101]);
+    assert_eq!(
+        runtime
+            .helicity_sum_runtime
+            .as_ref()
+            .unwrap()
+            .model_parameter_values_f64,
+        vec![0.101]
+    );
+}
+
+#[test]
+fn model_parameter_overrides_are_atomic_across_color_selector_lanes() {
+    fn runtime_with_alpha_s() -> ExecutionRuntime {
+        let mut runtime = empty_generic_runtime();
+        runtime.model_parameter_runtime_slots.insert(
+            "alpha_s".to_string(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        );
+        runtime
+    }
+
+    let mut runtime = runtime_with_alpha_s();
+    runtime
+        .color_selector_runtimes
+        .insert(0, Box::new(runtime_with_alpha_s()));
+    runtime
+        .color_selector_runtimes
+        .insert(1, Box::new(runtime_with_alpha_s()));
+
+    runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("alpha_s".to_string(), (0.101, 0.0))]))
+        .unwrap();
+    assert_eq!(runtime.model_parameter_values_f64, vec![0.101]);
+    assert!(
+        runtime
+            .color_selector_runtimes
+            .values()
+            .all(|lane| lane.model_parameter_values_f64 == vec![0.101])
+    );
+
+    runtime
+        .color_selector_runtimes
+        .get_mut(&1)
+        .unwrap()
+        .model_parameter_runtime_slots
+        .clear();
+    let error = runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("alpha_s".to_string(), (0.089, 0.0))]))
+        .unwrap_err();
+
+    assert!(error.to_string().contains("alpha_s"));
+    assert_eq!(runtime.model_parameter_values_f64, vec![0.101]);
+    assert!(
+        runtime
+            .color_selector_runtimes
+            .values()
+            .all(|lane| lane.model_parameter_values_f64 == vec![0.101])
+    );
+}
+
+#[test]
+fn model_parameter_overrides_are_atomic_across_shared_helicity_selector_lanes() {
+    fn runtime_with_alpha_s() -> ExecutionRuntime {
+        let mut runtime = empty_generic_runtime();
+        runtime.model_parameter_runtime_slots.insert(
+            "alpha_s".to_string(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        );
+        runtime
+    }
+
+    let mut runtime = runtime_with_alpha_s();
+    runtime
+        .helicity_selector_runtimes
+        .push(Box::new(runtime_with_alpha_s()));
+    runtime
+        .helicity_selector_runtime_schedule_modes
+        .push(HelicitySelectorScheduleMode::ParentClosure);
+    runtime
+        .helicity_selector_runtimes
+        .push(Box::new(runtime_with_alpha_s()));
+    runtime
+        .helicity_selector_runtime_schedule_modes
+        .push(HelicitySelectorScheduleMode::ParentClosure);
+    runtime.helicity_selector_lane_by_domain = BTreeMap::from([(0, 0), (1, 0), (2, 1)]);
+
+    runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("alpha_s".to_string(), (0.101, 0.0))]))
+        .unwrap();
+    assert_eq!(runtime.model_parameter_values_f64, vec![0.101]);
+    assert_eq!(runtime.helicity_selector_runtimes.len(), 2);
+    assert_eq!(runtime.helicity_selector_lane_by_domain.len(), 3);
+    assert!(
+        runtime
+            .helicity_selector_runtimes
+            .iter()
+            .all(|lane| lane.model_parameter_values_f64 == vec![0.101])
+    );
+
+    runtime.helicity_selector_runtimes[1]
+        .model_parameter_runtime_slots
+        .clear();
+    let error = runtime
+        .apply_model_parameter_overrides(&BTreeMap::from([("alpha_s".to_string(), (0.089, 0.0))]))
+        .unwrap_err();
+
+    assert!(error.to_string().contains("alpha_s"));
+    assert_eq!(runtime.model_parameter_values_f64, vec![0.101]);
+    assert!(
+        runtime
+            .helicity_selector_runtimes
+            .iter()
+            .all(|lane| lane.model_parameter_values_f64 == vec![0.101])
+    );
+}
+
+#[test]
+fn alias_external_order_initialization_reaches_shared_helicity_selector_lanes() {
+    let mut runtime = empty_generic_runtime();
+    runtime
+        .helicity_selector_runtimes
+        .push(Box::new(empty_generic_runtime()));
+    runtime
+        .helicity_selector_runtime_schedule_modes
+        .push(HelicitySelectorScheduleMode::ParentClosure);
+    runtime.helicity_selector_lane_by_domain = BTreeMap::from([(0, 0), (1, 0)]);
+
+    runtime.set_external_pdg_order_recursive(&[1, -1, 23]);
+
+    assert_eq!(runtime.external_pdg_order, vec![1, -1, 23]);
+    assert_eq!(runtime.helicity_selector_runtimes.len(), 1);
+    assert_eq!(
+        runtime.helicity_selector_runtimes[0].external_pdg_order,
+        vec![1, -1, 23]
+    );
+}
+
+#[test]
 fn model_parameter_override_rejects_mass_class_changes_atomically() {
     let mut runtime = empty_generic_runtime();
     runtime.model_parameter_values_f64 = vec![91.188];
@@ -854,4 +1244,56 @@ fn model_parameter_override_rejects_mass_class_changes_atomically() {
         .expect("massive-to-massive update remains valid");
     assert_eq!(runtime.model_parameter_values_f64, vec![100.0]);
     assert_eq!(runtime.particle_masses.get(&23), Some(&100.0));
+}
+
+#[test]
+fn compiled_color_topology_lane_requires_physics_reduction() {
+    let mut manifest: ExecutionManifest = serde_json::from_slice(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../src/pyamplicol/assets/selftest/portable-64le/artifact/processes/",
+        "d_dbar_to_z/execution.json"
+    )))
+    .expect("parse packaged execution fixture");
+    let lane = manifest.clone();
+    manifest
+        .color_selector_executions
+        .push(ColorSelectorExecutionManifest {
+            materialized_sector_id: 0,
+            execution: Box::new(lane),
+        });
+
+    let error = ExecutionRuntime::from_manifest(manifest)
+        .err()
+        .expect("color topology lane without reduction must fail");
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("has no reduction override"));
+}
+
+#[test]
+fn eager_native_profile_accepts_non_overlapping_top_level_phases() {
+    let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
+    profile.total_s = 10.0e-3;
+    profile.source_fill_s = 1.0e-3;
+    profile.momentum_setup_s = 0.5e-3;
+    profile.stage_evaluator_call_s = 7.0e-3;
+    profile.eager_initialize_s = 0.5e-3;
+    profile.eager_kernel_call_s = 6.0e-3;
+    profile.eager_copy_out_s = 0.5e-3;
+
+    profile.validate_eager_top_level_accounting().unwrap();
+}
+
+#[test]
+fn eager_native_profile_rejects_top_level_overlap() {
+    let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
+    profile.total_s = 10.0e-3;
+    profile.source_fill_s = 4.0e-3;
+    profile.stage_evaluator_call_s = 7.0e-3;
+
+    let error = profile.validate_eager_top_level_accounting().unwrap_err();
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Internal);
+    assert!(error.to_string().contains("exclusive top-level phases"));
+    assert!(error.to_string().contains("exceeding wall time"));
 }

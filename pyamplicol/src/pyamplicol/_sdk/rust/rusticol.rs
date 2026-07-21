@@ -387,6 +387,84 @@ impl Runtime {
         Ok(values)
     }
 
+    /// Evaluate one selected total per point.
+    ///
+    /// Global string selectors retain subset/sum semantics. Per-point selector
+    /// arrays contain zero-based physical-axis indices and must contain exactly
+    /// one entry per momentum point. The global and per-point forms are mutually
+    /// exclusive on the same axis.
+    pub fn evaluate_selected_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        selectors: &Selectors,
+        helicity_by_point: Option<&[u32]>,
+        color_flow_by_point: Option<&[u32]>,
+    ) -> Result<Vec<f64>> {
+        self.validate_momenta(momenta, point_count)?;
+        if !selectors.helicity_ids.is_empty() && helicity_by_point.is_some() {
+            return Err(Error::new(
+                ErrorKind::InvalidArgument,
+                "global helicity selectors and helicity_by_point are mutually exclusive",
+            ));
+        }
+        if !selectors.color_ids.is_empty() && color_flow_by_point.is_some() {
+            return Err(Error::new(
+                ErrorKind::InvalidArgument,
+                "global color selectors and color_flow_by_point are mutually exclusive",
+            ));
+        }
+        for (name, values) in [
+            ("helicity_by_point", helicity_by_point),
+            ("color_flow_by_point", color_flow_by_point),
+        ] {
+            if let Some(values) = values {
+                if values.len() != point_count {
+                    return Err(Error::new(
+                        ErrorKind::InvalidArgument,
+                        format!(
+                            "{name} contains {} entries, expected {point_count}",
+                            values.len()
+                        ),
+                    ));
+                }
+            }
+        }
+
+        let helicity_strings = cstring_list(&selectors.helicity_ids, "helicity selector")?;
+        let color_strings = cstring_list(&selectors.color_ids, "color selector")?;
+        let helicity_pointers = cstring_pointers(&helicity_strings);
+        let color_pointers = cstring_pointers(&color_strings);
+        let (helicity_pointer, helicity_count) = selector_parts(&helicity_pointers);
+        let (color_pointer, color_count) = selector_parts(&color_pointers);
+        let (helicity_by_point_pointer, helicity_by_point_count) =
+            u32_selector_parts(helicity_by_point);
+        let (color_flow_by_point_pointer, color_flow_by_point_count) =
+            u32_selector_parts(color_flow_by_point);
+        let mut values = vec![0.0; point_count];
+        // SAFETY: All selector and momentum buffers remain live and the output
+        // has exactly one writable entry per point.
+        check(unsafe {
+            ffi::runtime_evaluate_selected_f64(
+                self.handle.as_ptr(),
+                momenta.as_ptr(),
+                momenta.len(),
+                point_count,
+                helicity_pointer,
+                helicity_count,
+                color_pointer,
+                color_count,
+                helicity_by_point_pointer,
+                helicity_by_point_count,
+                color_flow_by_point_pointer,
+                color_flow_by_point_count,
+                values.as_mut_ptr(),
+                values.len(),
+            )
+        })?;
+        Ok(values)
+    }
+
     /// Evaluate resolved f64 components for one or more momentum points.
     pub fn evaluate_resolved_f64(
         &mut self,
@@ -778,6 +856,13 @@ fn selector_parts(values: &[*const c_char]) -> (*const *const c_char, usize) {
     }
 }
 
+fn u32_selector_parts(values: Option<&[u32]>) -> (*const u32, usize) {
+    match values {
+        Some(values) if !values.is_empty() => (values.as_ptr(), values.len()),
+        _ => (ptr::null(), 0),
+    }
+}
+
 fn select_helicities(
     available: Vec<HelicityConfiguration>,
     selected: &[String],
@@ -957,6 +1042,22 @@ mod ffi {
             output: *mut f64,
             output_capacity: usize,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_evaluate_selected_f64(
+            handle: *mut RuntimeHandle,
+            momenta: *const f64,
+            momentum_count: usize,
+            point_count: usize,
+            helicity_ids: *const *const c_char,
+            helicity_count: usize,
+            color_ids: *const *const c_char,
+            color_count: usize,
+            helicity_by_point: *const u32,
+            helicity_by_point_count: usize,
+            color_flow_by_point: *const u32,
+            color_flow_by_point_count: usize,
+            output: *mut f64,
+            output_capacity: usize,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_evaluate_resolved_f64(
             handle: *mut RuntimeHandle,
             momenta: *const f64,
@@ -1009,6 +1110,7 @@ mod ffi {
     pub(super) use rusticol_runtime_color_word as runtime_color_word;
     pub(super) use rusticol_runtime_evaluate_f64 as runtime_evaluate_f64;
     pub(super) use rusticol_runtime_evaluate_resolved_f64 as runtime_evaluate_resolved_f64;
+    pub(super) use rusticol_runtime_evaluate_selected_f64 as runtime_evaluate_selected_f64;
     pub(super) use rusticol_runtime_execution_mode as runtime_execution_mode;
     pub(super) use rusticol_runtime_external_count as runtime_external_count;
     pub(super) use rusticol_runtime_external_pdg as runtime_external_pdg;
