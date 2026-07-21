@@ -71,13 +71,15 @@ std::tuple<int, int> compute_decay_color(
         }
         return {0, 0};
     } else if (color_type == 3) {
-        if (decay_colors.size() == 1 && decay_anti_colors.size() == 0) {
-            return {decay_colors.at(0), 0};
+        if (decay_colors.size() != 1 || decay_anti_colors.size() > 0) {
+            throw std::runtime_error("Incompatible with color triplet");
         }
-        if (decay_colors.size() == 0 && decay_anti_colors.size() == 1) {
-            return {0, decay_anti_colors.at(0)};
+        return {decay_colors.at(0), 0};
+    } else if (color_type == -3) {
+        if (decay_colors.size() > 0 || decay_anti_colors.size() != 1) {
+            throw std::runtime_error("Incompatible with anti-color triplet");
         }
-        throw std::runtime_error("Incompatible with color triplet");
+        return {0, decay_anti_colors.at(0)};
     } else if (color_type == 8) {
         if (decay_colors.size() != 1 || decay_anti_colors.size() != 1) {
             throw std::runtime_error("Incompatible with color octet");
