@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: 0BSD
 
 #[cfg(feature = "numpy")]
+mod eager_lowering;
+
+#[cfg(feature = "numpy")]
 use numpy::{PyReadonlyArray3, PyUntypedArrayMethods};
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
@@ -1012,6 +1015,11 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(package_version, module)?)?;
     module.add_function(wrap_pyfunction!(target_info, module)?)?;
     module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
+    #[cfg(feature = "numpy")]
+    module.add_function(wrap_pyfunction!(
+        eager_lowering::_lower_eager_runtime_v1,
+        module
+    )?)?;
     Ok(())
 }
 
