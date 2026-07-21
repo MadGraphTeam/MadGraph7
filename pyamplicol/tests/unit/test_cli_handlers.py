@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import errno
 import io
 import json
+import os
+import pty
 import sys
+import termios
+import threading
 from dataclasses import replace
 from pathlib import Path
 
@@ -23,6 +28,7 @@ from pyamplicol.reporting import (
     ProgressSink,
     ProgressStart,
     ProgressUpdate,
+    get_logger,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,6 +104,244 @@ class _PartialProfileServices(_ProfileServices):
         result = super().benchmark(config, progress)
         assert isinstance(result, BenchmarkResult)
         return replace(result, interrupted=True)
+
+
+class _TtyCliServices(_ProfileServices):
+    def generate(self, config: RunConfig, progress: ProgressSink) -> object:
+        self.config = config
+        logger = get_logger("tty")
+        logger.info("generate before")
+        progress.emit(ProgressStart("generation", "Generating processes", 1))
+        progress.emit(
+            ProgressStart(
+                "generation:phase",
+                "Constructing a deliberately width-sensitive DAG",
+                2,
+                parent_task_id="generation",
+            )
+        )
+        progress.emit(ProgressUpdate("generation:phase", 1, 2, "first pass"))
+        logger.warning("generate during")
+        progress.emit(ProgressUpdate("generation:phase", 2, 2, "second pass"))
+        progress.emit(ProgressEnd("generation:phase"))
+        progress.emit(ProgressUpdate("generation", 1, 1))
+        progress.emit(ProgressEnd("generation"))
+        logger.info("generate after")
+        return {"action": "generate"}
+
+    def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
+        logger = get_logger("tty")
+        logger.info("profile before")
+        progress.emit(ProgressStart("profile-load", "Loading profile artifact", 1))
+        logger.warning("profile during load")
+        progress.emit(ProgressUpdate("profile-load", 1, 1, "loaded"))
+        progress.emit(ProgressEnd("profile-load"))
+        logger.info("profile between dashboards")
+        result = super().benchmark(config, progress)
+        logger.info("profile after")
+        return result
+
+
+class _TerminalScreen:
+    """Small ANSI emulator for the cursor/erase operations used by the dashboard."""
+
+    def __init__(self, *, columns: int, rows: int = 40) -> None:
+        self.columns = columns
+        self.rows = [[" "] * columns for _ in range(rows)]
+        self.row = 0
+        self.column = 0
+        self.frames: list[tuple[str, ...]] = []
+
+    def feed(self, payload: bytes) -> None:
+        text = payload.decode("utf-8", errors="replace")
+        index = 0
+        while index < len(text):
+            character = text[index]
+            if character == "\x1b" and index + 1 < len(text):
+                index = self._escape(text, index)
+                continue
+            if character == "\r":
+                self.column = 0
+            elif character == "\n":
+                self._move_down()
+            elif character not in {"\x00", "\x08"} and character >= " ":
+                self._write(character)
+            index += 1
+
+    def visible_lines(self) -> tuple[str, ...]:
+        return tuple(line for row in self.rows if (line := "".join(row).rstrip()))
+
+    def _escape(self, text: str, index: int) -> int:
+        if text[index + 1] != "[":
+            return index + 2
+        final = index + 2
+        while final < len(text) and not "@" <= text[final] <= "~":
+            final += 1
+        if final == len(text):
+            return final
+        parameters = text[index + 2 : final]
+        values = [int(value) if value else 0 for value in parameters.split(";")]
+        count = values[0] if values and values[0] else 1
+        command = text[final]
+        if command in {"F", "A"}:
+            self.row = max(self.row - count, 0)
+            if command == "F":
+                self.column = 0
+        elif command in {"E", "B"}:
+            for _ in range(count):
+                self._move_down()
+            if command == "E":
+                self.column = 0
+        elif command == "K":
+            start = 0 if values and values[0] == 2 else self.column
+            self.rows[self.row][start:] = [" "] * (self.columns - start)
+        elif command == "J":
+            self.frames.append(self.visible_lines())
+            self.rows[self.row][self.column :] = [" "] * (
+                self.columns - self.column
+            )
+            for row in range(self.row + 1, len(self.rows)):
+                self.rows[row] = [" "] * self.columns
+        return final + 1
+
+    def _write(self, character: str) -> None:
+        if self.column >= self.columns:
+            self._move_down()
+            self.column = 0
+        self.rows[self.row][self.column] = character
+        self.column += 1
+
+    def _move_down(self) -> None:
+        self.row += 1
+        if self.row < len(self.rows):
+            return
+        self.rows.pop(0)
+        self.rows.append([" "] * self.columns)
+        self.row = len(self.rows) - 1
+
+
+def _run_cli_in_pty(
+    arguments: tuple[str, ...],
+    *,
+    services: _TtyCliServices,
+    columns: int = 52,
+) -> tuple[int, bytes]:
+    master, slave = pty.openpty()
+    termios.tcsetwinsize(slave, (40, columns))
+    chunks: list[bytes] = []
+
+    def read_master() -> None:
+        while True:
+            try:
+                chunk = os.read(master, 65536)
+            except OSError as exc:
+                if exc.errno == errno.EIO:
+                    return
+                raise
+            if not chunk:
+                return
+            chunks.append(chunk)
+
+    reader = threading.Thread(target=read_master, daemon=True)
+    reader.start()
+    stderr = os.fdopen(os.dup(slave), "w", encoding="utf-8", buffering=1)
+    os.close(slave)
+    try:
+        status = run_cli(
+            arguments,
+            services=services,
+            stdout=io.StringIO(),
+            stderr=stderr,
+        )
+    finally:
+        stderr.close()
+    reader.join(timeout=2.0)
+    os.close(master)
+    assert not reader.is_alive()
+    return status, b"".join(chunks)
+
+
+def _assert_stable_tty_output(
+    payload: bytes,
+    *,
+    expected_statuses: tuple[str, ...],
+    dashboard_text: str,
+    columns: int = 52,
+) -> None:
+    assert b"\x00" not in payload
+    assert b"\x1b[" in payload
+    assert dashboard_text.encode() in payload
+
+    terminal = _TerminalScreen(columns=columns)
+    terminal.feed(payload)
+    assert terminal.visible_lines() == expected_statuses
+    assert any(
+        any(dashboard_text in line for line in frame) for frame in terminal.frames
+    )
+    for frame in (*terminal.frames, terminal.visible_lines()):
+        assert all(len(line) < columns for line in frame)
+        for status in expected_statuses:
+            assert sum(status in line for line in frame) <= 1
+
+
+def test_generate_tty_dashboard_preserves_status_lines_and_terminal_width(
+    tmp_path: Path,
+) -> None:
+    status, payload = _run_cli_in_pty(
+        (
+            "generate",
+            "d d~ > z g",
+            str(tmp_path / "artifact"),
+            "--format",
+            "json",
+            "--progress",
+            "tty",
+            "--color",
+            "never",
+        ),
+        services=_TtyCliServices(),
+    )
+
+    assert status == 0
+    _assert_stable_tty_output(
+        payload,
+        expected_statuses=(
+            "INFO pyamplicol.tty: generate before",
+            "WARNING pyamplicol.tty: generate during",
+            "INFO pyamplicol.tty: generate after",
+        ),
+        dashboard_text="Generating processes",
+    )
+
+
+def test_profile_tty_dashboard_closes_between_lifecycle_roots(
+    tmp_path: Path,
+) -> None:
+    status, payload = _run_cli_in_pty(
+        (
+            "profile",
+            str(tmp_path / "artifact"),
+            "--format",
+            "json",
+            "--progress",
+            "tty",
+            "--color",
+            "never",
+        ),
+        services=_TtyCliServices(),
+    )
+
+    assert status == 0
+    _assert_stable_tty_output(
+        payload,
+        expected_statuses=(
+            "INFO pyamplicol.tty: profile before",
+            "WARNING pyamplicol.tty: profile during load",
+            "INFO pyamplicol.tty: profile between dashboards",
+            "INFO pyamplicol.tty: profile after",
+        ),
+        dashboard_text="Profiling runtime",
+    )
 
 
 def test_typed_config_entries_preserve_complete_process_set_behavior() -> None:

@@ -12,6 +12,7 @@ from typing import TextIO
 from pyamplicol.config import PyAmpliColError
 from pyamplicol.licensing import detect_symbolica_license
 from pyamplicol.reporting import (
+    TtyProgressSink,
     close_progress_sink,
     configure_cli_logging,
     get_logger,
@@ -119,8 +120,6 @@ def run_cli(
                 stream=diagnostic_stream,
             )
         config = resolution.effective
-        configure_cli_logging(config.output.log_level, stream=diagnostic_stream)
-        logging_configured = True
         progress_color = config.output.color == "always" or (
             config.output.color == "auto"
             and bool(getattr(diagnostic_stream, "isatty", lambda: False)())
@@ -131,6 +130,13 @@ def run_cli(
             logger=get_logger("progress"),
             color=progress_color,
         )
+        logging_stream = (
+            sink.message_stream
+            if isinstance(sink, TtyProgressSink)
+            else diagnostic_stream
+        )
+        configure_cli_logging(config.output.log_level, stream=logging_stream)
+        logging_configured = True
         selected_services = (
             DefaultCliServices(resolution=resolution) if services is None else services
         )

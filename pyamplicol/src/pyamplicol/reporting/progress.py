@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import importlib
+import io
 import logging
 import math
 import os
 import re
 import shutil
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from threading import Event, RLock, Thread
 from types import MappingProxyType
@@ -205,10 +206,16 @@ class TtyProgressSink:
     _dashboard: _Dashboard | None = field(default=None, init=False, repr=False)
     _line_sink: _LineProgressSink | None = field(default=None, init=False, repr=False)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    _output_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    _message_stream: _TtyMessageStream = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._message_stream = _TtyMessageStream(self)
 
     def emit(self, event: ProgressEvent) -> None:
         dashboard: _Dashboard | None = None
         start_dashboard = False
+        stop_dashboard = False
         with self._lock:
             if not self._interactive:
                 if self._line_sink is None:
@@ -238,6 +245,7 @@ class TtyProgressSink:
                         stream=self.stream,
                         color=self._color_enabled,
                         snapshot=self._snapshot,
+                        render_lock=self._output_lock,
                     )
                     start_dashboard = True
             else:
@@ -260,12 +268,21 @@ class TtyProgressSink:
                     if event.elapsed_seconds is not None:
                         task.elapsed_seconds = event.elapsed_seconds
             dashboard = self._dashboard
+            if (
+                isinstance(event, ProgressEnd)
+                and dashboard is not None
+                and all(task.finished_at is not None for task in self._tasks.values())
+            ):
+                self._dashboard = None
+                stop_dashboard = True
 
         # Rendering snapshots task state and therefore acquires ``self._lock``.
         # Keep it outside that lock so the heartbeat's render lock and event
         # delivery can never form a lock-order cycle.
         if dashboard is not None:
-            if start_dashboard:
+            if stop_dashboard:
+                dashboard.close()
+            elif start_dashboard:
                 dashboard.start()
             else:
                 dashboard.render_now()
@@ -278,14 +295,28 @@ class TtyProgressSink:
             dashboard.close()
 
     @property
+    def message_stream(self) -> TextIO:
+        """A logging stream that preserves dashboard line ownership."""
+
+        return self._message_stream
+
+    def _write_message(self, text: str) -> int:
+        with self._lock:
+            dashboard = self._dashboard
+        if dashboard is not None:
+            dashboard.write_message(text)
+        else:
+            with self._output_lock:
+                self.stream.write(text)
+        return len(text)
+
+    def _flush_messages(self) -> None:
+        with self._output_lock:
+            self.stream.flush()
+
+    @property
     def _interactive(self) -> bool:
-        if not bool(getattr(self.stream, "isatty", lambda: False)()):
-            return False
-        try:
-            importlib.import_module("progressbar")
-        except ImportError:
-            return False
-        return True
+        return bool(getattr(self.stream, "isatty", lambda: False)())
 
     @property
     def _color_enabled(self) -> bool:
@@ -355,6 +386,28 @@ class _LineProgressSink:
             self.descriptions.pop(event.task_id, None)
 
 
+class _TtyMessageStream(io.TextIOBase):
+    def __init__(self, sink: TtyProgressSink) -> None:
+        self._sink = sink
+
+    def writable(self) -> bool:
+        return True
+
+    def isatty(self) -> bool:
+        return self._sink._interactive
+
+    def fileno(self) -> int:
+        return self._sink.stream.fileno()
+
+    def write(self, text: str) -> int:
+        if not isinstance(text, str):
+            raise TypeError("TTY progress messages must be strings")
+        return self._sink._write_message(text)
+
+    def flush(self) -> None:
+        self._sink._flush_messages()
+
+
 class _Dashboard:
     def __init__(
         self,
@@ -362,62 +415,17 @@ class _Dashboard:
         stream: TextIO,
         color: bool,
         snapshot: Callable[[], tuple[_TaskState, ...]],
+        render_lock: RLock,
     ) -> None:
-        progressbar: Any = importlib.import_module("progressbar")
-
-        class _RefreshableMultiBar(progressbar.MultiBar):  # type: ignore[misc]
-            # progressbar2 4.5 omits ``yield from`` for already-started bars.
-            def _render_bar(
-                self, bar: Any, now: float, expired: float | None
-            ) -> Iterator[str]:
-                def update(
-                    force: bool = True, write: bool = True
-                ) -> Iterator[str]:
-                    self._label_bar(bar)
-                    bar.update(force=force)
-                    if write:
-                        yield bar.fd.line
-
-                if bar.finished():
-                    yield from self._render_finished_bar(bar, now, expired, update)
-                elif bar.started():
-                    yield from update()
-                elif self.initial_format is None:
-                    bar.start()
-                    yield from update()
-                else:  # pragma: no cover - initial_format is deliberately None
-                    yield self.initial_format.format(label=bar.label)
-
         self._stream = stream
         self._color = color
         self._snapshot = snapshot
         self._resource_monitor = ResourceUsageMonitor(interval_seconds=1.0)
         self._stop = Event()
         self._thread: Thread | None = None
-        self._render_lock = RLock()
-        self._widgets = [
-            progressbar.FormatCustomText("%(line)s", {"line": ""}) for _ in range(3)
-        ]
-        self._multi = _RefreshableMultiBar(
-            fd=stream,
-            prepend_label=False,
-            append_label=False,
-            initial_format=None,
-            show_initial=True,
-            show_finished=False,
-            remove_finished=False,
-            update_interval=0.25,
-        )
-        for index, widget in enumerate(self._widgets):
-            bar = progressbar.ProgressBar(
-                max_value=progressbar.UnknownLength,
-                widgets=[widget],
-                fd=stream,
-                enable_colors=color,
-                redirect_stdout=False,
-                redirect_stderr=False,
-            )
-            self._multi[f"line-{index}"] = bar
+        self._render_lock = render_lock
+        self._painted = False
+        self._closed = False
 
     def start(self) -> None:
         self._resource_monitor.start()
@@ -435,22 +443,50 @@ class _Dashboard:
             self._thread.join(timeout=1.0)
             self._thread = None
         self._resource_monitor.close()
-        self.render_now()
-        self._stream.write("\n")
-        self._stream.flush()
+        with self._render_lock:
+            self._closed = True
+            self._clear_locked()
+            self._stream.flush()
 
     def render_now(self) -> None:
         with self._render_lock:
-            lines = _dashboard_lines(
-                self._snapshot(),
-                now=time.monotonic(),
-                usage=self._resource_monitor.usage,
-                width=_terminal_width(self._stream),
-                color=self._color,
-            )
-            for widget, line in zip(self._widgets, lines, strict=True):
-                widget.update_mapping(line=line)
-            self._multi.render(force=True)
+            if not self._closed:
+                self._render_locked()
+
+    def write_message(self, text: str) -> None:
+        with self._render_lock:
+            if self._closed:
+                self._stream.write(text)
+                return
+            self._clear_locked()
+            self._stream.write(text)
+            if text and not text.endswith(("\n", "\r")):
+                self._stream.write("\n")
+            self._render_locked()
+
+    def _render_locked(self) -> None:
+        # Keeping the final column empty avoids delayed-wrap terminals turning
+        # one logical dashboard row into two physical rows.
+        width = max(_terminal_width(self._stream) - 1, 1)
+        lines = _dashboard_lines(
+            self._snapshot(),
+            now=time.monotonic(),
+            usage=self._resource_monitor.usage,
+            width=width,
+            color=self._color,
+        )
+        if self._painted:
+            self._stream.write(f"\x1b[{len(lines)}F")
+        for line in lines:
+            self._stream.write(f"\r\x1b[2K{line}\n")
+        self._painted = True
+        self._stream.flush()
+
+    def _clear_locked(self) -> None:
+        if not self._painted:
+            return
+        self._stream.write("\x1b[3F\r\x1b[J")
+        self._painted = False
 
     def _run(self) -> None:
         while not self._stop.wait(0.25):
@@ -459,9 +495,9 @@ class _Dashboard:
 
 def _terminal_width(stream: TextIO) -> int:
     try:
-        return max(48, os.get_terminal_size(stream.fileno()).columns)
+        return max(1, os.get_terminal_size(stream.fileno()).columns)
     except (AttributeError, OSError, ValueError):
-        return max(48, shutil.get_terminal_size(fallback=(120, 24)).columns)
+        return max(1, shutil.get_terminal_size(fallback=(120, 24)).columns)
 
 
 def _dashboard_lines(
