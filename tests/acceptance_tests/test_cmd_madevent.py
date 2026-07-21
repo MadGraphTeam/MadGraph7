@@ -1046,6 +1046,75 @@ class TestMECmdShell(unittest.TestCase):
                 'e+ e- > e+ e-: beams are different particles, flavor %s must '
                 'not be mirrored (that doubles the cross-section)' % (flavor,))
 
+    def test_single_qcd_order_mg7(self):
+        """The mg7 output records the single alpha_s power (single_qcd_order in
+        SubProcesses/proc_characteristics) whenever the QCD power of |M|^2 is the
+        same for every diagram, and -1 otherwise. systematics uses it to
+        reconstruct the LO reweighting info (no <mgrwt> in the mg7 LHE) and so
+        compute scale/PDF uncertainties. Output-level check (no mg7 runtime)."""
+        import madgraph.various.banner as banner_mod
+
+        def single_qcd_order(setup, out_dir):
+            mg = MGCmd.MasterCmd()
+            mg.no_notification()
+            for c in (['set automatic_html_opening False --no_save',
+                       'import model sm'] + setup):
+                mg.exec_cmd(c)
+            mg.exec_cmd('output mg7 %s' % out_dir)
+            pc = banner_mod.ProcCharacteristic(
+                pjoin(out_dir, 'SubProcesses', 'proc_characteristics'))
+            return int(pc['single_qcd_order'])
+
+        # pure QCD 2->2: |M|^2 ~ alpha_s^2
+        self.assertEqual(2, single_qcd_order(
+            ['generate u u > u u'], pjoin(self.path, 'MG7_nqcd_uu')))
+        # pure electroweak: no alpha_s
+        self.assertEqual(0, single_qcd_order(
+            ['generate e+ e- > mu+ mu-'], pjoin(self.path, 'MG7_nqcd_ee')))
+        # mixed QCD/QED orders (QCD=2 and QED=2 contributions) -> not uniform
+        self.assertEqual(-1, single_qcd_order(
+            ['generate u u~ > d d~', 'add process u u~ > d d~ QED=2'],
+            pjoin(self.path, 'MG7_nqcd_mixed')))
+
+    def test_systematics_mg7(self):
+        """Scale/PDF systematics on the mg7 output, end to end (u u > u u).
+
+        The mg7 LHE carries no <mgrwt> block, so the LO reweighting info is
+        reconstructed from the single alpha_s power recorded at output time
+        (single_qcd_order in proc_characteristics -> --lo_nqcd -> systematics ->
+        Event.reconstruct_lo_weight). Checks that the systematic-variation
+        weights are added to every event and actually differ from the nominal
+        (i.e. the reconstruction fed real scale/PDF information)."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u > u u'],
+            pjoin(self.path, 'MG7_syst'), datadir,
+            switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
+            toml_edits=[(r'systematics_pdf = \[[^\]]*\]',
+                         'systematics_pdf = ["central"]')],
+            events=100)
+
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+
+        nb_event = 0
+        nb_nontrivial = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            self.assertGreater(len(rwgt), 1,
+                'no systematic weights were added to the mg7 events')
+            if any(abs(w - evt.wgt) > 1e-6 * abs(evt.wgt) for w in rwgt.values()):
+                nb_nontrivial += 1
+            nb_event += 1
+        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
+        self.assertGreater(nb_nontrivial, 0,
+            'the systematic weights are all equal to the nominal weight: the LO '
+            'reweighting info was not reconstructed')
+
     def test_relaunch_switch_defaults_mg7(self):
         """Re-launching an mg7 output must not turn every tool on.
 

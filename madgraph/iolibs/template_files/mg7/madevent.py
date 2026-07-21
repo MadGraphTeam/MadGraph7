@@ -2008,6 +2008,24 @@ def _run_systematics(lhe_path, cfg, log):
     extra = cfg.get('systematics_str_options', '')
     if extra:
         opts.extend(extra.split())
+    # The mg7 LHE has no <mgrwt> block, so systematics cannot read the per-event
+    # LO reweighting info. For a process with a single alpha_s power (stored in
+    # SubProcesses/proc_characteristics at output time) it can be reconstructed
+    # from the events: pass that power as --lo_nqcd. -1 means the QCD power is
+    # not uniform, so the reconstruction is not applicable.
+    if not any(o.startswith('--lo_nqcd') for o in opts):
+        try:
+            from madgraph.various import banner as _banner_mod
+        except ImportError:
+            import internal.banner as _banner_mod
+        pc_path = os.path.join('SubProcesses', 'proc_characteristics')
+        if os.path.exists(pc_path):
+            try:
+                nqcd = int(_banner_mod.ProcCharacteristic(pc_path)['single_qcd_order'])
+            except Exception:
+                nqcd = -1
+            if nqcd >= 0:
+                opts.append('--lo_nqcd=%d' % nqcd)
     # tell systematics where to find lhapdf (so it can link the python module)
     if not any(o.startswith('--lhapdf_config') for o in opts):
         lhapdf_config = _lhapdf_config_path()

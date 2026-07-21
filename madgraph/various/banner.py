@@ -1901,8 +1901,13 @@ class ProcCharacteristic(ConfigFile):
         self.add_param('ew_sudakov', False)
         self.add_param('hel_recycling', False)  
         self.add_param('single_color', True)
-        self.add_param('nlo_mixed_expansion', True)    
+        self.add_param('nlo_mixed_expansion', True)
         self.add_param('gauge', 'U')
+        # single power of alpha_s in |M|^2 when it is the same for every diagram
+        # (a "single value of alpha_s" process); -1 when it is not uniform. Used
+        # to reconstruct the LO reweighting info for systematics on outputs that
+        # do not write an <mgrwt> block (see Event.reconstruct_lo_weight).
+        self.add_param('single_qcd_order', -1)
     
     def read(self, finput):
         """Read the input file, this can be a path to a file, 

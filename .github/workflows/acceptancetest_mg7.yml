@@ -150,6 +150,22 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_merged_flavor_initial_state_mirroring_mg7 -pA -t0 -l INFO
 
+  acceptancetest_mg7_single_qcd_order:
+    # Output-level check that the mg7 output records the single alpha_s power
+    # (single_qcd_order in proc_characteristics), which systematics uses to
+    # reconstruct the LO reweighting info. No event generation, so no madspace
+    # runtime needed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test one of the test test_single_qcd_order_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_single_qcd_order_mg7 -pA -t0 -l INFO
+
   acceptancetest_mg7_relaunch_defaults:
     # Re-launching an mg7 output must not default every tool to ON: the launch
     # question prunes the cards of the unselected tools. Output-level (drives the
@@ -374,6 +390,25 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_mass_reweighting_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_systematics:
+    needs: build_madspace
+    # Scale/PDF systematics on the mg7 output, end to end: the mg7 LHE has no
+    # <mgrwt>, so the LO reweighting info is reconstructed from single_qcd_order.
+    # Needs the madspace + LHAPDF(NNPDF23) stack (systematics reads the PDF).
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_systematics_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_systematics_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_madspin:
     needs: build_madspace

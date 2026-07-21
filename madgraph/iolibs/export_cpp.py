@@ -3415,6 +3415,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             me_list = []
 
         procs = []
+        qcd_orders = set()
         for me in me_list:
             if not me.get('processes'):
                 continue
@@ -3422,6 +3423,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
             pc['nexternal'] = max(pc['nexternal'], nexternal)
             pc['ninitial'] = ninitial
             procs.extend(me.get('processes'))
+            # power of alpha_s in |M|^2 = QCD coupling order of the amplitude;
+            # collect it over every diagram so we can tell whether it is uniform.
+            for diagram in me.get('diagrams'):
+                qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+
+        # a single value of alpha_s (uniform QCD power) lets systematics
+        # reconstruct the LO reweighting info without an <mgrwt> block
+        pc['single_qcd_order'] = qcd_orders.pop() if len(qcd_orders) == 1 else -1
 
         if procs:
             pc['pdg_initial1'] = [p.get_initial_pdg(1) for p in procs
