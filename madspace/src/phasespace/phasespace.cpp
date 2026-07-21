@@ -80,9 +80,6 @@ nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) 
     return perms_out;
 }
 
-} // namespace
-
-namespace {
 // Chain (color) order for the t-channel ColorOrderedMapping: the externally
 // supplied order if given, else the default single chain [0, 2, ..., n+1, 1].
 std::vector<std::size_t> ps_chain_order(
@@ -116,6 +113,7 @@ std::size_t ps_discrete_dim(
     }
     return 0;
 }
+
 } // namespace
 
 PhaseSpaceMapping::PhaseSpaceMapping(
@@ -127,7 +125,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     const std::optional<Cuts>& cuts,
     const std::vector<std::vector<std::size_t>>& permutations,
     const std::optional<std::vector<std::size_t>>& color_order,
-    bool return_propagators
+    bool return_invariants
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -156,17 +154,27 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 {"x1", batch_float},
                 {"x2", batch_float},
             };
-            if (return_propagators) {
-                int max_prop_count =
-                    static_cast<int>(topology.outgoing_masses().size()) - 1;
+            if (return_invariants) {
+                std::size_t invariant_count =
+                    topology.decays().size() - topology.outgoing_masses().size();
+                if (leptonic ||
+                    (_topology.t_propagator_count() != 0 &&
+                     t_channel_mode == PhaseSpaceMapping::chili)) {
+                    --invariant_count;
+                }
+                if (topology.t_propagator_count() > 0 &&
+                    (t_channel_mode == PhaseSpaceMapping::propagator ||
+                     topology.t_propagator_count() < 2)) {
+                    invariant_count += TPropagatorMapping::invariant_count(
+                        topology.t_propagator_count()
+                    );
+                }
                 out.push_back(
-                    "propagator_pids_and_masks", batch_int_array(max_prop_count)
+                    "invariant_pids_and_masks", batch_int_array(invariant_count)
                 );
+                out.push_back("invariant_masses", batch_float_array(invariant_count));
                 out.push_back(
-                    "propagator_invariants", batch_float_array(max_prop_count)
-                );
-                out.push_back(
-                    "propagator_virtualities", batch_float_array(max_prop_count)
+                    "invariant_virtualities", batch_float_array(invariant_count)
                 );
             }
             return out;
@@ -188,7 +196,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
     _t_mapping(std::monostate{}),
-    _return_propagators(return_propagators) {
+    _return_invariants(return_invariants) {
     bool has_t_channel = _topology.t_propagator_count() > 0;
     struct DecayInfo {
         double m_min, pt_min, eta_max;
@@ -234,7 +242,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
             info.invariant =
-                Invariant(invariant_power, mass, width, _return_propagators);
+                Invariant(invariant_power, mass, width, _return_invariants);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {
@@ -324,7 +332,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 _topology.t_integration_order(),
                 invariant_power,
                 pt_min,
-                _return_propagators
+                _return_invariants
             );
         } else if (t_channel_mode == PhaseSpaceMapping::rambo) {
             // TODO: add massless special case
@@ -348,7 +356,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     TChannelMode mode,
     const std::optional<Cuts>& cuts,
     const std::optional<std::vector<std::size_t>>& color_order,
-    bool return_propagators
+    bool return_invariants
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -388,7 +396,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         cuts,
         {},
         color_order,
-        return_propagators
+        return_invariants
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(
@@ -411,7 +419,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
 
     ValueVec dets{_pi_factors};
     Value x1 = 1.0, x2 = 1.0;
-    ValueVec propagator_pids_and_masks, propagator_invariants, propagator_virtualities;
+    ValueVec invariant_pids_and_masks, invariant_masses, invariant_virtualities;
 
     // initialize masses and square masses
     std::vector<DecayData> decay_data(
@@ -442,16 +450,14 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             auto invariant =
                 _s_invariants.at(invariant_index++)
                     .build_forward(fb, {next_random()}, {s_min, s_max});
-            // decay_index == 0 is a bookkeeping node (the overall partonic
-            // system), not a real propagator, whenever there is a t-channel
-            bool is_real_propagator =
-                decay_index != 0 || _topology.t_propagator_count() == 0;
-            if (_return_propagators && is_real_propagator) {
+
+            if (_return_invariants) {
                 me_int_t pid = decay.mass == 0 ? 0 : decay.pdg_id;
-                propagator_pids_and_masks.push_back((pid << 16) + decay.momentum_mask);
-                propagator_invariants.push_back(invariant["invariant"]);
-                propagator_virtualities.push_back(invariant["virtuality"]);
+                invariant_pids_and_masks.push_back((pid << 16) + decay.momentum_mask);
+                invariant_masses.push_back(invariant["invariant"]);
+                invariant_virtualities.push_back(invariant["virtuality"]);
             }
+
             data.mass2 = invariant["invariant"];
             data.mass = fb.sqrt(data.mass2.value());
             dets.push_back(invariant["det"]);
@@ -515,17 +521,21 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                     x2 = x2_new;
                 }
                 if constexpr (std::is_same_v<TMapping, TPropagatorMapping>) {
-                    if (_return_propagators) {
-                        // all t-propagators sampled by TPropagatorMapping are
-                        // massless, so the virtuality equals the invariant
-                        for (std::size_t j = 0; j < _topology.t_propagator_count();
-                             ++j) {
-                            Value t_invariant = t_result.at(result_index + j);
-                            propagator_pids_and_masks.push_back(
-                                _topology.t_propagator_masks().at(j)
+                    if (_return_invariants) {
+                        std::vector<int> leg_masks;
+                        for (std::size_t child_index :
+                             _topology.decays().at(0).child_indices) {
+                            leg_masks.push_back(
+                                _topology.decays().at(child_index).momentum_mask
                             );
-                            propagator_invariants.push_back(t_invariant);
-                            propagator_virtualities.push_back(t_invariant);
+                        }
+                        auto t_masks = t_mapping.invariant_masks(leg_masks);
+                        for (std::size_t j = 0; j < t_masks.size(); ++j) {
+                            Value t_invariant = t_result.at(result_index + j);
+                            // all invariants in TPropagatorMapping are massless
+                            invariant_pids_and_masks.push_back(t_masks.at(j));
+                            invariant_masses.push_back(t_invariant);
+                            invariant_virtualities.push_back(t_invariant);
                         }
                     }
                 }
@@ -589,15 +599,8 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
 
-    if (_return_propagators) {
-        std::size_t max_prop_count = _topology.outgoing_indices().size() - 1;
-        propagator_pids_and_masks.resize(
-            max_prop_count, Value(static_cast<me_int_t>(0))
-        );
-        propagator_invariants.resize(max_prop_count, Value(0.));
-        propagator_virtualities.resize(max_prop_count, Value(0.));
-
-        Value pids_and_masks = fb.stack(propagator_pids_and_masks);
+    if (_return_invariants) {
+        Value pids_and_masks = fb.stack(invariant_pids_and_masks);
         if (_permutations.size() > 1) {
             pids_and_masks =
                 fb.permute_bits(pids_and_masks, _permutations, conditions.at(0));
@@ -611,9 +614,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             {{"momenta", p_ext_lab},
              {"x1", x1},
              {"x2", x2},
-             {"propagator_pids_and_masks", pids_and_masks},
-             {"propagator_invariants", fb.stack(propagator_invariants)},
-             {"propagator_virtualities", fb.stack(propagator_virtualities)}},
+             {"invariant_pids_and_masks", pids_and_masks},
+             {"invariant_masses", fb.stack(invariant_masses)},
+             {"invariant_virtualities", fb.stack(invariant_virtualities)}},
             ps_weight
         };
     } else {

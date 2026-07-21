@@ -26,7 +26,7 @@ public:
         const std::optional<Cuts>& cuts = std::nullopt,
         const std::vector<std::vector<std::size_t>>& permutations = {},
         const std::optional<std::vector<std::size_t>>& color_order = std::nullopt,
-        bool return_propagators = false
+        bool return_invariants = false
     );
 
     PhaseSpaceMapping(
@@ -37,7 +37,7 @@ public:
         TChannelMode mode = rambo,
         const std::optional<Cuts>& cuts = std::nullopt,
         const std::optional<std::vector<std::size_t>>& color_order = std::nullopt,
-        bool return_propagators = false
+        bool return_invariants = false
     );
 
     std::size_t random_dim() const {
@@ -78,7 +78,7 @@ private:
         _t_mapping;
     std::vector<std::variant<TwoBodyDecay, ThreeBodyDecay, FastRamboMapping>> _s_decays;
     nested_vector2<me_int_t> _permutations;
-    bool _return_propagators;
+    bool _return_invariants;
 };
 
 } // namespace madspace

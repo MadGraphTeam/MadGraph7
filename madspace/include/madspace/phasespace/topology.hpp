@@ -90,7 +90,6 @@ public:
     const std::vector<double>& t_propagator_widths() const {
         return _t_propagator_widths;
     }
-    const std::vector<int>& t_propagator_masks() const { return _t_propagator_masks; }
     const std::vector<Decay>& decays() const { return _decays; }
     const std::vector<std::size_t>& decay_integration_order() const {
         return _decay_integration_order;
@@ -110,7 +109,6 @@ private:
     std::vector<std::size_t> _t_integration_order;
     std::vector<double> _t_propagator_masses;
     std::vector<double> _t_propagator_widths;
-    std::vector<int> _t_propagator_masks;
     std::vector<Decay> _decays;
     std::vector<std::size_t> _decay_integration_order;
     std::vector<std::size_t> _outgoing_indices;

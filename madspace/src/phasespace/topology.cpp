@@ -164,20 +164,6 @@ void build_decay_momentum_masks(
     }
 }
 
-void build_t_momentum_masks(
-    std::vector<int>& t_momentum_masks,
-    const std::vector<Topology::Decay>& decays,
-    std::size_t t_propagator_count
-) {
-    auto& child_indices = decays.at(0).child_indices;
-    int t_momentum_mask = 1;
-    for (std::size_t child_index :
-         child_indices | std::views::take(t_propagator_count)) {
-        t_momentum_mask |= decays.at(child_index).momentum_mask;
-        t_momentum_masks.push_back(t_momentum_mask);
-    }
-}
-
 std::string decay_label(
     const Topology::Decay& decay,
     const std::unordered_map<std::size_t, std::size_t>& decay_order,
@@ -395,9 +381,6 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
     }
 
     build_decay_momentum_masks(topo._outgoing_indices, topo._decays);
-    build_t_momentum_masks(
-        topo._t_propagator_masks, topo._decays, topo._t_propagator_masses.size()
-    );
 
     std::size_t massive_decays = 0;
     for (std::size_t index : decay_indices) {

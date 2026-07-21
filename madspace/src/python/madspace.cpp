@@ -686,7 +686,6 @@ PYBIND11_MODULE(_madspace_py, m) {
             .def_property_readonly(
                 "t_propagator_widths", &Topology::t_propagator_widths
             )
-            .def_property_readonly("t_propagator_masks", &Topology::t_propagator_masks)
             .def_property_readonly("decays", &Topology::decays)
             .def_property_readonly(
                 "decay_integration_order", &Topology::decay_integration_order
@@ -727,7 +726,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = std::vector<Topology>{},
             py::arg("color_order") = std::nullopt,
-            py::arg("return_propagators") = false
+            py::arg("return_invariants") = false
         )
         .def(
             py::init<
@@ -746,7 +745,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
             py::arg("color_order") = std::nullopt,
-            py::arg("return_propagators") = false
+            py::arg("return_invariants") = false
         )
         .def("random_dim", &PhaseSpaceMapping::random_dim)
         .def("discrete_dim", &PhaseSpaceMapping::discrete_dim)

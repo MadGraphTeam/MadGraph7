@@ -85,7 +85,7 @@ def mapping_with_propagators(process):
     )
     topology = ms.Topology(diagram)
     mapping = ms.PhaseSpaceMapping(
-        topology, CM_ENERGY, return_propagators=True, invariant_power=INVARIANT_POWER
+        topology, CM_ENERGY, return_invariants=True, invariant_power=INVARIANT_POWER
     )
     return mapping, mass_by_pid
 
@@ -168,9 +168,9 @@ def test_process_propagators(mapping_with_propagators):
     signs = np.where(np.arange(n_ext) < 2, -1.0, 1.0)
 
     # pid and momentum mask are diagram-level constants, broadcast over the batch
-    pids_and_masks = result.propagator_pids_and_masks[0]
-    invariants = result.propagator_invariants
-    virtualities = result.propagator_virtualities
+    pids_and_masks = result.invariant_pids_and_masks[0]
+    invariants = result.invariant_masses
+    virtualities = result.invariant_virtualities
 
     for i, pid_and_mask in enumerate(pids_and_masks):
         pid = int(pid_and_mask) >> 16
