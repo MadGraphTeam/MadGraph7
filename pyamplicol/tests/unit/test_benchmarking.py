@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import pyamplicol.benchmarking as benchmark_module
@@ -262,6 +264,97 @@ def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
     assert result.repetitions_per_sample == 1
     assert result.evaluation_count == 5
     assert result.evaluated_point_count == 20
+
+
+def _write_effective_color_config(
+    artifact: Path,
+    *,
+    accuracy: str = "lc",
+    layout: str | None = "topology-replay",
+) -> None:
+    config = artifact / "config"
+    config.mkdir(parents=True)
+    layout_line = "" if layout is None else f'lc_flow_layout = "{layout}"\n'
+    (config / "effective.toml").write_text(
+        f'[color]\naccuracy = "{accuracy}"\n{layout_line}',
+        encoding="utf-8",
+    )
+
+
+def test_benchmark_recommends_union_for_topology_replay_all_flow_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_effective_color_config(artifact, layout=None)
+    runtime = _Runtime()
+    backend = BenchmarkBackend(
+        BenchmarkConfig(
+            target_runtime=1.0e-12,
+            batch_size=1,
+            warmup_runs=0,
+            minimum_samples=1,
+            helicity_ids=("h0",),
+        ),
+        None,
+    )
+    monkeypatch.setattr(backend, "_runtime", lambda _target: runtime)
+
+    with pytest.warns(UserWarning, match="--lc-flow-layout all-flow-union"):
+        result = backend.run(
+            artifact,
+            points=(((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+    assert result.environment["lc_flow_layout"] == "topology-replay"
+    recommendation = result.environment["lc_flow_layout_recommendation"]
+    assert isinstance(recommendation, str)
+    assert "--lc-flow-layout all-flow-union" in recommendation
+    assert "\x1b" not in recommendation
+
+
+@pytest.mark.parametrize(
+    ("layout", "color_accuracy", "helicity_ids", "color_flow_ids"),
+    (
+        ("all-flow-union", "lc", ("h0",), ()),
+        ("topology-replay", "lc", ("h0",), ("c0",)),
+        ("topology-replay", "lc", (), ()),
+        ("topology-replay", "nlc", ("h0",), ()),
+        ("topology-replay", "full", ("h0",), ()),
+    ),
+)
+def test_lc_flow_layout_recommendation_exclusions(
+    layout: str,
+    color_accuracy: str,
+    helicity_ids: tuple[str, ...],
+    color_flow_ids: tuple[str, ...],
+) -> None:
+    assert (
+        benchmark_module._lc_flow_layout_recommendation(
+            color_accuracy=color_accuracy,
+            lc_flow_layout=layout,
+            selected_helicity_ids=helicity_ids,
+            selected_color_ids=color_flow_ids,
+        )
+        is None
+    )
+
+
+def test_runtime_backend_has_no_artifact_layout_recommendation() -> None:
+    runtime = _Runtime()
+    result = BenchmarkBackend(
+        BenchmarkConfig(
+            target_runtime=1.0e-12,
+            batch_size=1,
+            warmup_runs=0,
+            minimum_samples=1,
+            helicity_ids=("h0",),
+        ),
+        None,
+    ).run(runtime, points=(((1.0, 0.0, 0.0, 1.0),),))
+
+    assert "lc_flow_layout" not in result.environment
+    assert "lc_flow_layout_recommendation" not in result.environment
 
 
 def test_benchmark_calibrates_blocks_and_repetitions_toward_target(

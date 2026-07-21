@@ -8,6 +8,8 @@ import os
 import platform
 import statistics
 import time
+import tomllib
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +40,14 @@ _CALIBRATION_LOWER_RATIO = 0.8
 _CALIBRATION_UPPER_RATIO = 1.25
 _MIN_CLOCK_INTERVAL_SECONDS = 1.0e-12
 _MAX_NATIVE_PROFILE_SAMPLES = 8
+_LC_TOPOLOGY_REPLAY_LAYOUT = "topology-replay"
+_LC_ALL_FLOW_UNION_LAYOUT = "all-flow-union"
+_LC_ALL_FLOW_PROFILE_RECOMMENDATION = (
+    "this LC topology-replay artifact is profiling all color flows with "
+    "runtime-selected helicities; regenerate with "
+    "--lc-flow-layout all-flow-union for the optimized "
+    "all-flows/single-helicity workload"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +129,19 @@ class BenchmarkBackend:
         color_flows = (
             _resolve_color_flow_ordinals(physics, self._config.color_flow_ids) or None
         )
+        lc_flow_layout = _artifact_lc_flow_layout(target_path)
+        lc_flow_layout_recommendation = _lc_flow_layout_recommendation(
+            color_accuracy=physics.color_accuracy,
+            lc_flow_layout=lc_flow_layout,
+            selected_helicity_ids=tuple(helicities or ()),
+            selected_color_ids=tuple(color_flows or ()),
+        )
+        if lc_flow_layout_recommendation is not None:
+            warnings.warn(
+                lc_flow_layout_recommendation,
+                UserWarning,
+                stacklevel=2,
+            )
         profiler = _native_profiler(runtime) if self._config.precision == 16 else None
         repeated_profiler = (
             _native_repeated_profiler(runtime) if self._config.precision == 16 else None
@@ -463,6 +486,12 @@ class BenchmarkBackend:
         selected_helicity_ids = tuple(helicities or ())
         selected_color_ids = tuple(color_flows or ())
         measured_evaluations = len(samples) * calibration.repetitions_per_sample
+        layout_environment: dict[str, object] = {}
+        if lc_flow_layout is not None:
+            layout_environment = {
+                "lc_flow_layout": lc_flow_layout,
+                "lc_flow_layout_recommendation": lc_flow_layout_recommendation,
+            }
         return BenchmarkResult(
             requested_config=self._config,
             effective_config=self._config,
@@ -503,6 +532,7 @@ class BenchmarkBackend:
                 "calibration_block_count": calibration.block_count,
                 "calibration_evaluation_count": calibration.evaluation_count,
                 "calibration_elapsed_seconds": calibration.elapsed_seconds,
+                **layout_environment,
                 **evaluator_environment,
             },
             interrupted=interrupted,
@@ -559,6 +589,40 @@ class BenchmarkBackend:
                 )
             )
         return runtime
+
+
+def _artifact_lc_flow_layout(target_path: Path | None) -> str | None:
+    if target_path is None:
+        return None
+    effective_path = target_path / "config" / "effective.toml"
+    try:
+        payload = tomllib.loads(effective_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    color = payload.get("color")
+    if not isinstance(color, Mapping) or color.get("accuracy") != "lc":
+        return None
+    layout = color.get("lc_flow_layout", _LC_TOPOLOGY_REPLAY_LAYOUT)
+    if layout not in {_LC_TOPOLOGY_REPLAY_LAYOUT, _LC_ALL_FLOW_UNION_LAYOUT}:
+        return None
+    return str(layout)
+
+
+def _lc_flow_layout_recommendation(
+    *,
+    color_accuracy: str,
+    lc_flow_layout: str | None,
+    selected_helicity_ids: Sequence[str],
+    selected_color_ids: Sequence[str],
+) -> str | None:
+    if (
+        color_accuracy == "lc"
+        and lc_flow_layout == _LC_TOPOLOGY_REPLAY_LAYOUT
+        and selected_helicity_ids
+        and not selected_color_ids
+    ):
+        return _LC_ALL_FLOW_PROFILE_RECOMMENDATION
+    return None
 
 
 def _benchmark_batch(points: Momenta, batch_size: int) -> Momenta:
