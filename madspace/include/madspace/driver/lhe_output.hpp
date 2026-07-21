@@ -124,7 +124,8 @@ private:
     std::size_t append_colors(const SubprocArgs& args, std::size_t particle_count);
     void append_pdg_ids(const SubprocArgs& args, std::size_t particle_count);
     void append_masses(const Topology& first_topo);
-    std::size_t build_propagators(std::size_t subproc_index, const SubprocArgs& args);
+    std::pair<std::size_t, std::size_t>
+    build_propagators(std::size_t subproc_index, const SubprocArgs& args);
     void init_propagator_data(
         const Topology& topo,
         const SubprocArgs& args,

@@ -127,10 +127,6 @@ void LHEEvent::format_to(std::string& buffer) const {
 
 std::size_t LHECompleter::append_helicities(const SubprocArgs& args) {
     std::size_t particle_count = args.helicities.at(0).size();
-    if (_max_particle_count < particle_count) {
-        _max_particle_count = particle_count;
-    }
-
     for (auto& helicities : args.helicities) {
         if (helicities.size() != particle_count) {
             throw std::invalid_argument("Invalid number of helicities");
@@ -316,7 +312,7 @@ void LHECompleter::record_propagator_colors(
     }
 }
 
-std::size_t
+std::pair<std::size_t, std::size_t>
 LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& args) {
     std::size_t matrix_flavor_count = args.color_flows.size();
 
@@ -326,6 +322,7 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
     std::vector<int> resonant_prop_indices;
 
     std::size_t diagram_count = 0;
+    std::size_t max_prop_count = 0;
     for (auto [topo, permutations, diag_indices, diag_colors] :
          zip(args.topologies,
              args.permutations,
@@ -371,10 +368,14 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
                     prop_colors,
                     resonant_prop_indices
                 );
+                std::size_t prop_count = _propagators.size() - prop_offset;
+                if (prop_count > max_prop_count) {
+                    max_prop_count = prop_count;
+                }
             }
         }
     }
-    return diagram_count;
+    return {diagram_count, max_prop_count};
 }
 
 LHECompleter::LHECompleter(
@@ -388,7 +389,10 @@ LHECompleter::LHECompleter(
         std::size_t color_count = append_colors(args, particle_count);
         append_pdg_ids(args, particle_count);
         append_masses(args.topologies.at(0));
-        std::size_t diagram_count = build_propagators(subproc_index, args);
+        auto [diagram_count, max_prop_count] = build_propagators(subproc_index, args);
+        if (_max_particle_count < particle_count + max_prop_count) {
+            _max_particle_count = particle_count + max_prop_count;
+        }
 
         _subproc_data.push_back({
             .process_id = args.process_id,
