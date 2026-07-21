@@ -124,7 +124,12 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     prop_name = f"p{prop_index}"
                     diagram_edge_names[legs[-1].get("number")] = prop_name
                     vertex_props.append(prop_name)
-                    propagators.append(final_part.get_pdg_code())
+                    sign = (
+                        1
+                        if final_part.get("is_part") or final_part.get("self_antipart") else
+                        -1
+                    )
+                    propagators.append(sign * final_part.get("pdg_code"))
                     if legs[-1].get("onshell"):
                         on_shell_propagators.append(prop_index)
                 vertices.append(vertex_props)

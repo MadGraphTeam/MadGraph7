@@ -969,7 +969,10 @@ class MadgraphSubprocess:
 
         for channel_id, channel in enumerate(self.meta["channels"]):
             propagators = []
-            for i, pid in enumerate(clean_pids(channel["propagators"])):
+            for i, (pid, signed_pid) in enumerate(zip(
+                clean_pids(channel["propagators"]),
+                channel["propagators"],
+            )):
                 mass = self.process.get_mass(pid)
                 width = self.process.get_width(pid)
                 if i in channel["on_shell_propagators"]:
@@ -978,13 +981,14 @@ class MadgraphSubprocess:
                 else:
                     e_min = 0
                     e_max = 0
+
                 propagators.append(ms.Propagator(
                     mass=mass,
                     width=width,
                     integration_order=0,
                     e_min=e_min,
                     e_max=e_max,
-                    pdg_id=pid,
+                    pdg_id=signed_pid,
                 ))
             vertices = channel["vertices"]
             diagrams = channel["diagrams"]
