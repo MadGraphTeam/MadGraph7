@@ -446,6 +446,8 @@ pub struct LCColorTransitionWitnessRow {
     pub result_shape_string_id: u32,
     pub exact_factor_id: u32,
     pub proof_digest_id: u32,
+    pub input_port_pairing_sequence_id: u32,
+    pub result_port_binding_sequence_id: u32,
     pub provenance_sequence_id: u32,
 }
 
@@ -2162,6 +2164,73 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                     witness.proof_digest_id,
                     "LC color witness proof",
                 )?;
+                let input_port_pairings = u32_sequence(
+                    self,
+                    witness.input_port_pairing_sequence_id,
+                    "LC color witness input-port pairings",
+                )?;
+                if input_port_pairings.len() % 4 != 0 {
+                    return Err(invalid(
+                        "LC color witness input-port pairings are not divisible by four",
+                    ));
+                }
+                let result_port_bindings = u32_sequence(
+                    self,
+                    witness.result_port_binding_sequence_id,
+                    "LC color witness result-port bindings",
+                )?;
+                if result_port_bindings.len() % 2 != 0 {
+                    return Err(invalid(
+                        "LC color witness result-port bindings are not divisible by two",
+                    ));
+                }
+                let mut consumed_ports = BTreeSet::new();
+                for port in input_port_pairings
+                    .chunks_exact(2)
+                    .chain(result_port_bindings.chunks_exact(2))
+                {
+                    let parent = port[0] as usize;
+                    let local = port[1] as usize;
+                    let representation = *input_representations.get(parent).ok_or_else(|| {
+                        invalid("LC color witness port references an absent parent")
+                    })?;
+                    let port_count = match representation {
+                        1 => 0,
+                        3 | -3 => 1,
+                        8 => 2,
+                        _ => {
+                            return Err(invalid(
+                                "LC color witness port uses an unsupported representation",
+                            ));
+                        }
+                    };
+                    if local >= port_count {
+                        return Err(invalid(
+                            "LC color witness port references an absent local port",
+                        ));
+                    }
+                    if !consumed_ports.insert((parent, local)) {
+                        return Err(invalid(
+                            "LC color witness consumes one parent port more than once",
+                        ));
+                    }
+                }
+                let expected_port_count = input_representations
+                    .iter()
+                    .map(|representation| match representation {
+                        1 => Ok(0_usize),
+                        3 | -3 => Ok(1),
+                        8 => Ok(2),
+                        _ => Err(invalid(
+                            "LC color witness uses an unsupported representation",
+                        )),
+                    })
+                    .sum::<RusticolResult<usize>>()?;
+                if consumed_ports.len() != expected_port_count {
+                    return Err(invalid(
+                        "LC color witness does not consume every parent port exactly once",
+                    ));
+                }
                 let provenance = u32_sequence(
                     self,
                     witness.provenance_sequence_id,

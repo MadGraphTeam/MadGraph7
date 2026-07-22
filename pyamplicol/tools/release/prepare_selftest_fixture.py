@@ -19,7 +19,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "selftest"
 PORTABLE_TEMPLATE = "portable-64le"
-PORTABLE_OPTIMIZATION_LEVEL = 1
+PORTABLE_OPTIMIZATION_LEVEL = 2
 COMPATIBLE_TARGETS = (
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -161,8 +161,8 @@ def _validate_portable_evaluator_configuration(
             if evaluator.get("optimization_level") != PORTABLE_OPTIMIZATION_LEVEL:
                 raise RuntimeError(
                     "portable self-test source must use SymJIT optimization level "
-                    f"{PORTABLE_OPTIMIZATION_LEVEL}; O2/O3 MIR may contain "
-                    "source-architecture register allocation"
+                    f"{PORTABLE_OPTIMIZATION_LEVEL}; other optimization levels "
+                    "may contain source-architecture register allocation"
                 )
     if evaluator_count == 0:
         raise RuntimeError("self-test artifact has no SymJIT evaluator manifests")

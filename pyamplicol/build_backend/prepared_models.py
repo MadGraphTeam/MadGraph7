@@ -35,7 +35,7 @@ _METADATA_KEYS = frozenset(
         "target",
     }
 )
-_EXPECTED_ID = "built-in-sm-jit-o3"
+_EXPECTED_ID = "built-in-sm-jit-o2"
 
 
 def _asset_names(architecture: str) -> tuple[str, str]:
@@ -125,10 +125,10 @@ def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
             bundle,
             metadata=metadata,
             expected_target={
-                "portable": False,
+                "portable": True,
                 "word_bits": 64,
                 "endianness": "little",
-                "target_triple": f"symjit-storage-v3-{architecture}",
+                "target_triple": "symjit-storage-v3-portable",
                 "cpu_features": [],
             },
             package_root=package_root,
@@ -165,10 +165,10 @@ def write_candidate_packaged_prepared_model_asset(
         raise RuntimeError(f"prepared-model bundle is invalid: {error}") from error
     pack = bundle.kernel_pack
     expected_target = {
-        "portable": False,
+        "portable": True,
         "word_bits": 64,
         "endianness": "little",
-        "target_triple": f"symjit-storage-v3-{architecture}",
+        "target_triple": "symjit-storage-v3-portable",
         "cpu_features": [],
     }
     if _plain_json(pack.target) != expected_target:
@@ -176,8 +176,8 @@ def write_candidate_packaged_prepared_model_asset(
     if bundle.backend != "jit" or pack.backend != "jit":
         raise RuntimeError("packaged built-in prepared model must use JIT")
     optimization = dict(pack.optimization_settings)
-    if optimization.get("jit_optimization_level") != 3:
-        raise RuntimeError("packaged built-in prepared model must use JIT O3")
+    if optimization.get("jit_optimization_level") != 2:
+        raise RuntimeError("packaged built-in prepared model must use portable JIT O2")
 
     compiled = dict(bundle.compiled_model)
     compiled_producer = _mapping(
@@ -267,7 +267,7 @@ def write_candidate_packaged_prepared_model_asset(
             package_root / "models" / "prepared.py", "EAGER_KERNEL_ABI"
         ),
         "id": _EXPECTED_ID,
-        "jit_optimization_level": 3,
+        "jit_optimization_level": 2,
         "kernel_count": len(pack.kernels),
         "model": "built-in-sm",
         "prepared_model_bundle_schema": _literal_assignment(
@@ -317,14 +317,16 @@ def _validate_bundle(
     pack = bundle.kernel_pack
     if bundle.backend != "jit" or metadata.get("backend") != "jit":
         raise RuntimeError("packaged built-in prepared model must use the JIT backend")
-    if metadata.get("jit_optimization_level") != 3:
-        raise RuntimeError("packaged built-in prepared model must use JIT O3")
+    if metadata.get("jit_optimization_level") != 2:
+        raise RuntimeError("packaged built-in prepared model must use portable JIT O2")
     optimization = dict(pack.optimization_settings)
     if (
         optimization.get("backend") != "jit"
-        or optimization.get("jit_optimization_level") != 3
+        or optimization.get("jit_optimization_level") != 2
     ):
-        raise RuntimeError("prepared kernel pack does not record JIT O3 settings")
+        raise RuntimeError(
+            "prepared kernel pack does not record portable JIT O2 settings"
+        )
     target = _plain_json(pack.target)
     if target != expected_target or metadata.get("target") != expected_target:
         raise RuntimeError(
@@ -371,7 +373,7 @@ def _validate_bundle(
     if build_contract.get("candidate_fingerprint") != expected_fingerprint:
         raise RuntimeError(
             "packaged prepared model does not match the active exact dependency lock; "
-            "regenerate the built-in JIT O3 prepared-model asset"
+            "regenerate the built-in portable JIT O2 prepared-model asset"
         )
 
     compiled = dict(bundle.compiled_model)
@@ -444,7 +446,7 @@ def _validate_bundle(
             "application_abi": dependencies["symjit_application_abi"],
             "compiler_type": "native",
             "translation_mode": "indirect",
-            "optimization_level": 3,
+            "optimization_level": 2,
             "word_bits": 64,
             "endianness": "little",
             "required_defuns": (),

@@ -80,13 +80,13 @@ pyamplicol model processes "p p > Z j j" \
   --flavor-scheme 2 --max-quark-lines 2
 ```
 
-## Prepared Eager Bundles
+## Prepared Kernel Bundles
 
 The JSON file above is portable model IR only. A path ending in
 `.pyamplicol-model` is instead a self-contained prepared bundle containing the
 same IR, exact expressions, and one compiled local-kernel backend. Wheels ship
-built-in-SM JIT O3 bundles for `x86_64` and `aarch64`; the matching host bundle
-is selected automatically by:
+the portable built-in-SM `built-in-sm-jit-o2` bundle, which is selected
+automatically by:
 
 ```console
 pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_eager \
@@ -98,10 +98,10 @@ Prepare an explicit bundle for an external model or a different built-in
 backend:
 
 ```console
-pyamplicol model compile models/json/sm/sm.json models/ufo-sm-jit-o3.pyamplicol-model \
-  --backend jit --jit-optimization-level 3 --jit-compress
+pyamplicol model compile models/json/sm/sm.json models/ufo-sm-jit-o2.pyamplicol-model \
+  --backend jit --jit-optimization-level 2 --jit-compress
 pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_ufo_eager \
-  --model models/ufo-sm-jit-o3.pyamplicol-model --execution-mode eager
+  --model models/ufo-sm-jit-o2.pyamplicol-model --execution-mode eager
 ```
 
 Process generation from this bundle writes compact invocation tables and
@@ -112,14 +112,13 @@ license/concurrency policy. A saved JIT application's post-generation f64
 runtime is Symbolica-free; higher precision continues to use Symbolica.
 
 JIT bundles retain SymJIT application/MIR state and rebuild executable code for
-the receiving CPU when loaded. SymJIT storage-v3 state remains scoped to one
-architecture class: transfer between supported operating systems on the same
-architecture is tested, but transfer between `x86_64` and `aarch64` is rejected
-before DAG construction or SymJIT loading. The model IR inside the bundle
-remains portable, and a future SymJIT storage ABI may allow prepared packs to
-cross architecture classes. C++ and ASM bundles are target-native. C++ and ASM
-receive batched inputs but do not gain SIMD from pyAmpliCol; SymJIT may
-auto-vectorize its JIT applications.
+the receiving CPU when loaded. SymJIT storage-v3 prepared state is portable
+across supported `x86_64` and `aarch64` hosts at optimization level 2.
+pyAmpliCol therefore forces O2 for prepared JIT kernels, including when a
+different level was requested. This restriction does not apply to process-local
+compiled DAG evaluators, which retain their independently configured JIT level.
+C++ and ASM bundles are target-native. C++ and ASM receive batched inputs but
+do not gain SIMD from pyAmpliCol; SymJIT may auto-vectorize its JIT applications.
 
 ## Multiprocess Expansion
 

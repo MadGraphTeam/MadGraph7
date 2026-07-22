@@ -32,6 +32,8 @@ EAGER_KERNEL_ABI_VERSION = 1
 PREPARED_KERNEL_VARIANT_ABI = "pyamplicol-prepared-kernel-variant-v1"
 PREPARED_KERNEL_PACK_IDENTITY_ABI = "pyamplicol-prepared-kernel-pack-identity-v1"
 PREPARED_INDEPENDENT_BLOCK_SIZE = 4
+PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL = 2
+PREPARED_JIT_PORTABLE_TARGET = "symjit-storage-v3-portable"
 
 PREPARED_MODEL_MANIFEST_PATH = "manifest.json"
 PREPARED_MODEL_COMPILED_MODEL_PATH = "model/model.pyAmplicol-model.json"
@@ -155,6 +157,31 @@ def _positive_integer(value: object, context: str) -> int:
     if result == 0:
         raise PreparedModelBundleError(f"{context} must be an integer >= 1")
     return result
+
+
+def _validate_portable_jit_manifest(
+    value: Mapping[str, object],
+    context: str,
+) -> None:
+    if value.get("kind") != "symjit-application-evaluator":
+        raise PreparedModelBundleError(
+            f"prepared JIT {context} must contain a SymJIT application evaluator"
+        )
+    level = value.get("optimization_level")
+    if level != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL:
+        raise PreparedModelBundleError(
+            f"prepared JIT {context} must use portable SymJIT optimization "
+            f"level {PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL}, found {level!r}"
+        )
+    settings = _mapping(value.get("settings"), f"prepared JIT {context}.settings")
+    if (
+        settings.get("jit_optimization_level")
+        != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+    ):
+        raise PreparedModelBundleError(
+            f"prepared JIT {context} settings do not attest portable SymJIT "
+            f"optimization level {PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL}"
+        )
 
 
 def _normalized_member_path(value: object, context: str) -> str:
@@ -1006,6 +1033,25 @@ class PreparedKernelPack:
             raise PreparedModelBundleError(
                 "kernel_pack.target.cpu_features must be sorted and unique"
             )
+        if self.backend == "jit":
+            level = self.optimization_settings.get("jit_optimization_level")
+            if level != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL:
+                raise PreparedModelBundleError(
+                    "prepared JIT packs must use portable SymJIT optimization "
+                    f"level {PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL}, found "
+                    f"{level!r}"
+                )
+            if (
+                target.get("portable") is not True
+                or target.get("target_triple") != PREPARED_JIT_PORTABLE_TARGET
+                or target.get("word_bits") != 64
+                or target.get("endianness") != "little"
+                or cpu_features
+            ):
+                raise PreparedModelBundleError(
+                    "prepared JIT packs must use the portable 64-bit "
+                    "little-endian SymJIT storage-v3 target"
+                )
         kernels = tuple(sorted(self.kernels, key=lambda kernel: kernel.kernel_id))
         if not kernels:
             raise PreparedModelBundleError("kernel_pack.kernels must not be empty")
@@ -1016,6 +1062,12 @@ class PreparedKernelPack:
         if len(set(signatures)) != len(signatures):
             raise PreparedModelBundleError("kernel canonical signatures must be unique")
         object.__setattr__(self, "kernels", kernels)
+        if self.backend == "jit":
+            for kernel in kernels:
+                _validate_portable_jit_manifest(
+                    kernel.f64_evaluator_manifest,
+                    f"kernel {kernel.kernel_id}",
+                )
         by_id = {kernel.kernel_id: kernel for kernel in kernels}
         variants = tuple(
             sorted(
@@ -1055,6 +1107,13 @@ class PreparedKernelPack:
                     "for JIT packs"
                 )
         object.__setattr__(self, "kernel_variants", variants)
+        if self.backend == "jit":
+            for variant in variants:
+                _validate_portable_jit_manifest(
+                    variant.f64_evaluator_manifest,
+                    "kernel "
+                    f"{variant.base_kernel_id} variant {variant.variant_id!r}",
+                )
         recurrence_template = self.recurrence_template
         if recurrence_template is not None:
             # Keep the prepared-bundle container independent from recurrence
@@ -1791,6 +1850,8 @@ __all__ = [
     "EAGER_KERNEL_ABI",
     "EAGER_KERNEL_ABI_VERSION",
     "PREPARED_INDEPENDENT_BLOCK_SIZE",
+    "PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL",
+    "PREPARED_JIT_PORTABLE_TARGET",
     "PREPARED_KERNEL_PACK_IDENTITY_ABI",
     "PREPARED_KERNEL_VARIANT_ABI",
     "PREPARED_MODEL_BUNDLE_KIND",

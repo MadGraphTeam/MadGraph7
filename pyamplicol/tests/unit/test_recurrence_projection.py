@@ -78,6 +78,14 @@ def _state(
     family: str,
     dimension: int,
 ) -> CurrentStateTemplateV1:
+    color_representation = 8 if particle_id == 21 else 3 if particle_id > 0 else -3
+    color_shape = (
+        "adjoint-segment"
+        if particle_id == 21
+        else "fundamental-open-string"
+        if particle_id > 0
+        else "antifundamental-open-string"
+    )
     return CurrentStateTemplateV1(
         template_id=template_id,
         particle_id=particle_id,
@@ -91,14 +99,12 @@ def _state(
             else "antiparticle"
         ),
         statistics="fermion" if family == "fermion" else "boson",
-        color_representation=8 if particle_id == 21 else 3,
+        color_representation=color_representation,
         basis=family,
         tensor_ordering=tuple(f"{family}:c{index}" for index in range(dimension)),
         dimension=dimension,
         chirality=0,
-        lc_color_shape_kind=(
-            "adjoint-segment" if particle_id == 21 else "fundamental-open-string"
-        ),
+        lc_color_shape_kind=color_shape,
         auxiliary_kind=None,
         mass_parameter_id=None,
         width_parameter_id=None,
@@ -409,7 +415,7 @@ def test_topology_replay_projects_exact_axes_and_generation_coverage() -> None:
         0,
     )
     assert {sector.closure_proof_algorithm for sector in logical.physical_sectors} == {
-        "canonical-lc-closure-anchor-v1"
+        "canonical-lc-closure-anchor-v2"
     }
     assert all(
         len(sector.closure_proof_digest) == 64 for sector in logical.physical_sectors
@@ -432,6 +438,49 @@ def test_topology_replay_projects_exact_axes_and_generation_coverage() -> None:
 
     # The result is accepted unchanged by the existing deterministic encoder.
     assert len(build_recurrence_builder_input_v1(logical).canonical_digest) == 64
+
+
+def test_projection_attaches_exact_fixed_width_fermion_pairing_tables() -> None:
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="topology-replay",
+        topology_replay=_replay(),
+        normalization=_normalization(),
+    )
+
+    pairing = logical.fermion_pairing_catalog
+    assert pairing is not None
+    assert pairing.process_key == process.key
+    assert pairing.source_count == len(process.legs)
+    assert tuple(endpoint.source_slot for endpoint in pairing.endpoints) == (0, 1)
+    assert tuple(endpoint.color_orientation for endpoint in pairing.endpoints) == (
+        "antifundamental",
+        "fundamental",
+    )
+    assert pairing.rules[0].endpoint_pairings == ((1, 0),)
+    digest_roles = {item.role: item.digest for item in logical.semantic_digests}
+    assert digest_roles["fermion-pairing-semantic"] == pairing.semantic_digest
+    assert digest_roles["fermion-pairing-topology"] == pairing.topology_digest
+
+    encoded = build_recurrence_builder_input_v1(logical)
+    assert encoded.fermion_pairing_digest is not None
+    assert len(encoded.fermion_pairing_digest) == 64
+    header = encoded.fermion_pairing_table("header")
+    assert int(header.column("source_count")[0]) == 4
+    assert int(header.column("endpoint_count")[0]) == 2
+    assert int(header.column("pairing_class_count")[0]) == 1
+    assert int(header.column("rule_count")[0]) == 1
+    endpoints = encoded.fermion_pairing_table("endpoints")
+    assert tuple(int(value) for value in endpoints.column("source_slot")) == (0, 1)
+    for table in encoded.fermion_pairing_tables:
+        for column in table.columns:
+            assert column.values.dtype.kind != "O"
+            assert column.values.flags.c_contiguous
+            assert column.values.flags.owndata
+            assert not column.values.flags.writeable
 
 
 def test_all_flow_union_retains_all_sectors_without_replay_partitions() -> None:
@@ -475,7 +524,7 @@ def test_all_singlet_sector_uses_smallest_fermionic_source_as_closure_anchor() -
     sector = logical.physical_sectors[0]
     assert sector.word_source_slots == ()
     assert sector.closure_source_slot == 0
-    assert sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v1"
+    assert sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v2"
     assert len(sector.closure_proof_digest) == 64
 
 

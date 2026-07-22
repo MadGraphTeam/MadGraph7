@@ -218,25 +218,35 @@ identities. Reuse is certified only after exact contribution vectors agree.
 ### Dynamic LC color state
 
 The interned dynamic state is an output color-shape ID plus an ordered forest of
-components. Components are open strings, adjoint segments, or traces and contain
-colored source slots in exact order. Color-singlet sources remain in current
-support and helicity ancestry but do not enter color identity. Physical sector
-IDs never enter current identity.
+components and an ordered binding from every result-current color port to one
+forest endpoint. Components are open strings, adjoint segments, or traces and
+contain colored source slots in exact order. Fundamental, antifundamental, and
+adjoint sources expose one, one, and two oriented ports respectively. Color-
+singlet sources remain in current support and helicity ancestry but do not enter
+color identity. Physical sector IDs never enter current identity.
 
 Open strings, adjoint segments, and separate component blocks preserve their
 construction order. Traces are canonicalized only under cyclic rotation.
 Reversal, component permutation, and fermion-line exchange are aliases only when
 an exact proof supplies their phase/sign.
 
+At a physical open-line closure, the process colour plan separately certifies
+that complete independent open-string blocks may be compared as an unordered
+forest with unit phase. This closure-only relation does not canonicalize partial
+states: every ordered partner remains a distinct current/closure term, so its
+multiplicity and exact coefficient survive aggregation. A closure must already
+contain the exact physical blocks; no flat-word splitting or post-hoc line
+reconstruction is permitted.
+
 The model compiler supplies executable LC transition witnesses. Each witness
 binds a prepared color contraction, input permutation, parent-reversal mask,
-closed component operation, result color-shape contract, nonzero exact factor,
-and proof digest. The closed operation set is concatenate-and-join,
-concatenate-and-keep, inherit-left/right from an empty color parent, empty, and
-closure. Rust applies these witnesses; it never infers an operation from
-`rule_kind`, particle IDs, model names, or representations. Applying a witness
-must conserve every colored source slot exactly once and produce a state admitted
-by the declared output shape.
+exact input-port pairings, ordered result-port bindings, result color-shape
+contract, nonzero exact factor, and proof digest. Every parent port is consumed
+exactly once, either by a pairing or by a result binding. Rust applies this
+certified wiring; it never infers connectivity from `rule_kind`, particle IDs,
+model names, or benchmark processes. Applying a witness must conserve every
+colored source slot exactly once and produce a state admitted by the declared
+output shape.
 
 For each contribution key, Rust aggregates the complete exact coefficient:
 

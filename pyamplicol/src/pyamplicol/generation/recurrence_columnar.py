@@ -18,6 +18,8 @@ from typing import Any, Final, Literal
 
 import numpy as np
 
+from .recurrence_fermion_pairing import FermionPairingCatalogV1
+
 RECURRENCE_BUILDER_INPUT_ABI: Final = "pyamplicol-recurrence-builder-input-v1"
 RECURRENCE_BUILDER_INPUT_SCHEMA_VERSION: Final = 1
 MISSING_U32: Final = (1 << 32) - 1
@@ -437,6 +439,7 @@ class RecurrenceBuilderLogicalInputV1:
     public_flows: tuple[RecurrencePublicLCFlowV1, ...]
     semantic_template_references: tuple[RecurrenceSemanticTemplateReferenceV1, ...]
     normalization: RecurrenceNormalizationV1
+    fermion_pairing_catalog: FermionPairingCatalogV1 | None = None
     replay_partitions: tuple[RecurrenceReplayPartitionV1, ...] = ()
     selected_public_flow_ids: tuple[int, ...] | None = None
     selected_source_coverage: tuple[RecurrenceSelectedSourceCoverageV1, ...] | None = (
@@ -453,6 +456,13 @@ class RecurrenceBuilderLogicalInputV1:
                 f"unsupported recurrence LC flow layout {self.layout!r}"
             )
         _validate_nonnegative_mask(self.process_support_mask, "process support mask")
+        if self.fermion_pairing_catalog is not None and not isinstance(
+            self.fermion_pairing_catalog,
+            FermionPairingCatalogV1,
+        ):
+            raise TypeError(
+                "recurrence fermion pairing must be FermionPairingCatalogV1"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -707,6 +717,7 @@ class RecurrenceBuilderInputV1:
 
     abi: str
     tables: tuple[RecurrenceColumnarTable, ...]
+    fermion_pairing_tables: tuple[RecurrenceColumnarTable, ...] = ()
 
     def __post_init__(self) -> None:
         if self.abi != RECURRENCE_BUILDER_INPUT_ABI:
@@ -723,6 +734,7 @@ class RecurrenceBuilderInputV1:
         self._validate_schemas()
         self._validate_catalogs()
         self._validate_references()
+        self._validate_fermion_pairing()
 
     def table(self, name: str) -> RecurrenceColumnarTable:
         for table in self.tables:
@@ -730,24 +742,34 @@ class RecurrenceBuilderInputV1:
                 return table
         raise KeyError(f"recurrence builder input has no table {name!r}")
 
+    def fermion_pairing_table(self, name: str) -> RecurrenceColumnarTable:
+        """Return one table from the private process-owned pairing payload."""
+
+        for table in self.fermion_pairing_tables:
+            if table.name == name:
+                return table
+        raise KeyError(f"recurrence fermion pairing has no table {name!r}")
+
+    @property
+    def fermion_pairing_digest(self) -> str | None:
+        """Digest the exact private table representation for a future decoder."""
+
+        if not self.fermion_pairing_tables:
+            return None
+        from .recurrence_pairing_columnar import _PAIRING_COLUMNAR_ABI
+
+        digest = hashlib.sha256()
+        _hash_text(digest, _PAIRING_COLUMNAR_ABI)
+        _hash_columnar_tables(digest, self.fermion_pairing_tables)
+        return digest.hexdigest()
+
     @property
     def canonical_digest(self) -> str:
         """SHA-256 over ABI, table schemas, shapes, and canonical bytes."""
 
         digest = hashlib.sha256()
         _hash_text(digest, self.abi)
-        digest.update(len(self.tables).to_bytes(8, "little"))
-        for table in self.tables:
-            _hash_text(digest, table.name)
-            digest.update(table.row_count.to_bytes(8, "little"))
-            digest.update(len(table.columns).to_bytes(4, "little"))
-            for column in table.columns:
-                _hash_text(digest, column.name)
-                _hash_text(digest, column.values.dtype.str)
-                digest.update(len(column.values.shape).to_bytes(1, "little"))
-                for dimension in column.values.shape:
-                    digest.update(int(dimension).to_bytes(8, "little"))
-                digest.update(column.values.tobytes(order="C"))
+        _hash_columnar_tables(digest, self.tables)
         return digest.hexdigest()
 
     @property
@@ -1073,6 +1095,124 @@ class RecurrenceBuilderInputV1:
                 "source-state momentum signs must be -1 or 1"
             )
 
+    def _validate_fermion_pairing(self) -> None:
+        roles = self._semantic_digest_roles()
+        pairing_roles = {
+            "fermion-pairing-semantic",
+            "fermion-pairing-topology",
+        }
+        if not self.fermion_pairing_tables:
+            unexpected = sorted(pairing_roles & roles.keys())
+            if unexpected:
+                raise RecurrenceColumnarInputError(
+                    "recurrence header claims fermion-pairing semantics without "
+                    f"fixed-width tables: {unexpected!r}"
+                )
+            return
+
+        from .recurrence_pairing_columnar import (
+            _PAIRING_COLUMNAR_ABI,
+            _FermionPairingColumnarV1,
+        )
+
+        payload = _FermionPairingColumnarV1(
+            _PAIRING_COLUMNAR_ABI,
+            self.fermion_pairing_tables,
+        )
+        missing = sorted(pairing_roles - roles.keys())
+        if missing:
+            raise RecurrenceColumnarInputError(
+                "recurrence fermion-pairing tables lack semantic header digests: "
+                f"{missing!r}"
+            )
+
+        header = payload.table("header")
+        external_legs = self.table("external_legs")
+        if int(header.column("source_count")[0]) != external_legs.row_count:
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing source count does not match external legs"
+            )
+        topology_digest = bytes(header.column("topology_digest")[0]).hex()
+        semantic_digest = bytes(header.column("semantic_digest")[0]).hex()
+        if roles["fermion-pairing-topology"] != topology_digest:
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing topology digest disagrees with the process header"
+            )
+        if roles["fermion-pairing-semantic"] != semantic_digest:
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing semantic digest disagrees with the process header"
+            )
+
+        pairing_strings = _decode_pairing_strings(payload)
+        process_key_id = int(header.column("process_key_string_id")[0])
+        process_key = pairing_strings[process_key_id]
+        main_header = self.table("header")
+        main_strings = _decode_flat_strings(
+            self.table("string_ranges"),
+            self.table("string_bytes"),
+        )
+        process_id = main_strings[int(main_header.column("process_id_string_id")[0])]
+        if process_key != process_id:
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing process key does not match recurrence process ID"
+            )
+
+        endpoints = payload.table("endpoints")
+        endpoint_slots = tuple(int(value) for value in endpoints.column("source_slot"))
+        if len(endpoint_slots) != len(set(endpoint_slots)):
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing endpoint source slots must be unique"
+            )
+        expected_orientations: dict[int, int] = {}
+        open_strings = self.table("lc_open_strings")
+        for row in range(open_strings.row_count):
+            for column, orientation in (
+                ("fundamental_source_slot", 0),
+                ("antifundamental_source_slot", 1),
+            ):
+                source_slot = int(open_strings.column(column)[row])
+                previous = expected_orientations.setdefault(source_slot, orientation)
+                if previous != orientation:
+                    raise RecurrenceColumnarInputError(
+                        "LC sectors assign inconsistent color orientations to one "
+                        "fermion endpoint"
+                    )
+        if set(endpoint_slots) != set(expected_orientations):
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing endpoints do not cover the LC open-line endpoints"
+            )
+        public_labels = external_legs.column("public_label")
+        fermionic = external_legs.column("is_fermionic")
+        endpoint_labels = endpoints.column("public_label")
+        endpoint_orientations = endpoints.column("color_orientation")
+        for row, source_slot in enumerate(endpoint_slots):
+            if not int(fermionic[source_slot]):
+                raise RecurrenceColumnarInputError(
+                    "fermion-pairing endpoint references a non-fermionic source"
+                )
+            if int(endpoint_labels[row]) != int(public_labels[source_slot]):
+                raise RecurrenceColumnarInputError(
+                    "fermion-pairing endpoint public label disagrees with its source"
+                )
+            if int(endpoint_orientations[row]) != expected_orientations[source_slot]:
+                raise RecurrenceColumnarInputError(
+                    "fermion-pairing endpoint orientation disagrees with LC sectors"
+                )
+
+    def _semantic_digest_roles(self) -> dict[str, str]:
+        strings = _decode_flat_strings(
+            self.table("string_ranges"),
+            self.table("string_bytes"),
+        )
+        digests = self.table("digest_catalog").column("value")
+        result: dict[str, str] = {}
+        table = self.table("header_digests")
+        for row in range(table.row_count):
+            role = strings[int(table.column("role_string_id")[row])]
+            digest = bytes(digests[int(table.column("digest_id")[row])]).hex()
+            result[role] = digest
+        return result
+
 
 class _StringCatalog:
     def __init__(self, values: Iterable[str]) -> None:
@@ -1305,6 +1445,16 @@ def build_recurrence_builder_input_v1(
         selected_sources=selected_sources,
     )
 
+    pairing_tables: tuple[RecurrenceColumnarTable, ...] = ()
+    if logical.fermion_pairing_catalog is not None:
+        from .recurrence_pairing_columnar import (
+            _encode_fermion_pairing_catalog_v1,
+        )
+
+        pairing_tables = _encode_fermion_pairing_catalog_v1(
+            logical.fermion_pairing_catalog
+        ).tables
+
     all_factors = [logical.normalization.factor]
     all_factors.extend(
         target.amplitude_phase
@@ -1439,6 +1589,7 @@ def build_recurrence_builder_input_v1(
     return RecurrenceBuilderInputV1(
         abi=RECURRENCE_BUILDER_INPUT_ABI,
         tables=tuple(sorted(tables, key=lambda table: table.name)),
+        fermion_pairing_tables=pairing_tables,
     )
 
 
@@ -1517,6 +1668,35 @@ def _validate_logical_relations(
         raise RecurrenceColumnarInputError(
             f"recurrence logical input is missing semantic digests: {missing!r}"
         )
+    pairing_roles = {
+        item.role: item.digest
+        for item in digests
+        if item.role.startswith("fermion-pairing-")
+    }
+    pairing = logical.fermion_pairing_catalog
+    if pairing is None:
+        if pairing_roles:
+            raise RecurrenceColumnarInputError(
+                "recurrence logical input claims fermion-pairing digests without "
+                "an exact pairing catalog"
+            )
+    else:
+        expected_pairing_roles = {
+            "fermion-pairing-semantic": pairing.semantic_digest,
+            "fermion-pairing-topology": pairing.topology_digest,
+        }
+        if pairing_roles != expected_pairing_roles:
+            raise RecurrenceColumnarInputError(
+                "recurrence fermion-pairing digest roles are missing or stale"
+            )
+        if pairing.process_key != logical.process_id:
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing process key does not match recurrence process ID"
+            )
+        if pairing.source_count != len(external_legs):
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing source count does not match external legs"
+            )
 
     names = tuple(limit.name for limit in coupling_limits)
     if len(set(names)) != len(names):
@@ -2332,6 +2512,40 @@ def _hash_text(digest: Any, value: str) -> None:
     encoded = value.encode("utf-8")
     digest.update(len(encoded).to_bytes(8, "little"))
     digest.update(encoded)
+
+
+def _hash_columnar_tables(
+    digest: Any,
+    tables: Sequence[RecurrenceColumnarTable],
+) -> None:
+    digest.update(len(tables).to_bytes(8, "little"))
+    for table in tables:
+        _hash_text(digest, table.name)
+        digest.update(table.row_count.to_bytes(8, "little"))
+        digest.update(len(table.columns).to_bytes(4, "little"))
+        for column in table.columns:
+            _hash_text(digest, column.name)
+            _hash_text(digest, column.values.dtype.str)
+            digest.update(len(column.values.shape).to_bytes(1, "little"))
+            for dimension in column.values.shape:
+                digest.update(int(dimension).to_bytes(8, "little"))
+            digest.update(column.values.tobytes(order="C"))
+
+
+def _decode_pairing_strings(payload: Any) -> tuple[str, ...]:
+    ranges = payload.table("string_ranges")
+    values = payload.table("string_bytes").column("value")
+    decoded: list[str] = []
+    for row in range(ranges.row_count):
+        start = int(ranges.column("start")[row])
+        count = int(ranges.column("count")[row])
+        try:
+            decoded.append(bytes(values[start : start + count]).decode("utf-8"))
+        except UnicodeDecodeError as error:
+            raise RecurrenceColumnarInputError(
+                "fermion-pairing string catalog is not valid UTF-8"
+            ) from error
+    return tuple(decoded)
 
 
 __all__ = [

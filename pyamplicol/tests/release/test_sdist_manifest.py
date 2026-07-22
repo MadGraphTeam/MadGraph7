@@ -82,10 +82,10 @@ def test_sdist_inventory_requires_both_architecture_prepared_packs() -> None:
     root = "src/pyamplicol/assets/prepared_models"
     expected = {
         f"{root}/__init__.py",
-        f"{root}/built-in-sm-jit-o3-aarch64.metadata.json",
-        f"{root}/built-in-sm-jit-o3-aarch64.pyamplicol-model",
-        f"{root}/built-in-sm-jit-o3-x86_64.metadata.json",
-        f"{root}/built-in-sm-jit-o3-x86_64.pyamplicol-model",
+        f"{root}/built-in-sm-jit-o2-aarch64.metadata.json",
+        f"{root}/built-in-sm-jit-o2-aarch64.pyamplicol-model",
+        f"{root}/built-in-sm-jit-o2-x86_64.metadata.json",
+        f"{root}/built-in-sm-jit-o2-x86_64.pyamplicol-model",
     }
     assert expected == PREPARED_MODEL_SDIST_MEMBERS
     assert PREPARED_MODEL_SDIST_MEMBERS <= REQUIRED_SDIST_MEMBERS

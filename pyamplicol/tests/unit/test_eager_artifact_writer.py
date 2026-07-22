@@ -87,6 +87,8 @@ def _prepared_model(
             exact_evaluator_state_path=f"kernels/{kernel_id}/exact.evaluator.bin",
             f64_evaluator_manifest={
                 "kind": "symjit-application-evaluator",
+                "optimization_level": 2,
+                "settings": {"jit_optimization_level": 2},
                 "input_len": 1,
                 "output_len": 1,
                 "application_path": f"kernels/{kernel_id}/application.symjit",
@@ -116,7 +118,7 @@ def _prepared_model(
             ),
             backend="jit",
             optimization_settings_digest=prepared_optimization_settings_digest(
-                {"optimization_level": 3}
+                {"jit_optimization_level": 2}
             ),
             input_arity=4 * kernel.input_arity,
             output_arity=4 * kernel.output_arity,
@@ -134,6 +136,8 @@ def _prepared_model(
             ),
             f64_evaluator_manifest={
                 "kind": "symjit-application-evaluator",
+                "optimization_level": 2,
+                "settings": {"jit_optimization_level": 2},
                 "input_len": 4 * kernel.input_arity,
                 "output_len": 4 * kernel.output_arity,
                 "application_path": (
@@ -151,15 +155,15 @@ def _prepared_model(
     )
     pack = PreparedKernelPack(
         backend="jit",
-        optimization_settings={"optimization_level": 3},
+        optimization_settings={"jit_optimization_level": 2},
         producer={"distribution": "pyamplicol", "version": "test"},
         dependency_abis={"symjit_application": "test-v1"},
         provenance={"compiled_model": "test"},
         target={
-            "portable": False,
+            "portable": True,
             "word_bits": 64,
             "endianness": "little",
-            "target_triple": "test-target",
+            "target_triple": "symjit-storage-v3-portable",
             "cpu_features": [],
         },
         resolver_manifest={

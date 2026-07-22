@@ -495,7 +495,7 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
             "endianness": "little",
             "kind": "symjit-application-mir-v3",
             "load_behavior": "recompile-mir-for-loading-host",
-            "source_optimization_level": 1,
+            "source_optimization_level": 2,
             "word_size_bits": 64,
         }
     ):

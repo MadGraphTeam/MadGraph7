@@ -43,7 +43,7 @@ def _overlay(tmp_path: Path) -> Path:
             / "pyamplicol"
             / "assets"
             / "prepared_models"
-            / "built-in-sm-jit-o3-aarch64.metadata.json"
+            / "built-in-sm-jit-o2-aarch64.metadata.json"
         ).read_text(encoding="utf-8")
     )
     build_contract = metadata["build_contract"]
@@ -69,9 +69,9 @@ def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
     tmp_path: Path,
 ) -> None:
     asset_root = ROOT / "src/pyamplicol/assets/prepared_models"
-    source_bundle = asset_root / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
+    source_bundle = asset_root / "built-in-sm-jit-o2-aarch64.pyamplicol-model"
     expected_metadata = json.loads(
-        (asset_root / "built-in-sm-jit-o3-aarch64.metadata.json").read_text(
+        (asset_root / "built-in-sm-jit-o2-aarch64.metadata.json").read_text(
             encoding="utf-8"
         )
     )
@@ -104,7 +104,7 @@ def test_candidate_wheel_staging_accepts_exact_packaged_model(
         / "pyamplicol"
         / "assets"
         / "prepared_models"
-        / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
+        / "built-in-sm-jit-o2-aarch64.pyamplicol-model"
     )
     before = bundle.read_bytes()
     stage_packaged_prepared_models(overlay, "candidate")
@@ -152,7 +152,7 @@ def test_wheel_staging_rejects_bundle_hash_drift(tmp_path: Path) -> None:
         / "pyamplicol"
         / "assets"
         / "prepared_models"
-        / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
+        / "built-in-sm-jit-o2-aarch64.pyamplicol-model"
     )
     bundle.write_bytes(bundle.read_bytes() + b"tampered")
     with pytest.raises(RuntimeError, match="size does not match"):
@@ -162,7 +162,7 @@ def test_wheel_staging_rejects_bundle_hash_drift(tmp_path: Path) -> None:
 def test_wheel_staging_requires_both_architecture_assets(tmp_path: Path) -> None:
     overlay = _overlay(tmp_path)
     asset_root = overlay / "src" / "pyamplicol" / "assets" / "prepared_models"
-    (asset_root / "built-in-sm-jit-o3-x86_64.pyamplicol-model").unlink()
+    (asset_root / "built-in-sm-jit-o2-x86_64.pyamplicol-model").unlink()
 
     with pytest.raises(RuntimeError, match=r"missing:.*x86_64"):
         stage_packaged_prepared_models(overlay, "candidate")
@@ -176,7 +176,7 @@ def test_wheel_staging_rejects_architecture_target_drift(tmp_path: Path) -> None
         / "pyamplicol"
         / "assets"
         / "prepared_models"
-        / "built-in-sm-jit-o3-x86_64.metadata.json"
+        / "built-in-sm-jit-o2-x86_64.metadata.json"
     )
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata["target"]["target_triple"] = "symjit-storage-v3-aarch64"

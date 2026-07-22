@@ -15,12 +15,12 @@ use super::{
     AuthenticatedRecurrenceBuilderInput, CanonicalMomentumLinearForm, CheckedTableRange,
     ContributionKey, CurrentCoreKey, CurrentHelicityIdentity, CurrentSourceBinding,
     DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational, LCColorComponent,
-    LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole, LCColorSourceSeed,
-    LCColorSourceSeedOperation, LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm,
-    RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
-    RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind, RecurrenceProgram,
-    RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy, SemanticDigest,
-    SourceStateAssignment,
+    LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole, LCColorParentPort,
+    LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation, LCColorTransitionWitness,
+    LCColorWitnessTermId, MomentumTerm, RecurrenceAmplitudeDestination, RecurrenceClosureTerm,
+    RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind,
+    RecurrenceProgram, RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy,
+    SemanticDigest, SourceStateAssignment,
 };
 use crate::{RusticolError, RusticolResult};
 
@@ -50,6 +50,18 @@ struct PendingClosureKey {
     closure_template_id: u32,
     quantum_flow_template_id: Option<u32>,
     parent_current_ids: Box<[u32]>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct StageConstructionDiagnostics {
+    target_size: usize,
+    parent_pair_count: usize,
+    state_order_count: usize,
+    quantum_match_count: usize,
+    coupling_match_count: usize,
+    color_shape_match_count: usize,
+    color_result_count: usize,
+    contribution_count: usize,
 }
 
 pub(super) struct TemplateCatalog<'a> {
@@ -162,6 +174,59 @@ impl<'a> TemplateCatalog<'a> {
             .transpose()?;
         let shape =
             (row.result_shape_string_id != MISSING_U32).then_some(row.result_shape_string_id);
+        let pairing_values = self.u32_sequence(
+            row.input_port_pairing_sequence_id,
+            "LC witness input-port pairings",
+        )?;
+        if pairing_values.len() % 4 != 0 {
+            return Err(invalid(
+                "LC witness input-port pairing sequence is not divisible by four",
+            ));
+        }
+        let input_pairings = pairing_values
+            .chunks_exact(4)
+            .map(|chunk| {
+                Ok([
+                    LCColorParentPort::new(
+                        u8::try_from(chunk[0])
+                            .map_err(|_| invalid("LC witness parent index exceeds u8"))?,
+                        u8::try_from(chunk[1])
+                            .map_err(|_| invalid("LC witness local port index exceeds u8"))?,
+                    )?,
+                    LCColorParentPort::new(
+                        u8::try_from(chunk[2])
+                            .map_err(|_| invalid("LC witness parent index exceeds u8"))?,
+                        u8::try_from(chunk[3])
+                            .map_err(|_| invalid("LC witness local port index exceeds u8"))?,
+                    )?,
+                ])
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let binding_values = self.u32_sequence(
+            row.result_port_binding_sequence_id,
+            "LC witness result-port bindings",
+        )?;
+        if binding_values.len() % 2 != 0 {
+            return Err(invalid(
+                "LC witness result-port binding sequence is not divisible by two",
+            ));
+        }
+        let result_port_bindings = binding_values
+            .chunks_exact(2)
+            .map(|chunk| {
+                LCColorParentPort::new(
+                    u8::try_from(chunk[0])
+                        .map_err(|_| invalid("LC witness parent index exceeds u8"))?,
+                    u8::try_from(chunk[1])
+                        .map_err(|_| invalid("LC witness local port index exceeds u8"))?,
+                )
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let component_parent_order = match row.input_permutation {
+            0 => [0, 1],
+            1 => [1, 0],
+            value => return Err(invalid(format!("invalid LC witness permutation {value}"))),
+        };
         LCColorTransitionWitness::new(
             permutation,
             row.reverse_parent_mask,
@@ -169,6 +234,7 @@ impl<'a> TemplateCatalog<'a> {
             kind,
             LCColorComponentRole::try_from(row.result_component_role)?,
             shape,
+            LCColorPortWiring::new(component_parent_order, input_pairings, result_port_bindings)?,
             self.factor(row.exact_factor_id, "LC witness")?,
             self.digest(row.proof_digest_id, "LC witness proof")?,
         )
@@ -336,7 +402,7 @@ pub(super) fn build_recurrence_program(
         &mut current_ids,
         &mut currents_by_size,
     )?;
-    build_internal_currents(
+    let stage_diagnostics = build_internal_currents(
         catalog_digest,
         process_input,
         template_input,
@@ -356,6 +422,7 @@ pub(super) fn build_recurrence_program(
         &color_states,
         &currents,
         &materialized_sectors,
+        &stage_diagnostics,
     )?;
     finish_program(
         strategy,
@@ -397,9 +464,14 @@ fn build_sources(
                 .get(process_state.source_template_id as usize)
                 .ok_or_else(|| invalid("source template is absent"))?;
             validate_crossed_source_state(leg.is_initial != 0, process_state, source, template)?;
-            let dynamic_state = template_catalog
-                .source_seed(source)?
-                .instantiate(leg.source_slot)?;
+            let dynamic_state = template_catalog.source_seed(source)?.instantiate(
+                leg.source_slot,
+                template
+                    .current_states
+                    .get(source.state_template_id as usize)
+                    .ok_or_else(|| invalid("source current-state template is absent"))?
+                    .color_representation,
+            )?;
             let color_id = color_states.intern(dynamic_state)?;
             let helicity_identity = match strategy {
                 RecurrenceStrategy::TopologyReplay => CurrentHelicityIdentity::topology_replay(
@@ -523,7 +595,8 @@ fn build_internal_currents(
     currents: &mut Vec<PendingCurrent>,
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
     currents_by_size: &mut [Vec<u32>],
-) -> RusticolResult<()> {
+) -> RusticolResult<Vec<StageConstructionDiagnostics>> {
+    let mut diagnostics = Vec::new();
     for target_size in 2..process.external_legs.len() {
         let mut parent_pairs = Vec::new();
         for left_size in 1..target_size {
@@ -545,6 +618,12 @@ fn build_internal_currents(
         parent_pairs.sort_unstable();
         parent_pairs.dedup();
 
+        let mut stage = StageConstructionDiagnostics {
+            target_size,
+            parent_pair_count: parent_pairs.len(),
+            ..StageConstructionDiagnostics::default()
+        };
+
         for (left_id, right_id) in parent_pairs {
             for transition in &template.transitions {
                 let input_states = catalog.u32_sequence(
@@ -565,6 +644,7 @@ fn build_internal_currents(
                 if input_states == [right_state, left_state] && left_state != right_state {
                     orders.push([right_id, left_id]);
                 }
+                stage.state_order_count += orders.len();
                 for parent_ids in orders {
                     add_transition_contributions(
                         catalog_digest,
@@ -579,12 +659,14 @@ fn build_internal_currents(
                         currents,
                         current_ids,
                         &mut currents_by_size[target_size - 1],
+                        &mut stage,
                     )?;
                 }
             }
         }
+        diagnostics.push(stage);
     }
-    Ok(())
+    Ok(diagnostics)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -601,6 +683,7 @@ fn add_transition_contributions(
     currents: &mut Vec<PendingCurrent>,
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
     target_bucket: &mut Vec<u32>,
+    diagnostics: &mut StageConstructionDiagnostics,
 ) -> RusticolResult<()> {
     let parent_keys = [
         currents[parent_ids[0] as usize].key.clone(),
@@ -614,6 +697,7 @@ fn add_transition_contributions(
     if !quantum_flow_matches(quantum, &parents, catalog)? {
         return Ok(());
     }
+    diagnostics.quantum_match_count += 1;
     let Some(coupling_orders) = combined_coupling_orders(
         parents[0].coupling_orders(),
         parents[1].coupling_orders(),
@@ -623,6 +707,7 @@ fn add_transition_contributions(
     else {
         return Ok(());
     };
+    diagnostics.coupling_match_count += 1;
     let contraction = *template
         .color_contractions
         .get(transition.color_contraction_template_id as usize)
@@ -661,10 +746,12 @@ fn add_transition_contributions(
         {
             continue;
         }
+        diagnostics.color_shape_match_count += 1;
         let witness = catalog.witness(*witness_row)?;
         let Some(result_color) = witness.apply(left_color, right_color)? else {
             continue;
         };
+        diagnostics.color_result_count += 1;
         let result_color_id = color_states.intern(result_color)?;
         let support = merged_support(
             parents[0].support_source_slots(),
@@ -675,6 +762,7 @@ fn add_transition_contributions(
             parents[1].helicity_identity(),
             quantum.result_spin_state,
         )?;
+        let result_flavour_flow = quantum_flow_result_flavour(quantum, &parents, catalog)?;
         let key = CurrentCoreKey::new(
             catalog_digest,
             RecurrenceNodeKind::Current,
@@ -683,9 +771,7 @@ fn add_transition_contributions(
             support,
             merged_momentum(parents[0].momentum(), parents[1].momentum())?,
             helicity_identity,
-            catalog
-                .flavour_flow(quantum.result_flavour_flow_id, "result flavour flow")?
-                .to_vec(),
+            result_flavour_flow,
             quantum.result_quantum_number_flow_id,
             coupling_orders.clone(),
             CurrentSourceBinding::None,
@@ -744,6 +830,7 @@ fn add_transition_contributions(
                 .or_insert(ExactComplexRational::ZERO),
             factor,
         )?;
+        diagnostics.contribution_count += 1;
     }
     Ok(())
 }
@@ -756,6 +843,7 @@ fn build_closures(
     color_states: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
     materialized_sectors: &BTreeSet<u32>,
+    stage_diagnostics: &[StageConstructionDiagnostics],
 ) -> RusticolResult<BTreeMap<PendingClosureKey, ExactComplexRational>> {
     let full_support = (0..process.external_legs.len() as u32).collect::<Vec<_>>();
     let mut result = BTreeMap::new();
@@ -784,6 +872,7 @@ fn build_closures(
         let anchor_count = anchor_ids.len();
         let complement_count = complement_ids.len();
         let mut state_matched_attempts = 0usize;
+        let mut closure_color_attempts = BTreeSet::new();
         for anchor_id in anchor_ids {
             for &complement_id in &complement_ids {
                 for closure in &template.closures {
@@ -820,6 +909,7 @@ fn build_closures(
                             color_states,
                             currents,
                             &mut result,
+                            &mut closure_color_attempts,
                         )?;
                     }
                 }
@@ -827,16 +917,30 @@ fn build_closures(
         }
         if !result.keys().any(|key| key.target_sector_id == sector_id) {
             let mut support_histogram = BTreeMap::<usize, usize>::new();
+            let mut support_signatures = BTreeSet::new();
             for current in currents {
                 *support_histogram
                     .entry(current.key.support_source_slots().len())
                     .or_default() += 1;
+                support_signatures.insert((
+                    current.key.support_source_slots().len(),
+                    current.key.current_state_template_id(),
+                    current.key.spin_state_class(),
+                    current.key.flavour_flow().to_vec(),
+                    current.key.quantum_number_flow_id(),
+                    current.key.coupling_orders().to_vec(),
+                ));
             }
             return Err(invalid(format!(
                 "recurrence builder found no exact closure for physical LC sector {sector_id} \
                  (anchors={anchor_count}, complement_currents={complement_count}, \
                  state_matched_attempts={state_matched_attempts}, \
-                 currents_by_support_size={support_histogram:?})"
+                 currents_by_support_size={support_histogram:?}, \
+                 stage_diagnostics={stage_diagnostics:?}, \
+                 expected_color_components={:?}, \
+                 closure_color_attempts={closure_color_attempts:?}, \
+                 support_signatures={support_signatures:?})",
+                expected_sector_components(sector, process, process_catalog)?,
             )));
         }
     }
@@ -855,6 +959,7 @@ fn add_closure_terms(
     color_states: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
     result: &mut BTreeMap<PendingClosureKey, ExactComplexRational>,
+    closure_color_attempts: &mut BTreeSet<Vec<(LCColorComponentKind, Vec<u32>)>>,
 ) -> RusticolResult<()> {
     let parents = [
         &currents[parent_ids[0] as usize].key,
@@ -921,9 +1026,15 @@ fn add_closure_terms(
                 continue;
             }
             let witness = catalog.witness(*witness_row)?;
-            let mut closed = witness.closed_components(left, right)?;
-            closed.sort_unstable();
-            if closed != expected_sector_components(sector, process, process_catalog)? {
+            let closed = witness.closed_components(left, right)?;
+            closure_color_attempts.insert(
+                closed
+                    .iter()
+                    .map(|component| (component.kind(), component.source_slots().to_vec()))
+                    .collect(),
+            );
+            if !closed_components_match_sector(&closed, sector, process, process_catalog, template)?
+            {
                 continue;
             }
             let key = PendingClosureKey {
@@ -1238,16 +1349,67 @@ fn quantum_flow_matches(
         ));
     }
     for index in 0..2 {
+        // The authenticated model contract proves that branch admission is
+        // independent of accumulated flavour and quantum-number ancestry.
+        // Those template columns describe the seed probe used to certify the
+        // branch, while state and spin remain the actual admission keys.
+        let _ = catalog.flavour_flow(flavours[index], "quantum parent flavour")?;
+        let _ = quantum_numbers[index];
         if states[index] != parents[index].current_state_template_id()
             || spins[index] != parents[index].spin_state_class()
-            || catalog.flavour_flow(flavours[index], "quantum parent flavour")?
-                != parents[index].flavour_flow()
-            || quantum_numbers[index] != parents[index].quantum_number_flow_id()
         {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+fn quantum_flow_result_flavour(
+    quantum: QuantumFlowRow,
+    parents: &[&CurrentCoreKey; 2],
+    catalog: &TemplateCatalog<'_>,
+) -> RusticolResult<Vec<i32>> {
+    let operation = catalog.string(
+        quantum.flavour_flow_operation_string_id,
+        "quantum-flow flavour operation",
+    )?;
+    let static_result = catalog.flavour_flow(
+        quantum.result_flavour_flow_id,
+        "quantum-flow result flavour",
+    )?;
+    let result_particle = *static_result
+        .last()
+        .ok_or_else(|| invalid("quantum-flow result flavour ancestry is empty"))?;
+
+    let append_result = |parent: &CurrentCoreKey| {
+        let mut result = parent.flavour_flow().to_vec();
+        if result.last().copied() != Some(result_particle) {
+            result.push(result_particle);
+        }
+        result
+    };
+
+    match operation {
+        "constant-result" => Ok(static_result.to_vec()),
+        "append-left-result" => Ok(append_result(parents[0])),
+        "append-right-result" => Ok(append_result(parents[1])),
+        "concat-left-right-result" => {
+            let mut result = Vec::with_capacity(
+                parents[0]
+                    .flavour_flow()
+                    .len()
+                    .saturating_add(parents[1].flavour_flow().len())
+                    .saturating_add(1),
+            );
+            result.extend_from_slice(parents[0].flavour_flow());
+            result.extend_from_slice(parents[1].flavour_flow());
+            result.push(result_particle);
+            Ok(result)
+        }
+        value => Err(invalid(format!(
+            "unsupported quantum-flow flavour operation {value:?}"
+        ))),
+    }
 }
 
 fn expected_sector_components(
@@ -1284,8 +1446,38 @@ fn expected_sector_components(
             }
         }
     }
-    result.sort_unstable();
     Ok(result)
+}
+
+fn closed_components_match_sector(
+    closed: &[LCColorComponent],
+    sector: ProcessPhysicalLCSectorRow,
+    process: &OwnedRecurrenceProcessInput,
+    catalog: &ProcessCatalog<'_>,
+    _template: &OwnedRecurrenceTemplateInput,
+) -> RusticolResult<bool> {
+    let expected = expected_sector_components(sector, process, catalog)?;
+    if sector.kind()? != ProcessLCSectorKind::OpenLines {
+        return Ok(closed == expected);
+    }
+    if closed.len() != expected.len() {
+        return Ok(false);
+    }
+
+    // Independent open strings form an unordered physical forest at closure,
+    // even though their construction order remains part of every partial-current
+    // identity. Match the exact line blocks without canonicalizing the states so
+    // alternative multi-line closure partners survive as distinct terms.
+    let mut matched = vec![false; expected.len()];
+    for component in closed {
+        let Some(index) = expected.iter().enumerate().find_map(|(index, candidate)| {
+            (!matched[index] && candidate == component).then_some(index)
+        }) else {
+            return Ok(false);
+        };
+        matched[index] = true;
+    }
+    Ok(true)
 }
 
 fn materialized_sector_ids(

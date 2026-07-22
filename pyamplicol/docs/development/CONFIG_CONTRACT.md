@@ -71,19 +71,19 @@ runtime-mutable.
 - `workspace_mib: int = 256`
 
 Eager mode requires a prepared model bundle before DAG construction. A
-`built-in-sm` source resolves automatically to the wheel-owned JIT O3 pack for
-the host's `x86_64` or `aarch64` architecture class; other models and built-in
-C++/ASM execution require an explicit prepared path. The prepared pack is
+`built-in-sm` source resolves automatically to the wheel-owned portable
+`built-in-sm-jit-o2` pack; other models and built-in C++/ASM execution require
+an explicit prepared path. The prepared pack is
 authoritative for backend and code-shaping optimization settings. The runtime
 may reduce `point_tile_size` to honor the workspace limit, but never increases
 it.
 
 `.pyAmplicol-model.json` IR is architecture-independent. SymJIT application
-storage-v3 prepared packs are architecture-class-specific, although
-same-architecture transfer across supported operating systems is tested. Pack
-target validation precedes DAG construction and SymJIT loading, so a cross-
-architecture mismatch cannot reach dependency code. A future SymJIT storage ABI
-may relax this restriction without changing the prepared-bundle interface.
+storage-v3 prepared packs use optimization level 2 and are portable across the
+supported `x86_64` and `aarch64` targets. Loading rebuilds executable code for
+the receiving CPU. Prepared-pack compilation forces O2 and records any
+requested-to-effective adjustment. C++ and ASM prepared packs remain
+target-native.
 
 ### Recurrence Execution
 
@@ -92,7 +92,8 @@ may relax this restriction without changing the prepared-bundle interface.
 
 Recurrence mode is opt-in; compiled execution remains the global default. The
 runtime may reduce `point_tile_size` to honor the recurrence workspace limit,
-but never increases it.
+but never increases it. Recurrence JIT kernels use the same portable prepared
+O2 contract as eager execution.
 
 ### Evaluator Optimization
 
@@ -110,6 +111,9 @@ but never increases it.
 
 JIT artifacts always use indirect SymJIT translation because direct
 translation is not a stable serialized-application ABI.
+The default above applies to process-local compiled DAG evaluators. Prepared
+JIT kernel packs used by eager and recurrence execution force optimization
+level 2 to preserve their cross-architecture storage contract.
 
 ### C++
 

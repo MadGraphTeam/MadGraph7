@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from .base import Model, RecurrenceQuantumFlowContract, Vertex
+from .lc_color_port_wiring import compile_lc_color_port_wirings
 from .prepared_catalog import (
     PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF,
     PreparedClosureBinding,
@@ -1107,9 +1108,7 @@ def _prepared_full_state_family_is_complete(
     particle_id: int,
     source_state: CurrentStateTemplateV1,
     full_state_template: CurrentStateTemplateV1,
-    states_by_particle_chirality: Mapping[
-        tuple[int, int], CurrentStateTemplateV1
-    ],
+    states_by_particle_chirality: Mapping[tuple[int, int], CurrentStateTemplateV1],
 ) -> bool:
     if source_state.template_id == full_state_template.template_id:
         return True
@@ -1320,7 +1319,7 @@ def _build_transitions(
     candidates: list[
         tuple[
             str,
-            tuple[int, str],
+            tuple[int, int, str],
             TransitionTemplateV1,
             QuantumFlowTemplateV1,
             ColorContractionTemplateV1,
@@ -1451,7 +1450,7 @@ def _build_transitions(
     selected: dict[
         str,
         tuple[
-            tuple[int, str],
+            tuple[int, int, str],
             TransitionTemplateV1,
             QuantumFlowTemplateV1,
             ColorContractionTemplateV1,
@@ -1558,6 +1557,17 @@ def _canonical_transition_alias_key(
                 "result_component_role": witness.result_component_role,
                 "result_shape_kind": witness.result_shape_kind,
                 "exact_factor": witness.exact_factor.to_dict(),
+                "input_port_pairings": [
+                    [
+                        [inverse_order[left[0]], left[1]],
+                        [inverse_order[right[0]], right[1]],
+                    ]
+                    for left, right in witness.input_port_pairings
+                ],
+                "result_port_bindings": [
+                    [inverse_order[parent], port]
+                    for parent, port in witness.result_port_bindings
+                ],
             }
         )
     color_witnesses.sort(key=_canonical_json)
@@ -1567,9 +1577,7 @@ def _canonical_transition_alias_key(
             "kernel_id": int(kernel.kernel_id),
             "callable_signature": str(kernel.canonical_signature),
         },
-        "input_state_template_ids": reordered(
-            transition.input_state_template_ids
-        ),
+        "input_state_template_ids": reordered(transition.input_state_template_ids),
         "result_state_template_id": transition.result_state_template_id,
         "quantum_flow": {
             "input_state_template_ids": reordered(flow.input_state_template_ids),
@@ -1581,15 +1589,11 @@ def _canonical_transition_alias_key(
                 [list(item) for item in value]
                 for value in reordered(flow.input_quantum_number_flows)
             ],
-            "flavour_flow_operation": _canonical_flavour_flow_operation(
-                flow.flavour_flow_operation,
-                order,
-            ),
+            **_canonical_flavour_flow_payload(flow, color, order),
             "quantum_number_flow_operation": flow.quantum_number_flow_operation,
             "coupling_orders": [list(item) for item in flow.coupling_orders],
             "result_state_template_id": flow.result_state_template_id,
             "result_spin_state": flow.result_spin_state,
-            "result_flavour_flow": list(flow.result_flavour_flow),
             "result_quantum_number_flow": [
                 list(item) for item in flow.result_quantum_number_flow
             ],
@@ -1627,19 +1631,76 @@ def _canonical_transition_alias_key(
     return _canonical_json(payload)
 
 
-def _canonical_flavour_flow_operation(
-    operation: FlavourFlowOperationV1,
+def _canonical_flavour_flow_payload(
+    flow: QuantumFlowTemplateV1,
+    color: ColorContractionTemplateV1,
     canonical_input_order: tuple[int, int],
-) -> str:
-    if canonical_input_order == (0, 1):
-        return operation
-    if operation == "append-left-result":
-        return "append-right-result"
-    if operation == "append-right-result":
-        return "append-left-result"
-    if operation == "concat-left-right-result":
-        return "concat-right-left-result"
-    return operation
+) -> dict[str, object]:
+    """Express flavour ancestry in certified canonical input coordinates."""
+
+    inverse_order = tuple(canonical_input_order.index(index) for index in (0, 1))
+    inputs = tuple(flow.input_flavour_flows[index] for index in canonical_input_order)
+    operation = flow.flavour_flow_operation
+    if operation == "constant-result":
+        return {
+            "flavour_flow_operation": operation,
+            "result_flavour_flow": list(flow.result_flavour_flow),
+        }
+
+    if not flow.result_flavour_flow:
+        raise RecurrenceTemplateError(
+            "recurrence quantum-flow result ancestry cannot be empty"
+        )
+    result_particle = flow.result_flavour_flow[-1]
+    if operation in {"append-left-result", "append-right-result"}:
+        concrete_parent = 0 if operation == "append-left-result" else 1
+        canonical_parent = inverse_order[concrete_parent]
+        ancestry = inputs[canonical_parent]
+        result = (
+            ancestry
+            if ancestry and ancestry[-1] == result_particle
+            else (*ancestry, result_particle)
+        )
+        return {
+            "flavour_flow_operation": f"append-input-{canonical_parent}-result",
+            "result_flavour_flow": list(result),
+        }
+
+    if operation != "concat-left-right-result":
+        raise RecurrenceTemplateError(
+            f"unsupported recurrence flavour operation {operation!r}"
+        )
+
+    parent_orders: set[tuple[int, int]] = set()
+    for witness in color.transition_witnesses:
+        concrete_order: list[int] = []
+        for left, right in witness.input_port_pairings:
+            concrete_order.extend((left[0], right[0]))
+        concrete_order.extend(parent for parent, _ in witness.result_port_bindings)
+        unique_order = tuple(dict.fromkeys(concrete_order))
+        if len(unique_order) == 2 and set(unique_order) == {0, 1}:
+            parent_orders.add(tuple(inverse_order[index] for index in unique_order))
+    canonical_parent_order = (
+        next(iter(parent_orders))
+        if len(parent_orders) == 1
+        else (0, 1)
+    )
+    result = (
+        *(
+            value
+            for parent in canonical_parent_order
+            for value in inputs[parent]
+        ),
+        result_particle,
+    )
+    return {
+        "flavour_flow_operation": (
+            "concat-inputs-"
+            + "-".join(str(index) for index in canonical_parent_order)
+            + "-result"
+        ),
+        "result_flavour_flow": list(result),
+    }
 
 
 def _canonical_momentum_semantics(
@@ -1659,10 +1720,15 @@ def _transition_alias_preference(
     model: Model,
     binding: PreparedVertexBinding,
     transition: TransitionTemplateV1,
-) -> tuple[int, str]:
+) -> tuple[int, int, str]:
+    canonical_order_penalty = int(tuple(binding.canonical_input_order) != (0, 1))
     left_colored = abs(int(model.color_rep(binding.left_state.particle_id))) != 1
     right_singlet = abs(int(model.color_rep(binding.right_state.particle_id))) == 1
-    return (0 if left_colored and right_singlet else 1, transition.template_id)
+    return (
+        0 if left_colored and right_singlet else 1,
+        canonical_order_penalty,
+        transition.template_id,
+    )
 
 
 def _quantum_flow_template(
@@ -2182,45 +2248,119 @@ def _color_template(
         if closure
         else model.recurrence_lc_color_shape_contract(vertex.particles[2])
     )
-    witnesses = tuple(
-        LCColorTransitionWitnessV1(
-            input_shape_kinds=input_shapes,  # type: ignore[arg-type]
-            input_permutation=witness.input_permutation,
-            reverse_parent_mask=witness.reverse_parent_mask,
-            component_operation=witness.component_operation,
-            result_component_kind=witness.result_component_kind,
-            result_component_role=witness.result_component_role,
-            result_shape_kind=result_shape,
-            exact_factor=_exact_pair(
-                witness.exact_factor,
-                f"vertex kind {vertex.kind} LC color witness factor",
-            ),
-            proof_digest=(
-                witness.proof_digest
-                or _digest(
-                    {
-                        "proof_subject": proof_subject,
-                        "rule_kind": structure,
-                        "representations": representations,
-                        "closure": closure,
-                        "input_shapes": input_shapes,
-                        "result_shape": result_shape,
-                        "input_permutation": witness.input_permutation,
-                        "reverse_parent_mask": witness.reverse_parent_mask,
-                        "operation": witness.component_operation,
-                        "result_component_kind": witness.result_component_kind,
-                        "result_component_role": witness.result_component_role,
-                        "factor": _exact_pair(
-                            witness.exact_factor,
-                            f"vertex kind {vertex.kind} LC color witness proof factor",
-                        ).to_dict(),
-                    }
-                )
-            ),
-            provenance=witness.provenance,
-        )
-        for witness in witness_contracts
+    port_wirings = compile_lc_color_port_wirings(
+        "direct-closure" if closure else structure,  # type: ignore[arg-type]
+        representations[:2] if closure else representations,
+        (
+            representations[:2]
+            if closure
+            else (
+                *representations[:2],
+                -representations[2]
+                if abs(representations[2]) == 3
+                else representations[2],
+            )
+        ),
     )
+    if len(port_wirings) != len(witness_contracts):
+        raise RecurrenceTemplateError(
+            f"vertex kind {vertex.kind} exposes {len(witness_contracts)} LC witness "
+            f"terms but its certified port compiler produced {len(port_wirings)}"
+        )
+    witnesses_list: list[LCColorTransitionWitnessV1] = []
+    for witness, wiring in zip(witness_contracts, port_wirings, strict=True):
+        exact_factor = _exact_pair(
+            witness.exact_factor,
+            f"vertex kind {vertex.kind} LC color witness factor",
+        )
+        expected_port_factor = (
+            ExactComplexRationalV1.one()
+            if wiring.exact_factor == 1
+            else ExactComplexRationalV1(
+                real_numerator=-1,
+                real_denominator=1,
+                imag_numerator=0,
+                imag_denominator=1,
+            )
+        )
+        if exact_factor != expected_port_factor:
+            raise RecurrenceTemplateError(
+                f"vertex kind {vertex.kind} LC witness factor does not match its "
+                "certified port-wiring term"
+            )
+        port_payload = {
+            "input_pairings": [
+                [
+                    [
+                        pairing.fundamental.parent_index,
+                        pairing.fundamental.local_port_index,
+                    ],
+                    [
+                        pairing.antifundamental.parent_index,
+                        pairing.antifundamental.local_port_index,
+                    ],
+                ]
+                for pairing in wiring.input_pairings
+            ],
+            "result_port_bindings": [
+                [port.parent_index, port.local_port_index]
+                for port in wiring.result_port_bindings
+            ],
+            "term_index": wiring.term_index,
+        }
+        model_proof_digest = witness.proof_digest or _digest(
+            {
+                "proof_subject": proof_subject,
+                "rule_kind": structure,
+                "representations": representations,
+                "closure": closure,
+                "input_shapes": input_shapes,
+                "result_shape": result_shape,
+                "input_permutation": witness.input_permutation,
+                "reverse_parent_mask": witness.reverse_parent_mask,
+                "operation": witness.component_operation,
+                "result_component_kind": witness.result_component_kind,
+                "result_component_role": witness.result_component_role,
+                "factor": exact_factor.to_dict(),
+            }
+        )
+        witnesses_list.append(
+            LCColorTransitionWitnessV1(
+                input_shape_kinds=input_shapes,  # type: ignore[arg-type]
+                input_permutation=witness.input_permutation,
+                reverse_parent_mask=witness.reverse_parent_mask,
+                component_operation=witness.component_operation,
+                result_component_kind=witness.result_component_kind,
+                result_component_role=witness.result_component_role,
+                result_shape_kind=result_shape,
+                exact_factor=exact_factor,
+                proof_digest=_digest(
+                    {
+                        "model_proof_digest": model_proof_digest,
+                        "port_wiring": port_payload,
+                    }
+                ),
+                provenance=witness.provenance,
+                input_port_pairings=tuple(
+                    (
+                        (
+                            pairing.fundamental.parent_index,
+                            pairing.fundamental.local_port_index,
+                        ),
+                        (
+                            pairing.antifundamental.parent_index,
+                            pairing.antifundamental.local_port_index,
+                        ),
+                    )
+                    for pairing in wiring.input_pairings
+                ),
+                result_port_bindings=tuple(
+                    (port.parent_index, port.local_port_index)
+                    for port in wiring.result_port_bindings
+                ),
+            )
+        )
+    witnesses = tuple(witnesses_list)
     payload = {
         "rule_kind": structure,
         "input_representations": representations[:2],
@@ -2666,7 +2806,47 @@ def _build_direct_closures(
                 semantic_template_ids=(record.template_id,),
             )
         )
-    return tuple(records), tuple(colors.values()), tuple(evaluator_bindings)
+    # Model contraction inventories expose both orientations of a direct
+    # bilinear. Once exact LC port wiring is attached, both orientations can
+    # close the same physical current pair. They are aliases, not two terms in
+    # the amplitude. Coalesce only when the complete process-independent
+    # callable and contraction contracts agree after forgetting parent order.
+    selected: dict[
+        str,
+        tuple[str, ClosureTemplateV1, EvaluatorBindingV1],
+    ] = {}
+    for record, binding in zip(records, evaluator_bindings, strict=True):
+        alias_key = _canonical_json(
+            {
+                "callable_signature": binding.callable_signature,
+                "chirality_relation": record.chirality_relation,
+                "component_coefficients": [
+                    value.to_dict() for value in record.component_coefficients
+                ],
+                "input_state_template_ids": sorted(record.input_state_template_ids),
+                "metric_signature": record.metric_signature,
+                "projection": record.projection,
+            }
+        )
+        preference = _canonical_json(
+            {
+                "input_state_template_ids": record.input_state_template_ids,
+                "template_id": record.template_id,
+            }
+        )
+        existing = selected.get(alias_key)
+        if existing is None or preference < existing[0]:
+            selected[alias_key] = (preference, record, binding)
+
+    selected_records = tuple(selected[key][1] for key in sorted(selected))
+    selected_bindings = tuple(selected[key][2] for key in sorted(selected))
+    selected_color_ids = {
+        record.color_contraction_template_id for record in selected_records
+    }
+    selected_colors = tuple(
+        color for color_id, color in colors.items() if color_id in selected_color_ids
+    )
+    return selected_records, selected_colors, selected_bindings
 
 
 def _direct_closure_color_template(
@@ -2698,6 +2878,27 @@ def _direct_closure_color_template(
             "direct current contraction has unsupported LC closure components "
             f"{representations!r}"
         )
+    (port_wiring,) = compile_lc_color_port_wirings(
+        "direct-closure",
+        representations,
+        representations,
+    )
+    port_payload = {
+        "input_pairings": [
+            [
+                [
+                    pairing.fundamental.parent_index,
+                    pairing.fundamental.local_port_index,
+                ],
+                [
+                    pairing.antifundamental.parent_index,
+                    pairing.antifundamental.local_port_index,
+                ],
+            ]
+            for pairing in port_wiring.input_pairings
+        ],
+        "result_port_bindings": [],
+    }
     witness = LCColorTransitionWitnessV1(
         input_shape_kinds=(
             model.recurrence_lc_color_shape_contract(left_particle_id),
@@ -2710,7 +2911,23 @@ def _direct_closure_color_template(
         result_component_role="none",
         result_shape_kind=None,
         exact_factor=ExactComplexRationalV1.one(),
-        proof_digest=_digest({**payload, "operation": "close"}),
+        proof_digest=_digest(
+            {**payload, "operation": "close", "port_wiring": port_payload}
+        ),
+        input_port_pairings=tuple(
+            (
+                (
+                    pairing.fundamental.parent_index,
+                    pairing.fundamental.local_port_index,
+                ),
+                (
+                    pairing.antifundamental.parent_index,
+                    pairing.antifundamental.local_port_index,
+                ),
+            )
+            for pairing in port_wiring.input_pairings
+        ),
+        result_port_bindings=(),
     )
     payload["transition_witnesses"] = [witness.to_dict()]
     return ColorContractionTemplateV1(

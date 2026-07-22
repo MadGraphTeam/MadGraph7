@@ -46,9 +46,9 @@ def test_prepared_model_bootstrap_strips_only_generated_payloads(
     root.mkdir(parents=True)
     package = root / "__init__.py"
     package.write_text("# package\n", encoding="utf-8")
-    metadata = root / "built-in-sm-jit-o3-aarch64.metadata.json"
+    metadata = root / "built-in-sm-jit-o2-aarch64.metadata.json"
     metadata.write_text("{}\n", encoding="utf-8")
-    bundle = root / "built-in-sm-jit-o3-aarch64.pyamplicol-model"
+    bundle = root / "built-in-sm-jit-o2-aarch64.pyamplicol-model"
     bundle.write_bytes(b"bundle")
 
     backend._strip_prepared_model_payloads(tmp_path)

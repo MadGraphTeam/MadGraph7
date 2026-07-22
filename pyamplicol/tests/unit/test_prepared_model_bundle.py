@@ -75,6 +75,8 @@ def _kernel(
         exact_evaluator_state_path=f"{root}/exact.evaluator.bin",
         f64_evaluator_manifest={
             "kind": "symjit-application-evaluator",
+            "optimization_level": 2,
+            "settings": {"jit_optimization_level": 2},
             "input_len": 2,
             "output_len": 1,
             "application_path": f"{root}/application.symjit",
@@ -89,7 +91,10 @@ def _pack(
 ) -> PreparedKernelPack:
     return PreparedKernelPack(
         backend="jit",
-        optimization_settings={"optimization_level": 3, "cpe_rounds": "default"},
+        optimization_settings={
+            "jit_optimization_level": 2,
+            "cpe_rounds": "default",
+        },
         producer={"distribution": "pyamplicol", "version": "0.1.0"},
         dependency_abis={
             "symbolica_serialization": "symbolica-community-v1",
@@ -103,7 +108,7 @@ def _pack(
             "portable": True,
             "word_bits": 64,
             "endianness": "little",
-            "target_triple": "portable-symjit-mir",
+            "target_triple": "symjit-storage-v3-portable",
             "cpu_features": [],
         },
         resolver_manifest={
@@ -116,7 +121,7 @@ def _pack(
 
 
 def _block_variant(kernel: PreparedKernelRecord) -> PreparedKernelVariantRecord:
-    settings = {"optimization_level": 3, "cpe_rounds": "default"}
+    settings = {"jit_optimization_level": 2, "cpe_rounds": "default"}
     root = f"kernels/{kernel.kernel_id}/variants/independent-block-4"
     return PreparedKernelVariantRecord(
         variant_id="independent-block-4",
@@ -148,6 +153,8 @@ def _block_variant(kernel: PreparedKernelRecord) -> PreparedKernelVariantRecord:
         ),
         f64_evaluator_manifest={
             "kind": "symjit-application-evaluator",
+            "optimization_level": 2,
+            "settings": {"jit_optimization_level": 2},
             "input_len": 4 * kernel.input_arity,
             "output_len": 4 * kernel.output_arity,
             "application_path": f"{root}/application.symjit",

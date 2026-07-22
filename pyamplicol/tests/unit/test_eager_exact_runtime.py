@@ -130,9 +130,12 @@ def _kernel(
         ),
         exact_evaluator_state_path=exact_path,
         f64_evaluator_manifest={
-            "kind": "test-evaluator",
+            "kind": "symjit-application-evaluator",
             "input_len": len(contracts),
             "output_len": len(output_layout),
+            "optimization_level": 2,
+            "settings": {"jit_optimization_level": 2},
+            "application_path": f"kernels/{kernel_id:06d}/application.symjit",
             "evaluator_state_path": exact_path,
         },
     )
@@ -412,7 +415,7 @@ def _build_artifact(
     ) + (() if parameter_kernel is None else (parameter_kernel,))
     pack = PreparedKernelPack(
         backend="jit",
-        optimization_settings={"optimization_level": 3},
+        optimization_settings={"jit_optimization_level": 2},
         producer={"distribution": "pyamplicol", "version": "test"},
         dependency_abis={"symbolica_serialization": "test"},
         provenance={"compiled_model": "test"},
@@ -420,7 +423,7 @@ def _build_artifact(
             "portable": True,
             "word_bits": 64,
             "endianness": "little",
-            "target_triple": "portable-symjit-mir",
+            "target_triple": "symjit-storage-v3-portable",
             "cpu_features": [],
         },
         resolver_manifest={

@@ -25,14 +25,14 @@ def test_canonical_architecture_aliases(machine: str, expected: str) -> None:
     assert canonical_architecture(machine) == expected
 
 
-def test_symjit_storage_v3_target_is_architecture_specific() -> None:
+def test_symjit_storage_v3_target_is_cross_architecture_portable() -> None:
     target = symjit_storage_v3_target(machine="arm64")
 
     assert target == {
-        "portable": False,
+        "portable": True,
         "word_bits": 64,
         "endianness": "little",
-        "target_triple": "symjit-storage-v3-aarch64",
+        "target_triple": "symjit-storage-v3-portable",
         "cpu_features": [],
     }
 
@@ -57,17 +57,30 @@ def test_prepared_jit_target_accepts_same_architecture_across_os() -> None:
     )
 
 
-def test_prepared_jit_target_rejects_cross_architecture() -> None:
+def test_prepared_jit_target_accepts_cross_architecture() -> None:
     target = symjit_storage_v3_target(machine="arm64")
 
-    with pytest.raises(PreparedTargetError, match=r"pack=.*aarch64.*host=.*x86_64"):
+    validate_prepared_target(
+        target,
+        backend="jit",
+        symjit_application_abi=SYMJIT_STORAGE_V3_ABI,
+        machine="x86_64",
+        word_bits=64,
+        endianness="little",
+    )
+
+
+def test_prepared_jit_target_rejects_architecture_scoped_legacy_target() -> None:
+    target = symjit_storage_v3_target(machine="arm64")
+    target["portable"] = False
+    target["target_triple"] = "symjit-storage-v3-aarch64"
+
+    with pytest.raises(PreparedTargetError, match="optimization level 2"):
         validate_prepared_target(
             target,
             backend="jit",
             symjit_application_abi=SYMJIT_STORAGE_V3_ABI,
-            machine="x86_64",
-            word_bits=64,
-            endianness="little",
+            machine="arm64",
         )
 
 

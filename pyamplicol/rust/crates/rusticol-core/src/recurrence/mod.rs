@@ -16,7 +16,8 @@ pub mod template;
 pub use builder::AuthenticatedRecurrenceBuilderInput;
 pub use color::{
     DynamicLCColorState, DynamicLCColorStateInterner, LCColorComponent, LCColorComponentKind,
-    LCColorComponentOperation, LCColorComponentRole, LCColorSourceSeed, LCColorSourceSeedOperation,
+    LCColorComponentOperation, LCColorComponentRole, LCColorEndpoint, LCColorParentPort,
+    LCColorPortBinding, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
     LCColorTransitionWitness,
 };
 pub use exact::{ExactComplexRational, ExactRational};

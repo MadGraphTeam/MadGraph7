@@ -155,6 +155,8 @@ def _color_template() -> ColorContractionTemplateV1:
                 result_shape_kind="fundamental-open-string",
                 exact_factor=ExactComplexRationalV1.one(),
                 proof_digest=_WITNESS,
+                input_port_pairings=(((0, 0), (1, 1)),),
+                result_port_bindings=((1, 0),),
             ),
         ),
     )
@@ -733,7 +735,7 @@ def test_native_builder_composite_authentication_is_warmup_only() -> None:
                 public_id="flow:1,2",
                 kind="open-lines",
                 closure_source_slot=1,
-                closure_proof_algorithm="canonical-lc-closure-anchor-v1",
+                closure_proof_algorithm="canonical-lc-closure-anchor-v2",
                 closure_proof_digest="9" * 64,
                 open_strings=(RecurrenceLCOpenStringV1(0, 1),),
                 word_source_slots=(0, 1),

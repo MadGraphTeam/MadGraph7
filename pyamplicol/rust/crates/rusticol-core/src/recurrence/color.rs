@@ -121,9 +121,18 @@ impl LCColorSourceSeed {
         })
     }
 
-    pub fn instantiate(self, source_slot: u32) -> RusticolResult<DynamicLCColorState> {
+    pub fn instantiate(
+        self,
+        source_slot: u32,
+        color_representation: i32,
+    ) -> RusticolResult<DynamicLCColorState> {
         match self.operation {
             LCColorSourceSeedOperation::Empty => {
+                if color_representation != 1 {
+                    return Err(invalid(
+                        "an empty LC source seed requires the singlet representation",
+                    ));
+                }
                 DynamicLCColorState::new(self.output_color_shape_id, None, Vec::new())
             }
             LCColorSourceSeedOperation::Singleton => {
@@ -132,8 +141,29 @@ impl LCColorSourceSeed {
                         .expect("validated singleton component kind"),
                     vec![source_slot],
                 )?;
-                let active = (self.component_role == LCColorComponentRole::Active).then_some(0);
-                DynamicLCColorState::new(self.output_color_shape_id, active, vec![component])
+                let result_port_bindings = match color_representation {
+                    3 => vec![LCColorPortBinding::new(0, LCColorEndpoint::Back)],
+                    -3 => vec![LCColorPortBinding::new(0, LCColorEndpoint::Front)],
+                    8 => vec![
+                        LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                        LCColorPortBinding::new(0, LCColorEndpoint::Front),
+                    ],
+                    value => {
+                        return Err(invalid(format!(
+                            "a singleton LC source seed has unsupported representation {value}",
+                        )));
+                    }
+                };
+                if self.component_role != LCColorComponentRole::Active {
+                    return Err(invalid(
+                        "a colored LC source seed must expose active result ports",
+                    ));
+                }
+                DynamicLCColorState::new_port_wired(
+                    self.output_color_shape_id,
+                    result_port_bindings,
+                    vec![component],
+                )
             }
         }
     }
@@ -148,6 +178,299 @@ impl LCColorSourceSeed {
 pub struct LCColorComponent {
     kind: LCColorComponentKind,
     source_slots: Box<[u32]>,
+}
+
+/// One endpoint of an ordered LC strand.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum LCColorEndpoint {
+    Front = 0,
+    Back = 1,
+}
+
+impl LCColorEndpoint {
+    const fn reversed(self) -> Self {
+        match self {
+            Self::Front => Self::Back,
+            Self::Back => Self::Front,
+        }
+    }
+
+    fn source_slot(self, component: &LCColorComponent) -> RusticolResult<u32> {
+        match self {
+            Self::Front => component.source_slots().first().copied(),
+            Self::Back => component.source_slots().last().copied(),
+        }
+        .ok_or_else(|| invalid("an LC color result port references an empty component"))
+    }
+}
+
+/// Binding from one ordered current-result color port to a strand endpoint.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct LCColorPortBinding {
+    component_index: u32,
+    endpoint: LCColorEndpoint,
+}
+
+impl LCColorPortBinding {
+    pub const fn new(component_index: u32, endpoint: LCColorEndpoint) -> Self {
+        Self {
+            component_index,
+            endpoint,
+        }
+    }
+
+    pub const fn component_index(self) -> u32 {
+        self.component_index
+    }
+
+    pub const fn endpoint(self) -> LCColorEndpoint {
+        self.endpoint
+    }
+}
+
+/// Reference to one result port of one of the two transition parents.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct LCColorParentPort {
+    parent_index: u8,
+    port_index: u8,
+}
+
+impl LCColorParentPort {
+    pub fn new(parent_index: u8, port_index: u8) -> RusticolResult<Self> {
+        if parent_index > 1 {
+            return Err(invalid(
+                "LC color parent-port parent index must be zero or one",
+            ));
+        }
+        Ok(Self {
+            parent_index,
+            port_index,
+        })
+    }
+
+    const fn parent_index(self) -> usize {
+        self.parent_index as usize
+    }
+
+    const fn port_index(self) -> usize {
+        self.port_index as usize
+    }
+}
+
+/// Exact port wiring certified for one local LC tensor term.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct LCColorPortWiring {
+    component_parent_order: [u8; 2],
+    input_pairings: Box<[[LCColorParentPort; 2]]>,
+    result_port_bindings: Box<[LCColorParentPort]>,
+}
+
+impl LCColorPortWiring {
+    pub fn new(
+        component_parent_order: [u8; 2],
+        input_pairings: Vec<[LCColorParentPort; 2]>,
+        result_port_bindings: Vec<LCColorParentPort>,
+    ) -> RusticolResult<Self> {
+        if component_parent_order != [0, 1] && component_parent_order != [1, 0] {
+            return Err(invalid(
+                "LC color component parent order must be [0, 1] or [1, 0]",
+            ));
+        }
+        let mut consumed = BTreeSet::new();
+        for pairing in &input_pairings {
+            if pairing[0] == pairing[1] {
+                return Err(invalid("an LC color port cannot be paired with itself"));
+            }
+            for port in pairing {
+                if !consumed.insert(*port) {
+                    return Err(invalid(
+                        "an LC color parent port is consumed by more than one pairing",
+                    ));
+                }
+            }
+        }
+        for port in &result_port_bindings {
+            if !consumed.insert(*port) {
+                return Err(invalid(
+                    "an LC color parent port is both paired and exposed as a result port",
+                ));
+            }
+        }
+        Ok(Self {
+            component_parent_order,
+            input_pairings: input_pairings.into_boxed_slice(),
+            result_port_bindings: result_port_bindings.into_boxed_slice(),
+        })
+    }
+
+    pub fn apply(
+        &self,
+        left: &DynamicLCColorState,
+        right: &DynamicLCColorState,
+        result_color_shape_id: u32,
+    ) -> RusticolResult<DynamicLCColorState> {
+        let parents = [left, right];
+        let mut components = Vec::<Option<LCColorComponent>>::new();
+        let mut parent_ports = [Vec::new(), Vec::new()];
+        for parent_index in self.component_parent_order {
+            let parent = parents[parent_index as usize];
+            let offset = components.len() as u32;
+            components.extend(parent.components().iter().cloned().map(Some));
+            parent_ports[parent_index as usize] = parent
+                .result_port_bindings()
+                .iter()
+                .map(|binding| {
+                    Some(LCColorPortBinding::new(
+                        binding.component_index() + offset,
+                        binding.endpoint(),
+                    ))
+                })
+                .collect();
+        }
+
+        let expected_parent_ports = parent_ports[0].len() + parent_ports[1].len();
+        if expected_parent_ports != self.input_pairings.len() * 2 + self.result_port_bindings.len()
+        {
+            return Err(invalid(
+                "LC color wiring does not consume every parent result port exactly once",
+            ));
+        }
+        for pairing in self.input_pairings.iter().copied() {
+            let left_binding = take_parent_port(pairing[0], &mut parent_ports)?;
+            let right_binding = take_parent_port(pairing[1], &mut parent_ports)?;
+            join_color_endpoints(
+                &mut components,
+                &mut parent_ports,
+                left_binding,
+                right_binding,
+            )?;
+        }
+        let mut result_ports = Vec::with_capacity(self.result_port_bindings.len());
+        for reference in self.result_port_bindings.iter().copied() {
+            result_ports.push(take_parent_port(reference, &mut parent_ports)?);
+        }
+        if parent_ports.iter().flatten().any(Option::is_some) {
+            return Err(invalid(
+                "LC color wiring leaves an unconsumed parent result port",
+            ));
+        }
+
+        let mut remap = vec![u32::MAX; components.len()];
+        let mut compact = Vec::new();
+        for (old_index, component) in components.into_iter().enumerate() {
+            if let Some(component) = component {
+                remap[old_index] = compact.len() as u32;
+                compact.push(component);
+            }
+        }
+        for binding in &mut result_ports {
+            binding.component_index = *remap
+                .get(binding.component_index as usize)
+                .ok_or_else(|| invalid("LC color result port references an absent component"))?;
+            if binding.component_index == u32::MAX {
+                return Err(invalid(
+                    "LC color result port references a consumed component",
+                ));
+            }
+        }
+        DynamicLCColorState::new_port_wired(result_color_shape_id, result_ports, compact)
+    }
+}
+
+fn take_parent_port(
+    reference: LCColorParentPort,
+    parent_ports: &mut [Vec<Option<LCColorPortBinding>>; 2],
+) -> RusticolResult<LCColorPortBinding> {
+    parent_ports
+        .get_mut(reference.parent_index())
+        .and_then(|ports| ports.get_mut(reference.port_index()))
+        .ok_or_else(|| invalid("LC color wiring references an absent parent result port"))?
+        .take()
+        .ok_or_else(|| invalid("LC color wiring consumes one parent result port twice"))
+}
+
+fn join_color_endpoints(
+    components: &mut [Option<LCColorComponent>],
+    parent_ports: &mut [Vec<Option<LCColorPortBinding>>; 2],
+    left_binding: LCColorPortBinding,
+    right_binding: LCColorPortBinding,
+) -> RusticolResult<()> {
+    let left_index = left_binding.component_index() as usize;
+    let right_index = right_binding.component_index() as usize;
+    if left_index == right_index {
+        if left_binding.endpoint() == right_binding.endpoint() {
+            return Err(invalid(
+                "LC color wiring cannot join the same endpoint of one strand",
+            ));
+        }
+        if parent_ports.iter().flatten().any(|binding| {
+            binding
+                .as_ref()
+                .is_some_and(|binding| binding.component_index() as usize == left_index)
+        }) {
+            return Err(invalid(
+                "LC color wiring closes a strand that still exposes a result port",
+            ));
+        }
+        let component = components
+            .get_mut(left_index)
+            .and_then(Option::take)
+            .ok_or_else(|| invalid("LC color wiring closes an absent strand"))?;
+        components[left_index] = Some(LCColorComponent::new(
+            LCColorComponentKind::Trace,
+            component.source_slots().to_vec(),
+        )?);
+        return Ok(());
+    }
+
+    let mut left = components
+        .get_mut(left_index)
+        .and_then(Option::take)
+        .ok_or_else(|| invalid("LC color wiring joins an absent left strand"))?;
+    let mut right = components
+        .get_mut(right_index)
+        .and_then(Option::take)
+        .ok_or_else(|| invalid("LC color wiring joins an absent right strand"))?;
+    let reverse_left = left_binding.endpoint() == LCColorEndpoint::Front;
+    let reverse_right = right_binding.endpoint() == LCColorEndpoint::Back;
+    if reverse_left {
+        left = left.reversed()?;
+    }
+    if reverse_right {
+        right = right.reversed()?;
+    }
+    let result_kind = if left.kind() == LCColorComponentKind::OpenString
+        || right.kind() == LCColorComponentKind::OpenString
+    {
+        LCColorComponentKind::OpenString
+    } else {
+        LCColorComponentKind::AdjointSegment
+    };
+    let word = left
+        .source_slots()
+        .iter()
+        .chain(right.source_slots())
+        .copied()
+        .collect();
+    let retained_index = left_index.min(right_index);
+    components[retained_index] = Some(LCColorComponent::new(result_kind, word)?);
+
+    for binding in parent_ports.iter_mut().flatten().flatten() {
+        let component_index = binding.component_index() as usize;
+        if component_index == left_index {
+            binding.component_index = retained_index as u32;
+            if reverse_left {
+                binding.endpoint = binding.endpoint.reversed();
+            }
+        } else if component_index == right_index {
+            binding.component_index = retained_index as u32;
+            if reverse_right {
+                binding.endpoint = binding.endpoint.reversed();
+            }
+        }
+    }
+    Ok(())
 }
 
 impl LCColorComponent {
@@ -195,6 +518,7 @@ impl LCColorComponent {
 pub struct DynamicLCColorState {
     output_color_shape_id: u32,
     active_component_index: Option<u32>,
+    result_port_bindings: Box<[LCColorPortBinding]>,
     components: Box<[LCColorComponent]>,
 }
 
@@ -204,33 +528,11 @@ impl DynamicLCColorState {
         active_component_index: Option<u32>,
         components: Vec<LCColorComponent>,
     ) -> RusticolResult<Self> {
-        if components.len() > u32::MAX as usize {
-            return Err(invalid("LC color forest exceeds the u32 ABI domain"));
-        }
-        let mut seen = BTreeSet::new();
-        for component in &components {
-            if component
-                .source_slots()
-                .iter()
-                .any(|slot| !seen.insert(*slot))
-            {
-                return Err(invalid(
-                    "a dynamic LC color state cannot duplicate colored source slots",
-                ));
-            }
-        }
-        if let Some(index) = active_component_index
-            && index as usize >= components.len()
-        {
-            return Err(invalid(
-                "the active LC color component index is outside the color forest",
-            ));
-        }
-        Ok(Self {
-            output_color_shape_id,
-            active_component_index,
-            components: components.into_boxed_slice(),
-        })
+        let result_port_bindings = active_component_index
+            .map(|index| LCColorPortBinding::new(index, LCColorEndpoint::Back))
+            .into_iter()
+            .collect();
+        Self::new_port_wired(output_color_shape_id, result_port_bindings, components)
     }
 
     pub const fn output_color_shape_id(&self) -> u32 {
@@ -257,14 +559,91 @@ impl DynamicLCColorState {
             .rev()
             .map(LCColorComponent::reversed)
             .collect::<RusticolResult<Vec<_>>>()?;
-        let active_component_index = self
-            .active_component_index
-            .map(|index| self.components.len() as u32 - 1 - index);
-        Self::new(
-            self.output_color_shape_id,
+        let result_port_bindings = self
+            .result_port_bindings
+            .iter()
+            .rev()
+            .map(|binding| {
+                LCColorPortBinding::new(
+                    self.components.len() as u32 - 1 - binding.component_index,
+                    binding.endpoint.reversed(),
+                )
+            })
+            .collect();
+        Self::new_port_wired(self.output_color_shape_id, result_port_bindings, components)
+    }
+
+    pub fn new_port_wired(
+        output_color_shape_id: u32,
+        result_port_bindings: Vec<LCColorPortBinding>,
+        components: Vec<LCColorComponent>,
+    ) -> RusticolResult<Self> {
+        if components.len() > u32::MAX as usize {
+            return Err(invalid("LC color forest exceeds the u32 ABI domain"));
+        }
+        let mut seen_slots = BTreeSet::new();
+        for component in &components {
+            if component
+                .source_slots()
+                .iter()
+                .any(|slot| !seen_slots.insert(*slot))
+            {
+                return Err(invalid(
+                    "a dynamic LC color state cannot duplicate colored source slots",
+                ));
+            }
+        }
+        let mut seen_ports = BTreeSet::new();
+        for binding in &result_port_bindings {
+            let component = components
+                .get(binding.component_index as usize)
+                .ok_or_else(|| invalid("LC color result port is outside the color forest"))?;
+            if component.kind() == LCColorComponentKind::Trace {
+                return Err(invalid("a closed LC trace cannot expose a result port"));
+            }
+            if !seen_ports.insert(*binding) {
+                return Err(invalid(
+                    "two LC color result ports cannot bind the same strand endpoint",
+                ));
+            }
+        }
+        let active_component_index = result_port_bindings
+            .first()
+            .map(|binding| binding.component_index())
+            .filter(|index| {
+                result_port_bindings
+                    .iter()
+                    .all(|binding| binding.component_index() == *index)
+            });
+        Ok(Self {
+            output_color_shape_id,
             active_component_index,
-            components,
-        )
+            result_port_bindings: result_port_bindings.into_boxed_slice(),
+            components: components.into_boxed_slice(),
+        })
+    }
+
+    pub fn result_port_bindings(&self) -> &[LCColorPortBinding] {
+        &self.result_port_bindings
+    }
+
+    /// Source lineage exposed by this current's ordered result color ports.
+    ///
+    /// Closed neutral currents deliberately return an empty lineage.  Open
+    /// fermion and adjoint currents retain only the source endpoints that can
+    /// flow into a later recurrence, rather than the history of already closed
+    /// quark lines used to construct them.
+    pub fn result_port_lineage_source_slots(&self) -> RusticolResult<Vec<u32>> {
+        self.result_port_bindings
+            .iter()
+            .map(|binding| {
+                let component = self
+                    .components
+                    .get(binding.component_index() as usize)
+                    .ok_or_else(|| invalid("LC color result-port component disappeared"))?;
+                binding.endpoint().source_slot(component)
+            })
+            .collect()
     }
 }
 
@@ -344,6 +723,7 @@ pub struct LCColorTransitionWitness {
     result_component_kind: Option<LCColorComponentKind>,
     result_component_role: LCColorComponentRole,
     result_color_shape_id: Option<u32>,
+    port_wiring: LCColorPortWiring,
     exact_factor: ExactComplexRational,
     proof_digest: SemanticDigest,
 }
@@ -357,6 +737,7 @@ impl LCColorTransitionWitness {
         result_component_kind: Option<LCColorComponentKind>,
         result_component_role: LCColorComponentRole,
         result_color_shape_id: Option<u32>,
+        port_wiring: LCColorPortWiring,
         exact_factor: ExactComplexRational,
         proof_digest: SemanticDigest,
     ) -> RusticolResult<Self> {
@@ -423,6 +804,7 @@ impl LCColorTransitionWitness {
             result_component_kind,
             result_component_role,
             result_color_shape_id,
+            port_wiring,
             exact_factor,
             proof_digest,
         })
@@ -447,48 +829,18 @@ impl LCColorTransitionWitness {
                 *parent = parent.reversed()?;
             }
         }
-        let [first, second] = self.input_permutation;
-        let left = &parents[first as usize];
-        let right = &parents[second as usize];
         if self.operation == LCColorComponentOperation::Close {
-            self.closed_components(left, right)?;
+            self.closed_components(&parents[0], &parents[1])?;
             return Ok(None);
         }
-
-        let (mut components, active_component_index) = match self.operation {
-            LCColorComponentOperation::ConcatenateJoin => {
-                let components =
-                    concatenate_join(left, right, self.result_component_kind.unwrap())?;
-                let active = (self.result_component_role == LCColorComponentRole::Active)
-                    .then_some(components.len() as u32 - 1);
-                (components, active)
-            }
-            LCColorComponentOperation::ConcatenateKeep => {
-                if left.active_component().is_some() || right.active_component().is_some() {
-                    return Err(invalid(
-                        "concatenate-keep requires two passive LC color forests",
-                    ));
-                }
-                (canonical_passive_union(left, right), None)
-            }
-            LCColorComponentOperation::InheritLeft => inherit_active(left, right, "inherit-left")?,
-            LCColorComponentOperation::InheritRight => {
-                inherit_active(right, left, "inherit-right")?
-            }
-            LCColorComponentOperation::Empty => {
-                if !left.components().is_empty() || !right.components().is_empty() {
-                    return Err(invalid("empty LC operation requires two empty forests"));
-                }
-                (Vec::new(), None)
-            }
-            LCColorComponentOperation::Close => unreachable!(),
-        };
-        components.shrink_to_fit();
-        Ok(Some(DynamicLCColorState::new(
-            self.result_color_shape_id.unwrap(),
-            active_component_index,
-            components,
-        )?))
+        Ok(Some(
+            self.port_wiring.apply(
+                &parents[0],
+                &parents[1],
+                self.result_color_shape_id
+                    .expect("validated non-closure result color shape"),
+            )?,
+        ))
     }
 
     pub fn closed_components(
@@ -507,111 +859,12 @@ impl LCColorTransitionWitness {
                 *parent = parent.reversed()?;
             }
         }
-        let [first, second] = self.input_permutation;
-        let left = &parents[first as usize];
-        let right = &parents[second as usize];
-        match (left.active_component(), right.active_component()) {
-            (Some(_), Some(_)) => concatenate_join(
-                left,
-                right,
-                self.result_component_kind.ok_or_else(|| {
-                    invalid("a colored LC closure requires a certified result component kind")
-                })?,
-            ),
-            (None, None) if self.result_component_kind.is_none() => {
-                Ok(canonical_passive_union(left, right))
-            }
-            (None, None) => Err(invalid(
-                "a passive LC closure cannot declare a joined component kind",
-            )),
-            _ => Err(invalid(
-                "an LC closure must consume either two active components or two passive forests",
-            )),
+        let closed = self.port_wiring.apply(&parents[0], &parents[1], 0)?;
+        if !closed.result_port_bindings().is_empty() {
+            return Err(invalid("an LC closure leaves an exposed color port"));
         }
+        Ok(closed.components().to_vec())
     }
-}
-
-fn concatenate_join(
-    left: &DynamicLCColorState,
-    right: &DynamicLCColorState,
-    result_kind: LCColorComponentKind,
-) -> RusticolResult<Vec<LCColorComponent>> {
-    let Some(left_active_index) = left.active_component_index() else {
-        return Err(invalid("LC color join requires an active left component"));
-    };
-    let Some(right_active_index) = right.active_component_index() else {
-        return Err(invalid("LC color join requires an active right component"));
-    };
-    let left_active = &left.components()[left_active_index as usize];
-    let right_active = &right.components()[right_active_index as usize];
-    let joined = left_active
-        .source_slots()
-        .iter()
-        .chain(right_active.source_slots())
-        .copied()
-        .collect();
-    let mut components = left
-        .components()
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| *index != left_active_index as usize)
-        .map(|(_, component)| component.clone())
-        .chain(
-            right
-                .components()
-                .iter()
-                .enumerate()
-                .filter(|(index, _)| *index != right_active_index as usize)
-                .map(|(_, component)| component.clone()),
-        )
-        .collect::<Vec<_>>();
-    components.sort_unstable();
-    components.push(LCColorComponent::new(result_kind, joined)?);
-    Ok(components)
-}
-
-fn canonical_passive_union(
-    left: &DynamicLCColorState,
-    right: &DynamicLCColorState,
-) -> Vec<LCColorComponent> {
-    let mut components = left
-        .components()
-        .iter()
-        .chain(right.components())
-        .cloned()
-        .collect::<Vec<_>>();
-    components.sort_unstable();
-    components
-}
-
-fn inherit_active(
-    active_parent: &DynamicLCColorState,
-    passive_parent: &DynamicLCColorState,
-    operation: &str,
-) -> RusticolResult<(Vec<LCColorComponent>, Option<u32>)> {
-    let Some(active_index) = active_parent.active_component_index() else {
-        return Err(invalid(format!(
-            "{operation} requires an active component in the inherited parent"
-        )));
-    };
-    if passive_parent.active_component().is_some() {
-        return Err(invalid(format!(
-            "{operation} requires the other parent to have no active component"
-        )));
-    }
-    let active = active_parent.components()[active_index as usize].clone();
-    let mut components = active_parent
-        .components()
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| *index != active_index as usize)
-        .map(|(_, component)| component.clone())
-        .chain(passive_parent.components().iter().cloned())
-        .collect::<Vec<_>>();
-    components.sort_unstable();
-    components.push(active);
-    let active_index = components.len() as u32 - 1;
-    Ok((components, Some(active_index)))
 }
 
 fn canonical_trace_rotation(source_slots: Vec<u32>) -> Vec<u32> {

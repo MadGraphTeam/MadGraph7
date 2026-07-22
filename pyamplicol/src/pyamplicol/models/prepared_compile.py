@@ -8,6 +8,7 @@ import importlib.metadata
 import os
 import tempfile
 import time
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
@@ -28,6 +29,7 @@ from .base import Model
 from .loading import CompiledModel
 from .prepared import (
     PREPARED_INDEPENDENT_BLOCK_SIZE,
+    PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
     PREPARED_KERNEL_VARIANT_ABI,
     PreparedBackend,
     PreparedKernelPack,
@@ -405,13 +407,34 @@ def prepared_symbolica_settings(
         if optimization.collect_factors == "auto"
         else bool(optimization.collect_factors)
     )
+    if (
+        backend == "jit"
+        and evaluator.jit.optimization_level
+        != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+    ):
+        warnings.warn(
+            "prepared JIT model bundles use SymJIT optimization level 2 for "
+            "cross-architecture portability; the requested process-evaluator "
+            f"level {evaluator.jit.optimization_level} is unchanged for compiled "
+            "DAG generation",
+            UserWarning,
+            stacklevel=2,
+        )
     return SymbolicaEvaluatorSettings(
         backend="jit" if backend == "jit" else "compiled-complex",
         iterations=optimization.horner_iterations,
         cpe_iterations=optimization.cpe_iterations,
         n_cores=cores,
         jit_direct_translation=False,
-        jit_optimization_level=evaluator.jit.optimization_level,
+        # Saved SymJIT applications are process-independent model assets.  O2
+        # is the only storage-v3 optimization level whose MIR is portable
+        # across the supported architecture classes.  Process-local compiled
+        # DAG evaluators continue to honor evaluator.jit.optimization_level.
+        jit_optimization_level=(
+            PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+            if backend == "jit"
+            else evaluator.jit.optimization_level
+        ),
         jit_compress=evaluator.jit.compress,
         max_horner_scheme_variables=optimization.max_horner_variables,
         max_common_pair_cache_entries=optimization.max_common_pair_cache_entries,
@@ -771,6 +794,21 @@ def _validate_backend_manifest(
     if manifest.get("required_defuns") != []:
         raise PreparedModelBundleError(
             "prepared JIT evaluators must not depend on external functions"
+        )
+    expected_level = PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+    if manifest.get("optimization_level") != expected_level:
+        raise PreparedModelBundleError(
+            "prepared JIT evaluator is not portable: expected SymJIT "
+            f"optimization level {expected_level}, found "
+            f"{manifest.get('optimization_level')!r}"
+        )
+    manifest_settings = manifest.get("settings")
+    if not isinstance(manifest_settings, Mapping) or (
+        manifest_settings.get("jit_optimization_level") != expected_level
+    ):
+        raise PreparedModelBundleError(
+            "prepared JIT evaluator settings do not attest the portable "
+            f"SymJIT optimization level {expected_level}"
         )
 
 

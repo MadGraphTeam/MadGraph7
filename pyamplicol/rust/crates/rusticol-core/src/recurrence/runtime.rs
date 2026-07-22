@@ -661,61 +661,117 @@ pub struct RecurrenceExecutionRuntime {
 
 impl RecurrenceExecutionRuntime {
     pub fn new(plan: RecurrenceExecutionPlan, tile_capacity: usize) -> RusticolResult<Self> {
-        if tile_capacity == 0 {
-            return Err(invalid("recurrence tile size must be positive"));
-        }
-        Ok(Self {
-            currents: zero_complex(
-                plan.current_component_count
-                    .checked_mul(tile_capacity)
-                    .ok_or_else(|| invalid("recurrence current workspace overflows"))?,
-            ),
-            current_momenta: vec![
-                0.0;
-                plan.current_momenta
-                    .len()
-                    .checked_mul(4)
-                    .and_then(|value| value.checked_mul(tile_capacity))
-                    .ok_or_else(|| invalid(
-                        "recurrence momentum workspace overflows"
-                    ))?
-            ],
-            kernel_inputs: zero_complex(
-                plan.maximum_packet_input_width
-                    .checked_mul(tile_capacity)
-                    .ok_or_else(|| invalid("recurrence input workspace overflows"))?,
-            ),
-            kernel_outputs: zero_complex(
-                plan.maximum_packet_output_width
-                    .checked_mul(tile_capacity)
-                    .ok_or_else(|| invalid("recurrence output workspace overflows"))?,
-            ),
-            resolved_amplitudes: zero_complex(
-                plan.resolved_component_count()?
-                    .checked_mul(tile_capacity)
-                    .ok_or_else(|| invalid("recurrence amplitude workspace overflows"))?,
-            ),
-            replay_source_values: zero_complex(
-                plan.source_component_count
-                    .checked_mul(tile_capacity)
-                    .ok_or_else(|| invalid("recurrence replay source workspace overflows"))?,
-            ),
-            replay_external_momenta: vec![
-                0.0;
-                plan.source_slot_count
-                    .checked_mul(4)
-                    .and_then(|value| value.checked_mul(tile_capacity))
-                    .ok_or_else(|| invalid(
-                        "recurrence replay momentum workspace overflows"
-                    ))?
-            ],
+        let mut runtime = Self {
             plan,
-            tile_capacity,
-        })
+            tile_capacity: 0,
+            currents: Vec::new(),
+            current_momenta: Vec::new(),
+            kernel_inputs: Vec::new(),
+            kernel_outputs: Vec::new(),
+            resolved_amplitudes: Vec::new(),
+            replay_source_values: Vec::new(),
+            replay_external_momenta: Vec::new(),
+        };
+        runtime.prepare_workspace_capacity(tile_capacity)?;
+        Ok(runtime)
     }
 
     pub const fn plan(&self) -> &RecurrenceExecutionPlan {
         &self.plan
+    }
+
+    /// Grow every numeric workspace to support `tile_capacity` points.
+    ///
+    /// Preparation is an allocation boundary. It is intended for runtime load
+    /// or selector-plan preparation, before entering a measured evaluation
+    /// loop. Once prepared, calls using this tile capacity or a smaller one do
+    /// not resize recurrence-owned storage. Capacity is never reduced.
+    pub fn prepare_workspace_capacity(&mut self, tile_capacity: usize) -> RusticolResult<()> {
+        if tile_capacity == 0 {
+            return Err(invalid("recurrence tile size must be positive"));
+        }
+        if tile_capacity <= self.tile_capacity {
+            return Ok(());
+        }
+
+        let current_len = self
+            .plan
+            .current_component_count
+            .checked_mul(tile_capacity)
+            .ok_or_else(|| invalid("recurrence current workspace overflows"))?;
+        let momentum_len = self
+            .plan
+            .current_momenta
+            .len()
+            .checked_mul(4)
+            .and_then(|value| value.checked_mul(tile_capacity))
+            .ok_or_else(|| invalid("recurrence momentum workspace overflows"))?;
+        let input_len = self
+            .plan
+            .maximum_packet_input_width
+            .checked_mul(tile_capacity)
+            .ok_or_else(|| invalid("recurrence input workspace overflows"))?;
+        let output_len = self
+            .plan
+            .maximum_packet_output_width
+            .checked_mul(tile_capacity)
+            .ok_or_else(|| invalid("recurrence output workspace overflows"))?;
+        let amplitude_len = self
+            .plan
+            .resolved_component_count()?
+            .checked_mul(tile_capacity)
+            .ok_or_else(|| invalid("recurrence amplitude workspace overflows"))?;
+        let replay_source_len = self
+            .plan
+            .source_component_count
+            .checked_mul(tile_capacity)
+            .ok_or_else(|| invalid("recurrence replay source workspace overflows"))?;
+        let replay_momentum_len = self
+            .plan
+            .source_slot_count
+            .checked_mul(4)
+            .and_then(|value| value.checked_mul(tile_capacity))
+            .ok_or_else(|| invalid("recurrence replay momentum workspace overflows"))?;
+
+        reserve_for_len(&mut self.currents, current_len, "current")?;
+        reserve_for_len(&mut self.current_momenta, momentum_len, "momentum")?;
+        reserve_for_len(&mut self.kernel_inputs, input_len, "kernel-input")?;
+        reserve_for_len(&mut self.kernel_outputs, output_len, "kernel-output")?;
+        reserve_for_len(
+            &mut self.resolved_amplitudes,
+            amplitude_len,
+            "resolved-amplitude",
+        )?;
+        reserve_for_len(
+            &mut self.replay_source_values,
+            replay_source_len,
+            "replay-source",
+        )?;
+        reserve_for_len(
+            &mut self.replay_external_momenta,
+            replay_momentum_len,
+            "replay-momentum",
+        )?;
+
+        self.currents
+            .resize(current_len, EagerComplex64::new(0.0, 0.0));
+        self.current_momenta.resize(momentum_len, 0.0);
+        self.kernel_inputs
+            .resize(input_len, EagerComplex64::new(0.0, 0.0));
+        self.kernel_outputs
+            .resize(output_len, EagerComplex64::new(0.0, 0.0));
+        self.resolved_amplitudes
+            .resize(amplitude_len, EagerComplex64::new(0.0, 0.0));
+        self.replay_source_values
+            .resize(replay_source_len, EagerComplex64::new(0.0, 0.0));
+        self.replay_external_momenta
+            .resize(replay_momentum_len, 0.0);
+        self.tile_capacity = tile_capacity;
+        Ok(())
+    }
+
+    pub const fn tile_capacity(&self) -> usize {
+        self.tile_capacity
     }
 
     /// Evaluate one resolved helicity in sector-major, point-contiguous order.
@@ -1489,8 +1545,17 @@ fn exact_complex(value: ExactComplexRational) -> Complex<f64> {
     )
 }
 
-fn zero_complex(len: usize) -> Vec<EagerComplex64> {
-    vec![EagerComplex64::new(0.0, 0.0); len]
+fn reserve_for_len<T>(values: &mut Vec<T>, target_len: usize, label: &str) -> RusticolResult<()> {
+    if target_len <= values.len() {
+        return Ok(());
+    }
+    values
+        .try_reserve_exact(target_len - values.len())
+        .map_err(|error| {
+            RusticolError::internal(format!(
+                "could not reserve recurrence {label} workspace ({target_len} values): {error}"
+            ))
+        })
 }
 
 fn check_matrix(actual: usize, rows: usize, points: usize, label: &str) -> RusticolResult<()> {
@@ -1514,6 +1579,63 @@ mod tests {
         RecurrenceClosureTerm, RecurrenceCurrent, RecurrenceNodeKind, RecurrenceReplayTarget,
         RecurrenceResolvedHelicity, SemanticDigest, SourceStateAssignment,
     };
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+
+    std::thread_local! {
+        static TRACK_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
+        static ALLOCATION_COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+
+    struct CountingAllocator;
+
+    #[global_allocator]
+    static GLOBAL_ALLOCATOR: CountingAllocator = CountingAllocator;
+
+    unsafe impl GlobalAlloc for CountingAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            count_allocation();
+            unsafe { System.alloc(layout) }
+        }
+
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            count_allocation();
+            unsafe { System.alloc_zeroed(layout) }
+        }
+
+        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            count_allocation();
+            unsafe { System.realloc(pointer, layout, new_size) }
+        }
+
+        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(pointer, layout) }
+        }
+    }
+
+    fn count_allocation() {
+        if TRACK_ALLOCATIONS.try_with(Cell::get).unwrap_or(false) {
+            let _ = ALLOCATION_COUNT.try_with(|count| count.set(count.get() + 1));
+        }
+    }
+
+    struct AllocationTrackingGuard;
+
+    impl Drop for AllocationTrackingGuard {
+        fn drop(&mut self) {
+            let _ = TRACK_ALLOCATIONS.try_with(|tracking| tracking.set(false));
+        }
+    }
+
+    fn count_allocations<T>(function: impl FnOnce() -> T) -> (T, usize) {
+        ALLOCATION_COUNT.with(|count| count.set(0));
+        TRACK_ALLOCATIONS.with(|tracking| tracking.set(true));
+        let guard = AllocationTrackingGuard;
+        let result = function();
+        drop(guard);
+        let count = ALLOCATION_COUNT.with(Cell::get);
+        (result, count)
+    }
 
     #[derive(Default)]
     struct AddBackend {
@@ -1527,6 +1649,27 @@ mod tests {
             assert_eq!(call.input_component_count, 2);
             assert_eq!(call.output_component_count, 1);
             self.calls.push(call.lane_count);
+            for lane in 0..call.lane_count {
+                call.outputs[lane] = call.inputs[lane * 2] + call.inputs[lane * 2 + 1];
+            }
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FixedCapacityAddBackend {
+        call_count: usize,
+        maximum_lane_count: usize,
+    }
+
+    impl EagerKernelBackend for FixedCapacityAddBackend {
+        fn evaluate_batch(&mut self, call: EagerKernelCall<'_>) -> RusticolResult<()> {
+            assert_eq!(call.kernel_id, 7);
+            assert_eq!(call.independent_block_size, 1);
+            assert_eq!(call.input_component_count, 2);
+            assert_eq!(call.output_component_count, 1);
+            self.call_count += 1;
+            self.maximum_lane_count = self.maximum_lane_count.max(call.lane_count);
             for lane in 0..call.lane_count {
                 call.outputs[lane] = call.inputs[lane * 2] + call.inputs[lane * 2 + 1];
             }
@@ -2005,5 +2148,56 @@ mod tests {
 
         assert_eq!(backend.calls, vec![2, 2]);
         assert_eq!(norm_sqr, vec![400.0, 3600.0]);
+    }
+
+    #[test]
+    fn prepared_fixed_shape_topology_replay_allocates_nothing_after_warmup() {
+        const POINT_COUNT: usize = 4;
+        let mut runtime = RecurrenceExecutionRuntime::new(replayed_destination_plan(), 1)
+            .expect("initial recurrence workspace is valid");
+        runtime
+            .prepare_workspace_capacity(POINT_COUNT)
+            .expect("maximum recurrence tile capacity is prepared");
+        assert_eq!(runtime.tile_capacity(), POINT_COUNT);
+
+        let sources = vec![
+            EagerComplex64::new(2.0, 0.0);
+            runtime.plan().source_component_count * POINT_COUNT
+        ];
+        let momenta = vec![0.0; runtime.plan().source_slot_count * 4 * POINT_COUNT];
+        let mut output = vec![0.0; runtime.plan().sector_count() * POINT_COUNT];
+        let mut backend = FixedCapacityAddBackend::default();
+
+        runtime
+            .evaluate_helicity_sum_norm_sqr_into(
+                &mut backend,
+                POINT_COUNT,
+                &sources,
+                &momenta,
+                &[],
+                &mut output,
+            )
+            .expect("warm recurrence evaluation succeeds");
+        let warmed_call_count = backend.call_count;
+        let warmed_maximum_lane_count = backend.maximum_lane_count;
+
+        let (result, allocation_count) = count_allocations(|| {
+            runtime.prepare_workspace_capacity(POINT_COUNT)?;
+            runtime.evaluate_helicity_sum_norm_sqr_into(
+                &mut backend,
+                POINT_COUNT,
+                &sources,
+                &momenta,
+                &[],
+                &mut output,
+            )
+        });
+        result.expect("warmed recurrence evaluation succeeds");
+
+        assert_eq!(allocation_count, 0);
+        assert_eq!(runtime.tile_capacity(), POINT_COUNT);
+        assert_eq!(backend.call_count - warmed_call_count, 2);
+        assert_eq!(backend.maximum_lane_count, warmed_maximum_lane_count);
+        assert!(output.iter().all(|value| *value > 0.0));
     }
 }

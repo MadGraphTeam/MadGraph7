@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Architecture-scoped prepared-JIT contracts for the CI transfer harness.
+"""Cross-architecture prepared-JIT contracts for the CI transfer harness.
 
-SymJIT application storage v3 serializes register-allocated MIR.  It may be
-reloaded on another operating system in the same architecture class, but it is
-not portable between x86-64 and AArch64.  These checks intentionally run before
+SymJIT application storage v3 at optimization level 2 can be reloaded across
+the supported x86-64 and AArch64 hosts. These checks intentionally run before
 the consumer asks SymJIT to load an application.
 """
 
@@ -110,7 +109,7 @@ def architecture_class(machine: str) -> str:
 
 
 def symjit_storage_v3_target(architecture: str) -> dict[str, object]:
-    """Return the canonical target record for one storage-v3 architecture."""
+    """Return the canonical portable target after checking the host class."""
 
     if architecture not in SYMJIT_STORAGE_V3_ARCHITECTURES:
         supported = ", ".join(SYMJIT_STORAGE_V3_ARCHITECTURES)
@@ -121,24 +120,18 @@ def symjit_storage_v3_target(architecture: str) -> dict[str, object]:
     return {
         "cpu_features": [],
         "endianness": "little",
-        "portable": False,
-        "target_triple": f"symjit-storage-v3-{architecture}",
+        "portable": True,
+        "target_triple": "symjit-storage-v3-portable",
         "word_bits": 64,
     }
 
 
 def _target_architecture_class(target: dict[str, object]) -> str:
-    for architecture in SYMJIT_STORAGE_V3_ARCHITECTURES:
-        if target == symjit_storage_v3_target(architecture):
-            return architecture
-    if target.get("portable") is True:
-        raise PortabilityError(
-            "SymJIT application storage v3 must not be marked portable across "
-            "architecture classes"
-        )
+    if target == symjit_storage_v3_target("x86_64"):
+        return "portable"
     raise PortabilityError(
-        "prepared JIT target must be canonical 64-bit little-endian "
-        "SymJIT storage-v3 for x86_64 or aarch64"
+        "prepared JIT target must be portable 64-bit little-endian SymJIT "
+        "storage-v3"
     )
 
 
@@ -271,7 +264,7 @@ def audit_architecture_jit_bundle(
     expected_sha256: str | None = None,
     expected_architecture_class: str | None = None,
 ) -> dict[str, object]:
-    """Validate archive integrity and the storage-v3 architecture contract."""
+    """Validate archive integrity and the portable storage-v3 contract."""
 
     bundle_path = path.expanduser().resolve(strict=True)
     bundle_sha256 = sha256_file(bundle_path)
@@ -335,16 +328,9 @@ def audit_architecture_jit_bundle(
         raise PortabilityError("prepared pack backend must be jit")
     target = object_value(kernel_pack.get("target"), "kernel_pack.target")
     bundle_architecture = _target_architecture_class(target)
-    if (
-        expected_architecture_class is not None
-        and bundle_architecture != expected_architecture_class
-    ):
-        raise PortabilityError(
-            "SymJIT storage-v3 architecture class mismatch: bundle is "
-            f"{bundle_architecture!r}, consumer is "
-            f"{expected_architecture_class!r}; refusing before SymJIT load"
-        )
-    expected_target = symjit_storage_v3_target(bundle_architecture)
+    if expected_architecture_class is not None:
+        architecture_class(expected_architecture_class)
+    expected_target = symjit_storage_v3_target("x86_64")
 
     dependency_abis = object_value(
         kernel_pack.get("dependency_abis"), "kernel_pack.dependency_abis"
@@ -368,9 +354,9 @@ def audit_architecture_jit_bundle(
     )
     if (
         optimization.get("backend") != "jit"
-        or optimization.get("jit_optimization_level") != 3
+        or optimization.get("jit_optimization_level") != 2
     ):
-        raise PortabilityError("prepared JIT pack must use JIT O3")
+        raise PortabilityError("prepared JIT pack must use portable JIT O2")
     if optimization.get("compiled_native") is not False:
         raise PortabilityError("prepared JIT pack requests final native compilation")
     if optimization.get("compiled_inline_asm") not in {None, "none"}:
@@ -430,7 +416,7 @@ def audit_architecture_jit_bundle(
             "element_layout": "complex-f64",
             "endianness": "little",
             "kind": "symjit-application-evaluator",
-            "optimization_level": 3,
+            "optimization_level": 2,
             "runtime_capability": contracts.symjit_runtime_capability,
             "translation_mode": "indirect",
             "word_bits": 64,
@@ -450,9 +436,9 @@ def audit_architecture_jit_bundle(
             raise PortabilityError(
                 f"prepared {context} settings select a non-JIT backend"
             )
-        if kernel_settings.get("jit_optimization_level") != 3:
+        if kernel_settings.get("jit_optimization_level") != 2:
             raise PortabilityError(
-                f"prepared {context} settings do not select JIT O3"
+                f"prepared {context} settings do not select portable JIT O2"
             )
         if kernel_settings.get("compiled_native") is not False:
             raise PortabilityError(

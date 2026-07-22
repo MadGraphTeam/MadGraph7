@@ -77,7 +77,7 @@ def _input() -> RecurrenceBuilderInputV1:
                 public_id="flow:1,2",
                 kind="open-lines",
                 closure_source_slot=1,
-                closure_proof_algorithm="canonical-lc-closure-anchor-v1",
+                closure_proof_algorithm="canonical-lc-closure-anchor-v2",
                 closure_proof_digest=_sha256("closure-anchor:flow:1,2"),
                 open_strings=(RecurrenceLCOpenStringV1(0, 1),),
                 word_source_slots=(0, 1),

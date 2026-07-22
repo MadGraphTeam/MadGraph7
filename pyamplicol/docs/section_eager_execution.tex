@@ -48,11 +48,11 @@ compiled artifact contract remains unchanged.
 A prepared model bundle separates model work from process work.  Schematically,
 the bundle is
 \begin{equation}
-  \mathcal{B}_{M,b,o,a}
+  \mathcal{B}_{M,b,o,t}
   = \left(
       \mathcal{I}_{M},\;
       \mathcal{E}_{M},\;
-      \{K_\kappa^{(b,o,a)}\}_{\kappa\in\mathcal{K}_M},\;
+      \{K_\kappa^{(b,o,t)}\}_{\kappa\in\mathcal{K}_M},\;
       \mathcal{P}_{M}
     \right),
   \label{eq:eager-prepared-model}
@@ -60,8 +60,8 @@ the bundle is
 where \(\mathcal{I}_{M}\) is the portable compiled-model IR,
 \(\mathcal{E}_{M}\) retains exact expressions, \(K_\kappa\) is one prepared
 kernel for canonical evaluation class \(\kappa\), and \(\mathcal{P}_{M}\)
-contains ABI and provenance metadata.  The labels \(b,o,a\) identify backend,
-optimization settings, and architecture class.  A bundle contains exactly one
+contains ABI and provenance metadata.  The labels \(b,o,t\) identify backend,
+optimization settings, and target contract.  A bundle contains exactly one
 prepared JIT, C++, or ASM backend pack.
 
 Eager process generation keeps symbolic and numerical responsibilities
@@ -276,13 +276,14 @@ identifies that capability before opening the old high-cardinality payload and
 reports the required regeneration.  This requirement is limited to eager
 artifacts and does not change compiled artifacts or prepared-model bundles.
 
-JIT packs store SymJIT application state rather than final machine code.  With
-the SymJIT storage v3 contract, register-allocation state is scoped to
-an architecture class.  Wheels therefore carry separate \texttt{x86\_64} and
-\texttt{aarch64} built-in-SM JIT O3 packs and select the host pack before DAG
-construction.  Transfer is tested across operating systems within a matching
-architecture class; cross-architecture loading is rejected.  C++ and ASM packs
-are target-native.
+JIT packs store SymJIT application state rather than final machine code.  The
+portable SymJIT storage v3 contract is available at optimization level 2, and
+the receiving host rebuilds executable code for its CPU.  Wheels therefore
+carry the built-in-SM \texttt{built-in-sm-jit-o2} prepared pack.  pyAmpliCol
+forces O2 when preparing JIT kernels, including when another level was
+requested.  This does not change process-local compiled DAG evaluators, whose
+independent configuration may use O3.  Prepared C++ and ASM packs remain
+target-native.
 
 Symbolica is required during eager generation and for non-f64 exact execution.
 After generation, saved JIT applications support Symbolica-free f64 execution,
@@ -324,7 +325,7 @@ Use compiled mode when process generation is affordable and the target
 workload benefits from process-wide specialization.  Use eager mode when many
 processes share one model, when generation time dominates, or when one artifact
 must support changing LC flow/helicity selections.  The common built-in-SM JIT
-O3 path needs only
+O2 prepared-kernel path needs only
 
 \begin{lstlisting}[language=bash]
 pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_eager \

@@ -314,6 +314,177 @@ const TABLE_SPECS: &[TableSpec] = &[
     },
 ];
 
+const FERMION_PAIRING_TABLE_SPECS: &[TableSpec] = &[
+    TableSpec {
+        name: "header",
+        columns: &[
+            column("schema_version", PrimitiveKind::U32),
+            column("abi_string_id", PrimitiveKind::U32),
+            column("process_key_string_id", PrimitiveKind::U32),
+            column("proof_algorithm_string_id", PrimitiveKind::U32),
+            column("source_count", PrimitiveKind::U32),
+            column("endpoint_count", PrimitiveKind::U32),
+            column("pairing_class_count", PrimitiveKind::U32),
+            column("rule_count", PrimitiveKind::U32),
+            column("endpoint_state_template_count", PrimitiveKind::U64),
+            column("endpoint_anti_state_template_count", PrimitiveKind::U64),
+            column("endpoint_basis_count", PrimitiveKind::U64),
+            column("endpoint_color_representation_count", PrimitiveKind::U64),
+            column("class_fundamental_slot_count", PrimitiveKind::U64),
+            column("class_antifundamental_slot_count", PrimitiveKind::U64),
+            column("class_reference_pairing_count", PrimitiveKind::U64),
+            column("rule_class_pairing_index_count", PrimitiveKind::U64),
+            column("rule_endpoint_pairing_count", PrimitiveKind::U64),
+            column("rule_source_permutation_count", PrimitiveKind::U64),
+            column("rule_lineage_count", PrimitiveKind::U64),
+            column("exact_integer_count", PrimitiveKind::U32),
+            column("exact_integer_limb_count", PrimitiveKind::U64),
+            column("string_count", PrimitiveKind::U32),
+            column("string_byte_count", PrimitiveKind::U64),
+            column("no_fermion_line", PrimitiveKind::U32),
+            shaped_column("topology_digest", PrimitiveKind::U8, &[32]),
+            shaped_column("semantic_digest", PrimitiveKind::U8, &[32]),
+        ],
+    },
+    TableSpec {
+        name: "endpoints",
+        columns: &[
+            column("endpoint_id", PrimitiveKind::U32),
+            column("source_slot", PrimitiveKind::U32),
+            column("public_label", PrimitiveKind::U32),
+            column("species_class_id", PrimitiveKind::U32),
+            column("species_string_id", PrimitiveKind::U32),
+            column("particle_orientation", PrimitiveKind::U8),
+            column("color_orientation", PrimitiveKind::U8),
+            column("state_template_start", PrimitiveKind::U64),
+            column("state_template_count", PrimitiveKind::U64),
+            column("anti_state_template_start", PrimitiveKind::U64),
+            column("anti_state_template_count", PrimitiveKind::U64),
+            column("basis_start", PrimitiveKind::U64),
+            column("basis_count", PrimitiveKind::U64),
+            column("color_representation_start", PrimitiveKind::U64),
+            column("color_representation_count", PrimitiveKind::U64),
+            shaped_column("contract_digest", PrimitiveKind::U8, &[32]),
+        ],
+    },
+    TableSpec {
+        name: "endpoint_state_template_ids",
+        columns: &[column("string_id", PrimitiveKind::U32)],
+    },
+    TableSpec {
+        name: "endpoint_anti_state_template_ids",
+        columns: &[column("string_id", PrimitiveKind::U32)],
+    },
+    TableSpec {
+        name: "endpoint_basis_ids",
+        columns: &[column("string_id", PrimitiveKind::U32)],
+    },
+    TableSpec {
+        name: "endpoint_color_representations",
+        columns: &[column("value", PrimitiveKind::I32)],
+    },
+    TableSpec {
+        name: "pairing_classes",
+        columns: &[
+            column("class_id", PrimitiveKind::U32),
+            column("species_class_id", PrimitiveKind::U32),
+            column("species_string_id", PrimitiveKind::U32),
+            column("fundamental_slot_start", PrimitiveKind::U64),
+            column("fundamental_slot_count", PrimitiveKind::U64),
+            column("antifundamental_slot_start", PrimitiveKind::U64),
+            column("antifundamental_slot_count", PrimitiveKind::U64),
+            column("reference_pairing_start", PrimitiveKind::U64),
+            column("reference_pairing_count", PrimitiveKind::U64),
+            column("pairing_count", PrimitiveKind::U64),
+            shaped_column("proof_digest", PrimitiveKind::U8, &[32]),
+        ],
+    },
+    TableSpec {
+        name: "class_fundamental_slots",
+        columns: &[column("source_slot", PrimitiveKind::U32)],
+    },
+    TableSpec {
+        name: "class_antifundamental_slots",
+        columns: &[column("source_slot", PrimitiveKind::U32)],
+    },
+    TableSpec {
+        name: "class_reference_pairings",
+        columns: &[
+            column("fundamental_source_slot", PrimitiveKind::U32),
+            column("antifundamental_source_slot", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "rules",
+        columns: &[
+            column("rule_id", PrimitiveKind::U32),
+            column("class_pairing_index_start", PrimitiveKind::U64),
+            column("class_pairing_index_count", PrimitiveKind::U64),
+            column("endpoint_pairing_start", PrimitiveKind::U64),
+            column("endpoint_pairing_count", PrimitiveKind::U64),
+            column("source_permutation_start", PrimitiveKind::U64),
+            column("source_permutation_count", PrimitiveKind::U64),
+            column("lineage_start", PrimitiveKind::U64),
+            column("lineage_count", PrimitiveKind::U64),
+            column("fermion_parity", PrimitiveKind::I32),
+            column("real_numerator_integer_id", PrimitiveKind::U32),
+            column("real_denominator_integer_id", PrimitiveKind::U32),
+            column("imag_numerator_integer_id", PrimitiveKind::U32),
+            column("imag_denominator_integer_id", PrimitiveKind::U32),
+            column("multiplicity", PrimitiveKind::U64),
+            column("proof_algorithm_string_id", PrimitiveKind::U32),
+            shaped_column("proof_digest", PrimitiveKind::U8, &[32]),
+        ],
+    },
+    TableSpec {
+        name: "rule_class_pairing_indices",
+        columns: &[
+            column("class_id", PrimitiveKind::U32),
+            column("pairing_index", PrimitiveKind::U64),
+        ],
+    },
+    TableSpec {
+        name: "rule_endpoint_pairings",
+        columns: &[
+            column("fundamental_source_slot", PrimitiveKind::U32),
+            column("antifundamental_source_slot", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "rule_source_slot_permutations",
+        columns: &[column("source_slot", PrimitiveKind::U32)],
+    },
+    TableSpec {
+        name: "rule_lineages",
+        columns: &[column("line_id", PrimitiveKind::U32)],
+    },
+    TableSpec {
+        name: "exact_integers",
+        columns: &[
+            column("integer_id", PrimitiveKind::U32),
+            column("sign", PrimitiveKind::I32),
+            column("limb_start", PrimitiveKind::U64),
+            column("limb_count", PrimitiveKind::U64),
+        ],
+    },
+    TableSpec {
+        name: "exact_integer_limbs",
+        columns: &[column("value", PrimitiveKind::U64)],
+    },
+    TableSpec {
+        name: "string_ranges",
+        columns: &[
+            column("string_id", PrimitiveKind::U32),
+            column("start", PrimitiveKind::U64),
+            column("count", PrimitiveKind::U64),
+        ],
+    },
+    TableSpec {
+        name: "string_bytes",
+        columns: &[column("value", PrimitiveKind::U8)],
+    },
+];
+
 #[derive(Clone)]
 enum OwnedValues {
     U8(Vec<u8>),
@@ -442,6 +613,9 @@ struct OwnedInput {
     declared_digest: String,
     tables: Vec<OwnedTable>,
     table_by_name: BTreeMap<String, usize>,
+    declared_fermion_pairing_digest: Option<String>,
+    fermion_pairing_tables: Vec<OwnedTable>,
+    fermion_pairing_table_by_name: BTreeMap<String, usize>,
 }
 
 impl OwnedInput {
@@ -480,6 +654,30 @@ impl OwnedInput {
             .values
             .as_i32(&format!("{table}.{column}"))
     }
+
+    fn fermion_pairing_table(&self, name: &str) -> RusticolResult<&OwnedTable> {
+        let index = self
+            .fermion_pairing_table_by_name
+            .get(name)
+            .ok_or_else(|| invalid(format!("recurrence fermion pairing has no table {name:?}")))?;
+        Ok(&self.fermion_pairing_tables[*index])
+    }
+
+    fn pairing_u8(&self, table: &str, column: &str) -> RusticolResult<&[u8]> {
+        self.fermion_pairing_table(table)?.u8(column)
+    }
+
+    fn pairing_u32(&self, table: &str, column: &str) -> RusticolResult<&[u32]> {
+        self.fermion_pairing_table(table)?.u32(column)
+    }
+
+    fn pairing_u64(&self, table: &str, column: &str) -> RusticolResult<&[u64]> {
+        self.fermion_pairing_table(table)?.u64(column)
+    }
+
+    fn pairing_i32(&self, table: &str, column: &str) -> RusticolResult<&[i32]> {
+        self.fermion_pairing_table(table)?.i32(column)
+    }
 }
 
 const TEMPLATE_TABLE_INVENTORY: &[(&str, usize)] = &[
@@ -497,7 +695,7 @@ const TEMPLATE_TABLE_INVENTORY: &[(&str, usize)] = &[
     ("flavour_flow_values", 1),
     ("i32_sequence_ranges", 3),
     ("i32_sequence_values", 1),
-    ("lc_color_transition_witnesses", 13),
+    ("lc_color_transition_witnesses", 15),
     ("parameters", 11),
     ("propagators", 12),
     ("quantum_flows", 16),
@@ -578,6 +776,7 @@ struct NativeValidationResult {
     maximum_mask_bit: Option<u64>,
     template_reference_count: usize,
     parameter_projection_count: usize,
+    fermion_pairing_summary: Option<NativeFermionPairingSummary>,
     composite_authenticated: bool,
     template_catalog_digest: Option<SemanticDigest>,
     compiled_model_digest: Option<SemanticDigest>,
@@ -587,14 +786,29 @@ struct NativeValidationResult {
 }
 
 #[derive(Clone, Debug)]
+struct NativeFermionPairingSummary {
+    columnar_digest: SemanticDigest,
+    topology_digest: SemanticDigest,
+    semantic_digest: SemanticDigest,
+    source_count: u32,
+    endpoint_count: u32,
+    pairing_class_count: u32,
+    rule_count: u32,
+}
+
+#[derive(Clone, Debug)]
 struct NativeScheduleSummary {
     dynamic_color_state_count: usize,
+    dynamic_color_states: Vec<NativeDynamicColorStateSummary>,
     current_count: usize,
     source_current_count: usize,
     current_count_by_support_size: Vec<usize>,
+    current_count_by_state_and_support_size: Vec<(u32, usize, usize)>,
+    current_count_by_state_color_and_support_size: Vec<(u32, u32, usize, usize)>,
     contribution_count: usize,
     contribution_count_by_transition_template_id: Vec<(u32, usize)>,
     contribution_count_by_quantum_flow_template_id: Vec<(u32, usize)>,
+    contribution_count_by_result_state_template_id: Vec<(u32, usize)>,
     referenced_quantum_flow_template_ids: Vec<u32>,
     finalization_count: usize,
     identity_finalization_count_by_support_size: Vec<usize>,
@@ -605,7 +819,31 @@ struct NativeScheduleSummary {
     amplitude_destination_count: usize,
     target_sector_count: usize,
     closure_term_count: usize,
+    closure_terms: Vec<NativeClosureTermSummary>,
     source_layout: Vec<NativeSourceLayout>,
+}
+
+#[derive(Clone, Debug)]
+struct NativeDynamicColorStateSummary {
+    id: u32,
+    output_color_shape_id: u32,
+    result_port_bindings: Vec<(u32, u8)>,
+    components: Vec<(u8, Vec<u32>)>,
+}
+
+#[derive(Clone, Debug)]
+struct NativeClosureTermSummary {
+    id: u32,
+    target_destination_id: u32,
+    target_sector_id: u32,
+    target_helicity_id: Option<u32>,
+    closure_template_id: u32,
+    quantum_flow_template_id: Option<u32>,
+    parent_current_ids: Vec<u32>,
+    parent_state_template_ids: Vec<u32>,
+    parent_dynamic_color_state_ids: Vec<u32>,
+    parent_support_source_slots: Vec<Vec<u32>>,
+    exact_factor: (String, String, String, String),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1183,11 +1421,154 @@ fn parse_input(input: &Bound<'_, PyAny>) -> PyResult<OwnedInput> {
         });
     }
 
+    let pairing_table_objects = if input.hasattr("fermion_pairing_tables")? {
+        iterable_attribute(
+            input,
+            "fermion_pairing_tables",
+            "recurrence fermion-pairing tables",
+        )?
+    } else {
+        Vec::new()
+    };
+    if !pairing_table_objects.is_empty()
+        && pairing_table_objects.len() != FERMION_PAIRING_TABLE_SPECS.len()
+    {
+        return Err(PyValueError::new_err(format!(
+            "recurrence fermion-pairing table inventory has {} tables, expected {}",
+            pairing_table_objects.len(),
+            FERMION_PAIRING_TABLE_SPECS.len()
+        )));
+    }
+    let mut fermion_pairing_tables = Vec::with_capacity(pairing_table_objects.len());
+    let mut fermion_pairing_table_by_name = BTreeMap::new();
+    for (table_object, spec) in pairing_table_objects
+        .into_iter()
+        .zip(FERMION_PAIRING_TABLE_SPECS)
+    {
+        let table_name = required_nonempty_string(&table_object, "name", "table name")?;
+        if table_name != spec.name {
+            return Err(PyValueError::new_err(format!(
+                "recurrence fermion-pairing table inventory mismatch: found {table_name:?}, expected {:?}",
+                spec.name
+            )));
+        }
+        let row_count = table_object
+            .getattr("row_count")?
+            .extract::<u64>()
+            .map_err(|_| {
+                PyTypeError::new_err(format!(
+                    "recurrence fermion-pairing table {table_name:?} row_count must be u64"
+                ))
+            })?;
+        let column_objects = iterable_attribute(
+            &table_object,
+            "columns",
+            &format!("recurrence fermion-pairing table {table_name:?} columns"),
+        )?;
+        if column_objects.len() != spec.columns.len() {
+            return Err(PyValueError::new_err(format!(
+                "recurrence fermion-pairing table {table_name:?} has {} columns, expected {}",
+                column_objects.len(),
+                spec.columns.len()
+            )));
+        }
+
+        let mut columns = Vec::with_capacity(spec.columns.len());
+        let mut column_by_name = BTreeMap::new();
+        for (column_object, column_spec) in column_objects.into_iter().zip(spec.columns) {
+            let column_name = required_nonempty_string(&column_object, "name", "column name")?;
+            if column_name != column_spec.name {
+                return Err(PyValueError::new_err(format!(
+                    "recurrence fermion-pairing table {table_name:?} column mismatch: found {column_name:?}, expected {:?}",
+                    column_spec.name
+                )));
+            }
+            let context = format!("fermion_pairing.{table_name}.{column_name}");
+            let values_object = column_object.getattr("values")?;
+            let dtype = values_object
+                .getattr("dtype")?
+                .getattr("str")?
+                .extract::<String>()?;
+            if dtype != column_spec.kind.dtype() {
+                return Err(PyValueError::new_err(format!(
+                    "{context} has dtype {dtype:?}, expected {:?}",
+                    column_spec.kind.dtype()
+                )));
+            }
+            let flags = values_object.getattr("flags")?;
+            if flags.getattr("writeable")?.extract::<bool>()? {
+                return Err(PyValueError::new_err(format!(
+                    "{context} must be read-only"
+                )));
+            }
+            if !flags.getattr("owndata")?.extract::<bool>()? {
+                return Err(PyValueError::new_err(format!(
+                    "{context} must own its storage"
+                )));
+            }
+            let (values, shape) = extract_owned_values(&values_object, column_spec.kind, &context)?;
+            if shape.first().copied() != Some(row_count) {
+                return Err(PyValueError::new_err(format!(
+                    "{context} first dimension does not match row_count {row_count}"
+                )));
+            }
+            let actual_tail = shape
+                .iter()
+                .skip(1)
+                .map(|value| usize::try_from(*value))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| PyValueError::new_err(format!("{context} shape exceeds usize")))?;
+            if actual_tail != column_spec.tail_shape {
+                return Err(PyValueError::new_err(format!(
+                    "{context} has tail shape {actual_tail:?}, expected {:?}",
+                    column_spec.tail_shape
+                )));
+            }
+            column_by_name.insert(column_name.clone(), columns.len());
+            columns.push(OwnedColumn {
+                name: column_name,
+                dtype: column_spec.kind.dtype(),
+                shape,
+                values,
+            });
+        }
+        fermion_pairing_table_by_name.insert(table_name.clone(), fermion_pairing_tables.len());
+        fermion_pairing_tables.push(OwnedTable {
+            name: table_name,
+            row_count,
+            columns,
+            column_by_name,
+        });
+    }
+    let declared_fermion_pairing_digest = if fermion_pairing_tables.is_empty() {
+        None
+    } else {
+        if !input.hasattr("fermion_pairing_digest")? {
+            return Err(PyValueError::new_err(
+                "recurrence fermion-pairing tables require a canonical digest",
+            ));
+        }
+        let value = input.getattr("fermion_pairing_digest")?;
+        if value.is_none() {
+            return Err(PyValueError::new_err(
+                "recurrence fermion-pairing tables require a canonical digest",
+            ));
+        }
+        let digest = value.extract::<String>().map_err(|_| {
+            PyTypeError::new_err("recurrence fermion-pairing digest must be a string")
+        })?;
+        validate_sha256_text(&digest, "recurrence fermion-pairing digest")?;
+        Some(digest)
+    };
+
     Ok(OwnedInput {
         abi,
         declared_digest,
         tables,
         table_by_name,
+        declared_fermion_pairing_digest,
+        fermion_pairing_tables,
+        fermion_pairing_table_by_name,
     })
 }
 
@@ -1315,6 +1696,9 @@ fn parse_prepared_template_input(input: &Bound<'_, PyAny>) -> PyResult<PreparedT
             declared_digest,
             tables,
             table_by_name,
+            declared_fermion_pairing_digest: None,
+            fermion_pairing_tables: Vec::new(),
+            fermion_pairing_table_by_name: BTreeMap::new(),
         },
         canonical_digest_property,
         catalog_digest,
@@ -1415,6 +1799,18 @@ fn validate_input(
 
     let validated_process = decode_process_input(&input)?.validate()?;
     let process_summary = validated_process.summary().clone();
+    let fermion_pairing_summary =
+        validated_process
+            .fermion_pairing_summary()
+            .map(|summary| NativeFermionPairingSummary {
+                columnar_digest: summary.columnar_digest(),
+                topology_digest: summary.topology_digest(),
+                semantic_digest: summary.semantic_digest(),
+                source_count: summary.source_count(),
+                endpoint_count: summary.endpoint_count(),
+                pairing_class_count: summary.pairing_class_count(),
+                rule_count: summary.rule_count(),
+            });
     let process_input = validated_process.input();
     let bitset_ranges = process_input
         .bitset_ranges
@@ -1485,12 +1881,26 @@ fn validate_input(
                     .ok_or_else(|| invalid("source component layout overflows"))?;
             }
             let mut current_count_by_support_size = Vec::<usize>::new();
+            let mut current_count_by_state_and_support_size =
+                BTreeMap::<(u32, usize), usize>::new();
+            let mut current_count_by_state_color_and_support_size =
+                BTreeMap::<(u32, u32, usize), usize>::new();
             for current in program.currents() {
                 let support_size = current.key().support_source_slots().len();
                 if current_count_by_support_size.len() <= support_size {
                     current_count_by_support_size.resize(support_size + 1, 0);
                 }
                 current_count_by_support_size[support_size] += 1;
+                *current_count_by_state_and_support_size
+                    .entry((current.key().current_state_template_id(), support_size))
+                    .or_default() += 1;
+                *current_count_by_state_color_and_support_size
+                    .entry((
+                        current.key().current_state_template_id(),
+                        current.key().dynamic_lc_color_state_id().get(),
+                        support_size,
+                    ))
+                    .or_default() += 1;
             }
             let mut referenced_quantum_flow_template_ids = program
                 .contributions()
@@ -1499,12 +1909,16 @@ fn validate_input(
                 .collect::<BTreeSet<_>>();
             let mut contribution_count_by_transition_template_id = BTreeMap::<u32, usize>::new();
             let mut contribution_count_by_quantum_flow_template_id = BTreeMap::<u32, usize>::new();
+            let mut contribution_count_by_result_state_template_id = BTreeMap::<u32, usize>::new();
             for contribution in program.contributions() {
                 *contribution_count_by_transition_template_id
                     .entry(contribution.key().transition_template_id())
                     .or_default() += 1;
                 *contribution_count_by_quantum_flow_template_id
                     .entry(contribution.key().quantum_flow_witness_id())
+                    .or_default() += 1;
+                *contribution_count_by_result_state_template_id
+                    .entry(contribution.key().result_state_template_id())
                     .or_default() += 1;
             }
             referenced_quantum_flow_template_ids.extend(
@@ -1528,8 +1942,70 @@ fn validate_input(
                     identity_finalization_count_by_support_size[support_size] += 1;
                 }
             }
+            let closure_terms = program
+                .closure_terms()
+                .iter()
+                .map(|term| {
+                    let destination =
+                        &program.amplitude_destinations()[term.target_destination_id() as usize];
+                    let factor = term.exact_factor();
+                    let parent_currents = term
+                        .parent_current_ids()
+                        .iter()
+                        .map(|parent_id| &program.currents()[*parent_id as usize])
+                        .collect::<Vec<_>>();
+                    NativeClosureTermSummary {
+                        id: term.id(),
+                        target_destination_id: term.target_destination_id(),
+                        target_sector_id: destination.target_sector_id(),
+                        target_helicity_id: destination.target_helicity_id(),
+                        closure_template_id: term.closure_template_id(),
+                        quantum_flow_template_id: term.quantum_flow_template_id(),
+                        parent_current_ids: term.parent_current_ids().to_vec(),
+                        parent_state_template_ids: parent_currents
+                            .iter()
+                            .map(|current| current.key().current_state_template_id())
+                            .collect(),
+                        parent_dynamic_color_state_ids: parent_currents
+                            .iter()
+                            .map(|current| current.key().dynamic_lc_color_state_id().get())
+                            .collect(),
+                        parent_support_source_slots: parent_currents
+                            .iter()
+                            .map(|current| current.key().support_source_slots().to_vec())
+                            .collect(),
+                        exact_factor: (
+                            factor.real().numerator().to_string(),
+                            factor.real().denominator().to_string(),
+                            factor.imag().numerator().to_string(),
+                            factor.imag().denominator().to_string(),
+                        ),
+                    }
+                })
+                .collect();
             Some(NativeScheduleSummary {
                 dynamic_color_state_count: program.dynamic_color_states().len(),
+                dynamic_color_states: program
+                    .dynamic_color_states()
+                    .iter()
+                    .enumerate()
+                    .map(|(id, state)| NativeDynamicColorStateSummary {
+                        id: id as u32,
+                        output_color_shape_id: state.output_color_shape_id(),
+                        result_port_bindings: state
+                            .result_port_bindings()
+                            .iter()
+                            .map(|binding| (binding.component_index(), binding.endpoint() as u8))
+                            .collect(),
+                        components: state
+                            .components()
+                            .iter()
+                            .map(|component| {
+                                (component.kind() as u8, component.source_slots().to_vec())
+                            })
+                            .collect(),
+                    })
+                    .collect(),
                 current_count: program.currents().len(),
                 source_current_count: program
                     .currents()
@@ -1537,6 +2013,15 @@ fn validate_input(
                     .filter(|current| current.is_source())
                     .count(),
                 current_count_by_support_size,
+                current_count_by_state_and_support_size: current_count_by_state_and_support_size
+                    .into_iter()
+                    .map(|((state, support), count)| (state, support, count))
+                    .collect(),
+                current_count_by_state_color_and_support_size:
+                    current_count_by_state_color_and_support_size
+                        .into_iter()
+                        .map(|((state, color, support), count)| (state, color, support, count))
+                        .collect(),
                 contribution_count: program.contributions().len(),
                 contribution_count_by_transition_template_id:
                     contribution_count_by_transition_template_id
@@ -1544,6 +2029,10 @@ fn validate_input(
                         .collect(),
                 contribution_count_by_quantum_flow_template_id:
                     contribution_count_by_quantum_flow_template_id
+                        .into_iter()
+                        .collect(),
+                contribution_count_by_result_state_template_id:
+                    contribution_count_by_result_state_template_id
                         .into_iter()
                         .collect(),
                 referenced_quantum_flow_template_ids: referenced_quantum_flow_template_ids
@@ -1559,6 +2048,7 @@ fn validate_input(
                 amplitude_destination_count: program.amplitude_destinations().len(),
                 target_sector_count: program.physical_sector_count() as usize,
                 closure_term_count: program.closure_terms().len(),
+                closure_terms,
                 source_layout,
             })
         } else {
@@ -1600,6 +2090,7 @@ fn validate_input(
         maximum_mask_bit,
         template_reference_count: process_summary.template_reference_count() as usize,
         parameter_projection_count,
+        fermion_pairing_summary,
         composite_authenticated,
         template_catalog_digest,
         compiled_model_digest,
@@ -1612,6 +2103,7 @@ fn validate_input(
 fn decode_process_input(
     input: &OwnedInput,
 ) -> RusticolResult<process::OwnedRecurrenceProcessInput> {
+    let fermion_pairing = decode_fermion_pairing_input(input)?;
     let bitset_ranges = decode_process_rows(input, "bitset_ranges", |row| {
         Ok(process::ProcessBitsetRangeRow {
             id: input.u32("bitset_ranges", "id")?[row],
@@ -1826,6 +2318,7 @@ fn decode_process_input(
             &input.declared_digest,
             "recurrence process input digest",
         )?,
+        fermion_pairing,
         bitset_ranges,
         bitset_words: input.u64("bitset_words", "value")?.to_vec(),
         coupling_limits,
@@ -1850,6 +2343,259 @@ fn decode_process_input(
         u32_sequence_ranges: plain_ranges(input, "u32_sequence_ranges")?,
         u32_sequence_values: input.u32("u32_sequence_values", "value")?.to_vec(),
     })
+}
+
+fn decode_fermion_pairing_input(
+    input: &OwnedInput,
+) -> RusticolResult<Option<process::OwnedFermionPairingInput>> {
+    let Some(declared_digest) = input.declared_fermion_pairing_digest.as_deref() else {
+        if !input.fermion_pairing_tables.is_empty() {
+            return Err(invalid(
+                "recurrence fermion-pairing tables have no declared digest",
+            ));
+        }
+        return Ok(None);
+    };
+    if input.fermion_pairing_tables.is_empty() {
+        return Err(invalid(
+            "recurrence fermion-pairing digest has no fixed-width tables",
+        ));
+    }
+
+    let header = decode_pairing_rows(input, "header", |row| {
+        Ok(process::FermionPairingHeaderRow {
+            schema_version: input.pairing_u32("header", "schema_version")?[row],
+            abi_string_id: input.pairing_u32("header", "abi_string_id")?[row],
+            process_key_string_id: input.pairing_u32("header", "process_key_string_id")?[row],
+            proof_algorithm_string_id: input.pairing_u32("header", "proof_algorithm_string_id")?
+                [row],
+            source_count: input.pairing_u32("header", "source_count")?[row],
+            endpoint_count: input.pairing_u32("header", "endpoint_count")?[row],
+            pairing_class_count: input.pairing_u32("header", "pairing_class_count")?[row],
+            rule_count: input.pairing_u32("header", "rule_count")?[row],
+            endpoint_state_template_count: input
+                .pairing_u64("header", "endpoint_state_template_count")?[row],
+            endpoint_anti_state_template_count: input
+                .pairing_u64("header", "endpoint_anti_state_template_count")?[row],
+            endpoint_basis_count: input.pairing_u64("header", "endpoint_basis_count")?[row],
+            endpoint_color_representation_count: input
+                .pairing_u64("header", "endpoint_color_representation_count")?[row],
+            class_fundamental_slot_count: input
+                .pairing_u64("header", "class_fundamental_slot_count")?[row],
+            class_antifundamental_slot_count: input
+                .pairing_u64("header", "class_antifundamental_slot_count")?[row],
+            class_reference_pairing_count: input
+                .pairing_u64("header", "class_reference_pairing_count")?[row],
+            rule_class_pairing_index_count: input
+                .pairing_u64("header", "rule_class_pairing_index_count")?[row],
+            rule_endpoint_pairing_count: input
+                .pairing_u64("header", "rule_endpoint_pairing_count")?[row],
+            rule_source_permutation_count: input
+                .pairing_u64("header", "rule_source_permutation_count")?[row],
+            rule_lineage_count: input.pairing_u64("header", "rule_lineage_count")?[row],
+            exact_integer_count: input.pairing_u32("header", "exact_integer_count")?[row],
+            exact_integer_limb_count: input.pairing_u64("header", "exact_integer_limb_count")?[row],
+            string_count: input.pairing_u32("header", "string_count")?[row],
+            string_byte_count: input.pairing_u64("header", "string_byte_count")?[row],
+            no_fermion_line: input.pairing_u32("header", "no_fermion_line")?[row],
+            topology_digest: pairing_digest_row(input, "header", "topology_digest", row)?,
+            semantic_digest: pairing_digest_row(input, "header", "semantic_digest", row)?,
+        })
+    })?;
+    let endpoints = decode_pairing_rows(input, "endpoints", |row| {
+        Ok(process::FermionPairingEndpointRow {
+            endpoint_id: input.pairing_u32("endpoints", "endpoint_id")?[row],
+            source_slot: input.pairing_u32("endpoints", "source_slot")?[row],
+            public_label: input.pairing_u32("endpoints", "public_label")?[row],
+            species_class_id: input.pairing_u32("endpoints", "species_class_id")?[row],
+            species_string_id: input.pairing_u32("endpoints", "species_string_id")?[row],
+            particle_orientation: input.pairing_u8("endpoints", "particle_orientation")?[row],
+            color_orientation: input.pairing_u8("endpoints", "color_orientation")?[row],
+            state_template_range: pairing_range(input, "endpoints", "state_template", row)?,
+            anti_state_template_range: pairing_range(
+                input,
+                "endpoints",
+                "anti_state_template",
+                row,
+            )?,
+            basis_range: pairing_range(input, "endpoints", "basis", row)?,
+            color_representation_range: pairing_range(
+                input,
+                "endpoints",
+                "color_representation",
+                row,
+            )?,
+            contract_digest: pairing_digest_row(input, "endpoints", "contract_digest", row)?,
+        })
+    })?;
+    let pairing_classes = decode_pairing_rows(input, "pairing_classes", |row| {
+        Ok(process::FermionPairingClassRow {
+            class_id: input.pairing_u32("pairing_classes", "class_id")?[row],
+            species_class_id: input.pairing_u32("pairing_classes", "species_class_id")?[row],
+            species_string_id: input.pairing_u32("pairing_classes", "species_string_id")?[row],
+            fundamental_slot_range: pairing_range(
+                input,
+                "pairing_classes",
+                "fundamental_slot",
+                row,
+            )?,
+            antifundamental_slot_range: pairing_range(
+                input,
+                "pairing_classes",
+                "antifundamental_slot",
+                row,
+            )?,
+            reference_pairing_range: pairing_range(
+                input,
+                "pairing_classes",
+                "reference_pairing",
+                row,
+            )?,
+            pairing_count: input.pairing_u64("pairing_classes", "pairing_count")?[row],
+            proof_digest: pairing_digest_row(input, "pairing_classes", "proof_digest", row)?,
+        })
+    })?;
+    let rules = decode_pairing_rows(input, "rules", |row| {
+        Ok(process::FermionPairingRuleRow {
+            rule_id: input.pairing_u32("rules", "rule_id")?[row],
+            class_pairing_index_range: pairing_range(input, "rules", "class_pairing_index", row)?,
+            endpoint_pairing_range: pairing_range(input, "rules", "endpoint_pairing", row)?,
+            source_permutation_range: pairing_range(input, "rules", "source_permutation", row)?,
+            lineage_range: pairing_range(input, "rules", "lineage", row)?,
+            fermion_parity: input.pairing_i32("rules", "fermion_parity")?[row],
+            real_numerator_integer_id: input.pairing_u32("rules", "real_numerator_integer_id")?
+                [row],
+            real_denominator_integer_id: input
+                .pairing_u32("rules", "real_denominator_integer_id")?[row],
+            imag_numerator_integer_id: input.pairing_u32("rules", "imag_numerator_integer_id")?
+                [row],
+            imag_denominator_integer_id: input
+                .pairing_u32("rules", "imag_denominator_integer_id")?[row],
+            multiplicity: input.pairing_u64("rules", "multiplicity")?[row],
+            proof_algorithm_string_id: input.pairing_u32("rules", "proof_algorithm_string_id")?
+                [row],
+            proof_digest: pairing_digest_row(input, "rules", "proof_digest", row)?,
+        })
+    })?;
+    let rule_class_pairing_indices =
+        decode_pairing_rows(input, "rule_class_pairing_indices", |row| {
+            Ok(process::FermionPairingClassPairingIndexRow {
+                class_id: input.pairing_u32("rule_class_pairing_indices", "class_id")?[row],
+                pairing_index: input.pairing_u64("rule_class_pairing_indices", "pairing_index")?
+                    [row],
+            })
+        })?;
+    let decode_pairs = |table_name: &str| {
+        decode_pairing_rows(input, table_name, |row| {
+            Ok(process::FermionPairingEndpointPairRow {
+                fundamental_source_slot: input
+                    .pairing_u32(table_name, "fundamental_source_slot")?[row],
+                antifundamental_source_slot: input
+                    .pairing_u32(table_name, "antifundamental_source_slot")?[row],
+            })
+        })
+    };
+    let exact_integers = decode_pairing_rows(input, "exact_integers", |row| {
+        Ok(process::FermionPairingExactIntegerRow {
+            integer_id: input.pairing_u32("exact_integers", "integer_id")?[row],
+            sign: input.pairing_i32("exact_integers", "sign")?[row],
+            limb_range: pairing_range(input, "exact_integers", "limb", row)?,
+        })
+    })?;
+
+    Ok(Some(process::OwnedFermionPairingInput {
+        input_abi: process::RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI.to_owned(),
+        declared_columnar_digest: semantic_digest_from_hex(
+            declared_digest,
+            "recurrence fermion-pairing digest",
+        )?,
+        header,
+        endpoints,
+        endpoint_state_template_ids: input
+            .pairing_u32("endpoint_state_template_ids", "string_id")?
+            .to_vec(),
+        endpoint_anti_state_template_ids: input
+            .pairing_u32("endpoint_anti_state_template_ids", "string_id")?
+            .to_vec(),
+        endpoint_basis_ids: input
+            .pairing_u32("endpoint_basis_ids", "string_id")?
+            .to_vec(),
+        endpoint_color_representations: input
+            .pairing_i32("endpoint_color_representations", "value")?
+            .to_vec(),
+        pairing_classes,
+        class_fundamental_slots: input
+            .pairing_u32("class_fundamental_slots", "source_slot")?
+            .to_vec(),
+        class_antifundamental_slots: input
+            .pairing_u32("class_antifundamental_slots", "source_slot")?
+            .to_vec(),
+        class_reference_pairings: decode_pairs("class_reference_pairings")?,
+        rules,
+        rule_class_pairing_indices,
+        rule_endpoint_pairings: decode_pairs("rule_endpoint_pairings")?,
+        rule_source_slot_permutations: input
+            .pairing_u32("rule_source_slot_permutations", "source_slot")?
+            .to_vec(),
+        rule_lineages: input.pairing_u32("rule_lineages", "line_id")?.to_vec(),
+        exact_integers,
+        exact_integer_limbs: input.pairing_u64("exact_integer_limbs", "value")?.to_vec(),
+        string_ranges: pairing_plain_ranges(input, "string_ranges")?,
+        string_bytes: input.pairing_u8("string_bytes", "value")?.to_vec(),
+    }))
+}
+
+fn decode_pairing_rows<T>(
+    input: &OwnedInput,
+    table_name: &str,
+    mut decode: impl FnMut(usize) -> RusticolResult<T>,
+) -> RusticolResult<Vec<T>> {
+    let row_count = checked_usize(
+        input.fermion_pairing_table(table_name)?.row_count,
+        &format!("fermion-pairing {table_name} row count"),
+    )?;
+    (0..row_count).map(&mut decode).collect()
+}
+
+fn pairing_range(
+    input: &OwnedInput,
+    table_name: &str,
+    prefix: &str,
+    row: usize,
+) -> RusticolResult<CheckedTableRange> {
+    Ok(CheckedTableRange {
+        start: input.pairing_u64(table_name, &format!("{prefix}_start"))?[row],
+        count: input.pairing_u64(table_name, &format!("{prefix}_count"))?[row],
+    })
+}
+
+fn pairing_plain_ranges(
+    input: &OwnedInput,
+    table_name: &str,
+) -> RusticolResult<Vec<CheckedTableRange>> {
+    decode_pairing_rows(input, table_name, |row| {
+        Ok(CheckedTableRange {
+            start: input.pairing_u64(table_name, "start")?[row],
+            count: input.pairing_u64(table_name, "count")?[row],
+        })
+    })
+}
+
+fn pairing_digest_row(
+    input: &OwnedInput,
+    table_name: &str,
+    column_name: &str,
+    row: usize,
+) -> RusticolResult<[u8; 32]> {
+    let values = input.pairing_u8(table_name, column_name)?;
+    let start = row
+        .checked_mul(32)
+        .ok_or_else(|| invalid("fermion-pairing digest offset exceeds usize"))?;
+    values
+        .get(start..start + 32)
+        .ok_or_else(|| invalid("fermion-pairing digest row is truncated"))?
+        .try_into()
+        .map_err(|_| invalid("fermion-pairing digest row must contain 32 bytes"))
 }
 
 fn decode_process_rows<T>(
@@ -2209,6 +2955,8 @@ fn decode_template_input(
                 result_shape_string_id: table.u32("result_shape_string_id")?[row],
                 exact_factor_id: table.u32("exact_factor_id")?[row],
                 proof_digest_id: table.u32("proof_digest_id")?[row],
+                input_port_pairing_sequence_id: table.u32("input_port_pairing_sequence_id")?[row],
+                result_port_binding_sequence_id: table.u32("result_port_binding_sequence_id")?[row],
                 provenance_sequence_id: table.u32("provenance_sequence_id")?[row],
             })
         },
@@ -2485,6 +3233,19 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
         "parameter_projection_count",
         native.parameter_projection_count,
     )?;
+    if let Some(pairing) = native.fermion_pairing_summary {
+        let pairing_summary = PyDict::new(py);
+        pairing_summary.set_item("columnar_digest", pairing.columnar_digest.to_string())?;
+        pairing_summary.set_item("topology_digest", pairing.topology_digest.to_string())?;
+        pairing_summary.set_item("semantic_digest", pairing.semantic_digest.to_string())?;
+        pairing_summary.set_item("source_count", pairing.source_count)?;
+        pairing_summary.set_item("endpoint_count", pairing.endpoint_count)?;
+        pairing_summary.set_item("pairing_class_count", pairing.pairing_class_count)?;
+        pairing_summary.set_item("rule_count", pairing.rule_count)?;
+        summary.set_item("fermion_pairing", pairing_summary)?;
+    } else {
+        summary.set_item("fermion_pairing", py.None())?;
+    }
     summary.set_item("prepared_template_count", native.prepared_template_count)?;
     if let Some(schedule) = native.schedule_summary {
         let schedule_summary = PyDict::new(py);
@@ -2492,11 +3253,29 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
             "dynamic_color_state_count",
             schedule.dynamic_color_state_count,
         )?;
+        let dynamic_color_states = PyList::empty(py);
+        for state in schedule.dynamic_color_states {
+            let row = PyDict::new(py);
+            row.set_item("id", state.id)?;
+            row.set_item("output_color_shape_id", state.output_color_shape_id)?;
+            row.set_item("result_port_bindings", state.result_port_bindings)?;
+            row.set_item("components", state.components)?;
+            dynamic_color_states.append(row)?;
+        }
+        schedule_summary.set_item("dynamic_color_states", dynamic_color_states)?;
         schedule_summary.set_item("current_count", schedule.current_count)?;
         schedule_summary.set_item("source_current_count", schedule.source_current_count)?;
         schedule_summary.set_item(
             "current_count_by_support_size",
             schedule.current_count_by_support_size,
+        )?;
+        schedule_summary.set_item(
+            "current_count_by_state_and_support_size",
+            schedule.current_count_by_state_and_support_size,
+        )?;
+        schedule_summary.set_item(
+            "current_count_by_state_color_and_support_size",
+            schedule.current_count_by_state_color_and_support_size,
         )?;
         schedule_summary.set_item("contribution_count", schedule.contribution_count)?;
         schedule_summary.set_item(
@@ -2506,6 +3285,10 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
         schedule_summary.set_item(
             "contribution_count_by_quantum_flow_template_id",
             schedule.contribution_count_by_quantum_flow_template_id,
+        )?;
+        schedule_summary.set_item(
+            "contribution_count_by_result_state_template_id",
+            schedule.contribution_count_by_result_state_template_id,
         )?;
         schedule_summary.set_item(
             "referenced_quantum_flow_template_ids",
@@ -2532,6 +3315,29 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
         )?;
         schedule_summary.set_item("target_sector_count", schedule.target_sector_count)?;
         schedule_summary.set_item("closure_term_count", schedule.closure_term_count)?;
+        let closure_terms = PyList::empty(py);
+        for term in schedule.closure_terms {
+            let row = PyDict::new(py);
+            row.set_item("id", term.id)?;
+            row.set_item("target_destination_id", term.target_destination_id)?;
+            row.set_item("target_sector_id", term.target_sector_id)?;
+            row.set_item("target_helicity_id", term.target_helicity_id)?;
+            row.set_item("closure_template_id", term.closure_template_id)?;
+            row.set_item("quantum_flow_template_id", term.quantum_flow_template_id)?;
+            row.set_item("parent_current_ids", term.parent_current_ids)?;
+            row.set_item("parent_state_template_ids", term.parent_state_template_ids)?;
+            row.set_item(
+                "parent_dynamic_color_state_ids",
+                term.parent_dynamic_color_state_ids,
+            )?;
+            row.set_item(
+                "parent_support_source_slots",
+                term.parent_support_source_slots,
+            )?;
+            row.set_item("exact_factor", term.exact_factor)?;
+            closure_terms.append(row)?;
+        }
+        schedule_summary.set_item("closure_terms", closure_terms)?;
         let source_layout = PyList::empty(py);
         for source in schedule.source_layout {
             let row = PyDict::new(py);

@@ -20,12 +20,664 @@ use super::{
 use crate::{RusticolError, RusticolResult};
 
 pub const RECURRENCE_PROCESS_INPUT_SCHEMA_VERSION: u32 = 1;
+pub const RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI: &str =
+    "pyamplicol-recurrence-fermion-pairing-columnar-v1";
+pub const RECURRENCE_FERMION_PAIRING_SCHEMA_VERSION: u32 = 1;
+pub const RECURRENCE_NO_FERMION_LINE: u32 = u32::MAX;
+
+const RECURRENCE_FERMION_PAIRING_PROOF_ALGORITHM: &str = "canonical-external-fermion-pairing-v1";
+const MAX_FERMION_PAIRING_ENDPOINTS: usize = 16;
+const MAX_FERMION_PAIRINGS_PER_CLASS: u64 = 720;
+const MAX_FERMION_PAIRING_RULES: usize = 4096;
 
 const MISSING_ID: u32 = u32::MAX;
 const REQUIRED_DIGEST_ROLE_COUNT: usize = 4;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
+}
+
+struct FermionPairingCatalogs<'a> {
+    strings: Vec<&'a str>,
+}
+
+impl<'a> FermionPairingInputView<'a> {
+    fn validate_internal(
+        self,
+        expected_process_id: &str,
+    ) -> RusticolResult<FermionPairingValidationSummary> {
+        if self.input_abi != RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported fermion-pairing columnar ABI {:?}; expected {:?}",
+                self.input_abi, RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI
+            )));
+        }
+        if self.header.len() != 1 {
+            return Err(invalid(format!(
+                "fermion-pairing header must contain one row, found {}",
+                self.header.len()
+            )));
+        }
+        if self.endpoints.len() > MAX_FERMION_PAIRING_ENDPOINTS {
+            return Err(invalid(format!(
+                "fermion-pairing endpoint count {} exceeds {MAX_FERMION_PAIRING_ENDPOINTS}",
+                self.endpoints.len()
+            )));
+        }
+        if self.rules.is_empty() || self.rules.len() > MAX_FERMION_PAIRING_RULES {
+            return Err(invalid(format!(
+                "fermion-pairing rule count {} is outside 1..={MAX_FERMION_PAIRING_RULES}",
+                self.rules.len()
+            )));
+        }
+
+        let catalogs = self.validate_catalogs()?;
+        let header = self.header[0];
+        if header.schema_version != RECURRENCE_FERMION_PAIRING_SCHEMA_VERSION {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported fermion-pairing schema {}; expected {}",
+                header.schema_version, RECURRENCE_FERMION_PAIRING_SCHEMA_VERSION
+            )));
+        }
+        require_string_value(
+            &catalogs.strings,
+            header.abi_string_id,
+            RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI,
+            "fermion-pairing ABI",
+        )?;
+        require_string_value(
+            &catalogs.strings,
+            header.proof_algorithm_string_id,
+            RECURRENCE_FERMION_PAIRING_PROOF_ALGORITHM,
+            "fermion-pairing proof algorithm",
+        )?;
+        let process_key = required_string(
+            &catalogs.strings,
+            header.process_key_string_id,
+            "fermion-pairing process key",
+        )?;
+        if process_key != expected_process_id {
+            return Err(invalid(format!(
+                "fermion-pairing process key {process_key:?} does not match {expected_process_id:?}"
+            )));
+        }
+        self.validate_counts_and_ranges(header)?;
+        self.validate_endpoints(&catalogs, header)?;
+        self.validate_classes(&catalogs, header)?;
+        self.validate_exact_integers()?;
+        self.validate_rules(&catalogs, header)?;
+
+        let topology_digest = SemanticDigest::new(header.topology_digest).map_err(|error| {
+            invalid(format!(
+                "fermion-pairing topology digest is invalid: {error}"
+            ))
+        })?;
+        let semantic_digest = SemanticDigest::new(header.semantic_digest).map_err(|error| {
+            invalid(format!(
+                "fermion-pairing semantic digest is invalid: {error}"
+            ))
+        })?;
+        Ok(FermionPairingValidationSummary {
+            columnar_digest: self.declared_columnar_digest,
+            topology_digest,
+            semantic_digest,
+            source_count: header.source_count,
+            endpoint_count: header.endpoint_count,
+            pairing_class_count: header.pairing_class_count,
+            rule_count: header.rule_count,
+        })
+    }
+
+    fn validate_catalogs(self) -> RusticolResult<FermionPairingCatalogs<'a>> {
+        validate_packed_ranges(
+            "fermion-pairing strings",
+            self.string_ranges,
+            self.string_bytes.len(),
+        )?;
+        let mut strings = Vec::with_capacity(self.string_ranges.len());
+        let mut previous: Option<&[u8]> = None;
+        for (index, range) in self.string_ranges.iter().copied().enumerate() {
+            let bytes = &self.string_bytes[range.as_usize_range(
+                self.string_bytes.len(),
+                &format!("fermion-pairing string {index}"),
+            )?];
+            if bytes.is_empty() || previous.is_some_and(|value| value >= bytes) {
+                return Err(invalid(format!(
+                    "fermion-pairing string row {index} is empty or not canonical"
+                )));
+            }
+            let value = std::str::from_utf8(bytes).map_err(|error| {
+                invalid(format!(
+                    "fermion-pairing string row {index} is not UTF-8: {error}"
+                ))
+            })?;
+            previous = Some(bytes);
+            strings.push(value);
+        }
+        Ok(FermionPairingCatalogs { strings })
+    }
+
+    fn validate_counts_and_ranges(self, header: FermionPairingHeaderRow) -> RusticolResult<()> {
+        for (label, declared, actual) in [
+            ("endpoints", header.endpoint_count, self.endpoints.len()),
+            (
+                "pairing classes",
+                header.pairing_class_count,
+                self.pairing_classes.len(),
+            ),
+            ("rules", header.rule_count, self.rules.len()),
+            (
+                "exact integers",
+                header.exact_integer_count,
+                self.exact_integers.len(),
+            ),
+            ("strings", header.string_count, self.string_ranges.len()),
+        ] {
+            if declared != checked_u32_len(actual, label)? {
+                return Err(invalid(format!(
+                    "fermion-pairing header {label} count does not match its table"
+                )));
+            }
+        }
+        for (label, declared, actual) in [
+            (
+                "endpoint state IDs",
+                header.endpoint_state_template_count,
+                self.endpoint_state_template_ids.len(),
+            ),
+            (
+                "endpoint anti-state IDs",
+                header.endpoint_anti_state_template_count,
+                self.endpoint_anti_state_template_ids.len(),
+            ),
+            (
+                "endpoint basis IDs",
+                header.endpoint_basis_count,
+                self.endpoint_basis_ids.len(),
+            ),
+            (
+                "endpoint color representations",
+                header.endpoint_color_representation_count,
+                self.endpoint_color_representations.len(),
+            ),
+            (
+                "class fundamental slots",
+                header.class_fundamental_slot_count,
+                self.class_fundamental_slots.len(),
+            ),
+            (
+                "class antifundamental slots",
+                header.class_antifundamental_slot_count,
+                self.class_antifundamental_slots.len(),
+            ),
+            (
+                "class reference pairings",
+                header.class_reference_pairing_count,
+                self.class_reference_pairings.len(),
+            ),
+            (
+                "rule class indices",
+                header.rule_class_pairing_index_count,
+                self.rule_class_pairing_indices.len(),
+            ),
+            (
+                "rule endpoint pairings",
+                header.rule_endpoint_pairing_count,
+                self.rule_endpoint_pairings.len(),
+            ),
+            (
+                "rule source permutations",
+                header.rule_source_permutation_count,
+                self.rule_source_slot_permutations.len(),
+            ),
+            (
+                "rule lineages",
+                header.rule_lineage_count,
+                self.rule_lineages.len(),
+            ),
+            (
+                "exact-integer limbs",
+                header.exact_integer_limb_count,
+                self.exact_integer_limbs.len(),
+            ),
+            (
+                "string bytes",
+                header.string_byte_count,
+                self.string_bytes.len(),
+            ),
+        ] {
+            let actual = u64::try_from(actual)
+                .map_err(|_| invalid(format!("fermion-pairing {label} count exceeds u64")))?;
+            if declared != actual {
+                return Err(invalid(format!(
+                    "fermion-pairing header {label} count does not match its table"
+                )));
+            }
+        }
+        if header.no_fermion_line != RECURRENCE_NO_FERMION_LINE {
+            return Err(invalid("fermion-pairing lineage sentinel is stale"));
+        }
+        validate_pairing_ranges(
+            "endpoint state IDs",
+            self.endpoints.iter().map(|row| row.state_template_range),
+            self.endpoint_state_template_ids.len(),
+        )?;
+        validate_pairing_ranges(
+            "endpoint anti-state IDs",
+            self.endpoints
+                .iter()
+                .map(|row| row.anti_state_template_range),
+            self.endpoint_anti_state_template_ids.len(),
+        )?;
+        validate_pairing_ranges(
+            "endpoint basis IDs",
+            self.endpoints.iter().map(|row| row.basis_range),
+            self.endpoint_basis_ids.len(),
+        )?;
+        validate_pairing_ranges(
+            "endpoint color representations",
+            self.endpoints
+                .iter()
+                .map(|row| row.color_representation_range),
+            self.endpoint_color_representations.len(),
+        )?;
+        validate_pairing_ranges(
+            "class fundamental slots",
+            self.pairing_classes
+                .iter()
+                .map(|row| row.fundamental_slot_range),
+            self.class_fundamental_slots.len(),
+        )?;
+        validate_pairing_ranges(
+            "class antifundamental slots",
+            self.pairing_classes
+                .iter()
+                .map(|row| row.antifundamental_slot_range),
+            self.class_antifundamental_slots.len(),
+        )?;
+        validate_pairing_ranges(
+            "class reference pairings",
+            self.pairing_classes
+                .iter()
+                .map(|row| row.reference_pairing_range),
+            self.class_reference_pairings.len(),
+        )?;
+        validate_pairing_ranges(
+            "rule class indices",
+            self.rules.iter().map(|row| row.class_pairing_index_range),
+            self.rule_class_pairing_indices.len(),
+        )?;
+        validate_pairing_ranges(
+            "rule endpoint pairings",
+            self.rules.iter().map(|row| row.endpoint_pairing_range),
+            self.rule_endpoint_pairings.len(),
+        )?;
+        validate_pairing_ranges(
+            "rule source permutations",
+            self.rules.iter().map(|row| row.source_permutation_range),
+            self.rule_source_slot_permutations.len(),
+        )?;
+        validate_pairing_ranges(
+            "rule lineages",
+            self.rules.iter().map(|row| row.lineage_range),
+            self.rule_lineages.len(),
+        )?;
+        validate_pairing_ranges(
+            "exact-integer limbs",
+            self.exact_integers.iter().map(|row| row.limb_range),
+            self.exact_integer_limbs.len(),
+        )
+    }
+
+    fn validate_endpoints(
+        self,
+        catalogs: &FermionPairingCatalogs<'_>,
+        header: FermionPairingHeaderRow,
+    ) -> RusticolResult<()> {
+        validate_canonical_ids(
+            "fermion-pairing endpoint IDs",
+            self.endpoints.iter().map(|row| row.endpoint_id),
+        )?;
+        let mut previous_slot = None;
+        for (index, endpoint) in self.endpoints.iter().copied().enumerate() {
+            required_reference(
+                endpoint.source_slot,
+                header.source_count as usize,
+                "fermion endpoint source",
+            )?;
+            if previous_slot.is_some_and(|value| value >= endpoint.source_slot) {
+                return Err(invalid(format!(
+                    "fermion endpoints are not in source-slot order at row {index}"
+                )));
+            }
+            previous_slot = Some(endpoint.source_slot);
+            required_reference(
+                endpoint.species_class_id,
+                self.pairing_classes.len(),
+                "fermion endpoint species class",
+            )?;
+            required_string(
+                &catalogs.strings,
+                endpoint.species_string_id,
+                "fermion endpoint species",
+            )?;
+            if !matches!(endpoint.particle_orientation, 0 | 1)
+                || !matches!(endpoint.color_orientation, 0 | 1)
+            {
+                return Err(invalid(format!(
+                    "fermion endpoint {index} has an invalid orientation"
+                )));
+            }
+            SemanticDigest::new(endpoint.contract_digest).map_err(|error| {
+                invalid(format!(
+                    "fermion endpoint {index} digest is invalid: {error}"
+                ))
+            })?;
+            for (ids, range, label) in [
+                (
+                    self.endpoint_state_template_ids,
+                    endpoint.state_template_range,
+                    "endpoint state IDs",
+                ),
+                (
+                    self.endpoint_anti_state_template_ids,
+                    endpoint.anti_state_template_range,
+                    "endpoint anti-state IDs",
+                ),
+                (
+                    self.endpoint_basis_ids,
+                    endpoint.basis_range,
+                    "endpoint basis IDs",
+                ),
+            ] {
+                let ids = pairing_range_slice(ids, range, label)?;
+                if ids.is_empty() {
+                    return Err(invalid(format!(
+                        "fermion endpoint {index} has empty {label}"
+                    )));
+                }
+                validate_strict_u32_values(ids, catalogs.strings.len(), label)?;
+            }
+            let representations = pairing_range_slice(
+                self.endpoint_color_representations,
+                endpoint.color_representation_range,
+                "endpoint color representations",
+            )?;
+            if representations.is_empty() {
+                return Err(invalid(format!(
+                    "fermion endpoint {index} has no color representation"
+                )));
+            }
+            validate_strict_i32_values(representations, "endpoint color representations")?;
+        }
+        Ok(())
+    }
+
+    fn validate_classes(
+        self,
+        catalogs: &FermionPairingCatalogs<'_>,
+        header: FermionPairingHeaderRow,
+    ) -> RusticolResult<()> {
+        validate_canonical_ids(
+            "fermion-pairing class IDs",
+            self.pairing_classes.iter().map(|row| row.class_id),
+        )?;
+        let mut species = BTreeSet::new();
+        for (index, class) in self.pairing_classes.iter().copied().enumerate() {
+            if class.species_class_id != class.class_id {
+                return Err(invalid(format!(
+                    "fermion class {index} species-class ID is not aligned"
+                )));
+            }
+            let species_id = required_string(
+                &catalogs.strings,
+                class.species_string_id,
+                "fermion class species",
+            )?;
+            if !species.insert(species_id) {
+                return Err(invalid(format!(
+                    "fermion class {index} repeats species {species_id:?}"
+                )));
+            }
+            let fundamental = pairing_range_slice(
+                self.class_fundamental_slots,
+                class.fundamental_slot_range,
+                "class fundamental slots",
+            )?;
+            let antifundamental = pairing_range_slice(
+                self.class_antifundamental_slots,
+                class.antifundamental_slot_range,
+                "class antifundamental slots",
+            )?;
+            let references = pairing_range_slice(
+                self.class_reference_pairings,
+                class.reference_pairing_range,
+                "class reference pairings",
+            )?;
+            validate_strict_u32_values(
+                fundamental,
+                header.source_count as usize,
+                "class fundamental slots",
+            )?;
+            validate_strict_u32_values(
+                antifundamental,
+                header.source_count as usize,
+                "class antifundamental slots",
+            )?;
+            if fundamental.is_empty()
+                || fundamental.len() != antifundamental.len()
+                || references.len() != fundamental.len()
+            {
+                return Err(invalid(format!(
+                    "fermion class {index} has unbalanced endpoint ranges"
+                )));
+            }
+            for ((fundamental, antifundamental), reference) in fundamental
+                .iter()
+                .copied()
+                .zip(antifundamental.iter().copied())
+                .zip(references.iter().copied())
+            {
+                if reference.fundamental_source_slot != fundamental
+                    || reference.antifundamental_source_slot != antifundamental
+                {
+                    return Err(invalid(format!(
+                        "fermion class {index} reference pairings are stale"
+                    )));
+                }
+            }
+            if class.pairing_count == 0 || class.pairing_count > MAX_FERMION_PAIRINGS_PER_CLASS {
+                return Err(invalid(format!(
+                    "fermion class {index} pairing count is out of bounds"
+                )));
+            }
+            SemanticDigest::new(class.proof_digest).map_err(|error| {
+                invalid(format!(
+                    "fermion class {index} proof digest is invalid: {error}"
+                ))
+            })?;
+        }
+        for endpoint in self.endpoints {
+            let class = self.pairing_classes[endpoint.species_class_id as usize];
+            if endpoint.species_string_id != class.species_string_id {
+                return Err(invalid(
+                    "fermion endpoint species disagrees with its pairing class",
+                ));
+            }
+            let slots = if endpoint.color_orientation == 0 {
+                pairing_range_slice(
+                    self.class_fundamental_slots,
+                    class.fundamental_slot_range,
+                    "class fundamental slots",
+                )?
+            } else {
+                pairing_range_slice(
+                    self.class_antifundamental_slots,
+                    class.antifundamental_slot_range,
+                    "class antifundamental slots",
+                )?
+            };
+            if slots.binary_search(&endpoint.source_slot).is_err() {
+                return Err(invalid(
+                    "fermion endpoint is absent from its pairing class orientation",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_exact_integers(self) -> RusticolResult<()> {
+        validate_canonical_ids(
+            "fermion exact-integer IDs",
+            self.exact_integers.iter().map(|row| row.integer_id),
+        )?;
+        for (index, row) in self.exact_integers.iter().copied().enumerate() {
+            if !matches!(row.sign, -1 | 0 | 1) {
+                return Err(invalid(format!(
+                    "exact integer {index} has an invalid sign"
+                )));
+            }
+            let limbs = pairing_range_slice(
+                self.exact_integer_limbs,
+                row.limb_range,
+                "exact-integer limbs",
+            )?;
+            if (row.sign == 0 && !limbs.is_empty())
+                || (row.sign != 0 && (limbs.is_empty() || limbs.last() == Some(&0)))
+            {
+                return Err(invalid(format!(
+                    "exact integer {index} has a noncanonical magnitude"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_rules(
+        self,
+        catalogs: &FermionPairingCatalogs<'_>,
+        header: FermionPairingHeaderRow,
+    ) -> RusticolResult<()> {
+        validate_canonical_ids(
+            "fermion-pairing rule IDs",
+            self.rules.iter().map(|row| row.rule_id),
+        )?;
+        for (index, rule) in self.rules.iter().copied().enumerate() {
+            let class_indices = pairing_range_slice(
+                self.rule_class_pairing_indices,
+                rule.class_pairing_index_range,
+                "rule class indices",
+            )?;
+            if class_indices.len() != self.pairing_classes.len() {
+                return Err(invalid(format!(
+                    "fermion rule {index} does not reference every class"
+                )));
+            }
+            for (expected_class, encoded) in class_indices.iter().copied().enumerate() {
+                let expected_class = u32::try_from(expected_class)
+                    .map_err(|_| invalid("fermion pairing class index exceeds u32"))?;
+                if encoded.class_id != expected_class
+                    || encoded.pairing_index
+                        >= self.pairing_classes[expected_class as usize].pairing_count
+                {
+                    return Err(invalid(format!(
+                        "fermion rule {index} has an invalid class-local pairing index"
+                    )));
+                }
+            }
+            let pairs = pairing_range_slice(
+                self.rule_endpoint_pairings,
+                rule.endpoint_pairing_range,
+                "rule endpoint pairings",
+            )?;
+            if pairs.windows(2).any(|pair| {
+                (
+                    pair[0].fundamental_source_slot,
+                    pair[0].antifundamental_source_slot,
+                ) >= (
+                    pair[1].fundamental_source_slot,
+                    pair[1].antifundamental_source_slot,
+                )
+            }) {
+                return Err(invalid(format!(
+                    "fermion rule {index} endpoint pairs are not canonical"
+                )));
+            }
+            for pair in pairs {
+                for source_slot in [
+                    pair.fundamental_source_slot,
+                    pair.antifundamental_source_slot,
+                ] {
+                    required_reference(
+                        source_slot,
+                        header.source_count as usize,
+                        "rule endpoint source",
+                    )?;
+                }
+            }
+            let permutation = pairing_range_slice(
+                self.rule_source_slot_permutations,
+                rule.source_permutation_range,
+                "rule source permutation",
+            )?;
+            validate_permutation(
+                permutation,
+                header.source_count as usize,
+                &format!("fermion rule {index} source permutation"),
+            )?;
+            let lineage =
+                pairing_range_slice(self.rule_lineages, rule.lineage_range, "rule lineage")?;
+            if lineage.len() != header.source_count as usize
+                || lineage.iter().any(|line| {
+                    *line != RECURRENCE_NO_FERMION_LINE && (*line as usize) >= pairs.len()
+                })
+            {
+                return Err(invalid(format!("fermion rule {index} lineage is invalid")));
+            }
+            if !matches!(rule.fermion_parity, -1 | 1) || rule.multiplicity != 1 {
+                return Err(invalid(format!(
+                    "fermion rule {index} parity or multiplicity is invalid"
+                )));
+            }
+            require_string_value(
+                &catalogs.strings,
+                rule.proof_algorithm_string_id,
+                RECURRENCE_FERMION_PAIRING_PROOF_ALGORITHM,
+                "fermion rule proof algorithm",
+            )?;
+            SemanticDigest::new(rule.proof_digest).map_err(|error| {
+                invalid(format!(
+                    "fermion rule {index} proof digest is invalid: {error}"
+                ))
+            })?;
+            self.validate_rule_factor(rule, index)?;
+        }
+        Ok(())
+    }
+
+    fn validate_rule_factor(
+        self,
+        rule: FermionPairingRuleRow,
+        rule_index: usize,
+    ) -> RusticolResult<()> {
+        for (id, expected, label) in [
+            (
+                rule.real_numerator_integer_id,
+                rule.fermion_parity,
+                "real numerator",
+            ),
+            (rule.real_denominator_integer_id, 1, "real denominator"),
+            (rule.imag_numerator_integer_id, 0, "imaginary numerator"),
+            (rule.imag_denominator_integer_id, 1, "imaginary denominator"),
+        ] {
+            if !exact_integer_equals(self, id, expected)? {
+                return Err(invalid(format!(
+                    "fermion rule {rule_index} {label} does not match its exact parity factor"
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Physical leading-colour sector representation used by process input v1.
@@ -398,12 +1050,227 @@ pub struct ProcessSourceStateRow {
     pub crossing_phase_factor_id: u32,
 }
 
+/// Fixed-width header for one process-owned external-fermion pairing catalog.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FermionPairingHeaderRow {
+    pub schema_version: u32,
+    pub abi_string_id: u32,
+    pub process_key_string_id: u32,
+    pub proof_algorithm_string_id: u32,
+    pub source_count: u32,
+    pub endpoint_count: u32,
+    pub pairing_class_count: u32,
+    pub rule_count: u32,
+    pub endpoint_state_template_count: u64,
+    pub endpoint_anti_state_template_count: u64,
+    pub endpoint_basis_count: u64,
+    pub endpoint_color_representation_count: u64,
+    pub class_fundamental_slot_count: u64,
+    pub class_antifundamental_slot_count: u64,
+    pub class_reference_pairing_count: u64,
+    pub rule_class_pairing_index_count: u64,
+    pub rule_endpoint_pairing_count: u64,
+    pub rule_source_permutation_count: u64,
+    pub rule_lineage_count: u64,
+    pub exact_integer_count: u32,
+    pub exact_integer_limb_count: u64,
+    pub string_count: u32,
+    pub string_byte_count: u64,
+    pub no_fermion_line: u32,
+    pub topology_digest: [u8; 32],
+    pub semantic_digest: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FermionPairingEndpointRow {
+    pub endpoint_id: u32,
+    pub source_slot: u32,
+    pub public_label: u32,
+    pub species_class_id: u32,
+    pub species_string_id: u32,
+    pub particle_orientation: u8,
+    pub color_orientation: u8,
+    pub state_template_range: CheckedTableRange,
+    pub anti_state_template_range: CheckedTableRange,
+    pub basis_range: CheckedTableRange,
+    pub color_representation_range: CheckedTableRange,
+    pub contract_digest: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FermionPairingClassRow {
+    pub class_id: u32,
+    pub species_class_id: u32,
+    pub species_string_id: u32,
+    pub fundamental_slot_range: CheckedTableRange,
+    pub antifundamental_slot_range: CheckedTableRange,
+    pub reference_pairing_range: CheckedTableRange,
+    pub pairing_count: u64,
+    pub proof_digest: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FermionPairingRuleRow {
+    pub rule_id: u32,
+    pub class_pairing_index_range: CheckedTableRange,
+    pub endpoint_pairing_range: CheckedTableRange,
+    pub source_permutation_range: CheckedTableRange,
+    pub lineage_range: CheckedTableRange,
+    pub fermion_parity: i32,
+    pub real_numerator_integer_id: u32,
+    pub real_denominator_integer_id: u32,
+    pub imag_numerator_integer_id: u32,
+    pub imag_denominator_integer_id: u32,
+    pub multiplicity: u64,
+    pub proof_algorithm_string_id: u32,
+    pub proof_digest: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FermionPairingClassPairingIndexRow {
+    pub class_id: u32,
+    pub pairing_index: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FermionPairingEndpointPairRow {
+    pub fundamental_source_slot: u32,
+    pub antifundamental_source_slot: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FermionPairingExactIntegerRow {
+    pub integer_id: u32,
+    pub sign: i32,
+    pub limb_range: CheckedTableRange,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct FermionPairingInputView<'a> {
+    pub input_abi: &'a str,
+    pub declared_columnar_digest: SemanticDigest,
+    pub header: &'a [FermionPairingHeaderRow],
+    pub endpoints: &'a [FermionPairingEndpointRow],
+    pub endpoint_state_template_ids: &'a [u32],
+    pub endpoint_anti_state_template_ids: &'a [u32],
+    pub endpoint_basis_ids: &'a [u32],
+    pub endpoint_color_representations: &'a [i32],
+    pub pairing_classes: &'a [FermionPairingClassRow],
+    pub class_fundamental_slots: &'a [u32],
+    pub class_antifundamental_slots: &'a [u32],
+    pub class_reference_pairings: &'a [FermionPairingEndpointPairRow],
+    pub rules: &'a [FermionPairingRuleRow],
+    pub rule_class_pairing_indices: &'a [FermionPairingClassPairingIndexRow],
+    pub rule_endpoint_pairings: &'a [FermionPairingEndpointPairRow],
+    pub rule_source_slot_permutations: &'a [u32],
+    pub rule_lineages: &'a [u32],
+    pub exact_integers: &'a [FermionPairingExactIntegerRow],
+    pub exact_integer_limbs: &'a [u64],
+    pub string_ranges: &'a [CheckedTableRange],
+    pub string_bytes: &'a [u8],
+}
+
+#[derive(Clone, Debug)]
+pub struct OwnedFermionPairingInput {
+    pub input_abi: String,
+    pub declared_columnar_digest: SemanticDigest,
+    pub header: Vec<FermionPairingHeaderRow>,
+    pub endpoints: Vec<FermionPairingEndpointRow>,
+    pub endpoint_state_template_ids: Vec<u32>,
+    pub endpoint_anti_state_template_ids: Vec<u32>,
+    pub endpoint_basis_ids: Vec<u32>,
+    pub endpoint_color_representations: Vec<i32>,
+    pub pairing_classes: Vec<FermionPairingClassRow>,
+    pub class_fundamental_slots: Vec<u32>,
+    pub class_antifundamental_slots: Vec<u32>,
+    pub class_reference_pairings: Vec<FermionPairingEndpointPairRow>,
+    pub rules: Vec<FermionPairingRuleRow>,
+    pub rule_class_pairing_indices: Vec<FermionPairingClassPairingIndexRow>,
+    pub rule_endpoint_pairings: Vec<FermionPairingEndpointPairRow>,
+    pub rule_source_slot_permutations: Vec<u32>,
+    pub rule_lineages: Vec<u32>,
+    pub exact_integers: Vec<FermionPairingExactIntegerRow>,
+    pub exact_integer_limbs: Vec<u64>,
+    pub string_ranges: Vec<CheckedTableRange>,
+    pub string_bytes: Vec<u8>,
+}
+
+impl OwnedFermionPairingInput {
+    pub fn as_view(&self) -> FermionPairingInputView<'_> {
+        FermionPairingInputView {
+            input_abi: &self.input_abi,
+            declared_columnar_digest: self.declared_columnar_digest,
+            header: &self.header,
+            endpoints: &self.endpoints,
+            endpoint_state_template_ids: &self.endpoint_state_template_ids,
+            endpoint_anti_state_template_ids: &self.endpoint_anti_state_template_ids,
+            endpoint_basis_ids: &self.endpoint_basis_ids,
+            endpoint_color_representations: &self.endpoint_color_representations,
+            pairing_classes: &self.pairing_classes,
+            class_fundamental_slots: &self.class_fundamental_slots,
+            class_antifundamental_slots: &self.class_antifundamental_slots,
+            class_reference_pairings: &self.class_reference_pairings,
+            rules: &self.rules,
+            rule_class_pairing_indices: &self.rule_class_pairing_indices,
+            rule_endpoint_pairings: &self.rule_endpoint_pairings,
+            rule_source_slot_permutations: &self.rule_source_slot_permutations,
+            rule_lineages: &self.rule_lineages,
+            exact_integers: &self.exact_integers,
+            exact_integer_limbs: &self.exact_integer_limbs,
+            string_ranges: &self.string_ranges,
+            string_bytes: &self.string_bytes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FermionPairingValidationSummary {
+    columnar_digest: SemanticDigest,
+    topology_digest: SemanticDigest,
+    semantic_digest: SemanticDigest,
+    source_count: u32,
+    endpoint_count: u32,
+    pairing_class_count: u32,
+    rule_count: u32,
+}
+
+impl FermionPairingValidationSummary {
+    pub const fn columnar_digest(&self) -> SemanticDigest {
+        self.columnar_digest
+    }
+
+    pub const fn topology_digest(&self) -> SemanticDigest {
+        self.topology_digest
+    }
+
+    pub const fn semantic_digest(&self) -> SemanticDigest {
+        self.semantic_digest
+    }
+
+    pub const fn source_count(&self) -> u32 {
+        self.source_count
+    }
+
+    pub const fn endpoint_count(&self) -> u32 {
+        self.endpoint_count
+    }
+
+    pub const fn pairing_class_count(&self) -> u32 {
+        self.pairing_class_count
+    }
+
+    pub const fn rule_count(&self) -> u32 {
+        self.rule_count
+    }
+}
+
 macro_rules! define_process_inputs {
     ($( $field:ident : $item:ty ),+ $(,)?) => {
         #[derive(Clone, Copy, Debug)]
         pub struct RecurrenceProcessInputView<'a> {
             pub input_abi: &'a str,
             pub declared_input_digest: SemanticDigest,
+            pub fermion_pairing: Option<FermionPairingInputView<'a>>,
             $(pub $field: &'a [$item],)+
         }
 
@@ -411,6 +1278,7 @@ macro_rules! define_process_inputs {
         pub struct OwnedRecurrenceProcessInput {
             pub input_abi: String,
             pub declared_input_digest: SemanticDigest,
+            pub fermion_pairing: Option<OwnedFermionPairingInput>,
             $(pub $field: Vec<$item>,)+
         }
 
@@ -419,6 +1287,7 @@ macro_rules! define_process_inputs {
                 RecurrenceProcessInputView {
                     input_abi: &self.input_abi,
                     declared_input_digest: self.declared_input_digest,
+                    fermion_pairing: self.fermion_pairing.as_ref().map(OwnedFermionPairingInput::as_view),
                     $($field: &self.$field,)+
                 }
             }
@@ -430,6 +1299,7 @@ macro_rules! define_process_inputs {
                     summary: validated.summary,
                     semantic_identity: validated.semantic_identity,
                     template_references: validated.template_references,
+                    fermion_pairing_summary: validated.fermion_pairing_summary,
                 })
             }
         }
@@ -531,6 +1401,70 @@ pub struct ValidatedRecurrenceProcessInput {
     summary: RecurrenceProcessValidationSummary,
     semantic_identity: RecurrenceProcessSemanticIdentity,
     template_references: Vec<ProcessSemanticTemplateReference>,
+    fermion_pairing_summary: Option<FermionPairingValidationSummary>,
+}
+
+/// Zero-copy access to a process-owned pairing catalog after full validation.
+#[derive(Clone, Copy, Debug)]
+pub struct ValidatedFermionPairingCatalog<'a> {
+    input: FermionPairingInputView<'a>,
+    summary: &'a FermionPairingValidationSummary,
+}
+
+impl<'a> ValidatedFermionPairingCatalog<'a> {
+    pub const fn summary(self) -> &'a FermionPairingValidationSummary {
+        self.summary
+    }
+
+    pub const fn endpoints(self) -> &'a [FermionPairingEndpointRow] {
+        self.input.endpoints
+    }
+
+    pub const fn pairing_classes(self) -> &'a [FermionPairingClassRow] {
+        self.input.pairing_classes
+    }
+
+    pub const fn rules(self) -> &'a [FermionPairingRuleRow] {
+        self.input.rules
+    }
+
+    pub fn class_pairing_indices(
+        self,
+        rule: FermionPairingRuleRow,
+    ) -> RusticolResult<&'a [FermionPairingClassPairingIndexRow]> {
+        pairing_range_slice(
+            self.input.rule_class_pairing_indices,
+            rule.class_pairing_index_range,
+            "fermion pairing rule class indices",
+        )
+    }
+
+    pub fn endpoint_pairings(
+        self,
+        rule: FermionPairingRuleRow,
+    ) -> RusticolResult<&'a [FermionPairingEndpointPairRow]> {
+        pairing_range_slice(
+            self.input.rule_endpoint_pairings,
+            rule.endpoint_pairing_range,
+            "fermion pairing rule endpoint pairs",
+        )
+    }
+
+    pub fn source_slot_permutation(self, rule: FermionPairingRuleRow) -> RusticolResult<&'a [u32]> {
+        pairing_range_slice(
+            self.input.rule_source_slot_permutations,
+            rule.source_permutation_range,
+            "fermion pairing rule source permutation",
+        )
+    }
+
+    pub fn lineage(self, rule: FermionPairingRuleRow) -> RusticolResult<&'a [u32]> {
+        pairing_range_slice(
+            self.input.rule_lineages,
+            rule.lineage_range,
+            "fermion pairing rule lineage",
+        )
+    }
 }
 
 impl ValidatedRecurrenceProcessInput {
@@ -560,6 +1494,17 @@ impl ValidatedRecurrenceProcessInput {
             .map(|index| &self.template_references[index])
     }
 
+    pub fn fermion_pairing_catalog(&self) -> Option<ValidatedFermionPairingCatalog<'_>> {
+        Some(ValidatedFermionPairingCatalog {
+            input: self.input.fermion_pairing.as_ref()?.as_view(),
+            summary: self.fermion_pairing_summary.as_ref()?,
+        })
+    }
+
+    pub const fn fermion_pairing_summary(&self) -> Option<&FermionPairingValidationSummary> {
+        self.fermion_pairing_summary.as_ref()
+    }
+
     pub fn into_input(self) -> OwnedRecurrenceProcessInput {
         self.input
     }
@@ -569,6 +1514,7 @@ struct ValidatedProcessMetadata {
     summary: RecurrenceProcessValidationSummary,
     semantic_identity: RecurrenceProcessSemanticIdentity,
     template_references: Vec<ProcessSemanticTemplateReference>,
+    fermion_pairing_summary: Option<FermionPairingValidationSummary>,
 }
 
 struct ProcessCatalogs<'a> {
@@ -601,6 +1547,8 @@ impl<'a> RecurrenceProcessInputView<'a> {
         self.validate_generation_coverage(selected_flow_mode, selected_source_mode)?;
         self.validate_couplings_and_parameters(&catalogs, &template_references)?;
         self.validate_normalization(&catalogs)?;
+        let fermion_pairing_summary =
+            self.validate_fermion_pairing(process_id, &semantic_identity)?;
 
         Ok(ValidatedProcessMetadata {
             summary: RecurrenceProcessValidationSummary {
@@ -633,6 +1581,7 @@ impl<'a> RecurrenceProcessInputView<'a> {
             },
             semantic_identity,
             template_references,
+            fermion_pairing_summary,
         })
     }
 
@@ -1328,7 +2277,7 @@ impl<'a> RecurrenceProcessInputView<'a> {
             require_string_value(
                 &catalogs.strings,
                 sector.closure_proof_algorithm_string_id,
-                "canonical-lc-closure-anchor-v1",
+                "canonical-lc-closure-anchor-v2",
                 "physical LC closure-anchor proof algorithm",
             )?;
             required_digest(
@@ -1778,6 +2727,104 @@ impl<'a> RecurrenceProcessInputView<'a> {
         Ok(())
     }
 
+    fn validate_fermion_pairing(
+        self,
+        process_id: &str,
+        semantic_identity: &RecurrenceProcessSemanticIdentity,
+    ) -> RusticolResult<Option<FermionPairingValidationSummary>> {
+        let topology_role = semantic_identity
+            .extension_digests()
+            .get("fermion-pairing-topology")
+            .copied();
+        let semantic_role = semantic_identity
+            .extension_digests()
+            .get("fermion-pairing-semantic")
+            .copied();
+        let Some(pairing) = self.fermion_pairing else {
+            if topology_role.is_some() || semantic_role.is_some() {
+                return Err(invalid(
+                    "recurrence process claims fermion-pairing digests without pairing tables",
+                ));
+            }
+            return Ok(None);
+        };
+        let topology_role = topology_role.ok_or_else(|| {
+            invalid("recurrence fermion-pairing tables lack their topology digest role")
+        })?;
+        let semantic_role = semantic_role.ok_or_else(|| {
+            invalid("recurrence fermion-pairing tables lack their semantic digest role")
+        })?;
+        let summary = pairing.validate_internal(process_id)?;
+        if summary.topology_digest != topology_role {
+            return Err(invalid(
+                "fermion-pairing topology digest disagrees with the process semantic identity",
+            ));
+        }
+        if summary.semantic_digest != semantic_role {
+            return Err(invalid(
+                "fermion-pairing semantic digest disagrees with the process semantic identity",
+            ));
+        }
+        if summary.source_count as usize != self.external_legs.len() {
+            return Err(invalid(
+                "fermion-pairing source count does not match recurrence external legs",
+            ));
+        }
+
+        let mut expected_orientations = BTreeMap::<u32, u8>::new();
+        for line in self.lc_open_strings {
+            for (source_slot, orientation) in [
+                (line.fundamental_source_slot, 0_u8),
+                (line.antifundamental_source_slot, 1_u8),
+            ] {
+                if let Some(previous) = expected_orientations.insert(source_slot, orientation)
+                    && previous != orientation
+                {
+                    return Err(invalid(
+                        "LC sectors assign inconsistent orientations to one fermion endpoint",
+                    ));
+                }
+            }
+        }
+        let endpoint_slots = pairing
+            .endpoints
+            .iter()
+            .map(|row| row.source_slot)
+            .collect::<BTreeSet<_>>();
+        if endpoint_slots != expected_orientations.keys().copied().collect() {
+            return Err(invalid(
+                "fermion-pairing endpoints do not cover the LC open-line endpoints",
+            ));
+        }
+        for endpoint in pairing.endpoints {
+            let source = self
+                .external_legs
+                .get(required_reference(
+                    endpoint.source_slot,
+                    self.external_legs.len(),
+                    "fermion-pairing endpoint source",
+                )?)
+                .ok_or_else(|| invalid("validated pairing endpoint source disappeared"))?;
+            if !decode_bool(source.is_fermionic, "external_legs.is_fermionic")? {
+                return Err(invalid(
+                    "fermion-pairing endpoint references a non-fermionic source",
+                ));
+            }
+            if endpoint.public_label != source.public_label {
+                return Err(invalid(
+                    "fermion-pairing endpoint public label disagrees with its source",
+                ));
+            }
+            if Some(&endpoint.color_orientation) != expected_orientations.get(&endpoint.source_slot)
+            {
+                return Err(invalid(
+                    "fermion-pairing endpoint orientation disagrees with LC sectors",
+                ));
+            }
+        }
+        Ok(Some(summary))
+    }
+
     fn sequence(self, sequence_id: u32, label: &str) -> RusticolResult<&'a [u32]> {
         let range = self
             .u32_sequence_ranges
@@ -1792,6 +2839,75 @@ impl<'a> RecurrenceProcessInputView<'a> {
             [range.as_usize_range(self.u32_sequence_values.len(), label)?];
         Ok(values)
     }
+}
+
+fn pairing_range_slice<'a, T>(
+    values: &'a [T],
+    range: CheckedTableRange,
+    label: &str,
+) -> RusticolResult<&'a [T]> {
+    Ok(&values[range.as_usize_range(values.len(), label)?])
+}
+
+fn validate_pairing_ranges(
+    label: &str,
+    ranges: impl Iterator<Item = CheckedTableRange>,
+    value_len: usize,
+) -> RusticolResult<()> {
+    let ranges = ranges.collect::<Vec<_>>();
+    validate_packed_ranges(label, &ranges, value_len)
+}
+
+fn validate_strict_u32_values(values: &[u32], bound: usize, label: &str) -> RusticolResult<()> {
+    let mut previous = None;
+    for (index, value) in values.iter().copied().enumerate() {
+        required_reference(value, bound, label)?;
+        if let Some(previous) = previous
+            && previous >= value
+        {
+            return Err(invalid(format!(
+                "{label} are not in strict canonical order at row {index}"
+            )));
+        }
+        previous = Some(value);
+    }
+    Ok(())
+}
+
+fn validate_strict_i32_values(values: &[i32], label: &str) -> RusticolResult<()> {
+    if values.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(invalid(format!(
+            "{label} are not in strict canonical order"
+        )));
+    }
+    Ok(())
+}
+
+fn exact_integer_equals(
+    input: FermionPairingInputView<'_>,
+    integer_id: u32,
+    expected: i32,
+) -> RusticolResult<bool> {
+    let row = input
+        .exact_integers
+        .get(required_reference(
+            integer_id,
+            input.exact_integers.len(),
+            "fermion-pairing exact integer",
+        )?)
+        .copied()
+        .ok_or_else(|| invalid("validated fermion-pairing exact integer disappeared"))?;
+    let limbs = pairing_range_slice(
+        input.exact_integer_limbs,
+        row.limb_range,
+        "fermion-pairing exact-integer magnitude",
+    )?;
+    Ok(match expected {
+        -1 => row.sign == -1 && limbs == [1],
+        0 => row.sign == 0 && limbs.is_empty(),
+        1 => row.sign == 1 && limbs == [1],
+        _ => false,
+    })
 }
 
 fn decode_bool(value: u8, label: &str) -> RusticolResult<bool> {

@@ -441,9 +441,9 @@ fn validate_application_config(
     } else {
         false
     };
-    if !host_native {
+    if !host_native && metadata.optimization_level != 2 {
         return Err(RusticolError::compatibility(format!(
-            "SymJIT application {} uses compiler type {:?}, which is not native for this host",
+            "SymJIT application {} uses compiler type {:?}, which is not native for this host; only optimization level 2 applications are cross-architecture portable",
             path.display(),
             config.compiler_type()
         )));

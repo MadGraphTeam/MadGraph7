@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Collection
 
 PREPARED_MODEL_ARCHITECTURES = ("aarch64", "x86_64")
-PREPARED_MODEL_ASSET_BASENAME = "built-in-sm-jit-o3"
+PREPARED_MODEL_ASSET_BASENAME = "built-in-sm-jit-o2"
 
 
 def prepared_model_asset_members(prefix: str) -> frozenset[str]:

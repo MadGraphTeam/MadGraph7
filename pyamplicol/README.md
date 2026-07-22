@@ -274,9 +274,9 @@ pyamplicol self-test
 
 The default `compiled` execution mode builds process-wide stage evaluators.
 The opt-in `eager` mode prepares model-local kernels once and lets Rusticol
-execute compact process DAG tables. Wheels include built-in-SM JIT O3 packs for
-both `x86_64` and `aarch64` and select the host architecture automatically, so
-the common path needs no model-preparation command:
+execute compact process DAG tables. Wheels include the portable built-in-SM
+`built-in-sm-jit-o2` prepared pack, so the common path needs no
+model-preparation command:
 
 ```console
 pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_eager \
@@ -300,16 +300,16 @@ a matching pack and fails with the exact preparation command when one is
 absent; it never silently compiles kernels. The pack's backend and optimization
 settings are authoritative and any requested adjustment is recorded.
 Consequently, `--model built-in-sm` in eager mode resolves to the wheel-owned
-JIT O3 pack; pass an explicitly prepared path to select another backend.
+JIT O2 pack; pass an explicitly prepared path to select another backend.
 
 Portable model IR and prepared executable state have different compatibility
 contracts. `.pyAmplicol-model.json` IR is architecture-independent, whereas a
-SymJIT storage-v3 pack is scoped to one architecture class. Its saved state is
-tested across operating systems within that class, such as Linux to macOS on
-`x86_64`, but is not transferable between `x86_64` and `aarch64`. The loader
-rejects an explicit cross-architecture bundle before DAG construction or
-SymJIT loading. A future SymJIT storage ABI may permit wider portability without
-changing the `.pyamplicol-model` bundle interface.
+portable SymJIT storage-v3 prepared pack stores application state and rebuilds
+machine code for the receiving CPU. SymJIT guarantees this cross-architecture
+contract at optimization level 2, so pyAmpliCol forces JIT prepared bundles to
+O2 even if another level was requested. This does not change process-local
+compiled DAG generation, whose JIT optimization setting, including O3, remains
+independent. Prepared C++ and ASM packs remain target-native.
 
 Rusticol tiles large point batches through a reusable workspace. Configure the
 upper bounds with `[evaluator.eager] point_tile_size = 1024` and

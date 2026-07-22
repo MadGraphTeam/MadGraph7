@@ -16,9 +16,9 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from pyamplicol.models.prepared import PreparedModelBundle
 
-BUILTIN_SM_JIT_O3 = "built-in-sm-jit-o3"
+BUILTIN_SM_JIT_O2 = "built-in-sm-jit-o2"
 _PACKAGED_ARCHITECTURES = ("aarch64", "x86_64")
-_KNOWN_MODELS = (BUILTIN_SM_JIT_O3,)
+_KNOWN_MODELS = (BUILTIN_SM_JIT_O2,)
 _METADATA_KEYS = frozenset(
     {
         "backend",
@@ -115,7 +115,7 @@ def packaged_prepared_model_path(identifier: str) -> Iterator[Path]:
 
 @contextmanager
 def open_packaged_prepared_model(
-    identifier: str = BUILTIN_SM_JIT_O3,
+    identifier: str = BUILTIN_SM_JIT_O2,
 ) -> Iterator[PreparedModelBundle]:
     """Open a validated bundle while keeping zip-installed resources alive."""
 
@@ -126,7 +126,7 @@ def open_packaged_prepared_model(
 
 
 def materialize_packaged_prepared_model(
-    identifier: str = BUILTIN_SM_JIT_O3,
+    identifier: str = BUILTIN_SM_JIT_O2,
     *,
     cache_dir: Path | None = None,
 ) -> Path:
@@ -288,10 +288,12 @@ def _validate_bundle(
         raise PackagedPreparedModelError("packaged model bundle schema is stale")
     if metadata.get("backend") != "jit" or bundle.backend != "jit":
         raise PackagedPreparedModelError("packaged built-in model is not JIT-backed")
-    if metadata.get("jit_optimization_level") != 3:
-        raise PackagedPreparedModelError("packaged built-in model is not JIT O3")
-    if pack.optimization_settings.get("jit_optimization_level") != 3:
-        raise PackagedPreparedModelError("prepared kernel pack is not JIT O3")
+    if metadata.get("jit_optimization_level") != 2:
+        raise PackagedPreparedModelError(
+            "packaged built-in model is not portable JIT O2"
+        )
+    if pack.optimization_settings.get("jit_optimization_level") != 2:
+        raise PackagedPreparedModelError("prepared kernel pack is not portable JIT O2")
     if metadata.get("kernel_count") != len(pack.kernels) or not pack.kernels:
         raise PackagedPreparedModelError(
             "packaged prepared-model kernel count is invalid"
@@ -316,7 +318,7 @@ def _metadata(value: object, *, bundle_name: str) -> Mapping[str, object]:
         raise PackagedPreparedModelError(
             "unsupported packaged prepared-model metadata schema"
         )
-    if metadata.get("id") != BUILTIN_SM_JIT_O3:
+    if metadata.get("id") != BUILTIN_SM_JIT_O2:
         raise PackagedPreparedModelError("packaged prepared-model identity is invalid")
     if (
         metadata.get("model") != "built-in-sm"
@@ -379,7 +381,7 @@ def _plain_json(value: object) -> object:
 
 
 __all__ = [
-    "BUILTIN_SM_JIT_O3",
+    "BUILTIN_SM_JIT_O2",
     "PackagedPreparedModelError",
     "available_prepared_models",
     "materialize_packaged_prepared_model",

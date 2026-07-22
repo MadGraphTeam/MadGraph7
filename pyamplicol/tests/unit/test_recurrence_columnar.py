@@ -35,10 +35,123 @@ from pyamplicol.generation.recurrence_columnar import (
     RecurrenceSourceStateV1,
     build_recurrence_builder_input_v1,
 )
+from pyamplicol.generation.recurrence_fermion_pairing import (
+    build_recurrence_fermion_pairing_catalog_v1,
+)
+from pyamplicol.models.recurrence_template import CurrentStateTemplateV1
+from pyamplicol.processes.ir import (
+    CanonicalProcessIR,
+    ColorEndpointSummary,
+    ProcessLegIR,
+)
 
 
 def _sha256(label: str) -> str:
     return hashlib.sha256(label.encode("ascii")).hexdigest()
+
+
+def _pairing_state(particle_id: int) -> CurrentStateTemplateV1:
+    orientation = "particle" if particle_id > 0 else "antiparticle"
+    return CurrentStateTemplateV1(
+        template_id=f"state:{orientation}:down",
+        particle_id=particle_id,
+        anti_particle_id=-particle_id,
+        species_id="species:down",
+        orientation=orientation,
+        statistics="fermion",
+        color_representation=3 if particle_id > 0 else -3,
+        basis="weyl",
+        tensor_ordering=("weyl:0", "weyl:1"),
+        dimension=2,
+        chirality=0,
+        lc_color_shape_kind=(
+            "fundamental-open-string"
+            if particle_id > 0
+            else "antifundamental-open-string"
+        ),
+        auxiliary_kind=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+    )
+
+
+def _logical_input_with_pairing() -> RecurrenceBuilderLogicalInputV1:
+    process = CanonicalProcessIR(
+        process="d d~ > g g",
+        key="d_dbar_to_g_g",
+        color_accuracy="lc",
+        legs=(
+            ProcessLegIR(
+                1,
+                "initial",
+                "d",
+                "d",
+                1,
+                1,
+                "fermion",
+                "fermion",
+                "fundamental",
+                "particle",
+            ),
+            ProcessLegIR(
+                2,
+                "initial",
+                "d~",
+                "d~",
+                -1,
+                -1,
+                "fermion",
+                "fermion",
+                "antifundamental",
+                "antiparticle",
+            ),
+            ProcessLegIR(
+                3,
+                "final",
+                "g",
+                "g",
+                21,
+                21,
+                "boson",
+                "vector",
+                "adjoint",
+                "self-conjugate",
+            ),
+            ProcessLegIR(
+                4,
+                "final",
+                "g",
+                "g",
+                21,
+                21,
+                "boson",
+                "vector",
+                "adjoint",
+                "self-conjugate",
+            ),
+        ),
+        color_endpoints=ColorEndpointSummary(1, 1, 1),
+    )
+    catalog = build_recurrence_fermion_pairing_catalog_v1(
+        process,
+        (_pairing_state(1), _pairing_state(-1)),
+    )
+    logical = _logical_input()
+    return replace(
+        logical,
+        semantic_digests=(
+            *logical.semantic_digests,
+            RecurrenceSemanticDigestV1(
+                "fermion-pairing-semantic",
+                catalog.semantic_digest,
+            ),
+            RecurrenceSemanticDigestV1(
+                "fermion-pairing-topology",
+                catalog.topology_digest,
+            ),
+        ),
+        fermion_pairing_catalog=catalog,
+    )
 
 
 def _template(
@@ -123,7 +236,7 @@ def _logical_input(
             public_id="flow:1,3,4,2",
             kind="open-lines",
             closure_source_slot=1,
-            closure_proof_algorithm="canonical-lc-closure-anchor-v1",
+            closure_proof_algorithm="canonical-lc-closure-anchor-v2",
             closure_proof_digest=_sha256("closure-anchor:0"),
             open_strings=(RecurrenceLCOpenStringV1(0, 1, (2, 3)),),
             word_source_slots=(0, 2, 3, 1),
@@ -134,7 +247,7 @@ def _logical_input(
             public_id="flow:1,4,3,2",
             kind="open-lines",
             closure_source_slot=1,
-            closure_proof_algorithm="canonical-lc-closure-anchor-v1",
+            closure_proof_algorithm="canonical-lc-closure-anchor-v2",
             closure_proof_digest=_sha256("closure-anchor:1"),
             open_strings=(RecurrenceLCOpenStringV1(0, 1, (3, 2)),),
             word_source_slots=(0, 3, 2, 1),
@@ -372,6 +485,66 @@ def test_digest_and_bytes_ignore_nonsemantic_record_order() -> None:
         )
     )
     assert changed.canonical_digest != first.canonical_digest
+
+
+def test_process_owned_pairing_tables_are_deterministic_and_separately_digested() -> (
+    None
+):
+    logical = _logical_input_with_pairing()
+    first = build_recurrence_builder_input_v1(logical)
+    second = build_recurrence_builder_input_v1(logical)
+
+    assert first.canonical_digest == second.canonical_digest
+    assert first.fermion_pairing_digest == second.fermion_pairing_digest
+    assert first.fermion_pairing_digest is not None
+    assert len(first.fermion_pairing_digest) == 64
+    assert tuple(table.name for table in first.fermion_pairing_tables) == tuple(
+        table.name for table in second.fermion_pairing_tables
+    )
+    for left, right in zip(
+        first.fermion_pairing_tables,
+        second.fermion_pairing_tables,
+        strict=True,
+    ):
+        for left_column, right_column in zip(
+            left.columns,
+            right.columns,
+            strict=True,
+        ):
+            assert np.array_equal(left_column.values, right_column.values)
+
+    header = first.fermion_pairing_table("header")
+    assert int(header.column("endpoint_count")[0]) == 2
+    assert int(header.column("pairing_class_count")[0]) == 1
+    assert int(header.column("rule_count")[0]) == 1
+
+
+def test_pairing_catalog_identity_fails_closed_before_rust_binding() -> None:
+    logical = _logical_input_with_pairing()
+    assert logical.fermion_pairing_catalog is not None
+
+    with pytest.raises(RecurrenceColumnarInputError, match="digest roles"):
+        build_recurrence_builder_input_v1(
+            replace(
+                logical,
+                semantic_digests=tuple(
+                    item
+                    for item in logical.semantic_digests
+                    if not item.role.startswith("fermion-pairing-")
+                ),
+            )
+        )
+
+    with pytest.raises(RecurrenceColumnarInputError, match="process key"):
+        build_recurrence_builder_input_v1(
+            replace(
+                logical,
+                fermion_pairing_catalog=replace(
+                    logical.fermion_pairing_catalog,
+                    process_key="other_process",
+                ),
+            )
+        )
 
 
 def test_multiword_masks_are_flat_little_endian_u64(

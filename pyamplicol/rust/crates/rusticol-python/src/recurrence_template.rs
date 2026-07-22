@@ -273,6 +273,8 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("result_shape_string_id", PrimitiveKind::U32),
             column("exact_factor_id", PrimitiveKind::U32),
             column("proof_digest_id", PrimitiveKind::U32),
+            column("input_port_pairing_sequence_id", PrimitiveKind::U32),
+            column("result_port_binding_sequence_id", PrimitiveKind::U32),
             column("provenance_sequence_id", PrimitiveKind::U32),
         ],
     },
@@ -974,6 +976,10 @@ impl DecodedInput {
                     result_shape_string_id: table.u32("result_shape_string_id")?[row],
                     exact_factor_id: table.u32("exact_factor_id")?[row],
                     proof_digest_id: table.u32("proof_digest_id")?[row],
+                    input_port_pairing_sequence_id: table.u32("input_port_pairing_sequence_id")?
+                        [row],
+                    result_port_binding_sequence_id: table
+                        .u32("result_port_binding_sequence_id")?[row],
                     provenance_sequence_id: table.u32("provenance_sequence_id")?[row],
                 })
             },

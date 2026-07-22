@@ -17,6 +17,8 @@ const PREPARED_KERNEL_VARIANT_ABI: &str = "pyamplicol-prepared-kernel-variant-v1
 const PREPARED_INDEPENDENT_BLOCK_VARIANT_ID: &str = "independent-block-4";
 const PREPARED_INDEPENDENT_BLOCK_PROOF: &str = "prepared-kernel-independent-current-block-v1";
 const SYMJIT_APPLICATION_STORAGE_V3_ABI: &str = "symjit-application-storage-v3";
+const PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL: u64 = 2;
+const PREPARED_JIT_PORTABLE_TARGET: &str = "symjit-storage-v3-portable";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -504,16 +506,14 @@ impl PreparedKernelPackManifest {
             ));
         }
         if self.backend == "jit" {
-            let architecture = match std::env::consts::ARCH {
-                "aarch64" => "aarch64",
-                "x86_64" => "x86_64",
+            match std::env::consts::ARCH {
+                "aarch64" | "x86_64" => {}
                 other => {
                     return Err(RusticolError::compatibility(format!(
                         "prepared JIT kernels do not support host architecture {other:?}"
                     )));
                 }
-            };
-            let expected_target = format!("symjit-storage-v3-{architecture}");
+            }
             if self
                 .dependency_abis
                 .get("symjit_application")
@@ -524,13 +524,24 @@ impl PreparedKernelPackManifest {
                     "prepared JIT kernels declare an unsupported SymJIT application ABI",
                 ));
             }
-            if self.target.portable
-                || self.target.target_triple != expected_target
+            if !self.target.portable
+                || self.target.target_triple != PREPARED_JIT_PORTABLE_TARGET
                 || !self.target.cpu_features.is_empty()
             {
                 return Err(RusticolError::compatibility(format!(
-                    "prepared JIT kernels target {:?}, incompatible with host {:?}",
-                    self.target.target_triple, expected_target,
+                    "prepared JIT kernels target {:?}, expected portable target {:?}",
+                    self.target.target_triple, PREPARED_JIT_PORTABLE_TARGET,
+                )));
+            }
+            if self
+                .optimization_settings
+                .get("jit_optimization_level")
+                .and_then(Value::as_u64)
+                != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+            {
+                return Err(RusticolError::compatibility(format!(
+                    "prepared JIT kernels must use portable SymJIT optimization level {}",
+                    PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
                 )));
             }
         } else {
@@ -859,6 +870,14 @@ impl PreparedKernelManifest {
                         self.kernel_id
                     )));
                 }
+                if object.get("optimization_level").and_then(Value::as_u64)
+                    != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+                {
+                    return Err(RusticolError::compatibility(format!(
+                        "prepared kernel {} must use portable SymJIT optimization level {}",
+                        self.kernel_id, PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
+                    )));
+                }
             }
             "compiled-complex-evaluator" => {
                 if !matches!(pack.backend.as_str(), "asm" | "cpp") {
@@ -1047,6 +1066,14 @@ impl PreparedKernelVariantManifest {
             return Err(RusticolError::integrity(format!(
                 "prepared kernel {} block evaluator does not match its JIT pack",
                 self.base_kernel_id
+            )));
+        }
+        if object.get("optimization_level").and_then(Value::as_u64)
+            != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+        {
+            return Err(RusticolError::compatibility(format!(
+                "prepared kernel {} block evaluator must use portable SymJIT optimization level {}",
+                self.base_kernel_id, PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
             )));
         }
         let build_timing = object

@@ -13,6 +13,7 @@ from pyamplicol._internal.versions import verify_native_module
 
 SYMJIT_STORAGE_V3_ABI = "symjit-application-storage-v3"
 SYMJIT_STORAGE_V3_TARGET_PREFIX = "symjit-storage-v3"
+SYMJIT_STORAGE_V3_PORTABLE_TARGET = f"{SYMJIT_STORAGE_V3_TARGET_PREFIX}-portable"
 
 
 class PreparedTargetError(ValueError):
@@ -45,7 +46,7 @@ def symjit_storage_v3_target(
     word_bits: int | None = None,
     endianness: str | None = None,
 ) -> dict[str, object]:
-    """Describe a SymJIT storage-v3 pack without claiming cross-ISA portability."""
+    """Describe a portable O2 SymJIT storage-v3 prepared-kernel pack."""
 
     bits = struct.calcsize("P") * 8 if word_bits is None else word_bits
     byte_order = sys.byteorder if endianness is None else endianness
@@ -53,12 +54,15 @@ def symjit_storage_v3_target(
         raise PreparedTargetError(
             "prepared JIT kernels require a 64-bit little-endian host"
         )
-    architecture = canonical_architecture(machine)
+    # Fail early on unsupported hosts while keeping the stored target
+    # architecture-neutral. SymJIT storage-v3 applications compiled at O2 are
+    # portable between the supported x86-64 and AArch64 hosts.
+    canonical_architecture(machine)
     return {
-        "portable": False,
+        "portable": True,
         "word_bits": 64,
         "endianness": "little",
-        "target_triple": f"{SYMJIT_STORAGE_V3_TARGET_PREFIX}-{architecture}",
+        "target_triple": SYMJIT_STORAGE_V3_PORTABLE_TARGET,
         "cpu_features": [],
     }
 
@@ -112,9 +116,9 @@ def validate_prepared_target(
         if actual != expected:
             raise PreparedTargetError(
                 "prepared JIT pack target is incompatible with this host: "
-                f"pack={actual.get('target_triple')!r}, "
-                f"host={expected['target_triple']!r}; compile a prepared model "
-                "on the matching architecture"
+                f"pack={actual.get('target_triple')!r}, expected the portable "
+                f"target {expected['target_triple']!r}; recompile the prepared "
+                "model with SymJIT optimization level 2"
             )
         return
 
@@ -168,6 +172,7 @@ def _strings(value: object) -> tuple[str, ...]:
 
 __all__ = [
     "SYMJIT_STORAGE_V3_ABI",
+    "SYMJIT_STORAGE_V3_PORTABLE_TARGET",
     "SYMJIT_STORAGE_V3_TARGET_PREFIX",
     "PreparedTargetError",
     "canonical_architecture",

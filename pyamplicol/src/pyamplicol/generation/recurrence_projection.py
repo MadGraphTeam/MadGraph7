@@ -42,6 +42,9 @@ from .recurrence_columnar import (
     RecurrenceSemanticTemplateReferenceV1,
     RecurrenceSourceStateV1,
 )
+from .recurrence_fermion_pairing import (
+    build_recurrence_fermion_pairing_catalog_v1,
+)
 
 _TEMPLATE_SECTIONS: Final = (
     ("parameter", "parameters"),
@@ -54,7 +57,7 @@ _TEMPLATE_SECTIONS: Final = (
     ("color-contraction", "color_contractions"),
     ("symmetry-proof", "symmetry_proofs"),
 )
-_CLOSURE_ANCHOR_PROOF_ALGORITHM: Final = "canonical-lc-closure-anchor-v1"
+_CLOSURE_ANCHOR_PROOF_ALGORITHM: Final = "canonical-lc-closure-anchor-v2"
 
 
 class RecurrenceProjectionError(ValueError):
@@ -156,6 +159,10 @@ def project_recurrence_process_v1(
         topology_replay,
         layout,
     )
+    fermion_pairing = build_recurrence_fermion_pairing_catalog_v1(
+        process,
+        template_catalog.current_states,
+    )
 
     return RecurrenceBuilderLogicalInputV1(
         process_id=process.key,
@@ -171,12 +178,19 @@ def project_recurrence_process_v1(
             RecurrenceSemanticDigestV1(
                 "color-plan", _digest(color_plan.to_json_dict())
             ),
+            RecurrenceSemanticDigestV1(
+                "fermion-pairing-semantic", fermion_pairing.semantic_digest
+            ),
+            RecurrenceSemanticDigestV1(
+                "fermion-pairing-topology", fermion_pairing.topology_digest
+            ),
         ),
         external_legs=external_legs,
         physical_sectors=physical_sectors,
         public_flows=public_flows,
         semantic_template_references=template_references,
         normalization=normalization,
+        fermion_pairing_catalog=fermion_pairing,
         replay_partitions=replay_partitions,
         selected_public_flow_ids=selected_flows,
         selected_source_coverage=selected_sources,
@@ -604,6 +618,7 @@ def _project_physical_sectors(
         closure_source_slot, closure_proof_digest = _closure_anchor_contract(
             sector_id=int(sector.id),
             sector_kind=sector.kind,
+            open_string_count=len(open_strings),
             word_source_slots=word_source_slots,
             singlet_source_slots=singlet_source_slots,
             external_legs=external_legs,
@@ -667,6 +682,7 @@ def _closure_anchor_contract(
     *,
     sector_id: int,
     sector_kind: str,
+    open_string_count: int,
     word_source_slots: tuple[int, ...],
     singlet_source_slots: tuple[int, ...],
     external_legs: tuple[RecurrenceExternalLegV1, ...],
@@ -699,10 +715,16 @@ def _closure_anchor_contract(
         {
             "algorithm": _CLOSURE_ANCHOR_PROOF_ALGORITHM,
             "closure_source_slot": closure_source_slot,
+            "component_order_policy": (
+                "independent-open-string-block-permutation"
+                if sector_kind == "open-lines" and open_string_count > 1
+                else "exact-ordered-components"
+            ),
             "external_source_count": external_source_count,
             "fermionic_source_slots": tuple(
                 leg.source_slot for leg in external_legs if leg.is_fermionic
             ),
+            "open_string_count": open_string_count,
             "policy": policy,
             "sector_id": sector_id,
             "sector_kind": sector_kind,

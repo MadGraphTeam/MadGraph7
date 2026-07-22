@@ -569,9 +569,16 @@ def _all_u32_sequences(
     for record in catalog.color_contractions:
         for witness in record.transition_witnesses:
             yield tuple(
-                strings.id(item)
-                for pair in witness.provenance
-                for item in pair
+                value
+                for pairing in witness.input_port_pairings
+                for port in pairing
+                for value in port
+            )
+            yield tuple(
+                value for port in witness.result_port_bindings for value in port
+            )
+            yield tuple(
+                strings.id(item) for pair in witness.provenance for item in pair
             )
     for record in catalog.symmetry_proofs:
         yield tuple(strings.id(value) for value in record.subject_template_ids)
@@ -804,9 +811,7 @@ def _runtime_helicity_tables(catalog, ids, strings, digests, factors):
             for source_component, full_component in enumerate(
                 variant.projection_full_components
             ):
-                projection_rows.append(
-                    (variant_id, source_component, full_component)
-                )
+                projection_rows.append((variant_id, source_component, full_component))
             embedding_offset += len(variant.embedding_source_components)
             projection_offset += len(variant.projection_full_components)
         variant_offset += len(contract.variants)
@@ -890,9 +895,7 @@ def _sources_table(
                 (
                     255
                     if record.lc_color_seed.component_kind is None
-                    else _LC_COLOR_COMPONENT_KIND[
-                        record.lc_color_seed.component_kind
-                    ]
+                    else _LC_COLOR_COMPONENT_KIND[record.lc_color_seed.component_kind]
                 ),
                 _LC_COLOR_COMPONENT_ROLE[record.lc_color_seed.component_role],
                 digests.id(record.lc_color_seed.proof_digest),
@@ -1273,6 +1276,21 @@ def _lc_color_transition_witnesses_table(
                     digests.id(witness.proof_digest),
                     sequences.id(
                         tuple(
+                            value
+                            for pairing in witness.input_port_pairings
+                            for port in pairing
+                            for value in port
+                        )
+                    ),
+                    sequences.id(
+                        tuple(
+                            value
+                            for port in witness.result_port_bindings
+                            for value in port
+                        )
+                    ),
+                    sequences.id(
+                        tuple(
                             strings.id(item)
                             for pair in witness.provenance
                             for item in pair
@@ -1296,6 +1314,8 @@ def _lc_color_transition_witnesses_table(
             ("result_shape_string_id", _U32),
             ("exact_factor_id", _U32),
             ("proof_digest_id", _U32),
+            ("input_port_pairing_sequence_id", _U32),
+            ("result_port_binding_sequence_id", _U32),
             ("provenance_sequence_id", _U32),
         ),
     )

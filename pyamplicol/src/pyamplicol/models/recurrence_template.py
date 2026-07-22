@@ -52,9 +52,7 @@ LCColorShapeKindV1: TypeAlias = Literal[
     "antifundamental-open-string",
     "adjoint-segment",
 ]
-LCColorComponentKindV1: TypeAlias = Literal[
-    "open-string", "adjoint-segment", "trace"
-]
+LCColorComponentKindV1: TypeAlias = Literal["open-string", "adjoint-segment", "trace"]
 LCColorComponentRoleV1: TypeAlias = Literal["active", "passive", "none"]
 LCColorSourceSeedOperationV1: TypeAlias = Literal["empty", "singleton"]
 LCColorComponentOperationV1: TypeAlias = Literal[
@@ -111,9 +109,7 @@ _LC_COLOR_SHAPE_KINDS = frozenset(
         "adjoint-segment",
     }
 )
-_LC_COLOR_COMPONENT_KINDS = frozenset(
-    {"open-string", "adjoint-segment", "trace"}
-)
+_LC_COLOR_COMPONENT_KINDS = frozenset({"open-string", "adjoint-segment", "trace"})
 _LC_COLOR_COMPONENT_ROLES = frozenset({"active", "passive", "none"})
 _LC_COLOR_SOURCE_SEED_OPERATIONS = frozenset({"empty", "singleton"})
 _LC_COLOR_COMPONENT_OPERATIONS = frozenset(
@@ -838,9 +834,7 @@ class SourceTemplateV1(_SemanticRecord):
             "helicity": self.helicity,
             "flavour_flow": list(self.flavour_flow),
             "mass_parameter_id": self.mass_parameter_id,
-            "quantum_number_flow": [
-                list(item) for item in self.quantum_number_flow
-            ],
+            "quantum_number_flow": [list(item) for item in self.quantum_number_flow],
             "lc_color_seed": self.lc_color_seed.to_dict(),
             "spin_state": self.spin_state,
             "state_template_id": self.state_template_id,
@@ -969,9 +963,7 @@ def _apply_flavour_flow_operation(
         return (result_particle,)
     if operation == "append-left-result":
         return (
-            left
-            if left and left[-1] == result_particle
-            else (*left, result_particle)
+            left if left and left[-1] == result_particle else (*left, result_particle)
         )
     if operation == "append-right-result":
         return (
@@ -1315,6 +1307,8 @@ class LCColorTransitionWitnessV1:
     exact_factor: ExactComplexRationalV1
     proof_digest: str
     provenance: tuple[tuple[str, str], ...] = ()
+    input_port_pairings: tuple[tuple[tuple[int, int], tuple[int, int]], ...] = ()
+    result_port_bindings: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         if len(self.input_shape_kinds) != 2 or any(
@@ -1355,20 +1349,14 @@ class LCColorTransitionWitnessV1:
                     "an LC join requires a result component kind and role"
                 )
         elif self.component_operation == "close":
-            if (
-                self.result_component_role != "none"
-            ):
+            if self.result_component_role != "none":
                 raise RecurrenceTemplateError(
                     "an LC closure cannot declare a recurrence result component"
                 )
-        elif (
-            self.result_component_kind is not None
-            or self.result_component_role
-            != (
-                "active"
-                if self.component_operation in {"inherit-left", "inherit-right"}
-                else "none"
-            )
+        elif self.result_component_kind is not None or self.result_component_role != (
+            "active"
+            if self.component_operation in {"inherit-left", "inherit-right"}
+            else "none"
         ):
             raise RecurrenceTemplateError(
                 "LC non-join result role does not match its component operation"
@@ -1403,9 +1391,25 @@ class LCColorTransitionWitnessV1:
             raise RecurrenceTemplateError(
                 "LC color witness provenance requires nonempty string pairs"
             )
+        consumed_ports: list[tuple[int, int]] = []
+        for pairing in self.input_port_pairings:
+            if not isinstance(pairing, tuple) or len(pairing) != 2:
+                raise RecurrenceTemplateError(
+                    "LC color witness port pairings must contain two port references"
+                )
+            for port in pairing:
+                _validate_lc_color_port_reference(port)
+                consumed_ports.append(port)
+        for port in self.result_port_bindings:
+            _validate_lc_color_port_reference(port)
+            consumed_ports.append(port)
+        if len(consumed_ports) != len(set(consumed_ports)):
+            raise RecurrenceTemplateError(
+                "LC color witness must consume each parent port at most once"
+            )
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "component_operation": self.component_operation,
             "exact_factor": self.exact_factor.to_dict(),
             "input_permutation": list(self.input_permutation),
@@ -1417,6 +1421,14 @@ class LCColorTransitionWitnessV1:
             "result_shape_kind": self.result_shape_kind,
             "reverse_parent_mask": self.reverse_parent_mask,
         }
+        if self.input_port_pairings or self.result_port_bindings:
+            payload["input_port_pairings"] = [
+                [list(left), list(right)] for left, right in self.input_port_pairings
+            ]
+            payload["result_port_bindings"] = [
+                list(port) for port in self.result_port_bindings
+            ]
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -1929,9 +1941,7 @@ class RecurrenceTemplateCatalog:
         closures: Sequence[ClosureTemplateV1] = (),
         color_contractions: Sequence[ColorContractionTemplateV1] = (),
         symmetry_proofs: Sequence[SymmetryProofV1] = (),
-        runtime_helicity_contracts: Sequence[
-            RecurrenceRuntimeHelicityContractV1
-        ] = (),
+        runtime_helicity_contracts: Sequence[RecurrenceRuntimeHelicityContractV1] = (),
         evaluator_bindings: Sequence[EvaluatorBindingV1] = (),
     ) -> RecurrenceTemplateCatalog:
         _require_sha256("compiled_model_digest", compiled_model_digest)
@@ -2122,8 +2132,7 @@ class RecurrenceTemplateCatalog:
             )
             if flow.result_quantum_number_flow != previous_quantum_flow:
                 raise RecurrenceTemplateError(
-                    "particle-static quantum-number flow differs for one result "
-                    "state"
+                    "particle-static quantum-number flow differs for one result state"
                 )
         for transition in self.transitions:
             _require_references(
@@ -2147,8 +2156,7 @@ class RecurrenceTemplateCatalog:
                 or flow.coupling_orders != transition.coupling_orders
             ):
                 raise RecurrenceTemplateError(
-                    "transition and quantum-flow state/coupling contracts do not "
-                    "match"
+                    "transition and quantum-flow state/coupling contracts do not match"
                 )
             _require_references(
                 "transition coupling parameters",
@@ -2215,8 +2223,7 @@ class RecurrenceTemplateCatalog:
             )
             if any(
                 flow.input_state_template_ids != closure.input_state_template_ids
-                or flow.result_state_template_id
-                != closure.result_state_template_id
+                or flow.result_state_template_id != closure.result_state_template_id
                 or flow.coupling_orders != closure.coupling_orders
                 for flow in eligible_flows
             ):
@@ -2285,8 +2292,7 @@ class RecurrenceTemplateCatalog:
             )
             if previous_particle_owner != contract.template_id:
                 raise RecurrenceTemplateError(
-                    "one physical source family cannot span runtime-helicity "
-                    "contracts"
+                    "one physical source family cannot span runtime-helicity contracts"
                 )
             variant_source_ids = {item.source_template_id for item in contract.variants}
             family_source_ids = {
@@ -2774,9 +2780,7 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
         ),
         helicity=_require_int("source helicity", value["helicity"]),
         spin_state=_require_int("source spin_state", value["spin_state"]),
-        flavour_flow=_decode_flavour_flow(
-            "source flavour flow", value["flavour_flow"]
-        ),
+        flavour_flow=_decode_flavour_flow("source flavour flow", value["flavour_flow"]),
         quantum_number_flow=_decode_quantum_number_flow(
             "source quantum-number flow", value["quantum_number_flow"]
         ),
@@ -3160,24 +3164,34 @@ def _color_from_dict(payload: Mapping[str, object]) -> ColorContractionTemplateV
 
 def _lc_color_witness_from_dict(payload: object) -> LCColorTransitionWitnessV1:
     value = _require_mapping("LC color transition witness", payload)
-    _require_exact_keys(
-        "LC color transition witness",
-        value,
-        frozenset(
-            {
-                "component_operation",
-                "exact_factor",
-                "input_permutation",
-                "input_shape_kinds",
-                "proof_digest",
-                "provenance",
-                "result_component_kind",
-                "result_component_role",
-                "result_shape_kind",
-                "reverse_parent_mask",
-            }
-        ),
+    legacy_fields = frozenset(
+        {
+            "component_operation",
+            "exact_factor",
+            "input_permutation",
+            "input_shape_kinds",
+            "proof_digest",
+            "provenance",
+            "result_component_kind",
+            "result_component_role",
+            "result_shape_kind",
+            "reverse_parent_mask",
+        }
     )
+    optional_port_fields = frozenset({"input_port_pairings", "result_port_bindings"})
+    actual_fields = frozenset(value)
+    unknown = actual_fields - legacy_fields - optional_port_fields
+    missing = legacy_fields - actual_fields
+    if unknown or missing:
+        details: list[str] = []
+        if unknown:
+            details.append("unknown=" + ",".join(sorted(unknown)))
+        if missing:
+            details.append("missing=" + ",".join(sorted(missing)))
+        raise RecurrenceTemplateError(
+            "LC color transition witness has noncanonical fields "
+            f"({'; '.join(details)})"
+        )
     input_shapes = _decode_string_tuple(
         "LC color witness input shapes", value["input_shape_kinds"]
     )
@@ -3212,7 +3226,64 @@ def _lc_color_witness_from_dict(payload: object) -> LCColorTransitionWitnessV1:
             "LC color witness provenance",
             value["provenance"],
         ),
+        input_port_pairings=_decode_lc_color_port_pairings(
+            value.get("input_port_pairings", [])
+        ),
+        result_port_bindings=_decode_lc_color_port_references(
+            value.get("result_port_bindings", [])
+        ),
     )
+
+
+def _validate_lc_color_port_reference(value: object) -> None:
+    if (
+        not isinstance(value, tuple)
+        or len(value) != 2
+        or any(isinstance(item, bool) or not isinstance(item, int) for item in value)
+    ):
+        raise RecurrenceTemplateError(
+            "LC color port references must be two-element integer tuples"
+        )
+    parent_index, local_port_index = value
+    if parent_index not in (0, 1) or local_port_index < 0:
+        raise RecurrenceTemplateError(
+            "LC color port reference is outside the two-parent nonnegative domain"
+        )
+
+
+def _decode_lc_color_port_references(value: object) -> tuple[tuple[int, int], ...]:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError("LC color port references must be a JSON array")
+    sequence = value
+    result: list[tuple[int, int]] = []
+    for item in sequence:
+        port = _decode_int_tuple("LC color port reference", item)
+        if len(port) != 2:
+            raise RecurrenceTemplateError(
+                "LC color port reference must contain two integers"
+            )
+        result.append((port[0], port[1]))
+    return tuple(result)
+
+
+def _decode_lc_color_port_pairings(
+    value: object,
+) -> tuple[tuple[tuple[int, int], tuple[int, int]], ...]:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError("LC color port pairings must be a JSON array")
+    sequence = value
+    result: list[tuple[tuple[int, int], tuple[int, int]]] = []
+    for item in sequence:
+        if not isinstance(item, list):
+            raise RecurrenceTemplateError("LC color port pairing must be a JSON array")
+        pair = item
+        if len(pair) != 2:
+            raise RecurrenceTemplateError(
+                "LC color port pairing must contain two port references"
+            )
+        ports = _decode_lc_color_port_references(pair)
+        result.append((ports[0], ports[1]))
+    return tuple(result)
 
 
 def _symmetry_from_dict(payload: Mapping[str, object]) -> SymmetryProofV1:
@@ -3278,9 +3349,7 @@ def _runtime_helicity_contract_from_dict(
         }
     )
     for index, raw_variant in enumerate(raw_variants):
-        variant = _require_mapping(
-            f"runtime-helicity variant {index}", raw_variant
-        )
+        variant = _require_mapping(f"runtime-helicity variant {index}", raw_variant)
         _require_exact_keys(
             f"runtime-helicity variant {index}", variant, variant_fields
         )

@@ -30,6 +30,7 @@ from pyamplicol.models.prepared_catalog import (
     PreparedVertexBinding,
     PropagatorKernelKey,
     VertexKernelKey,
+    build_prepared_kernel_catalog,
 )
 from pyamplicol.models.recurrence_catalog_builder import (
     build_recurrence_template_catalog,
@@ -161,6 +162,35 @@ def test_catalog_round_trip_preserves_builder_output() -> None:
     )
     loaded = RecurrenceTemplateCatalog.from_dict(json.loads(catalog.canonical_json))
     assert loaded == catalog
+
+
+def test_direct_closure_mirror_aliases_are_not_double_counted() -> None:
+    model = BuiltinSMModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    bindings = {
+        semantic_id: binding
+        for binding in catalog.evaluator_bindings
+        for semantic_id in binding.semantic_template_ids
+    }
+    aliases: dict[tuple[str, tuple[str, ...]], int] = {}
+    for closure in catalog.closures:
+        if closure.equivalence_class != "direct-contraction":
+            continue
+        binding = bindings[closure.template_id]
+        key = (
+            binding.callable_signature,
+            tuple(sorted(closure.input_state_template_ids)),
+        )
+        aliases[key] = aliases.get(key, 0) + 1
+
+    assert aliases
+    assert set(aliases.values()) == {1}
 
 
 class _ComplexParameterModel(_ParameterModel):

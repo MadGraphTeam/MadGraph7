@@ -176,18 +176,18 @@ Execution mode and evaluator backend are independent choices:
 
 | Backend | Use |
 | --- | --- |
-| `jit` | Default direct SymJIT application, optimization level 3, compression enabled |
+| `jit` | Default direct SymJIT application; compiled DAGs use optimization level 3 with compression enabled |
 | `asm` | Symbolica assembly evaluator |
 | `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
 
-Eager mode normally requires a `.pyamplicol-model` bundle already prepared for
-exactly one backend. The `built-in-sm` source is the exception: installed
-wheels carry `x86_64` and `aarch64` JIT O3 packs and select the host architecture
-automatically. Generation never compiles missing eager kernels. The prepared
-backend and code-shaping optimization settings are authoritative; conflicting
-requests are retained in the requested configuration, adjusted in the effective
+Eager and recurrence modes normally require a `.pyamplicol-model` bundle
+already prepared for exactly one backend. The `built-in-sm` source is the
+exception: installed wheels carry the portable `built-in-sm-jit-o2` pack.
+Generation never compiles missing prepared kernels. The prepared backend and
+code-shaping optimization settings are authoritative; conflicting requests are
+retained in the requested configuration, adjusted in the effective
 configuration, and reported once. Pass an explicit prepared-model path to
-select built-in C++ or ASM instead of the packaged JIT O3 pack.
+select built-in C++ or ASM instead of the packaged JIT O2 pack.
 
 `evaluator.jit.compress = true` factors repeated complex instruction
 sequences into internal SymJIT applets. It is enabled by default and changes
@@ -198,10 +198,11 @@ kernel pack, so eager generation reports the pack's value as the effective
 configuration when it differs from the request.
 
 `.pyAmplicol-model.json` model IR is architecture-independent. SymJIT
-storage-v3 prepared packs are instead portable only within their architecture
-class; same-architecture transfer across supported operating systems is tested.
-An explicit `x86_64`/`aarch64` mismatch is rejected before DAG construction or
-SymJIT loading. A future SymJIT storage ABI may widen this contract.
+storage-v3 prepared packs at optimization level 2 are portable across supported
+`x86_64` and `aarch64` hosts and rebuild executable code for the receiving CPU.
+pyAmpliCol therefore forces O2 when preparing JIT kernels, independently of the
+JIT level used for process-local compiled DAG evaluators. C++ and ASM prepared
+packs remain target-native.
 
 `evaluator.eager.point_tile_size` defaults to 1024 and is an upper bound. The
 runtime reduces it as needed to keep reusable storage within

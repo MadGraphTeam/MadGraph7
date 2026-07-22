@@ -480,14 +480,24 @@ fn compiler_certified_lc_color_witnesses_apply_exact_ordered_operations() {
         Some(LCColorComponentKind::AdjointSegment),
         LCColorComponentRole::Active,
         Some(2),
+        LCColorPortWiring::new(
+            [1, 0],
+            vec![],
+            vec![
+                LCColorParentPort::new(1, 0).unwrap(),
+                LCColorParentPort::new(0, 0).unwrap(),
+            ],
+        )
+        .unwrap(),
         ExactComplexRational::new(ExactRational::ONE, ExactRational::ZERO),
         digest(9),
     )
     .unwrap();
     let result = witness.apply(&left, &right).unwrap().unwrap();
     assert_eq!(result.output_color_shape_id(), 2);
-    assert_eq!(result.components().len(), 1);
-    assert_eq!(result.components()[0].source_slots(), &[2, 1, 0]);
+    assert_eq!(result.components().len(), 2);
+    assert_eq!(result.components()[0].source_slots(), &[2, 1]);
+    assert_eq!(result.components()[1].source_slots(), &[0]);
     assert_eq!(witness.proof_digest(), digest(9));
 
     assert!(
@@ -498,6 +508,7 @@ fn compiler_certified_lc_color_witnesses_apply_exact_ordered_operations() {
             None,
             LCColorComponentRole::None,
             Some(2),
+            LCColorPortWiring::new([0, 1], vec![], vec![]).unwrap(),
             ExactComplexRational::new(ExactRational::ONE, ExactRational::ZERO),
             digest(9),
         )
@@ -516,9 +527,12 @@ fn lc_color_join_uses_declared_active_components_in_multi_line_forests() {
         ],
     )
     .unwrap();
-    let right = DynamicLCColorState::new(
+    let right = DynamicLCColorState::new_port_wired(
         1,
-        Some(0),
+        vec![
+            LCColorPortBinding::new(0, LCColorEndpoint::Back),
+            LCColorPortBinding::new(0, LCColorEndpoint::Front),
+        ],
         vec![
             LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![2]).unwrap(),
             LCColorComponent::new(LCColorComponentKind::OpenString, vec![5, 6]).unwrap(),
@@ -532,15 +546,113 @@ fn lc_color_join_uses_declared_active_components_in_multi_line_forests() {
         Some(LCColorComponentKind::OpenString),
         LCColorComponentRole::Active,
         Some(2),
+        LCColorPortWiring::new(
+            [0, 1],
+            vec![[
+                LCColorParentPort::new(0, 0).unwrap(),
+                LCColorParentPort::new(1, 1).unwrap(),
+            ]],
+            vec![LCColorParentPort::new(1, 0).unwrap()],
+        )
+        .unwrap(),
         ExactComplexRational::new(ExactRational::ONE, ExactRational::ZERO),
         digest(11),
     )
     .unwrap();
     let result = witness.apply(&left, &right).unwrap().unwrap();
-    assert_eq!(result.active_component_index(), Some(2));
-    assert_eq!(result.components()[0].source_slots(), &[5, 6]);
-    assert_eq!(result.components()[1].source_slots(), &[7, 8]);
-    assert_eq!(result.components()[2].source_slots(), &[0, 1, 2]);
+    assert_eq!(result.active_component_index(), Some(1));
+    assert_eq!(result.components()[0].source_slots(), &[7, 8]);
+    assert_eq!(result.components()[1].source_slots(), &[0, 1, 2]);
+    assert_eq!(result.components()[2].source_slots(), &[5, 6]);
+}
+
+#[test]
+fn port_wiring_preserves_crossed_two_line_connectivity() {
+    let fundamental = |slot| {
+        DynamicLCColorState::new_port_wired(
+            1,
+            vec![LCColorPortBinding::new(0, LCColorEndpoint::Back)],
+            vec![LCColorComponent::new(LCColorComponentKind::OpenString, vec![slot]).unwrap()],
+        )
+        .unwrap()
+    };
+    let antifundamental = |slot| {
+        DynamicLCColorState::new_port_wired(
+            2,
+            vec![LCColorPortBinding::new(0, LCColorEndpoint::Front)],
+            vec![LCColorComponent::new(LCColorComponentKind::OpenString, vec![slot]).unwrap()],
+        )
+        .unwrap()
+    };
+
+    // u(2) + ubar(3) -> g*: the two gluon result ports retain the two
+    // independent quark-line endpoints rather than collapsing to one port.
+    let gluon_wiring = LCColorPortWiring::new(
+        [0, 1],
+        vec![],
+        vec![
+            LCColorParentPort::new(0, 0).unwrap(),
+            LCColorParentPort::new(1, 0).unwrap(),
+        ],
+    )
+    .unwrap();
+    let gluon = gluon_wiring
+        .apply(&fundamental(2), &antifundamental(3), 3)
+        .unwrap();
+    assert_eq!(gluon.result_port_bindings().len(), 2);
+    assert_eq!(gluon.result_port_lineage_source_slots().unwrap(), [2, 3]);
+
+    // d(1) consumes the ubar-side gluon port; the u-side port becomes the
+    // result current port. This creates passive [1,3] plus active [2].
+    let quark_wiring = LCColorPortWiring::new(
+        [0, 1],
+        vec![[
+            LCColorParentPort::new(0, 0).unwrap(),
+            LCColorParentPort::new(1, 1).unwrap(),
+        ]],
+        vec![LCColorParentPort::new(1, 0).unwrap()],
+    )
+    .unwrap();
+    let complement = quark_wiring.apply(&fundamental(1), &gluon, 1).unwrap();
+    assert_eq!(
+        complement
+            .components()
+            .iter()
+            .map(LCColorComponent::source_slots)
+            .collect::<Vec<_>>(),
+        vec![&[1, 3][..], &[2][..]],
+    );
+    assert_eq!(complement.result_port_lineage_source_slots().unwrap(), [2]);
+
+    // The remaining result port closes against dbar(0), yielding exactly the
+    // crossed physical forest [1,3] + [2,0].
+    let closure_wiring = LCColorPortWiring::new(
+        [0, 1],
+        vec![[
+            LCColorParentPort::new(0, 0).unwrap(),
+            LCColorParentPort::new(1, 0).unwrap(),
+        ]],
+        vec![],
+    )
+    .unwrap();
+    let closed = closure_wiring
+        .apply(&complement, &antifundamental(0), 0)
+        .unwrap();
+    assert!(closed.result_port_bindings().is_empty());
+    assert!(
+        closed
+            .result_port_lineage_source_slots()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        closed
+            .components()
+            .iter()
+            .map(LCColorComponent::source_slots)
+            .collect::<Vec<_>>(),
+        vec![&[1, 3][..], &[2, 0][..]],
+    );
 }
 
 #[test]

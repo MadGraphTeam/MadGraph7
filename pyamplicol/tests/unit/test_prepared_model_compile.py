@@ -46,7 +46,7 @@ class _FakeJitAdapter:
             "batch_layout": "row-major",
             "compiler_type": "native",
             "translation_mode": "indirect",
-            "optimization_level": 3,
+            "optimization_level": 2,
             "word_bits": 64,
             "endianness": "little",
             "required_defuns": [],
@@ -54,7 +54,7 @@ class _FakeJitAdapter:
             "evaluator_state_runtime_capability": (
                 "symbolica.legacy-jit-container.complex-f64.v1"
             ),
-            "settings": {"jit_optimization_level": 3},
+            "settings": {"jit_optimization_level": 2},
             "build_timing": {},
         }
 
@@ -352,9 +352,10 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     assert result.kernel_count == 1
     assert result.bundle.backend == "jit"
     assert result.bundle.kernel_pack.optimization_settings["jit_compress"] is True
-    assert result.bundle.kernel_pack.target["portable"] is False
-    assert str(result.bundle.kernel_pack.target["target_triple"]).startswith(
-        "symjit-storage-v3-"
+    assert result.bundle.kernel_pack.target["portable"] is True
+    assert (
+        result.bundle.kernel_pack.target["target_triple"]
+        == "symjit-storage-v3-portable"
     )
     assert result.bundle.kernel_pack.resolver_manifest["model_name"] == "built-in-sm"
     kernel = result.bundle.kernel_pack.kernels[0]
@@ -366,6 +367,59 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     )
     assert progress[-1] == ("prepared model complete", 1, 1)
     assert "recurrence_template_validation" in result.phase_timings_seconds
+
+
+def test_prepared_jit_compiler_forces_portable_o2_without_changing_public_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    observed_levels: list[int] = []
+
+    def fake_compile(*_args, symbolica_settings, **_kwargs):
+        observed_levels.append(symbolica_settings.jit_optimization_level)
+        return _FakeJitAdapter()
+
+    monkeypatch.setattr(
+        prepared_compile,
+        "build_prepared_kernel_catalog",
+        lambda _: _catalog(),
+    )
+    monkeypatch.setattr(
+        prepared_compile,
+        "build_recurrence_template_catalog",
+        lambda *_args, compiled_model_digest, prepared_kernel_pack_digest, **_kwargs: (
+            RecurrenceTemplateCatalog.create(
+                compiled_model_digest=compiled_model_digest,
+                prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+            )
+        ),
+    )
+    monkeypatch.setattr(prepared_compile, "_compile_symbolica_outputs", fake_compile)
+    monkeypatch.setattr(
+        prepared_compile,
+        "_validate_native_recurrence_template_input_v1",
+        _native_recurrence_validation,
+    )
+    requested = EvaluatorConfig(jit=JITConfig(optimization_level=3))
+    compiled = compile_model_source("built-in-sm", use_cache=False)
+
+    with pytest.warns(UserWarning, match="optimization level 2"):
+        result = prepare_model_bundle(
+            compiled,
+            tmp_path / "portable-o2",
+            evaluator=requested,
+        )
+
+    assert requested.jit.optimization_level == 3
+    assert observed_levels == [2]
+    assert result.bundle.kernel_pack.optimization_settings[
+        "jit_optimization_level"
+    ] == 2
+    assert result.bundle.kernel_pack.kernels[0].f64_evaluator_manifest[
+        "optimization_level"
+    ] == 2
 
 
 def test_prepared_compiler_emits_independent_block4_jit_variant(

@@ -70,6 +70,14 @@ _UFO_SM_ROOT = (
     / "json"
     / "sm"
 )
+_REFERENCE_PAYLOAD = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "reference"
+        / "physics-v2.json"
+    ).read_text(encoding="utf-8")
+)
 
 
 def _prepared_parameter_defaults(model, catalog) -> list[tuple[float, float]]:
@@ -104,6 +112,36 @@ def _prepared_parameter_defaults(model, catalog) -> list[tuple[float, float]]:
         assert value is not None, f"missing prepared default for {parameter.name}"
         result[prepared_id] = (value.real, value.imag)
     return result
+
+
+def _tracked_lc_reference(
+    expression: str,
+) -> tuple[
+    tuple[tuple[float, ...], ...],
+    dict[str, float],
+    float,
+]:
+    case_id = {
+        "d d~ > u u~": "case:sm_ddbar_uubar:lc",
+        "d d~ > d d~": "case:sm_ddbar_ddbar:lc",
+    }[expression]
+    case = next(item for item in _REFERENCE_PAYLOAD["cases"] if item["id"] == case_id)
+    observation = case["observations"][0]
+    point = next(
+        item
+        for item in _REFERENCE_PAYLOAD["points"]
+        if item["id"] == observation["point_id"]
+    )
+    color_ids = tuple(item["id"] for item in case["axes"]["colors"])
+    expected_by_flow = {
+        color_id: sum(float(row[color_index]) for row in observation["values"])
+        for color_index, color_id in enumerate(color_ids)
+    }
+    return (
+        tuple(tuple(float(component) for component in row) for row in point["momenta"]),
+        expected_by_flow,
+        float(observation["total"]),
+    )
 
 
 @pytest.mark.parametrize("model_source", ["built-in", "ufo-sm"])
@@ -163,7 +201,9 @@ def test_prepared_jit_recurrence_matches_compiled_raw_amplitude(
         template_input,
         construct_schedule=True,
     )
-    source_layout = validation["inspection_summary"]["schedule"]["source_layout"]
+    schedule = validation["inspection_summary"]["schedule"]
+    assert schedule["closure_term_count"] == schedule["amplitude_destination_count"]
+    source_layout = schedule["source_layout"]
 
     # GenericDAG is used only to obtain an independent compiled-mode source-fill
     # oracle for this test. Recurrence generation itself never constructs it.
@@ -407,7 +447,9 @@ def test_topology_replay_helicity_sum_matches_independent_two_flow_oracle(
         template_input,
         construct_schedule=True,
     )
-    source_layout = validation["inspection_summary"]["schedule"]["source_layout"]
+    schedule = validation["inspection_summary"]["schedule"]
+    assert schedule["closure_term_count"] == schedule["amplitude_destination_count"]
+    source_layout = schedule["source_layout"]
 
     oracle_dag = compile_generic_dag(
         process,
@@ -506,3 +548,173 @@ def test_topology_replay_helicity_sum_matches_independent_two_flow_oracle(
         rel=legacy_relative_tolerance,
         abs=1e-15,
     )
+
+
+@pytest.mark.parametrize("model_source", ["built-in", "ufo-sm"])
+def test_multiline_topology_replay_helicity_sum_matches_tracked_lc_oracle(
+    tmp_path: Path,
+    model_source: str,
+) -> None:
+    """Cover distinct-flavour and same-flavour closure reconstruction."""
+
+    if model_source == "built-in":
+        compiled_model = compile_model_source("built-in-sm", use_cache=True)
+        model = BuiltinSMModel()
+    else:
+        compiled_model = compile_model_source(
+            _UFO_SM_ROOT / "sm.json",
+            restriction=str((_UFO_SM_ROOT / "restrict_default.json").resolve()),
+            use_cache=True,
+        )
+        model = CompiledUFOModel(compiled_model)
+    prepared = prepare_model_bundle(
+        compiled_model,
+        tmp_path / f"{model_source}-multiline-jit-o3",
+        evaluator=EvaluatorConfig(),
+    )
+    bundle = prepared.bundle
+    catalog = bundle.kernel_pack.recurrence_template_catalog
+    assert catalog is not None
+    payload_root = tmp_path / f"{model_source}-multiline-prepared-payloads"
+    bundle.copy_referenced_payloads(payload_root)
+    manifest = bundle.kernel_pack.to_dict()
+    manifest.pop("recurrence_template", None)
+    manifest["eager_kernel_abi"] = bundle.manifest["eager_kernel_abi"]
+    manifest_payload = json.dumps(
+        manifest,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+
+    for expression in ("d d~ > u u~", "d d~ > d d~"):
+        process = (
+            build_process_ir(expression, color_accuracy="lc")
+            if model_source == "built-in"
+            else build_model_process_ir(expression, compiled_model.ir)
+        )
+        color_plan = build_color_plan(
+            process,
+            color_accuracy="lc",
+            fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(
+                process
+            ),
+        )
+        replay = build_lc_topology_replay_plan(color_plan, model)
+        limits = infer_minimal_coupling_order_limits(process, model=model)
+        logical = project_recurrence_process_v1(
+            process,
+            color_plan,
+            catalog,
+            layout="topology-replay",
+            normalization=RecurrenceNormalizationV1(
+                ExactComplexRationalV1(1),
+                "prepared-jit-multiline-regression-v1",
+                "f" * 64,
+            ),
+            topology_replay=replay,
+            coupling_order_limits=limits,
+        )
+        builder_input = build_recurrence_builder_input_v1(logical)
+        template_input = build_recurrence_template_input_v1(catalog)
+        validation = _rusticol._validate_recurrence_builder_input_v1(
+            builder_input,
+            template_input,
+            construct_schedule=True,
+        )
+        schedule = validation["inspection_summary"]["schedule"]
+        source_layout = schedule["source_layout"]
+
+        # GenericDAG is confined to the independent source-wavefunction oracle.
+        oracle_dag = compile_generic_dag(
+            process,
+            model=model,
+            color_plan=color_plan,
+            max_coupling_orders=limits,
+        )
+        runtime_schema = build_runtime_expression_schema(oracle_dag, model).to_mapping()
+        point_float, expected_by_flow, expected_total = _tracked_lc_reference(
+            expression
+        )
+        point = tuple(
+            tuple(Decimal(str(value)) for value in row) for row in point_float
+        )
+        parameter_defaults = tuple(
+            Decimal(str(item["default"]))
+            for item in runtime_schema["model_parameters"]
+        )
+        prepared_parameter_defaults = _prepared_parameter_defaults(model, catalog)
+        source_records = runtime_schema["source_fill"]["sources"]
+        source_component_count = sum(
+            int(item["component_count"]) for item in source_layout
+        )
+        all_source_values = [(0.0, 0.0)] * source_component_count
+        for native in source_layout:
+            source_slot = int(native["source_slot"])
+            process_state = next(
+                state
+                for state in logical.external_legs[source_slot].source_states
+                if state.source_template_id == int(native["source_template_id"])
+            )
+            record = next(
+                item
+                for item in source_records
+                if int(item["leg_label"]) == source_slot + 1
+                and int(item["source_helicity"]) == process_state.public_helicity
+                and int(item["chirality"]) == process_state.chirality
+                and int(item["spin_state"]) == process_state.spin_state
+            )
+            wavefunction = _source_wavefunction(
+                record,
+                point,
+                runtime_schema,
+                parameter_defaults,
+            )
+            start = int(native["component_start"])
+            for component, (real, imaginary) in enumerate(wavefunction):
+                all_source_values[start + component] = (
+                    float(real),
+                    float(imaginary),
+                )
+
+        result = _rusticol._evaluate_recurrence_helicity_sum_norm_sqr_v1(
+            builder_input,
+            template_input,
+            manifest_payload,
+            catalog.header.prepared_kernel_pack_digest,
+            payload_root,
+            all_source_values,
+            [component for row in point_float for component in row],
+            prepared_parameter_defaults,
+            point_count=1,
+            point_tile_size=1,
+        )
+        normalization_payload = runtime_schema["normalization"]
+        normalization = (
+            float(normalization_payload["global_coupling_factor"])
+            * float(normalization_payload["color_factor"])
+            / (
+                float(normalization_payload["average_factor"])
+                * float(normalization_payload["identical_factor"])
+            )
+        )
+        sector_by_flow = {
+            "flow:" + ",".join(str(label) for label in sector.word_labels): int(
+                sector.id
+            )
+            for sector in color_plan.sectors
+        }
+        normalized = {
+            flow_id: result["norm_sqr"][sector_id] * normalization
+            for flow_id, sector_id in sector_by_flow.items()
+        }
+        relative_tolerance = 5e-12 if model_source == "ufo-sm" else 1e-12
+        assert normalized == pytest.approx(
+            expected_by_flow,
+            rel=relative_tolerance,
+            abs=1e-15,
+        )
+        assert sum(normalized.values()) == pytest.approx(
+            expected_total,
+            rel=relative_tolerance,
+            abs=1e-15,
+        )
