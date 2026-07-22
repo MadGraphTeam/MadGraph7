@@ -12,6 +12,7 @@ from pyamplicol.models.recurrence_template import (
     ColorContractionTemplateV1,
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
+    EvaluatorCallableKind,
     ExactComplexRationalV1,
     ParameterTemplateV1,
     PropagatorTemplateV1,
@@ -131,6 +132,7 @@ def _source_templates() -> tuple[SourceTemplateV1, ...]:
             template_id="source:adjoint:+1",
             state_template_id="state:adjoint",
             crossing="identity",
+            wavefunction_family="vector",
             helicity=1,
             spin_state=1,
             wavefunction_expression_digest=_EXPRESSION_B,
@@ -140,6 +142,7 @@ def _source_templates() -> tuple[SourceTemplateV1, ...]:
             template_id="source:matter:+1",
             state_template_id="state:matter",
             crossing="identity",
+            wavefunction_family="fermion",
             helicity=1,
             spin_state=1,
             wavefunction_expression_digest=_EXPRESSION_A,
@@ -357,6 +360,54 @@ def test_catalog_round_trip_is_canonical_and_content_addressed() -> None:
     assert catalog.current_states[0].template_id == "state:adjoint"
     with pytest.raises(FrozenInstanceError):
         catalog.current_states[0].dimension = 3  # type: ignore[misc]
+
+
+def test_runtime_template_evaluator_binding_round_trips() -> None:
+    bindings = list(_evaluator_bindings())
+    source_index = next(
+        index
+        for index, binding in enumerate(bindings)
+        if binding.contract_kind == "source"
+    )
+    bindings[source_index] = replace(
+        bindings[source_index],
+        prepared_kernel_id=None,
+        callable_kind="rusticol-template",
+        runtime_template="rusticol.source-fill.vector.v1",
+        semantic_digest="",
+    )
+
+    catalog = _catalog(evaluator_bindings=tuple(bindings))
+    restored = RecurrenceTemplateCatalog.from_dict(catalog.to_dict())
+    binding = restored.evaluator_bindings[source_index]
+    assert binding.callable_kind == "rusticol-template"
+    assert binding.runtime_template == "rusticol.source-fill.vector.v1"
+    assert binding.prepared_kernel_id is None
+
+
+@pytest.mark.parametrize(
+    ("prepared_kernel_id", "callable_kind", "runtime_template"),
+    [
+        (None, "prepared-kernel", None),
+        (1, "rusticol-template", "rusticol.source-fill.vector.v1"),
+        (None, "rusticol-template", None),
+        (1, "prepared-kernel", "rusticol.source-fill.vector.v1"),
+    ],
+)
+def test_evaluator_binding_requires_exactly_one_callable_lane(
+    prepared_kernel_id: int | None,
+    callable_kind: EvaluatorCallableKind,
+    runtime_template: str | None,
+) -> None:
+    binding = _evaluator_bindings()[0]
+    with pytest.raises(RecurrenceTemplateError):
+        replace(
+            binding,
+            prepared_kernel_id=prepared_kernel_id,
+            callable_kind=callable_kind,
+            runtime_template=runtime_template,
+            semantic_digest="",
+        )
 
 
 def test_catalog_creation_sorts_records_deterministically() -> None:

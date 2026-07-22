@@ -31,6 +31,7 @@ EvaluatorContractKind: TypeAlias = Literal[
     "closure",
     "model-parameter",
 ]
+EvaluatorCallableKind: TypeAlias = Literal["prepared-kernel", "rusticol-template"]
 
 SUPPORTED_SYMMETRY_PROOF_ALGORITHMS = frozenset(
     {
@@ -52,9 +53,13 @@ _PARAMETER_KINDS = frozenset({"external", "derived", "constant"})
 _PARAMETER_VALUE_TYPES = frozenset({"real", "complex"})
 _ORIENTATIONS = frozenset({"particle", "antiparticle", "self-conjugate"})
 _STATISTICS = frozenset({"boson", "fermion"})
+_WAVEFUNCTION_FAMILIES = frozenset(
+    {"scalar", "fermion", "vector", "spin2", "ghost", "auxiliary"}
+)
 _EVALUATOR_CONTRACT_KINDS = frozenset(
     {"source", "vertex", "propagator", "closure", "model-parameter"}
 )
+_EVALUATOR_CALLABLE_KINDS = frozenset({"prepared-kernel", "rusticol-template"})
 _HEX = frozenset("0123456789abcdef")
 
 
@@ -377,6 +382,7 @@ class ParameterTemplateV1(_SemanticRecord):
     default_value: ExactComplexRationalV1 | None
     exact_expression_digest: str | None
     dependency_parameter_ids: tuple[str, ...]
+    prepared_parameter_id: int | None = None
     semantic_digest: str = ""
 
     def __post_init__(self) -> None:
@@ -400,6 +406,12 @@ class ParameterTemplateV1(_SemanticRecord):
             self.dependency_parameter_ids,
             sorted_unique=True,
         )
+        if self.prepared_parameter_id is not None:
+            _require_int(
+                "prepared parameter ID",
+                self.prepared_parameter_id,
+                minimum=0,
+            )
         if self.parameter_kind == "derived":
             if self.exact_expression_digest is None:
                 raise RecurrenceTemplateError(
@@ -429,6 +441,7 @@ class ParameterTemplateV1(_SemanticRecord):
             "mutable": self.mutable,
             "name": self.name,
             "parameter_kind": self.parameter_kind,
+            "prepared_parameter_id": self.prepared_parameter_id,
             "template_id": self.template_id,
             "value_type": self.value_type,
         }
@@ -512,6 +525,7 @@ class SourceTemplateV1(_SemanticRecord):
     template_id: str
     state_template_id: str
     crossing: str
+    wavefunction_family: str
     helicity: int
     spin_state: int
     wavefunction_expression_digest: str
@@ -524,6 +538,11 @@ class SourceTemplateV1(_SemanticRecord):
         _require_nonempty("source template_id", self.template_id)
         _require_nonempty("source state_template_id", self.state_template_id)
         _require_nonempty("source crossing", self.crossing)
+        if self.wavefunction_family not in _WAVEFUNCTION_FAMILIES:
+            raise RecurrenceTemplateError(
+                f"unsupported source wavefunction family "
+                f"{self.wavefunction_family!r}"
+            )
         _require_int("source helicity", self.helicity)
         _require_int("source spin_state", self.spin_state)
         _require_sha256(
@@ -546,6 +565,7 @@ class SourceTemplateV1(_SemanticRecord):
             "spin_state": self.spin_state,
             "state_template_id": self.state_template_id,
             "template_id": self.template_id,
+            "wavefunction_family": self.wavefunction_family,
             "wavefunction_expression_digest": self.wavefunction_expression_digest,
             "width_parameter_id": self.width_parameter_id,
         }
@@ -792,6 +812,9 @@ class ClosureTemplateV1(_SemanticRecord):
     color_contraction_template_id: str
     exact_factor: ExactComplexRationalV1
     projection: str
+    component_coefficients: tuple[ExactComplexRationalV1, ...] = ()
+    chirality_relation: str = "any"
+    metric_signature: str | None = None
     semantic_digest: str = ""
 
     def __post_init__(self) -> None:
@@ -819,17 +842,38 @@ class ClosureTemplateV1(_SemanticRecord):
                 "closure exact factor must be an exact complex rational"
             )
         _require_nonempty("closure projection", self.projection)
+        coefficients = _require_tuple(
+            "closure component coefficients", self.component_coefficients
+        )
+        if not all(
+            isinstance(coefficient, ExactComplexRationalV1)
+            for coefficient in coefficients
+        ):
+            raise RecurrenceTemplateError(
+                "closure component coefficients must be exact complex rationals"
+            )
+        if self.chirality_relation not in {"any", "equal", "opposite"}:
+            raise RecurrenceTemplateError(
+                "closure chirality relation must be any, equal, or opposite"
+            )
+        if self.metric_signature is not None:
+            _require_nonempty("closure metric signature", self.metric_signature)
         self._finish_semantic_record()
 
     def _semantic_fields(self) -> dict[str, object]:
         return {
             "canonical_input_order": list(self.canonical_input_order),
+            "chirality_relation": self.chirality_relation,
             "color_contraction_template_id": self.color_contraction_template_id,
+            "component_coefficients": [
+                value.to_dict() for value in self.component_coefficients
+            ],
             "coupling_orders": [list(item) for item in self.coupling_orders],
             "coupling_parameter_ids": list(self.coupling_parameter_ids),
             "evaluator_resolver_key": self.evaluator_resolver_key,
             "exact_factor": self.exact_factor.to_dict(),
             "input_state_template_ids": list(self.input_state_template_ids),
+            "metric_signature": self.metric_signature,
             "projection": self.projection,
             "template_id": self.template_id,
         }
@@ -964,7 +1008,7 @@ class EvaluatorBindingV1(_SemanticRecord):
     _record_kind: ClassVar[str] = "evaluator-binding"
 
     resolver_key: str
-    prepared_kernel_id: int
+    prepared_kernel_id: int | None
     contract_kind: EvaluatorContractKind
     callable_signature: str
     input_state_template_ids: tuple[str, ...]
@@ -973,11 +1017,36 @@ class EvaluatorBindingV1(_SemanticRecord):
     output_layout: tuple[str, ...]
     exact_expression_digests: tuple[str, ...]
     semantic_template_ids: tuple[str, ...]
+    callable_kind: EvaluatorCallableKind = "prepared-kernel"
+    runtime_template: str | None = None
     semantic_digest: str = ""
 
     def __post_init__(self) -> None:
         _require_nonempty("evaluator resolver_key", self.resolver_key)
-        _require_int("evaluator prepared_kernel_id", self.prepared_kernel_id, minimum=0)
+        if self.callable_kind not in _EVALUATOR_CALLABLE_KINDS:
+            raise RecurrenceTemplateError(
+                f"unsupported evaluator callable kind {self.callable_kind!r}"
+            )
+        if self.callable_kind == "prepared-kernel":
+            if self.prepared_kernel_id is None:
+                raise RecurrenceTemplateError(
+                    "prepared-kernel evaluator requires prepared_kernel_id"
+                )
+            _require_int(
+                "evaluator prepared_kernel_id",
+                self.prepared_kernel_id,
+                minimum=0,
+            )
+            if self.runtime_template is not None:
+                raise RecurrenceTemplateError(
+                    "prepared-kernel evaluator cannot name a Rusticol template"
+                )
+        else:
+            if self.prepared_kernel_id is not None:
+                raise RecurrenceTemplateError(
+                    "Rusticol-template evaluator cannot name a prepared kernel"
+                )
+            _require_nonempty("evaluator runtime_template", self.runtime_template)
         if self.contract_kind not in _EVALUATOR_CONTRACT_KINDS:
             raise RecurrenceTemplateError(
                 f"unsupported evaluator contract kind {self.contract_kind!r}"
@@ -1025,6 +1094,7 @@ class EvaluatorBindingV1(_SemanticRecord):
 
     def _semantic_fields(self) -> dict[str, object]:
         return {
+            "callable_kind": self.callable_kind,
             "callable_signature": self.callable_signature,
             "contract_kind": self.contract_kind,
             "exact_expression_digests": list(self.exact_expression_digests),
@@ -1034,6 +1104,7 @@ class EvaluatorBindingV1(_SemanticRecord):
             "output_state_template_id": self.output_state_template_id,
             "prepared_kernel_id": self.prepared_kernel_id,
             "resolver_key": self.resolver_key,
+            "runtime_template": self.runtime_template,
             "semantic_template_ids": list(self.semantic_template_ids),
         }
 
@@ -1408,14 +1479,6 @@ class RecurrenceTemplateCatalog:
                 binding.semantic_template_ids,
                 templates,
             )
-            state_component_count = sum(
-                states[state_id].dimension
-                for state_id in binding.input_state_template_ids
-            )
-            if len(binding.input_layout) < state_component_count:
-                raise RecurrenceTemplateError(
-                    "evaluator input layout cannot contain all state components"
-                )
             if binding.output_state_template_id is not None:
                 dimension = states[binding.output_state_template_id].dimension
                 if len(binding.output_layout) != dimension:
@@ -1425,6 +1488,16 @@ class RecurrenceTemplateCatalog:
 
         callable_by_kernel: dict[
             int,
+            tuple[
+                str,
+                str,
+                tuple[str, ...],
+                tuple[str, ...],
+                tuple[str, ...],
+            ],
+        ] = {}
+        callable_by_runtime_template: dict[
+            str,
             tuple[
                 str,
                 str,
@@ -1449,12 +1522,20 @@ class RecurrenceTemplateCatalog:
                 binding.output_layout,
                 binding.exact_expression_digests,
             )
-            previous = callable_by_kernel.setdefault(
-                binding.prepared_kernel_id, callable_contract
-            )
+            if binding.prepared_kernel_id is not None:
+                previous = callable_by_kernel.setdefault(
+                    binding.prepared_kernel_id, callable_contract
+                )
+                owner = "prepared kernel ID"
+            else:
+                assert binding.runtime_template is not None
+                previous = callable_by_runtime_template.setdefault(
+                    binding.runtime_template, callable_contract
+                )
+                owner = "Rusticol runtime template"
             if previous != callable_contract:
                 raise RecurrenceTemplateError(
-                    "prepared kernel ID has inconsistent callable bindings"
+                    f"{owner} has inconsistent callable bindings"
                 )
             expected_type = expected_template_types[binding.contract_kind]
             for template_id in binding.semantic_template_ids:
@@ -1621,6 +1702,18 @@ def _decode_ratio(name: str, value: object) -> ExactComplexRationalV1:
     return ExactComplexRationalV1.from_dict(_require_mapping(name, value))
 
 
+def _decode_ratio_array(
+    name: str,
+    value: object,
+) -> tuple[ExactComplexRationalV1, ...]:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError(f"{name} must be an array")
+    return tuple(
+        _decode_ratio(f"{name}[{index}]", item)
+        for index, item in enumerate(value)
+    )
+
+
 def _decode_coupling_orders(name: str, value: object) -> tuple[tuple[str, int], ...]:
     if not isinstance(value, list):
         raise RecurrenceTemplateError(f"{name} must be an array")
@@ -1651,6 +1744,7 @@ def _parameter_from_dict(payload: Mapping[str, object]) -> ParameterTemplateV1:
                 "default_value",
                 "exact_expression_digest",
                 "dependency_parameter_ids",
+                "prepared_parameter_id",
             }
         ),
         "parameter",
@@ -1668,6 +1762,15 @@ def _parameter_from_dict(payload: Mapping[str, object]) -> ParameterTemplateV1:
         ),
         dependency_parameter_ids=_decode_string_tuple(
             "parameter dependencies", value["dependency_parameter_ids"]
+        ),
+        prepared_parameter_id=(
+            None
+            if value["prepared_parameter_id"] is None
+            else _require_int(
+                "prepared parameter ID",
+                value["prepared_parameter_id"],
+                minimum=0,
+            )
         ),
         semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
     )
@@ -1728,6 +1831,7 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
             "template_id",
             "state_template_id",
             "crossing",
+            "wavefunction_family",
             "helicity",
             "spin_state",
             "wavefunction_expression_digest",
@@ -1743,6 +1847,9 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
             "source state_template_id", value["state_template_id"]
         ),
         crossing=_require_nonempty("source crossing", value["crossing"]),
+        wavefunction_family=_require_nonempty(
+            "source wavefunction family", value["wavefunction_family"]
+        ),
         helicity=_require_int("source helicity", value["helicity"]),
         spin_state=_require_int("source spin_state", value["spin_state"]),
         wavefunction_expression_digest=_require_sha256(
@@ -1920,7 +2027,10 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
             "coupling_parameter_ids",
             "coupling_orders",
             "color_contraction_template_id",
+            "component_coefficients",
+            "chirality_relation",
             "exact_factor",
+            "metric_signature",
             "projection",
         }
     )
@@ -1946,6 +2056,15 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
             "closure color", value["color_contraction_template_id"]
         ),
         exact_factor=_decode_ratio("closure exact factor", value["exact_factor"]),
+        component_coefficients=_decode_ratio_array(
+            "closure component coefficients", value["component_coefficients"]
+        ),
+        chirality_relation=_require_nonempty(
+            "closure chirality relation", value["chirality_relation"]
+        ),
+        metric_signature=_decode_optional_string(
+            "closure metric signature", value["metric_signature"]
+        ),
         projection=_require_nonempty("closure projection", value["projection"]),
         semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
     )
@@ -2045,7 +2164,9 @@ def _evaluator_from_dict(payload: Mapping[str, object]) -> EvaluatorBindingV1:
     fields = frozenset(
         {
             "resolver_key",
+            "callable_kind",
             "prepared_kernel_id",
+            "runtime_template",
             "contract_kind",
             "callable_signature",
             "input_state_template_ids",
@@ -2061,8 +2182,16 @@ def _evaluator_from_dict(payload: Mapping[str, object]) -> EvaluatorBindingV1:
     )
     return EvaluatorBindingV1(
         resolver_key=_require_nonempty("evaluator resolver_key", value["resolver_key"]),
-        prepared_kernel_id=_require_int(
-            "prepared_kernel_id", value["prepared_kernel_id"]
+        callable_kind=_require_nonempty(
+            "evaluator callable_kind", value["callable_kind"]
+        ),  # type: ignore[arg-type]
+        prepared_kernel_id=(
+            None
+            if value["prepared_kernel_id"] is None
+            else _require_int("prepared_kernel_id", value["prepared_kernel_id"])
+        ),
+        runtime_template=_decode_optional_string(
+            "evaluator runtime_template", value["runtime_template"]
         ),
         contract_kind=value["contract_kind"],  # type: ignore[arg-type]
         callable_signature=_require_sha256(
@@ -2119,6 +2248,7 @@ __all__ = [
     "CurrentStateTemplateV1",
     "EvaluatorBinding",
     "EvaluatorBindingV1",
+    "EvaluatorCallableKind",
     "ExactComplexRationalV1",
     "ParameterTemplate",
     "ParameterTemplateV1",

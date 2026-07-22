@@ -26,6 +26,7 @@ from pyamplicol.generation.recurrence_columnar import (
     RecurrenceNormalizationV1,
     RecurrenceParameterProjectionV1,
     RecurrencePhysicalLCSectorV1,
+    RecurrencePublicLCFlowV1,
     RecurrenceReplayPartitionV1,
     RecurrenceReplayTargetV1,
     RecurrenceSelectedSourceCoverageV1,
@@ -64,10 +65,10 @@ def _logical_input(
             public_label=1,
             physical_pdg=1,
             outgoing_pdg=1,
-            particle_state_template_id=10,
+            is_initial=True,
             source_states=(
-                RecurrenceSourceStateV1(0, -1, 20),
-                RecurrenceSourceStateV1(1, 1, 21),
+                RecurrenceSourceStateV1(0, -1, 0, -1, 10, 20),
+                RecurrenceSourceStateV1(1, 1, 0, 1, 10, 21),
             ),
             momentum_mask=(1 << 130) | (1 << 65) | 1,
             support_mask=1,
@@ -77,10 +78,10 @@ def _logical_input(
             public_label=2,
             physical_pdg=-1,
             outgoing_pdg=-1,
-            particle_state_template_id=11,
+            is_initial=True,
             source_states=(
-                RecurrenceSourceStateV1(0, -1, 22),
-                RecurrenceSourceStateV1(1, 1, 23),
+                RecurrenceSourceStateV1(0, -1, 0, -1, 11, 22),
+                RecurrenceSourceStateV1(1, 1, 0, 1, 11, 23),
             ),
             momentum_mask=1 << 1,
             support_mask=1 << 1,
@@ -90,10 +91,10 @@ def _logical_input(
             public_label=3,
             physical_pdg=21,
             outgoing_pdg=21,
-            particle_state_template_id=12,
+            is_initial=False,
             source_states=(
-                RecurrenceSourceStateV1(0, -1, 24),
-                RecurrenceSourceStateV1(1, 1, 25),
+                RecurrenceSourceStateV1(0, -1, 0, -1, 12, 24),
+                RecurrenceSourceStateV1(1, 1, 0, 1, 12, 25),
             ),
             momentum_mask=1 << 2,
             support_mask=1 << 2,
@@ -103,10 +104,10 @@ def _logical_input(
             public_label=4,
             physical_pdg=21,
             outgoing_pdg=21,
-            particle_state_template_id=13,
+            is_initial=False,
             source_states=(
-                RecurrenceSourceStateV1(0, -1, 26),
-                RecurrenceSourceStateV1(1, 1, 27),
+                RecurrenceSourceStateV1(0, -1, 0, -1, 13, 26),
+                RecurrenceSourceStateV1(1, 1, 0, 1, 13, 27),
             ),
             momentum_mask=1 << 3,
             support_mask=1 << 3,
@@ -130,19 +131,33 @@ def _logical_input(
             support_mask=0b1111,
         ),
     )
+    public_flows = (
+        RecurrencePublicLCFlowV1(
+            0,
+            "flow:1,3,4,2",
+            0,
+            (0, 2, 3, 1),
+            (0, 1, 2, 3),
+        ),
+        RecurrencePublicLCFlowV1(
+            1,
+            "flow:1,4,3,2",
+            1,
+            (0, 3, 2, 1),
+            (0, 1, 2, 3),
+        ),
+    )
     targets = (
         RecurrenceReplayTargetV1(
             sector_id=0,
             external_permutation=(0, 1, 2, 3),
-            source_state_bijection=(0, 1, 2, 3),
-            closure_mapping=(0,),
+            source_slot_permutation=(0, 1, 2, 3),
         ),
         RecurrenceReplayTargetV1(
             sector_id=1,
             external_permutation=(0, 1, 3, 2),
-            source_state_bijection=(0, 1, 3, 2),
-            closure_mapping=(0,),
-            factor=ExactComplexRationalV1(-1),
+            source_slot_permutation=(0, 1, 3, 2),
+            amplitude_phase=ExactComplexRationalV1(-1),
             fermion_sign=-1,
         ),
     )
@@ -181,6 +196,7 @@ def _logical_input(
     if reverse_unordered_records:
         legs = legs[::-1]
         sectors = sectors[::-1]
+        public_flows = public_flows[::-1]
         templates = templates[::-1]
         semantic_digests = semantic_digests[::-1]
         coupling_limits = coupling_limits[::-1]
@@ -191,6 +207,7 @@ def _logical_input(
         semantic_digests=semantic_digests,
         external_legs=legs,
         physical_sectors=sectors,
+        public_flows=public_flows,
         semantic_template_references=templates,
         normalization=RecurrenceNormalizationV1(
             factor=ExactComplexRationalV1(1, 4),
@@ -198,7 +215,7 @@ def _logical_input(
             semantic_digest=_sha256("normalization"),
         ),
         replay_partitions=(partition,),
-        selected_sector_ids=(1, 0),
+        selected_public_flow_ids=(1, 0),
         selected_source_coverage=(
             RecurrenceSelectedSourceCoverageV1(1, (1,)),
             RecurrenceSelectedSourceCoverageV1(0, (0,)),
@@ -281,10 +298,11 @@ def test_contract_has_owned_read_only_little_endian_tables(
         "external_legs",
         "source_states",
         "physical_lc_sectors",
+        "public_lc_flows",
         "lc_open_strings",
         "replay_partitions",
         "replay_targets",
-        "selected_sector_coverage",
+        "selected_public_flow_coverage",
         "selected_source_coverage",
         "coupling_limits",
         "bitset_ranges",
@@ -298,6 +316,8 @@ def test_contract_has_owned_read_only_little_endian_tables(
         "u32_sequence_values",
     }
     assert expected <= {table.name for table in columnar_input.tables}
+    header = columnar_input.table("header")
+    assert int(header.column("public_flow_count")[0]) == 2
     for table in columnar_input.tables:
         for column in table.columns:
             assert column.values.dtype != np.dtype("O")
@@ -389,7 +409,7 @@ def test_exact_factor_requires_canonical_reduced_fractions() -> None:
 
 def test_checked_integer_bounds_reject_overflow_and_negative_masks() -> None:
     with pytest.raises(RecurrenceColumnarInputError, match="does not fit u32"):
-        RecurrenceSourceStateV1(1 << 32, -1, 0)
+        RecurrenceSourceStateV1(1 << 32, -1, 0, -1, 0, 0)
     with pytest.raises(RecurrenceColumnarInputError, match="must be nonnegative"):
         replace(_logical_input().external_legs[0], momentum_mask=-1)
     with pytest.raises(RecurrenceColumnarInputError, match="does not fit u64"):
@@ -489,9 +509,9 @@ def test_logical_cross_references_fail_closed(
             )
         )
 
-    with pytest.raises(RecurrenceColumnarInputError, match="selected physical sector"):
+    with pytest.raises(RecurrenceColumnarInputError, match="selected public flow"):
         build_recurrence_builder_input_v1(
-            replace(logical_input, selected_sector_ids=(99,))
+            replace(logical_input, selected_public_flow_ids=(99,))
         )
 
     bad_target = replace(
@@ -505,6 +525,21 @@ def test_logical_cross_references_fail_closed(
     with pytest.raises(RecurrenceColumnarInputError, match="must be a permutation"):
         build_recurrence_builder_input_v1(
             replace(logical_input, replay_partitions=(partition,))
+        )
+
+    bad_flow = replace(
+        logical_input.public_flows[0],
+        construction_sector_id=99,
+    )
+    with pytest.raises(
+        RecurrenceColumnarInputError,
+        match="public flow construction sector",
+    ):
+        build_recurrence_builder_input_v1(
+            replace(
+                logical_input,
+                public_flows=(bad_flow, *logical_input.public_flows[1:]),
+            )
         )
 
 
@@ -524,6 +559,62 @@ def test_missing_required_header_digest_is_rejected(
         )
 
 
+def test_replay_permutations_use_documented_gather_orientation(
+    logical_input: RecurrenceBuilderLogicalInputV1,
+) -> None:
+    cycle = (0, 2, 3, 1)
+    representative_word = logical_input.physical_sectors[0].word_source_slots
+    target_word = tuple(cycle[source_slot] for source_slot in representative_word)
+    target_sector = replace(
+        logical_input.physical_sectors[1],
+        word_source_slots=target_word,
+    )
+    target_flow = replace(
+        logical_input.public_flows[1],
+        word_source_slots=target_word,
+    )
+    targets = tuple(
+        replace(
+            target,
+            external_permutation=cycle,
+            source_slot_permutation=cycle,
+        )
+        if target.sector_id == 1
+        else target
+        for target in logical_input.replay_partitions[0].targets
+    )
+    logical = replace(
+        logical_input,
+        physical_sectors=(logical_input.physical_sectors[0], target_sector),
+        public_flows=(logical_input.public_flows[0], target_flow),
+        replay_partitions=(
+            replace(logical_input.replay_partitions[0], targets=targets),
+        ),
+    )
+
+    assert len(build_recurrence_builder_input_v1(logical).canonical_digest) == 64
+    inverse = (0, 3, 1, 2)
+    wrong_targets = tuple(
+        replace(
+            target,
+            external_permutation=inverse,
+            source_slot_permutation=inverse,
+        )
+        if target.sector_id == 1
+        else target
+        for target in targets
+    )
+    with pytest.raises(RecurrenceColumnarInputError, match="gather permutation"):
+        build_recurrence_builder_input_v1(
+            replace(
+                logical,
+                replay_partitions=(
+                    replace(logical.replay_partitions[0], targets=wrong_targets),
+                ),
+            )
+        )
+
+
 def test_union_layout_does_not_require_replay_partitions(
     logical_input: RecurrenceBuilderLogicalInputV1,
 ) -> None:
@@ -537,3 +628,15 @@ def test_union_layout_does_not_require_replay_partitions(
 
     assert result.table("replay_partitions").row_count == 0
     assert int(result.table("header").column("layout")[0]) == 1
+
+
+def test_topology_replay_layout_allows_exact_residual_only_sectors(
+    logical_input: RecurrenceBuilderLogicalInputV1,
+) -> None:
+    result = build_recurrence_builder_input_v1(
+        replace(logical_input, replay_partitions=())
+    )
+
+    assert result.table("replay_partitions").row_count == 0
+    assert result.table("replay_targets").row_count == 0
+    assert int(result.table("header").column("layout")[0]) == 0

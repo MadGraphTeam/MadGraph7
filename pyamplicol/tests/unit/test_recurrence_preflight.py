@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
-from pyamplicol.api import ProcessRequest, ProcessSet
+from pyamplicol.api import ModelSource, ProcessRequest, ProcessSet
 from pyamplicol.api.errors import GenerationError
 from pyamplicol.config import ColorConfig, EvaluatorConfig, RunConfig
 from pyamplicol.generation.service import GenerationBackend
@@ -38,3 +41,25 @@ def test_recurrence_lc_is_fail_closed_before_generic_dag_construction() -> None:
 
     with pytest.raises(GenerationError, match="recurrence-template-v1"):
         backend._compile_concrete_process(process, BuiltinSMModel())
+
+
+def test_recurrence_requires_prepared_template_with_exact_rebuild_command() -> None:
+    backend = _backend()
+    source = ModelSource(kind="prepared", path=Path("model.pyamplicol-model"))
+    resolved = SimpleNamespace(
+        source=source,
+        compiled=SimpleNamespace(
+            prepared_bundle=SimpleNamespace(
+                kernel_pack=SimpleNamespace(recurrence_template=None)
+            )
+        ),
+    )
+
+    with pytest.raises(
+        GenerationError,
+        match=(
+            r"pyamplicol-recurrence-template-v1.*pyamplicol model compile "
+            r".*model\.pyamplicol-model MODEL\.pyamplicol-model --backend jit"
+        ),
+    ):
+        backend._require_eager_kernel_pack(resolved)  # type: ignore[arg-type]

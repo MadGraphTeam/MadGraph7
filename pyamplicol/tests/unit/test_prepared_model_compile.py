@@ -17,6 +17,7 @@ from pyamplicol.models.prepared_compile import (
     prepare_model_bundle,
     prepared_symbolica_settings,
 )
+from pyamplicol.models.recurrence_template import RecurrenceTemplateCatalog
 
 
 class _FakeJitAdapter:
@@ -142,6 +143,15 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     )
     monkeypatch.setattr(
         prepared_compile,
+        "build_recurrence_template_catalog",
+        lambda *_args, compiled_model_digest, **_kwargs: (
+            RecurrenceTemplateCatalog.create(
+                compiled_model_digest=compiled_model_digest
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        prepared_compile,
         "_compile_symbolica_outputs",
         lambda *_args, **_kwargs: _FakeJitAdapter(),
     )
@@ -193,6 +203,15 @@ def test_prepared_compiler_emits_independent_block4_jit_variant(
         prepared_compile,
         "build_prepared_kernel_catalog",
         lambda _: _block_catalog(),
+    )
+    monkeypatch.setattr(
+        prepared_compile,
+        "build_recurrence_template_catalog",
+        lambda *_args, compiled_model_digest, **_kwargs: (
+            RecurrenceTemplateCatalog.create(
+                compiled_model_digest=compiled_model_digest
+            )
+        ),
     )
     monkeypatch.setattr(
         prepared_compile,

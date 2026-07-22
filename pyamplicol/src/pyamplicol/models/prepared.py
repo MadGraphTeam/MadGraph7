@@ -251,6 +251,13 @@ def prepared_optimization_settings_digest(
     return _mapping_digest(settings)
 
 
+def prepared_compiled_model_digest(compiled_model: Mapping[str, object]) -> str:
+    """Digest the exact canonical compiled-model member stored in a bundle."""
+
+    frozen = _freeze_mapping(compiled_model, "compiled_model")
+    return _sha256(_canonical_json(frozen))
+
+
 def _collect_manifest_paths(value: object, *, context: str) -> tuple[str, ...]:
     paths: list[str] = []
 
@@ -1165,6 +1172,16 @@ class PreparedModelBundle:
             "_member_digests",
             MappingProxyType(dict(self._member_digests)),
         )
+        recurrence_catalog = self.kernel_pack.recurrence_template_catalog
+        if (
+            recurrence_catalog is not None
+            and recurrence_catalog.header.compiled_model_digest
+            != self._member_digests[PREPARED_MODEL_COMPILED_MODEL_PATH]
+        ):
+            raise PreparedModelBundleError(
+                "recurrence template compiled-model digest does not match the "
+                "prepared bundle member"
+            )
         referenced_payload_paths = self.kernel_pack.referenced_payload_paths
         object.__setattr__(
             self,
@@ -1305,6 +1322,16 @@ def write_prepared_model_bundle(
 ) -> Path:
     """Write one deterministic, self-contained prepared-model bundle."""
     frozen_model = _freeze_mapping(compiled_model, "compiled_model")
+    recurrence_catalog = kernel_pack.recurrence_template_catalog
+    if (
+        recurrence_catalog is not None
+        and recurrence_catalog.header.compiled_model_digest
+        != _sha256(_canonical_json(frozen_model))
+    ):
+        raise PreparedModelBundleError(
+            "recurrence template compiled-model digest does not match the "
+            "prepared bundle member"
+        )
     payload_data: dict[str, bytes] = {}
     for raw_path, source in payloads.items():
         member_path = _normalized_member_path(raw_path, "payload path")
@@ -1560,6 +1587,7 @@ __all__ = [
     "PreparedModelBundle",
     "PreparedModelBundleError",
     "load_prepared_model_bundle",
+    "prepared_compiled_model_digest",
     "prepared_expression_digest",
     "prepared_input_contract_digest",
     "prepared_optimization_settings_digest",

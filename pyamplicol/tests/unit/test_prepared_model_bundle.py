@@ -24,6 +24,7 @@ from pyamplicol.models.prepared import (
     PreparedKernelVariantRecord,
     PreparedModelBundleError,
     load_prepared_model_bundle,
+    prepared_compiled_model_digest,
     prepared_expression_digest,
     prepared_input_contract_digest,
     prepared_optimization_settings_digest,
@@ -271,7 +272,9 @@ def test_prepared_model_bundle_round_trips_optional_recurrence_template(
     tmp_path: Path,
 ) -> None:
     kernel = _kernel()
-    catalog = RecurrenceTemplateCatalog.create(compiled_model_digest="a" * 64)
+    catalog = RecurrenceTemplateCatalog.create(
+        compiled_model_digest=prepared_compiled_model_digest(_compiled_model())
+    )
     pack = replace(_pack(kernel), recurrence_template=catalog.to_dict())
 
     path = write_prepared_model_bundle(
@@ -295,12 +298,30 @@ def test_prepared_model_bundle_round_trips_optional_recurrence_template(
 
 
 def test_prepared_kernel_pack_rejects_stale_recurrence_template() -> None:
-    catalog = RecurrenceTemplateCatalog.create(compiled_model_digest="a" * 64)
+    catalog = RecurrenceTemplateCatalog.create(
+        compiled_model_digest=prepared_compiled_model_digest(_compiled_model())
+    )
     payload = catalog.to_dict()
     payload["header"]["catalog_digest"] = "b" * 64
 
     with pytest.raises(PreparedModelBundleError, match="stale recurrence"):
         replace(_pack(_kernel()), recurrence_template=payload)
+
+
+def test_prepared_bundle_rejects_recurrence_template_for_another_model(
+    tmp_path: Path,
+) -> None:
+    kernel = _kernel()
+    catalog = RecurrenceTemplateCatalog.create(compiled_model_digest="f" * 64)
+    pack = replace(_pack(kernel), recurrence_template=catalog.to_dict())
+
+    with pytest.raises(PreparedModelBundleError, match="compiled-model digest"):
+        write_prepared_model_bundle(
+            tmp_path / "wrong-model",
+            compiled_model=_compiled_model(),
+            kernel_pack=pack,
+            payloads=_payloads(kernel),
+        )
 
 
 def test_prepared_block_variant_round_trip_and_payload_index(tmp_path: Path) -> None:

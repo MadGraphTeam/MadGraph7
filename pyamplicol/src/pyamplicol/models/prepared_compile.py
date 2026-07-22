@@ -34,6 +34,7 @@ from .prepared import (
     PreparedModelBundle,
     PreparedModelBundleError,
     load_prepared_model_bundle,
+    prepared_compiled_model_digest,
     prepared_expression_digest,
     prepared_input_contract_digest,
     prepared_optimization_settings_digest,
@@ -50,6 +51,7 @@ from .prepared_target import (
     native_prepared_target,
     symjit_storage_v3_target,
 )
+from .recurrence_catalog_builder import build_recurrence_template_catalog
 
 PreparedModelProgress = Callable[[str, int, int], None]
 _PATH_FIELDS = frozenset(
@@ -94,6 +96,16 @@ def prepare_model_bundle(
     catalog_started = time.perf_counter()
     catalog = build_prepared_kernel_catalog(model)
     catalog_seconds = time.perf_counter() - catalog_started
+    compiled_model_payload = compiled_model.to_dict()
+    recurrence_catalog_started = time.perf_counter()
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        catalog,
+        compiled_model_digest=prepared_compiled_model_digest(
+            compiled_model_payload
+        ),
+    )
+    recurrence_catalog_seconds = time.perf_counter() - recurrence_catalog_started
     settings = prepared_symbolica_settings(evaluator)
     backend = cast(PreparedBackend, str(evaluator.backend))
     optimization_metadata = _optimization_metadata(settings)
@@ -154,15 +166,18 @@ def prepare_model_bundle(
                 ),
                 "catalog_kernel_count": len(catalog.kernels),
                 "unsupported_variant_count": len(catalog.unsupported_variants),
+                "recurrence_template_abi": recurrence_catalog.header.abi,
+                "recurrence_template_digest": recurrence_catalog.catalog_digest,
             },
             target=_prepared_target(backend, evaluator),
             resolver_manifest=catalog.resolver_manifest(),
             kernels=tuple(records),
             kernel_variants=tuple(variants),
+            recurrence_template=recurrence_catalog.to_dict(),
         )
         bundle_path = write_prepared_model_bundle(
             output,
-            compiled_model=compiled_model.to_dict(),
+            compiled_model=compiled_model_payload,
             kernel_pack=pack,
             payloads=payloads,
         )
@@ -170,6 +185,7 @@ def prepare_model_bundle(
     bundle = load_prepared_model_bundle(bundle_path)
     timings = {
         "catalog": catalog_seconds,
+        "recurrence_catalog": recurrence_catalog_seconds,
         "kernel_compilation": compile_seconds,
         "total": time.perf_counter() - started,
     }

@@ -2541,6 +2541,10 @@ class GenerationBackend:
         run = self._run_config
         return run is not None and str(run.evaluator.execution_mode) == "recurrence"
 
+    @property
+    def _prepared_execution_enabled(self) -> bool:
+        return self._eager_execution_enabled or self._recurrence_execution_enabled
+
     def _validate_recurrence_request(self) -> None:
         """Keep recurrence requests out of compiled/eager generation lanes."""
 
@@ -2552,10 +2556,6 @@ class GenerationBackend:
                 "use --execution-mode compiled or --execution-mode eager for "
                 f"color.accuracy={self._color_accuracy!r}"
             )
-        raise GenerationError(
-            "recurrence execution is not available in this development milestone: "
-            "prepared recurrence-template-v1 construction has not been installed"
-        )
 
     @property
     def _all_flow_union_enabled(self) -> bool:
@@ -2656,7 +2656,7 @@ class GenerationBackend:
                 use_compiled_process_catalog=not is_builtin,
             )
         if source.kind == "built-in-sm":
-            if not self._eager_execution_enabled:
+            if not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
             source = self._packaged_builtin_eager_source()
         if source.path is None:
@@ -2744,7 +2744,7 @@ class GenerationBackend:
                 compiled,
             )
         if source.kind == "built-in-sm":
-            if not self._eager_execution_enabled:
+            if not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
             source = self._packaged_builtin_eager_source()
         if source.path is None:
@@ -2799,18 +2799,29 @@ class GenerationBackend:
 
     def _require_eager_kernel_pack(self, resolved: _ResolvedModel) -> None:
         run = self._run_config
-        if run is None or str(run.evaluator.execution_mode) != "eager":
+        if run is None or not self._prepared_execution_enabled:
             return
+        execution_mode = str(run.evaluator.execution_mode)
         compiled = resolved.compiled
         if compiled is None or compiled.prepared_bundle is None:
             source = resolved.source.path or resolved.source.kind
             backend = str(run.evaluator.backend)
             raise GenerationError(
-                "eager generation requires a prepared model kernel pack; run: "
+                f"{execution_mode} generation requires a prepared model kernel "
+                "pack; run: "
                 f"pyamplicol model compile {source} MODEL.pyamplicol-model "
                 f"--backend {backend}"
             )
         pack = compiled.prepared_bundle.kernel_pack
+        if execution_mode == "recurrence" and pack.recurrence_template is None:
+            source = resolved.source.path or resolved.source.kind
+            backend = str(run.evaluator.backend)
+            raise GenerationError(
+                "prepared model kernel pack does not contain "
+                "pyamplicol-recurrence-template-v1; rebuild it with: "
+                f"pyamplicol model compile {source} MODEL.pyamplicol-model "
+                f"--backend {backend}"
+            )
         try:
             validate_prepared_target(
                 pack.target,
@@ -2823,7 +2834,8 @@ class GenerationBackend:
         except PreparedTargetError as exc:
             source = resolved.source.path or resolved.source.kind
             raise GenerationError(
-                f"eager prepared model is incompatible with this host: {exc}; "
+                f"{execution_mode} prepared model is incompatible with this "
+                f"host: {exc}; "
                 "prepare a matching bundle with: "
                 f"pyamplicol model compile {source} MODEL.pyamplicol-model "
                 f"--backend {pack.backend}"
@@ -2847,8 +2859,12 @@ class GenerationBackend:
         return replace(resolved, eager_kernel_index=index)
 
     def _apply_prepared_kernel_pack_policy(self, resolved: _ResolvedModel) -> None:
-        if not self._eager_execution_enabled:
+        if not self._prepared_execution_enabled:
             return
+        run = self._run_config
+        if run is None:  # pragma: no cover - guarded by property above
+            return
+        execution_mode = str(run.evaluator.execution_mode)
         compiled = resolved.compiled
         bundle = None if compiled is None else compiled.prepared_bundle
         if bundle is None:  # pragma: no cover - guarded by _require_eager_kernel_pack
@@ -2872,7 +2888,8 @@ class GenerationBackend:
                 ClampRequest(
                     path,
                     value,
-                    "prepared eager kernel pack is authoritative for backend "
+                    f"prepared {execution_mode} kernel pack is authoritative for "
+                    "backend "
                     "and code-shaping optimization settings",
                 )
             )
@@ -2888,7 +2905,8 @@ class GenerationBackend:
         if not self._prepared_pack_warning_emitted:
             rendered = ", ".join(clamp.path for clamp in prepared_clamps)
             _LOGGER.warning(
-                "eager generation uses prepared model settings for: %s",
+                "%s generation uses prepared model settings for: %s",
+                execution_mode,
                 rendered,
             )
             self._prepared_pack_warning_emitted = True
@@ -3028,6 +3046,12 @@ class GenerationBackend:
     ) -> tuple[GenericDAG, dict[str, object]]:
         self._validate_recurrence_request()
         prepared = self._prepare_process_construction(process, model)
+        if self._recurrence_execution_enabled:
+            raise GenerationError(
+                "recurrence execution is not available in this development "
+                "milestone: prepared recurrence-template-v1 is validated, but "
+                "Rust recurrence builder construction has not been installed"
+            )
         complete_color_plan = prepared.complete_color_plan
         materialized_sector_ids = prepared.materialized_sector_ids
         limits = dict(prepared.coupling_order_limits)
