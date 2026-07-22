@@ -1,6 +1,11 @@
 include ../../Source/make_opts
 FFLAGS+= -w -I ../../Source/DHELAS/ -I ../../Source/MODEL
 
+# Track B cross-group crossing: present only in a dependent P directory, it makes
+# the base group's matrix<b> object(s) be symlinked from the base directory
+# instead of recompiled here (see write_crossgroup_mk). Absent elsewhere.
+-include crossgroup.mk
+
 # Load additional dependencies of the bias module, if present
 ifeq (,$(wildcard ../bias_dependencies))
 BIASDEPENDENCIES =

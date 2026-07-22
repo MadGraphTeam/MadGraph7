@@ -672,6 +672,7 @@ class ProcessExporterFortran(VirtualExporter):
 
         calls = 0
         self._crossgroup = {}   # (group_idx, me_idx) -> base info; Track B below
+        self._crossgroup_dirs = []  # (dependent_dir, base_dir) for the parallel makefile
         if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
             # check handling for the polarization
             for m in matrix_elements:
@@ -700,6 +701,9 @@ class ProcessExporterFortran(VirtualExporter):
                                           me_group, fortran_model, group_number,
                                           second_exporter=second_exporter, second_helas=second_helas
                                           )
+            if self._crossgroup_dirs:
+                self.write_crossgroup_parallel_makefile(
+                    pjoin(self.dir_path, 'SubProcesses'))
         else:
              # check handling for the polarization
             self.beam_polarization = [True,True]
@@ -7585,6 +7589,66 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                     'template_matrix%d.f' % base_proc_id]
         return ['matrix%d.f' % base_proc_id]
 
+    def write_crossgroup_mk(self, base_dir, base_proc_id):
+        """Write crossgroup.mk in the current (dependent) P directory. Included by
+        the shared makefile (`-include crossgroup.mk`), it makes the base group's
+        matrix<b> object file be SYMLINKED from the base directory rather than
+        recompiled from the symlinked source -- the whole point of the reuse. It is
+        built in the base directory first (the specific rule overrides the
+        makefile's %.o:%.f pattern; the recursive rule is the standalone ordering
+        fallback -- the top-level parallel makefile also orders base before
+        dependents).
+
+        With helicity recycling only matrix<b>_orig.o (the full matrix element,
+        identical across the crossing class) is shared; matrix<b>_optim.o is NOT,
+        because gen_ximprove bakes THIS subprocess's own good-helicity set into it,
+        so it is subprocess-specific. Without recycling the single matrix<b>.o is
+        the full, shareable object."""
+        objs = ['matrix%d.o' % base_proc_id]
+        if self.opt.get('hel_recycling'):
+            objs = ['matrix%d_orig.o' % base_proc_id]
+        lines = ['# Track B cross-group crossing: reuse the base group\'s compiled',
+                 '# matrix element (%s) instead of recompiling the symlinked source.'
+                 % base_dir]
+        for o in objs:
+            base_o = pjoin('..', base_dir, o)
+            lines.append('%s: %s' % (o, base_o))
+            lines.append('\tln -sf %s %s' % (base_o, o))
+            lines.append('%s:' % base_o)
+            lines.append('\t+$(MAKE) -C %s %s' % (pjoin('..', base_dir), o))
+        open('crossgroup.mk', 'w').write('\n'.join(lines) + '\n')
+
+    def write_crossgroup_parallel_makefile(self, subproc_path):
+        """Write SubProcesses/makefile_madevent so every P directory builds with a
+        single `make -f makefile_madevent -jN` (madevent binaries) or `... forhel`.
+        Cross-group dependents (Track B) are ordered AFTER their base directory so
+        the base's shared objects exist to be symlinked in; make's dependency graph
+        then gives both the ordering and full parallelism. Each target just
+        delegates to that directory's own makefile."""
+        lines = [
+            '# Generated (Track B): build every P directory in one parallel call:',
+            '#     make -f makefile_madevent -j           # the madevent binaries',
+            '#     make -f makefile_madevent -j forhel    # the madevent_forhel ones',
+            '# Cross-group dependents are ordered after their base directory.',
+            'PDIRS := $(shell cat subproc.mg 2>/dev/null | tr -d " \\t")',
+            'MADEVENT := $(addsuffix /madevent,$(PDIRS))',
+            'FORHEL := $(addsuffix /madevent_forhel,$(PDIRS))',
+            '',
+            '.PHONY: all forhel $(MADEVENT) $(FORHEL)',
+            'all: $(MADEVENT)',
+            'forhel: $(FORHEL)',
+            '',
+            '$(MADEVENT) $(FORHEL):',
+            '\t+$(MAKE) -C $(@D) $(@F)',
+            '',
+            '# cross-group ordering (dependent directory waits for its base):',
+        ]
+        for dep, base in self._crossgroup_dirs:
+            lines.append('%s/madevent: %s/madevent' % (dep, base))
+            lines.append('%s/madevent_forhel: %s/madevent_forhel' % (dep, base))
+        open(pjoin(subproc_path, 'makefile_madevent'), 'w').write(
+            '\n'.join(lines) + '\n')
+
     #===========================================================================
     # _dsig_crossgroup_fills
     #===========================================================================
@@ -9121,6 +9185,14 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                 # the flavor table (for the PDF) and phase space stay local.
                 for fname in self._crossgroup_base_files(crossgroup['base_proc_id']):
                     ln(pjoin('..', crossgroup['base_dir'], fname), log=False)
+                # Reuse the base group's COMPILED objects (do not recompile the
+                # symlinked source): crossgroup.mk (included by the shared makefile)
+                # symlinks matrix<b>_{orig,optim}.o from the base dir, building them
+                # there first. Also record the dir pair for the parallel top-level
+                # makefile written at finalize.
+                self.write_crossgroup_mk(crossgroup['base_dir'],
+                                         crossgroup['base_proc_id'])
+                self._crossgroup_dirs.append((subprocdir, crossgroup['base_dir']))
                 # ncolor for maxflow sizing: crossing preserves the colour basis,
                 # so the dependent's own count is the base's. writer=None writes
                 # nothing, it only returns the flavor/colour bookkeeping.
