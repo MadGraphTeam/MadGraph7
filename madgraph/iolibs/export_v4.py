@@ -6448,6 +6448,7 @@ c     channel position
             '       CALL GET_FLAVOR%s(IFLAV_VEC(IVEC), FLAVOR)' % proc_id
         replace_dict['dsig_smatrix_vec_name'] = 'SMATRIX%s' % proc_id
         replace_dict['dsig_smatrix_vec_flav'] = 'IFLAV_VEC(IVEC)'
+        replace_dict['dsig_smatrix_vec_post'] = ''
 
         # Set dsig_line
         if ninitial == 1:
@@ -7652,6 +7653,29 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     #===========================================================================
     # _dsig_crossgroup_fills
     #===========================================================================
+    def _crossgroup_helmap(self, dep_me, base_me, cross):
+        """1-based map from a base helicity index to the DEPENDENT helicity index
+        carrying the physically-crossed configuration. The base SMATRIX selects a
+        helicity in ITS own NHEL enumeration, but the event is written through the
+        dependent's own get_helicities, so the index must be translated. The base
+        APPLY_CROSSING permutes NHEL by PERM and flips it by the IC sign, so a base
+        row corresponds to dep config[k] = base_row[PERM[k]]*SGN[k]. Returns the
+        identity if that is not a clean permutation of the dependent's table."""
+        bh = [tuple(x) for x in base_me.get_helicity_matrix()]
+        dh = [tuple(x) for x in dep_me.get_helicity_matrix()]
+        tables = ProcessExporterFortran.compute_crossing_tables(self, base_me)
+        nx = tables['nexternal']
+        perm = tables['perm']
+        ic = tables['ic']
+        P = [perm[cross * nx + k] for k in range(nx)]      # 0-based source leg
+        S = [ic[cross * nx + k] for k in range(nx)]
+        dhpos = {cfg: i for i, cfg in enumerate(dh)}
+        hmap = [dhpos.get(tuple(row[P[k]] * S[k] for k in range(nx)), -1)
+                for row in bh]
+        if -1 in hmap or sorted(hmap) != list(range(len(bh))):
+            return list(range(1, len(bh) + 1))
+        return [h + 1 for h in hmap]
+
     def _dsig_crossgroup_fills(self, matrix_element, proc_id, crossgroup):
         """Fill the cross-group (Track B) holes of auto_dsig_v4.inc for a
         dependent subprocess that has no matrix element of its own and routes to
@@ -7665,12 +7689,17 @@ class ProcessExporterFortranME(ProcessExporterFortran):
           (DSIG_XGROUTE(IFLAV)) instead of IFLAV; the base crosses the momenta and
           rebuilds the crossed denominator internally so ANS is this subprocess's
           matrix element. Momenta/PDF/phase space stay this subprocess's own.
-
-        The colour flow (COLMAP) and multi-channel config (CONFIGMAP) remaps are
-        added in a later step; the channel is passed through for now.
+        * event helicity/colour -- the base returns selected_hel/selected_col in
+          ITS enumeration; the event is written through this subprocess's own
+          get_helicities / ICOLUP, so remap the index base -> dependent per flavor
+          (DSIG_XGHEL / DSIG_XGCOL). Emitted only when non-identity (colour is the
+          identity for colourless processes; the channel is still passed through --
+          CONFIGMAP is a later step).
         """
         base_proc_id = crossgroup['base_proc_id']
         flav_idx = crossgroup['flav_idx']       # per dep flavor -> base FLAV_IDX
+        base_me = crossgroup['base_me']
+        nflav_base = len(base_me.get_external_flavors_with_iden())
         all_flv = matrix_element.get_external_flavors_with_iden()
         model = self.model or matrix_element.get('processes')[0].get('model')
         pdg_to_group_pos, max_group_size = self._build_flavor_group_lookup(model)
@@ -7681,12 +7710,25 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                          f, pdg_to_group_pos, max_group_size))
                      for flav in all_flv for f in flav[0]]
         decl = ['      INTEGER DSIG_XGFLAV(NEXTERNAL,%d)' % len(all_flv),
-                '      DATA DSIG_XGFLAV /%s/' % ','.join(positions)]
-        decl.append('      INTEGER DSIG_XGROUTE(%d)' % len(all_flv))
-        decl.append('      DATA DSIG_XGROUTE /%s/'
-                    % ','.join(str(x) for x in flav_idx))
-        # DSIG_XGFLAV/DSIG_XGROUTE are used from three separate program units
-        # (DSIG, DSIG_VEC, SMATRIX_MULTI); declare them in each.
+                '      DATA DSIG_XGFLAV /%s/' % ','.join(positions),
+                '      INTEGER DSIG_XGROUTE(%d)' % len(all_flv),
+                '      DATA DSIG_XGROUTE /%s/' % ','.join(str(x) for x in flav_idx)]
+
+        # Per-flavor event helicity + colour maps (base index -> dependent index).
+        ncomb = base_me.get_helicity_combinations()
+        helmap = [self._crossgroup_helmap(matrix_element, base_me,
+                                          (iflav - 1) // nflav_base)
+                  for iflav in flav_idx]
+        colmap = [self._router_colmap(matrix_element, base_me,
+                                      (iflav - 1) // nflav_base)
+                  for iflav in flav_idx]
+        ncol = len(colmap[0]) if colmap else 0
+        hel_post = self._crossgroup_remap_decl(
+            decl, 'DSIG_XGHEL', helmap, ncomb, 'selected_hel')
+        col_post = self._crossgroup_remap_decl(
+            decl, 'DSIG_XGCOL', colmap, ncol, 'selected_col')
+        # DSIG_XG* are used from three separate program units (DSIG, DSIG_VEC,
+        # SMATRIX_MULTI); declare them in each.
         decl_block = '\n'.join(decl) + '\n'
 
         return {
@@ -7696,7 +7738,9 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             'dsig_getflavor': '      FLAVOR(:) = DSIG_XGFLAV(:, IFLAV)',
             'dsig_smatrix_call': (
                 '     CALL SMATRIX%d(P1, DSIG_XGROUTE(IFLAV), RHEL, RCOL, channel,'
-                ' 1, DSIGUU, selected_hel(1), selected_col(1))' % base_proc_id),
+                ' 1, DSIGUU, selected_hel(1), selected_col(1))' % base_proc_id
+                + hel_post.format(idx='(1)', flav='IFLAV')
+                + col_post.format(idx='(1)', flav='IFLAV')),
             # vectorised (SMATRIX_MULTI) path: same routing. The MULTI wrapper
             # itself keeps this subprocess's own name (it is defined in this
             # auto_dsig); only the inner base-SMATRIX call + flavor are routed.
@@ -7704,7 +7748,26 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                 '       FLAVOR(:) = DSIG_XGFLAV(:, IFLAV_VEC(IVEC))',
             'dsig_smatrix_vec_name': 'SMATRIX%d' % base_proc_id,
             'dsig_smatrix_vec_flav': 'DSIG_XGROUTE(IFLAV_VEC(IVEC))',
+            'dsig_smatrix_vec_post': (
+                hel_post.format(idx='(IVEC)', flav='IFLAV_VEC(IVEC)')
+                + col_post.format(idx='(IVEC)', flav='IFLAV_VEC(IVEC)')),
         }
+
+    def _crossgroup_remap_decl(self, decl, name, maps, size, var):
+        """Helper for _dsig_crossgroup_fills: if any flavor's map is non-identity,
+        append the DATA declaration of a (size, nflav) remap table to ``decl`` and
+        return a str.format template with fields {idx} (the (1)/(IVEC) slot) and
+        {flav} (the flavor expression). Otherwise return an empty string. The DATA
+        is column-major (index fastest, then flavor)."""
+        identity = list(range(1, size + 1))
+        if all(m == identity for m in maps):
+            return ''
+        flat = ','.join(str(x) for col in maps for x in col)
+        decl.append('      INTEGER %s(%d,%d)' % (name, size, len(maps)))
+        decl.append('      DATA %s /%s/' % (name, flat))
+        return ('\n      IF ({v}{{idx}}.GE.1.AND.{v}{{idx}}.LE.{n}) '
+                '{v}{{idx}} = {name}({v}{{idx}}, {{flav}})').format(
+                    v=var, n=size, name=name)
 
     #===========================================================================
     # write_auto_dsig_file
@@ -7789,6 +7852,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             '       CALL GET_FLAVOR%s(IFLAV_VEC(IVEC), FLAVOR)' % proc_id
         replace_dict['dsig_smatrix_vec_name'] = 'SMATRIX%s' % proc_id
         replace_dict['dsig_smatrix_vec_flav'] = 'IFLAV_VEC(IVEC)'
+        replace_dict['dsig_smatrix_vec_post'] = ''
 
         # Set dsig_line
         if ninitial == 1:

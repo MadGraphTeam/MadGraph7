@@ -564,7 +564,7 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
      &               out(IVEC),
      &               selected_hel(IVEC),
      &               selected_col(IVEC)
-     &               )
+     &               )%(dsig_smatrix_vec_post)s
       ENDDO
 %(OMP_POSTFIX)s
 
