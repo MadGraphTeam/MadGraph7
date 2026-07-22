@@ -41,6 +41,15 @@ from .expressions import (
 from .symbols import symbols
 
 
+def _as_dirac_current(
+    current: tuple[Any, ...],
+    chirality: int,
+) -> tuple[Any, ...]:
+    if len(current) == 4:
+        return current
+    return _embed_weyl_current_in_dirac(current, chirality)
+
+
 class BuiltinSMLoweringMixin:
     def build_tensor_library(self) -> Any:
         from symbolica.community.spenso import (
@@ -542,30 +551,34 @@ class BuiltinSMLoweringMixin:
                 coupling=None,
             )
         if kind == 9:
-            if len(tuple(right)) == 4 and len(tuple(left)) == 4:
+            fermion = tuple(right)
+            antifermion = tuple(left)
+            if len(fermion) == 4 or len(antifermion) == 4:
                 return _expr_fermion_antifermion_to_vector_dirac(
-                    fermion=tuple(right),
-                    antifermion=tuple(left),
+                    fermion=_as_dirac_current(fermion, right_chirality),
+                    antifermion=_as_dirac_current(antifermion, left_chirality),
                     coupling=(1.0, 1.0),
                 )
             return _expr_fermion_antifermion_to_vector_weyl(
-                fermion=tuple(right),
-                antifermion=tuple(left),
+                fermion=fermion,
+                antifermion=antifermion,
                 coupling=(1.0, 1.0),
                 fermion_chirality=right_chirality,
                 antifermion_chirality=left_chirality,
             )
         if kind == 8:
             qcd_coupling = (coupling[0], coupling[0])
-            if len(tuple(left)) == 4 and len(tuple(right)) == 4:
+            fermion = tuple(left)
+            antifermion = tuple(right)
+            if len(fermion) == 4 or len(antifermion) == 4:
                 return _expr_fermion_antifermion_to_vector_dirac(
-                    fermion=tuple(left),
-                    antifermion=tuple(right),
+                    fermion=_as_dirac_current(fermion, left_chirality),
+                    antifermion=_as_dirac_current(antifermion, right_chirality),
                     coupling=qcd_coupling,
                 )
             return _expr_fermion_antifermion_to_vector_weyl(
-                fermion=tuple(left),
-                antifermion=tuple(right),
+                fermion=fermion,
+                antifermion=antifermion,
                 coupling=qcd_coupling,
                 fermion_chirality=left_chirality,
                 antifermion_chirality=right_chirality,
@@ -619,17 +632,33 @@ class BuiltinSMLoweringMixin:
                 return _embed_weyl_current_in_dirac(current, input_chirality)
             return current
         if kind == 21:
+            fermion = tuple(left)
+            antifermion = tuple(right)
+            if len(fermion) == 4 or len(antifermion) == 4:
+                return _expr_fermion_antifermion_to_vector_dirac(
+                    fermion=_as_dirac_current(fermion, left_chirality),
+                    antifermion=_as_dirac_current(antifermion, right_chirality),
+                    coupling=coupling,
+                )
             return _expr_fermion_antifermion_to_vector_weyl(
-                fermion=tuple(left),
-                antifermion=tuple(right),
+                fermion=fermion,
+                antifermion=antifermion,
                 coupling=coupling,
                 fermion_chirality=left_chirality,
                 antifermion_chirality=right_chirality,
             )
         if kind == 22:
+            fermion = tuple(right)
+            antifermion = tuple(left)
+            if len(fermion) == 4 or len(antifermion) == 4:
+                return _expr_fermion_antifermion_to_vector_dirac(
+                    fermion=_as_dirac_current(fermion, right_chirality),
+                    antifermion=_as_dirac_current(antifermion, left_chirality),
+                    coupling=coupling,
+                )
             return _expr_fermion_antifermion_to_vector_weyl(
-                fermion=tuple(right),
-                antifermion=tuple(left),
+                fermion=fermion,
+                antifermion=antifermion,
                 coupling=coupling,
                 fermion_chirality=right_chirality,
                 antifermion_chirality=left_chirality,

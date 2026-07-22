@@ -1042,6 +1042,47 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 )));
             }
         }
+        self.validate_parameter_dependency_graph()?;
+        Ok(())
+    }
+
+    fn validate_parameter_dependency_graph(self) -> RusticolResult<()> {
+        let mut indegree = vec![0usize; self.parameters.len()];
+        let mut dependents = vec![Vec::<usize>::new(); self.parameters.len()];
+        for (index, row) in self.parameters.iter().enumerate() {
+            let dependencies =
+                u32_sequence(self, row.dependency_sequence_id, "parameter dependencies")?;
+            indegree[index] = dependencies.len();
+            for dependency in dependencies {
+                dependents[*dependency as usize].push(index);
+            }
+        }
+        let mut ready = indegree
+            .iter()
+            .enumerate()
+            .filter_map(|(index, count)| (*count == 0).then_some(index))
+            .collect::<Vec<_>>();
+        let mut visited = 0usize;
+        while let Some(index) = ready.pop() {
+            visited += 1;
+            for dependent in &dependents[index] {
+                indegree[*dependent] -= 1;
+                if indegree[*dependent] == 0 {
+                    ready.push(*dependent);
+                }
+            }
+        }
+        if visited != self.parameters.len() {
+            let cyclic = indegree
+                .iter()
+                .enumerate()
+                .filter_map(|(index, count)| (*count > 0).then_some(index.to_string()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(invalid(format!(
+                "parameter dependency graph contains a cycle involving: {cyclic}"
+            )));
+        }
         Ok(())
     }
 
@@ -2753,5 +2794,61 @@ mod tests {
         let validated = empty_canonical_input().validate().unwrap();
         assert_eq!(validated.summary().current_state_count, 0);
         assert_eq!(validated.summary().prepared_kernel_count, 0);
+    }
+
+    #[test]
+    fn indirect_parameter_dependency_cycles_are_rejected() {
+        let mut input = empty_canonical_input();
+        input.catalog_header[0].parameter_count = 2;
+        input.u32_sequence_ranges.extend([
+            IndexedRangeRow {
+                id: 1,
+                range: CheckedTableRange::new(0, 1),
+            },
+            IndexedRangeRow {
+                id: 2,
+                range: CheckedTableRange::new(1, 1),
+            },
+        ]);
+        input.u32_sequence_values.extend([0, 1]);
+        let mut parameter_template_ids = [
+            input.catalog_header[0].abi_string_id,
+            input.catalog_header[0].canonicalization_abi_string_id,
+        ];
+        parameter_template_ids.sort_unstable();
+        input.parameters = vec![
+            ParameterRow {
+                id: 0,
+                template_string_id: parameter_template_ids[0],
+                name_string_id: input.catalog_header[0].canonicalization_abi_string_id,
+                kind: ParameterKind::Derived as u8,
+                value_type: ParameterValueType::Complex as u8,
+                mutable: 0,
+                default_factor_id: MISSING_U32,
+                exact_expression_digest_id: 0,
+                dependency_sequence_id: 2,
+                prepared_parameter_id: MISSING_U32,
+                semantic_digest_id: 0,
+            },
+            ParameterRow {
+                id: 1,
+                template_string_id: parameter_template_ids[1],
+                name_string_id: input.catalog_header[0].exact_scalar_abi_string_id,
+                kind: ParameterKind::Derived as u8,
+                value_type: ParameterValueType::Complex as u8,
+                mutable: 0,
+                default_factor_id: MISSING_U32,
+                exact_expression_digest_id: 1,
+                dependency_sequence_id: 1,
+                prepared_parameter_id: MISSING_U32,
+                semantic_digest_id: 1,
+            },
+        ];
+
+        let error = input.validate().unwrap_err().to_string();
+        assert!(
+            error.contains("parameter dependency graph contains a cycle"),
+            "unexpected validation error: {error}"
+        );
     }
 }

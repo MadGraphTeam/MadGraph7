@@ -91,9 +91,7 @@ def _validate_rusticol_runtime_template(
                 "source Rusticol template must use the authenticated "
                 "rusticol.source-fill.<family>.v1:<signature> contract"
             )
-        family = runtime_template[
-            len(prefix) : -len(version + suffix)
-        ]
+        family = runtime_template[len(prefix) : -len(version + suffix)]
         if family not in _WAVEFUNCTION_FAMILIES:
             raise RecurrenceTemplateError(
                 f"unsupported Rusticol source-fill family {family!r}"
@@ -1546,6 +1544,7 @@ class RecurrenceTemplateCatalog:
                 raise RecurrenceTemplateError(
                     "parameter cannot depend directly on itself"
                 )
+        _require_acyclic_parameter_dependencies(parameters)
         for state in self.current_states:
             _require_optional_reference(
                 "current mass parameter", state.mass_parameter_id, parameters
@@ -1870,6 +1869,36 @@ def _require_references(
 ) -> None:
     for key in keys:
         _require_reference(name, key, known)
+
+
+def _require_acyclic_parameter_dependencies(
+    parameters: Mapping[str, ParameterTemplateV1],
+) -> None:
+    indegree = {
+        template_id: len(parameter.dependency_parameter_ids)
+        for template_id, parameter in parameters.items()
+    }
+    dependents: dict[str, list[str]] = {template_id: [] for template_id in parameters}
+    for template_id, parameter in parameters.items():
+        for dependency_id in parameter.dependency_parameter_ids:
+            dependents[dependency_id].append(template_id)
+    ready = sorted(template_id for template_id, count in indegree.items() if count == 0)
+    visited = 0
+    while ready:
+        template_id = ready.pop()
+        visited += 1
+        for dependent_id in dependents[template_id]:
+            indegree[dependent_id] -= 1
+            if indegree[dependent_id] == 0:
+                ready.append(dependent_id)
+    if visited != len(parameters):
+        cyclic = sorted(
+            template_id for template_id, count in indegree.items() if count > 0
+        )
+        raise RecurrenceTemplateError(
+            "parameter dependency graph contains a cycle involving: "
+            + ", ".join(cyclic)
+        )
 
 
 def _validate_evaluator_contract(

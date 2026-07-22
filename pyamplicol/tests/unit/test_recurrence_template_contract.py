@@ -584,6 +584,28 @@ def test_catalog_rejects_duplicate_semantic_identity() -> None:
         _catalog(parameters=(first, duplicate, _parameter_templates()[1]))
 
 
+def test_catalog_rejects_indirect_parameter_dependency_cycle() -> None:
+    parameters = _parameter_templates()
+    cyclic = (
+        replace(
+            parameters[0],
+            dependency_parameter_ids=(parameters[1].template_id,),
+            semantic_digest="",
+        ),
+        replace(
+            parameters[1],
+            dependency_parameter_ids=(parameters[0].template_id,),
+            semantic_digest="",
+        ),
+    )
+
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="parameter dependency graph contains a cycle",
+    ):
+        _catalog(parameters=cyclic)
+
+
 def test_catalog_rejects_duplicate_evaluator_resolver_key() -> None:
     first = _evaluator_bindings()[0]
     duplicate = replace(

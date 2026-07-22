@@ -64,6 +64,8 @@ from .prepared_catalog_helpers import (
     used_input_descriptors as _used_input_descriptors,
 )
 
+_MAX_DISCOVERED_CURRENT_STATES = 4096
+
 
 @dataclass(frozen=True, slots=True)
 class _Candidate:
@@ -168,47 +170,92 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
         ]
     ] = []
 
-    for vertex in _unique_vertices(model):
-        for left_chirality in _state_chiralities(model, vertex.particles[0]):
-            for right_chirality in _state_chiralities(model, vertex.particles[1]):
-                flows = _reachable_flows(
-                    model,
-                    vertex,
-                    left_chirality=left_chirality,
-                    right_chirality=right_chirality,
-                )
-                for result_chirality in flows:
-                    try:
-                        result = _vertex_candidate(
-                            model,
-                            vertex,
-                            left_chirality=left_chirality,
-                            right_chirality=right_chirality,
-                            result_chirality=result_chirality,
-                            parameter_indices=parameter_indices,
-                            contract_kind="vertex",
-                        )
-                    except PreparedKernelCatalogError as error:
-                        raise PreparedKernelCatalogError(
-                            "prepared catalog cannot lower admitted vertex orientation "
-                            f"kind={vertex.kind}, particles={vertex.particles}, "
-                            "chiralities="
-                            f"({left_chirality},{right_chirality},{result_chirality}): "
-                            f"{error}"
-                        ) from error
-                    _register_candidate(candidates, proof_classes, result.candidate)
-                    vertex_pending.append(result)
-                    closure_ir = model.closure_contraction_ir(
-                        vertex.particles[2], result_chirality
+    vertices = _unique_vertices(model)
+    chiralities_by_particle: dict[int, set[int]] = {}
+    for vertex in vertices:
+        for particle_id in vertex.particles:
+            chiralities_by_particle.setdefault(int(particle_id), set()).update(
+                _state_chiralities(model, int(particle_id))
+            )
+    visited_inputs: set[tuple[object, ...]] = set()
+    discovered = True
+    while discovered:
+        discovered = False
+        for vertex in vertices:
+            left_chiralities = tuple(
+                sorted(chiralities_by_particle[vertex.particles[0]])
+            )
+            right_chiralities = tuple(
+                sorted(chiralities_by_particle[vertex.particles[1]])
+            )
+            for left_chirality in left_chiralities:
+                for right_chirality in right_chiralities:
+                    input_key = (
+                        vertex.kind,
+                        vertex.particles,
+                        vertex.coupling,
+                        left_chirality,
+                        right_chirality,
                     )
-                    if model.vertex_closure_allowed(vertex) and closure_ir is not None:
-                        closure = _closure_candidate(result, closure_ir)
-                        _register_candidate(
-                            candidates,
-                            proof_classes,
-                            closure.candidate,
+                    if input_key in visited_inputs:
+                        continue
+                    visited_inputs.add(input_key)
+                    flows = _reachable_flows(
+                        model,
+                        vertex,
+                        left_chirality=left_chirality,
+                        right_chirality=right_chirality,
+                    )
+                    for result_chirality in flows:
+                        try:
+                            result = _vertex_candidate(
+                                model,
+                                vertex,
+                                left_chirality=left_chirality,
+                                right_chirality=right_chirality,
+                                result_chirality=result_chirality,
+                                parameter_indices=parameter_indices,
+                                contract_kind="vertex",
+                            )
+                        except PreparedKernelCatalogError as error:
+                            raise PreparedKernelCatalogError(
+                                "prepared catalog cannot lower admitted vertex "
+                                "orientation "
+                                f"kind={vertex.kind}, particles={vertex.particles}, "
+                                "chiralities="
+                                f"({left_chirality},{right_chirality},"
+                                f"{result_chirality}): {error}"
+                            ) from error
+                        _register_candidate(candidates, proof_classes, result.candidate)
+                        vertex_pending.append(result)
+                        result_states = chiralities_by_particle.setdefault(
+                            int(vertex.particles[2]), set()
                         )
-                        closure_pending.append((closure, closure_ir.name))
+                        if result_chirality not in result_states:
+                            result_states.add(result_chirality)
+                            discovered = True
+                            if (
+                                sum(map(len, chiralities_by_particle.values()))
+                                > _MAX_DISCOVERED_CURRENT_STATES
+                            ):
+                                raise PreparedKernelCatalogError(
+                                    "prepared current-state discovery did not "
+                                    "converge within the safety bound"
+                                )
+                        closure_ir = model.closure_contraction_ir(
+                            vertex.particles[2], result_chirality
+                        )
+                        if (
+                            model.vertex_closure_allowed(vertex)
+                            and closure_ir is not None
+                        ):
+                            closure = _closure_candidate(result, closure_ir)
+                            _register_candidate(
+                                candidates,
+                                proof_classes,
+                                closure.candidate,
+                            )
+                            closure_pending.append((closure, closure_ir.name))
 
     propagator_states = _required_propagator_states(model, vertex_pending)
     for state in propagator_states:

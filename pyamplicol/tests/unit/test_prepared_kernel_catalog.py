@@ -48,9 +48,7 @@ def test_homogeneous_current_linearity_proof_fails_closed() -> None:
     assert not proves_homogeneous_complex_linearity(
         (current[0] * momentum + 2 * current[1] + 3,), current
     )
-    assert not proves_homogeneous_complex_linearity(
-        (current[0] * current[1],), current
-    )
+    assert not proves_homogeneous_complex_linearity((current[0] * current[1],), current)
     assert not proves_homogeneous_complex_linearity(
         (E("conj(proof_current_0)"),), current
     )
@@ -184,6 +182,13 @@ def test_builtin_chirality_dimensions_and_propagator_coverage(
     assert full_bottom.applies_propagator
     assert full_bottom.propagator_kind == "dirac-fermion"
     assert full_bottom.mass_class == "massless"
+    assert any(
+        binding.key.particles == (5, 21, 5)
+        and binding.key.left_chirality == 0
+        and binding.key.right_chirality == 0
+        and binding.key.result_chirality == 0
+        for binding in catalog.vertex_bindings
+    )
 
 
 def test_direct_contractions_remain_native_while_vertex_closures_are_catalogued(
@@ -281,10 +286,13 @@ def test_every_certified_builtin_block_reconstructs_four_scalar_calls(
             lane_outputs = contract.outputs[
                 lane * kernel.output_dimension : (lane + 1) * kernel.output_dimension
             ]
-            assert tuple(
-                output.replace_multiple(reverse).to_canonical_string()
-                for output in lane_outputs
-            ) == expected
+            assert (
+                tuple(
+                    output.replace_multiple(reverse).to_canonical_string()
+                    for output in lane_outputs
+                )
+                == expected
+            )
 
 
 def test_independent_block_proof_excludes_non_current_vertex_contracts(
@@ -297,8 +305,7 @@ def test_independent_block_proof_excludes_non_current_vertex_contracts(
         if kernel.contract_kind != "vertex":
             continue
         assert any(
-            item.role not in {"left-current", "right-current"}
-            for item in kernel.inputs
+            item.role not in {"left-current", "right-current"} for item in kernel.inputs
         )
 
 
@@ -367,6 +374,13 @@ def test_external_and_builtin_orientation_metadata_share_generic_contracts(
     assert ("self-conjugate", "lorentz-vector", 4) in (builtin_states & external_states)
     assert any(
         state[1:] == ("weyl-chiral", 2) for state in builtin_states & external_states
+    )
+    assert any(
+        binding.left_state.chirality == 0
+        and binding.result_state.chirality == 0
+        and binding.left_state.dimension == 4
+        and binding.result_state.dimension == 4
+        for binding in external.vertex_bindings
     )
 
 
