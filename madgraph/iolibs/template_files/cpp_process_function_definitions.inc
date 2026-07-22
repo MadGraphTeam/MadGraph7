@@ -91,3 +91,5 @@ int CPPProcess::broken_sym(const int* flavor)
     }
     return total_factor;
 }
+
+%(ident_cross_function)s

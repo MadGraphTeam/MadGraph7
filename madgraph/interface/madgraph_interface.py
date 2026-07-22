@@ -566,12 +566,19 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
         logger.info("o crossing:",'$MG:color:GREEN')
-        logger.info("   Output the process to fortran standalone twice, with the")
-        logger.info("   crossing symmetry on (--use_crossing=True) and off, then")
-        logger.info("   compare each subprocess evaluated through the extended")
-        logger.info("   FLAV_IDX crossing against its independent value.")
-        logger.info("   Requires gfortran and a working f2py (numpy) toolchain.")
+        logger.info("   Output the process to a standalone backend twice, with")
+        logger.info("   the crossing symmetry on (--use_crossing=True) and off,")
+        logger.info("   then compare each subprocess evaluated through the")
+        logger.info("   extended flavor-index crossing against its independent")
+        logger.info("   value. --exporter picks the backend (default standalone):")
+        logger.info("   standalone (fortran/f2py), standalone_cpp, standalone_mg7.")
+        logger.info("   Requires gfortran+f2py (standalone) or a C++ compiler")
+        logger.info("   (standalone_cpp / standalone_mg7).")
+        logger.info("   For standalone_mg7, --simd picks the vectorisation width:")
+        logger.info("   auto (default), none, sse4, avx2, 512y, 512z.")
         logger.info("   Example: check crossing g u > g u",'$MG:color:GREEN')
+        logger.info("   Example: check crossing g u > g u --exporter=standalone_cpp",'$MG:color:GREEN')
+        logger.info("   Example: check crossing g u > g u --exporter=standalone_mg7 --simd=avx2",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
         logger.info("   it to the narrow width approximation in the off-shell")
@@ -1095,7 +1102,13 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--collier_internal_stability_test':'False',
                    '--collier_mode':'1',
                    '--events': None,
-                   '--skip_evt':0}  
+                   '--skip_evt':0,
+                   # 'check crossing' backend: standalone (default), standalone_cpp
+                   # or standalone_mg7.
+                   '--exporter':'standalone',
+                   # 'check crossing --exporter=standalone_mg7' vectorisation
+                   # (SIMD) width: auto (default), none, sse4, avx2, 512y, 512z.
+                   '--simd':'auto'}
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -2398,6 +2411,7 @@ class CompleteForCmd(cmd.CompleteCmd):
 
 
         cms_check_mode = len(args) >= 2 and args[1]=='cms'
+        crossing_check_mode = len(args) >= 2 and args[1]=='crossing'
 
         cms_options = ['--name=','--tweak=','--seed=','--offshellness=',
           '--lambdaCMS=','--show_plot=','--report=','--lambda_plot_range=','--recompute_width=',
@@ -2407,6 +2421,20 @@ class CompleteForCmd(cmd.CompleteCmd):
         options = ['--energy=']
         if cms_options:
             options.extend(cms_options)
+        if crossing_check_mode:
+            # 'check crossing' only understands --energy, --exporter and (for
+            # standalone_mg7) --simd; the cms options above do not apply.
+            crossing_options = ['--energy=', '--exporter=', '--simd=']
+            # Value completion for the two crossing-specific options.
+            if args[-1] == '--exporter=':
+                return self.list_completion(
+                    text, list(process_checks.CROSSING_EXPORTERS))
+            elif args[-1] == '--simd=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_SIMD_CHOICES))
+            # Propose the options themselves once the user starts an option.
+            if text.startswith('-'):
+                return self.list_completion(text, crossing_options)
 
         # Directory continuation
         if args[-1].endswith(os.path.sep):
@@ -4304,6 +4332,26 @@ This implies that with decay chains:
                 options['report'] = option[1].lower()
             elif option[0]=='--seed':
                 options['seed'] = int(option[1])
+            elif option[0]=='--exporter':
+                # Backend for 'check crossing': which standalone output to build
+                # and run the crossing self-check against.
+                if option[1] not in process_checks.CROSSING_EXPORTERS:
+                    raise self.InvalidCmd(
+                        "The '--exporter' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.CROSSING_EXPORTERS),
+                            option[1]))
+                options['exporter'] = option[1]
+            elif option[0]=='--simd':
+                # Vectorisation width for 'check crossing --exporter=
+                # standalone_mg7' (ignored by the other backends).
+                if option[1] not in process_checks.MG7_SIMD_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--simd' option for 'check crossing' must be one "
+                        "of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_SIMD_CHOICES),
+                            option[1]))
+                options['simd'] = option[1]
             elif option[0]=='--name':
                 if '.' in option[1]:
                     raise self.InvalidCmd("Do not specify the extension in the"+
@@ -4563,9 +4611,11 @@ This implies that with decay chains:
         # matrix elements. Route it here and return early.
         if args[0] == 'crossing':
             options['proc_line'] = proc_line
+            options.setdefault('exporter', 'standalone')
             crossing_result = process_checks.check_crossing(
                 myprocdef, param_card=param_card, options=options, cmd=self)
-            text = 'Crossing symmetry check (crossing on vs off):\n'
+            text = ('Crossing symmetry check (crossing on vs off, exporter=%s):'
+                    '\n' % options['exporter'])
             text += process_checks.output_crossing(crossing_result) + '\n'
             logging.getLogger('madgraph.check_cmd').info(text)
             process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)

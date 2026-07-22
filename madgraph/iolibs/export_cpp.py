@@ -706,6 +706,10 @@ class OneProcessExporterCPP(object):
 
         self.process_name = self.get_process_name()
         self.process_class = "CPPProcess"
+        # Emit the crossing-symmetry machinery (extended flavor_id carrying a
+        # crossing). Off by default; ProcessExporterCPP.generate_subprocess_-
+        # directory turns it on for standalone_cpp when --use_crossing is set.
+        self.use_crossing = False
 
         self.path = path
         self.helas_call_writer = cpp_helas_call_writer
@@ -937,6 +941,8 @@ class OneProcessExporterCPP(object):
         """The complete class definition for the process"""
 
         replace_dict = {}
+        # Default (no-crossing) fill; overridden in the single_helicities branch.
+        replace_dict['cross_member_decl'] = ''
 
         # Extract model name
         replace_dict['model_name'] = self.model_name
@@ -982,15 +988,18 @@ class OneProcessExporterCPP(object):
             
             replace_dict['wfct_size'] = wfct_size
             
+            cross_repl = self.get_crossing_replace_dict(self.matrix_elements[0])
+            replace_dict['cross_member_decl'] = cross_repl['cross_member_decl']
             replace_dict['all_sigma_kin_definitions'] = \
                           """// Calculate wavefunctions
-                          void calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]);
+                          void calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]%(cross_cw_sig_extra)s);
                           static const int nwavefuncs = %(nwfct)d;
                           MG5_%(model_name)s::ALOHAOBJ w[nwavefuncs];
                           """ % \
                           {'nwfct':len(self.wavefunctions),
                           'sizew': wfct_size,
-                          'model_name': self.model_name
+                          'model_name': self.model_name,
+                          'cross_cw_sig_extra': cross_repl['cross_cw_sig_extra'],
                           }
 
             replace_dict['all_matrix_definitions'] = \
@@ -1070,7 +1079,11 @@ class OneProcessExporterCPP(object):
         process = self.matrix_elements[0].get('processes')[0]
         sym_data = ProcessExporterFortran._get_broken_symmetry_data(process, nincoming)
         ProcessExporterFortran._fill_broken_sym_replace_dict(replace_dict, sym_data)
-    
+
+        # ident_cross() companion of broken_sym() (empty unless crossing is on).
+        replace_dict['ident_cross_function'] = \
+            self.get_crossing_replace_dict(self.matrix_elements[0])['ident_cross_function']
+
         if write:
             file = self.read_template_file(self.process_definition_template) %\
                replace_dict
@@ -1178,6 +1191,10 @@ class OneProcessExporterCPP(object):
         self.helas_call_writer.use_flavor_mask = (n_flavors > 0)
         self.helas_call_writer.me_n_flavors = n_flavors
         self.helas_call_writer.me_active_flavor_mask = active_flavor_mask
+        # When crossing is on, the external HELAS calls must permute the
+        # helicity through perm[] and multiply their NSF flag by ic[] (both set
+        # up by sigmaKin); mirror of the fortran use_crossing_ic gate.
+        self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
         try:
             replace_dict['wavefunction_calls'] = "\n".join(\
                 self.helas_call_writer.get_wavefunction_calls(\
@@ -1189,6 +1206,7 @@ class OneProcessExporterCPP(object):
             self.helas_call_writer.use_flavor_mask = False
             self.helas_call_writer.me_n_flavors = 0
             self.helas_call_writer.me_active_flavor_mask = None
+            self.helas_call_writer.use_crossing_ic = False
 
         if write:
             file = self.read_template_file(self.process_wavefunction_template) % \
@@ -1389,6 +1407,188 @@ class OneProcessExporterCPP(object):
                 n_flavors, active_flavor_mask)
        
 
+    @staticmethod
+    def _cpp_int_array(values):
+        """Flat C++ initialiser '{a, b, c}' for a list of ints."""
+        return '{%s}' % ', '.join(str(int(v)) for v in values)
+
+    @staticmethod
+    def _cpp_int_array2d(flat, ncols):
+        """Nested C++ initialiser '{{...}, {...}}' from a flat list, ncols wide."""
+        rows = ['{%s}' % ', '.join(str(int(v)) for v in flat[i:i + ncols])
+                for i in range(0, len(flat), ncols)]
+        return '{%s}' % ', '.join(rows)
+
+    def get_crossing_replace_dict(self, matrix_element):
+        """Fill the crossing-machinery holes of the C++ standalone templates.
+
+        Mirrors export_v4.fill_crossing_replace_dict for the standalone_cpp
+        backend. When self.use_crossing is False every hole gets the plain,
+        pre-crossing code so the output is byte-for-byte the old one; when it is
+        True the extended flavor_id (a flavor AND a crossing) is decoded in
+        sigmaKin, the momenta/helicities are permuted through the crossing and
+        the swapped legs' NSF flag is flipped (via the ic[] array the HELAS
+        calls now read), and the denominator is split into the crossing-
+        dependent initial-state spin*color (spincol_cross) times the flavor-
+        dependent identical-final-state factor (ident_cross).
+        """
+        # Plain (no-crossing) fills: identical to the historical template.
+        plain = {
+            'fidx': 'flavor_id',
+            'cross_tables_decode': '',
+            'cross_perm_block': ('int perm[nexternal];\n'
+                                 'for(int i = 0; i < nexternal; i++){\n'
+                                 '    perm[i]=i;\n'
+                                 '}'),
+            'cross_cw_args': '',
+            'cross_return':
+                'return matrix_element * broken_sym(flavor) / denominator;',
+            'cross_cw_sig_extra': '',
+            'cross_member_decl': '',
+            'ident_cross_function': '',
+            # Historical good-helicity filter (byte-identical to pre-crossing).
+            'cross_ghidx_setup': '',
+            'cross_goodhel_gate':
+                'goodhel[flavor_id][ihel] || ntry[flavor_id] < 2',
+            'cross_goodhel_train':
+                'if (t != 0. && !goodhel[flavor_id][ihel]){\n'
+                '                goodhel[flavor_id][ihel]=true;\n'
+                '                ngood[flavor_id] ++;\n'
+                '                igood[flavor_id][ngood[flavor_id]] = ihel;\n'
+                '            }',
+        }
+        if not self.use_crossing:
+            return plain
+
+        tables = ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+        nexternal = tables['nexternal']
+        ninitial = tables['ninitial']
+        ncross = (nexternal + 1) * (nexternal + 1)
+
+        spincol_init = self._cpp_int_array(tables['spincol'])
+        perm_init = self._cpp_int_array2d(tables['perm'], nexternal)
+        ic_init = self._cpp_int_array2d(tables['ic'], nexternal)
+        basepid_init = self._cpp_int_array(tables['basepid'])
+        src_init = self._cpp_int_array(tables['source'])
+        # GHREMAP: the C++ NHEL table is emitted with allow_reverse False (see
+        # get_helicity_matrix), so the remap must be built in that order. A
+        # non-filterable crossing (initial-initial swap or inapplicable) gets
+        # -1, a "no filter" sentinel the loop treats as "compute this row".
+        ghremap_init = self._cpp_int_array(
+            [-1 if row is None else row
+             for row in ProcessExporterFortran.compute_ghremap(
+                 self, matrix_element, allow_reverse=False)])
+
+        cross_tables_decode = (
+            "// Crossing symmetry: flavor_id carries a flavor AND a crossing.\n"
+            "//   cross    = flavor_id / nflavors\n"
+            "//   flav_use = flavor_id %% nflavors  (index used for masking)\n"
+            "// A crossing permutes momenta/helicities between slots and flips\n"
+            "// each swapped leg's NSF flag; the denominator splits into the\n"
+            "// crossing-dependent initial-state spin*color (spincol_cross) and\n"
+            "// the flavor-dependent identical-final-state factor (ident_cross).\n"
+            "const int ncross = %(ncross)d;\n"
+            "static const int spincol_cross[ncross] = %(spincol)s;\n"
+            "static const int cross_perm[ncross][nexternal] = %(perm)s;\n"
+            "static const int cross_ic[ncross][nexternal] = %(ic)s;\n"
+            "// GHREMAP[cross*ncomb+ihel] = the identity helicity row whose\n"
+            "// goodhel bit gates crossed row ihel (sigma^-1); -1 = the crossing\n"
+            "// is not filterable, so that row is always computed and never\n"
+            "// trains. For cross 0 it is the identity: the uncrossed path is\n"
+            "// unchanged. See ProcessExporterFortran.compute_ghremap.\n"
+            "static const int ghremap[ncross * ncomb] = %(ghremap)s;\n"
+            "int cross = flavor_id / nflavors;\n"
+            "int flav_use = flavor_id %% nflavors;\n"
+            "// A null spin*color entry (out of range, impossible, or an\n"
+            "// overlapping swap) means an identically-zero matrix element.\n"
+            "if (cross < 0 || cross >= ncross || spincol_cross[cross] == 0)\n"
+            "    return 0.;"
+        ) % {'ncross': ncross, 'spincol': spincol_init,
+             'perm': perm_init, 'ic': ic_init, 'ghremap': ghremap_init}
+
+        cross_perm_block = (
+            "int perm[nexternal];\n"
+            "int ic[nexternal];\n"
+            "for(int i = 0; i < nexternal; i++){\n"
+            "    perm[i] = cross_perm[cross][i];\n"
+            "    ic[i] = cross_ic[cross][i];\n"
+            "}")
+
+        cross_return = (
+            "// Uncrossed: historical path (IDEN via denominator, BROKEN_SYM\n"
+            "// correcting the identical-particle count per flavor). Crossed:\n"
+            "// rebuild the denominator from the crossed initial-state spin*color\n"
+            "// and the identical final-state factor of the actual flavors.\n"
+            "if (cross == 0)\n"
+            "    return matrix_element * broken_sym(flavor) / denominator;\n"
+            "return matrix_element / "
+            "(spincol_cross[cross] * ident_cross(cross, flavor));")
+
+        ident_cross_function = (
+            "//------------------------------------------------------------------\n"
+            "// Identical-final-state factor (product of n!) of the crossed\n"
+            "// process. Flavor dependent, so computed at runtime: two crossed\n"
+            "// final legs are identical when they carry the same flavor group\n"
+            "// (same representative PDG, conjugated already when the leg swapped\n"
+            "// side) and the same position inside it. FLAVOR is not permuted by\n"
+            "// the crossing, so slot k reads the position of the original leg\n"
+            "// that moved into it, via src_cross.\n"
+            "int CPPProcess::ident_cross(int cross, const int* flavor)\n"
+            "{\n"
+            "    const int ncross = %(ncross)d;\n"
+            "    static const int basepid_cross[ncross * nexternal] = %(basepid)s;\n"
+            "    static const int src_cross[ncross * nexternal] = %(src)s;\n"
+            "    const int off = cross * nexternal;\n"
+            "    bool used[nexternal];\n"
+            "    for (int k = 0; k < nexternal; k++) used[k] = false;\n"
+            "    int fact = 1;\n"
+            "    for (int k = %(ninitial)d; k < nexternal; k++)\n"
+            "    {\n"
+            "        if (used[k]) continue;\n"
+            "        int n = 1;\n"
+            "        for (int l = k + 1; l < nexternal; l++)\n"
+            "        {\n"
+            "            if (used[l]) continue;\n"
+            "            if (basepid_cross[off + k] == basepid_cross[off + l] &&\n"
+            "                flavor[src_cross[off + k]] == flavor[src_cross[off + l]])\n"
+            "            {\n"
+            "                used[l] = true;\n"
+            "                n = n + 1;\n"
+            "                fact = fact * n;\n"
+            "            }\n"
+            "        }\n"
+            "    }\n"
+            "    return fact;\n"
+            "}"
+        ) % {'ncross': ncross, 'basepid': basepid_init, 'src': src_init,
+             'ninitial': ninitial}
+
+        return {
+            'fidx': 'flav_use',
+            'cross_tables_decode': cross_tables_decode,
+            'cross_perm_block': cross_perm_block,
+            'cross_cw_args': ', ic',
+            'cross_return': cross_return,
+            'cross_cw_sig_extra': ', const int ic[]',
+            'cross_member_decl': '  int ident_cross(int cross, const int* flavor);',
+            'ident_cross_function': ident_cross_function,
+            # The good-helicity filter is shared per flavor but consulted and
+            # trained through GHREMAP (sigma^-1): a crossed row is good iff its
+            # identity counterpart is. ghidx = -1 disables the filter for a
+            # non-filterable crossing (compute the row, never train). For cross
+            # 0 ghidx == ihel, so this is exactly the historical filter.
+            'cross_ghidx_setup': 'int ghidx = ghremap[cross*ncomb + ihel];\n        ',
+            'cross_goodhel_gate':
+                'ghidx < 0 || goodhel[flav_use][ghidx] || ntry[flav_use] < 2',
+            'cross_goodhel_train':
+                'if (t != 0. && ghidx >= 0 && !goodhel[flav_use][ghidx]){\n'
+                '                goodhel[flav_use][ghidx]=true;\n'
+                '                ngood[flav_use] ++;\n'
+                '                igood[flav_use][ngood[flav_use]] = ihel;\n'
+                '            }',
+        }
+
     def get_sigmaKin_lines(self, color_amplitudes, write=True):
         """Get sigmaKin_lines for function definition for Pythia 8 .cc file"""
 
@@ -1399,6 +1599,10 @@ class OneProcessExporterCPP(object):
         if self.single_helicities:
             replace_dict = {}
             assert len(self.matrix_elements) == 1
+
+            # Crossing-symmetry holes (identity fills when use_crossing is off).
+            replace_dict.update(
+                self.get_crossing_replace_dict(self.matrix_elements[0]))
 
             # Number of helicity combinations
             replace_dict['ncomb'] = \
@@ -1570,9 +1774,11 @@ class OneProcessExporterCPP(object):
 
         ret_lines = []
         if self.single_helicities:
+            cross_cw_sig_extra = \
+                self.get_crossing_replace_dict(self.matrix_elements[0])['cross_cw_sig_extra']
             ret_lines.append(\
-                "void %s::calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]){" % \
-                class_name)
+                "void %s::calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]%s){" % \
+                (class_name, cross_cw_sig_extra))
             ret_lines.append("// Calculate wavefunctions for all processes")
             ret_lines.append(self.get_calculate_wavefunctions(\
                 self.wavefunctions, self.amplitudes))
@@ -2623,6 +2829,10 @@ class ProcessExporterCPP(VirtualExporter):
 
     grouped_mode = False
     exporter = 'cpp'
+    # Only the plain standalone_cpp exporter emits the crossing machinery; the
+    # matchbox/pythia8/mg7 subclasses write their own templates and override
+    # this back to False.
+    supports_crossing = True
 
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'madevent', 'mp': False,
@@ -2738,7 +2948,108 @@ class ProcessExporterCPP(VirtualExporter):
     #===============================================================================
     # generate_subprocess_directory
     #===============================================================================
-    def write_check_sa_cpp(self, matrix_element, dirpath):
+    def _get_check_sa_cpp_crossing_example(self, matrix_element, maxflavor,
+                                           nexternal, use_crossing):
+        """C++ block for check_sa.cpp demonstrating the crossed matrix elements.
+
+        Returns '' when crossing is not active for this backend/matrix element,
+        leaving the driver unchanged. Otherwise it mirrors the Fortran
+        check_sa.f demonstration: a loop over every way of crossing particle 1
+        and particle 2 with a final-state particle (and over each flavor) that,
+        for each, evaluates the crossed matrix element and prints its signed
+        PDGs and value. The whole section is gated behind `if(false)` so it is
+        present only as a ready-to-enable example.
+
+        flavor_id is 0-based in C++: flavor_id = cross*nflav + flav0, with
+        cross = flip1*(nexternal+1) + flip2 (flip1/flip2 the partners of
+        particle 1/2), matching sigmaKin's decode. standalone_cpp has no runtime
+        PDG accessor, so the signed PDG of each flavor_id is precomputed here
+        into demo_pdg[flavor_id*nexternal + slot] the same way
+        GET_PDG_FOR_FLAVOR does (conjugating swapped legs, zeros for an
+        impossible/overlapping crossing). Each evaluation uses a FRESH
+        CPPProcess so the shared good-helicity cache cannot contaminate it.
+        """
+        if not use_crossing:
+            return ''
+
+        tables = ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+        spincol = tables['spincol']
+        perm = tables['perm']
+        ic = tables['ic']
+        nx = tables['nexternal']
+        ncross = len(spincol)
+        # The flavor count sigmaKin decodes against (CPPProcess::nflavors); read
+        # from the same source that fills %(nflav)d so the demo_pdg table indexes
+        # by flavor_id exactly as the runtime does.
+        n_flav = len(matrix_element.get_external_flavors_with_iden())
+        # Physical signed PDGs (basepid holds internal group codes like 81, not
+        # the physical PDG the user expects).
+        _, pdg_flat, antipdg_flat = \
+            ProcessExporterFortran._build_flav_pdg_tables(self, matrix_element)
+        pdg_rows = len(pdg_flat) // nx
+
+        # demo_pdg[flavor_id*nexternal + slot], flavor_id = cross*nflav+flav0.
+        demo_pdg = []
+        for cross in range(ncross):
+            for flav0 in range(n_flav):
+                # Guard in the unlikely case the pdg table has fewer rows than
+                # nflavors: fall back to the first flavor rather than overrun.
+                row = flav0 if flav0 < pdg_rows else 0
+                for k in range(nx):
+                    if spincol[cross] == 0:
+                        demo_pdg.append(0)
+                        continue
+                    src = perm[cross * nx + k]
+                    if ic[cross * nx + k] == 1:
+                        demo_pdg.append(pdg_flat[row * nx + src])
+                    else:
+                        demo_pdg.append(antipdg_flat[row * nx + src])
+
+        sep = ('    cout << " ---------------------------------------------------'
+               '--------------------------" << endl;')
+        lines = [
+            '  // Crossing-symmetry examples (crossed processes); see the',
+            '  // matching block in the Fortran check_sa.f. Gated behind',
+            '  // if(false): flip it to true to actually print them. Each',
+            '  // flavor_id is evaluated on a fresh CPPProcess so the shared',
+            '  // good-helicity cache cannot contaminate the crossed value.',
+            '  if(false){',
+            '    const int nflav = process.nflavors;',
+            '    const int nin = process.ninitial;',
+            '    const int nx = process.nexternal;',
+            '    static const int demo_pdg[%d] = {%s};'
+            % (len(demo_pdg), ', '.join(str(p) for p in demo_pdg)),
+            '    cout << endl << " Crossing-symmetry examples (crossed '
+            'processes):" << endl << endl;',
+            '    for(int flip1 = nin+1; flip1 <= nx; flip1++){',
+            '      for(int flip2 = nin+1; flip2 <= nx; flip2++){',
+            '        for(int j = 1; j <= nflav; j++){',
+            '          // cross = (partner of p1)*(nx+1) + (partner of p2)',
+            '          int cross = flip1*(nx+1) + flip2;',
+            '          int flavor_id = cross*nflav + (j-1);',
+            '          CPPProcess xproc("../../Cards/param_card.dat");',
+            '          xproc.setMomenta(p);',
+            '          double xme = xproc.sigmaKin(flavor_id);',
+            '          cout << "PARTICLE #1 crossed with particle # " '
+            '<< flip1 << endl;',
+            '          cout << "PARTICLE #2 crossed with particle # " '
+            '<< flip2 << endl;',
+            '          cout << "PDG";',
+            '          for(int s = 0; s < nx; s++) cout << " " '
+            '<< demo_pdg[flavor_id*nx + s];',
+            '          cout << " FLAV_IDX " << flavor_id << endl;',
+            '          cout << "Matrix element = " << xme'
+            ' << " GeV^" << -(2*xproc.nexternal-8) << endl;',
+            sep,
+            '        }',
+            '      }',
+            '    }',
+            '  }',
+        ]
+        return '\n'.join(lines)
+
+    def write_check_sa_cpp(self, matrix_element, dirpath, use_crossing=False):
         """Write a per-process check_sa.cpp with flavor arrays filled in.
 
         This mirrors the Fortran ``write_check_sa`` in ``export_v4.py``:
@@ -2817,6 +3128,8 @@ class ProcessExporterCPP(VirtualExporter):
             'nexternal': nexternal,
             'flavor_arr': flavor_arr_str,
             'pdg_arr':    pdg_arr_str,
+            'crossing_example': self._get_check_sa_cpp_crossing_example(
+                matrix_element, maxflavor, nexternal, use_crossing),
         }
         with open(pjoin(dirpath, 'check_sa.cpp'), 'w') as fout:
             fout.write(content)
@@ -2829,7 +3142,18 @@ class ProcessExporterCPP(VirtualExporter):
         #matrix_element = copy.deepcopy(matrix_element)
         process_exporter_cpp = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
 
-        
+        # Enable the crossing machinery for standalone_cpp when the process was
+        # generated with --use_crossing (default on) and the process does not
+        # pin a specific s-channel (which a crossing would not preserve). Only a
+        # single-ME directory carries the flavor tables the crossing needs.
+        process_exporter_cpp.use_crossing = bool(
+            getattr(self, 'supports_crossing', False)
+            and self.opt.get('use_crossing', False)
+            and len(process_exporter_cpp.matrix_elements) == 1
+            and not ProcessExporterFortran.breaks_crossing_symmetry(
+                process_exporter_cpp.matrix_elements[0].get('processes')[0]))
+
+
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = "P%d_%s" % (process_exporter_cpp.process_number, 
                                     process_exporter_cpp.process_name)
@@ -2847,7 +3171,8 @@ class ProcessExporterCPP(VirtualExporter):
             for file in self.to_link_in_P:
                 ln('../%s' % file)
         # Write a per-process check_sa.cpp with flavor info filled in
-        self.write_check_sa_cpp(matrix_element, dirpath)
+        self.write_check_sa_cpp(matrix_element, dirpath,
+                                use_crossing=process_exporter_cpp.use_crossing)
         return proc_dir_name
 
     @staticmethod
@@ -2865,10 +3190,12 @@ class ProcessExporterCPP(VirtualExporter):
 
 class ProcessExporterMatchbox(ProcessExporterCPP):
     oneprocessclass = OneProcessExporterMatchbox
+    supports_crossing = False
 
 class ProcessExporterPythia8(ProcessExporterCPP):
     oneprocessclass = OneProcessExporterPythia8
     grouped_mode = 'madevent'
+    supports_crossing = False
      
     #===============================================================================
     # generate_process_files_pythia8
@@ -3176,6 +3503,7 @@ class UFOModelConverterPythia8(UFOModelConverterCPP):
 class ProcessExporterMG7(ProcessExporterCPP):
     """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
 
+    supports_crossing = False
     s= _file_path + 'iolibs/template_files/'
     dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses']
     # mg7_v5 builds api.so in the P* folders (instead of the standalone_cpp
@@ -3206,6 +3534,18 @@ class ProcessExporterMG7(ProcessExporterCPP):
     ):
         """ Override of super().generate_subprocess_directory """
         process_exporter_mg7 = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
+
+        # Enable the crossing machinery (extended flavor id) when the process was
+        # generated with --use_crossing (default on) and the process does not pin
+        # a specific s-channel (which a crossing would not preserve). Only a
+        # single-ME directory carries the flavor tables the crossing needs. When
+        # off, use_crossing stays False and the output is byte-identical.
+        process_exporter_mg7.use_crossing = bool(
+            getattr(self, 'supports_crossing', False)
+            and self.opt.get('use_crossing', False)
+            and len(process_exporter_mg7.matrix_elements) == 1
+            and not ProcessExporterFortran.breaks_crossing_symmetry(
+                process_exporter_mg7.matrix_elements[0].get('processes')[0]))
 
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = process_exporter_mg7.name
@@ -3324,6 +3664,9 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
 
     opt = dict(cmd.options)
     opt['output_options'] = cmd_options
+    # --use_crossing of the generate/add process command (default on). Only the
+    # standalone_cpp exporter honors it; the others ignore this key.
+    opt['use_crossing'] = getattr(cmd, '_use_crossing', True)
     cformat = cmd._export_format
     
     if cformat == 'pythia8':

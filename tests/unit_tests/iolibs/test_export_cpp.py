@@ -920,7 +920,8 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
             'broken_sym_component_old_factors': ",".join(str(v) for v in sym_data['component_old_factors']),
             'broken_sym_pid_list': ",".join(str(v) for v in sym_data['pid_list']),
             'broken_sym_block_starts': ",".join(str(v) for v in sym_data['block_starts']),
-            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths'])
+            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths']),
+            'ident_cross_function': ''
         }
         template_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                               'cpp_process_function_definitions.inc')

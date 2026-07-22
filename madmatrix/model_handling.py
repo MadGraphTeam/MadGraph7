@@ -1733,6 +1733,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         export_v4.ProcessExporterFortran._fill_broken_sym_replace_dict(
             replace_dict, sym_data)
 
+        # Crossing-symmetry holes (identity fills when use_crossing is off ->
+        # byte-identical output). See get_madmatrix_crossing_dict.
+        replace_dict.update(self.get_madmatrix_crossing_dict(self.matrix_elements[0]))
+
         file = self.read_template_file(self.process_definition_template) % replace_dict # HACK! ignore write=False case
         if len(params) == 0: # remove cIPD from OpenMP pragma (issue #349)
             file_lines = file.split('\n')
@@ -1763,6 +1767,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nb_channel'] = len(self.multi_channel_map)
         replace_dict['nb_color'] = max(1, len(self.matrix_elements[0].get('color_basis')))
 
+        # Crossing-symmetry hole (per-event denominator); identity fill when off.
+        replace_dict.update(self.get_madmatrix_crossing_dict(self.matrix_elements[0]))
+
         if write:
             file = self.read_template_file(self.process_sigmaKin_function_template) % replace_dict
             file = strip_banner(file, banner_mark = "!") # skip first 8 lines in process_sigmaKin_function.inc (copyright)
@@ -1777,11 +1784,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if self.single_helicities:
             ###misc.sprint(type(self.helas_call_writer))
             ###misc.sprint( 'before get_matrix_element_calls', self.matrix_elements[0].get_number_of_wavefunctions() ) # WRONG value of nwf, eg 7 for gg_tt
-            helas_calls = self.helas_call_writer.get_matrix_element_calls(\
+            # Crossing symmetry: tell the helas writer to emit the per-event
+            # momentum-permutation preamble + NSF-blended external calls. Read at
+            # emission time and reset afterwards (the writer is reused across
+            # outputs, per the fortran/standalone_cpp lesson).
+            self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
+            try:
+                helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
                                                     color_amplitudes[0],
                                                     multi_channel_map = self.multi_channel_map
                                                     )
+            finally:
+                self.helas_call_writer.use_crossing_ic = False
             ###misc.sprint( 'after get_matrix_element_calls', self.matrix_elements[0].get_number_of_wavefunctions() ) # CORRECT value of nwf, eg 5 for gg_tt
             assert len(self.matrix_elements) == 1 or len(self.matrix_elements) == 2 # how to handle if this is not true?
             self.couplings2order = self.helas_call_writer.couplings2order
@@ -2207,6 +2222,144 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ret_lines = ""
         return ret_lines
 
+    # ------------------------------------------------------------------
+    # Crossing symmetry (extended flavor id) for the madmatrix / cudacpp
+    # CPU-SIMD backend. Mirrors export_cpp.get_crossing_replace_dict and the
+    # fortran path but adapted to the SIMD structure of this backend: the
+    # per-event momentum permutation lives in calculate_jamps (emitted by the
+    # helas writer, gated by use_crossing_ic), while the crossing-aware
+    # good-helicity union, the per-event denominator and the crossed flavorPDG
+    # accessor are filled here. When self.use_crossing is False every hole gets
+    # the historical code so the output is byte-for-byte the old one.
+    # ------------------------------------------------------------------
+    def get_madmatrix_crossing_dict(self, matrix_element):
+        plain = {
+            'crossing_decl': '',
+            'goodhel_scan_count': 'nmaxflavor',
+            'goodhel_scan_skip': '',
+            'sigmakin_denominator':
+                '      MEs_sv = MEs_sv * broken_symmetry_factor(iflavorVec[ievt0]) / helcolDenominators[0];',
+            'flavorpdg_body': '    return flavorPDGs[iflavor][ipar];',
+        }
+        if not getattr(self, 'use_crossing', False):
+            return plain
+
+        import madgraph.iolibs.export_v4 as export_v4
+        Fort = export_v4.ProcessExporterFortran
+        me = matrix_element
+        tables = Fort.compute_crossing_tables(self, me)
+        nexternal = tables['nexternal']
+        ninitial = tables['ninitial']
+        ncross = (nexternal + 1) * (nexternal + 1)
+        nflav = len(me.get_external_flavors_with_iden())
+        spincol = tables['spincol']
+        basepid = tables['basepid']
+        source = tables['source']
+        perm = tables['perm']
+        ic = tables['ic']
+
+        # Crossed per-leg signed PDG for every extended flavor id (physical PDG,
+        # conjugated where the leg swapped side; 0 for an invalid crossing).
+        n_flavors, pdg_flat, antipdg_flat = Fort._build_flav_pdg_tables(self, me)
+        fpdg = []
+        for cross in range(ncross):
+            for flav0 in range(nflav):
+                for k in range(nexternal):
+                    if spincol[cross] == 0:
+                        fpdg.append(0)
+                        continue
+                    src = perm[cross * nexternal + k]
+                    if ic[cross * nexternal + k] == 1:
+                        fpdg.append(pdg_flat[flav0 * nexternal + src])
+                    else:
+                        fpdg.append(antipdg_flat[flav0 * nexternal + src])
+
+        def arr(vals):
+            return '{ ' + ', '.join(str(v) for v in vals) + ' }'
+
+        crossing_decl = (
+            "  // ---- Crossing symmetry tables (extended id = cross*nmaxflavor + flav) ----\n"
+            "  // Initial-state spin*color average per crossing (0 = crossing that\n"
+            "  // must not be applied: out of range, impossible, or overlapping swap).\n"
+            "  static const int spincol_cross[%(ncross)d] = %(spincol)s;\n"
+            "  // Crossed physical signed PDG per (extended id, leg); 0 if invalid.\n"
+            "  static const int flavorPDGs_cross[%(nfpdg)d] = %(fpdg)s;\n"
+            "  // Identical-final-state factor of the crossed process (flavor\n"
+            "  // dependent -> runtime). FLAVOR is not permuted, so slot k reads the\n"
+            "  // original leg that moved into it via src_cross.\n"
+            "  __device__ int ident_cross( int cross, int iflavor )\n"
+            "  {\n"
+            "    static const int basepid_cross[%(ncrossN)d] = %(basepid)s;\n"
+            "    static const int src_cross[%(ncrossN)d] = %(source)s;\n"
+            "    const int off = cross * npar;\n"
+            "    bool used[npar];\n"
+            "    for ( int k = 0; k < npar; k++ ) used[k] = false;\n"
+            "    int fact = 1;\n"
+            "    for ( int k = %(ninitial)d; k < npar; k++ )\n"
+            "    {\n"
+            "      if ( used[k] ) continue;\n"
+            "      int n = 1;\n"
+            "      for ( int l = k + 1; l < npar; l++ )\n"
+            "      {\n"
+            "        if ( used[l] ) continue;\n"
+            "        if ( basepid_cross[off + k] == basepid_cross[off + l] &&\n"
+            "             cFlavors[iflavor][src_cross[off + k]] == cFlavors[iflavor][src_cross[off + l]] )\n"
+            "        {\n"
+            "          used[l] = true;\n"
+            "          n = n + 1;\n"
+            "          fact = fact * n;\n"
+            "        }\n"
+            "      }\n"
+            "    }\n"
+            "    return fact;\n"
+            "  }\n"
+        ) % {'ncross': ncross, 'spincol': arr(spincol),
+             'nfpdg': ncross * nflav * nexternal, 'fpdg': arr(fpdg),
+             'ncrossN': ncross * nexternal, 'basepid': arr(basepid),
+             'source': arr(source), 'ninitial': ninitial}
+
+        sigmakin_denominator = (
+            "      // Per-event crossing-aware denominator: cross may differ per event.\n"
+            "      // cross==0 keeps the historical IDEN/BROKEN_SYM path; a genuine\n"
+            "      // crossing rebuilds it from the crossed initial-state spin*color\n"
+            "      // times the identical-final-state factor of the actual flavors.\n"
+            "      fptype_sv denom_sv;\n"
+            "      for ( int ieppV = 0; ieppV < neppV; ++ieppV )\n"
+            "      {\n"
+            "        const unsigned int fid = iflavorVec[ievt0 + ieppV];\n"
+            "        const int dcr = (int)( fid / nmaxflavor );\n"
+            "        const int dfl = (int)( fid % nmaxflavor );\n"
+            "        fptype f;\n"
+            "        if ( dcr == 0 )\n"
+            "          f = (fptype)broken_symmetry_factor( dfl ) / helcolDenominators[0];\n"
+            "        else if ( spincol_cross[dcr] == 0 )\n"
+            "          f = (fptype)0.; // invalid crossing (out of range / overlapping swap) -> ME 0\n"
+            "        else\n"
+            "          f = (fptype)1. / ( (fptype)spincol_cross[dcr] * (fptype)ident_cross( dcr, dfl ) );\n"
+            "        reinterpret_cast<fptype*>( &denom_sv )[ieppV] = f;\n"
+            "      }\n"
+            "      MEs_sv = MEs_sv * denom_sv;"
+        )
+
+        flavorpdg_body = (
+            "    const int ncross = ( npar + 1 ) * ( npar + 1 );\n"
+            "    if ( iflavor < 0 || iflavor >= ncross * nmaxflavor ) return 0;\n"
+            "    return flavorPDGs_cross[iflavor * npar + ipar];"
+        )
+
+        return {
+            'crossing_decl': crossing_decl,
+            # Good-helicity UNION now also spans crossings: sample every valid
+            # extended flavor id (skip spincol==0) so cGoodHel covers the crossed
+            # helicity rows too. A helicity that vanishes for a given event's
+            # crossing simply contributes 0 at run time.
+            'goodhel_scan_count': str(ncross * nflav),
+            'goodhel_scan_skip':
+                '      if ( spincol_cross[iflav / nmaxflavor] == 0 ) continue;\n    ',
+            'sigmakin_denominator': sigmakin_denominator,
+            'flavorpdg_body': flavorpdg_body,
+        }
+
 #------------------------------------------------------------------------------------
 
 import madgraph.core.helas_objects as helas_objects
@@ -2476,13 +2629,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       // for GPU it is an int
       // for SIMD it is also an int, since it is constant across the SIMD vector
 #ifdef MGONGPUCPP_GPUIMPL
-      const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
+      const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec )""" + self._crossing_flav_reduce() + """;
 #else
       const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
       const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
-      const unsigned int iflavor = reinterpret_cast<const unsigned int*>(&iflavor_sv)[0];
+      const unsigned int iflavor = reinterpret_cast<const unsigned int*>(&iflavor_sv)[0]""" + self._crossing_flav_reduce() + """;
 #endif
-""")
+""" + (self._crossing_preamble(matrix_element) if getattr(self, 'use_crossing_ic', False) else ''))
         diagrams = matrix_element.get('diagrams')
         diag_to_config = {}
         for config in sorted(multi_channel_map.keys()):
@@ -2623,13 +2776,135 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
             if not item.startswith('\n') and not item.startswith('#'): res[i]='      '+item
         return res
 
+    # ------------------------------------------------------------------
+    # Crossing-symmetry helpers (only active when self.use_crossing_ic).
+    # When off, every path below is a no-op and the emitted code is
+    # byte-identical to the historical (no-crossing) output.
+    # ------------------------------------------------------------------
+    def _crossing_flav_reduce(self):
+        """Reduce the extended flavor id to the flavor group index (flav_use).
+        The runtime iflavorVec entry is cross*nmaxflavor+flav_use; flav_use is
+        what indexes cFlavors/masks (constant across the SIMD page)."""
+        return ' % nmaxflavor' if getattr(self, 'use_crossing_ic', False) else ''
+
+    @staticmethod
+    def _crossing_int_2d(flat, ncols):
+        """Format a flat int list as a C++ 2-D initializer { {...}, {...} }."""
+        rows = []
+        for start in range(0, len(flat), ncols):
+            rows.append('{ ' + ', '.join(str(v) for v in flat[start:start+ncols]) + ' }')
+        return '{\n        ' + ',\n        '.join(rows) + ' }'
+
+    def _crossing_tables(self, matrix_element):
+        import madgraph.iolibs.export_v4 as export_v4
+        return export_v4.ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+
+    def _crossing_preamble(self, matrix_element):
+        """Per-event momentum permutation for crossing symmetry (C++/SIMD).
+
+        All events in a SIMD page share flav_use but may carry DIFFERENT
+        crossings, so this gather is genuinely per-event (NOT vectorized): for
+        each event we permute its momenta into the crossed slot order (xmom,
+        positive energy preserved) and record the per-event NSF sign flips
+        (icsign). The momentum sign flip of a swapped leg is applied through the
+        NSF flag inside the HELAS routines (see _crossing_external_block)."""
+        tables = self._crossing_tables(matrix_element)
+        nexternal = tables['nexternal']
+        ncross = (nexternal + 1) * (nexternal + 1)
+        perm = self._crossing_int_2d(tables['perm'], nexternal)
+        ic = self._crossing_int_2d(tables['ic'], nexternal)
+        return """#ifndef MGONGPUCPP_GPUIMPL
+      // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
+      constexpr int ncross = ( npar + 1 ) * ( npar + 1 );
+      static const int cross_perm[ncross][npar] = %(perm)s;
+      static const int cross_ic[ncross][npar] = %(ic)s;
+      alignas( mgOnGpu::cppAlign ) fptype xmom[npar * np4 * neppV];
+      fptype_sv icsign[npar];
+      // 2 scratch external wavefunctions for the per-event NSF-sign blend
+      fptype_sv pvec_x[2][np4];
+      cxtype_sv w_x[2][nw6];
+      ALOHAOBJ aloha_x[2];
+      aloha_x[0] = ALOHAOBJ{ pvec_x[0], w_x[0] };
+      aloha_x[1] = ALOHAOBJ{ pvec_x[1], w_x[1] };
+      for( int ieppV = 0; ieppV < neppV; ++ieppV )
+      {
+        const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
+        for( int s = 0; s < npar; ++s )
+        {
+          const int src = cross_perm[xcr][s];
+          for( int ip4 = 0; ip4 < np4; ++ip4 )
+            xmom[s * np4 * neppV + ip4 * neppV + ieppV] =
+              MemoryAccessMomenta::ieventAccessIp4IparConst( momenta, ieppV, ip4, src );
+          reinterpret_cast<fptype*>( &icsign[s] )[ieppV] = (fptype)cross_ic[xcr][s];
+        }
+      }
+#endif
+""" % {'perm': perm, 'ic': ic}
+
+    def _crossing_external_block(self, wf, argument):
+        """External HELAS call under crossing symmetry (C++/SIMD).
+
+        Reads the per-event permuted momenta (xmom, in crossed slot order) and
+        applies the per-event NSF sign flip by computing the wavefunction twice
+        (nsf = +base and -base) and blending lane-wise through icsign. The
+        helicity is taken from the destination slot (cHel[ihel][s]); summing
+        over the good-helicity UNION then reproduces the crossed |M|^2 (the
+        helicity permutation is absorbed by the sum). GPU is unchanged."""
+        routine = helas_call_writers.HelasCallWriter.mother_dict[
+            argument.get_spin_state_number()].lower()
+        routine = routine + 'x' * (6 - len(routine))
+        routine = routine + '<M_ACCESS, W_ACCESS>'
+        s = wf.get('number_external') - 1
+        me = wf.get('me_id') - 1
+        spin = argument.get('spin')
+        if spin == 1:
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        elif argument.is_boson():
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        else:
+            nsf = - (-1) ** wf.get_with_flow('is_part')
+        mass = wf.get('mass')
+
+        def one_call(sign, obj):
+            if spin == 1:
+                call = '%s( xmom, %+d, cFlavors[iflavor][%d], %s, %d );' % \
+                       (routine, sign, s, obj, s)
+            else:
+                call = '%s( xmom, m_pars->%s, cHel[ihel][%d], %+d, cFlavors[iflavor][%d], %s, %d );' % \
+                       (routine, mass, s, sign, s, obj, s)
+            return self.format_coupling(call)
+
+        lines = ['#ifndef MGONGPUCPP_GPUIMPL']
+        lines.append('      ' + one_call(nsf, 'aloha_x[0]'))
+        lines.append('      ' + one_call(-nsf, 'aloha_x[1]'))
+        # Lane-wise blend: icsign[s]==+1 -> nsf=+base (aloha_x[0]); -1 -> aloha_x[1].
+        lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
+        lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
+        lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
+        lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
+        # The flavor index is the same in both scratch calls; copy it onto the
+        # real object (both scratch calls set it, but the blended target keeps
+        # its default -1 otherwise, which the flavor-masked vertices treat as
+        # "vanishing" and zero the amplitude).
+        lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
+        lines.append('#else')
+        # GPU: crossing not implemented; emit the plain (identity) external call
+        # so the file still compiles for GPU (only CPU/SIMD is validated).
+        gpu = self.get_external(wf, argument, _no_crossing=True)
+        lines.append(gpu.rstrip('\n'))
+        lines.append('#endif\n')
+        return '\n'.join(lines)
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
     # [=> GPUFOHelasCallWriter.get_external is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
     first_get_external = True
-    def get_external(self, wf, argument):
+    def get_external(self, wf, argument, _no_crossing=False):
+        if getattr(self, 'use_crossing_ic', False) and not _no_crossing:
+            return self._crossing_external_block(wf, argument)
         line = self.get_external_line(wf, argument)
         split_line = line.split(',')
         split_line = [ str.lstrip(' ').rstrip(' ') for str in split_line] # AV

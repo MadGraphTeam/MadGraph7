@@ -6,47 +6,40 @@ std::complex<double> **wfs;
 const int denominator = %(den_factors)s;
 // Flavor lookup table
 %(flavor_table)s
+%(cross_tables_decode)s
+const int* flavor = &flavor_table[%(fidx)s][0];
 
-const int* flavor = &flavor_table[flavor_id][0];
-
-ntry[flavor_id]++;
+ntry[%(fidx)s]++;
 
 // Define permutation
-int perm[nexternal];
-for(int i = 0; i < nexternal; i++){
-    perm[i]=i;
-}
+%(cross_perm_block)s
 
 double matrix_element = 0.;
 
-if (sum_hel[flavor_id] == 0 || ntry[flavor_id] < 10){
+if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10){
     // Calculate the matrix element for all helicities
     for(int ihel = 0; ihel < ncomb; ihel ++){
-        if (goodhel[flavor_id][ihel] || ntry[flavor_id] < 2){
-            calculate_wavefunctions(perm, helicities[ihel], flavor);
+        %(cross_ghidx_setup)sif (%(cross_goodhel_gate)s){
+            calculate_wavefunctions(perm, helicities[ihel], flavor%(cross_cw_args)s);
             %(get_matrix_t_lines)s
             matrix_element += t;
             // Store which helicities give non-zero result
-            if (t != 0. && !goodhel[flavor_id][ihel]){
-                goodhel[flavor_id][ihel]=true;
-                ngood[flavor_id] ++;
-                igood[flavor_id][ngood[flavor_id]] = ihel;
-            }
+            %(cross_goodhel_train)s
         }
     }
-    jhel[flavor_id] = 0;
-    sum_hel[flavor_id]=min(sum_hel[flavor_id], ngood[flavor_id]);
+    jhel[%(fidx)s] = 0;
+    sum_hel[%(fidx)s]=min(sum_hel[%(fidx)s], ngood[%(fidx)s]);
 } else {
     // Only use the "good" helicities
-    for(int j=0; j < sum_hel[flavor_id]; j++){
-        jhel[flavor_id]++;
-        if (jhel[flavor_id] >= ngood[flavor_id]) jhel[flavor_id]=0;
-        double hwgt = double(ngood[flavor_id])/double(sum_hel[flavor_id]);
-        int ihel = igood[flavor_id][jhel[flavor_id]];
-        calculate_wavefunctions(perm, helicities[ihel], flavor);
+    for(int j=0; j < sum_hel[%(fidx)s]; j++){
+        jhel[%(fidx)s]++;
+        if (jhel[%(fidx)s] >= ngood[%(fidx)s]) jhel[%(fidx)s]=0;
+        double hwgt = double(ngood[%(fidx)s])/double(sum_hel[%(fidx)s]);
+        int ihel = igood[%(fidx)s][jhel[%(fidx)s]];
+        calculate_wavefunctions(perm, helicities[ihel], flavor%(cross_cw_args)s);
         %(get_matrix_t_lines)s
         matrix_element += t*hwgt;
     }
 }
 
-return matrix_element * broken_sym(flavor) / denominator;
+%(cross_return)s

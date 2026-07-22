@@ -2312,6 +2312,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     '\nC     flavor index, there is no crossing to decode.',
                 'smatrix_cross_decode': '',
                 'smatrix_cross_apply': '',
+                'smatrix_goodhel_gate':
+                    '                IF (GOODHEL(IHEL,FLAV_USE) .OR. NTRY(FLAV_USE)'
+                    ' .LT. 20.OR.USERHEL.NE.-1) THEN',
+                'smatrix_goodhel_train':
+                    '                    IF (T .NE. 0D0 .AND. .NOT.    '
+                    'GOODHEL(IHEL,FLAV_USE)) THEN\n'
+                    '                        GOODHEL(IHEL,FLAV_USE)=.TRUE.\n'
+                    '                    ENDIF',
                 'smatrix_matrix_call':
                     '                    T=%sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_USE)'
                     % prefix,
@@ -2352,6 +2360,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             (key, value % {'proc_prefix': prefix,
                            'den_factor_line': replace_dict['den_factor_line']})
             for key, value in self.CROSSING_SNIPPETS.items()))
+        # The GHREMAP DATA is process dependent (it depends on the helicity
+        # table and the crossing permutations), so it is appended here rather
+        # than living in the fixed CROSSING_SNIPPETS. The fortran NHEL table is
+        # emitted with get_helicity_matrix()'s default order (allow_reverse
+        # True), so the remap must be built in that same order.
+        ghremap = self.compute_ghremap(matrix_element, allow_reverse=True)
+        replace_dict['smatrix_cross_decl'] += '\n' + \
+            self.format_integer_data_lines(
+                'GHREMAP', [0 if row is None else row + 1 for row in ghremap])
         replace_dict['pdg_cross_snippets'] = tuple(
             snippet % {'proc_prefix': prefix}
             for snippet in self.PDG_CROSS_SNIPPETS_ON)
@@ -2435,7 +2452,13 @@ C     requested, so the uncrossed path pays nothing for them.
       REAL*8 PUSE(0:3,NEXTERNAL)
       INTEGER NHELUSE(NEXTERNAL,NCOMB)
       INTEGER ICUSE(NEXTERNAL)
-      INTEGER DUMFLAV""",
+      INTEGER DUMFLAV
+C     GHREMAP maps a crossed helicity row to the identity row whose GOODHEL
+C     bit gates it (see smatrix_goodhel_gate); the DATA statements follow.
+      INTEGER NCROSS
+      PARAMETER (NCROSS=(NEXTERNAL+1)*(NEXTERNAL+1))
+      INTEGER GHIDX
+      INTEGER GHREMAP(0:NCROSS*NCOMB-1)""",
 
         'smatrix_cross_decode': """C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE is 0 for a
 C     crossing that cannot be applied, whose matrix element is identically zero.
@@ -2456,6 +2479,24 @@ C     before crossings existed.
         CALL %(proc_prefix)sAPPLY_CROSSING_TABLE(FLAV_IDX, NCOMB, P, NHEL,
      &   JC, PUSE, NHELUSE, ICUSE, DUMFLAV)
       ENDIF""",
+
+        'smatrix_goodhel_gate': """C     The good-helicity filter (GOODHEL) is shared by every crossing of a
+C     flavor, but a crossing permutes and flips helicities, so a crossed row
+C     and its identity counterpart are different rows. GHREMAP sends crossed
+C     row IHEL to the identity row that gates it (sigma^-1); 0 means the
+C     crossing is not filterable (an initial-initial swap, or a crossing that
+C     cannot be applied) so its every helicity is computed. For CROSSUSE=0
+C     GHREMAP is the identity, so this is exactly the historical gate.
+                GHIDX = GHREMAP(CROSSUSE*NCOMB + IHEL - 1)
+                IF (GHIDX.EQ.0 .OR. GOODHEL(GHIDX,FLAV_USE) .OR. NTRY(FLAV_USE).LT.20 .OR. USERHEL.NE.-1) THEN""",
+
+        'smatrix_goodhel_train': """C     Train the SHARED filter through the same map: mark the IDENTITY row
+C     GHIDX good, so GOODHEL always stores the identity pattern whatever
+C     crossing is being evaluated. GHIDX=0 (non-filterable crossing) never
+C     trains. For CROSSUSE=0 GHIDX=IHEL, so this is the historical training.
+                    IF (T .NE. 0D0 .AND. GHIDX.NE.0 .AND. .NOT.GOODHEL(GHIDX,FLAV_USE)) THEN
+                        GOODHEL(GHIDX,FLAV_USE)=.TRUE.
+                    ENDIF""",
 
         'smatrix_matrix_call': """                    IF (CROSSUSE.EQ.0) THEN
                       T=%(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_USE)
@@ -2559,6 +2600,40 @@ C     crossing carried by FLAV_IDX moves across.
         A crossing that cannot be applied gets a 0 spin*color entry, which
         SMATRIX maps to a null matrix element.
         """
+        tables = self.compute_crossing_tables(matrix_element)
+        spincol = tables['spincol']
+        basepid = tables['basepid']
+        # SRC_CROSS_TABLE is 1-based in the fortran (FLAVOR is indexed 1..N).
+        source = [s + 1 for s in tables['source']]
+
+        return '\n'.join([
+            self.format_integer_data_lines('SPINCOL_CROSS_TABLE', spincol),
+            self.format_integer_data_lines('BASEPID_CROSS_TABLE', basepid),
+            self.format_integer_data_lines('SRC_CROSS_TABLE', source)])
+
+    def compute_crossing_tables(self, matrix_element):
+        """Build the crossing tables as plain python int lists (model-agnostic).
+
+        Returns a dict with, for every crossing code CROSS in
+        0..(NEXTERNAL+1)**2-1:
+          'spincol' : SPINCOL_CROSS_TABLE[CROSS], the initial-state spin*color
+                      average of the crossed process (0 = crossing that must not
+                      be applied: out of range, impossible, or an overlapping
+                      swap, see get_crossing_permutation);
+          'basepid' : flattened CROSS*NEXTERNAL+slot -> representative signed PDG
+                      of the particle landing in that crossed slot (conjugated
+                      when the leg swapped between the initial and the final
+                      state);
+          'source'  : flattened CROSS*NEXTERNAL+slot -> 0-based index of the
+                      original leg that moved into that slot (FLAVOR is NOT
+                      permuted, so this says which FLAVOR entry a slot reads);
+          'perm'    : flattened CROSS*NEXTERNAL+slot -> 0-based perm[slot];
+          'ic'      : flattened CROSS*NEXTERNAL+slot -> +-1 NSF sign of that slot;
+          'nexternal', 'ninitial'.
+
+        Both the fortran (get_iden_cross_lines) and the C++ standalone exporter
+        consume this, so the two backends can never disagree about a crossing.
+        """
         process = matrix_element.get('processes')[0]
         model = process.get('model')
         legs = process.get('legs')
@@ -2576,9 +2651,12 @@ C     crossing carried by FLAV_IDX moves across.
         spincol = []
         basepid = []
         source = []
+        perm_flat = []
+        ic_flat = []
         # CROSS = I*(NEXTERNAL+1)+J with I and J both in 0..NEXTERNAL.
         for cross in range((nexternal + 1) * (nexternal + 1)):
-            perm, ic, valid = self.get_crossing_permutation(cross, nexternal)
+            perm, ic, valid = ProcessExporterFortran.get_crossing_permutation(
+                cross, nexternal)
             if not valid:
                 # Overlapping-swap code: pure redundancy, and inconsistent
                 # between GET_PDG_FOR_FLAVOR and APPLY_CROSSING (see
@@ -2611,7 +2689,9 @@ C     crossing carried by FLAV_IDX moves across.
                     slot_ids = list(leg_ids)
 
             basepid.extend(slot_ids)
-            source.extend(perm[slot] + 1 for slot in range(nexternal))
+            source.extend(perm[slot] for slot in range(nexternal))
+            perm_flat.extend(perm)
+            ic_flat.extend(ic)
 
         # Sanity: for the identity crossing, spin*color times the identical
         # factor of the representative flavor must rebuild the static IDEN,
@@ -2626,10 +2706,137 @@ C     crossing carried by FLAV_IDX moves across.
             '%s*%s vs %s' % (spincol[0], rep_identical,
                              matrix_element.get_denominator_factor())
 
-        return '\n'.join([
-            self.format_integer_data_lines('SPINCOL_CROSS_TABLE', spincol),
-            self.format_integer_data_lines('BASEPID_CROSS_TABLE', basepid),
-            self.format_integer_data_lines('SRC_CROSS_TABLE', source)])
+        return {'spincol': spincol, 'basepid': basepid, 'source': source,
+                'perm': perm_flat, 'ic': ic_flat,
+                'nexternal': nexternal, 'ninitial': ninitial}
+
+    def compute_crossing_pdg_entries(self, matrix_element, zero_based=True):
+        """Enumerate the reachable extended flavor indices and their crossed PDG.
+
+        Returns a list of ``(index, cross, flav0, pdg_tuple)`` for every crossing
+        code CROSS that can actually be applied (SPINCOL_CROSS_TABLE[CROSS] != 0,
+        i.e. skipping the out-of-range / impossible / overlapping-swap codes) and
+        every flavor ``flav0`` in ``0..NFLAV-1``:
+
+        * ``index`` -- the extended flavor index that selects (CROSS, flav0).
+          The C++/mg7 backends decode it 0-based as ``cross*NFLAV + flav0``; the
+          fortran one is 1-based (``index+1``). ``zero_based`` picks which.
+        * ``cross``  -- the crossing code (0 == identity).
+        * ``flav0``  -- the 0-based reduced flavor.
+        * ``pdg_tuple`` -- the *signed physical* PDG of each leg, in the leg order
+          the momenta must be supplied in for that index (legs permuted and
+          conjugated where they swapped between the initial and the final state).
+
+        This is the python twin of the fortran runtime GET_PDG_FOR_FLAVOR: the
+        C++ and mg7 standalones have no runtime PDG accessor, so their crossed
+        PDG signatures are computed here instead (the same logic that fills the
+        check_sa demo table). All three backends therefore agree on the mapping
+        pdg <-> extended index by construction. Both helpers are referenced
+        through the class so a non-Fortran ``self`` (the C++/mg7 exporter, or a
+        throwaway) can reuse them unbound.
+        """
+        tables = ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+        spincol = tables['spincol']
+        perm = tables['perm']
+        ic = tables['ic']
+        nx = tables['nexternal']
+        ncross = len(spincol)
+        n_flav = len(matrix_element.get_external_flavors_with_iden())
+        _, pdg_flat, antipdg_flat = \
+            ProcessExporterFortran._build_flav_pdg_tables(self, matrix_element)
+        pdg_rows = len(pdg_flat) // nx
+
+        entries = []
+        for cross in range(ncross):
+            if spincol[cross] == 0:
+                continue
+            for flav0 in range(n_flav):
+                # Guard against a pdg table with fewer rows than nflavors.
+                row = flav0 if flav0 < pdg_rows else 0
+                pdg = []
+                for k in range(nx):
+                    src = perm[cross * nx + k]
+                    if ic[cross * nx + k] == 1:
+                        pdg.append(pdg_flat[row * nx + src])
+                    else:
+                        pdg.append(antipdg_flat[row * nx + src])
+                index = cross * n_flav + flav0
+                if not zero_based:
+                    index += 1
+                entries.append((index, cross, flav0, tuple(pdg)))
+        return entries
+
+    def compute_ghremap(self, matrix_element, allow_reverse=True):
+        """Build the good-helicity remap table for the crossing filter.
+
+        The good-helicity filter (GOODHEL) is shared by all crossings of a
+        flavor, but a crossing permutes and flips helicities, so identity and
+        crossed have different good-helicity SETS. The crossed set is the
+        identity set transformed by the crossing's own helicity-row permutation
+        sigma, where sigma sends identity row h to the row whose config is
+        (ic[k]*nhel[perm[k], h])_k -- permute the legs and flip the helicity of
+        the swapped ones, with (perm, ic) from get_crossing_permutation. A
+        crossed row H is therefore good iff the identity row sigma^-1(H) is
+        good, so the filter can stay shared as long as it is consulted (and
+        trained) through sigma^-1. See standalone-cross-symmetry memory.
+
+        Returns a flat list of length NCROSS*NCOMB indexed CROSS*NCOMB + H (H
+        the 0-based helicity row), each entry being the 0-based identity row
+        sigma^-1(H) that gates crossed row H, or None when the crossing must
+        not be filtered (compute every helicity, never train):
+          - CROSS==0 -> the identity (entry == H): the uncrossed path is
+            completely unchanged;
+          - a genuine crossing whose active partners are all final particles ->
+            sigma^-1(H);
+          - an initial-initial swap, or an invalid / inapplicable crossing ->
+            None. The sigma relation only holds when the active partners are
+            final; an initial-initial swap breaks it (it overcounts at 2->3),
+            so those disable the filter and keep the full-computation result.
+
+        allow_reverse must match the order the NHEL table is emitted in for the
+        backend consuming the result (True for the fortran get_helicity_lines,
+        False for the C++ get_helicity_matrix).
+        """
+        # Reference the class explicitly (not self) so the C++ standalone
+        # exporter can reuse this via ProcessExporterFortran.compute_ghremap
+        # with a non-Fortran self, exactly like compute_crossing_tables.
+        tables = ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+        spincol = tables['spincol']
+        nexternal = tables['nexternal']
+        ninitial = tables['ninitial']
+        base = nexternal + 1
+        ncross = base * base
+        hel_matrix = [tuple(row) for row in
+                      matrix_element.get_helicity_matrix(allow_reverse)]
+        ncomb = len(hel_matrix)
+        row_index = {row: h for h, row in enumerate(hel_matrix)}
+
+        remap = []
+        for cross in range(ncross):
+            perm, ic, valid = \
+                ProcessExporterFortran.get_crossing_permutation(cross, nexternal)
+            i_part, j_part = cross // base, cross % base
+            final_only = ((i_part in (0, 1) or i_part > ninitial) and
+                          (j_part in (0, 2) or j_part > ninitial))
+            derivable = (valid and spincol[cross] != 0 and
+                         (cross == 0 or final_only))
+            block = [None] * ncomb
+            if derivable:
+                for h in range(ncomb):
+                    config = tuple(ic[k] * hel_matrix[h][perm[k]]
+                                   for k in range(nexternal))
+                    big_h = row_index.get(config)
+                    if big_h is None:
+                        # The permuted config is not a table row: the crossing
+                        # is not a bijection on the rows, so it cannot be
+                        # derived. Disable the filter for it (safe fallback).
+                        block = [None] * ncomb
+                        break
+                    block[big_h] = h
+            remap.extend(block)
+        return remap
 
     @staticmethod
     def format_integer_data_lines(name, values, per_line=10):
@@ -5013,6 +5220,68 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     #===========================================================================
     # write_check_sa   
     #===========================================================================
+    def _get_check_sa_crossing_example(self, matrix_element, proc_prefix):
+        """Fortran block for check_sa.f demonstrating the crossed matrix elements.
+
+        Returns '' when crossing is not active for this matrix element (flag
+        off, or an s-channel constraint disables it), so the driver is
+        unchanged. Otherwise it loops over every way of crossing particle 1 and
+        particle 2 with a final-state particle, and for each flavor evaluates
+        the crossed matrix element and prints its signed PDGs and value.
+
+        The crossing code is CROSS = FLIP1*(NEXTERNAL+1) + FLIP2 with FLIP1 the
+        partner of particle 1 and FLIP2 the partner of particle 2 -- matching
+        GET_CROSS_PERM's decode (i_part = CROSS/(NEXTERNAL+1),
+        j_part = CROSS mod (NEXTERNAL+1)). FLAV_IDX = CROSS*NFLAV + flav, and
+        NFLAV is emitted as the literal matrix.f value so the encoding matches
+        exactly. Overlapping/degenerate crossings (e.g. FLIP1==FLIP2) are left
+        in: GET_PDG_FOR_FLAVOR reports all-zero and SMATRIX returns 0 for them,
+        which is itself an informative part of the demonstration.
+        """
+        use_crossing = self.opt.get('use_crossing', True) and \
+            not any(self.breaks_crossing_symmetry(proc)
+                    for proc in matrix_element.get('processes'))
+        if not use_crossing:
+            return ''
+
+        # NFLAV as matrix.f computes it, so CROSS*NFLAV+flav decodes correctly.
+        # It is assigned to a local NFLAV here so the loop body reads generically
+        # (FLAV_IDX = I*NFLAV+J) instead of a bare literal. The whole section is
+        # gated behind IF(.FALSE.) so it is present only as a ready-to-enable
+        # example -- flip it to .TRUE. to actually print the crossed processes.
+        n_table, _ = self._build_flav_table_flat(matrix_element)
+
+        sep = ('        write (*,*) "-----------------------------------------'
+               '------------------------------------"')
+        lines = [
+            '      if(.false.) then',
+            '      write (*,*)',
+            '      write (*,*) " Crossing-symmetry examples (crossed processes):"',
+            '      write (*,*)',
+            '      NFLAV = %d' % n_table,
+            '      DO FLIP1=NINCOMING+1,NEXTERNAL',
+            '        DO FLIP2=NINCOMING+1,NEXTERNAL',
+            '          DO J=1,NFLAV',
+            'C           CROSS = (partner of particle 1)*(NEXTERNAL+1)',
+            'C                 + (partner of particle 2)',
+            '            I = FLIP1*(NEXTERNAL+1) + FLIP2',
+            '            FLAV_IDX = I*NFLAV+J',
+            '            CALL %sGET_PDG_FOR_FLAVOR(FLAV_IDX, XPDG)' % proc_prefix,
+            '            CALL %sSMATRIX(P, FLAV_IDX, MATELEM)' % proc_prefix,
+            '            write(*,*) "PARTICLE #1 crossed with particle #", FLIP1',
+            '            write(*,*) "PARTICLE #2 crossed with particle #", FLIP2',
+            '            write (*,*) "PDG", (XPDG(K),K=1,NEXTERNAL),'
+            " 'FLAV_IDX', FLAV_IDX",
+            '            write (*,*) "Matrix element = ", MATELEM,'
+            ' " GeV^",-(2*nexternal-8)',
+            sep,
+            '          ENDDO',
+            '        ENDDO',
+            '      ENDDO',
+            '      endif',
+        ]
+        return '\n'.join(lines)
+
     def write_check_sa(self, writer, matrix_element, proc_prefix=''):
 
         if self.format != 'standalone':
@@ -5084,6 +5353,14 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     flavor_text.append('PDG_FOR_FLAVOR(%d,%d) = %d' % (j, i, all_pdgs[j-1]))
         replace_dict['maxflavor'] = maxflavor
         replace_dict['flavor_def'] = '\n        '.join(flavor_text)
+
+        # Crossing-symmetry demonstration: when crossing is active for this
+        # matrix element, evaluate one genuinely crossed process (the first
+        # valid non-identity crossing) at the same phase-space point and print
+        # its per-leg PDG (via GET_PDG_FOR_FLAVOR) and matrix element, so that
+        # `make check` visibly exercises the crossing machinery.
+        replace_dict['crossing_example'] = \
+            self._get_check_sa_crossing_example(matrix_element, proc_prefix)
 
         fsock =  open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'check_sa.f'), 'r')
         text = fsock.read()

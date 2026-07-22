@@ -168,7 +168,7 @@ C     For this reason, we simply remove the filterin when there is only three ex
       ANS = 0D0
           DO IHEL=1,NCOMB
              IF (USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL) THEN
-                IF (GOODHEL(IHEL,FLAV_USE) .OR. NTRY(FLAV_USE) .LT. 20.OR.USERHEL.NE.-1) THEN
+%(smatrix_goodhel_gate)s
                     IF(NTRY(FLAV_USE).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
                     ENDIF
@@ -178,9 +178,7 @@ C                   flavor index: the crossing was applied once, above.
                     IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
                         ANS=ANS+T
                     ENDIF
-                    IF (T .NE. 0D0 .AND. .NOT.    GOODHEL(IHEL,FLAV_USE)) THEN
-                        GOODHEL(IHEL,FLAV_USE)=.TRUE.
-                    ENDIF
+%(smatrix_goodhel_train)s
                 ENDIF
              ENDIF
           ENDDO

@@ -68,5 +68,6 @@ private:
 
   // function to compute missing symmetry factors after flavor consolidation
   int broken_sym(const int* flavor);
+%(cross_member_decl)s
 
 };

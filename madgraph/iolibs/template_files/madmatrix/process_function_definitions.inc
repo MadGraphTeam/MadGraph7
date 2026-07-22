@@ -180,7 +180,7 @@ namespace mg5amcCpu
   // Host-side flavor table: single source of truth for PDG ids (used by both the
   // constructor copy into cFlavors and the public CPPProcess::flavorPDG accessor).
 %(all_flavors)s
-
+%(crossing_decl)s
   //--------------------------------------------------------------------------
 
 #ifdef MGONGPUCPP_GPUIMPL
@@ -265,7 +265,7 @@ namespace mg5amcCpu
   int
   CPPProcess::flavorPDG( int iflavor, int ipar )
   {
-    return flavorPDGs[iflavor][ipar];
+%(flavorpdg_body)s
   }
 
   //--------------------------------------------------------------------------
@@ -549,9 +549,9 @@ namespace mg5amcCpu
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
     (void)iflavorVec; // flavor is forced below to scan every flavor combination
     unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
-    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+    for( int iflav = 0; iflav < %(goodhel_scan_count)s; ++iflav )
     {
-    for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
+    %(goodhel_scan_skip)sfor( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */

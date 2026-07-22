@@ -3994,26 +3994,315 @@ def _crossing_run_driver(pdir, request, env):
     return None
 
 
+# The three standalone backends that decode an extended (crossing-carrying)
+# flavor index. 'standalone' is the fortran default (f2py); the other two are
+# the C++ / cudacpp-CPU-SIMD standalones.
+CROSSING_EXPORTERS = ('standalone', 'standalone_cpp', 'standalone_mg7')
+
+# Vectorisation (SIMD) choices for the standalone_mg7 (cudacpp) backend; each
+# maps to the madmatrix.mk 'BACKEND=cpp<name>' build variant. 'auto' lets
+# madmatrix pick the widest instruction set the host CPU supports. Only used by
+# the standalone_mg7 crossing backend; ignored by the others.
+MG7_SIMD_CHOICES = ('auto', 'none', 'sse4', 'avx2', '512y', '512z')
+
+
+def _crossing_pdg_entries(matrix_element, identity_only=False):
+    """Python enumeration of a matrix element's reachable extended flavor ids.
+
+    Returns ``[(index, cross, flav0, pdg_tuple), ...]`` with a 0-based index
+    (``cross*NFLAV+flav0``) -- the encoding the C++/mg7 sigmaKin decodes. This
+    is the crossing twin of the fortran runtime GET_PDG_FOR_FLAVOR, used for the
+    backends that have no runtime PDG accessor. See
+    ProcessExporterFortran.compute_crossing_pdg_entries.
+    """
+    if matrix_element is None:
+        # Correlation to a P* directory failed; the caller skips this module.
+        return None
+    import madgraph.iolibs.export_v4 as export_v4
+    entries = export_v4.ProcessExporterFortran.compute_crossing_pdg_entries(
+        None, matrix_element, zero_based=True)
+    if identity_only:
+        entries = [e for e in entries if e[1] == 0]
+    return entries
+
+
+# ── C++ standalone (standalone_cpp) ─────────────────────────────────────────
+# A tiny driver that evaluates sigmaKin at the requested flavor_id and momenta.
+# Each item gets a FRESH CPPProcess so the good-helicity cache (indexed by the
+# reduced flavor) cannot carry a warmed-up crossing's helicity pattern into a
+# different crossing of the same flavor -- exactly the recipe the acceptance
+# test TestStandaloneCppCrossSymmetry uses. The request file holds, on the first
+# line the number of items, then per item a flavor_id followed by 4*nexternal
+# momentum components (E, px, py, pz per leg, in the leg order the crossed index
+# expects them).
+_CROSSING_CPP_DRIVER = r'''
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+#include <vector>
+#include "CPPProcess.h"
+int main(int argc, char** argv){
+  std::ifstream in(argv[1]);
+  int nitems; in >> nitems;
+  std::cout << std::setprecision(17);
+  for(int it = 0; it < nitems; it++){
+    int fid; in >> fid;
+    CPPProcess process("../../Cards/param_card.dat");
+    int npar = process.nexternal;
+    std::vector<double*> p;
+    for(int i = 0; i < npar; i++){
+      double* m = new double[4];
+      for(int j = 0; j < 4; j++) in >> m[j];
+      p.push_back(m);
+    }
+    process.setMomenta(p);
+    double me = process.sigmaKin(fid);
+    std::cout << "ITEM " << it << " " << me << std::endl;
+    for(int i = 0; i < npar; i++) delete[] p[i];
+  }
+  return 0;
+}
+'''
+
+
+class _FortranCrossingBackend(object):
+    """The fortran standalone (f2py) crossing backend -- the historical path.
+
+    Enumeration and evaluation both go through the compiled matrix2py module in
+    a fresh subprocess (see _CROSSING_DRIVER); the matrix element python object
+    is not needed because GET_PDG_FOR_FLAVOR resolves the crossed PDG at
+    runtime.
+    """
+    output_format = 'standalone'
+    needs_matrix_element = False
+
+    def __init__(self, options=None):
+        # options accepted for a uniform backend signature; --simd only applies
+        # to standalone_mg7.
+        pass
+
+    def build(self, pdir, env):
+        return _crossing_build_f2py(pdir, env)
+
+    def enumerate(self, pdir, matrix_element, card, env, identity_only):
+        answer = _crossing_run_driver(
+            pdir, {'mode': 'enumerate', 'card': card}, env)
+        if not answer:
+            return None
+        entries = []
+        for idx, cross, flav, pdg in answer['entries']:
+            if identity_only and cross != 0:
+                continue
+            entries.append((idx, cross, flav, tuple(pdg)))
+        return entries
+
+    def evaluate(self, pdir, items, card, env):
+        answer = _crossing_run_driver(
+            pdir, {'mode': 'evaluate', 'card': card, 'items': items}, env)
+        return answer['values'] if answer else [None] * len(items)
+
+
+class _CppCrossingBackend(object):
+    """The C++ standalone (standalone_cpp) crossing backend.
+
+    (`options` is accepted for a uniform backend constructor signature; the
+    SIMD/vectorisation choice only applies to standalone_mg7.)
+
+    The crossed PDG of an extended flavor_id is computed in python (there is no
+    runtime accessor); evaluation compiles a small driver that news a fresh
+    CPPProcess per item and calls sigmaKin(flavor_id).
+    """
+    output_format = 'standalone_cpp'
+    needs_matrix_element = True
+
+    def __init__(self, options=None):
+        self.compiler = os.environ.get('CXX', 'g++')
+
+    def build(self, pdir, env):
+        if not shutil.which(self.compiler):
+            return False
+        with open(os.devnull, 'w') as devnull:
+            rc = subprocess.call(['make'], cwd=pdir, stdout=devnull,
+                                 stderr=subprocess.STDOUT, env=env)
+        return rc == 0 and os.path.isfile(pjoin(pdir, 'CPPProcess.o'))
+
+    def enumerate(self, pdir, matrix_element, card, env, identity_only):
+        return _crossing_pdg_entries(matrix_element, identity_only=identity_only)
+
+    def evaluate(self, pdir, items, card, env):
+        with open(pjoin(pdir, 'driver_cross.cpp'), 'w') as fsock:
+            fsock.write(_CROSSING_CPP_DRIVER)
+        cxxflags = ['-O3', '-ffast-math', '-I../../src', '-I.', '-fPIC']
+        libflags = ['-L../../lib', '-lmodel_sm']
+        with open(os.devnull, 'w') as devnull:
+            rc = subprocess.call(
+                [self.compiler] + cxxflags + ['-c', '-o', 'driver_cross.o',
+                                              'driver_cross.cpp'],
+                cwd=pdir, stdout=devnull, stderr=subprocess.STDOUT, env=env)
+            if rc != 0:
+                return [None] * len(items)
+            rc = subprocess.call(
+                [self.compiler, '-o', 'driver_cross', 'CPPProcess.o',
+                 'driver_cross.o'] + libflags,
+                cwd=pdir, stdout=devnull, stderr=subprocess.STDOUT, env=env)
+            if rc != 0:
+                return [None] * len(items)
+        req = pjoin(pdir, 'driver_cross.in')
+        with open(req, 'w') as fsock:
+            fsock.write('%d\n' % len(items))
+            for item in items:
+                comps = ['%d' % int(item['index'])]
+                for leg in item['momenta']:
+                    comps.extend('%.17e' % float(c) for c in leg)
+                fsock.write(' '.join(comps) + '\n')
+        try:
+            out = subprocess.check_output(['./driver_cross', 'driver_cross.in'],
+                                          cwd=pdir, env=env).decode()
+        except subprocess.CalledProcessError:
+            return [None] * len(items)
+        values = [None] * len(items)
+        for match in re.finditer(r'ITEM\s+(\d+)\s+([-\d.eE+]+)', out):
+            values[int(match.group(1))] = float(match.group(2))
+        return values
+
+
+# ── cudacpp CPU-SIMD standalone (standalone_mg7) ─────────────────────────────
+# check_sa.exe generates its own RAMBO momenta, so to evaluate at a prescribed
+# phase-space point the shipped check_sa.cc is patched (as the acceptance test
+# TestStandaloneMg7CrossSymmetry does): its flavorID cap is lifted so the
+# extended crossing ids pass validation, and, when MG_MOMFILE is set, the
+# momenta read from that file are written into every event of the SIMD page
+# before the matrix element is computed.
+_MG7_CAP_FROM = 'if( flavorID >= CPPProcess::nmaxflavor )'
+_MG7_CAP_TO = ('if( flavorID >= CPPProcess::nmaxflavor * '
+               '(unsigned)((CPPProcess::npar+1)*(CPPProcess::npar+1)) )')
+_MG7_MOM_FROM = '        prsk->getMomentaFinal();'
+_MG7_MOM_TO = (
+    '        prsk->getMomentaFinal();\n'
+    '        if( const char* mgmf = getenv("MG_MOMFILE") ) {\n'
+    '          std::ifstream mgin( mgmf );\n'
+    '          std::vector<double> mgbuf( (std::size_t)CPPProcess::npar*4 );\n'
+    '          for( std::size_t mgk = 0; mgk < mgbuf.size(); mgk++ ) mgin >> mgbuf[mgk];\n'
+    '          for( unsigned int mgie = 0; mgie < nevt; mgie++ )\n'
+    '            for( int mgip = 0; mgip < CPPProcess::npar; mgip++ )\n'
+    '              for( int mgi4 = 0; mgi4 < 4; mgi4++ )\n'
+    '                MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), mgie, mgi4, mgip ) = mgbuf[mgip*4+mgi4];\n'
+    '        }')
+
+
+class _Mg7CrossingBackend(object):
+    """The cudacpp CPU-SIMD standalone (standalone_mg7) crossing backend.
+
+    The vectorisation width is selectable via options['simd'] (see
+    MG7_SIMD_CHOICES): it is passed to the madmatrix build as
+    'BACKEND=cpp<simd>', so the same crossing self-check can run on scalar
+    (none), SSE4, AVX2 or AVX-512 code, or let madmatrix auto-detect ('auto').
+    """
+    output_format = 'standalone_mg7'
+    needs_matrix_element = True
+
+    def __init__(self, options=None):
+        self.compiler = os.environ.get('CXX', 'g++')
+        simd = (options or {}).get('simd', 'auto')
+        if simd not in MG7_SIMD_CHOICES:
+            raise InvalidCmd(
+                "Unknown --simd '%s' for standalone_mg7; choose one of %s."
+                % (simd, ', '.join(MG7_SIMD_CHOICES)))
+        self.simd = simd
+
+    def build(self, pdir, env):
+        if not shutil.which(self.compiler):
+            return False
+        check = pjoin(pdir, 'check_sa.cc')
+        try:
+            with open(check) as fsock:
+                src = fsock.read()
+        except IOError:
+            return False
+        src = src.replace(_MG7_CAP_FROM, _MG7_CAP_TO)
+        src = src.replace(_MG7_MOM_FROM, _MG7_MOM_TO, 1)
+        with open(check, 'w') as fsock:
+            fsock.write(src)
+        make_cmd = ['make', '-j2', 'BACKEND=cpp%s' % self.simd, 'check_sa.exe']
+        with open(os.devnull, 'w') as devnull:
+            rc = subprocess.call(make_cmd, cwd=pdir,
+                                 stdout=devnull, stderr=subprocess.STDOUT,
+                                 env=env)
+        return rc == 0 and os.path.isfile(pjoin(pdir, 'check_sa.exe'))
+
+    def enumerate(self, pdir, matrix_element, card, env, identity_only):
+        return _crossing_pdg_entries(matrix_element, identity_only=identity_only)
+
+    def evaluate(self, pdir, items, card, env):
+        values = []
+        for item in items:
+            momfile = pjoin(pdir, 'mom_cross.dat')
+            with open(momfile, 'w') as fsock:
+                for leg in item['momenta']:
+                    fsock.write(' '.join('%.17e' % float(c) for c in leg) + '\n')
+            run_env = dict(env)
+            run_env['MG_MOMFILE'] = momfile
+            try:
+                out = subprocess.check_output(
+                    ['./check_sa.exe', 'perf', '-v', '-f',
+                     str(int(item['index'])), '1', '8', '1'],
+                    cwd=pdir, env=run_env, stderr=subprocess.STDOUT).decode()
+            except subprocess.CalledProcessError:
+                values.append(None)
+                continue
+            mes = re.findall(r'Matrix element =\s*([-\d.eE+]+)', out)
+            values.append(float(mes[0]) if mes else None)
+        return values
+
+
+_CROSSING_BACKENDS = {
+    'standalone': _FortranCrossingBackend,
+    'standalone_cpp': _CppCrossingBackend,
+    'standalone_mg7': _Mg7CrossingBackend,
+}
+
+
+def _crossing_dir_name(matrix_element):
+    """The SubProcesses/P* directory name generated for this matrix element.
+
+    Both the C++ and the mg7 exporters name the directory ``P`` + the process
+    shell string (export_cpp uses P<id>_<name> and export_mg7 uses
+    P<shell_string>, and shell_string already is ``<id>_<name>``), so this
+    single reconstruction correlates a matrix element to its output directory
+    for either backend without instantiating a throwaway exporter.
+    """
+    return 'P' + matrix_element.get('processes')[0].shell_string()
+
+
 def check_crossing(process_definition, param_card=None, options=None,
                    cmd=FakeInterface()):
-    """Compare the crossing-enabled and crossing-disabled fortran standalone.
+    """Compare the crossing-enabled and crossing-disabled standalone output.
 
-    The process is generated twice and output to fortran standalone (with the
-    f2py wrapper):
+    The process is generated twice and output to the standalone backend picked
+    by ``options['exporter']`` (one of :data:`CROSSING_EXPORTERS`; default
+    ``'standalone'``, the fortran/f2py path):
 
     * ``--use_crossing=False`` — the crossing machinery is *off*; each generated
       matrix element is self-contained and reachable only as its own identity.
       This is the independent, per-diagram reference (``value_direct``).
     * ``--use_crossing=True`` — the crossing machinery is *on*; a single matrix
-      element reaches many physical processes through the extended ``FLAV_IDX``
+      element reaches many physical processes through the extended flavor index
       (leg permutation + NSF flip + per-crossing denominator).
 
     For every physical subprocess of the reference, the same signed-PDG process
     is located in the crossing output and evaluated *through a genuine crossing*
-    (a non-identity ``FLAV_IDX`` reproducing that PDG signature, when one exists)
-    at the very same phase-space point, giving ``value_crossed``.  The two must
-    agree: this exercises ``APPLY_CROSSING`` / the dynamic NSF / the crossed
-    averaging denominator against a value computed with none of them.
+    (a non-identity extended index reproducing that PDG signature, when one
+    exists) at the very same phase-space point, giving ``value_crossed``.  The
+    two must agree: this exercises the crossing (leg permutation / dynamic NSF /
+    crossed averaging denominator) against a value computed with none of them.
+
+    The backend abstraction (:data:`_CROSSING_BACKENDS`) parametrises the three
+    steps that differ per exporter -- the ``output`` format, the build, and how
+    an extended index is evaluated -- while the generate/match/momenta logic is
+    shared. ``'standalone'`` enumerates the crossed PDG at runtime via f2py
+    (GET_PDG_FOR_FLAVOR); ``'standalone_cpp'`` / ``'standalone_mg7'`` have no
+    runtime accessor and compute it in python from the same crossing tables
+    (:func:`_crossing_pdg_entries`), then evaluate through a compiled driver.
 
     Processes whose crossing is auto-disabled by an s-channel constraint (e.g.
     ``u u~ > z > e+ e-``: what is s-channel in one arrangement is not in its
@@ -4022,13 +4311,19 @@ def check_crossing(process_definition, param_card=None, options=None,
 
     Returns a list of result dicts consumed by :func:`output_crossing`.
     """
-    import json
     import tempfile
     import madgraph.interface.master_interface as master_interface
 
     if options is None:
         options = {}
     energy = float(options.get('energy', 1000.0))
+
+    exporter = options.get('exporter', 'standalone')
+    if exporter not in _CROSSING_BACKENDS:
+        raise InvalidCmd(
+            "Unknown crossing exporter '%s'; choose one of %s."
+            % (exporter, ', '.join(CROSSING_EXPORTERS)))
+    backend = _CROSSING_BACKENDS[exporter](options)
 
     model = process_definition.get('model')
     proc_line = options.get('proc_line')
@@ -4044,7 +4339,13 @@ def check_crossing(process_definition, param_card=None, options=None,
     tmproot = tempfile.mkdtemp(prefix='mg5_crosscheck_')
 
     def _generate(use_crossing, name):
-        """Generate + output standalone; return the list of P* directories."""
+        """Generate + output the backend format; return
+        ``(outdir, pdirs, me_by_pdir)``.
+
+        ``me_by_pdir`` maps each P* directory to its matrix element (only built
+        when the backend needs it -- the C++/mg7 backends compute the crossed
+        PDG in python and so need the matrix element object; the fortran backend
+        resolves it at runtime and leaves the map empty)."""
         mgcmd = master_interface.MasterCmd()
         mgcmd.no_notification()
         mgcmd.exec_cmd('set automatic_html_opening False', printcmd=False)
@@ -4060,15 +4361,27 @@ def check_crossing(process_definition, param_card=None, options=None,
         mgcmd.exec_cmd('generate %s --use_crossing=%s'
                        % (proc_line, use_crossing), printcmd=False)
         outdir = pjoin(tmproot, name)
-        mgcmd.exec_cmd('output standalone %s -f' % outdir, printcmd=False)
+        mgcmd.exec_cmd('output %s %s -f' % (backend.output_format, outdir),
+                       printcmd=False)
         subroot = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subroot, d) for d in sorted(os.listdir(subroot))
                  if d.startswith('P') and os.path.isdir(pjoin(subroot, d))]
+        me_by_pdir = {}
+        if backend.needs_matrix_element:
+            by_name = {}
+            try:
+                for me in mgcmd._curr_matrix_elements.get_matrix_elements():
+                    by_name[_crossing_dir_name(me)] = me
+            except Exception as err:
+                logger.debug("Could not read matrix elements for the crossing "
+                             "check (%s): %s" % (backend.output_format, err))
+            for pdir in pdirs:
+                me_by_pdir[pdir] = by_name.get(os.path.basename(pdir))
         # If the user supplied a param_card, use it in place of the model
-        # default for both the module (initialisemodel) and momenta generation.
+        # default for both evaluation and momenta generation.
         if param_card:
             shutil.copy(param_card, pjoin(outdir, 'Cards', 'param_card.dat'))
-        return outdir, pdirs
+        return outdir, pdirs, me_by_pdir
 
     def _pdg_label(pdg):
         try:
@@ -4084,19 +4397,19 @@ def check_crossing(process_definition, param_card=None, options=None,
     results = []
     env = _crossing_build_env()
     try:
-        ref_out, ref_pdirs = _generate('False', 'reference')
-        cross_out, cross_pdirs = _generate('True', 'crossing')
+        ref_out, ref_pdirs, ref_me = _generate('False', 'reference')
+        cross_out, cross_pdirs, cross_me = _generate('True', 'crossing')
         ref_card = pjoin(ref_out, 'Cards', 'param_card.dat')
         cross_card = pjoin(cross_out, 'Cards', 'param_card.dat')
 
         # ── build every module ──────────────────────────────────────────────
         built = {}
         for pdir in ref_pdirs + cross_pdirs:
-            built[pdir] = _crossing_build_f2py(pdir, env)
+            built[pdir] = backend.build(pdir, env)
         if not any(built.get(pdir) for pdir in ref_pdirs) or \
            not any(built.get(pdir) for pdir in cross_pdirs):
-            # No usable module on either side: signal a skip rather than a fail.
-            return [{'status': 'build_failed'}]
+            # Nothing usable on either side: signal a skip rather than a fail.
+            return [{'status': 'build_failed', 'exporter': exporter}]
 
         # ── enumerate the crossing output: pdg-tuple -> (pdir, index, cross) ─
         # Two-stage matching so the crossing code path is exercised *safely*:
@@ -4107,19 +4420,19 @@ def check_crossing(process_definition, param_card=None, options=None,
         #    same PDG yet evaluate to a different (wrong) value, so it must never
         #    be picked over the identity of the module that owns the process.
         #  * across modules prefer a genuine crossing (cross>0) from a module
-        #    that does not own the process, so the comparison exercises
-        #    APPLY_CROSSING rather than a plain identity when the process line
-        #    spans crossable subprocesses.
+        #    that does not own the process, so the comparison exercises the
+        #    crossing rather than a plain identity when the process line spans
+        #    crossable subprocesses.
         cross_map = {}
         for pdir in cross_pdirs:
             if not built.get(pdir):
                 continue
-            answer = _crossing_run_driver(
-                pdir, {'mode': 'enumerate', 'card': cross_card}, env)
-            if not answer:
+            entries = backend.enumerate(pdir, cross_me.get(pdir), cross_card,
+                                        env, identity_only=False)
+            if not entries:
                 continue
             module_map = {}     # find_pdg semantics: lowest cross per PDG
-            for idx, cross, _flav, pdg in answer['entries']:
+            for idx, cross, _flav, pdg in entries:
                 key = tuple(pdg)
                 if key not in module_map:
                     module_map[key] = (idx, cross)
@@ -4136,11 +4449,11 @@ def check_crossing(process_definition, param_card=None, options=None,
         for pdir in ref_pdirs:
             if not built.get(pdir):
                 continue
-            answer = _crossing_run_driver(
-                pdir, {'mode': 'enumerate', 'card': ref_card}, env)
-            if not answer:
+            entries = backend.enumerate(pdir, ref_me.get(pdir), ref_card, env,
+                                        identity_only=True)
+            if not entries:
                 continue
-            for idx, cross, _flav, pdg in answer['entries']:
+            for idx, cross, _flav, pdg in entries:
                 if cross != 0:
                     continue   # reference has no genuine crossing anyway
                 key = tuple(pdg)
@@ -4158,10 +4471,7 @@ def check_crossing(process_definition, param_card=None, options=None,
         for pdir, jobs in direct_jobs.items():
             items = [{'index': idx, 'momenta': momenta_by_pdg[key]}
                      for idx, key in jobs if momenta_by_pdg[key] is not None]
-            answer = _crossing_run_driver(
-                pdir, {'mode': 'evaluate', 'card': ref_card, 'items': items},
-                env)
-            values = answer['values'] if answer else [None] * len(items)
+            values = backend.evaluate(pdir, items, ref_card, env)
             vi = 0
             for idx, key in jobs:
                 if momenta_by_pdg[key] is None:
@@ -4181,10 +4491,7 @@ def check_crossing(process_definition, param_card=None, options=None,
         for cpdir, jobs in crossed_jobs.items():
             items = [{'index': cidx, 'momenta': momenta_by_pdg[key]}
                      for cidx, key in jobs]
-            answer = _crossing_run_driver(
-                cpdir, {'mode': 'evaluate', 'card': cross_card,
-                        'items': items}, env)
-            values = answer['values'] if answer else [None] * len(items)
+            values = backend.evaluate(cpdir, items, cross_card, env)
             for (cidx, key), value in zip(jobs, values):
                 crossed_val[(cpdir, cidx, key)] = value
 
@@ -4194,6 +4501,11 @@ def check_crossing(process_definition, param_card=None, options=None,
             match = cross_map.get(key)
             value_crossed = None
             cross_code = None
+            # crossing_matched records whether a crossing reproducing this
+            # subprocess was *located* in the crossing build, so the report can
+            # tell "no crossing reaches this here" apart from "a crossing was
+            # found but its matrix element could not be evaluated".
+            crossing_matched = match is not None
             if match is not None and momenta_by_pdg[key] is not None:
                 cpdir, cidx, ccross = match
                 value_crossed = crossed_val.get((cpdir, cidx, key))
@@ -4204,6 +4516,8 @@ def check_crossing(process_definition, param_card=None, options=None,
                 'value_direct': value_direct,
                 'value_crossed': value_crossed,
                 'cross_code': cross_code,
+                'crossing_matched': crossing_matched,
+                'exporter': exporter,
                 'status': 'ok',
             })
     finally:
@@ -4242,13 +4556,25 @@ def output_crossing(comparison_results, output='text'):
     Compares ``value_direct`` (the crossing-disabled build, evaluating the
     subprocess with its own diagrams) against ``value_crossed`` (the
     crossing-enabled build, evaluating the same signed-PDG process through the
-    extended ``FLAV_IDX``).  ``output='fail'`` returns the number of failures
+    extended flavor index).  ``output='fail'`` returns the number of failures
     instead of the formatted string.
     """
+    exporter = None
+    for data in comparison_results:
+        if data.get('exporter'):
+            exporter = data['exporter']
+            break
+
     if len(comparison_results) == 1 and \
             comparison_results[0].get('status') == 'build_failed':
-        msg = ("Could not build the f2py matrix2py module (f2py / numpy build "
-               "backend unavailable); the crossing check cannot run here.")
+        if exporter in ('standalone', None):
+            reason = ("f2py matrix2py module (f2py / numpy build backend "
+                      "unavailable)")
+        else:
+            reason = "%s output (C++ compiler / build toolchain unavailable)" \
+                     % exporter
+        msg = ("Could not build the %s; the crossing check cannot run here."
+               % reason)
         return 0 if output == 'fail' else msg
 
     proc_col_size = 17
@@ -4267,7 +4593,10 @@ def output_crossing(comparison_results, output='text'):
     no_check_proc_list = []
     any_crossed = False
 
-    res_str = fixed_string_length(process_header, proc_col_size) + \
+    res_str = ''
+    if exporter:
+        res_str += "Exporter: %s\n" % exporter
+    res_str += fixed_string_length(process_header, proc_col_size) + \
         fixed_string_length("Direct", col_size) + \
         fixed_string_length("Crossed", col_size) + \
         fixed_string_length("Relative diff.", col_size) + \
@@ -4281,8 +4610,23 @@ def output_crossing(comparison_results, output='text'):
         if val_d is None or val_c is None:
             no_check_proc += 1
             no_check_proc_list.append(proc)
+            if val_d is None:
+                reason = "reference matrix element could not be evaluated"
+            elif one_comp.get('crossing_matched'):
+                # A crossing reproducing this process WAS found, but evaluating
+                # its matrix element failed -- a build/run problem of this
+                # backend, not a missing crossing.
+                reason = ("crossing found but its matrix element could not be "
+                          "evaluated with this exporter")
+            else:
+                # No crossing in the *generated* output reaches this exact
+                # subprocess. A crossing may still exist from a process line
+                # not spanned here (e.g. d d~ > g d d~ for g d > d d d~), or
+                # the backend groups flavors so this ordering is not produced.
+                reason = ("no crossing in the generated output reproduces this "
+                          "subprocess")
             res_str += '\n' + fixed_string_length(proc, proc_col_size) + \
-                "    * No matrix element found for a crossing, not checked *"
+                "    * Not checked: %s *" % reason
             continue
 
         cross_code = one_comp.get('cross_code')

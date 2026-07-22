@@ -181,6 +181,14 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
 
     def _extract_standalone_flavors(self, output, subproc_dir):
         lines = output.splitlines()
+        # The standalone driver may append a crossing-symmetry demonstration
+        # (its own 'PDG ... / Matrix element = ...' lines for crossed
+        # processes). Those are not the primary per-flavor output this test
+        # compares against madevent, so stop at that section's header.
+        for cut, line in enumerate(lines):
+            if 'Crossing-symmetry example' in line:
+                lines = lines[:cut]
+                break
         standalone_rows = []
         for index, line in enumerate(lines):
             stripped = line.strip()
