@@ -1158,6 +1158,37 @@ def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
     )
 
 
+def test_ten_minute_generation_cap_records_out_of_reach() -> None:
+    exc = report.ReportGenerationTimeout("generation exceeded 600 seconds")
+
+    assert (
+        report._generation_timeout_status(
+            report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+        )
+        == report.ResultStatus.OUT_OF_REACH
+    )
+    assert (
+        report._generation_timeout_failure_kind(
+            report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+        )
+        == "generation_out_of_reach"
+    )
+    assert (
+        report._generation_timeout_failure_message(
+            exc,
+            report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+        )
+        == "out of reach by campaign policy: generation exceeded 600 seconds"
+    )
+
+    assert report._generation_timeout_status(3600.0) == report.ResultStatus.TIMEOUT
+    assert (
+        report._generation_timeout_failure_kind(3600.0)
+        == "generation_timeout"
+    )
+    assert report._generation_timeout_failure_message(exc, 3600.0) == str(exc)
+
+
 def test_missing_only_retries_model_ladder_failures() -> None:
     spec = next(
         item

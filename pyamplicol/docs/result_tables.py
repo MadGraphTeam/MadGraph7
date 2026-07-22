@@ -4642,6 +4642,7 @@ LC_LANE_STATUS_POLICY = "lc_two_workload_lane_status_v1"
 LC_ALL_FLOW_UNION_OUT_OF_REACH_POLICY = (
     "high_multiplicity_all_flow_union_out_of_reach_v1"
 )
+LC_GENERATION_CAP_OUT_OF_REACH_POLICY = "ten_minute_lc_lane_generation_out_of_reach_v1"
 _KNOWN_EAGER_Z_UNION_OUT_OF_REACH: frozenset[tuple[str, int, str]] = frozenset(
     {
         ("z_builtin_sm", 8, "eager_jit_o3"),
@@ -6086,6 +6087,35 @@ def _generation_timeout(seconds: float | None) -> Iterable[None]:
         yield
 
 
+OUT_OF_REACH_GENERATION_CAP_SECONDS = 600.0
+
+
+def _generation_timeout_status(timeout_seconds: float | None) -> ResultStatus:
+    if timeout_seconds is not None and timeout_seconds <= (
+        OUT_OF_REACH_GENERATION_CAP_SECONDS + 1.0e-9
+    ):
+        return ResultStatus.OUT_OF_REACH
+    return ResultStatus.TIMEOUT
+
+
+def _generation_timeout_failure_kind(timeout_seconds: float | None) -> str:
+    if _generation_timeout_status(timeout_seconds) == ResultStatus.OUT_OF_REACH:
+        return "generation_out_of_reach"
+    return "generation_timeout"
+
+
+def _generation_timeout_failure_message(
+    exc: ReportGenerationTimeout,
+    timeout_seconds: float | None,
+) -> str:
+    if _generation_timeout_status(timeout_seconds) != ResultStatus.OUT_OF_REACH:
+        return str(exc)
+    return (
+        "out of reach by campaign policy: generation exceeded "
+        f"{OUT_OF_REACH_GENERATION_CAP_SECONDS:.0f} seconds"
+    )
+
+
 def _set_nested(mapping: dict[str, object], dotted_path: str, value: object) -> None:
     parts = dotted_path.split(".")
     cursor = mapping
@@ -6761,11 +6791,14 @@ def _measure_pyamplicol(
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
         return measurement, points
     except ReportGenerationTimeout as exc:
+        status = _generation_timeout_status(generation_timeout_seconds)
         return (
             _failure_measurement(
-                ResultStatus.TIMEOUT,
-                str(exc),
-                failure_kind="generation_timeout",
+                status,
+                _generation_timeout_failure_message(exc, generation_timeout_seconds),
+                failure_kind=_generation_timeout_failure_kind(
+                    generation_timeout_seconds
+                ),
                 artifact_path=artifact_dir,
                 log_path=log_path,
                 manifest_path=manifest_path,
@@ -7463,9 +7496,12 @@ def _measure_pyamplicol_lc_lane(
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
         return measurement, selected_points, selector_contract
     except ReportGenerationTimeout as exc:
-        status = ResultStatus.TIMEOUT
-        failure_kind = "generation_timeout"
-        failure_message = str(exc)
+        status = _generation_timeout_status(generation_timeout_seconds)
+        failure_kind = _generation_timeout_failure_kind(generation_timeout_seconds)
+        failure_message = _generation_timeout_failure_message(
+            exc,
+            generation_timeout_seconds,
+        )
     except Exception as exc:
         status = (
             ResultStatus.UNSUPPORTED
@@ -7491,6 +7527,14 @@ def _measure_pyamplicol_lc_lane(
             "coverage_contract": snapshot["coverage_contract"],
             "runtime_selector_role": role,
             "lc_flow_layout": layout,
+            **(
+                {
+                    "lane_status_policy": LC_LANE_STATUS_POLICY,
+                    "lane_terminal_policy": LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
+                }
+                if status == ResultStatus.OUT_OF_REACH
+                else {}
+            ),
         },
     )
     return (
@@ -7995,10 +8039,12 @@ def _measure_pyamplicol_eager_complete(
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
         return selected, points, selector_contract
     except ReportGenerationTimeout as exc:
+        status = _generation_timeout_status(generation_timeout_seconds)
+        message = _generation_timeout_failure_message(exc, generation_timeout_seconds)
         failure = _failure_measurement(
-            ResultStatus.TIMEOUT,
-            str(exc),
-            failure_kind="generation_timeout",
+            status,
+            message,
+            failure_kind=_generation_timeout_failure_kind(generation_timeout_seconds),
             artifact_path=artifact_dir,
             log_path=log_path,
             manifest_path=manifest_path,
@@ -8011,8 +8057,8 @@ def _measure_pyamplicol_eager_complete(
         )
         contract = {
             **_empty_eager_selector_contract(),
-            "status": ResultStatus.TIMEOUT.value,
-            "message": str(exc),
+            "status": status.value,
+            "message": message,
         }
         return failure, points, contract
     except Exception as exc:
