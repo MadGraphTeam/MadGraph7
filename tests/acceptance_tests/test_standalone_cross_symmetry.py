@@ -1324,13 +1324,16 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
 
     --use_crossing is on by default and tells the generation *not* to write the
     crossed subprocesses out separately, because the matrix element is supposed
-    to reach them through an extended FLAV_IDX. Only the fortran standalone
-    decodes one. Any other output would therefore quietly produce a matrix
-    element that is missing those subprocesses, so it has to raise instead.
+    to reach them through an extended FLAV_IDX. The fortran standalone and the
+    (grouped) madevent output decode one; an output that cannot would quietly
+    produce a matrix element missing those subprocesses, so it has to raise
+    instead.
     """
 
-    # Outputs reached through ExportV4Factory that have no crossing machinery.
-    UNSUPPORTED_FORMATS = ['madevent', 'matchbox']
+    # Outputs reached through ExportV4Factory that have no crossing machinery
+    # (madevent is no longer here: the grouped exporter shares a base matrix
+    # element through the crossing router, see TestCrossingPartition).
+    UNSUPPORTED_FORMATS = ['matchbox']
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='cross_unsupported_')
@@ -1372,13 +1375,17 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
                 self._output(fmt, 'ok_%s' % fmt,
                              options='--use_crossing=False')
 
-    def test_standalone_still_accepts_crossing(self):
-        """The one output that does implement crossing must not be caught.
+    def test_supported_outputs_accept_crossing(self):
+        """Outputs that DO implement crossing must not be caught.
 
         Anchors the gate against being over-broad: a check that refused every
-        output would pass both tests above.
+        output would pass both tests above. The fortran standalone decodes the
+        extended FLAV_IDX directly; the grouped madevent output reaches the
+        crossed subprocesses through the crossing router.
         """
-        self._output('standalone', 'ok_standalone')
+        for fmt in ('standalone', 'madevent'):
+            with self.subTest(format=fmt):
+                self._output(fmt, 'ok_%s' % fmt)
 
 
 # The C++ standalone driver: take a fixed RAMBO phase space point once
