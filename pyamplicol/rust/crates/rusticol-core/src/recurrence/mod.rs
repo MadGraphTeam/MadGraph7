@@ -32,8 +32,9 @@ pub use layout::{
     RecurrenceNodeKind, RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
 };
 pub use program::{
-    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
-    RecurrenceProgram,
+    RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
+    RecurrenceCurrent, RecurrenceFinalization, RecurrenceProgram, RecurrenceReplayTarget,
+    RecurrenceResolvedHelicity,
 };
 pub use runtime::{RecurrenceExecutionPlan, RecurrenceExecutionRuntime, RecurrenceSourceLayout};
 

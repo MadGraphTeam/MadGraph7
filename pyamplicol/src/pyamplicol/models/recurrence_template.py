@@ -1555,6 +1555,139 @@ class SymmetryProofV1(_SemanticRecord):
 
 
 @dataclass(frozen=True, slots=True)
+class RecurrenceRuntimeHelicityVariantV1:
+    """One exact source-wavefunction embedding into a full current state."""
+
+    source_template_id: str
+    source_state_template_id: str
+    embedding_source_components: tuple[int | None, ...]
+    embedding_factors: tuple[ExactComplexRationalV1, ...]
+    projection_full_components: tuple[int, ...]
+    proof_digest: str
+
+    def __post_init__(self) -> None:
+        _require_nonempty(
+            "runtime-helicity source template ID", self.source_template_id
+        )
+        _require_nonempty(
+            "runtime-helicity source-state template ID",
+            self.source_state_template_id,
+        )
+        embedding = _require_tuple(
+            "runtime-helicity component embedding",
+            self.embedding_source_components,
+        )
+        if any(
+            item is not None and (type(item) is not int or item < 0)
+            for item in embedding
+        ):
+            raise RecurrenceTemplateError(
+                "runtime-helicity embedding entries must be nonnegative integers "
+                "or null"
+            )
+        factors = _require_tuple(
+            "runtime-helicity embedding factors", self.embedding_factors
+        )
+        if len(factors) != len(embedding) or any(
+            not isinstance(item, ExactComplexRationalV1) for item in factors
+        ):
+            raise RecurrenceTemplateError(
+                "runtime-helicity embedding factors must align with full-state "
+                "components"
+            )
+        zero = ExactComplexRationalV1.zero()
+        if any(
+            (component is None) != (factor == zero)
+            for component, factor in zip(embedding, factors, strict=True)
+        ):
+            raise RecurrenceTemplateError(
+                "runtime-helicity zero embedding slots must have exactly zero factor"
+            )
+        projection = _require_tuple(
+            "runtime-helicity component projection",
+            self.projection_full_components,
+        )
+        if any(type(item) is not int or item < 0 for item in projection):
+            raise RecurrenceTemplateError(
+                "runtime-helicity projection entries must be nonnegative integers"
+            )
+        if len(set(projection)) != len(projection):
+            raise RecurrenceTemplateError(
+                "runtime-helicity projection entries must be unique"
+            )
+        if tuple(
+            sorted(component for component in embedding if component is not None)
+        ) != tuple(range(len(projection))):
+            raise RecurrenceTemplateError(
+                "runtime-helicity embedding must cover each source component once"
+            )
+        if any(
+            full_component >= len(embedding)
+            or embedding[full_component] != source_component
+            for source_component, full_component in enumerate(projection)
+        ):
+            raise RecurrenceTemplateError(
+                "runtime-helicity projection must invert the component embedding"
+            )
+        _require_sha256("runtime-helicity variant proof digest", self.proof_digest)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "embedding_factors": [item.to_dict() for item in self.embedding_factors],
+            "embedding_source_components": list(self.embedding_source_components),
+            "projection_full_components": list(self.projection_full_components),
+            "proof_digest": self.proof_digest,
+            "source_state_template_id": self.source_state_template_id,
+            "source_template_id": self.source_template_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RecurrenceRuntimeHelicityContractV1(_SemanticRecord):
+    """Compiler certificate for runtime source dispatch into one full state."""
+
+    _record_kind: ClassVar[str] = "runtime-helicity-contract"
+
+    template_id: str
+    full_state_template_id: str
+    variants: tuple[RecurrenceRuntimeHelicityVariantV1, ...]
+    proof_algorithm: str
+    proof_digest: str
+    semantic_digest: str = ""
+
+    def __post_init__(self) -> None:
+        _require_nonempty("runtime-helicity template ID", self.template_id)
+        _require_nonempty(
+            "runtime-helicity full-state template ID", self.full_state_template_id
+        )
+        _require_nonempty("runtime-helicity proof algorithm", self.proof_algorithm)
+        _require_sha256("runtime-helicity proof digest", self.proof_digest)
+        variants = _require_tuple("runtime-helicity variants", self.variants)
+        if not variants or any(
+            not isinstance(item, RecurrenceRuntimeHelicityVariantV1)
+            for item in variants
+        ):
+            raise RecurrenceTemplateError(
+                "runtime-helicity contract requires typed source variants"
+            )
+        source_ids = tuple(item.source_template_id for item in variants)
+        if source_ids != tuple(sorted(set(source_ids))):
+            raise RecurrenceTemplateError(
+                "runtime-helicity source variants must be sorted and unique"
+            )
+        self._finish_semantic_record()
+
+    def _semantic_fields(self) -> dict[str, object]:
+        return {
+            "full_state_template_id": self.full_state_template_id,
+            "proof_algorithm": self.proof_algorithm,
+            "proof_digest": self.proof_digest,
+            "template_id": self.template_id,
+            "variants": [item.to_dict() for item in self.variants],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluatorBindingV1(_SemanticRecord):
     _record_kind: ClassVar[str] = "evaluator-binding"
 
@@ -1716,6 +1849,7 @@ _Record = (
     | ClosureTemplateV1
     | ColorContractionTemplateV1
     | SymmetryProofV1
+    | RecurrenceRuntimeHelicityContractV1
     | EvaluatorBindingV1
 )
 
@@ -1734,6 +1868,7 @@ class RecurrenceTemplateCatalog:
     closures: tuple[ClosureTemplateV1, ...]
     color_contractions: tuple[ColorContractionTemplateV1, ...]
     symmetry_proofs: tuple[SymmetryProofV1, ...]
+    runtime_helicity_contracts: tuple[RecurrenceRuntimeHelicityContractV1, ...]
     evaluator_bindings: tuple[EvaluatorBindingV1, ...]
 
     def __post_init__(self) -> None:
@@ -1794,6 +1929,9 @@ class RecurrenceTemplateCatalog:
         closures: Sequence[ClosureTemplateV1] = (),
         color_contractions: Sequence[ColorContractionTemplateV1] = (),
         symmetry_proofs: Sequence[SymmetryProofV1] = (),
+        runtime_helicity_contracts: Sequence[
+            RecurrenceRuntimeHelicityContractV1
+        ] = (),
         evaluator_bindings: Sequence[EvaluatorBindingV1] = (),
     ) -> RecurrenceTemplateCatalog:
         _require_sha256("compiled_model_digest", compiled_model_digest)
@@ -1810,6 +1948,9 @@ class RecurrenceTemplateCatalog:
                 sorted(color_contractions, key=_record_identity)
             ),
             "symmetry_proofs": tuple(sorted(symmetry_proofs, key=_record_identity)),
+            "runtime_helicity_contracts": tuple(
+                sorted(runtime_helicity_contracts, key=_record_identity)
+            ),
             "evaluator_bindings": tuple(
                 sorted(evaluator_bindings, key=_record_identity)
             ),
@@ -1846,6 +1987,7 @@ class RecurrenceTemplateCatalog:
             ("closures", self.closures),
             ("color_contractions", self.color_contractions),
             ("symmetry_proofs", self.symmetry_proofs),
+            ("runtime_helicity_contracts", self.runtime_helicity_contracts),
             ("evaluator_bindings", self.evaluator_bindings),
         )
 
@@ -1866,6 +2008,26 @@ class RecurrenceTemplateCatalog:
     def catalog_digest(self) -> str:
         return self.header.catalog_digest
 
+    def require_complete_runtime_helicity_contracts(self) -> None:
+        """Fail all-flow-union preflight unless every source is certified."""
+
+        covered = {
+            variant.source_template_id
+            for contract in self.runtime_helicity_contracts
+            for variant in contract.variants
+        }
+        missing = tuple(
+            source.template_id
+            for source in self.sources
+            if source.template_id not in covered
+        )
+        if missing:
+            raise RecurrenceTemplateError(
+                "recurrence all-flow-union preflight requires complete certified "
+                "full-state runtime-helicity contracts; missing source templates: "
+                + ", ".join(missing)
+            )
+
     def to_dict(self) -> dict[str, object]:
         return {
             "header": self.header.to_dict(),
@@ -1878,6 +2040,7 @@ class RecurrenceTemplateCatalog:
     def _validate_references(self) -> None:
         parameters = {record.template_id: record for record in self.parameters}
         states = {record.template_id: record for record in self.current_states}
+        sources = {record.template_id: record for record in self.sources}
         quantum_flows = {record.template_id: record for record in self.quantum_flows}
         colors = {record.template_id: record for record in self.color_contractions}
         proofs = {record.template_id: record for record in self.symmetry_proofs}
@@ -2109,6 +2272,71 @@ class RecurrenceTemplateCatalog:
             _require_references(
                 "symmetry proof subjects", proof.subject_template_ids, templates
             )
+        source_contract_owner: dict[str, str] = {}
+        particle_contract_owner: dict[int, str] = {}
+        for contract in self.runtime_helicity_contracts:
+            full_state = _require_reference(
+                "runtime-helicity full state",
+                contract.full_state_template_id,
+                states,
+            )
+            previous_particle_owner = particle_contract_owner.setdefault(
+                full_state.particle_id, contract.template_id
+            )
+            if previous_particle_owner != contract.template_id:
+                raise RecurrenceTemplateError(
+                    "one physical source family cannot span runtime-helicity "
+                    "contracts"
+                )
+            variant_source_ids = {item.source_template_id for item in contract.variants}
+            family_source_ids = {
+                item.template_id
+                for item in self.sources
+                if states[item.state_template_id].particle_id == full_state.particle_id
+            }
+            if variant_source_ids != family_source_ids:
+                raise RecurrenceTemplateError(
+                    "runtime-helicity contract must cover its complete physical "
+                    "source family"
+                )
+            for variant in contract.variants:
+                source = _require_reference(
+                    "runtime-helicity source", variant.source_template_id, sources
+                )
+                source_state = _require_reference(
+                    "runtime-helicity source state",
+                    variant.source_state_template_id,
+                    states,
+                )
+                if source.state_template_id != source_state.template_id:
+                    raise RecurrenceTemplateError(
+                        "runtime-helicity source variant names the wrong source state"
+                    )
+                if (
+                    source_state.particle_id != full_state.particle_id
+                    or source_state.species_id != full_state.species_id
+                    or source_state.orientation != full_state.orientation
+                ):
+                    raise RecurrenceTemplateError(
+                        "runtime-helicity variant and full state are not one physical "
+                        "source family"
+                    )
+                if len(variant.embedding_source_components) != full_state.dimension:
+                    raise RecurrenceTemplateError(
+                        "runtime-helicity embedding dimension does not match full state"
+                    )
+                if len(variant.projection_full_components) != source_state.dimension:
+                    raise RecurrenceTemplateError(
+                        "runtime-helicity projection dimension does not match source "
+                        "state"
+                    )
+                previous = source_contract_owner.setdefault(
+                    source.template_id, contract.template_id
+                )
+                if previous != contract.template_id:
+                    raise RecurrenceTemplateError(
+                        "source template belongs to multiple runtime-helicity contracts"
+                    )
         for binding in self.evaluator_bindings:
             _require_references(
                 "evaluator input states", binding.input_state_template_ids, states
@@ -2209,6 +2437,7 @@ class RecurrenceTemplateCatalog:
                 "closures",
                 "color_contractions",
                 "symmetry_proofs",
+                "runtime_helicity_contracts",
                 "evaluator_bindings",
             }
         )
@@ -2258,6 +2487,7 @@ class RecurrenceTemplateCatalog:
             "closures": _closure_from_dict,
             "color_contractions": _color_from_dict,
             "symmetry_proofs": _symmetry_from_dict,
+            "runtime_helicity_contracts": _runtime_helicity_contract_from_dict,
             "evaluator_bindings": _evaluator_from_dict,
         }
         decoded: dict[str, tuple[_Record, ...]] = {}
@@ -3018,6 +3248,93 @@ def _symmetry_from_dict(payload: Mapping[str, object]) -> SymmetryProofV1:
     )
 
 
+def _runtime_helicity_contract_from_dict(
+    payload: Mapping[str, object],
+) -> RecurrenceRuntimeHelicityContractV1:
+    fields = frozenset(
+        {
+            "template_id",
+            "full_state_template_id",
+            "variants",
+            "proof_algorithm",
+            "proof_digest",
+        }
+    )
+    value = _record_payload(
+        "runtime-helicity contract", payload, fields, "runtime-helicity-contract"
+    )
+    raw_variants = value["variants"]
+    if not isinstance(raw_variants, list):
+        raise RecurrenceTemplateError("runtime-helicity variants must be an array")
+    variants: list[RecurrenceRuntimeHelicityVariantV1] = []
+    variant_fields = frozenset(
+        {
+            "source_template_id",
+            "source_state_template_id",
+            "embedding_source_components",
+            "embedding_factors",
+            "projection_full_components",
+            "proof_digest",
+        }
+    )
+    for index, raw_variant in enumerate(raw_variants):
+        variant = _require_mapping(
+            f"runtime-helicity variant {index}", raw_variant
+        )
+        _require_exact_keys(
+            f"runtime-helicity variant {index}", variant, variant_fields
+        )
+        raw_embedding = variant["embedding_source_components"]
+        if not isinstance(raw_embedding, list) or any(
+            item is not None and type(item) is not int for item in raw_embedding
+        ):
+            raise RecurrenceTemplateError(
+                "runtime-helicity component embedding must contain integers or null"
+            )
+        variants.append(
+            RecurrenceRuntimeHelicityVariantV1(
+                source_template_id=_require_nonempty(
+                    "runtime-helicity source template ID",
+                    variant["source_template_id"],
+                ),
+                source_state_template_id=_require_nonempty(
+                    "runtime-helicity source-state template ID",
+                    variant["source_state_template_id"],
+                ),
+                embedding_source_components=tuple(raw_embedding),
+                embedding_factors=_decode_ratio_array(
+                    "runtime-helicity embedding factors",
+                    variant["embedding_factors"],
+                ),
+                projection_full_components=_decode_int_tuple(
+                    "runtime-helicity projection",
+                    variant["projection_full_components"],
+                ),
+                proof_digest=_require_sha256(
+                    "runtime-helicity variant proof digest",
+                    variant["proof_digest"],
+                ),
+            )
+        )
+    return RecurrenceRuntimeHelicityContractV1(
+        template_id=_require_nonempty(
+            "runtime-helicity template ID", value["template_id"]
+        ),
+        full_state_template_id=_require_nonempty(
+            "runtime-helicity full-state template ID",
+            value["full_state_template_id"],
+        ),
+        variants=tuple(variants),
+        proof_algorithm=_require_nonempty(
+            "runtime-helicity proof algorithm", value["proof_algorithm"]
+        ),
+        proof_digest=_require_sha256(
+            "runtime-helicity proof digest", value["proof_digest"]
+        ),
+        semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
+    )
+
+
 def _evaluator_from_dict(payload: Mapping[str, object]) -> EvaluatorBindingV1:
     fields = frozenset(
         {
@@ -3089,6 +3406,7 @@ PropagatorTemplate = PropagatorTemplateV1
 ClosureTemplate = ClosureTemplateV1
 ColorContractionTemplate = ColorContractionTemplateV1
 SymmetryProof = SymmetryProofV1
+RecurrenceRuntimeHelicityContract = RecurrenceRuntimeHelicityContractV1
 EvaluatorBinding = EvaluatorBindingV1
 RecurrenceTemplateCatalogV1 = RecurrenceTemplateCatalog
 
@@ -3123,6 +3441,9 @@ __all__ = [
     "QuantumFlowTemplate",
     "QuantumFlowTemplateV1",
     "QuantumNumberFlowOperationV1",
+    "RecurrenceRuntimeHelicityContract",
+    "RecurrenceRuntimeHelicityContractV1",
+    "RecurrenceRuntimeHelicityVariantV1",
     "RecurrenceTemplateCatalog",
     "RecurrenceTemplateCatalogHeaderV1",
     "RecurrenceTemplateCatalogV1",

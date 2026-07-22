@@ -6,9 +6,11 @@
 //! slices and ranges, so traversing a validated program requires no maps or
 //! heap allocation.
 
+use std::collections::BTreeSet;
+
 use super::{
     CheckedTableRange, ContributionKey, CurrentCoreKey, DynamicLCColorState, ExactComplexRational,
-    RecurrenceNodeKind, RecurrenceStrategy,
+    RecurrenceNodeKind, RecurrenceStrategy, SourceStateAssignment,
 };
 use crate::{RusticolError, RusticolResult};
 
@@ -155,6 +157,163 @@ pub struct RecurrenceFinalization {
     exact_factor: ExactComplexRational,
 }
 
+/// One complete physical helicity retained by a topology-replay schedule.
+///
+/// Currents retain only their local source-state ancestry. This catalog names
+/// the complete ancestry reached by closure terms so amplitudes from distinct
+/// helicities are never added coherently before squaring.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceResolvedHelicity {
+    id: u32,
+    source_states: Box<[SourceStateAssignment]>,
+    public_helicities: Box<[i32]>,
+}
+
+/// One live amplitude destination and its packed closure-term range.
+///
+/// Destinations are sparse: topology replay stores only live combinations of
+/// a materialized representative sector and a resolved helicity, never their
+/// Cartesian product.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecurrenceAmplitudeDestination {
+    id: u32,
+    target_sector_id: u32,
+    target_helicity_id: Option<u32>,
+    closure_range: CheckedTableRange,
+}
+
+/// One exact topology-replay route from a materialized recurrence to a public sector.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceReplayTarget {
+    id: u32,
+    materialized_sector_id: u32,
+    target_sector_id: u32,
+    source_slot_permutation: Box<[u32]>,
+    amplitude_factor: ExactComplexRational,
+}
+
+impl RecurrenceReplayTarget {
+    pub fn new(
+        id: u32,
+        materialized_sector_id: u32,
+        target_sector_id: u32,
+        source_slot_permutation: Vec<u32>,
+        amplitude_factor: ExactComplexRational,
+    ) -> RusticolResult<Self> {
+        if source_slot_permutation.is_empty() {
+            return Err(invalid(
+                "recurrence replay target requires a source permutation",
+            ));
+        }
+        if amplitude_factor.is_zero() {
+            return Err(invalid("recurrence replay target factor must not be zero"));
+        }
+        Ok(Self {
+            id,
+            materialized_sector_id,
+            target_sector_id,
+            source_slot_permutation: source_slot_permutation.into_boxed_slice(),
+            amplitude_factor,
+        })
+    }
+
+    pub const fn id(&self) -> u32 {
+        self.id
+    }
+
+    pub const fn materialized_sector_id(&self) -> u32 {
+        self.materialized_sector_id
+    }
+
+    pub const fn target_sector_id(&self) -> u32 {
+        self.target_sector_id
+    }
+
+    pub fn source_slot_permutation(&self) -> &[u32] {
+        &self.source_slot_permutation
+    }
+
+    pub const fn amplitude_factor(&self) -> ExactComplexRational {
+        self.amplitude_factor
+    }
+}
+
+impl RecurrenceAmplitudeDestination {
+    pub fn new(
+        id: u32,
+        target_sector_id: u32,
+        target_helicity_id: Option<u32>,
+        closure_range: CheckedTableRange,
+    ) -> RusticolResult<Self> {
+        closure_range.end("recurrence amplitude destination")?;
+        if closure_range.count == 0 {
+            return Err(invalid(
+                "recurrence amplitude destination requires closure terms",
+            ));
+        }
+        Ok(Self {
+            id,
+            target_sector_id,
+            target_helicity_id,
+            closure_range,
+        })
+    }
+
+    pub const fn id(self) -> u32 {
+        self.id
+    }
+
+    pub const fn target_sector_id(self) -> u32 {
+        self.target_sector_id
+    }
+
+    pub const fn target_helicity_id(self) -> Option<u32> {
+        self.target_helicity_id
+    }
+
+    pub const fn closure_range(self) -> CheckedTableRange {
+        self.closure_range
+    }
+}
+
+impl RecurrenceResolvedHelicity {
+    pub fn new(
+        id: u32,
+        source_states: Vec<SourceStateAssignment>,
+        public_helicities: Vec<i32>,
+    ) -> RusticolResult<Self> {
+        if source_states.is_empty() || source_states.len() != public_helicities.len() {
+            return Err(invalid(
+                "resolved helicity requires one public value per source-state assignment",
+            ));
+        }
+        for (source_slot, assignment) in source_states.iter().copied().enumerate() {
+            if assignment.source_slot() as usize != source_slot {
+                return Err(invalid(
+                    "resolved-helicity source states must cover every source slot in order",
+                ));
+            }
+        }
+        Ok(Self {
+            id,
+            source_states: source_states.into_boxed_slice(),
+            public_helicities: public_helicities.into_boxed_slice(),
+        })
+    }
+
+    pub const fn id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn source_states(&self) -> &[SourceStateAssignment] {
+        &self.source_states
+    }
+
+    pub fn public_helicities(&self) -> &[i32] {
+        &self.public_helicities
+    }
+}
+
 impl RecurrenceFinalization {
     pub fn new(
         id: u32,
@@ -199,7 +358,7 @@ impl RecurrenceFinalization {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecurrenceClosureTerm {
     id: u32,
-    target_sector_id: u32,
+    target_destination_id: u32,
     closure_template_id: u32,
     quantum_flow_template_id: Option<u32>,
     parent_current_ids: Box<[u32]>,
@@ -209,7 +368,7 @@ pub struct RecurrenceClosureTerm {
 impl RecurrenceClosureTerm {
     pub fn new(
         id: u32,
-        target_sector_id: u32,
+        target_destination_id: u32,
         closure_template_id: u32,
         quantum_flow_template_id: Option<u32>,
         parent_current_ids: Vec<u32>,
@@ -227,7 +386,7 @@ impl RecurrenceClosureTerm {
         }
         Ok(Self {
             id,
-            target_sector_id,
+            target_destination_id,
             closure_template_id,
             quantum_flow_template_id,
             parent_current_ids: parent_current_ids.into_boxed_slice(),
@@ -239,8 +398,8 @@ impl RecurrenceClosureTerm {
         self.id
     }
 
-    pub const fn target_sector_id(&self) -> u32 {
-        self.target_sector_id
+    pub const fn target_destination_id(&self) -> u32 {
+        self.target_destination_id
     }
 
     pub const fn closure_template_id(&self) -> u32 {
@@ -268,11 +427,15 @@ impl RecurrenceClosureTerm {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecurrenceProgram {
     strategy: RecurrenceStrategy,
+    physical_sector_count: u32,
+    retained_helicity_count: u64,
     dynamic_color_states: Box<[DynamicLCColorState]>,
     currents: Box<[RecurrenceCurrent]>,
     contributions: Box<[RecurrenceContribution]>,
     finalizations: Box<[RecurrenceFinalization]>,
-    target_sector_closure_ranges: Box<[CheckedTableRange]>,
+    replay_targets: Box<[RecurrenceReplayTarget]>,
+    resolved_helicities: Box<[RecurrenceResolvedHelicity]>,
+    amplitude_destinations: Box<[RecurrenceAmplitudeDestination]>,
     closure_terms: Box<[RecurrenceClosureTerm]>,
 }
 
@@ -280,20 +443,28 @@ impl RecurrenceProgram {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         strategy: RecurrenceStrategy,
+        physical_sector_count: u32,
+        retained_helicity_count: u64,
         dynamic_color_states: Vec<DynamicLCColorState>,
         currents: Vec<RecurrenceCurrent>,
         contributions: Vec<RecurrenceContribution>,
         finalizations: Vec<RecurrenceFinalization>,
-        target_sector_closure_ranges: Vec<CheckedTableRange>,
+        replay_targets: Vec<RecurrenceReplayTarget>,
+        resolved_helicities: Vec<RecurrenceResolvedHelicity>,
+        amplitude_destinations: Vec<RecurrenceAmplitudeDestination>,
         closure_terms: Vec<RecurrenceClosureTerm>,
     ) -> RusticolResult<Self> {
         let program = Self {
             strategy,
+            physical_sector_count,
+            retained_helicity_count,
             dynamic_color_states: dynamic_color_states.into_boxed_slice(),
             currents: currents.into_boxed_slice(),
             contributions: contributions.into_boxed_slice(),
             finalizations: finalizations.into_boxed_slice(),
-            target_sector_closure_ranges: target_sector_closure_ranges.into_boxed_slice(),
+            replay_targets: replay_targets.into_boxed_slice(),
+            resolved_helicities: resolved_helicities.into_boxed_slice(),
+            amplitude_destinations: amplitude_destinations.into_boxed_slice(),
             closure_terms: closure_terms.into_boxed_slice(),
         };
         program.validate()?;
@@ -302,6 +473,14 @@ impl RecurrenceProgram {
 
     pub const fn strategy(&self) -> RecurrenceStrategy {
         self.strategy
+    }
+
+    pub const fn physical_sector_count(&self) -> u32 {
+        self.physical_sector_count
+    }
+
+    pub const fn retained_helicity_count(&self) -> u64 {
+        self.retained_helicity_count
     }
 
     pub fn dynamic_color_states(&self) -> &[DynamicLCColorState] {
@@ -320,8 +499,16 @@ impl RecurrenceProgram {
         &self.finalizations
     }
 
-    pub fn target_sector_closure_ranges(&self) -> &[CheckedTableRange] {
-        &self.target_sector_closure_ranges
+    pub fn replay_targets(&self) -> &[RecurrenceReplayTarget] {
+        &self.replay_targets
+    }
+
+    pub fn resolved_helicities(&self) -> &[RecurrenceResolvedHelicity] {
+        &self.resolved_helicities
+    }
+
+    pub fn amplitude_destinations(&self) -> &[RecurrenceAmplitudeDestination] {
+        &self.amplitude_destinations
     }
 
     pub fn closure_terms(&self) -> &[RecurrenceClosureTerm] {
@@ -340,10 +527,10 @@ impl RecurrenceProgram {
         CheckedTableRange::new(0, self.closure_terms.len() as u64)
     }
 
-    pub fn closure_range_for_sector(&self, sector_id: u32) -> Option<CheckedTableRange> {
-        self.target_sector_closure_ranges
-            .get(sector_id as usize)
-            .copied()
+    pub fn closure_range_for_destination(&self, destination_id: u32) -> Option<CheckedTableRange> {
+        self.amplitude_destinations
+            .get(destination_id as usize)
+            .map(|destination| destination.closure_range())
     }
 
     pub fn validate(&self) -> RusticolResult<()> {
@@ -356,11 +543,24 @@ impl RecurrenceProgram {
             checked_table_len("recurrence contribution", self.contributions.len())?;
         let finalization_count =
             checked_table_len("recurrence finalization", self.finalizations.len())?;
+        let replay_target_count =
+            checked_table_len("recurrence replay target", self.replay_targets.len())?;
         let closure_count = checked_table_len("recurrence closure term", self.closure_terms.len())?;
-        let sector_count = checked_table_len(
-            "recurrence target sector",
-            self.target_sector_closure_ranges.len(),
+        let helicity_count = checked_table_len(
+            "recurrence resolved helicity",
+            self.resolved_helicities.len(),
         )?;
+        let destination_count = checked_table_len(
+            "recurrence amplitude destination",
+            self.amplitude_destinations.len(),
+        )?;
+
+        if self.physical_sector_count == 0 {
+            return Err(invalid("recurrence requires physical LC sectors"));
+        }
+        if self.retained_helicity_count == 0 {
+            return Err(invalid("recurrence retains no public helicities"));
+        }
 
         u32::try_from(current_count)
             .map_err(|_| invalid("recurrence current count exceeds the u32 ID domain"))?;
@@ -370,10 +570,14 @@ impl RecurrenceProgram {
             .map_err(|_| invalid("recurrence contribution count exceeds the u32 ID domain"))?;
         u32::try_from(finalization_count)
             .map_err(|_| invalid("recurrence finalization count exceeds the u32 ID domain"))?;
+        u32::try_from(replay_target_count)
+            .map_err(|_| invalid("recurrence replay-target count exceeds the u32 ID domain"))?;
         u32::try_from(closure_count)
             .map_err(|_| invalid("recurrence closure count exceeds the u32 ID domain"))?;
-        u32::try_from(sector_count)
-            .map_err(|_| invalid("recurrence target-sector count exceeds the u32 ID domain"))?;
+        u32::try_from(helicity_count)
+            .map_err(|_| invalid("recurrence resolved-helicity count exceeds u32"))?;
+        u32::try_from(destination_count)
+            .map_err(|_| invalid("recurrence amplitude-destination count exceeds u32"))?;
 
         let mut next_contribution = 0u64;
         let mut fan_in_sum = 0u64;
@@ -592,37 +796,192 @@ impl RecurrenceProgram {
             }
         }
 
-        let mut next_closure = 0u64;
-        for (sector_index, range) in self
-            .target_sector_closure_ranges
+        let source_slot_count = self
+            .currents
             .iter()
-            .copied()
-            .enumerate()
+            .flat_map(|current| current.key.support_source_slots().iter().copied())
+            .max()
+            .map_or(0usize, |slot| slot as usize + 1);
+        let mut replayed_sectors = BTreeSet::new();
+        let mut materialized_sectors = BTreeSet::new();
+        for (index, target) in self.replay_targets.iter().enumerate() {
+            let expected_id = index as u32;
+            if target.id != expected_id {
+                return Err(invalid(format!(
+                    "recurrence replay-target row {index} has non-dense id {}",
+                    target.id
+                )));
+            }
+            if target.materialized_sector_id >= self.physical_sector_count
+                || target.target_sector_id >= self.physical_sector_count
+            {
+                return Err(invalid(format!(
+                    "recurrence replay target {expected_id} references an unknown physical sector"
+                )));
+            }
+            if !replayed_sectors.insert(target.target_sector_id) {
+                return Err(invalid(format!(
+                    "physical sector {} has multiple recurrence replay targets",
+                    target.target_sector_id
+                )));
+            }
+            materialized_sectors.insert(target.materialized_sector_id);
+            if target.source_slot_permutation.len() != source_slot_count {
+                return Err(invalid(format!(
+                    "recurrence replay target {expected_id} source permutation has length {}, expected {source_slot_count}",
+                    target.source_slot_permutation.len()
+                )));
+            }
+            let mut permutation = target.source_slot_permutation.to_vec();
+            permutation.sort_unstable();
+            if permutation
+                .iter()
+                .copied()
+                .enumerate()
+                .any(|(slot, value)| value as usize != slot)
+            {
+                return Err(invalid(format!(
+                    "recurrence replay target {expected_id} source mapping is not a permutation"
+                )));
+            }
+        }
+
+        match self.strategy {
+            RecurrenceStrategy::TopologyReplay if self.replay_targets.is_empty() => {
+                return Err(invalid(
+                    "topology-replay recurrence requires replay targets",
+                ));
+            }
+            RecurrenceStrategy::AllFlowUnion if !self.replay_targets.is_empty() => {
+                return Err(invalid(
+                    "all-flow-union recurrence must not carry topology-replay targets",
+                ));
+            }
+            _ => {}
+        }
+        for destination in &self.amplitude_destinations {
+            if self.strategy == RecurrenceStrategy::TopologyReplay
+                && !materialized_sectors.contains(&destination.target_sector_id)
+            {
+                return Err(invalid(format!(
+                    "topology-replay amplitude destination {} targets non-materialized sector {}",
+                    destination.id, destination.target_sector_id
+                )));
+            }
+        }
+        for sector in materialized_sectors {
+            if !self
+                .amplitude_destinations
+                .iter()
+                .any(|destination| destination.target_sector_id == sector)
+            {
+                return Err(invalid(format!(
+                    "recurrence replay materialized sector {sector} has no amplitude destination"
+                )));
+            }
+        }
+
+        match self.strategy {
+            RecurrenceStrategy::TopologyReplay if self.resolved_helicities.is_empty() => {
+                return Err(invalid(
+                    "topology-replay recurrence requires resolved-helicity destinations",
+                ));
+            }
+            RecurrenceStrategy::AllFlowUnion if !self.resolved_helicities.is_empty() => {
+                return Err(invalid(
+                    "all-flow-union recurrence must select source helicity at runtime",
+                ));
+            }
+            _ => {}
+        }
+        if helicity_count > self.retained_helicity_count {
+            return Err(invalid(format!(
+                "recurrence has {helicity_count} active helicities but retains only {} public assignments",
+                self.retained_helicity_count
+            )));
+        }
+        for (index, helicity) in self.resolved_helicities.iter().enumerate() {
+            if helicity.id != index as u32 {
+                return Err(invalid(format!(
+                    "resolved-helicity row {index} has non-dense id {}",
+                    helicity.id
+                )));
+            }
+            if helicity.source_states.len() != helicity.public_helicities.len() {
+                return Err(invalid(format!(
+                    "resolved helicity {index} has inconsistent source-state and public-helicity dimensions"
+                )));
+            }
+            for (source_slot, assignment) in helicity.source_states.iter().copied().enumerate() {
+                if assignment.source_slot() as usize != source_slot {
+                    return Err(invalid(format!(
+                        "resolved helicity {index} does not cover source slot {source_slot} canonically"
+                    )));
+                }
+            }
+        }
+
+        let mut next_closure = 0u64;
+        for (destination_index, destination) in
+            self.amplitude_destinations.iter().copied().enumerate()
         {
-            let sector_id = sector_index as u32;
+            let destination_id = destination_index as u32;
+            if destination.id != destination_id {
+                return Err(invalid(format!(
+                    "amplitude destination row {destination_index} has non-dense id {}",
+                    destination.id
+                )));
+            }
+            if destination.target_sector_id >= self.physical_sector_count {
+                return Err(invalid(format!(
+                    "amplitude destination {destination_id} references unknown physical sector {}",
+                    destination.target_sector_id
+                )));
+            }
+            match (self.strategy, destination.target_helicity_id) {
+                (RecurrenceStrategy::TopologyReplay, Some(helicity_id))
+                    if u64::from(helicity_id) < helicity_count => {}
+                (RecurrenceStrategy::TopologyReplay, Some(helicity_id)) => {
+                    return Err(invalid(format!(
+                        "amplitude destination {destination_id} references unknown resolved helicity {helicity_id}"
+                    )));
+                }
+                (RecurrenceStrategy::TopologyReplay, None) => {
+                    return Err(invalid(format!(
+                        "topology-replay amplitude destination {destination_id} lacks a helicity"
+                    )));
+                }
+                (RecurrenceStrategy::AllFlowUnion, None) => {}
+                (RecurrenceStrategy::AllFlowUnion, Some(_)) => {
+                    return Err(invalid(format!(
+                        "all-flow-union amplitude destination {destination_id} fixes a helicity"
+                    )));
+                }
+            }
+            let range = destination.closure_range;
             if range.start != next_closure {
                 return Err(invalid(format!(
-                    "target sector {sector_id} closure range starts at {}, expected packed offset {next_closure}",
+                    "amplitude destination {destination_id} closure range starts at {}, expected packed offset {next_closure}",
                     range.start
                 )));
             }
             let term_range = range.as_usize_range(
                 self.closure_terms.len(),
-                &format!("target sector {sector_id} closure"),
+                &format!("amplitude destination {destination_id} closure"),
             )?;
-            next_closure = range.end("target-sector closure")?;
+            next_closure = range.end("amplitude-destination closure")?;
             for term in &self.closure_terms[term_range] {
-                if term.target_sector_id != sector_id {
+                if term.target_destination_id != destination_id {
                     return Err(invalid(format!(
-                        "closure term {} is packed under target sector {sector_id} but points to sector {}",
-                        term.id, term.target_sector_id
+                        "closure term {} is packed under destination {destination_id} but points to destination {}",
+                        term.id, term.target_destination_id
                     )));
                 }
             }
         }
         if next_closure != closure_count {
             return Err(invalid(format!(
-                "packed target-sector closure ranges cover {next_closure} of {closure_count} terms"
+                "packed amplitude-destination ranges cover {next_closure} of {closure_count} terms"
             )));
         }
 
@@ -634,12 +993,15 @@ impl RecurrenceProgram {
                     term.id
                 )));
             }
-            if u64::from(term.target_sector_id) >= sector_count {
-                return Err(invalid(format!(
-                    "closure term {expected_id} references unknown target sector {}",
-                    term.target_sector_id
-                )));
-            }
+            let destination = self
+                .amplitude_destinations
+                .get(term.target_destination_id as usize)
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "closure term {expected_id} references unknown amplitude destination {}",
+                        term.target_destination_id
+                    ))
+                })?;
             if term.exact_factor.is_zero() {
                 return Err(invalid(format!(
                     "recurrence closure term {expected_id} has zero exact factor"
@@ -652,10 +1014,41 @@ impl RecurrenceProgram {
                     )));
                 }
             }
+            if let Some(helicity_id) = destination.target_helicity_id {
+                let expected = self.resolved_helicities[helicity_id as usize].source_states();
+                let actual = closure_parent_source_states(term, &self.currents)?;
+                if actual != expected {
+                    return Err(invalid(format!(
+                        "closure term {expected_id} ancestry does not match amplitude destination {}",
+                        destination.id
+                    )));
+                }
+            }
         }
 
         Ok(())
     }
+}
+
+fn closure_parent_source_states(
+    term: &RecurrenceClosureTerm,
+    currents: &[RecurrenceCurrent],
+) -> RusticolResult<Vec<SourceStateAssignment>> {
+    let mut states = Vec::new();
+    for parent_id in term.parent_current_ids.iter().copied() {
+        let parent = currents
+            .get(parent_id as usize)
+            .ok_or_else(|| invalid("closure parent current is absent"))?;
+        states.extend_from_slice(parent.key.helicity_identity().local_source_states());
+    }
+    states.sort_unstable();
+    if states
+        .windows(2)
+        .any(|pair| pair[0].source_slot() == pair[1].source_slot())
+    {
+        return Err(invalid("closure parent helicity ancestries overlap"));
+    }
+    Ok(states)
 }
 
 #[cfg(test)]
@@ -739,9 +1132,20 @@ mod tests {
         .unwrap()
     }
 
+    fn resolved_helicity() -> RecurrenceResolvedHelicity {
+        RecurrenceResolvedHelicity::new(0, vec![SourceStateAssignment::new(0, 0)], vec![-1])
+            .unwrap()
+    }
+
+    fn identity_replay_target() -> RecurrenceReplayTarget {
+        RecurrenceReplayTarget::new(0, 0, 0, vec![0], ExactComplexRational::ONE).unwrap()
+    }
+
     fn valid_program() -> RecurrenceProgram {
         RecurrenceProgram::new(
             RecurrenceStrategy::TopologyReplay,
+            1,
+            1,
             vec![DynamicLCColorState::new(0, None, vec![]).unwrap()],
             vec![
                 RecurrenceCurrent::new(
@@ -763,7 +1167,12 @@ mod tests {
             ],
             vec![contribution(0)],
             vec![RecurrenceFinalization::new(0, 1, Some(0), ExactComplexRational::ONE).unwrap()],
-            vec![CheckedTableRange::new(0, 1)],
+            vec![identity_replay_target()],
+            vec![resolved_helicity()],
+            vec![
+                RecurrenceAmplitudeDestination::new(0, 0, Some(0), CheckedTableRange::new(0, 1))
+                    .unwrap(),
+            ],
             vec![
                 RecurrenceClosureTerm::new(0, 0, 0, None, vec![1], ExactComplexRational::ONE)
                     .unwrap(),
@@ -779,7 +1188,7 @@ mod tests {
         assert_eq!(program.contribution_range(), CheckedTableRange::new(0, 1));
         assert_eq!(program.closure_term_range(), CheckedTableRange::new(0, 1));
         assert_eq!(
-            program.closure_range_for_sector(0),
+            program.closure_range_for_destination(0),
             Some(CheckedTableRange::new(0, 1))
         );
         assert!(program.validate().is_ok());
@@ -789,6 +1198,8 @@ mod tests {
     fn rejects_a_parent_that_does_not_precede_its_result() {
         let error = RecurrenceProgram::new(
             RecurrenceStrategy::TopologyReplay,
+            1,
+            1,
             vec![DynamicLCColorState::new(0, None, vec![]).unwrap()],
             vec![
                 RecurrenceCurrent::new(
@@ -810,7 +1221,12 @@ mod tests {
             ],
             vec![contribution(1)],
             vec![RecurrenceFinalization::new(0, 1, Some(0), ExactComplexRational::ONE).unwrap()],
-            vec![CheckedTableRange::new(0, 1)],
+            vec![identity_replay_target()],
+            vec![resolved_helicity()],
+            vec![
+                RecurrenceAmplitudeDestination::new(0, 0, Some(0), CheckedTableRange::new(0, 1))
+                    .unwrap(),
+            ],
             vec![
                 RecurrenceClosureTerm::new(0, 0, 0, None, vec![1], ExactComplexRational::ONE)
                     .unwrap(),
@@ -818,5 +1234,50 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.message().contains("does not precede result current"));
+    }
+
+    #[test]
+    fn rejects_a_closure_destination_with_mismatched_source_ancestry() {
+        let error = RecurrenceProgram::new(
+            RecurrenceStrategy::TopologyReplay,
+            1,
+            2,
+            vec![DynamicLCColorState::new(0, None, vec![]).unwrap()],
+            vec![
+                RecurrenceCurrent::new(
+                    0,
+                    source_key(),
+                    Some(ExactComplexRational::ONE),
+                    CheckedTableRange::new(0, 0),
+                    None,
+                )
+                .unwrap(),
+                RecurrenceCurrent::new(
+                    1,
+                    propagated_key(),
+                    None,
+                    CheckedTableRange::new(0, 1),
+                    Some(0),
+                )
+                .unwrap(),
+            ],
+            vec![contribution(0)],
+            vec![RecurrenceFinalization::new(0, 1, Some(0), ExactComplexRational::ONE).unwrap()],
+            vec![identity_replay_target()],
+            vec![
+                RecurrenceResolvedHelicity::new(0, vec![SourceStateAssignment::new(0, 1)], vec![1])
+                    .unwrap(),
+            ],
+            vec![
+                RecurrenceAmplitudeDestination::new(0, 0, Some(0), CheckedTableRange::new(0, 1))
+                    .unwrap(),
+            ],
+            vec![
+                RecurrenceClosureTerm::new(0, 0, 0, None, vec![1], ExactComplexRational::ONE)
+                    .unwrap(),
+            ],
+        )
+        .unwrap_err();
+        assert!(error.message().contains("ancestry does not match"));
     }
 }

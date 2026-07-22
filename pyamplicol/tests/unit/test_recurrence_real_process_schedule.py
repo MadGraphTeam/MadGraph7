@@ -166,6 +166,18 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
         )
         assert schedule["propagated_finalization_count_by_support_size"][3] == 0
         assert schedule["target_sector_count"] == color_plan.sector_count
+        assert schedule["resolved_helicity_count"] > 1
+        assert (
+            schedule["retained_helicity_count"]
+            >= schedule["resolved_helicity_count"]
+        )
+        assert schedule["structural_zero_helicity_count"] == (
+            schedule["retained_helicity_count"] - schedule["resolved_helicity_count"]
+        )
+        assert schedule["structural_zero_helicity_count"] > 0
+        assert schedule["amplitude_destination_count"] <= (
+            schedule["target_sector_count"] * schedule["resolved_helicity_count"]
+        )
         assert schedule["closure_term_count"] > 0
         summaries[model_source] = schedule
         dag_shapes[model_source] = (len(dag.currents), len(dag.interactions))
@@ -178,6 +190,10 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
         "finalization_count",
         "identity_finalization_count_by_support_size",
         "propagated_finalization_count_by_support_size",
+        "retained_helicity_count",
+        "resolved_helicity_count",
+        "structural_zero_helicity_count",
+        "amplitude_destination_count",
         "target_sector_count",
         "closure_term_count",
     ):

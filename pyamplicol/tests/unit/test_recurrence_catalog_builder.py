@@ -411,6 +411,12 @@ def test_model_generic_scalar_catalog_covers_source_flow_color_and_propagator() 
     assert len(catalog.propagators) == 1
     assert not catalog.propagators[0].applies_propagator
     assert catalog.color_contractions[0].rule_kind == "singlet"
+    assert len(catalog.runtime_helicity_contracts) == 1
+    assert (
+        catalog.runtime_helicity_contracts[0].full_state_template_id
+        == catalog.current_states[0].template_id
+    )
+    catalog.require_complete_runtime_helicity_contracts()
     assert {item.contract_kind for item in catalog.evaluator_bindings} == {
         "source",
         "vertex",

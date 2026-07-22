@@ -214,6 +214,7 @@ def build_recurrence_template_input_v1(
         "closures": tuple(catalog.closures),
         "color_contractions": tuple(catalog.color_contractions),
         "symmetry_proofs": tuple(catalog.symmetry_proofs),
+        "runtime_helicity_contracts": tuple(catalog.runtime_helicity_contracts),
         "evaluator_bindings": tuple(catalog.evaluator_bindings),
     }
     ids = {
@@ -269,6 +270,7 @@ def build_recurrence_template_input_v1(
         ),
         _quantum_number_flow_ranges(quantum_number_flows),
         _quantum_number_flow_terms(quantum_number_flows, strings),
+        *_runtime_helicity_tables(catalog, ids, strings, digests, factors),
         _sources_table(
             catalog,
             ids,
@@ -411,6 +413,15 @@ def _all_strings(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
             record.proof_algorithm,
             *record.subject_template_ids,
         )
+    for record in catalog.runtime_helicity_contracts:
+        yield from (
+            record.template_id,
+            record.full_state_template_id,
+            record.proof_algorithm,
+        )
+        for variant in record.variants:
+            yield variant.source_template_id
+            yield variant.source_state_template_id
     for record in catalog.evaluator_bindings:
         yield from (
             record.resolver_key,
@@ -437,6 +448,7 @@ def _all_digests(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
         catalog.closures,
         catalog.color_contractions,
         catalog.symmetry_proofs,
+        catalog.runtime_helicity_contracts,
         catalog.evaluator_bindings,
     ):
         for record in records:
@@ -458,6 +470,9 @@ def _all_digests(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
     for record in catalog.symmetry_proofs:
         yield record.witness_digest
         yield from record.expression_digests
+    for record in catalog.runtime_helicity_contracts:
+        yield record.proof_digest
+        yield from (variant.proof_digest for variant in record.variants)
     for record in catalog.evaluator_bindings:
         yield record.callable_signature
         yield from record.exact_expression_digests
@@ -488,6 +503,9 @@ def _all_factors(
         yield from (witness.exact_factor for witness in record.transition_witnesses)
     for record in catalog.symmetry_proofs:
         yield record.exact_phase
+    for record in catalog.runtime_helicity_contracts:
+        for variant in record.variants:
+            yield from variant.embedding_factors
 
 
 def _all_coupling_orders(
@@ -611,6 +629,7 @@ def _header_table(catalog, strings, digests, sections):
         "closure_count",
         "color_contraction_count",
         "symmetry_proof_count",
+        "runtime_helicity_contract_count",
         "evaluator_binding_count",
     )
     values = (
@@ -727,6 +746,118 @@ def _current_states_table(catalog, ids, strings, digests, sequences):
             ("mass_parameter_id", _U32),
             ("width_parameter_id", _U32),
             ("semantic_digest_id", _U32),
+        ),
+    )
+
+
+def _runtime_helicity_tables(catalog, ids, strings, digests, factors):
+    contract_rows = []
+    variant_rows = []
+    embedding_rows = []
+    projection_rows = []
+    variant_offset = 0
+    embedding_offset = 0
+    projection_offset = 0
+    for contract_id, contract in enumerate(catalog.runtime_helicity_contracts):
+        contract_rows.append(
+            (
+                contract_id,
+                strings.id(contract.template_id),
+                ids["current_states"][contract.full_state_template_id],
+                variant_offset,
+                len(contract.variants),
+                strings.id(contract.proof_algorithm),
+                digests.id(contract.proof_digest),
+                digests.id(contract.semantic_digest),
+            )
+        )
+        for variant in contract.variants:
+            variant_id = len(variant_rows)
+            variant_rows.append(
+                (
+                    variant_id,
+                    contract_id,
+                    ids["sources"][variant.source_template_id],
+                    ids["current_states"][variant.source_state_template_id],
+                    embedding_offset,
+                    len(variant.embedding_source_components),
+                    projection_offset,
+                    len(variant.projection_full_components),
+                    digests.id(variant.proof_digest),
+                )
+            )
+            for full_component, (source_component, factor) in enumerate(
+                zip(
+                    variant.embedding_source_components,
+                    variant.embedding_factors,
+                    strict=True,
+                )
+            ):
+                embedding_rows.append(
+                    (
+                        variant_id,
+                        full_component,
+                        MISSING_U32 if source_component is None else source_component,
+                        factors.id(factor),
+                    )
+                )
+            for source_component, full_component in enumerate(
+                variant.projection_full_components
+            ):
+                projection_rows.append(
+                    (variant_id, source_component, full_component)
+                )
+            embedding_offset += len(variant.embedding_source_components)
+            projection_offset += len(variant.projection_full_components)
+        variant_offset += len(contract.variants)
+    return (
+        _rows(
+            "runtime_helicity_contracts",
+            contract_rows,
+            (
+                ("id", _U32),
+                ("template_string_id", _U32),
+                ("full_state_template_id", _U32),
+                ("variant_offset", _U32),
+                ("variant_count", _U32),
+                ("proof_algorithm_string_id", _U32),
+                ("proof_digest_id", _U32),
+                ("semantic_digest_id", _U32),
+            ),
+        ),
+        _rows(
+            "runtime_helicity_variants",
+            variant_rows,
+            (
+                ("id", _U32),
+                ("contract_id", _U32),
+                ("source_template_id", _U32),
+                ("source_state_template_id", _U32),
+                ("embedding_offset", _U32),
+                ("embedding_count", _U32),
+                ("projection_offset", _U32),
+                ("projection_count", _U32),
+                ("proof_digest_id", _U32),
+            ),
+        ),
+        _rows(
+            "runtime_helicity_embeddings",
+            embedding_rows,
+            (
+                ("variant_id", _U32),
+                ("full_component", _U32),
+                ("source_component", _U32),
+                ("factor_id", _U32),
+            ),
+        ),
+        _rows(
+            "runtime_helicity_projections",
+            projection_rows,
+            (
+                ("variant_id", _U32),
+                ("source_component", _U32),
+                ("full_component", _U32),
+            ),
         ),
     )
 

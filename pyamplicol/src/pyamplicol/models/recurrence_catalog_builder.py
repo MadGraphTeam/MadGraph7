@@ -44,6 +44,8 @@ from .recurrence_template import (
     ParameterTemplateV1,
     PropagatorTemplateV1,
     QuantumFlowTemplateV1,
+    RecurrenceRuntimeHelicityContractV1,
+    RecurrenceRuntimeHelicityVariantV1,
     RecurrenceTemplateCatalog,
     RecurrenceTemplateError,
     SourceTemplateV1,
@@ -158,6 +160,12 @@ def build_recurrence_template_catalog(
         *direct_closure_bindings,
         *_coalesce_evaluator_requests(evaluator_builders),
     )
+    runtime_helicity_contracts = _build_runtime_helicity_contracts(
+        model,
+        recurrence_catalog,
+        current_states,
+        sources,
+    )
 
     colors_by_id = {
         color.template_id: color for color in (*transition_colors, *closure_colors)
@@ -174,6 +182,7 @@ def build_recurrence_template_catalog(
         closures=closures,
         color_contractions=tuple(colors_by_id.values()),
         symmetry_proofs=propagator_proofs,
+        runtime_helicity_contracts=runtime_helicity_contracts,
         evaluator_bindings=evaluator_bindings,
     )
 
@@ -959,6 +968,224 @@ def _build_sources(
                 )
             )
     return tuple(records), tuple(bindings)
+
+
+def _build_runtime_helicity_contracts(
+    model: Model,
+    prepared_catalog: PreparedKernelCatalog,
+    current_states: Sequence[CurrentStateTemplateV1],
+    sources: Sequence[SourceTemplateV1],
+) -> tuple[RecurrenceRuntimeHelicityContractV1, ...]:
+    """Certify source families that can execute through one full current state.
+
+    Incomplete families are deliberately absent.  Topology replay continues to
+    consume their concrete source states, while all-flow union calls the catalog
+    preflight and fails before lowering instead of guessing an embedding.
+    """
+
+    states_by_id = {state.template_id: state for state in current_states}
+    states_by_particle_chirality = {
+        (state.particle_id, state.chirality): state for state in current_states
+    }
+    source_families: dict[int, list[SourceTemplateV1]] = {}
+    for source in sources:
+        state = states_by_id[source.state_template_id]
+        source_families.setdefault(state.particle_id, []).append(source)
+
+    compiled_orderings = _compiled_current_orderings(model)
+    contracts: list[RecurrenceRuntimeHelicityContractV1] = []
+    for particle_id in sorted(source_families):
+        family = tuple(
+            sorted(source_families[particle_id], key=lambda item: item.template_id)
+        )
+        source_states = tuple(states_by_id[item.state_template_id] for item in family)
+        unique_state_ids = {state.template_id for state in source_states}
+        full_state = states_by_particle_chirality.get((particle_id, 0))
+        if full_state is None and len(unique_state_ids) == 1:
+            full_state = source_states[0]
+        if full_state is None:
+            continue
+
+        variants: list[RecurrenceRuntimeHelicityVariantV1] = []
+        proof_inputs: list[object] = []
+        complete = True
+        for source, source_state in zip(family, source_states, strict=True):
+            if source_state.template_id == full_state.template_id:
+                embedding = tuple(range(full_state.dimension))
+                projection = tuple(range(full_state.dimension))
+                ordering_proof: object = {
+                    "kind": "identity",
+                    "state_digest": full_state.semantic_digest,
+                }
+            else:
+                ordering = compiled_orderings.get(
+                    (source_state.particle_id, source_state.chirality)
+                )
+                if ordering is None:
+                    complete = False
+                    break
+                embedding = tuple(ordering.input_embedding)
+                projection = tuple(ordering.result_projection)
+                if (
+                    len(embedding) != full_state.dimension
+                    or len(projection) != source_state.dimension
+                ):
+                    complete = False
+                    break
+                ordering_proof = ordering.to_json_dict()
+            if not _prepared_full_state_family_is_complete(
+                prepared_catalog,
+                particle_id=particle_id,
+                source_state=source_state,
+                full_state_template=full_state,
+                states_by_particle_chirality=states_by_particle_chirality,
+            ):
+                complete = False
+                break
+            factors = tuple(
+                ExactComplexRationalV1.zero()
+                if component is None
+                else ExactComplexRationalV1.one()
+                for component in embedding
+            )
+            proof_payload = {
+                "abi": "pyamplicol-recurrence-runtime-helicity-variant-v1",
+                "full_state": full_state.semantic_digest,
+                "ordering": ordering_proof,
+                "source": source.semantic_digest,
+                "source_state": source_state.semantic_digest,
+            }
+            proof_digest = _digest(proof_payload)
+            proof_inputs.append(proof_payload)
+            variants.append(
+                RecurrenceRuntimeHelicityVariantV1(
+                    source_template_id=source.template_id,
+                    source_state_template_id=source_state.template_id,
+                    embedding_source_components=embedding,
+                    embedding_factors=factors,
+                    projection_full_components=projection,
+                    proof_digest=proof_digest,
+                )
+            )
+        if not complete or len(variants) != len(family):
+            continue
+        proof_payload = {
+            "abi": "pyamplicol-recurrence-runtime-helicity-contract-v1",
+            "full_state": full_state.semantic_digest,
+            "variants": proof_inputs,
+        }
+        contracts.append(
+            RecurrenceRuntimeHelicityContractV1(
+                template_id=_token("runtime-helicity", proof_payload),
+                full_state_template_id=full_state.template_id,
+                variants=tuple(variants),
+                proof_algorithm=(
+                    "prepared-current-ordering-runtime-helicity-embedding-v1"
+                ),
+                proof_digest=_digest(proof_payload),
+            )
+        )
+    return tuple(contracts)
+
+
+def _compiled_current_orderings(model: Model) -> dict[tuple[int, int], Any]:
+    compiled = getattr(model, "compiled", None)
+    ir = getattr(compiled, "ir", None)
+    if ir is None:
+        return {}
+    particle_ids = {particle.name: particle.pdg_code for particle in ir.particles}
+    return {
+        (int(particle_ids[record.particle]), int(record.chirality)): record
+        for record in ir.current_orderings
+        if record.particle in particle_ids
+    }
+
+
+def _prepared_full_state_family_is_complete(
+    prepared_catalog: PreparedKernelCatalog,
+    *,
+    particle_id: int,
+    source_state: CurrentStateTemplateV1,
+    full_state_template: CurrentStateTemplateV1,
+    states_by_particle_chirality: Mapping[
+        tuple[int, int], CurrentStateTemplateV1
+    ],
+) -> bool:
+    if source_state.template_id == full_state_template.template_id:
+        return True
+    full_prepared_state = next(
+        (
+            binding.state
+            for binding in prepared_catalog.propagator_bindings
+            if binding.state.particle_id == particle_id
+            and binding.state.chirality == full_state_template.chirality
+        ),
+        None,
+    )
+    if full_prepared_state is None:
+        return False
+
+    def full_state(state: PreparedParticleState) -> PreparedParticleState | None:
+        template = states_by_particle_chirality.get((state.particle_id, 0))
+        if template is None:
+            return state if state.chirality == 0 else None
+        return next(
+            (
+                candidate.state
+                for candidate in prepared_catalog.propagator_bindings
+                if candidate.state.particle_id == state.particle_id
+                and candidate.state.chirality == template.chirality
+            ),
+            None,
+        )
+
+    vertex_inventory = {
+        (
+            binding.key.kind,
+            binding.key.particles,
+            full_state(binding.left_state),
+            full_state(binding.right_state),
+            full_state(binding.result_state),
+        )
+        for binding in prepared_catalog.vertex_bindings
+        if all(
+            full_state(state) == state
+            for state in (binding.left_state, binding.right_state, binding.result_state)
+        )
+    }
+    closure_inventory = {
+        (
+            binding.key.kind,
+            binding.key.particles,
+            full_state(binding.left_state),
+            full_state(binding.right_state),
+            full_state(binding.result_state),
+        )
+        for binding in prepared_catalog.closure_bindings
+        if all(
+            full_state(state) == state
+            for state in (binding.left_state, binding.right_state, binding.result_state)
+        )
+    }
+    for bindings, inventory in (
+        (prepared_catalog.vertex_bindings, vertex_inventory),
+        (prepared_catalog.closure_bindings, closure_inventory),
+    ):
+        for binding in bindings:
+            states = (binding.left_state, binding.right_state, binding.result_state)
+            if not any(
+                state.particle_id == particle_id
+                and state.chirality == source_state.chirality
+                for state in states
+            ):
+                continue
+            mapped = tuple(full_state(state) for state in states)
+            if any(state is None for state in mapped):
+                return False
+            key = (binding.key.kind, binding.key.particles, *mapped)
+            if key not in inventory:
+                return False
+    return True
 
 
 def _source_color_seed(

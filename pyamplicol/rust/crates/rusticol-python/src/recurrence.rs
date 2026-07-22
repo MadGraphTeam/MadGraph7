@@ -483,7 +483,7 @@ impl OwnedInput {
 }
 
 const TEMPLATE_TABLE_INVENTORY: &[(&str, usize)] = &[
-    ("catalog_header", 17),
+    ("catalog_header", 18),
     ("closures", 20),
     ("color_contractions", 14),
     ("color_nc_terms", 3),
@@ -503,6 +503,10 @@ const TEMPLATE_TABLE_INVENTORY: &[(&str, usize)] = &[
     ("quantum_flows", 16),
     ("quantum_number_flow_ranges", 3),
     ("quantum_number_flow_terms", 3),
+    ("runtime_helicity_contracts", 8),
+    ("runtime_helicity_embeddings", 4),
+    ("runtime_helicity_projections", 3),
+    ("runtime_helicity_variants", 9),
     ("sources", 20),
     ("string_bytes", 1),
     ("string_ranges", 2),
@@ -595,6 +599,10 @@ struct NativeScheduleSummary {
     finalization_count: usize,
     identity_finalization_count_by_support_size: Vec<usize>,
     propagated_finalization_count_by_support_size: Vec<usize>,
+    retained_helicity_count: u64,
+    resolved_helicity_count: usize,
+    structural_zero_helicity_count: u64,
+    amplitude_destination_count: usize,
     target_sector_count: usize,
     closure_term_count: usize,
     source_layout: Vec<NativeSourceLayout>,
@@ -670,10 +678,112 @@ pub(crate) fn _evaluate_recurrence_one_helicity_v1(
                 &model_parameters,
                 point_count,
                 point_tile_size,
+                false,
             )
         })
         .map_err(python_error)?;
     recurrence_evaluation_mapping(py, native)
+}
+
+#[pyfunction(
+    signature = (
+        builder_input,
+        prepared_template_input,
+        prepared_kernel_manifest,
+        prepared_kernel_pack_digest,
+        payload_root,
+        source_values,
+        external_momenta,
+        model_parameters,
+        *,
+        point_count,
+        point_tile_size=1024
+    )
+)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn _evaluate_recurrence_all_helicities_v1(
+    py: Python<'_>,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    prepared_kernel_manifest: Vec<u8>,
+    prepared_kernel_pack_digest: String,
+    payload_root: PathBuf,
+    source_values: Vec<(f64, f64)>,
+    external_momenta: Vec<f64>,
+    model_parameters: Vec<(f64, f64)>,
+    point_count: usize,
+    point_tile_size: usize,
+) -> PyResult<Py<PyAny>> {
+    let owned = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let native = py
+        .detach(move || {
+            evaluate_one_helicity(
+                owned,
+                prepared_template,
+                &prepared_kernel_manifest,
+                &prepared_kernel_pack_digest,
+                &payload_root,
+                &source_values,
+                &external_momenta,
+                &model_parameters,
+                point_count,
+                point_tile_size,
+                true,
+            )
+        })
+        .map_err(python_error)?;
+    recurrence_evaluation_mapping(py, native)
+}
+
+#[pyfunction(
+    signature = (
+        builder_input,
+        prepared_template_input,
+        prepared_kernel_manifest,
+        prepared_kernel_pack_digest,
+        payload_root,
+        source_values,
+        external_momenta,
+        model_parameters,
+        *,
+        point_count,
+        point_tile_size=1024
+    )
+)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn _evaluate_recurrence_helicity_sum_norm_sqr_v1(
+    py: Python<'_>,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    prepared_kernel_manifest: Vec<u8>,
+    prepared_kernel_pack_digest: String,
+    payload_root: PathBuf,
+    source_values: Vec<(f64, f64)>,
+    external_momenta: Vec<f64>,
+    model_parameters: Vec<(f64, f64)>,
+    point_count: usize,
+    point_tile_size: usize,
+) -> PyResult<Py<PyAny>> {
+    let owned = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let native = py
+        .detach(move || {
+            evaluate_helicity_sum_norm_sqr(
+                owned,
+                prepared_template,
+                &prepared_kernel_manifest,
+                &prepared_kernel_pack_digest,
+                &payload_root,
+                &source_values,
+                &external_momenta,
+                &model_parameters,
+                point_count,
+                point_tile_size,
+            )
+        })
+        .map_err(python_error)?;
+    recurrence_norm_sqr_mapping(py, native)
 }
 
 #[derive(Clone, Debug)]
@@ -681,7 +791,25 @@ struct NativeRecurrenceEvaluation {
     amplitudes: Vec<(f64, f64)>,
     source_layout: Vec<rusticol_core::recurrence::RecurrenceSourceLayout>,
     sector_count: usize,
+    resolved_helicities: Vec<Vec<i32>>,
+    amplitude_destinations: Vec<NativeAmplitudeDestination>,
+    resolved: bool,
     backend: NativeRecurrenceKernelBackendSummary,
+}
+
+#[derive(Clone, Debug)]
+struct NativeRecurrenceNormSqrEvaluation {
+    norm_sqr: Vec<f64>,
+    source_layout: Vec<rusticol_core::recurrence::RecurrenceSourceLayout>,
+    sector_count: usize,
+    backend: NativeRecurrenceKernelBackendSummary,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct NativeAmplitudeDestination {
+    id: u32,
+    target_sector_id: u32,
+    target_helicity_id: Option<u32>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -696,7 +824,114 @@ fn evaluate_one_helicity(
     model_parameters: &[(f64, f64)],
     point_count: usize,
     point_tile_size: usize,
+    resolved: bool,
 ) -> RusticolResult<NativeRecurrenceEvaluation> {
+    validate_inventory(&input)?;
+    let actual_digest = canonical_digest(&input)?;
+    if actual_digest != input.declared_digest {
+        return Err(invalid("recurrence builder input digest mismatch"));
+    }
+    let process = decode_process_input(&input)?.validate()?;
+    let template = prepared_template.into_core()?.validate()?;
+    let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
+    if authenticated
+        .template()
+        .summary()
+        .prepared_kernel_pack_digest
+        .to_string()
+        != prepared_kernel_pack_digest
+    {
+        return Err(RusticolError::integrity(
+            "recurrence prepared-kernel pack digest does not match the authenticated template",
+        ));
+    }
+    let program = authenticated.build()?;
+    let mut backend = NativeRecurrenceKernelBackend::load(prepared_kernel_manifest, payload_root)?;
+    let plan =
+        RecurrenceExecutionPlan::new(program, authenticated.template(), backend.kernel_specs())?;
+    let source_layout = plan.source_layout();
+    let sector_count = plan.sector_count();
+    let resolved_helicities = plan
+        .program()
+        .resolved_helicities()
+        .iter()
+        .map(|row| row.public_helicities().to_vec())
+        .collect::<Vec<_>>();
+    let amplitude_destinations = plan
+        .program()
+        .amplitude_destinations()
+        .iter()
+        .copied()
+        .map(|destination| NativeAmplitudeDestination {
+            id: destination.id(),
+            target_sector_id: destination.target_sector_id(),
+            target_helicity_id: destination.target_helicity_id(),
+        })
+        .collect::<Vec<_>>();
+    let output_component_count = if resolved {
+        plan.resolved_component_count()?
+    } else {
+        sector_count
+    };
+    let mut runtime = RecurrenceExecutionRuntime::new(plan, point_tile_size)?;
+    let source_values = source_values
+        .iter()
+        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
+        .collect::<Vec<_>>();
+    let model_parameters = model_parameters
+        .iter()
+        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
+        .collect::<Vec<_>>();
+    let output_len = output_component_count
+        .checked_mul(point_count)
+        .ok_or_else(|| invalid("recurrence output length overflows"))?;
+    let mut amplitudes = vec![EagerComplex64::new(0.0, 0.0); output_len];
+    if resolved {
+        runtime.evaluate_resolved_amplitudes_into(
+            &mut backend,
+            point_count,
+            &source_values,
+            external_momenta,
+            &model_parameters,
+            &mut amplitudes,
+        )?;
+    } else {
+        runtime.evaluate_one_helicity_amplitudes_into(
+            &mut backend,
+            point_count,
+            &source_values,
+            external_momenta,
+            &model_parameters,
+            &mut amplitudes,
+        )?;
+    }
+    Ok(NativeRecurrenceEvaluation {
+        amplitudes: amplitudes
+            .into_iter()
+            .map(|value| (value.re, value.im))
+            .collect(),
+        source_layout,
+        sector_count,
+        resolved_helicities,
+        amplitude_destinations,
+        resolved,
+        backend: backend.summary().clone(),
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_helicity_sum_norm_sqr(
+    input: OwnedInput,
+    prepared_template: PreparedTemplateInput,
+    prepared_kernel_manifest: &[u8],
+    prepared_kernel_pack_digest: &str,
+    payload_root: &std::path::Path,
+    source_values: &[(f64, f64)],
+    external_momenta: &[f64],
+    model_parameters: &[(f64, f64)],
+    point_count: usize,
+    point_tile_size: usize,
+) -> RusticolResult<NativeRecurrenceNormSqrEvaluation> {
     validate_inventory(&input)?;
     let actual_digest = canonical_digest(&input)?;
     if actual_digest != input.declared_digest {
@@ -733,21 +968,18 @@ fn evaluate_one_helicity(
         .collect::<Vec<_>>();
     let output_len = sector_count
         .checked_mul(point_count)
-        .ok_or_else(|| invalid("recurrence output length overflows"))?;
-    let mut amplitudes = vec![EagerComplex64::new(0.0, 0.0); output_len];
-    runtime.evaluate_one_helicity_amplitudes_into(
+        .ok_or_else(|| invalid("recurrence norm-squared output length overflows"))?;
+    let mut norm_sqr = vec![0.0; output_len];
+    runtime.evaluate_helicity_sum_norm_sqr_into(
         &mut backend,
         point_count,
         &source_values,
         external_momenta,
         &model_parameters,
-        &mut amplitudes,
+        &mut norm_sqr,
     )?;
-    Ok(NativeRecurrenceEvaluation {
-        amplitudes: amplitudes
-            .into_iter()
-            .map(|value| (value.re, value.im))
-            .collect(),
+    Ok(NativeRecurrenceNormSqrEvaluation {
+        norm_sqr,
         source_layout,
         sector_count,
         backend: backend.summary().clone(),
@@ -761,7 +993,51 @@ fn recurrence_evaluation_mapping(
     let result = PyDict::new(py);
     result.set_item("kind", "pyamplicol-recurrence-private-evaluation-v1")?;
     result.set_item("sector_count", native.sector_count)?;
+    result.set_item("resolved", native.resolved)?;
+    result.set_item("resolved_helicities", native.resolved_helicities)?;
+    let destinations = PyList::empty(py);
+    for destination in native.amplitude_destinations {
+        let row = PyDict::new(py);
+        row.set_item("id", destination.id)?;
+        row.set_item("target_sector_id", destination.target_sector_id)?;
+        row.set_item("target_helicity_id", destination.target_helicity_id)?;
+        destinations.append(row)?;
+    }
+    result.set_item("amplitude_destinations", destinations)?;
     result.set_item("amplitudes", native.amplitudes)?;
+    let source_layout = PyList::empty(py);
+    for source in native.source_layout {
+        let row = PyDict::new(py);
+        row.set_item("current_id", source.current_id)?;
+        row.set_item("source_slot", source.source_slot)?;
+        row.set_item("source_template_id", source.source_template_id)?;
+        row.set_item("component_start", source.component_start)?;
+        row.set_item("component_count", source.component_count)?;
+        source_layout.append(row)?;
+    }
+    result.set_item("source_layout", source_layout)?;
+    let backend = PyDict::new(py);
+    backend.set_item("manifest_sha256", native.backend.manifest_sha256)?;
+    backend.set_item("backend", native.backend.backend)?;
+    backend.set_item("target_triple", native.backend.target_triple)?;
+    backend.set_item("target_cpu_features", native.backend.target_cpu_features)?;
+    backend.set_item("target_portable", native.backend.target_portable)?;
+    backend.set_item("kernel_count", native.backend.kernel_count)?;
+    result.set_item("prepared_backend", backend)?;
+    Ok(result.into_any().unbind())
+}
+
+fn recurrence_norm_sqr_mapping(
+    py: Python<'_>,
+    native: NativeRecurrenceNormSqrEvaluation,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item(
+        "kind",
+        "pyamplicol-recurrence-private-helicity-sum-norm-sqr-v1",
+    )?;
+    result.set_item("sector_count", native.sector_count)?;
+    result.set_item("norm_sqr", native.norm_sqr)?;
     let source_layout = PyList::empty(py);
     for source in native.source_layout {
         let row = PyDict::new(py);
@@ -1276,7 +1552,12 @@ fn validate_input(
                 finalization_count: program.finalizations().len(),
                 identity_finalization_count_by_support_size,
                 propagated_finalization_count_by_support_size,
-                target_sector_count: program.target_sector_closure_ranges().len(),
+                retained_helicity_count: program.retained_helicity_count(),
+                resolved_helicity_count: program.resolved_helicities().len(),
+                structural_zero_helicity_count: program.retained_helicity_count()
+                    - program.resolved_helicities().len() as u64,
+                amplitude_destination_count: program.amplitude_destinations().len(),
+                target_sector_count: program.physical_sector_count() as usize,
                 closure_term_count: program.closure_terms().len(),
                 source_layout,
             })
@@ -1602,7 +1883,9 @@ fn decode_template_input(
         CatalogHeaderRow, ClosureRow, ColorContractionRow, ColorNcTermRow, CouplingOrderTermRow,
         CurrentStateRow, EvaluatorBindingRow, ExactFactorRow, LCColorTransitionWitnessRow,
         OwnedRecurrenceTemplateInput, ParameterRow, PropagatorRow, QuantumFlowRow,
-        QuantumNumberFlowTermRow, SourceRow, SymmetryProofRow, TransitionRow,
+        QuantumNumberFlowTermRow, RuntimeHelicityContractRow, RuntimeHelicityEmbeddingRow,
+        RuntimeHelicityProjectionRow, RuntimeHelicityVariantRow, SourceRow, SymmetryProofRow,
+        TransitionRow,
     };
     let catalog_header = decode_template_rows(input.table("catalog_header")?, |table, row| {
         Ok(CatalogHeaderRow {
@@ -1622,6 +1905,7 @@ fn decode_template_input(
             closure_count: table.u32("closure_count")?[row],
             color_contraction_count: table.u32("color_contraction_count")?[row],
             symmetry_proof_count: table.u32("symmetry_proof_count")?[row],
+            runtime_helicity_contract_count: table.u32("runtime_helicity_contract_count")?[row],
             evaluator_binding_count: table.u32("evaluator_binding_count")?[row],
         })
     })?;
@@ -1749,6 +2033,58 @@ fn decode_template_input(
                 flow_id: table.u32("flow_id")?[row],
                 name_string_id: table.u32("name_string_id")?[row],
                 expression_string_id: table.u32("expression_string_id")?[row],
+            })
+        })?;
+    let runtime_helicity_contracts =
+        decode_template_rows(input.table("runtime_helicity_contracts")?, |table, row| {
+            Ok(RuntimeHelicityContractRow {
+                id: table.u32("id")?[row],
+                template_string_id: table.u32("template_string_id")?[row],
+                full_state_template_id: table.u32("full_state_template_id")?[row],
+                variant_range: CheckedTableRange::new(
+                    table.u32("variant_offset")?[row].into(),
+                    table.u32("variant_count")?[row].into(),
+                ),
+                proof_algorithm_string_id: table.u32("proof_algorithm_string_id")?[row],
+                proof_digest_id: table.u32("proof_digest_id")?[row],
+                semantic_digest_id: table.u32("semantic_digest_id")?[row],
+            })
+        })?;
+    let runtime_helicity_embeddings =
+        decode_template_rows(input.table("runtime_helicity_embeddings")?, |table, row| {
+            Ok(RuntimeHelicityEmbeddingRow {
+                variant_id: table.u32("variant_id")?[row],
+                full_component: table.u32("full_component")?[row],
+                source_component: table.u32("source_component")?[row],
+                factor_id: table.u32("factor_id")?[row],
+            })
+        })?;
+    let runtime_helicity_projections = decode_template_rows(
+        input.table("runtime_helicity_projections")?,
+        |table, row| {
+            Ok(RuntimeHelicityProjectionRow {
+                variant_id: table.u32("variant_id")?[row],
+                source_component: table.u32("source_component")?[row],
+                full_component: table.u32("full_component")?[row],
+            })
+        },
+    )?;
+    let runtime_helicity_variants =
+        decode_template_rows(input.table("runtime_helicity_variants")?, |table, row| {
+            Ok(RuntimeHelicityVariantRow {
+                id: table.u32("id")?[row],
+                contract_id: table.u32("contract_id")?[row],
+                source_template_id: table.u32("source_template_id")?[row],
+                source_state_template_id: table.u32("source_state_template_id")?[row],
+                embedding_range: CheckedTableRange::new(
+                    table.u32("embedding_offset")?[row].into(),
+                    table.u32("embedding_count")?[row].into(),
+                ),
+                projection_range: CheckedTableRange::new(
+                    table.u32("projection_offset")?[row].into(),
+                    table.u32("projection_count")?[row].into(),
+                ),
+                proof_digest_id: table.u32("proof_digest_id")?[row],
             })
         })?;
     let sources = decode_template_rows(input.table("sources")?, |table, row| {
@@ -1908,6 +2244,10 @@ fn decode_template_input(
         quantum_flows,
         quantum_number_flow_ranges,
         quantum_number_flow_terms,
+        runtime_helicity_contracts,
+        runtime_helicity_variants,
+        runtime_helicity_embeddings,
+        runtime_helicity_projections,
         sources,
         string_ranges,
         string_bytes,
@@ -2179,6 +2519,16 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
         schedule_summary.set_item(
             "propagated_finalization_count_by_support_size",
             schedule.propagated_finalization_count_by_support_size,
+        )?;
+        schedule_summary.set_item("retained_helicity_count", schedule.retained_helicity_count)?;
+        schedule_summary.set_item("resolved_helicity_count", schedule.resolved_helicity_count)?;
+        schedule_summary.set_item(
+            "structural_zero_helicity_count",
+            schedule.structural_zero_helicity_count,
+        )?;
+        schedule_summary.set_item(
+            "amplitude_destination_count",
+            schedule.amplitude_destination_count,
         )?;
         schedule_summary.set_item("target_sector_count", schedule.target_sector_count)?;
         schedule_summary.set_item("closure_term_count", schedule.closure_term_count)?;

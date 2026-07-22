@@ -42,6 +42,8 @@ from pyamplicol.models.recurrence_template import (
     ParameterTemplateV1,
     PropagatorTemplateV1,
     QuantumFlowTemplateV1,
+    RecurrenceRuntimeHelicityContractV1,
+    RecurrenceRuntimeHelicityVariantV1,
     RecurrenceTemplateCatalog,
     RecurrenceTemplateError,
     SourceTemplateV1,
@@ -591,6 +593,97 @@ def test_model_wide_columnar_projection_preserves_typed_contracts() -> None:
     assert {"witness_start", "witness_count"} <= {
         column.name for column in tables["color_contractions"].columns
     }
+
+
+def _runtime_helicity_catalog() -> RecurrenceTemplateCatalog:
+    states = _state_templates()
+    full_matter = replace(
+        states[1],
+        template_id="state:matter-full",
+        basis="dirac",
+        tensor_ordering=("spin0", "spin1", "spin2", "spin3"),
+        dimension=4,
+        chirality=0,
+        semantic_digest="",
+    )
+    one = ExactComplexRationalV1.one()
+    zero = ExactComplexRationalV1.zero()
+    contracts = (
+        RecurrenceRuntimeHelicityContractV1(
+            template_id="runtime-helicity:adjoint",
+            full_state_template_id="state:adjoint",
+            variants=(
+                RecurrenceRuntimeHelicityVariantV1(
+                    source_template_id="source:adjoint:+1",
+                    source_state_template_id="state:adjoint",
+                    embedding_source_components=(0, 1, 2, 3),
+                    embedding_factors=(one, one, one, one),
+                    projection_full_components=(0, 1, 2, 3),
+                    proof_digest=_EXPRESSION_A,
+                ),
+            ),
+            proof_algorithm="prepared-current-ordering-runtime-helicity-embedding-v1",
+            proof_digest=_EXPRESSION_B,
+        ),
+        RecurrenceRuntimeHelicityContractV1(
+            template_id="runtime-helicity:matter",
+            full_state_template_id="state:matter-full",
+            variants=(
+                RecurrenceRuntimeHelicityVariantV1(
+                    source_template_id="source:matter:+1",
+                    source_state_template_id="state:matter",
+                    embedding_source_components=(0, 1, None, None),
+                    embedding_factors=(one, one, zero, zero),
+                    projection_full_components=(0, 1),
+                    proof_digest=_EXPRESSION_C,
+                ),
+            ),
+            proof_algorithm="prepared-current-ordering-runtime-helicity-embedding-v1",
+            proof_digest=_PREDICATE,
+        ),
+    )
+    return _catalog(
+        current_states=(*states, full_matter),
+        runtime_helicity_contracts=contracts,
+    )
+
+
+def test_runtime_helicity_contract_round_trips_and_flattens() -> None:
+    catalog = _runtime_helicity_catalog()
+    restored = RecurrenceTemplateCatalog.from_dict(catalog.to_dict())
+    restored.require_complete_runtime_helicity_contracts()
+
+    assert restored == catalog
+    tables = {
+        table.name: table
+        for table in build_recurrence_template_input_v1(catalog).tables
+    }
+    assert tables["runtime_helicity_contracts"].row_count == 2
+    assert tables["runtime_helicity_variants"].row_count == 2
+    assert tables["runtime_helicity_embeddings"].row_count == 8
+    assert tables["runtime_helicity_projections"].row_count == 6
+
+
+def test_runtime_helicity_preflight_reports_uncertified_source() -> None:
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match=r"recurrence all-flow-union preflight.*source:adjoint",
+    ):
+        _catalog().require_complete_runtime_helicity_contracts()
+
+
+def test_runtime_helicity_embedding_must_be_exactly_invertible() -> None:
+    one = ExactComplexRationalV1.one()
+    zero = ExactComplexRationalV1.zero()
+    with pytest.raises(RecurrenceTemplateError, match="projection must invert"):
+        RecurrenceRuntimeHelicityVariantV1(
+            source_template_id="source:matter:+1",
+            source_state_template_id="state:matter",
+            embedding_source_components=(0, 1, None, None),
+            embedding_factors=(one, one, zero, zero),
+            projection_full_components=(1, 0),
+            proof_digest=_EXPRESSION_A,
+        )
 
 
 def test_native_builder_composite_authentication_is_warmup_only() -> None:

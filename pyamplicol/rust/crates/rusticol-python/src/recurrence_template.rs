@@ -19,7 +19,9 @@ use rusticol_core::recurrence::template::{
     CurrentStateRow, DigestCatalogRow, EvaluatorBindingRow, ExactFactorRow, IndexedRangeRow,
     LCColorTransitionWitnessRow, MISSING_U32, OwnedRecurrenceTemplateInput, ParameterRow,
     PropagatorRow, QuantumFlowRow, QuantumNumberFlowTermRow, RECURRENCE_TEMPLATE_INPUT_ABI,
-    RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION, SourceRow, SymmetryProofRow, TransitionRow,
+    RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION, RuntimeHelicityContractRow,
+    RuntimeHelicityEmbeddingRow, RuntimeHelicityProjectionRow, RuntimeHelicityVariantRow,
+    SourceRow, SymmetryProofRow, TransitionRow,
 };
 use rusticol_core::recurrence::{CheckedTableRange, SemanticDigest, checked_usize};
 use rusticol_core::{RusticolError, RusticolResult};
@@ -102,6 +104,7 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("closure_count", PrimitiveKind::U32),
             column("color_contraction_count", PrimitiveKind::U32),
             column("symmetry_proof_count", PrimitiveKind::U32),
+            column("runtime_helicity_contract_count", PrimitiveKind::U32),
             column("evaluator_binding_count", PrimitiveKind::U32),
         ],
     },
@@ -344,6 +347,50 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("flow_id", PrimitiveKind::U32),
             column("name_string_id", PrimitiveKind::U32),
             column("expression_string_id", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "runtime_helicity_contracts",
+        columns: &[
+            column("id", PrimitiveKind::U32),
+            column("template_string_id", PrimitiveKind::U32),
+            column("full_state_template_id", PrimitiveKind::U32),
+            column("variant_offset", PrimitiveKind::U32),
+            column("variant_count", PrimitiveKind::U32),
+            column("proof_algorithm_string_id", PrimitiveKind::U32),
+            column("proof_digest_id", PrimitiveKind::U32),
+            column("semantic_digest_id", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "runtime_helicity_embeddings",
+        columns: &[
+            column("variant_id", PrimitiveKind::U32),
+            column("full_component", PrimitiveKind::U32),
+            column("source_component", PrimitiveKind::U32),
+            column("factor_id", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "runtime_helicity_projections",
+        columns: &[
+            column("variant_id", PrimitiveKind::U32),
+            column("source_component", PrimitiveKind::U32),
+            column("full_component", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "runtime_helicity_variants",
+        columns: &[
+            column("id", PrimitiveKind::U32),
+            column("contract_id", PrimitiveKind::U32),
+            column("source_template_id", PrimitiveKind::U32),
+            column("source_state_template_id", PrimitiveKind::U32),
+            column("embedding_offset", PrimitiveKind::U32),
+            column("embedding_count", PrimitiveKind::U32),
+            column("projection_offset", PrimitiveKind::U32),
+            column("projection_count", PrimitiveKind::U32),
+            column("proof_digest_id", PrimitiveKind::U32),
         ],
     },
     TableSpec {
@@ -621,6 +668,7 @@ impl DecodedInput {
                 closure_count: table.u32("closure_count")?[row],
                 color_contraction_count: table.u32("color_contraction_count")?[row],
                 symmetry_proof_count: table.u32("symmetry_proof_count")?[row],
+                runtime_helicity_contract_count: table.u32("runtime_helicity_contract_count")?[row],
                 evaluator_binding_count: table.u32("evaluator_binding_count")?[row],
             })
         })?;
@@ -748,6 +796,56 @@ impl DecodedInput {
                     flow_id: table.u32("flow_id")?[row],
                     name_string_id: table.u32("name_string_id")?[row],
                     expression_string_id: table.u32("expression_string_id")?[row],
+                })
+            })?;
+        let runtime_helicity_contracts =
+            decode_rows(self.table("runtime_helicity_contracts")?, |table, row| {
+                Ok(RuntimeHelicityContractRow {
+                    id: table.u32("id")?[row],
+                    template_string_id: table.u32("template_string_id")?[row],
+                    full_state_template_id: table.u32("full_state_template_id")?[row],
+                    variant_range: CheckedTableRange::new(
+                        table.u32("variant_offset")?[row].into(),
+                        table.u32("variant_count")?[row].into(),
+                    ),
+                    proof_algorithm_string_id: table.u32("proof_algorithm_string_id")?[row],
+                    proof_digest_id: table.u32("proof_digest_id")?[row],
+                    semantic_digest_id: table.u32("semantic_digest_id")?[row],
+                })
+            })?;
+        let runtime_helicity_embeddings =
+            decode_rows(self.table("runtime_helicity_embeddings")?, |table, row| {
+                Ok(RuntimeHelicityEmbeddingRow {
+                    variant_id: table.u32("variant_id")?[row],
+                    full_component: table.u32("full_component")?[row],
+                    source_component: table.u32("source_component")?[row],
+                    factor_id: table.u32("factor_id")?[row],
+                })
+            })?;
+        let runtime_helicity_projections =
+            decode_rows(self.table("runtime_helicity_projections")?, |table, row| {
+                Ok(RuntimeHelicityProjectionRow {
+                    variant_id: table.u32("variant_id")?[row],
+                    source_component: table.u32("source_component")?[row],
+                    full_component: table.u32("full_component")?[row],
+                })
+            })?;
+        let runtime_helicity_variants =
+            decode_rows(self.table("runtime_helicity_variants")?, |table, row| {
+                Ok(RuntimeHelicityVariantRow {
+                    id: table.u32("id")?[row],
+                    contract_id: table.u32("contract_id")?[row],
+                    source_template_id: table.u32("source_template_id")?[row],
+                    source_state_template_id: table.u32("source_state_template_id")?[row],
+                    embedding_range: CheckedTableRange::new(
+                        table.u32("embedding_offset")?[row].into(),
+                        table.u32("embedding_count")?[row].into(),
+                    ),
+                    projection_range: CheckedTableRange::new(
+                        table.u32("projection_offset")?[row].into(),
+                        table.u32("projection_count")?[row].into(),
+                    ),
+                    proof_digest_id: table.u32("proof_digest_id")?[row],
                 })
             })?;
         let sources = decode_rows(self.table("sources")?, |table, row| {
@@ -911,6 +1009,10 @@ impl DecodedInput {
             quantum_flows,
             quantum_number_flow_ranges,
             quantum_number_flow_terms,
+            runtime_helicity_contracts,
+            runtime_helicity_variants,
+            runtime_helicity_embeddings,
+            runtime_helicity_projections,
             sources,
             string_ranges,
             string_bytes,
@@ -947,6 +1049,7 @@ struct NativeValidationResult {
     color_contraction_count: u32,
     lc_color_transition_witness_count: u32,
     symmetry_proof_count: u32,
+    runtime_helicity_contract_count: u32,
     evaluator_binding_count: u32,
     prepared_kernel_count: u32,
     inventory: InventoryValidation,
@@ -1194,6 +1297,7 @@ fn validate_input(
         color_contraction_count: summary.color_contraction_count,
         lc_color_transition_witness_count: summary.lc_color_transition_witness_count,
         symmetry_proof_count: summary.symmetry_proof_count,
+        runtime_helicity_contract_count: summary.runtime_helicity_contract_count,
         evaluator_binding_count: summary.evaluator_binding_count,
         prepared_kernel_count: summary.prepared_kernel_count,
         inventory,
@@ -1295,6 +1399,10 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
         native.lc_color_transition_witness_count,
     )?;
     counts.set_item("symmetry_proofs", native.symmetry_proof_count)?;
+    counts.set_item(
+        "runtime_helicity_contracts",
+        native.runtime_helicity_contract_count,
+    )?;
     counts.set_item("evaluator_bindings", native.evaluator_binding_count)?;
     counts.set_item("prepared_kernels", native.prepared_kernel_count)?;
     counts.set_item(

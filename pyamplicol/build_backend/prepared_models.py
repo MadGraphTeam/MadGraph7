@@ -607,16 +607,24 @@ def _literal_assignment(path: Path, name: str) -> str | int:
 
 def _load_prepared_contract(path: Path) -> ModuleType:
     digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
-    name = f"_pyamplicol_build_prepared_contract_{digest}"
-    spec = importlib.util.spec_from_file_location(name, path)
+    package_name = f"_pyamplicol_build_prepared_contract_{digest}"
+    module_name = f"{package_name}.prepared"
+    package = ModuleType(package_name)
+    package.__package__ = package_name
+    package.__path__ = [str(path.parent)]  # type: ignore[attr-defined]
+    sys.modules[package_name] = package
+    spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
+        sys.modules.pop(package_name, None)
         raise RuntimeError(f"cannot load prepared-model contract from {path}")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
+    sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
     except Exception:
-        sys.modules.pop(name, None)
+        for name in tuple(sys.modules):
+            if name == package_name or name.startswith(f"{package_name}."):
+                sys.modules.pop(name, None)
         raise
     return module
 

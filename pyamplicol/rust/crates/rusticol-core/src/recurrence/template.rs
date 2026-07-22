@@ -202,6 +202,7 @@ pub struct CatalogHeaderRow {
     pub closure_count: u32,
     pub color_contraction_count: u32,
     pub symmetry_proof_count: u32,
+    pub runtime_helicity_contract_count: u32,
     pub evaluator_binding_count: u32,
 }
 
@@ -292,6 +293,43 @@ pub struct SourceRow {
     pub mass_parameter_id: u32,
     pub width_parameter_id: u32,
     pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeHelicityContractRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub full_state_template_id: u32,
+    pub variant_range: CheckedTableRange,
+    pub proof_algorithm_string_id: u32,
+    pub proof_digest_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeHelicityVariantRow {
+    pub id: u32,
+    pub contract_id: u32,
+    pub source_template_id: u32,
+    pub source_state_template_id: u32,
+    pub embedding_range: CheckedTableRange,
+    pub projection_range: CheckedTableRange,
+    pub proof_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeHelicityEmbeddingRow {
+    pub variant_id: u32,
+    pub full_component: u32,
+    pub source_component: u32,
+    pub factor_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeHelicityProjectionRow {
+    pub variant_id: u32,
+    pub source_component: u32,
+    pub full_component: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -505,6 +543,10 @@ define_template_inputs! {
     quantum_flows: QuantumFlowRow,
     quantum_number_flow_ranges: IndexedRangeRow,
     quantum_number_flow_terms: QuantumNumberFlowTermRow,
+    runtime_helicity_contracts: RuntimeHelicityContractRow,
+    runtime_helicity_variants: RuntimeHelicityVariantRow,
+    runtime_helicity_embeddings: RuntimeHelicityEmbeddingRow,
+    runtime_helicity_projections: RuntimeHelicityProjectionRow,
     sources: SourceRow,
     string_ranges: CheckedTableRange,
     string_bytes: u8,
@@ -533,6 +575,7 @@ pub struct RecurrenceTemplateValidationSummary {
     pub color_contraction_count: u32,
     pub lc_color_transition_witness_count: u32,
     pub symmetry_proof_count: u32,
+    pub runtime_helicity_contract_count: u32,
     pub evaluator_binding_count: u32,
     pub prepared_kernel_count: u32,
 }
@@ -730,6 +773,7 @@ enum TemplateKind {
     Parameter,
     CurrentState,
     Source,
+    RuntimeHelicity,
     QuantumFlow,
     Transition,
     Propagator,
@@ -747,6 +791,7 @@ impl TemplateKind {
             Self::Propagator => Some(EvaluatorContractKind::Propagator),
             Self::Closure => Some(EvaluatorContractKind::Closure),
             Self::CurrentState
+            | Self::RuntimeHelicity
             | Self::QuantumFlow
             | Self::ColorContraction
             | Self::SymmetryProof => None,
@@ -785,6 +830,11 @@ impl<'a> RecurrenceTemplateInputView<'a> {
         self.validate_parameters(&catalogs, &mut template_kinds, &mut semantic_digests)?;
         self.validate_current_states(&catalogs, &mut template_kinds, &mut semantic_digests)?;
         self.validate_sources_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_runtime_helicity_contracts(
+            &catalogs,
+            &mut template_kinds,
+            &mut semantic_digests,
+        )?;
         self.validate_quantum_flows(&catalogs, &mut template_kinds, &mut semantic_digests)?;
         self.validate_color_contractions(&catalogs, &mut template_kinds, &mut semantic_digests)?;
         self.validate_symmetry_proofs_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
@@ -816,6 +866,10 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 "LC color transition witnesses",
             )?,
             symmetry_proof_count: checked_len(self.symmetry_proofs.len(), "symmetry proofs")?,
+            runtime_helicity_contract_count: checked_len(
+                self.runtime_helicity_contracts.len(),
+                "runtime-helicity contracts",
+            )?,
             evaluator_binding_count: checked_len(
                 self.evaluator_bindings.len(),
                 "evaluator bindings",
@@ -1153,6 +1207,11 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 "symmetry proofs",
                 header.symmetry_proof_count,
                 self.symmetry_proofs.len(),
+            ),
+            (
+                "runtime-helicity contracts",
+                header.runtime_helicity_contract_count,
+                self.runtime_helicity_contracts.len(),
             ),
             (
                 "evaluator bindings",
@@ -1519,6 +1578,207 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.semantic_digest_id,
                 "source semantic digest",
             )?;
+        }
+        Ok(())
+    }
+
+    fn validate_runtime_helicity_contracts(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "runtime-helicity contract",
+            self.runtime_helicity_contracts.iter().map(|row| row.id),
+            self.runtime_helicity_contracts
+                .iter()
+                .map(|row| row.template_string_id),
+        )?;
+        validate_canonical_ids(
+            "runtime-helicity variant",
+            self.runtime_helicity_variants.iter().map(|row| row.id),
+        )?;
+        let contract_ranges = self
+            .runtime_helicity_contracts
+            .iter()
+            .map(|row| row.variant_range)
+            .collect::<Vec<_>>();
+        validate_packed_ranges(
+            "runtime-helicity variants",
+            &contract_ranges,
+            self.runtime_helicity_variants.len(),
+        )?;
+        let embedding_ranges = self
+            .runtime_helicity_variants
+            .iter()
+            .map(|row| row.embedding_range)
+            .collect::<Vec<_>>();
+        validate_packed_ranges(
+            "runtime-helicity embeddings",
+            &embedding_ranges,
+            self.runtime_helicity_embeddings.len(),
+        )?;
+        let projection_ranges = self
+            .runtime_helicity_variants
+            .iter()
+            .map(|row| row.projection_range)
+            .collect::<Vec<_>>();
+        validate_packed_ranges(
+            "runtime-helicity projections",
+            &projection_ranges,
+            self.runtime_helicity_projections.len(),
+        )?;
+
+        let mut owned_sources = BTreeSet::new();
+        for contract in self.runtime_helicity_contracts {
+            register_template(
+                template_kinds,
+                contract.template_string_id,
+                TemplateKind::RuntimeHelicity,
+                "runtime-helicity contract",
+            )?;
+            register_semantic_digest(
+                semantic_digests,
+                contract.semantic_digest_id,
+                "runtime-helicity contract",
+            )?;
+            required_string(
+                &catalogs.strings,
+                contract.template_string_id,
+                "runtime-helicity template",
+            )?;
+            required_string(
+                &catalogs.strings,
+                contract.proof_algorithm_string_id,
+                "runtime-helicity proof algorithm",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                contract.proof_digest_id,
+                "runtime-helicity proof",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                contract.semantic_digest_id,
+                "runtime-helicity semantic digest",
+            )?;
+            let full_state_index = required_reference(
+                contract.full_state_template_id,
+                self.current_states.len(),
+                "runtime-helicity full state",
+            )?;
+            let full_dimension = self.current_states[full_state_index].dimension as usize;
+            let variants = &self.runtime_helicity_variants[contract.variant_range.as_usize_range(
+                self.runtime_helicity_variants.len(),
+                "runtime-helicity variants",
+            )?];
+            if variants.is_empty() {
+                return Err(invalid(format!(
+                    "runtime-helicity contract {} has no variants",
+                    contract.id
+                )));
+            }
+            for variant in variants {
+                if variant.contract_id != contract.id {
+                    return Err(invalid(format!(
+                        "runtime-helicity variant {} names contract {}, expected {}",
+                        variant.id, variant.contract_id, contract.id
+                    )));
+                }
+                let source_index = required_reference(
+                    variant.source_template_id,
+                    self.sources.len(),
+                    "runtime-helicity source",
+                )?;
+                if !owned_sources.insert(variant.source_template_id) {
+                    return Err(invalid(format!(
+                        "source template {} belongs to multiple runtime-helicity variants",
+                        variant.source_template_id
+                    )));
+                }
+                let source_state_index = required_reference(
+                    variant.source_state_template_id,
+                    self.current_states.len(),
+                    "runtime-helicity source state",
+                )?;
+                if self.sources[source_index].state_template_id != variant.source_state_template_id
+                {
+                    return Err(invalid(format!(
+                        "runtime-helicity variant {} source-state contract is inconsistent",
+                        variant.id
+                    )));
+                }
+                required_digest(
+                    &catalogs.digests,
+                    variant.proof_digest_id,
+                    "runtime-helicity variant proof",
+                )?;
+                let source_dimension = self.current_states[source_state_index].dimension as usize;
+                let embeddings =
+                    &self.runtime_helicity_embeddings[variant.embedding_range.as_usize_range(
+                        self.runtime_helicity_embeddings.len(),
+                        "runtime-helicity embedding",
+                    )?];
+                let projections =
+                    &self.runtime_helicity_projections[variant.projection_range.as_usize_range(
+                        self.runtime_helicity_projections.len(),
+                        "runtime-helicity projection",
+                    )?];
+                if embeddings.len() != full_dimension || projections.len() != source_dimension {
+                    return Err(invalid(format!(
+                        "runtime-helicity variant {} dimensions do not match its current states",
+                        variant.id
+                    )));
+                }
+                for (component, embedding) in embeddings.iter().enumerate() {
+                    if embedding.variant_id != variant.id
+                        || embedding.full_component as usize != component
+                    {
+                        return Err(invalid(format!(
+                            "runtime-helicity variant {} has noncanonical embedding rows",
+                            variant.id
+                        )));
+                    }
+                    let factor = required_factor(
+                        &catalogs.factors,
+                        embedding.factor_id,
+                        "runtime-helicity embedding factor",
+                    )?;
+                    if embedding.source_component == MISSING_U32 {
+                        if !factor.is_zero() {
+                            return Err(invalid(
+                                "an absent runtime-helicity source component has nonzero factor",
+                            ));
+                        }
+                    } else if embedding.source_component as usize >= source_dimension
+                        || factor.is_zero()
+                    {
+                        return Err(invalid(
+                            "a runtime-helicity source embedding is out of range or zero",
+                        ));
+                    }
+                }
+                for (component, projection) in projections.iter().enumerate() {
+                    if projection.variant_id != variant.id
+                        || projection.source_component as usize != component
+                        || projection.full_component as usize >= full_dimension
+                    {
+                        return Err(invalid(format!(
+                            "runtime-helicity variant {} has invalid projection rows",
+                            variant.id
+                        )));
+                    }
+                    if embeddings[projection.full_component as usize].source_component
+                        != projection.source_component
+                    {
+                        return Err(invalid(format!(
+                            "runtime-helicity variant {} embedding and projection disagree",
+                            variant.id
+                        )));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -3398,6 +3658,7 @@ mod tests {
                 closure_count: 0,
                 color_contraction_count: 0,
                 symmetry_proof_count: 0,
+                runtime_helicity_contract_count: 0,
                 evaluator_binding_count: 0,
             }],
             coupling_order_ranges: vec![IndexedRangeRow {
@@ -3434,6 +3695,10 @@ mod tests {
             quantum_flows: vec![],
             quantum_number_flow_ranges: vec![],
             quantum_number_flow_terms: vec![],
+            runtime_helicity_contracts: vec![],
+            runtime_helicity_variants: vec![],
+            runtime_helicity_embeddings: vec![],
+            runtime_helicity_projections: vec![],
             sources: vec![],
             string_ranges,
             string_bytes,

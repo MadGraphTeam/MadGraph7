@@ -17,8 +17,9 @@ use super::{
     DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational, LCColorComponent,
     LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole, LCColorSourceSeed,
     LCColorSourceSeedOperation, LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm,
-    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
-    RecurrenceNodeKind, RecurrenceProgram, RecurrenceStrategy, SemanticDigest,
+    RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
+    RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind, RecurrenceProgram,
+    RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy, SemanticDigest,
     SourceStateAssignment,
 };
 use crate::{RusticolError, RusticolResult};
@@ -45,6 +46,7 @@ struct PendingCurrent {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct PendingClosureKey {
     target_sector_id: u32,
+    complete_source_states: Box<[SourceStateAssignment]>,
     closure_template_id: u32,
     quantum_flow_template_id: Option<u32>,
     parent_current_ids: Box<[u32]>,
@@ -251,6 +253,56 @@ impl<'a> ProcessCatalog<'a> {
         let range = range.as_usize_range(self.input.u32_sequence_values.len(), label)?;
         Ok(&self.input.u32_sequence_values[range])
     }
+
+    fn public_helicities(
+        &self,
+        source_states: &[SourceStateAssignment],
+    ) -> RusticolResult<Vec<i32>> {
+        if source_states.len() != self.input.external_legs.len() {
+            return Err(invalid(
+                "resolved helicity does not cover every external source slot",
+            ));
+        }
+        source_states
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(source_slot, assignment)| {
+                if assignment.source_slot() as usize != source_slot {
+                    return Err(invalid(
+                        "resolved-helicity source-state ancestry is not canonical",
+                    ));
+                }
+                let leg = self.input.external_legs[source_slot];
+                if u64::from(assignment.state_index()) >= leg.source_state_range.count {
+                    return Err(invalid(format!(
+                        "resolved helicity references absent state {} for source slot {source_slot}",
+                        assignment.state_index()
+                    )));
+                }
+                let row_index = leg
+                    .source_state_range
+                    .start
+                    .checked_add(u64::from(assignment.state_index()))
+                    .ok_or_else(|| invalid("resolved-helicity source-state index overflows"))?;
+                let row_index = usize::try_from(row_index)
+                    .map_err(|_| invalid("resolved-helicity source-state index exceeds usize"))?;
+                let state = self
+                    .input
+                    .source_states
+                    .get(row_index)
+                    .ok_or_else(|| invalid("resolved-helicity source state is absent"))?;
+                if state.source_slot as usize != source_slot
+                    || state.state_index != assignment.state_index()
+                {
+                    return Err(invalid(
+                        "resolved-helicity source-state catalog is inconsistent",
+                    ));
+                }
+                Ok(state.public_helicity)
+            })
+            .collect()
+    }
 }
 
 pub(super) fn build_recurrence_program(
@@ -261,9 +313,12 @@ pub(super) fn build_recurrence_program(
     let process_input = authenticated.process().input();
     let template_input = authenticated.template().input();
     let process_catalog = ProcessCatalog::new(process_input)?;
+    let retained_helicity_count = retained_helicity_count(process_input)?;
     let template_catalog = TemplateCatalog::new(template_input)?;
     let coupling_limits = coupling_limits(&process_catalog, &template_catalog)?;
     let propagators = propagator_by_state(template_input)?;
+    let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
+    let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
     let mut current_ids = BTreeMap::<CurrentCoreKey, u32>::new();
@@ -294,20 +349,22 @@ pub(super) fn build_recurrence_program(
         &mut currents_by_size,
     )?;
     let closures = build_closures(
-        strategy,
         process_input,
         &process_catalog,
         template_input,
         &template_catalog,
         &color_states,
         &currents,
+        &materialized_sectors,
     )?;
     finish_program(
         strategy,
+        &process_catalog,
         color_states.into_states(),
         currents,
         closures,
-        process_input.physical_lc_sectors.len(),
+        replay_targets,
+        retained_helicity_count,
     )
 }
 
@@ -329,7 +386,12 @@ fn build_sources(
         let range = leg
             .source_state_range
             .as_usize_range(process.source_states.len(), "recurrence source-state range")?;
-        for process_state in &process.source_states[range] {
+        let retained_state_indices = retained_source_state_indices(process, leg.source_slot)?;
+        for state_index in retained_state_indices {
+            let process_state = process
+                .source_states
+                .get(range.start + state_index as usize)
+                .ok_or_else(|| invalid("retained recurrence source state is absent"))?;
             let source = *template
                 .sources
                 .get(process_state.source_template_id as usize)
@@ -687,18 +749,17 @@ fn add_transition_contributions(
 }
 
 fn build_closures(
-    strategy: RecurrenceStrategy,
     process: &OwnedRecurrenceProcessInput,
     process_catalog: &ProcessCatalog<'_>,
     template: &OwnedRecurrenceTemplateInput,
     catalog: &TemplateCatalog<'_>,
     color_states: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
+    materialized_sectors: &BTreeSet<u32>,
 ) -> RusticolResult<BTreeMap<PendingClosureKey, ExactComplexRational>> {
-    let materialized_sectors = materialized_sector_ids(strategy, process);
     let full_support = (0..process.external_legs.len() as u32).collect::<Vec<_>>();
     let mut result = BTreeMap::new();
-    for sector_id in materialized_sectors {
+    for sector_id in materialized_sectors.iter().copied() {
         let sector = process.physical_lc_sectors[sector_id as usize];
         let complement = full_support
             .iter()
@@ -867,6 +928,10 @@ fn add_closure_terms(
             }
             let key = PendingClosureKey {
                 target_sector_id: sector.sector_id,
+                complete_source_states: complete_closure_source_states(
+                    parents,
+                    process.external_legs.len(),
+                )?,
                 closure_template_id: closure.id,
                 quantum_flow_template_id: quantum.map(|row| row.id),
                 parent_current_ids: evaluator_parent_ids.into(),
@@ -883,11 +948,34 @@ fn add_closure_terms(
 
 fn finish_program(
     strategy: RecurrenceStrategy,
+    process_catalog: &ProcessCatalog<'_>,
     dynamic_color_states: Vec<DynamicLCColorState>,
     pending: Vec<PendingCurrent>,
     pending_closures: BTreeMap<PendingClosureKey, ExactComplexRational>,
-    sector_count: usize,
+    replay_targets: Vec<RecurrenceReplayTarget>,
+    retained_helicity_count: u64,
 ) -> RusticolResult<RecurrenceProgram> {
+    let sector_count = process_catalog.input.physical_lc_sectors.len();
+    let helicity_keys = pending_closures
+        .iter()
+        .filter(|(key, factor)| !key.complete_source_states.is_empty() && !factor.is_zero())
+        .map(|(key, _)| key)
+        .map(|key| key.complete_source_states.clone())
+        .collect::<BTreeSet<_>>();
+    let helicity_ids = helicity_keys
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(id, key)| (key, id as u32))
+        .collect::<BTreeMap<_, _>>();
+    let resolved_helicities = helicity_keys
+        .into_iter()
+        .enumerate()
+        .map(|(id, source_states)| {
+            let public_helicities = process_catalog.public_helicities(&source_states)?;
+            RecurrenceResolvedHelicity::new(id as u32, source_states.into(), public_helicities)
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
     let mut live = BTreeSet::new();
     let mut queue = VecDeque::new();
     for (key, factor) in &pending_closures {
@@ -980,14 +1068,20 @@ fn finish_program(
         )?);
     }
 
+    let destination_keys = pending_closures
+        .iter()
+        .filter(|(_, factor)| !factor.is_zero())
+        .map(|(key, _)| (key.target_sector_id, key.complete_source_states.clone()))
+        .collect::<BTreeSet<_>>();
     let mut closure_terms = Vec::new();
-    let mut closure_ranges = Vec::with_capacity(sector_count);
-    for sector_id in 0..sector_count as u32 {
+    let mut amplitude_destinations = Vec::with_capacity(destination_keys.len());
+    for (destination_id, (sector_id, source_states)) in destination_keys.into_iter().enumerate() {
         let start = closure_terms.len() as u64;
-        for (key, factor) in pending_closures
-            .iter()
-            .filter(|(key, factor)| key.target_sector_id == sector_id && !factor.is_zero())
-        {
+        for (key, factor) in pending_closures.iter().filter(|(key, factor)| {
+            key.target_sector_id == sector_id
+                && key.complete_source_states == source_states
+                && !factor.is_zero()
+        }) {
             let parents = key
                 .parent_current_ids
                 .iter()
@@ -1000,27 +1094,127 @@ fn finish_program(
                 .collect::<RusticolResult<Vec<_>>>()?;
             closure_terms.push(RecurrenceClosureTerm::new(
                 closure_terms.len() as u32,
-                sector_id,
+                destination_id as u32,
                 key.closure_template_id,
                 key.quantum_flow_template_id,
                 parents,
                 *factor,
             )?);
         }
-        closure_ranges.push(CheckedTableRange::new(
-            start,
-            closure_terms.len() as u64 - start,
-        ));
+        let target_helicity_id = if source_states.is_empty() {
+            None
+        } else {
+            Some(
+                *helicity_ids
+                    .get(&source_states)
+                    .ok_or_else(|| invalid("resolved-helicity destination disappeared"))?,
+            )
+        };
+        amplitude_destinations.push(RecurrenceAmplitudeDestination::new(
+            destination_id as u32,
+            sector_id,
+            target_helicity_id,
+            CheckedTableRange::new(start, closure_terms.len() as u64 - start),
+        )?);
     }
     RecurrenceProgram::new(
         strategy,
+        u32::try_from(sector_count).map_err(|_| invalid("physical sector count exceeds u32"))?,
+        retained_helicity_count,
         dynamic_color_states,
         currents,
         contributions,
         finalizations,
-        closure_ranges,
+        replay_targets,
+        resolved_helicities,
+        amplitude_destinations,
         closure_terms,
     )
+}
+
+fn retained_helicity_count(process: &OwnedRecurrenceProcessInput) -> RusticolResult<u64> {
+    process.external_legs.iter().try_fold(1_u64, |count, leg| {
+        let retained =
+            u64::try_from(retained_source_state_indices(process, leg.source_slot)?.len())
+                .map_err(|_| invalid("retained source-state count exceeds u64"))?;
+        count
+            .checked_mul(retained)
+            .ok_or_else(|| invalid("retained public-helicity count exceeds u64"))
+    })
+}
+
+fn retained_source_state_indices(
+    process: &OwnedRecurrenceProcessInput,
+    source_slot: u32,
+) -> RusticolResult<Vec<u32>> {
+    let leg = process
+        .external_legs
+        .get(source_slot as usize)
+        .ok_or_else(|| invalid("recurrence source slot is absent"))?;
+    if !process.header[0].selected_source_mode()? {
+        return (0..leg.source_state_range.count)
+            .map(|index| {
+                u32::try_from(index)
+                    .map_err(|_| invalid("source-state index exceeds the u32 ID domain"))
+            })
+            .collect();
+    }
+    let retained = process
+        .selected_source_coverage
+        .iter()
+        .filter(|row| row.source_slot == source_slot)
+        .map(|row| row.source_state_index)
+        .collect::<Vec<_>>();
+    if retained.is_empty() {
+        return Err(invalid(format!(
+            "generation-selected recurrence coverage has no state for source slot {source_slot}"
+        )));
+    }
+    Ok(retained)
+}
+
+fn complete_closure_source_states(
+    parents: [&CurrentCoreKey; 2],
+    source_count: usize,
+) -> RusticolResult<Box<[SourceStateAssignment]>> {
+    match (
+        parents[0].helicity_identity(),
+        parents[1].helicity_identity(),
+    ) {
+        (
+            CurrentHelicityIdentity::TopologyReplay {
+                local_source_states: left,
+                ..
+            },
+            CurrentHelicityIdentity::TopologyReplay {
+                local_source_states: right,
+                ..
+            },
+        ) => {
+            let mut result = left.iter().chain(right.iter()).copied().collect::<Vec<_>>();
+            result.sort_unstable();
+            if result.len() != source_count {
+                return Err(invalid(
+                    "topology-replay closure ancestry does not cover every external source",
+                ));
+            }
+            for (source_slot, assignment) in result.iter().copied().enumerate() {
+                if assignment.source_slot() as usize != source_slot {
+                    return Err(invalid(
+                        "topology-replay closure ancestry is incomplete or overlapping",
+                    ));
+                }
+            }
+            Ok(result.into_boxed_slice())
+        }
+        (
+            CurrentHelicityIdentity::AllFlowUnion { .. },
+            CurrentHelicityIdentity::AllFlowUnion { .. },
+        ) => Ok(Box::new([])),
+        _ => Err(invalid(
+            "closure parents use incompatible recurrence helicity strategies",
+        )),
+    }
 }
 
 fn quantum_flow_matches(
@@ -1097,6 +1291,7 @@ fn expected_sector_components(
 fn materialized_sector_ids(
     strategy: RecurrenceStrategy,
     process: &OwnedRecurrenceProcessInput,
+    replay_targets: &[RecurrenceReplayTarget],
 ) -> BTreeSet<u32> {
     match strategy {
         RecurrenceStrategy::AllFlowUnion => process
@@ -1104,17 +1299,100 @@ fn materialized_sector_ids(
             .iter()
             .map(|sector| sector.sector_id)
             .collect(),
-        RecurrenceStrategy::TopologyReplay if !process.replay_partitions.is_empty() => process
-            .replay_partitions
+        RecurrenceStrategy::TopologyReplay => replay_targets
             .iter()
-            .map(|partition| partition.materialized_sector_id)
+            .map(RecurrenceReplayTarget::materialized_sector_id)
             .collect(),
-        RecurrenceStrategy::TopologyReplay => process
+    }
+}
+
+fn build_replay_targets(
+    strategy: RecurrenceStrategy,
+    process: &OwnedRecurrenceProcessInput,
+    catalog: &ProcessCatalog<'_>,
+) -> RusticolResult<Vec<RecurrenceReplayTarget>> {
+    if strategy == RecurrenceStrategy::AllFlowUnion {
+        return Ok(Vec::new());
+    }
+    let retained_sectors = retained_physical_sector_ids(process)?;
+    let mut rows = Vec::<(u32, u32, Vec<u32>, ExactComplexRational)>::new();
+    let mut covered = BTreeSet::new();
+    for partition in &process.replay_partitions {
+        let range = partition
+            .target_range
+            .as_usize_range(process.replay_targets.len(), "recurrence replay targets")?;
+        for target in &process.replay_targets[range] {
+            if !retained_sectors.contains(&target.sector_id) {
+                continue;
+            }
+            let mut factor = catalog.factor(
+                target.amplitude_phase_factor_id,
+                "recurrence replay amplitude phase",
+            )?;
+            if target.fermion_sign == -1 {
+                factor = factor.checked_neg()?;
+            }
+            rows.push((
+                partition.materialized_sector_id,
+                target.sector_id,
+                catalog
+                    .u32_sequence(
+                        target.source_slot_permutation_sequence_id,
+                        "recurrence replay source permutation",
+                    )?
+                    .to_vec(),
+                factor,
+            ));
+            covered.insert(target.sector_id);
+        }
+    }
+    let identity = (0..process.external_legs.len())
+        .map(|slot| u32::try_from(slot).map_err(|_| invalid("source-slot count exceeds u32")))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    for sector_id in retained_sectors.difference(&covered).copied() {
+        rows.push((
+            sector_id,
+            sector_id,
+            identity.clone(),
+            ExactComplexRational::ONE,
+        ));
+    }
+    rows.sort_by_key(|(_, target_sector_id, _, _)| *target_sector_id);
+    rows.into_iter()
+        .enumerate()
+        .map(|(id, (materialized, target, permutation, factor))| {
+            RecurrenceReplayTarget::new(
+                u32::try_from(id).map_err(|_| invalid("replay-target count exceeds u32"))?,
+                materialized,
+                target,
+                permutation,
+                factor,
+            )
+        })
+        .collect()
+}
+
+fn retained_physical_sector_ids(
+    process: &OwnedRecurrenceProcessInput,
+) -> RusticolResult<BTreeSet<u32>> {
+    if !process.header[0].selected_flow_mode()? {
+        return Ok(process
             .physical_lc_sectors
             .iter()
             .map(|sector| sector.sector_id)
-            .collect(),
+            .collect());
     }
+    process
+        .selected_public_flow_coverage
+        .iter()
+        .map(|selected| {
+            process
+                .public_lc_flows
+                .get(selected.flow_id as usize)
+                .map(|flow| flow.construction_sector_id)
+                .ok_or_else(|| invalid("selected public LC flow is absent"))
+        })
+        .collect()
 }
 
 fn propagator_by_state(

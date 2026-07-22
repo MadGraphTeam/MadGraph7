@@ -113,7 +113,7 @@ struct StagePlan {
 #[derive(Clone, Debug)]
 struct PreparedClosureCall {
     site: KernelSite,
-    target_sector_id: u32,
+    target_destination_id: u32,
     factor: EagerComplex64,
     output_factor_source: u8,
 }
@@ -127,7 +127,7 @@ impl HasKernelSite for PreparedClosureCall {
 #[derive(Clone, Debug)]
 struct DirectClosureCall {
     parent_current_ids: [u32; 2],
-    target_sector_id: u32,
+    target_destination_id: u32,
     coefficients: Box<[EagerComplex64]>,
     factor: EagerComplex64,
 }
@@ -139,6 +139,15 @@ struct SourceCopy {
     source_template_id: u32,
     source_component_start: usize,
     factor: EagerComplex64,
+}
+
+#[derive(Clone, Debug)]
+struct ReplayTargetPlan {
+    materialized_sector_id: u32,
+    target_sector_id: u32,
+    source_component_permutation: Box<[usize]>,
+    momentum_slot_permutation: Box<[usize]>,
+    amplitude_factor_norm_sqr: f64,
 }
 
 /// Stable source-buffer ownership needed by selector and source-fill planning.
@@ -159,6 +168,7 @@ pub struct RecurrenceExecutionPlan {
     current_components: Box<[ComponentRange]>,
     current_momenta: Box<[CanonicalMomentumLinearForm]>,
     sources: Box<[SourceCopy]>,
+    replay_targets: Box<[ReplayTargetPlan]>,
     stages: Box<[StagePlan]>,
     prepared_closures: Box<[PreparedClosureCall]>,
     prepared_closure_packets: Box<[KernelPacket]>,
@@ -168,6 +178,7 @@ pub struct RecurrenceExecutionPlan {
     source_slot_count: usize,
     parameter_count: usize,
     sector_count: usize,
+    resolved_helicity_count: usize,
     maximum_packet_input_width: usize,
     maximum_packet_output_width: usize,
 }
@@ -251,6 +262,67 @@ impl RecurrenceExecutionPlan {
             source_component_count = source_component_count
                 .checked_add(len)
                 .ok_or_else(|| invalid("recurrence source components overflow"))?;
+        }
+
+        let source_indices = sources
+            .iter()
+            .enumerate()
+            .map(|(index, source)| ((source.source_slot, source.source_template_id), index))
+            .collect::<BTreeMap<_, _>>();
+        if source_indices.len() != sources.len() {
+            return Err(invalid(
+                "recurrence source layout has duplicate slot/template bindings",
+            ));
+        }
+        let mut replay_targets = Vec::with_capacity(program.replay_targets().len());
+        for target in program.replay_targets() {
+            let mut source_component_permutation = vec![usize::MAX; source_component_count];
+            for source in &sources {
+                let target_slot = *target
+                    .source_slot_permutation()
+                    .get(source.source_slot as usize)
+                    .ok_or_else(|| invalid("recurrence replay source permutation is incomplete"))?;
+                let target_index = *source_indices
+                    .get(&(target_slot, source.source_template_id))
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "recurrence replay target {} cannot map source slot {} template {} onto slot {target_slot}",
+                            target.id(),
+                            source.source_slot,
+                            source.source_template_id
+                        ))
+                    })?;
+                let mapped = sources[target_index];
+                let source_range = current_components[source.current_id as usize];
+                let mapped_range = current_components[mapped.current_id as usize];
+                if source_range.len != mapped_range.len || source.factor != mapped.factor {
+                    return Err(invalid(format!(
+                        "recurrence replay target {} maps incompatible source contracts",
+                        target.id()
+                    )));
+                }
+                for component in 0..source_range.len {
+                    source_component_permutation[source.source_component_start + component] =
+                        mapped.source_component_start + component;
+                }
+            }
+            if source_component_permutation.contains(&usize::MAX) {
+                return Err(invalid(
+                    "recurrence replay source-component permutation is incomplete",
+                ));
+            }
+            let amplitude_factor = exact_complex(target.amplitude_factor());
+            replay_targets.push(ReplayTargetPlan {
+                materialized_sector_id: target.materialized_sector_id(),
+                target_sector_id: target.target_sector_id(),
+                source_component_permutation: source_component_permutation.into_boxed_slice(),
+                momentum_slot_permutation: target
+                    .source_slot_permutation()
+                    .iter()
+                    .map(|slot| *slot as usize)
+                    .collect(),
+                amplitude_factor_norm_sqr: amplitude_factor.norm_sqr(),
+            });
         }
 
         let stage_count = program
@@ -443,7 +515,7 @@ impl RecurrenceExecutionPlan {
                         parent_momentum_ids: term.parent_current_ids().into(),
                         coupling,
                     },
-                    target_sector_id: term.target_sector_id(),
+                    target_destination_id: term.target_destination_id(),
                     factor: exact_complex(term.exact_factor()),
                     output_factor_source: closure.output_factor_source,
                 });
@@ -473,7 +545,7 @@ impl RecurrenceExecutionPlan {
                 }
                 direct_closures.push(DirectClosureCall {
                     parent_current_ids,
-                    target_sector_id: term.target_sector_id(),
+                    target_destination_id: term.target_destination_id(),
                     coefficients: coefficients.into_boxed_slice(),
                     factor: exact_complex(term.exact_factor()),
                 });
@@ -512,12 +584,14 @@ impl RecurrenceExecutionPlan {
                 .map(|current| current.key().momentum().clone())
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            sector_count: program.target_sector_closure_ranges().len(),
+            sector_count: program.physical_sector_count() as usize,
+            resolved_helicity_count: program.resolved_helicities().len(),
             parameter_count,
             program,
             kernels: kernels.into_boxed_slice(),
             current_components: current_components.into_boxed_slice(),
             sources: sources.into_boxed_slice(),
+            replay_targets: replay_targets.into_boxed_slice(),
             stages: stages.into_boxed_slice(),
             prepared_closures: prepared_closures.into_boxed_slice(),
             prepared_closure_packets: prepared_closure_packets.into_boxed_slice(),
@@ -550,6 +624,14 @@ impl RecurrenceExecutionPlan {
         self.sector_count
     }
 
+    pub const fn resolved_helicity_count(&self) -> usize {
+        self.resolved_helicity_count
+    }
+
+    pub fn resolved_component_count(&self) -> RusticolResult<usize> {
+        Ok(self.program.amplitude_destinations().len())
+    }
+
     pub fn source_layout(&self) -> Vec<RecurrenceSourceLayout> {
         self.sources
             .iter()
@@ -572,7 +654,9 @@ pub struct RecurrenceExecutionRuntime {
     current_momenta: Vec<f64>,
     kernel_inputs: Vec<EagerComplex64>,
     kernel_outputs: Vec<EagerComplex64>,
-    sector_amplitudes: Vec<EagerComplex64>,
+    resolved_amplitudes: Vec<EagerComplex64>,
+    replay_source_values: Vec<EagerComplex64>,
+    replay_external_momenta: Vec<f64>,
 }
 
 impl RecurrenceExecutionRuntime {
@@ -606,11 +690,25 @@ impl RecurrenceExecutionRuntime {
                     .checked_mul(tile_capacity)
                     .ok_or_else(|| invalid("recurrence output workspace overflows"))?,
             ),
-            sector_amplitudes: zero_complex(
-                plan.sector_count
+            resolved_amplitudes: zero_complex(
+                plan.resolved_component_count()?
                     .checked_mul(tile_capacity)
-                    .ok_or_else(|| invalid("recurrence sector workspace overflows"))?,
+                    .ok_or_else(|| invalid("recurrence amplitude workspace overflows"))?,
             ),
+            replay_source_values: zero_complex(
+                plan.source_component_count
+                    .checked_mul(tile_capacity)
+                    .ok_or_else(|| invalid("recurrence replay source workspace overflows"))?,
+            ),
+            replay_external_momenta: vec![
+                0.0;
+                plan.source_slot_count
+                    .checked_mul(4)
+                    .and_then(|value| value.checked_mul(tile_capacity))
+                    .ok_or_else(|| invalid(
+                        "recurrence replay momentum workspace overflows"
+                    ))?
+            ],
             plan,
             tile_capacity,
         })
@@ -634,6 +732,221 @@ impl RecurrenceExecutionRuntime {
         model_parameters: &[EagerComplex64],
         output: &mut [EagerComplex64],
     ) -> RusticolResult<()> {
+        self.evaluate_amplitudes_into(
+            backend,
+            point_count,
+            source_values,
+            external_momenta,
+            model_parameters,
+            output,
+            false,
+        )
+    }
+
+    /// Evaluate every retained topology-replay helicity in one shared pass.
+    ///
+    /// Output uses sparse destination-major, point-contiguous order. Destination
+    /// metadata maps each row to its physical sector and resolved helicity.
+    pub fn evaluate_resolved_amplitudes_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        point_count: usize,
+        source_values: &[EagerComplex64],
+        external_momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        output: &mut [EagerComplex64],
+    ) -> RusticolResult<()> {
+        self.evaluate_amplitudes_into(
+            backend,
+            point_count,
+            source_values,
+            external_momenta,
+            model_parameters,
+            output,
+            true,
+        )
+    }
+
+    /// Evaluate a helicity sum without materializing resolved amplitudes for the caller.
+    ///
+    /// Output is sector-major and point-contiguous. Color weights and process
+    /// normalization remain binding-owned and are applied by the public runtime.
+    pub fn evaluate_helicity_sum_norm_sqr_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        point_count: usize,
+        source_values: &[EagerComplex64],
+        external_momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        self.validate_evaluation_inputs(
+            point_count,
+            source_values,
+            external_momenta,
+            model_parameters,
+        )?;
+        check_matrix(
+            output.len(),
+            self.plan.sector_count,
+            point_count,
+            "recurrence helicity-sum output",
+        )?;
+        output.fill(0.0);
+
+        // Move the fixed replay buffers out temporarily so `execute_tile` can
+        // borrow the remaining runtime workspace without allocating. They are
+        // restored even when backend execution returns an error.
+        let mut replay_source_values = std::mem::take(&mut self.replay_source_values);
+        let mut replay_external_momenta = std::mem::take(&mut self.replay_external_momenta);
+        let result = (|| {
+            for tile_start in (0..point_count).step_by(self.tile_capacity) {
+                let tile_points = usize::min(self.tile_capacity, point_count - tile_start);
+                for target_index in 0..self.plan.replay_targets.len() {
+                    let (materialized_sector, target_sector, amplitude_factor_norm_sqr) = {
+                        let target = &self.plan.replay_targets[target_index];
+                        for (representative_component, target_component) in target
+                            .source_component_permutation
+                            .iter()
+                            .copied()
+                            .enumerate()
+                        {
+                            let source_start = target_component * point_count + tile_start;
+                            let replay_start = representative_component * self.tile_capacity;
+                            replay_source_values[replay_start..replay_start + tile_points]
+                                .copy_from_slice(
+                                    &source_values[source_start..source_start + tile_points],
+                                );
+                        }
+                        for (representative_slot, target_slot) in
+                            target.momentum_slot_permutation.iter().copied().enumerate()
+                        {
+                            for component in 0..4 {
+                                let source_start =
+                                    (target_slot * 4 + component) * point_count + tile_start;
+                                let replay_start =
+                                    (representative_slot * 4 + component) * self.tile_capacity;
+                                replay_external_momenta[replay_start..replay_start + tile_points]
+                                    .copy_from_slice(
+                                        &external_momenta[source_start..source_start + tile_points],
+                                    );
+                            }
+                        }
+                        (
+                            target.materialized_sector_id,
+                            target.target_sector_id,
+                            target.amplitude_factor_norm_sqr,
+                        )
+                    };
+
+                    self.execute_tile(
+                        backend,
+                        self.tile_capacity,
+                        &replay_source_values,
+                        &replay_external_momenta,
+                        model_parameters,
+                        0,
+                        tile_points,
+                    )?;
+                    for destination in self
+                        .plan
+                        .program
+                        .amplitude_destinations()
+                        .iter()
+                        .filter(|destination| destination.target_sector_id() == materialized_sector)
+                    {
+                        let destination_id = destination.id() as usize;
+                        for point in 0..tile_points {
+                            output[target_sector as usize * point_count + tile_start + point] +=
+                                amplitude_factor_norm_sqr
+                                    * self.resolved_amplitudes
+                                        [destination_id * self.tile_capacity + point]
+                                        .norm_sqr();
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })();
+        self.replay_source_values = replay_source_values;
+        self.replay_external_momenta = replay_external_momenta;
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_amplitudes_into<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        point_count: usize,
+        source_values: &[EagerComplex64],
+        external_momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        output: &mut [EagerComplex64],
+        resolved: bool,
+    ) -> RusticolResult<()> {
+        self.validate_evaluation_inputs(
+            point_count,
+            source_values,
+            external_momenta,
+            model_parameters,
+        )?;
+        let output_components = if resolved {
+            self.plan.resolved_component_count()?
+        } else {
+            self.plan.sector_count
+        };
+        check_matrix(
+            output.len(),
+            output_components,
+            point_count,
+            "recurrence output",
+        )?;
+
+        for tile_start in (0..point_count).step_by(self.tile_capacity) {
+            let tile_points = usize::min(self.tile_capacity, point_count - tile_start);
+            self.execute_tile(
+                backend,
+                point_count,
+                source_values,
+                external_momenta,
+                model_parameters,
+                tile_start,
+                tile_points,
+            )?;
+            if resolved {
+                for component in 0..output_components {
+                    for point in 0..tile_points {
+                        output[component * point_count + tile_start + point] =
+                            self.resolved_amplitudes[component * self.tile_capacity + point];
+                    }
+                }
+            } else {
+                for sector in 0..self.plan.sector_count {
+                    for point in 0..tile_points {
+                        output[sector * point_count + tile_start + point] =
+                            EagerComplex64::new(0.0, 0.0);
+                    }
+                }
+                for destination in self.plan.program.amplitude_destinations() {
+                    let sector = destination.target_sector_id() as usize;
+                    let destination_id = destination.id() as usize;
+                    for point in 0..tile_points {
+                        output[sector * point_count + tile_start + point] +=
+                            self.resolved_amplitudes[destination_id * self.tile_capacity + point];
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_evaluation_inputs(
+        &self,
+        point_count: usize,
+        source_values: &[EagerComplex64],
+        external_momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+    ) -> RusticolResult<()> {
         if point_count == 0 {
             return Err(invalid("recurrence evaluation requires at least one point"));
         }
@@ -652,69 +965,66 @@ impl RecurrenceExecutionRuntime {
         if model_parameters.len() < self.plan.parameter_count {
             return Err(invalid("recurrence model-parameter input is too short"));
         }
-        check_matrix(
-            output.len(),
-            self.plan.sector_count,
-            point_count,
-            "sector output",
-        )?;
+        Ok(())
+    }
 
-        for tile_start in (0..point_count).step_by(self.tile_capacity) {
-            let tile_points = usize::min(self.tile_capacity, point_count - tile_start);
-            self.currents.fill(EagerComplex64::new(0.0, 0.0));
-            self.sector_amplitudes.fill(EagerComplex64::new(0.0, 0.0));
-            fill_sources(
+    #[allow(clippy::too_many_arguments)]
+    fn execute_tile<B: EagerKernelBackend>(
+        &mut self,
+        backend: &mut B,
+        point_count: usize,
+        source_values: &[EagerComplex64],
+        external_momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        tile_start: usize,
+        tile_points: usize,
+    ) -> RusticolResult<()> {
+        self.currents.fill(EagerComplex64::new(0.0, 0.0));
+        self.resolved_amplitudes.fill(EagerComplex64::new(0.0, 0.0));
+        fill_sources(
+            &self.plan,
+            self.tile_capacity,
+            &mut self.currents,
+            source_values,
+            point_count,
+            tile_start,
+            tile_points,
+        );
+        fill_momenta(
+            &self.plan,
+            self.tile_capacity,
+            &mut self.current_momenta,
+            external_momenta,
+            point_count,
+            tile_start,
+            tile_points,
+        );
+        for stage_index in 2..self.plan.stages.len() {
+            execute_stage(
                 &self.plan,
                 self.tile_capacity,
                 &mut self.currents,
-                source_values,
-                point_count,
-                tile_start,
-                tile_points,
-            );
-            fill_momenta(
-                &self.plan,
-                self.tile_capacity,
-                &mut self.current_momenta,
-                external_momenta,
-                point_count,
-                tile_start,
-                tile_points,
-            );
-            for stage_index in 2..self.plan.stages.len() {
-                execute_stage(
-                    &self.plan,
-                    self.tile_capacity,
-                    &mut self.currents,
-                    &self.current_momenta,
-                    &mut self.kernel_inputs,
-                    &mut self.kernel_outputs,
-                    backend,
-                    stage_index,
-                    tile_points,
-                    model_parameters,
-                )?;
-            }
-            execute_closures(
-                &self.plan,
-                self.tile_capacity,
-                &self.currents,
                 &self.current_momenta,
                 &mut self.kernel_inputs,
                 &mut self.kernel_outputs,
-                &mut self.sector_amplitudes,
                 backend,
+                stage_index,
                 tile_points,
                 model_parameters,
             )?;
-            for sector in 0..self.plan.sector_count {
-                for point in 0..tile_points {
-                    output[sector * point_count + tile_start + point] =
-                        self.sector_amplitudes[sector * self.tile_capacity + point];
-                }
-            }
         }
-        Ok(())
+        execute_closures(
+            &self.plan,
+            self.tile_capacity,
+            &self.currents,
+            &self.current_momenta,
+            &mut self.kernel_inputs,
+            &mut self.kernel_outputs,
+            &mut self.resolved_amplitudes,
+            backend,
+            tile_points,
+            model_parameters,
+        )
     }
 }
 
@@ -813,7 +1123,7 @@ fn execute_closures<B: EagerKernelBackend>(
     momenta: &[f64],
     inputs: &mut [EagerComplex64],
     outputs: &mut [EagerComplex64],
-    sectors: &mut [EagerComplex64],
+    resolved_amplitudes: &mut [EagerComplex64],
     backend: &mut B,
     tile_points: usize,
     model_parameters: &[EagerComplex64],
@@ -838,7 +1148,7 @@ fn execute_closures<B: EagerKernelBackend>(
             let scale =
                 call.factor * output_factor_scale(call.output_factor_source, call.site.coupling);
             for point in 0..tile_points {
-                sectors[call.target_sector_id as usize * tile_capacity + point] +=
+                resolved_amplitudes[call.target_destination_id as usize * tile_capacity + point] +=
                     scale * outputs[call_index * tile_points + point];
             }
         }
@@ -853,7 +1163,8 @@ fn execute_closures<B: EagerKernelBackend>(
                     * currents[(left.start + component) * tile_capacity + point]
                     * currents[(right.start + component) * tile_capacity + point];
             }
-            sectors[call.target_sector_id as usize * tile_capacity + point] += call.factor * value;
+            resolved_amplitudes[call.target_destination_id as usize * tile_capacity + point] +=
+                call.factor * value;
         }
     }
     Ok(())
@@ -1197,7 +1508,12 @@ fn check_matrix(actual: usize, rows: usize, points: usize, label: &str) -> Rusti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recurrence::{CheckedTableRange, MomentumTerm};
+    use crate::recurrence::{
+        CheckedTableRange, CurrentCoreKey, CurrentHelicityIdentity, CurrentSourceBinding,
+        DynamicLCColorState, DynamicLCColorStateId, MomentumTerm, RecurrenceAmplitudeDestination,
+        RecurrenceClosureTerm, RecurrenceCurrent, RecurrenceNodeKind, RecurrenceReplayTarget,
+        RecurrenceResolvedHelicity, SemanticDigest, SourceStateAssignment,
+    };
 
     #[derive(Default)]
     struct AddBackend {
@@ -1224,6 +1540,189 @@ mod tests {
             coefficient: 1,
         }])
         .expect("test momentum is canonical")
+    }
+
+    fn digest(byte: u8) -> SemanticDigest {
+        SemanticDigest::new([byte; 32]).expect("test digest is valid")
+    }
+
+    fn identity_replay_target(id: u32, sector_id: u32) -> RecurrenceReplayTarget {
+        RecurrenceReplayTarget::new(
+            id,
+            sector_id,
+            sector_id,
+            vec![0, 1],
+            ExactComplexRational::ONE,
+        )
+        .expect("test replay target is valid")
+    }
+
+    fn identity_replay_plan(sector_id: u32) -> ReplayTargetPlan {
+        ReplayTargetPlan {
+            materialized_sector_id: sector_id,
+            target_sector_id: sector_id,
+            source_component_permutation: vec![0, 1].into_boxed_slice(),
+            momentum_slot_permutation: vec![0, 1].into_boxed_slice(),
+            amplitude_factor_norm_sqr: 1.0,
+        }
+    }
+
+    fn semantic_source(
+        current_id: u32,
+        source_slot: u32,
+        source_state_id: u32,
+    ) -> RecurrenceCurrent {
+        let assignment = SourceStateAssignment::new(source_slot, source_state_id);
+        let key = CurrentCoreKey::new(
+            digest((source_slot + source_state_id + 1) as u8),
+            RecurrenceNodeKind::Source,
+            0,
+            DynamicLCColorStateId::from_interner(0),
+            vec![source_slot],
+            momentum(source_slot),
+            CurrentHelicityIdentity::topology_replay(-1, vec![assignment])
+                .expect("test source helicity is valid"),
+            vec![],
+            0,
+            vec![],
+            CurrentSourceBinding::FixedTemplate(source_slot + 2 * source_state_id),
+            None,
+        )
+        .expect("test source key is valid");
+        RecurrenceCurrent::new(
+            current_id,
+            key,
+            Some(ExactComplexRational::ONE),
+            CheckedTableRange::new(0, 0),
+            None,
+        )
+        .expect("test source current is valid")
+    }
+
+    fn semantic_program() -> RecurrenceProgram {
+        RecurrenceProgram::new(
+            RecurrenceStrategy::TopologyReplay,
+            1,
+            1,
+            vec![DynamicLCColorState::new(0, None, vec![]).expect("test color state is valid")],
+            vec![semantic_source(0, 0, 0), semantic_source(1, 1, 0)],
+            vec![],
+            vec![],
+            vec![identity_replay_target(0, 0)],
+            vec![
+                RecurrenceResolvedHelicity::new(
+                    0,
+                    vec![
+                        SourceStateAssignment::new(0, 0),
+                        SourceStateAssignment::new(1, 0),
+                    ],
+                    vec![-1, 1],
+                )
+                .expect("synthetic resolved helicity is valid"),
+            ],
+            vec![
+                RecurrenceAmplitudeDestination::new(0, 0, Some(0), CheckedTableRange::new(0, 1))
+                    .expect("synthetic destination is valid"),
+            ],
+            vec![
+                RecurrenceClosureTerm::new(0, 0, 0, None, vec![0, 1], ExactComplexRational::ONE)
+                    .expect("synthetic closure is valid"),
+            ],
+        )
+        .expect("synthetic semantic program is valid")
+    }
+
+    fn sparse_semantic_program() -> RecurrenceProgram {
+        let first_states = vec![
+            SourceStateAssignment::new(0, 0),
+            SourceStateAssignment::new(1, 0),
+        ];
+        let second_states = vec![
+            SourceStateAssignment::new(0, 1),
+            SourceStateAssignment::new(1, 1),
+        ];
+        RecurrenceProgram::new(
+            RecurrenceStrategy::TopologyReplay,
+            2,
+            2,
+            vec![DynamicLCColorState::new(0, None, vec![]).expect("test color state is valid")],
+            vec![
+                semantic_source(0, 0, 0),
+                semantic_source(1, 1, 0),
+                semantic_source(2, 0, 1),
+                semantic_source(3, 1, 1),
+            ],
+            vec![],
+            vec![],
+            vec![identity_replay_target(0, 0), identity_replay_target(1, 1)],
+            vec![
+                RecurrenceResolvedHelicity::new(0, first_states, vec![-1, 1])
+                    .expect("first test helicity is valid"),
+                RecurrenceResolvedHelicity::new(1, second_states, vec![1, -1])
+                    .expect("second test helicity is valid"),
+            ],
+            vec![
+                RecurrenceAmplitudeDestination::new(0, 0, Some(0), CheckedTableRange::new(0, 1))
+                    .expect("first test destination is valid"),
+                RecurrenceAmplitudeDestination::new(1, 0, Some(1), CheckedTableRange::new(1, 1))
+                    .expect("second test destination is valid"),
+                RecurrenceAmplitudeDestination::new(2, 1, Some(1), CheckedTableRange::new(2, 1))
+                    .expect("third test destination is valid"),
+            ],
+            vec![
+                RecurrenceClosureTerm::new(0, 0, 0, None, vec![0, 1], ExactComplexRational::ONE)
+                    .expect("first test closure is valid"),
+                RecurrenceClosureTerm::new(1, 1, 0, None, vec![2, 3], ExactComplexRational::ONE)
+                    .expect("second test closure is valid"),
+                RecurrenceClosureTerm::new(2, 2, 0, None, vec![2, 3], ExactComplexRational::ONE)
+                    .expect("third test closure is valid"),
+            ],
+        )
+        .expect("sparse synthetic program is valid")
+    }
+
+    fn replayed_semantic_program() -> RecurrenceProgram {
+        RecurrenceProgram::new(
+            RecurrenceStrategy::TopologyReplay,
+            2,
+            1,
+            vec![DynamicLCColorState::new(0, None, vec![]).expect("test color state is valid")],
+            vec![semantic_source(0, 0, 0), semantic_source(1, 1, 0)],
+            vec![],
+            vec![],
+            vec![
+                identity_replay_target(0, 0),
+                RecurrenceReplayTarget::new(
+                    1,
+                    0,
+                    1,
+                    vec![1, 0],
+                    ExactComplexRational::parse_parts("2", "1", "0", "1")
+                        .expect("test replay factor is exact"),
+                )
+                .expect("test replay target is valid"),
+            ],
+            vec![
+                RecurrenceResolvedHelicity::new(
+                    0,
+                    vec![
+                        SourceStateAssignment::new(0, 0),
+                        SourceStateAssignment::new(1, 0),
+                    ],
+                    vec![-1, 1],
+                )
+                .expect("synthetic resolved helicity is valid"),
+            ],
+            vec![
+                RecurrenceAmplitudeDestination::new(0, 0, Some(0), CheckedTableRange::new(0, 1))
+                    .expect("synthetic destination is valid"),
+            ],
+            vec![
+                RecurrenceClosureTerm::new(0, 0, 0, None, vec![0, 1], ExactComplexRational::ONE)
+                    .expect("synthetic closure is valid"),
+            ],
+        )
+        .expect("replayed synthetic program is valid")
     }
 
     fn synthetic_plan() -> RecurrenceExecutionPlan {
@@ -1289,16 +1788,7 @@ mod tests {
             ],
         };
         RecurrenceExecutionPlan {
-            program: RecurrenceProgram::new(
-                RecurrenceStrategy::TopologyReplay,
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![CheckedTableRange::new(0, 0)],
-                vec![],
-            )
-            .expect("empty semantic program is valid for an executor unit test"),
+            program: semantic_program(),
             kernels: vec![kernel].into_boxed_slice(),
             current_components: vec![
                 ComponentRange { start: 0, len: 1 },
@@ -1326,12 +1816,13 @@ mod tests {
                 },
             ]
             .into_boxed_slice(),
+            replay_targets: vec![identity_replay_plan(0)].into_boxed_slice(),
             stages: stages.into_boxed_slice(),
             prepared_closures: Box::new([]),
             prepared_closure_packets: Box::new([]),
             direct_closures: vec![DirectClosureCall {
                 parent_current_ids: [2, 3],
-                target_sector_id: 0,
+                target_destination_id: 0,
                 coefficients: vec![EagerComplex64::new(1.0, 0.0)].into_boxed_slice(),
                 factor: EagerComplex64::new(1.0, 0.0),
             }]
@@ -1341,9 +1832,59 @@ mod tests {
             source_slot_count: 2,
             parameter_count: 0,
             sector_count: 1,
+            resolved_helicity_count: 1,
             maximum_packet_input_width: 4,
             maximum_packet_output_width: 2,
         }
+    }
+
+    fn sparse_destination_plan() -> RecurrenceExecutionPlan {
+        let mut plan = synthetic_plan();
+        plan.program = sparse_semantic_program();
+        plan.direct_closures = vec![
+            DirectClosureCall {
+                parent_current_ids: [2, 3],
+                target_destination_id: 0,
+                coefficients: vec![EagerComplex64::new(1.0, 0.0)].into_boxed_slice(),
+                factor: EagerComplex64::new(1.0, 0.0),
+            },
+            DirectClosureCall {
+                parent_current_ids: [2, 3],
+                target_destination_id: 1,
+                coefficients: vec![EagerComplex64::new(1.0, 0.0)].into_boxed_slice(),
+                factor: EagerComplex64::new(2.0, 0.0),
+            },
+            DirectClosureCall {
+                parent_current_ids: [2, 3],
+                target_destination_id: 2,
+                coefficients: vec![EagerComplex64::new(1.0, 0.0)].into_boxed_slice(),
+                factor: EagerComplex64::new(3.0, 0.0),
+            },
+        ]
+        .into_boxed_slice();
+        plan.replay_targets =
+            vec![identity_replay_plan(0), identity_replay_plan(1)].into_boxed_slice();
+        plan.sector_count = 2;
+        plan.resolved_helicity_count = 2;
+        plan
+    }
+
+    fn replayed_destination_plan() -> RecurrenceExecutionPlan {
+        let mut plan = synthetic_plan();
+        plan.program = replayed_semantic_program();
+        plan.replay_targets = vec![
+            identity_replay_plan(0),
+            ReplayTargetPlan {
+                materialized_sector_id: 0,
+                target_sector_id: 1,
+                source_component_permutation: vec![1, 0].into_boxed_slice(),
+                momentum_slot_permutation: vec![1, 0].into_boxed_slice(),
+                amplitude_factor_norm_sqr: 4.0,
+            },
+        ]
+        .into_boxed_slice();
+        plan.sector_count = 2;
+        plan
     }
 
     #[test]
@@ -1381,5 +1922,88 @@ mod tests {
                 EagerComplex64::new(54.0, 0.0),
             ]
         );
+        let mut squared = vec![0.0; 3];
+        runtime
+            .evaluate_helicity_sum_norm_sqr_into(
+                &mut backend,
+                3,
+                &sources,
+                &momenta,
+                &[],
+                &mut squared,
+            )
+            .expect("synthetic helicity sum evaluates");
+        assert_eq!(squared, vec![100.0, 784.0, 2916.0]);
+    }
+
+    #[test]
+    fn sparse_destinations_form_an_incoherent_helicity_sum() {
+        let mut runtime = RecurrenceExecutionRuntime::new(sparse_destination_plan(), 1)
+            .expect("sparse runtime workspace is valid");
+        assert_eq!(runtime.resolved_amplitudes.len(), 3);
+        assert_eq!(runtime.plan().resolved_component_count().unwrap(), 3);
+        assert_eq!(runtime.plan().sector_count(), 2);
+        assert_eq!(runtime.plan().resolved_helicity_count(), 2);
+
+        let sources = [EagerComplex64::new(1.0, 0.0), EagerComplex64::new(2.0, 0.0)];
+        let momenta = vec![0.0; 2 * 4];
+        let mut backend = AddBackend::default();
+        let mut resolved = vec![EagerComplex64::new(0.0, 0.0); 3];
+        runtime
+            .evaluate_resolved_amplitudes_into(
+                &mut backend,
+                1,
+                &sources,
+                &momenta,
+                &[],
+                &mut resolved,
+            )
+            .expect("sparse destinations evaluate");
+        assert_eq!(
+            resolved,
+            vec![
+                EagerComplex64::new(6.0, 0.0),
+                EagerComplex64::new(12.0, 0.0),
+                EagerComplex64::new(18.0, 0.0),
+            ]
+        );
+
+        let mut norm_sqr = vec![0.0; 2];
+        runtime
+            .evaluate_helicity_sum_norm_sqr_into(
+                &mut backend,
+                1,
+                &sources,
+                &momenta,
+                &[],
+                &mut norm_sqr,
+            )
+            .expect("sparse helicity sum evaluates");
+        assert_eq!(norm_sqr, vec![180.0, 324.0]);
+        assert_ne!(norm_sqr[0], (resolved[0] + resolved[1]).norm_sqr());
+    }
+
+    #[test]
+    fn topology_replay_gathers_weights_and_scatters_public_flows() {
+        let mut runtime = RecurrenceExecutionRuntime::new(replayed_destination_plan(), 1)
+            .expect("replayed runtime workspace is valid");
+        let mut backend = AddBackend::default();
+        let sources = [EagerComplex64::new(2.0, 0.0), EagerComplex64::new(3.0, 0.0)];
+        let momenta = vec![0.0; 2 * 4];
+        let mut norm_sqr = vec![0.0; 2];
+
+        runtime
+            .evaluate_helicity_sum_norm_sqr_into(
+                &mut backend,
+                1,
+                &sources,
+                &momenta,
+                &[],
+                &mut norm_sqr,
+            )
+            .expect("replayed helicity sum evaluates");
+
+        assert_eq!(backend.calls, vec![2, 2]);
+        assert_eq!(norm_sqr, vec![400.0, 3600.0]);
     }
 }
