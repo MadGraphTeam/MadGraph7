@@ -78,6 +78,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     type2def['double_v'] = 'fptype_sv'
     type2def['complex_v'] = 'cxtype_sv'
 
+    # type of the INVP2 argument 
+    type2def['invmass_v'] = 'fptype_invmass_sv'
+
     type2def['aloha_ref'] = '&'
 
     # AV - modify C++ code from aloha_writers.ALOHAWriterForGPU
@@ -89,6 +92,20 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         super().__init__(*args, **kwargs)
         self.outname = 'w%s%s' % (self.particles[self.outgoing-1], self.outgoing)
         self.momentum_size = 0 # for ALOHAOBJ implementation the momentum is separated from the wavefunctions
+
+    # only the _1, _2 (offshell)
+    def use_invp2(self):
+        return bool(self.offshell) and 'P1N' not in self.tag \
+                                   and not self.routine.denominator
+
+    def define_argument_list(self, couplings=None):
+        call_arg = aloha_writers.WriteALOHA.define_argument_list(self, couplings)
+        if self.use_invp2():
+            extra = ('invmass_v', 'INVP2')
+            call_arg.append(extra)
+            self.declaration.add(extra)
+            self.call_arg = call_arg
+        return call_arg
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     def change_number_format(self, number):
@@ -622,6 +639,20 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         else:
                             mydict['denom'] = self.routine.denominator
                             out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( %(denom)s );\n' % mydict) # AV
+                    elif self.use_invp2():
+                        # if provided by phase space
+                        mydict['zero'] = self.change_number_format(0)
+                        mydict['num'] = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
+                        mydict['normden'] = '%(num)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - M%(i)s * ( M%(i)s - cI * W%(i)s ) )' % mydict
+                        mydict['mi'] = 'static_cast<fptype_invmass>( M%(i)s )' % mydict
+                        mydict['wi'] = 'static_cast<fptype_invmass>( W%(i)s )' % mydict
+                        out.write('#ifdef MGONGPU_CPPSIMD\n') # FS
+                        out.write('    %(declnamedenom)s = %(normden)s;\n' % mydict) # FS
+                        out.write('#else\n') # FS
+                        out.write('    %(declnamedenom)s = ( INVP2 == %(zero)s )\n' % mydict) # FS
+                        out.write('      ? ( %(normden)s )\n' % mydict) # FS
+                        out.write('      : static_cast<cxtype_sv>( static_cast<cxtype_invmass_sv>( %(num)s ) / ( INVP2 - %(mi)s * ( %(mi)s - cxtype_invmass_sv( 0, 1 ) * %(wi)s ) ) );\n' % mydict) # FS
+                        out.write('#endif\n') # FS
                     else:
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - M%(i)s * ( M%(i)s - cI * W%(i)s ) );\n' % mydict) # AV
                 else:
@@ -2785,7 +2816,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
             ###    call = '%(routine_name)s(%(wf)s%(coup)s%(mass)s%(out)s);'
             ###else: # AV e.g. FFV1_0 (output is amplitude)
             ###    call = '%(routine_name)s(%(wf)s%(coup)s%(mass)s%(out)s);'
-            call = '%(routine_name)s( %(wf)s%(coup)s%(mass)s%(out)s );'
+            call = '%(routine_name)s( %(wf)s%(coup)s%(mass)s%(invp2)s%(out)s );'
             # compute wf
             arg = {'routine_name': aloha_writers.combine_name('%s' % l[0], l[1:], outgoing, flag, True),
                    'wf': ('aloha_obj[%%(%d)d], ' * len(argument.get('mothers'))) % tuple(range(len(argument.get('mothers')))),
@@ -2826,6 +2857,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     arg['mass'] = 'm_pars->%(CM)s, '
                 else:
                     arg['mass'] = 'm_pars->%(M)s, m_pars->%(W)s, '
+
+                # Passing always 0 now for compile
+                if not argument.get('is_loop') and \
+                   not argument.get('polarization') and \
+                   not argument.get('particle').get('propagator'):
+                    arg['invp2'] = 'fptype_invmass_sv{0}, '
+                else:
+                    arg['invp2'] = ''
             else:
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'
@@ -2833,6 +2872,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 if fd_gauge and len(l) > 1: #FIXME: this is a hack to avoid a bug in the FD code
                     arg['out'] = arg['out'] + ", &amp_tmp_fp[0]"
                 arg['mass'] = ''
+                arg['invp2'] = ''
             call = call % arg
             # Now we have a line correctly formatted
             call_function = lambda wf: self.format_coupling(
