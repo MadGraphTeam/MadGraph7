@@ -673,6 +673,7 @@ class ProcessExporterFortran(VirtualExporter):
         calls = 0
         self._crossgroup = {}   # (group_idx, me_idx) -> base info; Track B below
         self._crossgroup_dirs = []  # (dependent_dir, base_dir) for the parallel makefile
+        self._crossgroup_helperms = {}  # base_dir -> {base_proc_id -> [hel perms]}
         if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
             # check handling for the polarization
             for m in matrix_elements:
@@ -703,6 +704,9 @@ class ProcessExporterFortran(VirtualExporter):
                                           )
             if self._crossgroup_dirs:
                 self.write_crossgroup_parallel_makefile(
+                    pjoin(self.dir_path, 'SubProcesses'))
+            if self._crossgroup_helperms:
+                self.write_crossgroup_helunion(
                     pjoin(self.dir_path, 'SubProcesses'))
         else:
              # check handling for the polarization
@@ -7600,14 +7604,15 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fallback -- the top-level parallel makefile also orders base before
         dependents).
 
-        With helicity recycling only matrix<b>_orig.o (the full matrix element,
-        identical across the crossing class) is shared; matrix<b>_optim.o is NOT,
-        because gen_ximprove bakes THIS subprocess's own good-helicity set into it,
-        so it is subprocess-specific. Without recycling the single matrix<b>.o is
-        the full, shareable object."""
+        With helicity recycling BOTH matrix<b>_orig.o (the full matrix element) and
+        matrix<b>_optim.o are shared: gen_ximprove bakes the base optim over the
+        UNION good-hel of the crossing class (see crossgroup_helunion.dat), so it
+        covers every member. Without recycling the single matrix<b>.o is the full,
+        shareable object."""
         objs = ['matrix%d.o' % base_proc_id]
         if self.opt.get('hel_recycling'):
-            objs = ['matrix%d_orig.o' % base_proc_id]
+            objs = ['matrix%d_orig.o' % base_proc_id,
+                    'matrix%d_optim.o' % base_proc_id]
         lines = ['# Track B cross-group crossing: reuse the base group\'s compiled',
                  '# matrix element (%s) instead of recompiling the symlinked source.'
                  % base_dir]
@@ -7618,6 +7623,24 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             lines.append('%s:' % base_o)
             lines.append('\t+$(MAKE) -C %s %s' % (pjoin('..', base_dir), o))
         open('crossgroup.mk', 'w').write('\n'.join(lines) + '\n')
+
+    def write_crossgroup_helunion(self, subproc_path):
+        """Write crossgroup_helunion.dat in each cross-group BASE directory. Each
+        line is `<base_proc_id> p1 p2 ... pNCOMB`, a base->base helicity
+        permutation of one dependent crossing: the dependent is good at helicity h
+        iff p[h] is good for the base. gen_ximprove reads it and bakes the base
+        optim over the UNION good-hel of the class (G_base plus the images under
+        these permutations), so a single compiled optim serves every member."""
+        for base_dir, per_proc in self._crossgroup_helperms.items():
+            lines = []
+            for base_proc_id, perms in sorted(per_proc.items()):
+                for pi in perms:
+                    lines.append('%d %s' % (base_proc_id,
+                                            ' '.join(str(x) for x in pi)))
+            if lines:
+                with open(pjoin(subproc_path, base_dir,
+                                'crossgroup_helunion.dat'), 'w') as f:
+                    f.write('\n'.join(lines) + '\n')
 
     def write_crossgroup_parallel_makefile(self, subproc_path):
         """Write SubProcesses/makefile_madevent so every P directory builds with a
@@ -7653,28 +7676,45 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     #===========================================================================
     # _dsig_crossgroup_fills
     #===========================================================================
+    def _crossed_helicity_configs(self, base_me, cross):
+        """The base helicity rows after applying the crossing: crossed[hb][k] =
+        base_row[PERM[k]]*SGN[k] (PERM 0-based source leg, SGN the IC sign), i.e.
+        what APPLY_CROSSING makes of each base NHEL row. Returns (base_rows,
+        crossed_rows) as lists of tuples in the base NHEL order."""
+        bh = [tuple(x) for x in base_me.get_helicity_matrix()]
+        tables = ProcessExporterFortran.compute_crossing_tables(self, base_me)
+        nx = tables['nexternal']
+        P = [tables['perm'][cross * nx + k] for k in range(nx)]
+        S = [tables['ic'][cross * nx + k] for k in range(nx)]
+        crossed = [tuple(row[P[k]] * S[k] for k in range(nx)) for row in bh]
+        return bh, crossed
+
     def _crossgroup_helmap(self, dep_me, base_me, cross):
         """1-based map from a base helicity index to the DEPENDENT helicity index
         carrying the physically-crossed configuration. The base SMATRIX selects a
         helicity in ITS own NHEL enumeration, but the event is written through the
-        dependent's own get_helicities, so the index must be translated. The base
-        APPLY_CROSSING permutes NHEL by PERM and flips it by the IC sign, so a base
-        row corresponds to dep config[k] = base_row[PERM[k]]*SGN[k]. Returns the
-        identity if that is not a clean permutation of the dependent's table."""
-        bh = [tuple(x) for x in base_me.get_helicity_matrix()]
+        dependent's own get_helicities, so the index must be translated. Returns
+        the identity if that is not a clean permutation of the dependent's table."""
+        _, crossed = self._crossed_helicity_configs(base_me, cross)
         dh = [tuple(x) for x in dep_me.get_helicity_matrix()]
-        tables = ProcessExporterFortran.compute_crossing_tables(self, base_me)
-        nx = tables['nexternal']
-        perm = tables['perm']
-        ic = tables['ic']
-        P = [perm[cross * nx + k] for k in range(nx)]      # 0-based source leg
-        S = [ic[cross * nx + k] for k in range(nx)]
         dhpos = {cfg: i for i, cfg in enumerate(dh)}
-        hmap = [dhpos.get(tuple(row[P[k]] * S[k] for k in range(nx)), -1)
-                for row in bh]
-        if -1 in hmap or sorted(hmap) != list(range(len(bh))):
-            return list(range(1, len(bh) + 1))
+        hmap = [dhpos.get(c, -1) for c in crossed]
+        if -1 in hmap or sorted(hmap) != list(range(len(crossed))):
+            return list(range(1, len(crossed) + 1))
         return [h + 1 for h in hmap]
+
+    def _crossgroup_base_helperm(self, base_me, cross):
+        """1-based base->base helicity permutation of a crossing: pi[hb] = the base
+        index whose NHEL row equals the crossed row of hb. So the dependent for
+        this crossing has good helicity hb iff pi[hb] is good for the base -- which
+        is how gen_ximprove expands the base optim over the UNION good-hel of the
+        class so it can be shared. Returns None if not a clean permutation."""
+        bh, crossed = self._crossed_helicity_configs(base_me, cross)
+        bhpos = {cfg: i for i, cfg in enumerate(bh)}
+        pi = [bhpos.get(c, -1) for c in crossed]
+        if -1 in pi or sorted(pi) != list(range(len(bh))):
+            return None
+        return [p + 1 for p in pi]
 
     def _dsig_crossgroup_fills(self, matrix_element, proc_id, crossgroup):
         """Fill the cross-group (Track B) holes of auto_dsig_v4.inc for a
@@ -9257,6 +9297,19 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                 self.write_crossgroup_mk(crossgroup['base_dir'],
                                          crossgroup['base_proc_id'])
                 self._crossgroup_dirs.append((subprocdir, crossgroup['base_dir']))
+                # Record this dependent's base->base helicity permutation(s) so
+                # the base optim can be baked over the UNION good-hel and shared.
+                base_me = crossgroup['base_me']
+                nflav_base = len(base_me.get_external_flavors_with_iden())
+                perms = self._crossgroup_helperms.setdefault(
+                    crossgroup['base_dir'], {}).setdefault(
+                    crossgroup['base_proc_id'], [])
+                for iflav in crossgroup['flav_idx']:
+                    pi = self._crossgroup_base_helperm(
+                        base_me, (iflav - 1) // nflav_base)
+                    if pi is not None and pi != list(range(1, len(pi) + 1)) \
+                            and pi not in perms:
+                        perms.append(pi)
                 # ncolor for maxflow sizing: crossing preserves the colour basis,
                 # so the dependent's own count is the base's. writer=None writes
                 # nothing, it only returns the flavor/colour bookkeeping.

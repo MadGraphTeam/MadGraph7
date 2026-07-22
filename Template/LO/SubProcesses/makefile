@@ -1,11 +1,6 @@
 include ../../Source/make_opts
 FFLAGS+= -w -I ../../Source/DHELAS/ -I ../../Source/MODEL
 
-# Track B cross-group crossing: present only in a dependent P directory, it makes
-# the base group's matrix<b> object(s) be symlinked from the base directory
-# instead of recompiled here (see write_crossgroup_mk). Absent elsewhere.
--include crossgroup.mk
-
 # Load additional dependencies of the bias module, if present
 ifeq (,$(wildcard ../bias_dependencies))
 BIASDEPENDENCIES =
@@ -115,3 +110,10 @@ initcluster.o: message.inc
 
 clean:
 	$(RM) *.o gensym madevent madevent_forhel
+
+# Track B cross-group crossing: present only in a dependent P directory, it makes
+# the base group's matrix<b> object(s) be symlinked from the base directory
+# instead of recompiled here (see write_crossgroup_mk). Included LAST so its
+# specific rules override the makefile's %.o pattern / $(MATRIX) static-pattern
+# rules. Absent (a no-op) elsewhere.
+-include crossgroup.mk

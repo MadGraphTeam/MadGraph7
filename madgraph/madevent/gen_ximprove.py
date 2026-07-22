@@ -271,8 +271,22 @@ class gensym(object):
                 fsock.write(data)        
                 
         
+            # Cross-group crossing (Track B): in a base directory, bake the optim
+            # over the UNION good-hel of the crossing class so a single compiled
+            # optim can be shared by every crossing. crossgroup_helunion.dat gives,
+            # per base matrix index, base->base helicity permutations: the
+            # dependent for that crossing is good at helicity h iff perm[h] is good
+            # for the base.
+            helunion = collections.defaultdict(list)
+            hu_file = pjoin(Pdir, 'crossgroup_helunion.dat')
+            if os.path.exists(hu_file):
+                for line in open(hu_file):
+                    vals = line.split()
+                    if vals:
+                        helunion[vals[0]].append([int(x) for x in vals[1:]])
+
             for matrix_file in misc.glob('matrix*orig.f', Pdir):
-    
+
                 split_file = matrix_file.split('/')
                 me_index = split_file[-1][len('matrix'):-len('_orig.f')]
 
@@ -286,7 +300,13 @@ class gensym(object):
 
                 # Convert to sorted list for reproducibility
                 #good_hels = sorted(list(good_hels))
-                good_hels = [str(x) for x in sorted(all_good_hels[me_index])]
+                good_set = set(all_good_hels[me_index])
+                # Cross-group: expand to the UNION good-hel of the class.
+                gbase = frozenset(good_set)
+                for pi in helunion.get(me_index, []):
+                    good_set |= {h for h in range(1, len(pi) + 1)
+                                 if pi[h - 1] in gbase}
+                good_hels = [str(x) for x in sorted(good_set)]
                 if self.run_card['hel_zeroamp']:
                     
                     bad_amps = [str(x) for x in sorted(all_bad_amps[me_index])]
