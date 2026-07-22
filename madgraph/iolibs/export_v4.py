@@ -8631,6 +8631,18 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         except KeyError:
             self.proc_characteristic['hel_recycling'] = False
             self.opt['hel_recycling'] = False
+        # Helicity recycling bakes fixed helicity values into the matrix element
+        # (hel_recycle.py rewrites matrix_orig.f into a single good-helicity
+        # sweep). That is incompatible with the runtime helicity permutation a
+        # crossing applies -- one baked helicity set cannot serve every crossing
+        # -- so a crossing output keeps the direct, crossing-aware matrix<i>.f
+        # instead. (No effect until the madevent crossing gate is opened.)
+        if self.opt.get('use_crossing', False) and self.opt['hel_recycling']:
+            logger.info('Crossing symmetry on: disabling helicity recycling for '
+                        'this output (incompatible with the runtime helicity '
+                        'crossing).')
+            self.opt['hel_recycling'] = False
+            self.proc_characteristic['hel_recycling'] = False
         for ime, matrix_element in \
                 enumerate(matrix_elements):
             if self.opt['hel_recycling']:
