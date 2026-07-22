@@ -8894,6 +8894,22 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             crossing_bases, crossing_routing = \
                 self.partition_crossing_classes(matrix_elements)
             crossing_bases = set(crossing_bases)
+            # Flag the run interface that this output relies on crossing: a shared
+            # matrix element is reused across physically distinct (crossed) initial
+            # states. That is fine for the unpolarised proton PDFs, but it is NOT
+            # compatible with per-beam polarisation or the EVA luminosity, which
+            # depend on the actual beam particle. Tag the limitation only when
+            # crossing is materially applied (a router, or a base that evaluates a
+            # cross>0 flavor), so ordinary polarised runs are not blocked for
+            # nothing. check_card_consistency turns this into a clear error.
+            crossing_applied = len(crossing_bases) < len(matrix_elements) or any(
+                (iflav - 1) // len(matrix_elements[base_index]
+                                   .get_external_flavors_with_iden()) > 0
+                for route in crossing_routing if route is not None
+                for (base_index, iflav) in route)
+            if crossing_applied and \
+               'crossing' not in self.proc_characteristic['limitations']:
+                self.proc_characteristic['limitations'].append('crossing')
         else:
             crossing_bases, crossing_routing = None, None
 

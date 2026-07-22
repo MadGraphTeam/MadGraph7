@@ -6854,7 +6854,28 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if 'dressed_ee' in  proc_charac['limitations']:
                 if self.run_card['lpp1'] not in [0,1,-1] or self.run_card['lpp1'] not in [0,1,-1]:
                     raise InvalidCmd("dressed lepton mode is not available for this process (see warning associated to the code generation to understand why)")
-            # 
+
+            if 'crossing' in proc_charac['limitations']:
+                # Crossing reuses one matrix element across physically distinct
+                # (crossed) initial states, so a per-beam property is ambiguous.
+                if self.run_card['polbeam1'] or self.run_card['polbeam2']:
+                    raise InvalidCmd(
+                        "Beam polarisation is not compatible with crossing symmetry:\n"
+                        "this process reuses a matrix element across crossed initial\n"
+                        "states, for which a per-beam polarisation is ill-defined.\n"
+                        "Regenerate the process with crossing disabled, e.g.\n"
+                        "  generate <process> --use_crossing=False\n"
+                        "and 'output' again, to run polarised beams.")
+                if 'eva' in (self.run_card['pdlabel'],
+                             self.run_card['pdlabel1'], self.run_card['pdlabel2']):
+                    raise InvalidCmd(
+                        "The EVA luminosity is not compatible with crossing symmetry:\n"
+                        "this process reuses a matrix element across crossed initial\n"
+                        "states, for which the per-beam EVA density is ill-defined.\n"
+                        "Regenerate the process with crossing disabled, e.g.\n"
+                        "  generate <process> --use_crossing=False\n"
+                        "and 'output' again, to use EVA.")
+            #
             if 'fix_scale' in proc_charac['limitations']:
                 if not self.run_card['fixed_fac_scale'] or not self.run_card['fixed_ren_scale']:
                     raise InvalidCmd("Your model is identified as having not SM running of the strong coupling.\n"+\
