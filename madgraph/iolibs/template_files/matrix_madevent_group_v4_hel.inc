@@ -51,6 +51,7 @@ C
         INTEGER I,IDEN
         INTEGER FLAVOR(NEXTERNAL)
         INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
+%(smatrix_hel_cross_decl)s
 C       Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
 C       table above can collapse distinct same-flavor / different-flavor
 C       leshouche rows that share the same coupling group; BROKEN_SYM needs
@@ -96,7 +97,8 @@ ${helicity_lines}
 C ----------
 C BEGIN CODE
 C ----------
-    CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
+%(smatrix_hel_cross_decode)s
+    CALL GET_FLAVOR%(proc_id)s(%(me_flav_key)s, FLAVOR)
 
     IF (multi_channel) THEN
         DO I=1,NDIAGS
@@ -113,8 +115,8 @@ C ----------
 
     TS(:) = 0d0
 
-    call MATRIX%(proc_id)s(P ,IFLAV, TS, AMP2, JAMP2, IVEC)
-    DO I=1,NCOMB     
+    call MATRIX%(proc_id)s(%(hel_matrix_call_args)s)
+    DO I=1,NCOMB
        T=TS(I)  
        DO JJ=1,nincoming
           IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
@@ -167,11 +169,12 @@ c         Set right sign for ANS, based on sign of chosen helicity
     ELSE
        FLAVOR_FOR_SYM(:) = FLAVOR(:)
     ENDIF
-    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR_FOR_SYM)
+%(smatrix_me_iden_line)s
 
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
 
     END
+%(crossing_routines_me)s
 
 
       SUBROUTINE GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR_OUT)
@@ -187,7 +190,7 @@ C     Returns the flavor array for a given flavor index IFLAV
       END
 
 
-Subroutine  MATRIX%(proc_id)s(P,IFLAV, TS, AMP2, JAMP2, IVEC)
+Subroutine  MATRIX%(proc_id)s(P,%(hel_matrix_ic_param)sIFLAV, TS, AMP2, JAMP2, IVEC)
 C  
 %(info_lines)s
 C
@@ -227,6 +230,7 @@ C ARGUMENTS
 C
     REAL*8 P(0:3,NEXTERNAL)
     INTEGER IFLAV
+%(me_matrix_ic_decl)s
     INTEGER FLAVOR(NEXTERNAL)
     REAL*8 TS(NCOMB)
     INTEGER IVEC

@@ -2418,6 +2418,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'crossing_routines_me': '',
                 'me_matrix_ic_param': '',
                 'me_matrix_ic_decl': '',
+                # helicity-recycling template variant (matrix<i>_hel):
+                'smatrix_hel_cross_decl':
+                    'C     Generated without crossing symmetry: IFLAV is a plain'
+                    '\nC     flavor index, there is no crossing to decode.',
+                'smatrix_hel_cross_decode': '',
+                'hel_matrix_call_args': 'P ,IFLAV, TS, AMP2, JAMP2, IVEC',
+                'hel_matrix_ic_param': '',
             })
             return
 
@@ -2482,6 +2489,40 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'crossing_routines_me': crossing_routines,
             'me_matrix_ic_param': 'IC,',
             'me_matrix_ic_decl': '    INTEGER IC(NEXTERNAL)',
+            # Helicity-recycling variant (matrix<i>_hel -> matrix<i>_optim). The
+            # recycled MATRIX bakes the base good-helicity set; feeding it the
+            # crossed momenta PUSE and IC evaluates that set at the crossed
+            # kinematics, which by H=sigma(K) is exactly the crossed ME -- no
+            # NHEL table (nor a helicity remap) is needed here.
+            'smatrix_hel_cross_decl': (
+                '      INTEGER NFLAV\n'
+                '      PARAMETER (NFLAV=%(nflav)d)\n'
+                '      INTEGER FLAV_USE, CROSSUSE, IDENUSE, XKCR\n'
+                '      INTEGER PERM(NEXTERNAL), SGN(NEXTERNAL), IC(NEXTERNAL)\n'
+                '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
+                '      INTEGER %(cp)sGET_SPINCOL_CROSS\n'
+                '      INTEGER %(cp)sGET_IDENT_CROSS'
+                ) % {'nflav': nflav, 'cp': cp},
+            'smatrix_hel_cross_decode': (
+                '      CROSSUSE = (IFLAV-1) / NFLAV\n'
+                '      IDENUSE = %(cp)sGET_SPINCOL_CROSS(CROSSUSE)\n'
+                '      IF (IDENUSE.EQ.0) THEN\n'
+                '        ANS = 0D0\n'
+                '        IHEL = 1\n'
+                '        ICOL = 1\n'
+                '        RETURN\n'
+                '      ENDIF\n'
+                '      CALL %(cp)sGET_CROSS_PERM(IFLAV, PERM, SGN, FLAV_USE)\n'
+                '      DO XKCR=1,NEXTERNAL\n'
+                '        PUSE(0,XKCR) = P(0,PERM(XKCR))\n'
+                '        PUSE(1,XKCR) = P(1,PERM(XKCR))\n'
+                '        PUSE(2,XKCR) = P(2,PERM(XKCR))\n'
+                '        PUSE(3,XKCR) = P(3,PERM(XKCR))\n'
+                '        IC(XKCR) = SGN(XKCR)\n'
+                '      ENDDO'
+                ) % {'cp': cp},
+            'hel_matrix_call_args': 'PUSE ,IC, FLAV_USE, TS, AMP2, JAMP2, IVEC',
+            'hel_matrix_ic_param': 'IC,',
         })
 
     # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN
@@ -8631,18 +8672,6 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         except KeyError:
             self.proc_characteristic['hel_recycling'] = False
             self.opt['hel_recycling'] = False
-        # Helicity recycling bakes fixed helicity values into the matrix element
-        # (hel_recycle.py rewrites matrix_orig.f into a single good-helicity
-        # sweep). That is incompatible with the runtime helicity permutation a
-        # crossing applies -- one baked helicity set cannot serve every crossing
-        # -- so a crossing output keeps the direct, crossing-aware matrix<i>.f
-        # instead. (No effect until the madevent crossing gate is opened.)
-        if self.opt.get('use_crossing', False) and self.opt['hel_recycling']:
-            logger.info('Crossing symmetry on: disabling helicity recycling for '
-                        'this output (incompatible with the runtime helicity '
-                        'crossing).')
-            self.opt['hel_recycling'] = False
-            self.proc_characteristic['hel_recycling'] = False
         for ime, matrix_element in \
                 enumerate(matrix_elements):
             if self.opt['hel_recycling']:
