@@ -1810,6 +1810,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    const fptype* allmomenta,          // input: momenta[nevt*npar*4]
                    const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,    // input: indices of the flavor combinations
+                   const int* allInvariantMasks,      // input: sampled propagator leg-bitmasks[nevt*ninvar] (nullptr => disabled)
+                   const fptype_invmass* allInvariantMasses, // input: sampled propagator p^2[nevt*ninvar]
+                   int ninvar,                        // input: #invariants per event (0 => disabled)
 #ifdef MGONGPUCPP_GPUIMPL
                    fptype* allJamps,                  // output: jamp[2*ncolor*nevt] buffer for one helicity _within a super-buffer for dcNGoodHel helicities_
                    bool storeChannelWeights,

@@ -446,6 +446,9 @@ extern "C"
       momenta,
       couplings,
       flavor_indices,
+      nullptr,
+      nullptr,
+      0,         //jsut for compile test
       helicity_random,
       color_random,
       nullptr,
@@ -580,6 +583,9 @@ extern "C"
       momenta.data(),
       couplings.data(),
       flavor_indices.data(),
+      nullptr,
+      nullptr,
+      0,          //jsut for compile test
       helicity_random.data(),
       color_random.data(),
       nullptr,

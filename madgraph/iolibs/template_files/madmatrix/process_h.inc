@@ -82,6 +82,9 @@ namespace mg5amcCpu
   sigmaKin( const fptype* allmomenta,           // input: momenta[nevt*npar*4]
             const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
             const unsigned int* iflavorVec,     // input: index of the flavor combination
+            const int* allInvariantMasks,       // input: sampled propagator leg-bitmasks[nevt*ninvar] (nullptr => disabled)
+            const fptype_invmass* allInvariantMasses, // input: sampled propagator p^2[nevt*ninvar]
+            int ninvar,                         // input: #invariants per event (0 => disabled)
             const fptype* allrndhel,            // input: random numbers[nevt] for helicity selection
             const fptype* allrndcol,            // input: random numbers[nevt] for color selection
             const unsigned int* allChannelIds,  // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable single-diagram enhancement (fix #899/#911)
@@ -107,6 +110,9 @@ namespace mg5amcCpu
   sigmaKin( const fptype* allmomenta,           // input: momenta[nevt*npar*4]
             const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
             const unsigned int* iflavorVec,     // input: index of the flavor combination
+            const int* allInvariantMasks,       // input: sampled propagator leg-bitmasks[nevt*ninvar] (nullptr => disabled)
+            const fptype_invmass* allInvariantMasses, // input: sampled propagator p^2[nevt*ninvar]
+            int ninvar,                         // input: #invariants per event (0 => disabled)
             const fptype* allrndhel,            // input: random numbers[nevt] for helicity selection
             const fptype* allrndcol,            // input: random numbers[nevt] for color selection
             const unsigned int* allChannelIds,  // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable single-diagram enhancement (fix #899)

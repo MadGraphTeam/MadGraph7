@@ -494,7 +494,7 @@ namespace mg5amcCpu
       gpuMemset( allMEs, 0, maxtry * sizeof( fptype ) );
       // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
       constexpr fptype_sv* allJamp2s = nullptr; // no need for color selection during helicity filtering
-      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, allmomenta, allcouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
+      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, allmomenta, allcouplings, devFlavorVec, nullptr, nullptr, 0, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
       gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel, 0 );
       gpuMemcpy( hstMEs, allMEs, maxtry * sizeof( fptype ), gpuMemcpyDeviceToHost );
       //std::cout << "sigmaKin_getGoodHel ihel=" << ihel << std::endl;
@@ -579,7 +579,7 @@ namespace mg5amcCpu
 #else
         cxtype_sv jamp_sv[ncolor] = {};  // all zeros
 #endif
-        calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 ); //maxtry?
+        calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, nullptr, nullptr, 0, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 ); //maxtry?
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         for( int ieppV = 0; ieppV < neppV; ++ieppV )
         {
@@ -866,6 +866,9 @@ namespace mg5amcCpu
   sigmaKin( const fptype* allmomenta,           // input: momenta[nevt*npar*4]
             const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
             const unsigned int* iflavorVec,     // input: indices of the flavor combinations
+            const int* allInvariantMasks,       // input: sampled propagator leg-bitmasks[nevt*ninvar] (nullptr => disabled)
+            const fptype_invmass* allInvariantMasses, // input: sampled propagator p^2[nevt*ninvar]
+            int ninvar,                         // input: #invariants per event (0 => disabled)
             const fptype* allrndhel,            // input: random numbers[nevt] for helicity selection
             const fptype* allrndcol,            // input: random numbers[nevt] for color selection
             const unsigned int* allChannelIds,  // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable single-diagram enhancement (fix #899/#911)

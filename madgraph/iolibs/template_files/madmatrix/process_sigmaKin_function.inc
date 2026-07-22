@@ -53,7 +53,7 @@
     // In multichannel mode, also compute the running sums over helicities of numerators, denominators and squared jamp2s
     bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
     if (async) {
-      gpuLaunchKernel2D( calculate_jamps, gpublocks, cNGoodHel, gputhreads, ghelStreams[0], 0, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, true );
+      gpuLaunchKernel2D( calculate_jamps, gpublocks, cNGoodHel, gputhreads, ghelStreams[0], 0, allmomenta, allcouplings, iflavorVec, allInvariantMasks, allInvariantMasses, ninvar, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, true );
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, true );
     } else {
       for( int ighel = 0; ighel < cNGoodHel; ighel++ )
@@ -62,7 +62,7 @@
         fptype* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
         fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * processConfig::ndiagrams;
         fptype* hAllDenominators = ghelAllDenominators + ighel * nevt;
-        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt, false );
+        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, allInvariantMasks, allInvariantMasses, ninvar, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt, false );
       }
       // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, false );
@@ -122,7 +122,7 @@
         cxtype_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
         // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
         bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-        calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+        calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, allInvariantMasks, allInvariantMasses, ninvar, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
