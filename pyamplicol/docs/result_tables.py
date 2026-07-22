@@ -90,6 +90,15 @@ EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_REVISION = (
 EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_BASE_REVISIONS = frozenset(
     {"a0fd4a458c281b1838df10c6547395edc6e65618"}
 )
+GENERATION_CAP_OUT_OF_REACH_POLICY_REVISION = (
+    "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61"
+)
+GENERATION_CAP_OUT_OF_REACH_POLICY_REUSE_BASE_REVISIONS = frozenset(
+    {
+        "3d896f399fe078f4b7e9deefa6738c52a77309d5",
+        "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61",
+    }
+)
 PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
     {
         (
@@ -107,10 +116,6 @@ PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
         (
             "a0fd4a458c281b1838df10c6547395edc6e65618",
             "e3342771aa6f56853fcd98035982f6056e68211f",
-        ),
-        (
-            "3d896f399fe078f4b7e9deefa6738c52a77309d5",
-            "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61",
         ),
     }
 )
@@ -5705,6 +5710,11 @@ def _source_provenance_generation_reusable(provenance: object) -> bool:
     ) or (
         previous_head in LC_HELICITY_REPLAY_REUSE_BASE_REVISIONS
         and _git_is_ancestor(LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION, current_head)
+    ) or (
+        previous_head in GENERATION_CAP_OUT_OF_REACH_POLICY_REUSE_BASE_REVISIONS
+        and _git_is_ancestor(
+            GENERATION_CAP_OUT_OF_REACH_POLICY_REVISION, current_head
+        )
     )
 
 

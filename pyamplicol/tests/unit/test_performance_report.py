@@ -1689,15 +1689,40 @@ def test_runtime_only_revision_hops_allow_generation_reuse(
         execution_mode="eager",
     )
 
-    out_of_reach_policy_current = dict(current)
-    out_of_reach_policy_current["head"] = (
-        "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61"
+    monkeypatch.setattr(
+        report,
+        "_git_is_ancestor",
+        lambda ancestor, descendant: (
+            ancestor == report.GENERATION_CAP_OUT_OF_REACH_POLICY_REVISION
+            and descendant
+            in {
+                "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61",
+                "post-generation-cap-policy-head",
+            }
+        ),
     )
+    for policy_current_head in (
+        "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61",
+        "post-generation-cap-policy-head",
+    ):
+        out_of_reach_policy_current = dict(current)
+        out_of_reach_policy_current["head"] = policy_current_head
+        monkeypatch.setattr(
+            report,
+            "_report_source_provenance",
+            lambda provenance=out_of_reach_policy_current: provenance,
+        )
+        previous = dict(out_of_reach_policy_current)
+        previous["head"] = "3d896f399fe078f4b7e9deefa6738c52a77309d5"
+        assert report._source_provenance_generation_reusable(previous)
+
+    out_of_reach_policy_current = dict(current)
+    out_of_reach_policy_current["head"] = "post-generation-cap-policy-head"
     monkeypatch.setattr(
         report, "_report_source_provenance", lambda: out_of_reach_policy_current
     )
     previous = dict(out_of_reach_policy_current)
-    previous["head"] = "3d896f399fe078f4b7e9deefa6738c52a77309d5"
+    previous["head"] = "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61"
     assert report._source_provenance_generation_reusable(previous)
 
 
