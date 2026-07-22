@@ -38,8 +38,16 @@ endif
 
 MATRIX_HEL = $(patsubst %.f,%.o,$(wildcard matrix*_orig.f))
 MATRIX = $(patsubst %.f,%.o,$(wildcard matrix*_optim.f))
+# Crossing-symmetry routers: matrix*_router.f share a base subprocess's matrix
+# element and are never recycled, so they are compiled into both the forhel and
+# the optimized binaries alongside the recycled bases. When recycling is off the
+# matrix*.f glob below already covers them.
+ROUTER = $(patsubst %.f,%.o,$(wildcard matrix*_router.f))
 ifeq ($(strip $(MATRIX_HEL)),)
         MATRIX = $(patsubst %.f,%.o,$(wildcard matrix*.f))
+else
+        MATRIX += $(ROUTER)
+        MATRIX_HEL += $(ROUTER)
 endif
 
 

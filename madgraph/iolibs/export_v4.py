@@ -8803,21 +8803,17 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             crossing_bases, crossing_routing = \
                 self.partition_crossing_classes(matrix_elements)
             crossing_bases = set(crossing_bases)
-            # The router writes static matrix<i>.f, but helicity recycling builds
-            # matrix<i>_optim.f at run time and the makefile globs one or the
-            # other. Mixing recycled bases and static routers needs build-system
-            # work, so a merged group compiles the direct matrix<i>.f throughout
-            # for now (recycling stays available for non-merged crossing output).
-            if self.opt['hel_recycling']:
-                self.opt['hel_recycling'] = False
-                self.proc_characteristic['hel_recycling'] = False
         else:
             crossing_bases, crossing_routing = None, None
 
         for ime, matrix_element in \
                 enumerate(matrix_elements):
             if crossing_routing is not None and ime not in crossing_bases:
-                filename = 'matrix%d.f' % (ime+1)
+                # A router shares a base's matrix element and holds no helicities
+                # to recycle. Name it matrix<i>_router.f so the makefile globs it
+                # into both build targets while gen_ximprove (which recycles
+                # matrix*_orig.f) leaves it alone.
+                filename = 'matrix%d_router.f' % (ime+1)
                 calls, ncolor = self.write_matrix_router_file(
                     writers.FortranWriter(filename), matrix_element,
                     fortran_model, proc_id=str(ime+1),
