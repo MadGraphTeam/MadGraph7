@@ -669,8 +669,9 @@ class ProcessExporterFortran(VirtualExporter):
     #===========================================================================
     def export_processes(self, matrix_elements, fortran_model, second_exporter=None, second_helas=None):
         """Make the switch between grouped and not grouped output"""
-        
+
         calls = 0
+        self._crossgroup = {}   # (group_idx, me_idx) -> base info; Track B below
         if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
             # check handling for the polarization
             for m in matrix_elements:
@@ -682,6 +683,17 @@ class ProcessExporterFortran(VirtualExporter):
                                 if spin != 2:
                                     self.beam_polarization[beamid-1] = False
                                     break
+
+            # Cross-group crossing (Track B): a group whose matrix element is a
+            # crossing of another group's reuses (symlinks) that base group's
+            # compiled matrix element. Detect it here, where every group is
+            # visible, and hand the per-group routing to generate_subprocess_
+            # directory (keyed by the same enumerate index it receives).
+            self._crossgroup = self.compute_crossgroup_routing(matrix_elements)
+            if self._crossgroup:
+                logger.info('Cross-group crossing: %d subprocess(es) will reuse '
+                            'a base group\'s matrix element via crossing.'
+                            % len({k[0] for k in self._crossgroup}))
 
             for (group_number, me_group) in enumerate(matrix_elements):
                 calls = calls + self.generate_subprocess_directory(\
@@ -2978,6 +2990,70 @@ C     crossing carried by FLAV_IDX moves across.
                 bases.append(i)               # i keeps its own matrix.f (a base)
                 routing[i] = [(i, crossmap[i][sig][1]) for sig in sig_by_flav[i]]
         return bases, routing
+
+    def compute_crossgroup_routing(self, subproc_groups):
+        """Cross-group crossing (Track B): find whole subprocess GROUPS whose
+        matrix element is a crossing of another group's, so the dependent group
+        can REUSE (symlink) the base group's compiled matrix element instead of
+        generating and compiling its own. Used for e.g. lepton/photon beams where
+        each initial state lands in its own single-process P directory and the
+        crossings relate different P directories (partition_crossing_classes is
+        group-agnostic -- it clusters by crossed-PDG signature -- so it is fed the
+        flat list of every group's matrix elements).
+
+        Returns a dict keyed by ``(group_enum_idx, me_idx)`` for the DEPENDENT
+        members only; each value carries the base group's directory, the base
+        SMATRIX's proc_id, the base matrix_element (for the COLMAP/CONFIGMAP
+        remaps) and the crossed 1-based FLAV_IDX per flavor. Bases are absent
+        (they keep their own matrix element). Only a dependent whose EVERY flavor
+        crosses to a SINGLE base matrix element is routed; anything else keeps its
+        own matrix element (so the sharing is always a clean whole-ME reuse).
+        """
+        if not self.opt.get('use_crossing', False):
+            return {}
+        flat = []                       # (group_enum_idx, me_idx, matrix_element)
+        for gi, group in enumerate(subproc_groups):
+            for mi, me in enumerate(group.get('matrix_elements')):
+                flat.append((gi, mi, me))
+        # A pinned s-channel does not survive crossing (see breaks_crossing_
+        # symmetry): fall back to independent matrix elements for the whole run.
+        if any(self.breaks_crossing_symmetry(proc)
+               for (_, _, me) in flat for proc in me.get('processes')):
+            return {}
+        # Cross-group routing is the lepton/photon mechanism -- distinct beam
+        # particles, each initial state landing in its OWN single-process group.
+        # It must NOT touch the hadronic p p case, where the crossings live
+        # inside one group and are already shared by within-group routers (Track
+        # A); merging those groups too is a separate, deferred optimisation. The
+        # p p case is exactly the one with within-group crossing routing, so if
+        # any group routes a flavor within itself, leave the whole run to Track A.
+        for group in subproc_groups:
+            mes_g = group.get('matrix_elements')
+            g_bases, _ = self.partition_crossing_classes(mes_g)
+            if len(g_bases) < len(mes_g):
+                return {}
+        mes = [me for (_, _, me) in flat]
+        bases, routing = self.partition_crossing_classes(mes)
+        result = {}
+        for flat_i, (gi, mi, me) in enumerate(flat):
+            if flat_i in bases:
+                continue
+            route = routing[flat_i]                 # per flavor: (base_flat, iflav)
+            base_flats = set(bflat for (bflat, _) in route)
+            if len(base_flats) != 1:
+                # flavors cross to different bases (a merged group): no single ME
+                # to symlink, keep this member's own matrix element.
+                continue
+            base_gi, base_mi, base_me = flat[base_flats.pop()]
+            base_group = subproc_groups[base_gi]
+            result[(gi, mi)] = {
+                'base_dir': 'P%d_%s' % (base_group.get('number'),
+                                        base_group.get('name')),
+                'base_proc_id': base_mi + 1,
+                'base_me': base_me,
+                'flav_idx': [iflav for (_, iflav) in route],
+            }
+        return result
 
     def compute_ghremap(self, matrix_element, allow_reverse=True):
         """Build the good-helicity remap table for the crossing filter.
@@ -6352,6 +6428,23 @@ c     channel position
         replace_dict['proc_id'] = proc_id
         replace_dict['numproc'] = 1
 
+        # Flavor lookup + SMATRIX call default to this subprocess's own matrix
+        # element; a cross-group dependent (Track B) overrides them below to route
+        # to a base group's symlinked crossing-aware SMATRIX.
+        replace_dict['dsig_xg_decl'] = ''
+        replace_dict['dsig_xg_decl_vec'] = ''
+        replace_dict['dsig_xg_decl_multi'] = ''
+        replace_dict['dsig_getflavor'] = \
+            '      CALL GET_FLAVOR%s(IFLAV, FLAVOR)' % proc_id
+        replace_dict['dsig_smatrix_call'] = (
+            '     CALL SMATRIX%s(P1, IFLAV, RHEL, RCOL,channel,1, DSIGUU,'
+            ' selected_hel(1), selected_col(1))' % proc_id)
+        # ... and the same for the vectorised (SMATRIX_MULTI) path.
+        replace_dict['dsig_getflavor_vec'] = \
+            '       CALL GET_FLAVOR%s(IFLAV_VEC(IVEC), FLAVOR)' % proc_id
+        replace_dict['dsig_smatrix_vec_name'] = 'SMATRIX%s' % proc_id
+        replace_dict['dsig_smatrix_vec_flav'] = 'IFLAV_VEC(IVEC)'
+
         # Set dsig_line
         if ninitial == 1:
             # No conversion, since result of decay should be given in GeV
@@ -7477,11 +7570,92 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             return replace_dict
         
     #===========================================================================
+    # _crossgroup_base_files
+    #===========================================================================
+    def _crossgroup_base_files(self, base_proc_id):
+        """Base-group matrix-element source files a cross-group dependent symlinks
+        into its own P directory so the makefile compiles the shared crossing-
+        aware SMATRIX there too. Correctness-first: the source is reused (symlink)
+        but each directory still compiles its own object; sharing the compiled .o
+        is a later build step. With helicity recycling the base keeps
+        matrix<b>_orig.f plus the template for the run-time optimised copy,
+        otherwise a single matrix<b>.f."""
+        if self.opt.get('hel_recycling'):
+            return ['matrix%d_orig.f' % base_proc_id,
+                    'template_matrix%d.f' % base_proc_id]
+        return ['matrix%d.f' % base_proc_id]
+
+    #===========================================================================
+    # _dsig_crossgroup_fills
+    #===========================================================================
+    def _dsig_crossgroup_fills(self, matrix_element, proc_id, crossgroup):
+        """Fill the cross-group (Track B) holes of auto_dsig_v4.inc for a
+        dependent subprocess that has no matrix element of its own and routes to
+        a base group's symlinked crossing-aware SMATRIX.
+
+        * beams -- the dependent cannot define its own GET_FLAVOR (it would clash
+          with the symlinked base's), so its FLAVOR table (group-position coded,
+          exactly as GET_FLAVOR would return) is inlined as DSIG_XGFLAV and
+          indexed by IFLAV for the PDF.
+        * SMATRIX -- dispatch to the base SMATRIX with the crossed FLAV_IDX
+          (DSIG_XGROUTE(IFLAV)) instead of IFLAV; the base crosses the momenta and
+          rebuilds the crossed denominator internally so ANS is this subprocess's
+          matrix element. Momenta/PDF/phase space stay this subprocess's own.
+
+        The colour flow (COLMAP) and multi-channel config (CONFIGMAP) remaps are
+        added in a later step; the channel is passed through for now.
+        """
+        base_proc_id = crossgroup['base_proc_id']
+        flav_idx = crossgroup['flav_idx']       # per dep flavor -> base FLAV_IDX
+        all_flv = matrix_element.get_external_flavors_with_iden()
+        model = self.model or matrix_element.get('processes')[0].get('model')
+        pdg_to_group_pos, max_group_size = self._build_flavor_group_lookup(model)
+
+        # Column-major flat DATA (leg fastest, then flavor) -- avoids an implied-
+        # do index variable, which need not be declared in every program unit.
+        positions = [str(self._map_flavor_to_group_pos(
+                         f, pdg_to_group_pos, max_group_size))
+                     for flav in all_flv for f in flav[0]]
+        decl = ['      INTEGER DSIG_XGFLAV(NEXTERNAL,%d)' % len(all_flv),
+                '      DATA DSIG_XGFLAV /%s/' % ','.join(positions)]
+        decl.append('      INTEGER DSIG_XGROUTE(%d)' % len(all_flv))
+        decl.append('      DATA DSIG_XGROUTE /%s/'
+                    % ','.join(str(x) for x in flav_idx))
+        # DSIG_XGFLAV/DSIG_XGROUTE are used from three separate program units
+        # (DSIG, DSIG_VEC, SMATRIX_MULTI); declare them in each.
+        decl_block = '\n'.join(decl) + '\n'
+
+        return {
+            'dsig_xg_decl': decl_block,
+            'dsig_xg_decl_vec': decl_block,
+            'dsig_xg_decl_multi': decl_block,
+            'dsig_getflavor': '      FLAVOR(:) = DSIG_XGFLAV(:, IFLAV)',
+            'dsig_smatrix_call': (
+                '     CALL SMATRIX%d(P1, DSIG_XGROUTE(IFLAV), RHEL, RCOL, channel,'
+                ' 1, DSIGUU, selected_hel(1), selected_col(1))' % base_proc_id),
+            # vectorised (SMATRIX_MULTI) path: same routing. The MULTI wrapper
+            # itself keeps this subprocess's own name (it is defined in this
+            # auto_dsig); only the inner base-SMATRIX call + flavor are routed.
+            'dsig_getflavor_vec':
+                '       FLAVOR(:) = DSIG_XGFLAV(:, IFLAV_VEC(IVEC))',
+            'dsig_smatrix_vec_name': 'SMATRIX%d' % base_proc_id,
+            'dsig_smatrix_vec_flav': 'DSIG_XGROUTE(IFLAV_VEC(IVEC))',
+        }
+
+    #===========================================================================
     # write_auto_dsig_file
     #===========================================================================
-    def write_auto_dsig_file(self, writer, matrix_element, proc_id = ""):
+    def write_auto_dsig_file(self, writer, matrix_element, proc_id = "",
+                             crossgroup=None):
         """Write the auto_dsig.f file for the differential cross section
-        calculation, includes pdf call information"""
+        calculation, includes pdf call information.
+
+        When ``crossgroup`` is given (Track B, cross-group crossing) this
+        subprocess has no matrix element of its own: it symlinks a base group's
+        crossing-aware SMATRIX and routes to it. The flavor lookup and the
+        SMATRIX call are then filled with the routed variants (see
+        _dsig_crossgroup_fills); everything else (PDFs, cuts, phase space) stays
+        this subprocess's own."""
 
         if not matrix_element.get('processes') or \
                not matrix_element.get('diagrams'):
@@ -7534,6 +7708,23 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Set proc_id
         replace_dict['proc_id'] = proc_id
         replace_dict['numproc'] = 1
+
+        # Flavor lookup + SMATRIX call default to this subprocess's own matrix
+        # element; a cross-group dependent (Track B) overrides them below to route
+        # to a base group's symlinked crossing-aware SMATRIX.
+        replace_dict['dsig_xg_decl'] = ''
+        replace_dict['dsig_xg_decl_vec'] = ''
+        replace_dict['dsig_xg_decl_multi'] = ''
+        replace_dict['dsig_getflavor'] = \
+            '      CALL GET_FLAVOR%s(IFLAV, FLAVOR)' % proc_id
+        replace_dict['dsig_smatrix_call'] = (
+            '     CALL SMATRIX%s(P1, IFLAV, RHEL, RCOL,channel,1, DSIGUU,'
+            ' selected_hel(1), selected_col(1))' % proc_id)
+        # ... and the same for the vectorised (SMATRIX_MULTI) path.
+        replace_dict['dsig_getflavor_vec'] = \
+            '       CALL GET_FLAVOR%s(IFLAV_VEC(IVEC), FLAVOR)' % proc_id
+        replace_dict['dsig_smatrix_vec_name'] = 'SMATRIX%s' % proc_id
+        replace_dict['dsig_smatrix_vec_flav'] = 'IFLAV_VEC(IVEC)'
 
         # Set dsig_line
         if ninitial == 1:
@@ -7646,8 +7837,13 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                               f, pdg_to_group_pos, max_group_size))
                               for f in flav[0]]
             replace_dict['get_flavor_matrix'] += ' DATA (FLAVOR(i,  %d),i=  1, NEXTERNAL) /%s/\n' % (i+1, ', '.join(flav_positions))
-        
 
+
+        # Cross-group dependent (Track B): override the flavor lookup + SMATRIX
+        # call to route to the symlinked base group's crossing-aware SMATRIX.
+        if crossgroup is not None:
+            replace_dict.update(
+                self._dsig_crossgroup_fills(matrix_element, proc_id, crossgroup))
 
         if writer:
             file = open(pjoin(_file_path, \
@@ -8915,7 +9111,25 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
 
         for ime, matrix_element in \
                 enumerate(matrix_elements):
-            if crossing_routing is not None and ime not in crossing_bases:
+            crossgroup = self._crossgroup.get((group_number, ime))
+            if crossgroup is not None:
+                # Cross-group dependent (Track B): this subprocess's matrix
+                # element is a crossing of a base group's, in another P directory.
+                # It generates NO matrix element of its own -- it symlinks the
+                # base group's compiled crossing-aware SMATRIX (built once there)
+                # and its auto_dsig routes to it with the crossed FLAV_IDX. Only
+                # the flavor table (for the PDF) and phase space stay local.
+                for fname in self._crossgroup_base_files(crossgroup['base_proc_id']):
+                    ln(pjoin('..', crossgroup['base_dir'], fname), log=False)
+                # ncolor for maxflow sizing: crossing preserves the colour basis,
+                # so the dependent's own count is the base's. writer=None writes
+                # nothing, it only returns the flavor/colour bookkeeping.
+                rd = self.write_matrix_element_v4(
+                    None, matrix_element, fortran_model, proc_id=str(ime+1),
+                    config_map=subproc_group.get('diagram_maps')[ime],
+                    subproc_number=group_number)
+                calls, ncolor = 0, rd['return_value'][1]
+            elif crossing_routing is not None and ime not in crossing_bases:
                 # A router shares a base's matrix element and holds no helicities
                 # to recycle. Name it matrix<i>_router.f so the makefile globs it
                 # into both build targets while gen_ximprove (which recycles
@@ -8996,7 +9210,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             filename = 'auto_dsig%d.f' % (ime+1)
             self.write_auto_dsig_file(writers.FortranWriter(filename),
                                  matrix_element,
-                                 str(ime+1))
+                                 str(ime+1),
+                                 crossgroup=crossgroup)
 
             # Keep track of needed quantities
             tot_calls += int(calls)
