@@ -2901,6 +2901,58 @@ C     crossing carried by FLAV_IDX moves across.
                 entries.append((index, cross, flav0, tuple(pdg)))
         return entries
 
+    def partition_crossing_classes(self, matrix_elements):
+        """Partition a group's matrix elements into crossing-equivalence classes.
+
+        Two subprocesses belong to the same class when one is a crossing of the
+        other -- same particles, related by the initial<->final leg swap the
+        crossing machinery encodes. One member of each class is the *base*: its
+        SMATRIX, driven by an extended FLAV_IDX, evaluates every member of the
+        class, so only the base needs its own matrix<i>.f and the other members'
+        auto_dsig can call the base SMATRIX with the crossing's FLAV_IDX.
+
+        Returns a list parallel to ``matrix_elements``: for member ``i`` a pair
+        ``(base_index, cross)`` where ``base_index`` indexes ``matrix_elements``
+        (the class base) and ``cross`` is the crossing code that reaches member
+        ``i`` from that base (0 for a base itself). Matching is by the crossed
+        physical-PDG signature, exactly the key check_crossing matches on, so a
+        member is tied to a base only when the base can actually reproduce it.
+        """
+        n = len(matrix_elements)
+
+        # Representative identity signature (cross == 0) of every member: the
+        # PDG tuple of its own leg ordering, the thing a base crossing must hit.
+        id_sig = [None] * n
+        for i, me in enumerate(matrix_elements):
+            for _idx, cross, _flav0, pdg in \
+                    self.compute_crossing_pdg_entries(me, zero_based=True):
+                if cross == 0:
+                    id_sig[i] = pdg
+                    break
+
+        assigned = [None] * n
+        for b in range(n):
+            if assigned[b] is not None:
+                continue
+            # b opens a new class as its base.
+            assigned[b] = (b, 0)
+            # Every crossed PDG signature b can reproduce, and with which code.
+            cross_by_sig = {}
+            for _idx, cross, _flav0, pdg in \
+                    self.compute_crossing_pdg_entries(matrix_elements[b],
+                                                      zero_based=True):
+                if cross == 0:
+                    continue
+                cross_by_sig.setdefault(pdg, cross)
+            # Pull every still-free member b can reach into b's class.
+            for m in range(n):
+                if assigned[m] is not None or id_sig[m] is None:
+                    continue
+                cross = cross_by_sig.get(id_sig[m])
+                if cross is not None:
+                    assigned[m] = (b, cross)
+        return assigned
+
     def compute_ghremap(self, matrix_element, allow_reverse=True):
         """Build the good-helicity remap table for the crossing filter.
 

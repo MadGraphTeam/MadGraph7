@@ -1786,3 +1786,46 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             self._me(on_dir, self.IDENTITY), self._me(off_dir, self.IDENTITY),
             delta=self.tolerance * abs(self._me(off_dir, self.IDENTITY)),
             msg='the uncrossed ME changed when the crossing machinery was emitted')
+
+
+class TestCrossingPartition(unittest.TestCase):
+    """partition_crossing_classes groups a subprocess group's matrix elements
+    into crossing-equivalence classes (a base plus the crossings it reproduces),
+    the basis for sharing one matrix<i>.f across a base and its crossings in the
+    madevent output."""
+
+    def _groups(self, proc):
+        import madgraph.iolibs.group_subprocs as group_subprocs
+        import madgraph.iolibs.export_v4 as export_v4
+        cmd = cmd_interface.MasterCmd()
+        cmd.run_cmd('import model sm')
+        cmd.run_cmd('define j = g u u~')
+        cmd.run_cmd('generate %s' % proc)
+        groups = group_subprocs.SubProcessGroup.group_amplitudes(
+            cmd._curr_amps, 'madevent')
+        for g in groups:
+            g.generate_matrix_elements()
+        return groups, export_v4.ProcessExporterFortran()
+
+    def test_partition_pp_jj(self):
+        groups, exp = self._groups('p p > j j')
+        total_me = total_base = 0
+        found_cross = False
+        for g in groups:
+            mes = g.get('matrix_elements')
+            assigned = exp.partition_crossing_classes(mes)
+            self.assertEqual(len(assigned), len(mes))
+            bases = set()
+            for i, (b, c) in enumerate(assigned):
+                # the base a member points at is itself a base (cross 0)
+                self.assertEqual(assigned[b], (b, 0))
+                bases.add(b)
+                if i != b:
+                    self.assertNotEqual(c, 0)   # a genuine crossing, not identity
+                    found_cross = True
+            total_me += len(mes)
+            total_base += len(bases)
+        self.assertTrue(found_cross,
+                        'no crossing class found in p p > j j')
+        self.assertLess(total_base, total_me,
+                        'no matrix element was shared across a crossing')
