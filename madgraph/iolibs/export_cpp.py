@@ -420,12 +420,11 @@ class UFOModelConverterCPP(object):
         # For each parameter, write name = expr;
         for coupl in params:
             for key, c in coupl.flavors.items():
-                nonzero = [i for i in key if i != 0]
-                if len(nonzero) == 2:
-                    k1, k2 = nonzero
-                else:
-                    # single merged leg: unmerged partner has flavor index 1
-                    k1 = nonzero[0]; k2 = 1
+                # Same (k1, k2) derivation as the Fortran/Python backends: for a
+                # single merged leg the unmerged partner is flavor index 1 and
+                # the PARTNER/PARTNER2 direction depends on which fermion carries
+                # the merged leg (see FLV_Coupling.get_partner_indices).
+                k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
                 def_flv.append('%(name)s.partner[%(in)i] = %(out)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
                 def_flv.append('%(name)s.partner2[%(out)i] = %(in)i;' % {'name': coupl.name,'in': k1-1, 'out': k2-1})
                 def_flv.append('%(name)s.val[%(in)i]  =  &%(coupl)s;' % {'name': coupl.name,'in': k1-1, 'coupl': c})

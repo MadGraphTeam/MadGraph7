@@ -210,6 +210,37 @@ extern "C"
     return UMAMI_SUCCESS;
   }
 
+  UmamiStatus umami_supported_inputs( bool const** supported, int* count )
+  {
+    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
+    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true };
+    *supported = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+  }
+
+  UmamiStatus umami_required_inputs( bool const** required, int* count )
+  {
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true }; // MOMENTA only
+    *required = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+  }
+
+  UmamiStatus umami_supported_outputs( bool const** supported, int* count )
+  {
+    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX, GPU_STREAM
+#ifdef MGONGPUCPP_GPUIMPL
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true, true };
+#else
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
+#endif
+    *supported = data;
+    *count = UMAMI_OUTPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+  }
+
   UmamiStatus umami_initialize( UmamiHandle* handle, char const* param_card_path )
   {
     CPPProcess process;
