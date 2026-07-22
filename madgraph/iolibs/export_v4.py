@@ -3025,27 +3025,29 @@ C     crossing carried by FLAV_IDX moves across.
         """
         if not self.opt.get('use_crossing', False):
             return {}
+        # Consider only groups whose every member is a within-group BASE (no
+        # router). A group that ALREADY has within-group crossing routing (the
+        # hadronic p p groups where several crossings co-locate under a `j`
+        # multiparticle) is left to Track A -- mixing its base(s) with those
+        # routers is fragile, so it is excluded here. The lepton/photon single-
+        # process groups are all bases; a p p run additionally exposes the cross-
+        # P-directory crossings that within-group routing cannot reach (e.g.
+        # g g > q q~ vs q q~ > g g, in their own P directories).
         flat = []                       # (group_enum_idx, me_idx, matrix_element)
         for gi, group in enumerate(subproc_groups):
-            for mi, me in enumerate(group.get('matrix_elements')):
-                flat.append((gi, mi, me))
-        # A pinned s-channel does not survive crossing (see breaks_crossing_
-        # symmetry): fall back to independent matrix elements for the whole run.
-        if any(self.breaks_crossing_symmetry(proc)
-               for (_, _, me) in flat for proc in me.get('processes')):
-            return {}
-        # Cross-group routing is the lepton/photon mechanism -- distinct beam
-        # particles, each initial state landing in its OWN single-process group.
-        # It must NOT touch the hadronic p p case, where the crossings live
-        # inside one group and are already shared by within-group routers (Track
-        # A); merging those groups too is a separate, deferred optimisation. The
-        # p p case is exactly the one with within-group crossing routing, so if
-        # any group routes a flavor within itself, leave the whole run to Track A.
-        for group in subproc_groups:
             mes_g = group.get('matrix_elements')
             g_bases, _ = self.partition_crossing_classes(mes_g)
             if len(g_bases) < len(mes_g):
-                return {}
+                continue                # within-group routing -> leave to Track A
+            for mi, me in enumerate(mes_g):
+                flat.append((gi, mi, me))
+        if not flat:
+            return {}
+        # A pinned s-channel does not survive crossing (see breaks_crossing_
+        # symmetry): fall back to independent matrix elements.
+        if any(self.breaks_crossing_symmetry(proc)
+               for (_, _, me) in flat for proc in me.get('processes')):
+            return {}
         mes = [me for (_, _, me) in flat]
         bases, routing = self.partition_crossing_classes(mes)
         result = {}
