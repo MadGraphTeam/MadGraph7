@@ -642,6 +642,8 @@ class SourceTemplateV1(_SemanticRecord):
     wavefunction_family: str
     helicity: int
     spin_state: int
+    flavour_flow: FlavourFlowV1
+    quantum_number_flow: QuantumNumberFlowV1
     wavefunction_expression_digest: str
     evaluator_resolver_key: str
     mass_parameter_id: str | None = None
@@ -658,6 +660,10 @@ class SourceTemplateV1(_SemanticRecord):
             )
         _require_int("source helicity", self.helicity)
         _require_int("source spin_state", self.spin_state)
+        _require_flavour_flow("source flavour flow", self.flavour_flow)
+        _require_quantum_number_flow(
+            "source quantum-number flow", self.quantum_number_flow
+        )
         _require_sha256(
             "source wavefunction_expression_digest",
             self.wavefunction_expression_digest,
@@ -674,7 +680,11 @@ class SourceTemplateV1(_SemanticRecord):
             "crossing": self.crossing,
             "evaluator_resolver_key": self.evaluator_resolver_key,
             "helicity": self.helicity,
+            "flavour_flow": list(self.flavour_flow),
             "mass_parameter_id": self.mass_parameter_id,
+            "quantum_number_flow": [
+                list(item) for item in self.quantum_number_flow
+            ],
             "spin_state": self.spin_state,
             "state_template_id": self.state_template_id,
             "template_id": self.template_id,
@@ -695,6 +705,7 @@ class QuantumFlowTemplateV1(_SemanticRecord):
     input_quantum_number_flows: tuple[QuantumNumberFlowV1, ...]
     coupling_orders: tuple[tuple[str, int], ...]
     result_state_template_id: str
+    result_spin_state: int
     result_flavour_flow: FlavourFlowV1
     result_quantum_number_flow: QuantumNumberFlowV1
     exact_coupling: ExactComplexRationalV1
@@ -736,6 +747,7 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             )
         _validate_coupling_orders(self.coupling_orders)
         _require_nonempty("quantum-flow result state", self.result_state_template_id)
+        _require_int("quantum-flow result spin state", self.result_spin_state)
         _require_flavour_flow(
             "quantum-flow result flavour flow", self.result_flavour_flow
         )
@@ -767,6 +779,7 @@ class QuantumFlowTemplateV1(_SemanticRecord):
                 list(item) for item in self.result_quantum_number_flow
             ],
             "result_state_template_id": self.result_state_template_id,
+            "result_spin_state": self.result_spin_state,
             "template_id": self.template_id,
         }
 
@@ -974,6 +987,7 @@ class ClosureTemplateV1(_SemanticRecord):
     canonical_input_order: tuple[int, ...]
     coupling_parameter_ids: tuple[str, ...]
     coupling_orders: tuple[tuple[str, int], ...]
+    eligible_quantum_flow_template_ids: tuple[str, ...]
     color_contraction_template_id: str
     binding_coupling: ExactComplexRationalV1
     exact_factor: ExactComplexRationalV1
@@ -1003,6 +1017,11 @@ class ClosureTemplateV1(_SemanticRecord):
             sorted_unique=True,
         )
         _validate_coupling_orders(self.coupling_orders)
+        _require_string_tuple(
+            "closure eligible quantum flows",
+            self.eligible_quantum_flow_template_ids,
+            sorted_unique=True,
+        )
         _require_nonempty(
             "closure color contraction", self.color_contraction_template_id
         )
@@ -1059,6 +1078,9 @@ class ClosureTemplateV1(_SemanticRecord):
             ],
             "coupling_orders": [list(item) for item in self.coupling_orders],
             "coupling_parameter_ids": list(self.coupling_parameter_ids),
+            "eligible_quantum_flow_template_ids": list(
+                self.eligible_quantum_flow_template_ids
+            ),
             "evaluator_resolver_key": self.evaluator_resolver_key,
             "equivalence_class": self.equivalence_class,
             "exact_factor": self.exact_factor.to_dict(),
@@ -1654,6 +1676,21 @@ class RecurrenceTemplateCatalog:
             _require_references(
                 "closure input states", closure.input_state_template_ids, states
             )
+            eligible_flows = tuple(
+                _require_reference(
+                    "closure eligible quantum flow", flow_id, quantum_flows
+                )
+                for flow_id in closure.eligible_quantum_flow_template_ids
+            )
+            if any(
+                flow.input_state_template_ids != closure.input_state_template_ids
+                or flow.coupling_orders != closure.coupling_orders
+                for flow in eligible_flows
+            ):
+                raise RecurrenceTemplateError(
+                    "closure and eligible quantum-flow state/coupling contracts "
+                    "do not match"
+                )
             _require_references(
                 "closure coupling parameters",
                 closure.coupling_parameter_ids,
@@ -2088,6 +2125,8 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
             "wavefunction_family",
             "helicity",
             "spin_state",
+            "flavour_flow",
+            "quantum_number_flow",
             "wavefunction_expression_digest",
             "evaluator_resolver_key",
             "mass_parameter_id",
@@ -2106,6 +2145,12 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
         ),
         helicity=_require_int("source helicity", value["helicity"]),
         spin_state=_require_int("source spin_state", value["spin_state"]),
+        flavour_flow=_decode_flavour_flow(
+            "source flavour flow", value["flavour_flow"]
+        ),
+        quantum_number_flow=_decode_quantum_number_flow(
+            "source quantum-number flow", value["quantum_number_flow"]
+        ),
         wavefunction_expression_digest=_require_sha256(
             "source wavefunction expression", value["wavefunction_expression_digest"]
         ),
@@ -2132,6 +2177,7 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
             "input_quantum_number_flows",
             "coupling_orders",
             "result_state_template_id",
+            "result_spin_state",
             "result_flavour_flow",
             "result_quantum_number_flow",
             "exact_coupling",
@@ -2158,6 +2204,9 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
         ),
         result_state_template_id=_require_nonempty(
             "flow result state", value["result_state_template_id"]
+        ),
+        result_spin_state=_require_int(
+            "flow result spin state", value["result_spin_state"]
         ),
         result_flavour_flow=_decode_flavour_flow(
             "flow result flavour", value["result_flavour_flow"]
@@ -2298,6 +2347,7 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
             "canonical_input_order",
             "coupling_parameter_ids",
             "coupling_orders",
+            "eligible_quantum_flow_template_ids",
             "color_contraction_template_id",
             "binding_coupling",
             "component_coefficients",
@@ -2327,6 +2377,10 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
         ),
         coupling_orders=_decode_coupling_orders(
             "closure coupling orders", value["coupling_orders"]
+        ),
+        eligible_quantum_flow_template_ids=_decode_string_tuple(
+            "closure eligible quantum flows",
+            value["eligible_quantum_flow_template_ids"],
         ),
         color_contraction_template_id=_require_nonempty(
             "closure color", value["color_contraction_template_id"]

@@ -100,7 +100,7 @@ def build_recurrence_template_catalog(
         parameter_ids,
     )
     (
-        quantum_flows,
+        transition_quantum_flows,
         transitions,
         transition_colors,
     ) = _build_transitions(
@@ -119,7 +119,11 @@ def build_recurrence_template_catalog(
         kernels,
         evaluator_builders,
     )
-    prepared_closures, prepared_closure_colors = _build_closures(
+    (
+        closure_quantum_flows,
+        prepared_closures,
+        prepared_closure_colors,
+    ) = _build_closures(
         model,
         recurrence_catalog.closure_bindings,
         state_ids,
@@ -135,6 +139,10 @@ def build_recurrence_template_catalog(
         )
     )
     closures = (*prepared_closures, *direct_closures)
+    quantum_flows_by_id = {
+        flow.template_id: flow
+        for flow in (*transition_quantum_flows, *closure_quantum_flows)
+    }
     closure_colors = (*prepared_closure_colors, *direct_closure_colors)
     _add_model_parameter_evaluator(
         recurrence_catalog,
@@ -157,7 +165,7 @@ def build_recurrence_template_catalog(
         parameters=parameters,
         current_states=current_states,
         sources=sources,
-        quantum_flows=quantum_flows,
+        quantum_flows=tuple(quantum_flows_by_id.values()),
         transitions=transitions,
         propagators=propagators,
         closures=closures,
@@ -840,6 +848,18 @@ def _build_sources(
                 prepared_state.particle_id,
                 prepared_state.chirality,
             )
+            flavour_flow = (int(prepared_state.particle_id),)
+            quantum_number_flow = _stable_callback(
+                f"source quantum-number flow for particle {prepared_state.particle_id}",
+                lambda prepared_state=prepared_state: model.quantum_number_flow(
+                    prepared_state.particle_id
+                ),
+                serializer=lambda value: _canonical_json(list(value)),
+            )
+            canonical_quantum_number_flow = tuple(
+                (str(name), str(expression))
+                for name, expression in quantum_number_flow
+            )
             mass_parameter_id = _parameter_reference(
                 source_ir.mass_parameter,
                 parameter_ids,
@@ -861,6 +881,10 @@ def _build_sources(
                 "helicity": int(state.helicity),
                 "chirality": int(state.chirality),
                 "spin_state": int(state.spin_state),
+                "flavour_flow": list(flavour_flow),
+                "quantum_number_flow": [
+                    list(item) for item in canonical_quantum_number_flow
+                ],
                 "mass_parameter_id": mass_parameter_id,
                 "width_parameter_id": width_parameter_id,
             }
@@ -881,6 +905,8 @@ def _build_sources(
                 wavefunction_family=source_ir.wavefunction_family,
                 helicity=int(state.helicity),
                 spin_state=int(state.spin_state),
+                flavour_flow=flavour_flow,
+                quantum_number_flow=canonical_quantum_number_flow,
                 wavefunction_expression_digest=callable_signature,
                 evaluator_resolver_key=resolver_key,
                 mass_parameter_id=mass_parameter_id,
@@ -1024,19 +1050,11 @@ def _build_transitions(
             f"vertex kind {vertex.kind} coupling orders",
         )
         for variant in flow_variants:
-            flow_id = _token("quantum-flow", variant)
-            flow = QuantumFlowTemplateV1(
-                template_id=flow_id,
-                input_state_template_ids=concrete_state_ids,
-                input_spin_states=variant["input_spin_states"],
-                input_flavour_flows=variant["input_flavour_flows"],
-                input_quantum_number_flows=variant["input_quantum_number_flows"],
-                coupling_orders=coupling_orders,
-                result_state_template_id=result_state_id,
-                result_flavour_flow=variant["result_flavour_flow"],
-                result_quantum_number_flow=variant["result_quantum_number_flow"],
-                exact_coupling=ExactComplexRationalV1.from_dict(variant["coupling"]),
-                predicate_digest=_digest(variant),
+            flow = _quantum_flow_template(
+                binding,
+                variant,
+                state_ids,
+                coupling_orders,
             )
             flows_by_id.setdefault(flow.template_id, flow)
             transition_id = _token(
@@ -1098,6 +1116,41 @@ def _build_transitions(
     return tuple(flows_by_id.values()), tuple(transitions), tuple(colors.values())
 
 
+def _quantum_flow_template(
+    binding: PreparedVertexBinding | PreparedClosureBinding,
+    variant: Mapping[str, Any],
+    state_ids: Mapping[tuple[int, int], str],
+    coupling_orders: tuple[tuple[str, int], ...],
+) -> QuantumFlowTemplateV1:
+    input_state_ids = (
+        state_ids[(binding.left_state.particle_id, binding.left_state.chirality)],
+        state_ids[(binding.right_state.particle_id, binding.right_state.chirality)],
+    )
+    result_state_id = state_ids[
+        (binding.result_state.particle_id, binding.result_state.chirality)
+    ]
+    predicate = {
+        "coupling_orders": [list(item) for item in coupling_orders],
+        "flow": variant,
+        "input_state_template_ids": list(input_state_ids),
+        "result_state_template_id": result_state_id,
+    }
+    return QuantumFlowTemplateV1(
+        template_id=_token("quantum-flow", predicate),
+        input_state_template_ids=input_state_ids,
+        input_spin_states=variant["input_spin_states"],
+        input_flavour_flows=variant["input_flavour_flows"],
+        input_quantum_number_flows=variant["input_quantum_number_flows"],
+        coupling_orders=coupling_orders,
+        result_state_template_id=result_state_id,
+        result_spin_state=variant["result_spin_state"],
+        result_flavour_flow=variant["result_flavour_flow"],
+        result_quantum_number_flow=variant["result_quantum_number_flow"],
+        exact_coupling=ExactComplexRationalV1.from_dict(variant["coupling"]),
+        predicate_digest=_digest(predicate),
+    )
+
+
 def _validate_vertex_binding_against_model(
     model: Model,
     binding: PreparedVertexBinding,
@@ -1142,7 +1195,7 @@ def _validate_vertex_binding_against_model(
 def _probe_quantum_flows(
     model: Model,
     vertex: Vertex,
-    binding: PreparedVertexBinding,
+    binding: PreparedVertexBinding | PreparedClosureBinding,
 ) -> tuple[dict[str, Any], ...]:
     left_spins = _spin_states_for_chirality(
         model, binding.left_state.particle_id, binding.left_state.chirality
@@ -1495,9 +1548,11 @@ def _build_closures(
     kernels: Mapping[int, Any],
     evaluator_requests: list[_EvaluatorRequest],
 ) -> tuple[
+    tuple[QuantumFlowTemplateV1, ...],
     tuple[ClosureTemplateV1, ...],
     tuple[ColorContractionTemplateV1, ...],
 ]:
+    flows_by_id: dict[str, QuantumFlowTemplateV1] = {}
     records: list[ClosureTemplateV1] = []
     colors: dict[str, ColorContractionTemplateV1] = {}
     for binding in sorted(bindings, key=lambda item: item.key):
@@ -1528,6 +1583,27 @@ def _build_closures(
             )
         color = _color_template(model, vertex, closure=True)
         colors.setdefault(color.template_id, color)
+        coupling_orders = _canonical_coupling_orders(
+            model.vertex_coupling_orders(vertex),
+            f"closure kind {vertex.kind} coupling orders",
+        )
+        flow_variants = _probe_quantum_flows(model, vertex, binding)
+        if not flow_variants:
+            raise RecurrenceTemplateError(
+                "prepared closure binding is not admitted by the live quantum-flow "
+                f"contract: kind={binding.key.kind}, key={binding.key!r}"
+            )
+        eligible_flows = tuple(
+            _quantum_flow_template(
+                binding,
+                variant,
+                state_ids,
+                coupling_orders,
+            )
+            for variant in flow_variants
+        )
+        for flow in eligible_flows:
+            flows_by_id.setdefault(flow.template_id, flow)
         input_state_ids = (
             state_ids[(binding.left_state.particle_id, binding.left_state.chirality)],
             state_ids[(binding.right_state.particle_id, binding.right_state.chirality)],
@@ -1548,9 +1624,9 @@ def _build_closures(
             evaluator_resolver_key=resolver_key,
             canonical_input_order=tuple(binding.canonical_input_order),
             coupling_parameter_ids=_kernel_parameter_ids(kernel, parameter_ids),
-            coupling_orders=_canonical_coupling_orders(
-                model.vertex_coupling_orders(vertex),
-                f"closure kind {vertex.kind} coupling orders",
+            coupling_orders=coupling_orders,
+            eligible_quantum_flow_template_ids=tuple(
+                sorted(flow.template_id for flow in eligible_flows)
             ),
             color_contraction_template_id=color.template_id,
             binding_coupling=_exact_pair(
@@ -1583,7 +1659,11 @@ def _build_closures(
                 semantic_template_id=record.template_id,
             )
         )
-    return tuple(records), tuple(colors.values())
+    return (
+        tuple(flows_by_id.values()),
+        tuple(records),
+        tuple(colors.values()),
+    )
 
 
 def _build_direct_closures(
@@ -1692,6 +1772,7 @@ def _build_direct_closures(
             canonical_input_order=(0, 1),
             coupling_parameter_ids=(),
             coupling_orders=(),
+            eligible_quantum_flow_template_ids=(),
             color_contraction_template_id=color.template_id,
             binding_coupling=ExactComplexRationalV1.one(),
             exact_factor=ExactComplexRationalV1.one(),

@@ -258,7 +258,14 @@ def build_recurrence_template_input_v1(
         ),
         _quantum_number_flow_ranges(quantum_number_flows),
         _quantum_number_flow_terms(quantum_number_flows, strings),
-        _sources_table(catalog, ids, strings, digests),
+        _sources_table(
+            catalog,
+            ids,
+            strings,
+            digests,
+            flavour_flows,
+            quantum_number_flows,
+        ),
         _string_tables(strings)[0],
         _string_tables(strings)[1],
         _symmetry_proofs_table(catalog, strings, digests, factors, u32_sequences),
@@ -327,6 +334,9 @@ def _all_strings(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
             record.wavefunction_family,
             record.evaluator_resolver_key,
         )
+        for name, expression in record.quantum_number_flow:
+            yield name
+            yield expression
     for record in catalog.quantum_flows:
         yield record.template_id
         for flow in (
@@ -492,6 +502,10 @@ def _all_u32_sequences(
         )
         yield record.canonical_input_order
         yield tuple(ids["parameters"][value] for value in record.coupling_parameter_ids)
+        yield tuple(
+            ids["quantum_flows"][value]
+            for value in record.eligible_quantum_flow_template_ids
+        )
         yield tuple(factors.id(value) for value in record.component_coefficients)
     for record in catalog.symmetry_proofs:
         yield tuple(strings.id(value) for value in record.subject_template_ids)
@@ -516,6 +530,7 @@ def _all_i32_sequences(catalog: RecurrenceTemplateCatalog) -> Iterable[Sequence[
 def _all_flavour_flows(
     catalog: RecurrenceTemplateCatalog,
 ) -> Iterable[Sequence[int]]:
+    yield from (record.flavour_flow for record in catalog.sources)
     for record in catalog.quantum_flows:
         yield from record.input_flavour_flows
         yield record.result_flavour_flow
@@ -524,6 +539,7 @@ def _all_flavour_flows(
 def _all_quantum_number_flows(
     catalog: RecurrenceTemplateCatalog,
 ) -> Iterable[Sequence[tuple[str, str]]]:
+    yield from (record.quantum_number_flow for record in catalog.sources)
     for record in catalog.quantum_flows:
         yield from record.input_quantum_number_flows
         yield record.result_quantum_number_flow
@@ -665,7 +681,14 @@ def _current_states_table(catalog, ids, strings, digests, sequences):
     )
 
 
-def _sources_table(catalog, ids, strings, digests):
+def _sources_table(
+    catalog,
+    ids,
+    strings,
+    digests,
+    flavour_flows,
+    quantum_number_flows,
+):
     parameter_ids = ids["parameters"]
     rows = []
     for index, record in enumerate(catalog.sources):
@@ -678,6 +701,8 @@ def _sources_table(catalog, ids, strings, digests):
                 strings.id(record.wavefunction_family),
                 record.helicity,
                 record.spin_state,
+                flavour_flows.id(record.flavour_flow),
+                quantum_number_flows.id(record.quantum_number_flow),
                 digests.id(record.wavefunction_expression_digest),
                 ids["evaluator_bindings"][record.evaluator_resolver_key],
                 _optional_reference(record.mass_parameter_id, parameter_ids),
@@ -696,6 +721,8 @@ def _sources_table(catalog, ids, strings, digests):
             ("wavefunction_family_string_id", _U32),
             ("helicity", _I32),
             ("spin_state", _I32),
+            ("flavour_flow_id", _U32),
+            ("quantum_number_flow_id", _U32),
             ("wavefunction_expression_digest_id", _U32),
             ("evaluator_binding_id", _U32),
             ("mass_parameter_id", _U32),
@@ -743,6 +770,7 @@ def _quantum_flows_table(
                 ),
                 coupling_orders.id(record.coupling_orders),
                 ids["current_states"][record.result_state_template_id],
+                record.result_spin_state,
                 flavour_flows.id(record.result_flavour_flow),
                 quantum_number_flows.id(record.result_quantum_number_flow),
                 factors.id(record.exact_coupling),
@@ -762,6 +790,7 @@ def _quantum_flows_table(
             ("input_quantum_sequence_id", _U32),
             ("coupling_order_set_id", _U32),
             ("result_state_template_id", _U32),
+            ("result_spin_state", _I32),
             ("result_flavour_flow_id", _U32),
             ("result_quantum_number_flow_id", _U32),
             ("exact_coupling_factor_id", _U32),
@@ -903,6 +932,12 @@ def _closures_table(
                     )
                 ),
                 coupling_orders.id(record.coupling_orders),
+                sequences.id(
+                    tuple(
+                        ids["quantum_flows"][value]
+                        for value in record.eligible_quantum_flow_template_ids
+                    )
+                ),
                 ids["color_contractions"][record.color_contraction_template_id],
                 factors.id(record.binding_coupling),
                 factors.id(record.exact_factor),
@@ -929,6 +964,7 @@ def _closures_table(
             ("canonical_input_order_sequence_id", _U32),
             ("coupling_parameter_sequence_id", _U32),
             ("coupling_order_set_id", _U32),
+            ("eligible_quantum_flow_sequence_id", _U32),
             ("color_contraction_template_id", _U32),
             ("binding_coupling_factor_id", _U32),
             ("exact_factor_id", _U32),

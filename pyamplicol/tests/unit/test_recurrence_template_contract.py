@@ -140,6 +140,8 @@ def _source_templates() -> tuple[SourceTemplateV1, ...]:
             wavefunction_family="vector",
             helicity=1,
             spin_state=1,
+            flavour_flow=(21,),
+            quantum_number_flow=(("electric_charge", "0"),),
             wavefunction_expression_digest=_EXPRESSION_B,
             evaluator_resolver_key="evaluator:source:adjoint",
         ),
@@ -150,6 +152,8 @@ def _source_templates() -> tuple[SourceTemplateV1, ...]:
             wavefunction_family="fermion",
             helicity=1,
             spin_state=1,
+            flavour_flow=(1,),
+            quantum_number_flow=(("electric_charge", "-1/3"),),
             wavefunction_expression_digest=_EXPRESSION_A,
             evaluator_resolver_key="evaluator:source:matter",
             mass_parameter_id="parameter:mass",
@@ -169,6 +173,7 @@ def _flow_template() -> QuantumFlowTemplateV1:
         ),
         coupling_orders=(("QCD", 1),),
         result_state_template_id="state:matter",
+        result_spin_state=1,
         result_flavour_flow=(1, 21),
         result_quantum_number_flow=(("electric_charge", "-1/3"),),
         exact_coupling=ExactComplexRationalV1.one(),
@@ -215,11 +220,12 @@ def _propagator() -> PropagatorTemplateV1:
 def _closure() -> ClosureTemplateV1:
     return ClosureTemplateV1(
         template_id="closure:matter-pair",
-        input_state_template_ids=("state:matter", "state:matter"),
+        input_state_template_ids=("state:matter", "state:adjoint"),
         evaluator_resolver_key="evaluator:closure:matter-pair",
         canonical_input_order=(0, 1),
         coupling_parameter_ids=(),
-        coupling_orders=(),
+        coupling_orders=(("QCD", 1),),
+        eligible_quantum_flow_template_ids=("flow:matter-adjoint-to-matter",),
         color_contraction_template_id="color:matter-adjoint",
         binding_coupling=ExactComplexRationalV1.one(),
         exact_factor=ExactComplexRationalV1.one(),
@@ -246,9 +252,9 @@ def _evaluator_bindings() -> tuple[EvaluatorBindingV1, ...]:
             prepared_kernel_id=4,
             contract_kind="closure",
             callable_signature=_CALLABLE_E,
-            input_state_template_ids=("state:matter", "state:matter"),
+            input_state_template_ids=("state:matter", "state:adjoint"),
             output_state_template_id=None,
-            input_layout=_state_input_layout("state:matter", "state:matter"),
+            input_layout=_state_input_layout("state:matter", "state:adjoint"),
             output_layout=("scalar",),
             exact_expression_digests=(_EXPRESSION_C,),
             semantic_template_ids=("closure:matter-pair",),
@@ -390,10 +396,16 @@ def test_extended_recurrence_records_round_trip_exactly() -> None:
         (("electric_charge", "0"),),
     )
     assert restored.quantum_flows[0].exact_coupling == ExactComplexRationalV1.one()
+    assert restored.quantum_flows[0].result_spin_state == 1
+    assert restored.sources[0].flavour_flow == (21,)
+    assert restored.sources[0].quantum_number_flow == (("electric_charge", "0"),)
     assert restored.transitions[0].equivalence_class == "ordered-matter-adjoint"
     assert restored.transitions[0].output_factor_source == "none"
     assert restored.closures[0].equivalence_class == "ordered-matter-pair"
     assert restored.closures[0].input_exchange_factor is None
+    assert restored.closures[0].eligible_quantum_flow_template_ids == (
+        "flow:matter-adjoint-to-matter",
+    )
 
     payload = json.loads(catalog.canonical_json)
     flow = payload["quantum_flows"][0]
@@ -452,6 +464,15 @@ def test_model_wide_columnar_projection_preserves_typed_contracts() -> None:
     }
     assert "binding_coupling_factor_id" in {
         column.name for column in tables["transitions"].columns
+    }
+    assert {"flavour_flow_id", "quantum_number_flow_id"} <= {
+        column.name for column in tables["sources"].columns
+    }
+    assert "result_spin_state" in {
+        column.name for column in tables["quantum_flows"].columns
+    }
+    assert "eligible_quantum_flow_sequence_id" in {
+        column.name for column in tables["closures"].columns
     }
 
 
@@ -635,6 +656,32 @@ def test_catalog_rejects_unknown_state_reference() -> None:
     )
     with pytest.raises(RecurrenceTemplateError, match="unknown 'state:missing'"):
         _catalog(transitions=(transition,))
+
+
+def test_catalog_rejects_closure_quantum_flow_state_mismatch() -> None:
+    closure = replace(
+        _closure(),
+        input_state_template_ids=("state:matter", "state:matter"),
+        semantic_digest="",
+    )
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="closure and eligible quantum-flow state/coupling contracts",
+    ):
+        _catalog(closures=(closure,))
+
+
+def test_catalog_rejects_closure_quantum_flow_coupling_mismatch() -> None:
+    closure = replace(
+        _closure(),
+        coupling_orders=(),
+        semantic_digest="",
+    )
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="closure and eligible quantum-flow state/coupling contracts",
+    ):
+        _catalog(closures=(closure,))
 
 
 def test_catalog_rejects_malformed_evaluator_state_contract() -> None:

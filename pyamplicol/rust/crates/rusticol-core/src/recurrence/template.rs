@@ -277,6 +277,8 @@ pub struct SourceRow {
     pub wavefunction_family_string_id: u32,
     pub helicity: i32,
     pub spin_state: i32,
+    pub flavour_flow_id: u32,
+    pub quantum_number_flow_id: u32,
     pub wavefunction_expression_digest_id: u32,
     pub evaluator_binding_id: u32,
     pub mass_parameter_id: u32,
@@ -294,6 +296,7 @@ pub struct QuantumFlowRow {
     pub input_quantum_sequence_id: u32,
     pub coupling_order_set_id: u32,
     pub result_state_template_id: u32,
+    pub result_spin_state: i32,
     pub result_flavour_flow_id: u32,
     pub result_quantum_number_flow_id: u32,
     pub exact_coupling_factor_id: u32,
@@ -348,6 +351,7 @@ pub struct ClosureRow {
     pub canonical_input_order_sequence_id: u32,
     pub coupling_parameter_sequence_id: u32,
     pub coupling_order_set_id: u32,
+    pub eligible_quantum_flow_sequence_id: u32,
     pub color_contraction_template_id: u32,
     pub binding_coupling_factor_id: u32,
     pub exact_factor_id: u32,
@@ -1185,6 +1189,16 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 self.evaluator_bindings.len(),
                 "source evaluator",
             )?;
+            required_reference(
+                row.flavour_flow_id,
+                self.flavour_flow_ranges.len(),
+                "source flavour flow",
+            )?;
+            required_reference(
+                row.quantum_number_flow_id,
+                self.quantum_number_flow_ranges.len(),
+                "source quantum-number flow",
+            )?;
             optional_reference(
                 row.mass_parameter_id,
                 self.parameters.len(),
@@ -1810,6 +1824,35 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 self.coupling_order_ranges.len(),
                 "closure coupling-order set",
             )?;
+            let eligible_flows = u32_sequence(
+                self,
+                row.eligible_quantum_flow_sequence_id,
+                "closure eligible quantum flows",
+            )?;
+            validate_strict_u32(eligible_flows, "closure eligible quantum flows")?;
+            validate_u32_references(
+                eligible_flows,
+                self.quantum_flows.len(),
+                "closure eligible quantum flows",
+            )?;
+            for flow_id in eligible_flows {
+                let flow = &self.quantum_flows[*flow_id as usize];
+                let flow_inputs = u32_sequence(
+                    self,
+                    flow.input_state_sequence_id,
+                    "closure quantum-flow input states",
+                )?;
+                if flow_inputs != inputs {
+                    return Err(invalid(format!(
+                        "closure {index} and eligible quantum flow {flow_id} have different input-state contracts"
+                    )));
+                }
+                if flow.coupling_order_set_id != row.coupling_order_set_id {
+                    return Err(invalid(format!(
+                        "closure {index} and eligible quantum flow {flow_id} have different coupling-order contracts"
+                    )));
+                }
+            }
             required_reference(
                 row.color_contraction_template_id,
                 self.color_contractions.len(),

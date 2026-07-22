@@ -115,6 +115,8 @@ def _source(
         wavefunction_family=family,
         helicity=helicity,
         spin_state=helicity,
+        flavour_flow=(state.particle_id,),
+        quantum_number_flow=(),
         wavefunction_expression_digest=signature,
         evaluator_resolver_key=resolver,
     )

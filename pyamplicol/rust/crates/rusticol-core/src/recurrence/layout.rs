@@ -145,7 +145,7 @@ pub struct CurrentCoreKey {
     momentum: CanonicalMomentumLinearForm,
     spin_state: i32,
     flavour_flow: Box<[i32]>,
-    quantum_number_flow: Box<[i32]>,
+    quantum_number_flow_id: u32,
     coupling_orders: Box<[u32]>,
     source_template_id: Option<u32>,
     propagator_template_id: Option<u32>,
@@ -161,14 +161,13 @@ impl CurrentCoreKey {
         momentum: CanonicalMomentumLinearForm,
         spin_state: i32,
         flavour_flow: Vec<i32>,
-        quantum_number_flow: Vec<i32>,
+        quantum_number_flow_id: u32,
         coupling_orders: Vec<u32>,
         source_template_id: Option<u32>,
         propagator_template_id: Option<u32>,
     ) -> RusticolResult<Self> {
         validate_sequence_len("support source slots", support_source_slots.len())?;
         validate_sequence_len("flavour flow", flavour_flow.len())?;
-        validate_sequence_len("quantum-number flow", quantum_number_flow.len())?;
         validate_sequence_len("coupling orders", coupling_orders.len())?;
         validate_strict_u32_sequence("support source slots", &support_source_slots)?;
         if node_kind == RecurrenceNodeKind::Source && source_template_id.is_none() {
@@ -189,7 +188,7 @@ impl CurrentCoreKey {
             momentum,
             spin_state,
             flavour_flow: flavour_flow.into_boxed_slice(),
-            quantum_number_flow: quantum_number_flow.into_boxed_slice(),
+            quantum_number_flow_id,
             coupling_orders: coupling_orders.into_boxed_slice(),
             source_template_id,
             propagator_template_id,
@@ -224,8 +223,8 @@ impl CurrentCoreKey {
         &self.flavour_flow
     }
 
-    pub fn quantum_number_flow(&self) -> &[i32] {
-        &self.quantum_number_flow
+    pub const fn quantum_number_flow_id(&self) -> u32 {
+        self.quantum_number_flow_id
     }
 
     pub fn coupling_orders(&self) -> &[u32] {

@@ -97,6 +97,13 @@ expression digest. Distinct semantic states may share one callable evaluator;
 they must not become one semantic template merely because their evaluator is
 identical.
 
+Source templates carry their canonical flavour and quantum-number flows in
+addition to helicity and spin state. Quantum-flow templates carry the result
+spin state and bind their input/result state tuple and coupling-order set into
+their predicate identity. Prepared closure templates reference the complete
+set of quantum-flow predicates that admit their input currents; each reference
+must have the same input-state and coupling-order contract as the closure.
+
 Unknown fields, duplicate semantic keys, duplicate evaluator resolver keys,
 stale digests, incomplete state contracts, or unsupported proof algorithms fail
 closed.
@@ -142,7 +149,7 @@ CurrentCoreKey = (
   canonical_momentum_linear_form,
   spin_state,
   canonical_flavour_flow,
-  canonical_quantum_number_flow,
+  interned_canonical_quantum_number_flow_id,
   coupling_order_vector,
   source_template_id_or_null,
   propagator_template_id_or_null
@@ -186,8 +193,9 @@ fermion permutation sign, and selector weight.
 The catalog must project every dynamic model callback used by recurrence
 construction. In particular, transition outcomes are keyed by the full input
 state contract, including spin state, chirality, flavor flow class, quantum
-number flow, and coupling orders. Caches may not omit fields visible to the
-model's transition predicate.
+number flow, result spin state, and coupling orders. Closure eligibility uses
+the same exact model callback predicates rather than particle-only matching.
+Caches may not omit fields visible to the model's transition predicate.
 
 Built-in SM and compiled UFO models enter the same catalog encoder and Rust
 binding. Branching on model name, built-in identity, benchmark process, or
@@ -277,4 +285,3 @@ Required differential checks include:
 - pure-gluon reversal, chiral/massive fermions, and three-open-line exchange;
 - deterministic bytes and semantic digests across worker counts and hash seeds;
 - malformed, truncated, stale-digest, and out-of-bounds inputs in Python and Rust.
-
