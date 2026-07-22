@@ -3394,9 +3394,16 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     raise self.InvalidCmd('--use_crossing expects True or '
                                           'False, got \'%s\'' % value)
                 args.remove(arg)
-        # Internally the switch is inverted: merge_crossing=True means "do not
-        # reuse/generate the crossed subprocesses".
-        merge_crossing = not use_crossing
+        # Crossed subprocesses are ALWAYS kept (merge_crossing=False, the
+        # historical 3.x default): use_crossing only decides later, at the
+        # exporter stage, whether they collapse into a single extended-FLAV_IDX
+        # matrix element (fortran standalone) or are written out as their own
+        # matrix elements (every other output, incl. madevent). The old
+        # merge_crossing=True / --no_crossing path DROPS the crossed processes
+        # from the amplitude list ("do not generate diagrams"), silently losing
+        # those partonic contributions, so it must not be reachable from
+        # --use_crossing: use_crossing=False has to remain a complete output.
+        merge_crossing = False
 
         # Check the validity of the arguments
         self.check_add(args)
