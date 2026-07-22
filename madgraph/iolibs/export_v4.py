@@ -6458,6 +6458,7 @@ c     channel position
             '       CALL GET_FLAVOR%s(IFLAV_VEC(IVEC), FLAVOR)' % proc_id
         replace_dict['dsig_smatrix_vec_name'] = 'SMATRIX%s' % proc_id
         replace_dict['dsig_smatrix_vec_flav'] = 'IFLAV_VEC(IVEC)'
+        replace_dict['dsig_smatrix_vec_chan'] = 'channels(IVEC)'
         replace_dict['dsig_smatrix_vec_post'] = ''
 
         # Set dsig_line
@@ -7722,6 +7723,65 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             return None
         return [p + 1 for p in pi]
 
+    def _diagram_leg_subsets(self, me):
+        """Per diagram number, the set of its internal propagators' canonical
+        external-leg subsets -- a crossing-covariant topology signature (a
+        propagator is the set of external legs whose momenta flow through it, and
+        a subset and its complement are the same propagator). get_s_and_t_channels
+        numbers the propagators negative, external-inward; the final t-channel
+        'propagator' is a single external leg and is dropped (canonical length 1).
+        Returns (dict diagram_number -> frozenset of subsets, nexternal)."""
+        nx, nini = me.get_nexternal_ninitial()
+        model = me.get('processes')[0].get('model')
+        npdg = model.get_first_non_pdg()
+        allset = frozenset(range(1, nx + 1))
+        canon = lambda s: min(s, allset - s, key=lambda x: (len(x), sorted(x)))
+        out = {}
+        for diag in me.get('diagrams'):
+            sch, tch = diag.get('amplitudes')[0].get_s_and_t_channels(
+                nini, model, npdg)
+            ext = {i: frozenset([i]) for i in range(1, nx + 1)}
+            subs = set()
+            for vert in list(sch) + list(tch):
+                legs = vert.get('legs')
+                daughters = [l.get('number') for l in legs[:-1]]
+                s = frozenset().union(*[ext.get(d, frozenset([d]))
+                                        for d in daughters]) if daughters \
+                    else frozenset()
+                ext[legs[-1].get('number')] = s
+                if 2 <= len(canon(s)):
+                    subs.add(canon(s))
+            out[diag.get('number')] = frozenset(subs)
+        return out, nx
+
+    def _crossgroup_configmap(self, dep_me, base_me, cross):
+        """1-based map from a dependent diagram number to the base diagram number
+        of the same topology under the crossing. The dependent's genps samples its
+        own config's poles, but the base SMATRIX enhances AMP2(channel), so channel
+        must name the matching BASE diagram; otherwise the importance sampling is
+        mis-paired (this only affects the variance, never the result -- summing the
+        channels gives the full integral for any bijective pairing). Returns the
+        identity if the diagrams cannot be cleanly matched."""
+        bsub, nx = self._diagram_leg_subsets(base_me)
+        dsub, _ = self._diagram_leg_subsets(dep_me)
+        ngraphs = len(dep_me.get('diagrams'))
+        bsig = {frozenset(v): k for k, v in bsub.items()}
+        tables = ProcessExporterFortran.compute_crossing_tables(self, base_me)
+        P = [tables['perm'][cross * nx + k] for k in range(nx)]
+        d2b = {k + 1: P[k] + 1 for k in range(nx)}   # dep leg -> base leg
+        allset = frozenset(range(1, nx + 1))
+        canon = lambda s: min(s, allset - s, key=lambda x: (len(x), sorted(x)))
+        cmap = list(range(1, ngraphs + 1))
+        for dd, ds in dsub.items():
+            if not 1 <= dd <= ngraphs:
+                return list(range(1, ngraphs + 1))
+            sig = frozenset(canon(frozenset(d2b[l] for l in sub)) for sub in ds)
+            if sig in bsig:
+                cmap[dd - 1] = bsig[sig]
+        if sorted(cmap) != list(range(1, ngraphs + 1)):
+            return list(range(1, ngraphs + 1))
+        return cmap
+
     def _dsig_crossgroup_fills(self, matrix_element, proc_id, crossgroup):
         """Fill the cross-group (Track B) holes of auto_dsig_v4.inc for a
         dependent subprocess that has no matrix element of its own and routes to
@@ -7738,9 +7798,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         * event helicity/colour -- the base returns selected_hel/selected_col in
           ITS enumeration; the event is written through this subprocess's own
           get_helicities / ICOLUP, so remap the index base -> dependent per flavor
-          (DSIG_XGHEL / DSIG_XGCOL). Emitted only when non-identity (colour is the
-          identity for colourless processes; the channel is still passed through --
-          CONFIGMAP is a later step).
+          (DSIG_XGHEL / DSIG_XGCOL). Colour is the identity for colourless.
+        * multi-channel -- the base enhances AMP2(channel) in its diagram
+          numbering; translate this subprocess's channel to the matching base
+          diagram (DSIG_XGCONFIG) so importance sampling stays paired.
+        All four maps are emitted only when non-identity.
         """
         base_proc_id = crossgroup['base_proc_id']
         flav_idx = crossgroup['flav_idx']       # per dep flavor -> base FLAV_IDX
@@ -7773,6 +7835,23 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             decl, 'DSIG_XGHEL', helmap, ncomb, 'selected_hel')
         col_post = self._crossgroup_remap_decl(
             decl, 'DSIG_XGCOL', colmap, ncol, 'selected_col')
+
+        # Multi-channel config remap: the base SMATRIX enhances AMP2(channel) in
+        # ITS diagram numbering, but this subprocess's genps samples its own
+        # config's poles, so translate the channel to the matching base diagram.
+        ngraphs = len(base_me.get('diagrams'))
+        configmap = [self._crossgroup_configmap(matrix_element, base_me,
+                                                (iflav - 1) // nflav_base)
+                     for iflav in flav_idx]
+        chan_scalar, chan_vec = 'channel', 'channels(IVEC)'
+        if any(cm != list(range(1, ngraphs + 1)) for cm in configmap):
+            decl.append('      INTEGER DSIG_XGCONFIG(%d,%d)'
+                        % (ngraphs, len(configmap)))
+            decl.append('      DATA DSIG_XGCONFIG /%s/'
+                        % ','.join(str(x) for col in configmap for x in col))
+            chan_scalar = 'DSIG_XGCONFIG(channel, IFLAV)'
+            chan_vec = 'DSIG_XGCONFIG(channels(IVEC), IFLAV_VEC(IVEC))'
+
         # DSIG_XG* are used from three separate program units (DSIG, DSIG_VEC,
         # SMATRIX_MULTI); declare them in each.
         decl_block = '\n'.join(decl) + '\n'
@@ -7783,8 +7862,9 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             'dsig_xg_decl_multi': decl_block,
             'dsig_getflavor': '      FLAVOR(:) = DSIG_XGFLAV(:, IFLAV)',
             'dsig_smatrix_call': (
-                '     CALL SMATRIX%d(P1, DSIG_XGROUTE(IFLAV), RHEL, RCOL, channel,'
-                ' 1, DSIGUU, selected_hel(1), selected_col(1))' % base_proc_id
+                '     CALL SMATRIX%d(P1, DSIG_XGROUTE(IFLAV), RHEL, RCOL, %s,'
+                ' 1, DSIGUU, selected_hel(1), selected_col(1))'
+                % (base_proc_id, chan_scalar)
                 + hel_post.format(idx='(1)', flav='IFLAV')
                 + col_post.format(idx='(1)', flav='IFLAV')),
             # vectorised (SMATRIX_MULTI) path: same routing. The MULTI wrapper
@@ -7794,6 +7874,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                 '       FLAVOR(:) = DSIG_XGFLAV(:, IFLAV_VEC(IVEC))',
             'dsig_smatrix_vec_name': 'SMATRIX%d' % base_proc_id,
             'dsig_smatrix_vec_flav': 'DSIG_XGROUTE(IFLAV_VEC(IVEC))',
+            'dsig_smatrix_vec_chan': chan_vec,
             'dsig_smatrix_vec_post': (
                 hel_post.format(idx='(IVEC)', flav='IFLAV_VEC(IVEC)')
                 + col_post.format(idx='(IVEC)', flav='IFLAV_VEC(IVEC)')),
@@ -7898,6 +7979,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             '       CALL GET_FLAVOR%s(IFLAV_VEC(IVEC), FLAVOR)' % proc_id
         replace_dict['dsig_smatrix_vec_name'] = 'SMATRIX%s' % proc_id
         replace_dict['dsig_smatrix_vec_flav'] = 'IFLAV_VEC(IVEC)'
+        replace_dict['dsig_smatrix_vec_chan'] = 'channels(IVEC)'
         replace_dict['dsig_smatrix_vec_post'] = ''
 
         # Set dsig_line

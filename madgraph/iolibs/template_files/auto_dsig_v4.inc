@@ -559,7 +559,7 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
      &                           %(dsig_smatrix_vec_flav)s, 
      &                           hel_rand(IVEC),
      &                           col_rand(IVEC),
-     &               channels(IVEC),
+     &               %(dsig_smatrix_vec_chan)s,
      &                           IVEC,
      &               out(IVEC),
      &               selected_hel(IVEC),
