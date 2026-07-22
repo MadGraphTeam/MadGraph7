@@ -2168,7 +2168,13 @@ class Event(list):
         With a single alpha_s power there is no clustering, so there is a single
         PDF reweight entry per beam and no separate alpha_s reweight scale --
         matching what MadEvent writes for an unmatched LO event (verified
-        against a real <mgrwt>: x_i, pdg, scale and n_qcd all coincide)."""
+        against a real <mgrwt>: x_i, pdg, scale and n_qcd all coincide).
+
+        Scope: this is only valid for an unmatched (ickkw=0) LO sample with the
+        standard collinear massless initial state. It does NOT reproduce the
+        <mgrwt> of a matched sample (ickkw>0, where the clustering fills asrwt
+        and multiple pdf reweight entries) nor the EVA/DIS special cases; use the
+        real <mgrwt> block for those."""
 
         initial = [p for p in self if int(p.status) == -1]
         if len(initial) != 2:
