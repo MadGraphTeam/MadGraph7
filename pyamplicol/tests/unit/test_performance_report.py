@@ -908,6 +908,30 @@ def test_missing_only_retries_z_unsupported_rows() -> None:
     assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
 
 
+def test_missing_only_skips_out_of_reach_z_rows() -> None:
+    spec = report.LADDER_SPECS[0]
+    payload = report.build_ladder_cache(spec)
+    entry = next(
+        item
+        for item in payload["entries"]
+        if item["n_final"] == 1 and item["variant"] == "eager_jit_o3"
+    )
+    entry["measurement"] = {
+        **report._empty_measurement(),
+        "status": report.ResultStatus.OUT_OF_REACH.value,
+    }
+    cell = report.CampaignCell(
+        kind="performance_ladder",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=int(entry["n_final"]),
+        process=spec.process(int(entry["n_final"])),
+        variant=str(entry["variant"]),
+    )
+
+    assert not report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
+
+
 def test_missing_only_retries_model_ladder_failures() -> None:
     spec = next(
         item
@@ -1352,6 +1376,49 @@ def test_runtime_only_revision_hops_allow_generation_reuse(
     stale_contract["head"] = "e307d218c169e246e6ce8f8e1392799c36108785"
     stale_contract["model_compiler_version"] = 12
     assert not report._source_provenance_generation_reusable(stale_contract)
+
+    eager_fix_current = dict(current)
+    eager_fix_current["head"] = "e3342771aa6f56853fcd98035982f6056e68211f"
+    monkeypatch.setattr(report, "_report_source_provenance", lambda: eager_fix_current)
+    previous = dict(eager_fix_current)
+    previous["head"] = "a0fd4a458c281b1838df10c6547395edc6e65618"
+    assert report._source_provenance_generation_reusable(previous)
+    stale_eager_measurement = {
+        "metadata": {
+            "source_provenance": previous,
+        },
+    }
+    eager_n3_cell = report.CampaignCell(
+        kind="performance_ladder",
+        cache_name="z_builtin_sm.json",
+        dataset_id="z_builtin_sm",
+        n_final=3,
+        process="d d~ > z g g",
+        variant="eager_jit_o3",
+    )
+    eager_n2_cell = report.CampaignCell(
+        kind="performance_ladder",
+        cache_name="z_builtin_sm.json",
+        dataset_id="z_builtin_sm",
+        n_final=2,
+        process="d d~ > z g",
+        variant="eager_jit_o3",
+    )
+    assert report._measurement_requires_runtime_refresh(
+        eager_n3_cell,
+        stale_eager_measurement,
+        execution_mode="eager",
+    )
+    assert not report._measurement_requires_runtime_refresh(
+        eager_n3_cell,
+        stale_eager_measurement,
+        execution_mode="compiled",
+    )
+    assert not report._measurement_requires_runtime_refresh(
+        eager_n2_cell,
+        stale_eager_measurement,
+        execution_mode="eager",
+    )
 
 
 def test_lc_replay_runtime_fix_reuses_pre_fix_generation(
@@ -2804,6 +2871,20 @@ def test_failure_status_labels_render_in_cells() -> None:
             )
         )
         == r"\ReportStatus{VALIDATION FAILED}"
+    )
+    out_of_reach = report._failure_measurement(
+        report.ResultStatus.OUT_OF_REACH,
+        "held by campaign policy",
+    )
+    assert report._measurement_cell(out_of_reach) == r"\ReportStatus{out-of-reach}"
+    assert (
+        report._matrix_failure_label(out_of_reach)
+        == r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
+    )
+    assert report._z_old_status(out_of_reach["status"]) == "out_of_reach"
+    assert (
+        report._z_old_status_cell("out_of_reach")
+        == r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
     )
 
 

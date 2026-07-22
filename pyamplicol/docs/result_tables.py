@@ -83,6 +83,12 @@ LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION = "f1f24548e8d7daec1d1c84b0db8bf3cfa567b
 LC_HELICITY_REPLAY_REUSE_BASE_REVISIONS = frozenset(
     {"55bfedc80df4695dc7aa55bc5d40669d248d2f14"}
 )
+EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_REVISION = (
+    "e3342771aa6f56853fcd98035982f6056e68211f"
+)
+EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_BASE_REVISIONS = frozenset(
+    {"a0fd4a458c281b1838df10c6547395edc6e65618"}
+)
 PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
     {
         (
@@ -96,6 +102,10 @@ PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
         (
             "0144af352a216ce8511b76b5271a5fce90d15e08",
             "ff6690f892f210e401f0639aa33059f5c009574f",
+        ),
+        (
+            "a0fd4a458c281b1838df10c6547395edc6e65618",
+            "e3342771aa6f56853fcd98035982f6056e68211f",
         ),
     }
 )
@@ -143,6 +153,7 @@ class ResultStatus(StrEnum):
     FAILED = "failed"
     TIMEOUT = "timeout"
     MEMORY_LIMIT = "memory_limit"
+    OUT_OF_REACH = "out_of_reach"
     VALIDATION_FAILED = "validation_failed"
     ERROR = "error"
     UNSUPPORTED = "unsupported"
@@ -808,6 +819,10 @@ def _measurement_ok(value: Mapping[str, object]) -> bool:
     return _measurement_status(value) == ResultStatus.OK.value
 
 
+def _campaign_status_is_terminal(status: object) -> bool:
+    return str(status) == ResultStatus.OUT_OF_REACH.value
+
+
 def _failure_measurement(
     status: ResultStatus | str,
     message: str,
@@ -1101,6 +1116,8 @@ def _refresh_matrix_derived_fields(entry: dict[str, object]) -> None:
         entry["status"] = ResultStatus.VALIDATION_FAILED.value
     elif ResultStatus.MEMORY_LIMIT.value in statuses:
         entry["status"] = ResultStatus.MEMORY_LIMIT.value
+    elif ResultStatus.OUT_OF_REACH.value in statuses:
+        entry["status"] = ResultStatus.OUT_OF_REACH.value
     elif ResultStatus.TIMEOUT.value in statuses:
         entry["status"] = ResultStatus.TIMEOUT.value
     elif ResultStatus.ERROR.value in statuses or ResultStatus.FAILED.value in statuses:
@@ -1146,6 +1163,8 @@ def _refresh_eager_matrix_derived_fields(entry: dict[str, object]) -> None:
         entry["status"] = ResultStatus.VALIDATION_FAILED.value
     elif ResultStatus.MEMORY_LIMIT.value in statuses:
         entry["status"] = ResultStatus.MEMORY_LIMIT.value
+    elif ResultStatus.OUT_OF_REACH.value in statuses:
+        entry["status"] = ResultStatus.OUT_OF_REACH.value
     elif ResultStatus.TIMEOUT.value in statuses:
         entry["status"] = ResultStatus.TIMEOUT.value
     elif ResultStatus.ERROR.value in statuses or ResultStatus.FAILED.value in statuses:
@@ -2019,6 +2038,8 @@ def _status_label(status: object, *, limit_gib: object = None) -> str:
     if value == ResultStatus.MEMORY_LIMIT.value:
         suffix = "" if limit_gib is None else f">{float(limit_gib):.0f}G"
         return rf"\ReportStatus{{RAM{suffix}}}"
+    if value == ResultStatus.OUT_OF_REACH.value:
+        return r"\ReportStatus{out-of-reach}"
     if value == ResultStatus.VALIDATION_FAILED.value:
         return r"\ReportStatus{VALIDATION FAILED}"
     if value == ResultStatus.UNSUPPORTED.value:
@@ -2273,6 +2294,8 @@ def _z_old_status(value: object) -> str:
         return "timeout"
     if status in {ResultStatus.MEMORY_LIMIT.value, "ram_limit"}:
         return "ram_limit"
+    if status == ResultStatus.OUT_OF_REACH.value:
+        return "out_of_reach"
     if status == ResultStatus.VALIDATION_FAILED.value:
         return "validation_failed"
     if status == ResultStatus.UNSUPPORTED.value:
@@ -2327,6 +2350,8 @@ def _z_old_format_with_ratio(value: float | None, reference: float | None) -> st
 
 
 def _z_old_status_cell(status: str) -> str:
+    if status == "out_of_reach":
+        return r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
     labels = {
         "timeout": "t/o",
         "ram_limit": "RAM>800G",
@@ -2380,7 +2405,14 @@ def _z_old_render_timing_triplet(
                 _z_old_missing(),
             ]
         return [_z_old_missing(), _z_old_missing(), _z_old_missing()]
-    if status in {"timeout", "ram_limit", "validation_failed", "unsupported", "error"}:
+    if status in {
+        "timeout",
+        "ram_limit",
+        "out_of_reach",
+        "validation_failed",
+        "unsupported",
+        "error",
+    }:
         return [
             _z_old_status_cell(status),
             _z_old_missing(color="black!45")
@@ -2424,6 +2456,7 @@ def _z_old_render_mode_cells(
     elif status in {
         "timeout",
         "ram_limit",
+        "out_of_reach",
         "validation_failed",
         "unsupported",
         "error",
@@ -2609,6 +2642,8 @@ def _matrix_failure_label(measurement: Mapping[str, object]) -> str:
         limit = measurement.get("limit_gib")
         suffix = "" if limit is None else f">{float(limit):.0f}G"
         return rf"\textcolor{{ReportRed}}{{\texttt{{RAM{suffix}}}}}"
+    if status == ResultStatus.OUT_OF_REACH.value:
+        return r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
     if status == ResultStatus.VALIDATION_FAILED.value:
         return r"\textcolor{ReportRed}{\textbf{VALIDATION FAILED}}"
     if status == ResultStatus.UNSUPPORTED.value:
@@ -4567,6 +4602,23 @@ def _lc_measurement_has_complete_coverage(
     return expected_name is not None and Path(artifact_path).name == expected_name
 
 
+def _measurement_requires_runtime_refresh(
+    cell: CampaignCell,
+    measurement: Mapping[str, object],
+    *,
+    execution_mode: str,
+) -> bool:
+    if execution_mode != "eager" or cell.n_final <= 2:
+        return False
+    measurement_revision = _measurement_source_revision(measurement)
+    current_head = _report_source_provenance().get("head")
+    return (
+        measurement_revision in EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_BASE_REVISIONS
+        and isinstance(current_head, str)
+        and _git_is_ancestor(EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_REVISION, current_head)
+    )
+
+
 def _lc_nested_measurement_current(
     cell: CampaignCell,
     measurement: object,
@@ -4579,6 +4631,11 @@ def _lc_nested_measurement_current(
     if not (
         _measurement_ok(measurement)
         and _pyamplicol_timing_profile_current(measurement)
+        and not _measurement_requires_runtime_refresh(
+            cell,
+            measurement,
+            execution_mode=execution_mode,
+        )
         and _pyamplicol_generation_profile_current(measurement)
         and _pyamplicol_measurement_source_fences_current(cell, measurement)
         and _lc_flow_layout_source_current(
@@ -4703,6 +4760,8 @@ def _campaign_cell_needs_measurement(
             if not bool(entry.get("applicable", False)):
                 return False
             status = str(entry.get("status", NA_STATUS))
+            if _campaign_status_is_terminal(status):
+                return False
             if status != ResultStatus.OK.value:
                 return True
             measurement = entry.get("eager_jit_o3")
@@ -4734,6 +4793,8 @@ def _campaign_cell_needs_measurement(
             if not bool(entry.get("applicable", False)):
                 return False
             status = str(entry.get("status", NA_STATUS))
+            if _campaign_status_is_terminal(status):
+                return False
             if status == NA_STATUS:
                 return True
             if (
@@ -4805,6 +4866,8 @@ def _campaign_cell_needs_measurement(
             if not isinstance(measurement, Mapping):
                 return True
             status = str(measurement.get("status", NA_STATUS))
+            if _campaign_status_is_terminal(status):
+                return False
             if status == NA_STATUS:
                 return True
             if status in {
@@ -4883,6 +4946,8 @@ def _campaign_cell_needs_measurement(
         if not isinstance(measurement, Mapping):
             return True
         status = str(measurement.get("status", NA_STATUS))
+        if _campaign_status_is_terminal(status):
+            return False
         if status == NA_STATUS:
             return True
         if status in {

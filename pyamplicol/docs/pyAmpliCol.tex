@@ -124,7 +124,9 @@ for that slot. It is neither a zero, a failure, nor a value carried over from
 another implementation. Explicit failure labels such as \ReportStatus{t/o},
 \ReportStatus{RAM>limit}, \ReportStatus{VALIDATION FAILED}, and
 \ReportStatus{ERROR} identify a recorded timeout, resource limit, numerical
-mismatch, or execution failure rather than a physics value.
+mismatch, or execution failure rather than a physics value. A cell marked
+\ReportStatus{out-of-reach} records a deliberately held high-multiplicity
+measurement whose resource profile falls outside the campaign envelope.
 
 \section{Current Recursion and Model Lowering}
 
