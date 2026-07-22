@@ -770,7 +770,7 @@ def _mark_candidate(
     overlay_config = overlay / ".cargo" / "config.toml"
     overlay_config.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(candidate_config, overlay_config)
-    _rewrite_candidate_symjit_requirement(overlay)
+    _rewrite_candidate_dependency_requirements(overlay)
     cargo = overlay / "Cargo.toml"
     text = cargo.read_text(encoding="utf-8")
     updated, count = re.subn(
@@ -878,25 +878,56 @@ def _clean_source_revision() -> str | None:
     return revision if re.fullmatch(r"[a-f0-9]{40}", revision) else None
 
 
-def _rewrite_candidate_symjit_requirement(overlay: Path) -> None:
-    """Use the managed candidate SymJIT only inside the isolated overlay."""
+def _rewrite_candidate_dependency_requirements(overlay: Path) -> None:
+    """Use managed candidate native dependencies only in the build overlay."""
 
     with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
         release = tomllib.load(stream)
     with (ROOT / _CONTRIBUTOR_LOCK).open("rb") as stream:
         contributor = tomllib.load(stream)
-    published = str(release["symbolica"]["published_symjit_version"])
-    candidate = str(contributor["symjit"]["candidate_version"])
     manifest = overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")
-    pattern = rf'(?m)^(symjit\s*=\s*\{{\s*version\s*=\s*)"={re.escape(published)}"'
-    updated, count = re.subn(pattern, rf'\g<1>"={candidate}"', text, count=1)
+    projections = (
+        (
+            "symbolica",
+            str(release["symbolica"]["rust_version"]),
+            str(contributor["symbolica"]["candidate_version"]),
+        ),
+        (
+            "symjit",
+            str(release["symbolica"]["published_symjit_version"]),
+            str(contributor["symjit"]["candidate_version"]),
+        ),
+    )
+    for dependency, published, candidate in projections:
+        pattern = (
+            rf'(?m)^({dependency}\s*=\s*\{{\s*version\s*=\s*)'
+            rf'"={re.escape(published)}"'
+        )
+        text, count = re.subn(pattern, rf'\g<1>"={candidate}"', text, count=1)
+        if count != 1:
+            raise RuntimeError(
+                f"could not project rusticol-core {dependency} requirement "
+                f"from {published} to candidate {candidate}"
+            )
+    manifest.write_text(text, encoding="utf-8")
+
+    python_manifest = overlay / "pyproject.toml"
+    python_text = python_manifest.read_text(encoding="utf-8")
+    published_python = str(release["symbolica"]["python_version"])
+    candidate_python = str(contributor["symbolica"]["candidate_version"])
+    python_text, count = re.subn(
+        rf'(?m)^(\s*"symbolica==){re.escape(published_python)}(",\s*)$',
+        rf"\g<1>{candidate_python}\g<2>",
+        python_text,
+        count=1,
+    )
     if count != 1:
         raise RuntimeError(
-            "could not project rusticol-core from the published SymJIT "
-            f"requirement {published} to candidate {candidate}"
+            "could not project Python Symbolica requirement "
+            f"from {published_python} to candidate {candidate_python}"
         )
-    manifest.write_text(updated, encoding="utf-8")
+    python_manifest.write_text(python_text, encoding="utf-8")
 
 
 def _candidate_inputs() -> tuple[Path, Path, Path]:

@@ -101,7 +101,7 @@ PYTHON=.venv/bin/python just dev-test
 The flake provides Python 3.11, Rust 1.89, C/C++ and Fortran compilers, native
 build libraries, PDF inspection utilities, and the full TeX distribution used
 to rebuild the performance report. It intentionally omits pyAmpliCol's Python
-runtime, test, and patched candidate packages: `just dev-install` installs
+runtime, test, and pinned candidate packages: `just dev-install` installs
 those into `.venv` from the repository's contributor locks.
 
 The same command stages the candidate wheel's Rust extension and native SDK

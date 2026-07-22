@@ -45,7 +45,6 @@ def test_maturin_recursively_includes_every_sdist_source_tree() -> None:
         "build_backend/python_lock.py",
         "dependencies/contributor-lock.toml",
         "dependencies/install_dependencies.py",
-        "dependencies/patches/**",
         "dependencies/python-runtime-lock.toml",
         "flake.nix",
     } <= excludes

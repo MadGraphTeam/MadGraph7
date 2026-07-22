@@ -571,7 +571,22 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                         f"candidate source {name} does not match contributor-lock.toml",
                     )
                 )
-            if not checkout.is_dir() or _git_head(checkout) != revision:
+            if name == "symjit":
+                symjit = contributor["symjit"]
+                archive_matches = (
+                    isinstance(entry, dict)
+                    and entry.get("version") == symjit.get("candidate_version")
+                    and entry.get("archive_sha256") == symjit.get("crate_sha256")
+                )
+                if not checkout.is_dir() or not archive_matches:
+                    issues.append(
+                        GateIssue(
+                            "candidate-source-revision",
+                            "candidate SymJIT archive does not match "
+                            "contributor-lock.toml",
+                        )
+                    )
+            elif not checkout.is_dir() or _git_head(checkout) != revision:
                 issues.append(
                     GateIssue(
                         "candidate-source-revision",

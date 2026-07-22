@@ -14,31 +14,29 @@ serialization/runtime compatibility has not been marked verified.
 
 ## Candidate Development Mode
 
-`just dev-install` uses immutable Symbolica/SymJIT/GammaLoop source revisions
-and the checksummed candidate patches listed in `contributor-lock.toml`.
-Candidate mode
+`just dev-install` uses immutable Symbolica/GammaLoop source revisions and the
+checksummed published SymJIT source archive listed in `contributor-lock.toml`.
+It applies no source patches. Candidate mode
 exists for development and physics validation only. It installs the verified
 published `ufo-model-loader==0.1.7` wheel directly from the hash-locked runtime
 closure. Artifacts produced in this mode record the candidate revisions and
 are not eligible for PyPI publication.
 
-The contributor build uses unpatched SymJIT 2.20.2 at
-`1d9e7b104c29d612981b1d59cae0cfe8fbf9a4d1`. On macOS arm64 the retained
-requested-level-3 wrong-result probe agrees with requested level 1 to
-`3.47e-16`. The revision also adds the
-production vector-emitter safeguard that prevents the previously observed
-oversized stack adjustment. The deliberately synthetic probe that calls the
-low-level stack helper with a frame above 16 MiB still exceeds AArch64's
-immediate range, but that manufactured route is no longer reachable from the
-generated evaluator path. No local SymJIT patch is applied.
+The contributor build uses the exact crates.io source for SymJIT 2.21.0. It
+uses Symbolica and symbolica-community at the immutable planned-release
+revisions recorded in the lock. GammaLoop is pinned to the merged main revision that
+provides Spenso's cached symbolic-parallelism policy. Spynso3 initializes that
+policy in `Auto` mode, checking the license once and keeping symbolic tensor
+reductions serial for restricted users or parallel for licensed users. SymJIT
+2.21.0 is published; the matching symbolica-community build must
+be released with the updated GammaLoop pin before a strict PyPI build can
+replace the currently verified release pins.
 
-The candidate Spenso patch keeps symbolic tensor reductions on the importing
-thread when Symbolica is running in restricted mode. Licensed builds retain
-Spenso's Rayon reductions. Without this guard, a legal tensor network may move
-an `Atom` operation onto a worker, which Symbolica rejects as unlicensed
-multicore use by aborting the process. This candidate patch is excluded from
-wheel and sdist contents and must be released upstream before a strict PyPI
-build can use it.
+The planned Symbolica revision still has one upstream release blocker for
+pyAmpliCol's compiled-complex C++/CUDA path: complex constants can be emitted
+with nested scalar wrappers that do not compile as `std::complex<double>`.
+Candidate mode remains intentionally unpatched; publication requires an
+upstream fix or an explicit exclusion of that capability.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. The pinned

@@ -9,7 +9,6 @@ on:
       - build_backend/prepared_models.py
       - dependencies/candidate-Cargo.lock
       - dependencies/contributor-lock.toml
-      - dependencies/patches/symbolica/**
       - rust/crates/rusticol-core/src/eager_runtime/**
       - rust/crates/rusticol-core/src/eager_runtime.rs
       - rust/crates/rusticol-core/src/eager_tables.rs
@@ -36,7 +35,6 @@ on:
       - build_backend/prepared_models.py
       - dependencies/candidate-Cargo.lock
       - dependencies/contributor-lock.toml
-      - dependencies/patches/symbolica/**
       - rust/crates/rusticol-core/src/eager_runtime/**
       - rust/crates/rusticol-core/src/eager_runtime.rs
       - rust/crates/rusticol-core/src/eager_tables.rs

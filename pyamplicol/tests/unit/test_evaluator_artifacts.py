@@ -38,10 +38,11 @@ class _FakeJITEvaluator:
         self.evaluation_count += 1
         return np.zeros((len(rows), 2), dtype=np.complex128)
 
-    def export_symjit_f64_application(self) -> tuple[bytes, str]:
+    def export_symjit(self, *, complex: bool = False) -> bytes:
+        assert complex is True
         if self.export_error is not None:
             raise self.export_error
-        return b"symjit-application-v3", "complex-f64"
+        return b"symjit-application-v3"
 
     def save(self) -> bytes:
         return b"symbolica-evaluator-state"

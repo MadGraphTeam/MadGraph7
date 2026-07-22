@@ -216,38 +216,24 @@ class _JITSymbolicaEvaluatorAdapter:
             raise NativeEvaluationError(
                 "direct SymJIT f64 artifacts require a 64-bit little-endian host"
             )
-        exporter = getattr(
-            self._source_evaluator,
-            "export_symjit_f64_application",
-            None,
-        )
+        exporter = getattr(self._source_evaluator, "export_symjit", None)
         if not callable(exporter):
             raise NativeEvaluationError(
                 "this Symbolica build cannot export a direct SymJIT f64 application; "
                 "install the pinned pyAmpliCol candidate dependency"
             )
         try:
-            exported = exporter()
+            application = exporter(complex=True)
         except Exception as error:
             raise NativeEvaluationError(
                 "Symbolica could not export a self-contained SymJIT f64 application; "
                 "external evaluator functions are not supported in process artifacts"
             ) from error
-        if not isinstance(exported, tuple) or len(exported) != 2:
-            raise NativeEvaluationError(
-                "Symbolica returned an invalid SymJIT application export"
-            )
-        application, layout = exported
         if not isinstance(application, bytes) or not application:
             raise NativeEvaluationError(
                 "Symbolica returned an empty or non-bytes SymJIT application"
             )
         expected_layout = _symjit_element_layout()
-        if layout != expected_layout:
-            raise NativeEvaluationError(
-                "Symbolica exported an incompatible SymJIT element layout: "
-                f"expected {expected_layout!r}, got {layout!r}"
-            )
         return application, expected_layout
 
 

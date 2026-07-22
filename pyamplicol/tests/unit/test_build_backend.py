@@ -92,6 +92,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
 ) -> None:
     source_cargo = (ROOT / "Cargo.toml").read_bytes()
     source_lock = (ROOT / "Cargo.lock").read_bytes()
+    source_pyproject = (ROOT / "pyproject.toml").read_bytes()
     source_core = (
         ROOT / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
     ).read_bytes()
@@ -115,8 +116,14 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
             overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
         ).read_text(encoding="utf-8")
         with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
-            candidate_version = tomllib.load(stream)["symjit"]["candidate_version"]
-        assert f'symjit = {{ version = "={candidate_version}"' in candidate_core
+            contributor = tomllib.load(stream)
+        candidate_symjit = contributor["symjit"]["candidate_version"]
+        candidate_symbolica = contributor["symbolica"]["candidate_version"]
+        assert f'symjit = {{ version = "={candidate_symjit}"' in candidate_core
+        candidate_pyproject = (overlay / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+        assert f'"symbolica=={candidate_symbolica}"' in candidate_pyproject
         build_info = json.loads(
             (overlay / "src" / "pyamplicol" / "_build_info.json").read_text(
                 encoding="utf-8"
@@ -210,6 +217,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
 
     assert (ROOT / "Cargo.toml").read_bytes() == source_cargo
     assert (ROOT / "Cargo.lock").read_bytes() == source_lock
+    assert (ROOT / "pyproject.toml").read_bytes() == source_pyproject
     assert (
         ROOT / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
     ).read_bytes() == source_core

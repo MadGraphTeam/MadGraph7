@@ -2,7 +2,7 @@ Symbolica Proprietary Terms And Redistribution Permission
 
 SPDX identifier: LicenseRef-Symbolica-Proprietary
 
-Upstream terms reproduced from Symbolica 2.1.0 License.md
+Upstream terms reproduced from Symbolica 2.2.0 License.md
 
 # Symbolica licenses
 

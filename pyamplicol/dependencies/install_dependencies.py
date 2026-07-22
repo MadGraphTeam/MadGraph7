@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Create the isolated patched contributor environment."""
+"""Create the isolated pinned contributor environment."""
 
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
+import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -168,11 +170,6 @@ def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...
             "symbolica-community",
             str(symbolica["community_url"]),
             str(symbolica["community_revision"]),
-        ),
-        Source(
-            "symjit",
-            str(payload["symjit"]["source_url"]),
-            str(payload["symjit"]["candidate_revision"]),
         ),
         Source(
             "gammaloop",
@@ -335,45 +332,78 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
     )
 
 
-def _apply_patch(runner: Runner, checkout: Path, patch: Path) -> None:
-    if runner.dry_run:
-        print(f"$ git apply {shlex.quote(str(patch))}  # cwd={checkout}")
-        return
-    check = subprocess.run(
-        ["git", "apply", "--check", str(patch)],
-        cwd=checkout,
-        capture_output=True,
-        text=True,
-    )
-    if check.returncode == 0:
-        runner.run(["git", "apply", patch], cwd=checkout)
-        return
-    reverse = subprocess.run(
-        ["git", "apply", "--reverse", "--check", str(patch)],
-        cwd=checkout,
-        capture_output=True,
-        text=True,
-    )
-    if reverse.returncode == 0:
-        return
-    raise SetupError(
-        f"patch does not apply cleanly to {checkout}: {patch.name}\n"
-        f"{check.stderr}{reverse.stderr}"
-    )
+def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
+    """Materialize the exact published SymJIT crate as a local path source."""
 
-
-def _unapply_patch_if_present(runner: Runner, checkout: Path, patch: Path) -> None:
+    symjit = payload["symjit"]
+    version = str(symjit["candidate_version"])
+    expected_sha256 = str(symjit["crate_sha256"])
+    destination = CHECKOUTS / "symjit"
     if runner.dry_run:
-        print(f"$ git apply --reverse {shlex.quote(str(patch))}  # cwd={checkout}")
+        print(
+            f"# download and verify SymJIT {version} from {symjit['source_url']} "
+            f"at sha256:{expected_sha256}"
+        )
         return
-    reverse = subprocess.run(
-        ["git", "apply", "--reverse", "--check", str(patch)],
-        cwd=checkout,
-        capture_output=True,
-        text=True,
-    )
-    if reverse.returncode == 0:
-        runner.run(["git", "apply", "--reverse", patch], cwd=checkout)
+
+    manifest = destination / "Cargo.toml"
+    if manifest.is_file():
+        with manifest.open("rb") as stream:
+            installed = tomllib.load(stream)
+        if str(installed.get("package", {}).get("version")) != version:
+            raise SetupError(
+                f"{destination} is not SymJIT {version}; rerun with --reset"
+            )
+        return
+    if destination.exists():
+        raise SetupError(f"invalid managed SymJIT source at {destination}")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="symjit-source-", dir=destination.parent
+    ) as raw:
+        temporary = Path(raw)
+        archive = temporary / f"symjit-{version}.crate"
+        with urllib.request.urlopen(str(symjit["source_url"])) as response:
+            archive.write_bytes(response.read())
+        actual_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+        if actual_sha256 != expected_sha256:
+            raise SetupError(
+                "SymJIT source archive digest mismatch: "
+                f"expected {expected_sha256}, got {actual_sha256}"
+            )
+        extracted = temporary / "extracted"
+        extracted.mkdir()
+        prefix = f"symjit-{version}"
+        with tarfile.open(archive, "r:gz") as source:
+            for member in source.getmembers():
+                path = Path(member.name)
+                if (
+                    path.is_absolute()
+                    or not path.parts
+                    or path.parts[0] != prefix
+                    or any(part in {"", ".", ".."} for part in path.parts)
+                    or member.issym()
+                    or member.islnk()
+                ):
+                    raise SetupError(f"unsafe SymJIT archive member: {member.name}")
+                relative = Path(*path.parts[1:])
+                target = extracted / relative
+                if member.isdir():
+                    target.mkdir(parents=True, exist_ok=True)
+                elif member.isfile():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    stream = source.extractfile(member)
+                    if stream is None:
+                        raise SetupError(
+                            f"could not read SymJIT archive member: {member.name}"
+                        )
+                    target.write_bytes(stream.read())
+                else:
+                    raise SetupError(
+                        f"unsupported SymJIT archive member: {member.name}"
+                    )
+        os.replace(extracted, destination)
 
 
 def _replace_section(text: str, name: str, body: str) -> str:
@@ -384,7 +414,7 @@ def _replace_section(text: str, name: str, body: str) -> str:
     return pattern.sub(replacement, text, count=1)
 
 
-def _patch_source_manifests(runner: Runner) -> None:
+def _configure_source_manifests(runner: Runner) -> None:
     if runner.dry_run:
         print("# rewrite candidate Cargo manifests to pinned local paths")
         return
@@ -394,16 +424,8 @@ def _patch_source_manifests(runner: Runner) -> None:
     gammaloop = CHECKOUTS / "gammaloop"
 
     symjit_cargo = symjit / "Cargo.toml"
-    text = symjit_cargo.read_text(encoding="utf-8")
-    text, count = re.subn(
-        r'(?m)^crate-type\s*=\s*\["cdylib"\]\s*$',
-        'crate-type = ["rlib"]',
-        text,
-        count=1,
-    )
-    if count == 0 and 'crate-type = ["rlib"]' not in text:
-        raise SetupError("could not make SymJIT an rlib")
-    symjit_cargo.write_text(text, encoding="utf-8")
+    if 'crate-type = ["rlib"]' not in symjit_cargo.read_text(encoding="utf-8"):
+        raise SetupError("published SymJIT source is not configured as an rlib")
 
     symbolica_cargo = symbolica / "Cargo.toml"
     text = symbolica_cargo.read_text(encoding="utf-8")
@@ -421,28 +443,31 @@ def _patch_source_manifests(runner: Runner) -> None:
         """
 example_extension = { path = "example_extension" }
 idenso = { path = "../gammaloop/crates/idenso", features = ["bincode", "python"] }
-spenso = { path = "../gammaloop/crates/spenso", features = ["shadowing", "python"] }
 spynso3 = { path = "../gammaloop/crates/spynso3" }
 symbolica = { path = "../symbolica", features = ["python_export"] }
+symbolica-integrate = { version = "1.0", features = ["steps"] }
 pyo3 = { version = "0.28", features = ["abi3"] }
 """
         'pyo3-stub-gen = { version = "0.17", optional = true, '
         'default-features = false, features = ["numpy"] }\n'
         """
 mimalloc = { version = "0.1", features = ["local_dynamic_tls"] }
+vakint = { path = "../gammaloop/crates/vakint", features = [
+    "symbolica_community_module",
+] }
 """
     )
     patches = """
 graphica = { path = "../symbolica/lib/graphica" }
 idenso = { path = "../gammaloop/crates/idenso" }
 linnet = { path = "../gammaloop/crates/linnet" }
-linnest = { path = "../gammaloop/crates/linnest" }
 numerica = { path = "../symbolica/lib/numerica" }
 spenso = { path = "../gammaloop/crates/spenso" }
 spenso-hep-lib = { path = "../gammaloop/crates/spenso-hep-lib" }
 spenso-macros = { path = "../gammaloop/crates/spenso-macros" }
 spynso3 = { path = "../gammaloop/crates/spynso3" }
 symbolica = { path = "../symbolica" }
+symjit = { path = "../symjit" }
 """
     community_cargo = community / "Cargo.toml"
     text = community_cargo.read_text(encoding="utf-8")
@@ -453,7 +478,6 @@ symbolica = { path = "../symbolica" }
         text = "[workspace]\n\n" + text
     text = _replace_section(text, "dependencies", dependencies)
     text = _replace_section(text, "patch.crates-io", patches)
-    text = text.replace('    "vakint/python_stubgen",\n', "")
     text = re.sub(
         r"(?m)^numerica\s*=\s*\{[^\n]*\}\s*$",
         'numerica = { path = "../symbolica/lib/numerica" }',
@@ -471,14 +495,6 @@ symbolica = { path = "../symbolica" }
         count=1,
     )
     example.write_text(text.rstrip() + "\n", encoding="utf-8")
-
-    community_lib = community / "src" / "lib.rs"
-    text = community_lib.read_text(encoding="utf-8")
-    text = text.replace(
-        "    register_module!(m, vakint::symbolica_community_module::VakintWrapper);\n",
-        "",
-    )
-    community_lib.write_text(text, encoding="utf-8")
 
     gammaloop_cargo = gammaloop / "Cargo.toml"
     text = gammaloop_cargo.read_text(encoding="utf-8")
@@ -502,36 +518,56 @@ symbolica = { path = "../symbolica" }
     )
     gammaloop_cargo.write_text(text.rstrip() + "\n", encoding="utf-8")
 
+    workspace_hack = gammaloop / "crates" / "gammaloop-workspace-hack" / "Cargo.toml"
+    text = workspace_hack.read_text(encoding="utf-8")
+    text, symbolica_count = re.subn(
+        r'(?m)^symbolica\s*=\s*\{\s*git\s*=\s*"[^"]+",\s*branch\s*=\s*"main",',
+        'symbolica = { path = "../../../symbolica",',
+        text,
+    )
+    text, numerica_count = re.subn(
+        r'(?m)^numerica\s*=\s*\{\s*git\s*=\s*"[^"]+",\s*branch\s*=\s*"main",',
+        'numerica = { path = "../../../symbolica/lib/numerica",',
+        text,
+    )
+    localized_symbolica = text.count('symbolica = { path = "../../../symbolica",')
+    localized_numerica = text.count(
+        'numerica = { path = "../../../symbolica/lib/numerica",'
+    )
+    if (
+        symbolica_count not in {0, 2}
+        or numerica_count not in {0, 2}
+        or localized_symbolica != 2
+        or localized_numerica != 2
+    ):
+        raise SetupError("could not localize GammaLoop workspace-hack Symbolica inputs")
+    workspace_hack.write_text(text, encoding="utf-8")
 
-def _patch_sources(runner: Runner, payload: dict[str, Any]) -> None:
-    patch_series: list[tuple[Path, Path]] = []
-    for entry in payload["patches"]:
-        dependency = str(entry["dependency"])
-        checkout_name = {
-            "symbolica": "symbolica",
-            "symjit": "symjit",
-            "gammaloop": "gammaloop",
-        }.get(dependency)
-        if checkout_name is None:
-            continue
-        checkout = CHECKOUTS / checkout_name
-        patch = DEPENDENCIES / str(entry["path"])
-        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
-        if digest != entry["sha256"]:
-            raise SetupError(f"dependency patch digest changed: {patch}")
-        patch_series.append((checkout, patch))
-    # Later patches may overlap lines introduced by earlier ones, so checking
-    # each patch independently is not an idempotent test of the final series.
-    # Unwind our managed series in reverse order, then replay it from the lock.
-    for checkout, patch in reversed(patch_series):
-        _unapply_patch_if_present(runner, checkout, patch)
-    for checkout, patch in patch_series:
-        _apply_patch(runner, checkout, patch)
-    _patch_source_manifests(runner)
-    runner.run(["cargo", "update", "-p", "symjit"], cwd=CHECKOUTS / "symbolica")
+
+def _configure_sources(runner: Runner) -> None:
+    _configure_source_manifests(runner)
+    community = CHECKOUTS / "symbolica-community"
+    if runner.dry_run:
+        print("# restore the upstream symbolica-community Cargo.lock")
+    else:
+        upstream_lock = runner.run(
+            ["git", "show", "HEAD:Cargo.lock"],
+            cwd=community,
+            capture=True,
+        ).stdout
+        (community / "Cargo.lock").write_text(upstream_lock, encoding="utf-8")
+    # Resolve only the Git-to-path source substitutions from the exact upstream
+    # lock.  This preserves every unrelated version chosen by the release that
+    # the contributor build is intended to simulate.
     runner.run(
-        ["cargo", "update", "-p", "symjit"],
-        cwd=CHECKOUTS / "symbolica-community",
+        ["cargo", "metadata", "--format-version", "1"],
+        cwd=community,
+        capture=True,
+    )
+    runner.run(
+        ["cargo", "metadata", "--locked", "--format-version", "1"],
+        cwd=community,
+        capture=True,
     )
 
 
@@ -644,7 +680,7 @@ def _write_candidate_lock(runner: Runner) -> None:
             cwd=temporary,
             capture=True,
         )
-        _rewrite_candidate_symjit_requirement(temporary)
+        _rewrite_candidate_requirements(temporary)
         config = temporary / ".cargo" / "config.toml"
         config.parent.mkdir(parents=True)
         shutil.copy2(CARGO_CONFIG, config)
@@ -666,22 +702,36 @@ def _write_candidate_lock(runner: Runner) -> None:
         raise SetupError("candidate lock generation modified canonical Cargo.lock")
 
 
-def _rewrite_candidate_symjit_requirement(root: Path) -> None:
-    """Project the published release manifest onto the pinned candidate source."""
+def _rewrite_candidate_requirements(root: Path) -> None:
+    """Project published release pins onto the pinned candidate sources."""
 
     lock = _lock()
-    published = str(lock["symbolica"]["published_symjit_version"])
-    candidate = str(lock["symjit"]["candidate_version"])
     manifest = root / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")
-    pattern = rf'(?m)^(symjit\s*=\s*\{{\s*version\s*=\s*)"={re.escape(published)}"'
-    updated, count = re.subn(pattern, rf'\g<1>"={candidate}"', text, count=1)
-    if count != 1:
-        raise SetupError(
-            "could not project rusticol-core from the published SymJIT "
-            f"requirement {published} to candidate {candidate}"
+    projections = (
+        (
+            "symbolica",
+            str(lock["symbolica"]["rust_version"]),
+            str(lock["symbolica"]["candidate_version"]),
+        ),
+        (
+            "symjit",
+            str(lock["symbolica"]["published_symjit_version"]),
+            str(lock["symjit"]["candidate_version"]),
+        ),
+    )
+    for dependency, published, candidate in projections:
+        pattern = (
+            rf'(?m)^({dependency}\s*=\s*\{{\s*version\s*=\s*)'
+            rf'"={re.escape(published)}"'
         )
-    manifest.write_text(updated, encoding="utf-8")
+        text, count = re.subn(pattern, rf'\g<1>"={candidate}"', text, count=1)
+        if count != 1:
+            raise SetupError(
+                f"could not project rusticol-core {dependency} requirement "
+                f"from {published} to candidate {candidate}"
+            )
+    manifest.write_text(text, encoding="utf-8")
 
 
 def _runtime_requirements_text() -> str:
@@ -782,7 +832,9 @@ def _archive_candidate_wheels(directory: Path, prefix: str) -> None:
     if not candidates:
         return
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    destination = TRASH / f"candidate-wheel-refresh-{stamp}" / directory.relative_to(ROOT)
+    destination = (
+        TRASH / f"candidate-wheel-refresh-{stamp}" / directory.relative_to(ROOT)
+    )
     destination.mkdir(parents=True, exist_ok=True)
     for wheel in candidates:
         shutil.move(str(wheel), str(destination / wheel.name))
@@ -894,14 +946,15 @@ def _write_state(
         ).hexdigest(),
         "cargo_config_sha256": hashlib.sha256(CARGO_CONFIG.read_bytes()).hexdigest(),
         "sources": source_state,
-        "patches": [
-            {
-                "dependency": entry["dependency"],
-                "path": entry["path"],
-                "sha256": entry["sha256"],
-            }
-            for entry in payload["patches"]
-        ],
+        "patches": [],
+    }
+    symjit = payload["symjit"]
+    source_state["symjit"] = {
+        "url": str(symjit["source_url"]),
+        "revision": str(symjit["candidate_revision"]),
+        "version": str(symjit["candidate_version"]),
+        "archive_sha256": str(symjit["crate_sha256"]),
+        "worktree_sha256": _source_tree_sha256(CHECKOUTS / "symjit"),
     }
     STATE.write_text(
         json.dumps(state, indent=2, sort_keys=True) + "\n",
@@ -935,7 +988,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     _ensure_venv(runner, payload)
     for source in sources:
         _checkout(runner, source, update=args.update)
-    _patch_sources(runner, payload)
+    _materialize_symjit(runner, payload)
+    _configure_sources(runner)
     _write_cargo_config(runner)
     _write_candidate_lock(runner)
     _write_state(runner, payload, sources)

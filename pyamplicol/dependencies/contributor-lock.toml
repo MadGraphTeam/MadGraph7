@@ -8,22 +8,24 @@ symjit_application = "symjit-application-storage-v3"
 
 [symbolica]
 source_url = "https://github.com/symbolica-dev/symbolica.git"
-candidate_revision = "e4167e767147ab8f3b4f039057c396c8fa961f6a"
+candidate_version = "2.2.0"
+candidate_revision = "77c137481904b8a5531ede86e3ef36b82beed7fd"
 community_url = "https://github.com/symbolica-dev/symbolica-community.git"
-community_revision = "4daa45e793a3775f13bee33c4ddd2ba7f22ba714"
-release_status = "patched-candidate"
+community_revision = "0deaa0f1484ec5c24f5f109176fa66f0d30134ca"
+release_status = "merged-main-candidate"
 
 [symjit]
-candidate_version = "2.20.2"
-source_url = "https://github.com/siravan/symjit.git"
-candidate_revision = "1d9e7b104c29d612981b1d59cae0cfe8fbf9a4d1"
+candidate_version = "2.21.0"
+source_url = "https://static.crates.io/crates/symjit/symjit-2.21.0.crate"
+crate_sha256 = "41f54d4663441294b2ebee68fd9504c5483d31f99ee2e007f81ac3cbc246c5c1"
+candidate_revision = "crate:2.21.0@sha256:41f54d4663441294b2ebee68fd9504c5483d31f99ee2e007f81ac3cbc246c5c1"
 application_storage_version = 3
 release_status = "unpatched-candidate"
 license = "MIT"
 
 [gammaloop_candidate]
 source_url = "https://github.com/alphal00p/gammaloop.git"
-revision = "db79edc84f6a1580decbcc4ede7ea0b1c79d9a08"
+revision = "fff1d66ee7ca039b9e165fe8d29da91f4c27113c"
 release_status = "developer-build-input-only"
 
 [ufo_model_loader]
@@ -40,28 +42,3 @@ release_status = "developer-only"
 license = "NOASSERTION"
 redistributed = false
 license_evidence = "No LICENSE or COPYING file exists at the pinned branch revision"
-
-[[patches]]
-dependency = "symbolica"
-path = "patches/symbolica/0001-fix-complex-export-aarch64.patch"
-sha256 = "bfd580fe34d5abccf0b7f80c02f381b244366e12e9096c7585454e5547bc2ef2"
-
-[[patches]]
-dependency = "symbolica"
-path = "patches/symbolica/0002-release-gil-for-multiple-evaluator-build.patch"
-sha256 = "73148daafa9c39df6bdafea2a1b154d4d96d673d67a87163aedfd512ca7e5660"
-
-[[patches]]
-dependency = "symbolica"
-path = "patches/symbolica/0003-forward-symjit-optimization-level.patch"
-sha256 = "8236948b47eeec4e9de18969b1051f86eb77650c09578de74d09d89a45e9bef2"
-
-[[patches]]
-dependency = "symbolica"
-path = "patches/symbolica/0004-export-symjit-application.patch"
-sha256 = "b5a3a43335200bce7441c800bc2f542c215d38de04318146c4dac98f4644dc4e"
-
-[[patches]]
-dependency = "gammaloop"
-path = "patches/gammaloop/0001-respect-symbolica-restricted-mode.patch"
-sha256 = "f82a89007ac47d9cb8ce08a4c33d508718eb157598e9884048751acea121b9bc"

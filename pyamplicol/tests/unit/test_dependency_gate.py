@@ -111,14 +111,21 @@ def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
     checkouts = tmp_path / "checkouts"
     for name in revisions:
         (checkouts / name).mkdir(parents=True)
+    source_state = {
+        name: {"revision": revision} for name, revision in revisions.items()
+    }
+    source_state["symjit"].update(
+        {
+            "version": contributor["symjit"]["candidate_version"],
+            "archive_sha256": contributor["symjit"]["crate_sha256"],
+        }
+    )
     state_path.write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "publishable": False,
-                "sources": {
-                    name: {"revision": revision} for name, revision in revisions.items()
-                },
+                "sources": source_state,
             }
         ),
         encoding="utf-8",
