@@ -41,7 +41,12 @@ from pyamplicol.reporting import (
     ProgressStart,
 )
 
-from ..color.plan import build_color_plan, build_lc_topology_replay_plan
+from ..color.plan import (
+    GenericColorPlan,
+    LCColorTopologyReplayPlan,
+    build_color_plan,
+    build_lc_topology_replay_plan,
+)
 from ..models.base import Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
 from ..models.prepared import PreparedKernelPack
@@ -555,6 +560,16 @@ class _ExpandedProcess:
     request: ProcessRequest
     process_ir: CanonicalProcessIR
     aliases: tuple[Mapping[str, object], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedProcessConstruction:
+    process: CanonicalProcessIR
+    complete_color_plan: GenericColorPlan
+    restricted_color_plan: GenericColorPlan
+    materialized_sector_ids: frozenset[int] | None
+    coupling_order_limits: Mapping[str, int]
+    topology_replay: LCColorTopologyReplayPlan | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -3012,62 +3027,12 @@ class GenerationBackend:
         progress_callback: Callable[[Mapping[str, str | int]], None] | None = None,
     ) -> tuple[GenericDAG, dict[str, object]]:
         self._validate_recurrence_request()
+        prepared = self._prepare_process_construction(process, model)
+        complete_color_plan = prepared.complete_color_plan
+        materialized_sector_ids = prepared.materialized_sector_ids
+        limits = dict(prepared.coupling_order_limits)
+        replay_plan = prepared.topology_replay
         selection = self._process_selection
-        self._validate_lc_flow_layout(selection)
-        if (
-            selection.selected_color_sector_ids is not None
-            and self._color_accuracy != "lc"
-        ):
-            raise GenerationError(
-                "process.selected_color_sector_ids is available only for LC generation"
-            )
-        complete_color_plan = build_color_plan(
-            process,
-            color_accuracy=self._color_accuracy,
-            max_sectors=selection.max_color_sectors,
-            reference_color_order=selection.reference_color_order,
-            fold_trace_reflections=(
-                model.lc_trace_reflection_equivalence_is_proven(process)
-            ),
-        )
-        color_plan, missing_sector_ids = _restrict_color_plan(
-            complete_color_plan,
-            selection.selected_color_sector_ids,
-        )
-        if missing_sector_ids:
-            raise GenerationError(
-                f"process {process.process!r} did not materialize requested LC "
-                "colour sector ids: "
-                + ", ".join(str(sector_id) for sector_id in missing_sector_ids)
-            )
-        if not color_plan.sectors:
-            detail = "; ".join(color_plan.diagnostics) or "no color sectors"
-            raise GenerationError(
-                f"process {process.process!r} has no usable color plan: {detail}"
-            )
-        run = self._run_config
-        limits = self._coupling_order_limits
-        if run is not None and run.process.coupling_order_policy == "minimal":
-            inferred = infer_minimal_coupling_order_limits(
-                process,
-                model=model,
-                max_coupling_orders=limits or None,
-            )
-            limits = inferred or limits
-        replay_plan = None
-        materialized_sector_ids = selection.selected_color_sector_ids
-        if (
-            self._color_accuracy == "lc"
-            and not self._all_flow_union_enabled
-            and selection.selected_color_sector_ids is None
-            and selection.selected_source_helicities is None
-        ):
-            replay_plan = build_lc_topology_replay_plan(
-                complete_color_plan,
-                model,
-            )
-            if replay_plan is not None and replay_plan.optimized:
-                materialized_sector_ids = frozenset(replay_plan.materialized_sector_ids)
         dag = compile_generic_dag(
             process,
             model=model,
@@ -3169,6 +3134,78 @@ class GenerationBackend:
                 "amplitude_root_count": len(dag.amplitude_roots),
                 "coupling_order_limits": limits,
             },
+        )
+
+    def _prepare_process_construction(
+        self,
+        process: CanonicalProcessIR,
+        model: Model,
+    ) -> _PreparedProcessConstruction:
+        """Prepare the shared model/color contract before choosing a builder."""
+
+        selection = self._process_selection
+        self._validate_lc_flow_layout(selection)
+        if (
+            selection.selected_color_sector_ids is not None
+            and self._color_accuracy != "lc"
+        ):
+            raise GenerationError(
+                "process.selected_color_sector_ids is available only for LC generation"
+            )
+        complete_color_plan = build_color_plan(
+            process,
+            color_accuracy=self._color_accuracy,
+            max_sectors=selection.max_color_sectors,
+            reference_color_order=selection.reference_color_order,
+            fold_trace_reflections=(
+                model.lc_trace_reflection_equivalence_is_proven(process)
+            ),
+        )
+        color_plan, missing_sector_ids = _restrict_color_plan(
+            complete_color_plan,
+            selection.selected_color_sector_ids,
+        )
+        if missing_sector_ids:
+            raise GenerationError(
+                f"process {process.process!r} did not materialize requested LC "
+                "colour sector ids: "
+                + ", ".join(str(sector_id) for sector_id in missing_sector_ids)
+            )
+        if not color_plan.sectors:
+            detail = "; ".join(color_plan.diagnostics) or "no color sectors"
+            raise GenerationError(
+                f"process {process.process!r} has no usable color plan: {detail}"
+            )
+        limits = self._coupling_order_limits
+        run = self._run_config
+        if run is not None and run.process.coupling_order_policy == "minimal":
+            inferred = infer_minimal_coupling_order_limits(
+                process,
+                model=model,
+                max_coupling_orders=limits or None,
+            )
+            limits = inferred or limits
+        replay_plan = None
+        materialized_sector_ids = selection.selected_color_sector_ids
+        if (
+            self._color_accuracy == "lc"
+            and not self._all_flow_union_enabled
+            and selection.selected_color_sector_ids is None
+            and selection.selected_source_helicities is None
+        ):
+            replay_plan = build_lc_topology_replay_plan(
+                complete_color_plan,
+                model,
+            )
+            if replay_plan is not None and replay_plan.optimized:
+                materialized_sector_ids = frozenset(replay_plan.materialized_sector_ids)
+        return _PreparedProcessConstruction(
+            process=process,
+            complete_color_plan=complete_color_plan,
+            restricted_color_plan=color_plan,
+            materialized_sector_ids=materialized_sector_ids,
+            coupling_order_limits=MappingProxyType(dict(limits)),
+            topology_replay=replay_plan,
         )
 
     def _validate_lc_flow_layout(self, selection: _ProcessSelection) -> None:
