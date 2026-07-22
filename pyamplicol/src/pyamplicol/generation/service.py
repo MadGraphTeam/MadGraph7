@@ -26,7 +26,7 @@ from pyamplicol.api.requests import (
     ProcessRequest,
     ProcessSet,
 )
-from pyamplicol.api.results import GenerationPlan, GenerationResult
+from pyamplicol.api.results import GenerationPlan, GenerationResult, ProcessPhysics
 from pyamplicol.config import (
     ClampRequest,
     ConfigResolution,
@@ -108,6 +108,7 @@ _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
 _LOGGER = logging.getLogger("pyamplicol.generation")
 _MAX_FUSED_LC_HELICITY_SELECTOR_SECTORS = 128
+_MAX_POST_BUILD_RESOLVED_COMPONENTS = 1_000_000
 _EAGER_PLAN_VERSION_ENV = "PYAMPLICOL_EAGER_PLAN_VERSION"
 _EAGER_PLAN_V2 = "v2"
 _EAGER_PLAN_V3 = "v3"
@@ -116,6 +117,61 @@ _EAGER_LOWERING_RESULT_SCHEMA_VERSION = 1
 # Symbolica releases the GIL while retaining process-wide mutable symbol state.
 # Keep each complete lowering/compilation transaction atomic across generators.
 _SYMBOLICA_MATERIALIZATION_LOCK = Lock()
+
+
+def _post_build_validation_slices(
+    physics: ProcessPhysics,
+    sample_count: int,
+) -> tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]:
+    """Keep resolved-output validation below a bounded component count."""
+
+    helicities = physics.helicities
+    color_flows = physics.color_flows
+    contracted = physics.contracted_color_components
+    color_count = len(color_flows) or len(contracted)
+    full_component_count = sample_count * len(helicities) * color_count
+    if full_component_count <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+        return (("complete", (), ()),)
+
+    helicity = next(
+        (
+            item
+            for item in helicities
+            if item.computed and not item.structural_zero
+        ),
+        next(
+            (
+                item
+                for item in helicities
+                if not item.structural_zero
+            ),
+            helicities[0],
+        ),
+    )
+    helicity_ids = (str(helicity.id),)
+    slices: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+    if sample_count * color_count <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+        slices.append(("selected-helicity", helicity_ids, ()))
+
+    if color_flows:
+        color_flow = next(
+            (
+                item
+                for item in color_flows
+                if item.computed
+            ),
+            color_flows[0],
+        )
+        color_flow_ids = (str(color_flow.id),)
+        if sample_count * len(helicities) <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+            slices.append(("selected-flow", (), color_flow_ids))
+        if not slices:
+            slices.append(
+                ("selected-helicity-and-flow", helicity_ids, color_flow_ids)
+            )
+    elif not slices:
+        slices.append(("selected-helicity", helicity_ids, ()))
+    return tuple(slices)
 
 
 class _RustEagerLoweringBinding(Protocol):
@@ -2370,41 +2426,56 @@ class GenerationBackend:
                 if point.available
             )
             if validation.enabled and samples:
-                total = runtime.evaluate(samples)
-                resolved_total = runtime.evaluate_resolved(samples).total()
-                if len(total) != len(samples) or len(resolved_total) != len(samples):
-                    raise GenerationError(
-                        f"Rusticol returned an invalid validation shape for "
-                        f"{process_id!r}"
-                    )
-                for sample_index, (summed, resolved) in enumerate(
-                    zip(total, resolved_total, strict=True),
-                    start=1,
+                for validation_slice, helicities, color_flows in (
+                    _post_build_validation_slices(runtime.physics, len(samples))
                 ):
-                    if progress is not None:
-                        progress.update(
-                            process_index - 1,
-                            total=process_total,
-                            message=f"{process_id}: sample {sample_index}",
-                            details={
-                                "process": process_id,
-                                "step": "numerical validation",
-                                "sample_index": sample_index,
-                                "sample_total": len(samples),
-                            },
-                        )
-                    difference = abs(complex(summed) - complex(resolved))
-                    if not cmath.isclose(
-                        complex(summed),
-                        complex(resolved),
-                        rel_tol=validation.relative_tolerance,
-                        abs_tol=validation.absolute_tolerance,
+                    total = runtime.evaluate(
+                        samples,
+                        helicities=helicities or None,
+                        color_flows=color_flows or None,
+                    )
+                    resolved_total = runtime.evaluate_resolved(
+                        samples,
+                        helicities=helicities or None,
+                        color_flows=color_flows or None,
+                    ).total()
+                    if len(total) != len(samples) or len(resolved_total) != len(
+                        samples
                     ):
                         raise GenerationError(
-                            "resolved Rusticol validation does not reduce to the "
-                            f"total for {process_id!r} sample {sample_index} "
-                            f"(absolute difference {difference:.3e})"
+                            f"Rusticol returned an invalid validation shape for "
+                            f"{process_id!r}"
                         )
+                    for sample_index, (summed, resolved) in enumerate(
+                        zip(total, resolved_total, strict=True),
+                        start=1,
+                    ):
+                        if progress is not None:
+                            progress.update(
+                                process_index - 1,
+                                total=process_total,
+                                message=f"{process_id}: sample {sample_index}",
+                                details={
+                                    "process": process_id,
+                                    "step": "numerical validation",
+                                    "validation_slice": validation_slice,
+                                    "sample_index": sample_index,
+                                    "sample_total": len(samples),
+                                },
+                            )
+                        difference = abs(complex(summed) - complex(resolved))
+                        if not cmath.isclose(
+                            complex(summed),
+                            complex(resolved),
+                            rel_tol=validation.relative_tolerance,
+                            abs_tol=validation.absolute_tolerance,
+                        ):
+                            raise GenerationError(
+                                "resolved Rusticol validation does not reduce to the "
+                                f"total for {process_id!r} sample {sample_index} "
+                                f"in {validation_slice!r} "
+                                f"(absolute difference {difference:.3e})"
+                            )
             if progress is not None:
                 progress.update(
                     process_index,
